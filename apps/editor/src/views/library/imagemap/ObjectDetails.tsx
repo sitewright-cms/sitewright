@@ -4,7 +4,7 @@ import { fieldLabel, glassInput, ghostButton, toggleInput } from '../../../theme
 import { FilePicker } from '../../files/FilePicker';
 import type { AcceptFilter } from '../../files/FileBrowser';
 import { TYPE_LABELS, ICON_PCT_MAX, ICON_PCT_MIN, artboardSize, iconNameOf, iconPct, isIconSpot, objectBounds, round } from './model';
-import { BrandColorField } from '../../settings/ColorPicker';
+import { BrandColorField } from '../../ui/ColorPicker';
 import { IconField } from './IconField';
 import { iconSvg } from './icon-svg';
 import { TooltipBuilder } from './TooltipBuilder';

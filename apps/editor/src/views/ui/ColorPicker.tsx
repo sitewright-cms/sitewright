@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   COLOR_FORMATS,
@@ -13,6 +13,10 @@ import {
   type Rgba,
 } from './color';
 import { glassInput } from '../../theme';
+import { useCiBrandColors } from '../../lib/ci-palette';
+
+/** Swatch order: the tokens an author actually reaches for come first. */
+const BRAND_SWATCH_ORDER = ['primary', 'secondary', 'accent', 'neutral', 'base-100', 'base-content'];
 
 // A powerful, dependency-free color picker: a saturation/value square + hue & alpha sliders,
 // with four LIVE-converting editable fields (HEX / RGB / HSL / OKLCH). Editing any one updates
@@ -352,16 +356,39 @@ export function BrandColorField({
   value: string;
   onChange: (v: string) => void;
   label: string;
-  /** The project's CI tokens, in display order. Empty renders the picker alone. */
-  palette: ReadonlyArray<{ key: string; value: string }>;
+  /**
+   * The project's CI tokens, in display order. OMIT IT and the open project's palette is used — the
+   * common case, and the reason a caller three components deep no longer has to be handed one. Pass a
+   * value only to show something other than the open project's brand; `[]` renders the picker alone.
+   */
+  palette?: ReadonlyArray<{ key: string; value: string }>;
 }) {
+  const brand = useCiBrandColors();
+  // Order matters: `primary` and `secondary` are what an author reaches for, so they lead rather than
+  // arriving wherever the object's key order happens to put them.
+  const fromContext = useMemo(
+    () =>
+      brand
+        ? [...Object.entries(brand)]
+            .sort(([a], [b]) => {
+              const rank = (k: string) => {
+                const i = BRAND_SWATCH_ORDER.indexOf(k);
+                return i < 0 ? BRAND_SWATCH_ORDER.length : i;
+              };
+              return rank(a) - rank(b) || a.localeCompare(b);
+            })
+            .map(([key, v]) => ({ key, value: v }))
+        : [],
+    [brand],
+  );
+  const swatches = palette ?? fromContext;
   const current = value.trim().toLowerCase();
   return (
     <div className="flex items-center gap-2">
       <ColorField value={value} onChange={onChange} label={label} />
-      {palette.length > 0 && (
+      {swatches.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">
-          {palette.map((token) => {
+          {swatches.map((token) => {
             const active = token.value.trim().toLowerCase() === current;
             return (
               <button

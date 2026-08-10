@@ -9,6 +9,7 @@ import { api } from '../../api';
 import { PLATFORM_BG_EVENT } from '../PlatformBackground';
 import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
 import { useCiBrandColors } from '../../lib/ci-palette';
+import { BrandColorField } from '../ui/ColorPicker';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 // Runtime defaults for the optional knobs — an attribute is emitted only when it DIFFERS from these, so
@@ -362,12 +363,14 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
                       <option value="custom">custom color…</option>
                     </select>
                     {slots[i]!.mode === 'custom' && (
-                      <input
-                        type="color"
+                      // The platform picker, not the browser's: alpha, four colour spaces, and the
+                      // project's own brand one click away — the colours a background is most likely
+                      // to want. The native swatch offered none of that and looked different on
+                      // every OS.
+                      <BrandColorField
                         value={slots[i]!.color}
-                        onChange={(e) => setSlot(i, { color: e.target.value })}
-                        aria-label={`${label} custom color`}
-                        className="h-7 w-8 shrink-0 rounded border border-slate-200 dark:border-slate-700"
+                        onChange={(color) => setSlot(i, { color })}
+                        label={`${label} custom color`}
                       />
                     )}
                   </div>

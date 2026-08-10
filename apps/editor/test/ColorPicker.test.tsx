@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ColorPicker, ColorField, ColorCard } from '../src/views/settings/ColorPicker';
+import { ColorPicker, ColorField, ColorCard } from '../src/views/ui/ColorPicker';
 
 // A stateful host: onChange feeds `value` back in, mirroring how the settings form drives the
 // picker — so the live cross-space conversion is exercised end to end.

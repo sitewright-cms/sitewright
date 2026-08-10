@@ -29,7 +29,7 @@ import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '
 import { DeletedProjectsCard } from './DeletedProjectsCard';
 import { DatabaseIntegrityModal } from './settings/DatabaseIntegrityModal';
 import { applyBranding } from '../lib/use-branding';
-import { ColorField } from './settings/ColorPicker';
+import { ColorField } from './ui/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
 import { SectionHelp } from './ui/SectionHelp';
 import { Tabs } from './ui/Tabs';

@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **One colour picker everywhere.** The Animated Backgrounds and Background Textures studios used the
+  browser's native `<input type="color">` — no alpha, no colour spaces, no way to reach the project's
+  own brand, and a different control on every operating system. Both now use the platform picker that
+  the Corporate Identity settings already had (saturation/value square, hue and alpha sliders, and
+  live HEX / RGB / HSL / OKLCH fields), which moved from `views/settings/` to `views/ui/` to say
+  plainly that it is shared. Admin settings and the Image Map studio already used it.
+  - **It offers the open project's brand colours as one-click swatches**, sourced from context rather
+    than prop-drilled: a control three components deep no longer has to be handed a palette to show
+    one. With no project open it shows the picker alone, which is the right answer for a screen that
+    has no brand to offer. `primary` and `secondary` lead the swatches, since those are what an
+    author reaches for.
+
 ### Fixed
 
 - **The Animated Backgrounds studio previewed every project in the PLATFORM's brand colours.** A CI

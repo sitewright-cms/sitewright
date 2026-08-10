@@ -83,11 +83,11 @@ describe('BackgroundPicker — minimal markup, AUTO color slots + knobs', () => 
     open();
     fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'accent' } });
     expect(markup()).toContain('data-colors="accent,secondary,neutral"');
-    // Switch slot 3 to custom → the color input appears and its hex is emitted.
+    // Switch slot 3 to custom → the shared picker's swatch button appears, seeded from that token.
     fireEvent.change(screen.getByLabelText('Color 3'), { target: { value: 'custom' } });
-    const swatch = screen.getByLabelText('Color 3 custom color') as HTMLInputElement;
-    fireEvent.change(swatch, { target: { value: '#123456' } });
-    expect(markup()).toContain('data-colors="accent,secondary,#123456"');
+    expect(screen.getByLabelText('Edit Color 3 custom color')).toBeInTheDocument();
+    // `neutral`'s platform default — the colour that was on screen a moment ago.
+    expect(markup()).toContain('data-colors="accent,secondary,#171627"');
   });
 
   it('a quick palette sets all three to custom literal colors', () => {
@@ -135,24 +135,34 @@ describe('BackgroundPicker — minimal markup, AUTO color slots + knobs', () => 
 describe('★ CI slots resolve against the OPEN PROJECT’s brand', () => {
   // jsdom cannot evaluate `var()` and gives no WebGL context, so the painted preview is unobservable
   // here — `slotCssExpr` has its own unit tests for the colour maths. What IS observable is the seed
-  // the picker puts in the custom swatch when a slot switches away from a CI token: it takes the
-  // colour the author was just looking at, which proves the project's palette reached the component.
-  it('seeds a custom swatch from the PROJECT’s colour when a project is open', () => {
+  // the picker takes when a slot leaves a CI token: it becomes the emitted literal, which proves the
+  // project's palette reached the component. Asserting the MARKUP rather than a widget's value also
+  // means the test survives the control being swapped out, which is exactly what just happened to it.
+  it('seeds a custom slot from the PROJECT’s colour when a project is open', () => {
     open({}, { colors: { primary: '#ff0000', secondary: '#00ff00', neutral: '#0000ff' } });
     fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'custom' } });
-    expect((screen.getByLabelText('Color 1 custom color') as HTMLInputElement).value).toBe('#ff0000');
+    expect(markup()).toContain('data-colors="#ff0000,secondary,neutral"');
   });
 
   it('seeds from the PLATFORM palette when no project is open', () => {
     open(); // no identity → no project
     fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'custom' } });
-    expect((screen.getByLabelText('Color 1 custom color') as HTMLInputElement).value).toBe('#4f46e5');
+    expect(markup()).toContain('data-colors="#4f46e5,secondary,neutral"');
   });
 
   it('falls back per token when the project defines only some', () => {
     open({}, { colors: { primary: '#ff0000' } });
-    fireEvent.change(screen.getByLabelText('Color 2'), { target: { value: 'custom' } });
     // slot 2 defaults to `secondary`, which this project does not define → the platform value.
-    expect((screen.getByLabelText('Color 2 custom color') as HTMLInputElement).value).toBe('#0ea5e9');
+    fireEvent.change(screen.getByLabelText('Color 2'), { target: { value: 'custom' } });
+    expect(markup()).toContain('data-colors="primary,#0ea5e9,neutral"');
+  });
+
+  it('★ offers the project’s brand as one-click swatches inside the picker', () => {
+    // The reason the shared picker replaced the native input: the colours a background most wants are
+    // the project's own, and a colour wheel is the wrong amount of work to reach them.
+    open({}, { colors: { primary: '#ff0000', secondary: '#00ff00' } });
+    fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'custom' } });
+    fireEvent.click(screen.getByLabelText('Use secondary for Color 1 custom color'));
+    expect(markup()).toContain('data-colors="#00ff00,secondary,neutral"');
   });
 });

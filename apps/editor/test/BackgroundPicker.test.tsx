@@ -4,15 +4,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ToastProvider } from '../src/views/ui/Toast';
 import { BackgroundPicker } from '../src/views/library/BackgroundPicker';
 import { api } from '../src/api';
+import { CiPaletteProvider } from '../src/lib/ci-palette';
 
 // WebGL is unavailable in jsdom, so shaderRenderer() returns null and the canvas RAF loops bail — the
 // settings + markup surface (what these tests exercise) still renders. Tests focus on the authored
 // markup, which is the picker's actual output.
 
-function open(props: Partial<Parameters<typeof BackgroundPicker>[0]> = {}) {
+function open(props: Partial<Parameters<typeof BackgroundPicker>[0]> = {}, identity?: { colors: Record<string, string> }) {
   return render(
     <ToastProvider>
-      <BackgroundPicker onClose={() => {}} {...props} />
+      {/* `identity` present = a project is open, so its CI palette is what the studio resolves against. */}
+      <CiPaletteProvider identity={identity as never}>
+        <BackgroundPicker onClose={() => {}} {...props} />
+      </CiPaletteProvider>
     </ToastProvider>,
   );
 }
@@ -125,5 +129,30 @@ describe('BackgroundPicker — minimal markup, AUTO color slots + knobs', () => 
     fireEvent.click(screen.getByRole('button', { name: /clear platform background/i }));
     await waitFor(() => expect(put).toHaveBeenCalledWith({ platformBackground: null }));
     put.mockRestore();
+  });
+});
+
+describe('★ CI slots resolve against the OPEN PROJECT’s brand', () => {
+  // jsdom cannot evaluate `var()` and gives no WebGL context, so the painted preview is unobservable
+  // here — `slotCssExpr` has its own unit tests for the colour maths. What IS observable is the seed
+  // the picker puts in the custom swatch when a slot switches away from a CI token: it takes the
+  // colour the author was just looking at, which proves the project's palette reached the component.
+  it('seeds a custom swatch from the PROJECT’s colour when a project is open', () => {
+    open({}, { colors: { primary: '#ff0000', secondary: '#00ff00', neutral: '#0000ff' } });
+    fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'custom' } });
+    expect((screen.getByLabelText('Color 1 custom color') as HTMLInputElement).value).toBe('#ff0000');
+  });
+
+  it('seeds from the PLATFORM palette when no project is open', () => {
+    open(); // no identity → no project
+    fireEvent.change(screen.getByLabelText('Color 1'), { target: { value: 'custom' } });
+    expect((screen.getByLabelText('Color 1 custom color') as HTMLInputElement).value).toBe('#4f46e5');
+  });
+
+  it('falls back per token when the project defines only some', () => {
+    open({}, { colors: { primary: '#ff0000' } });
+    fireEvent.change(screen.getByLabelText('Color 2'), { target: { value: 'custom' } });
+    // slot 2 defaults to `secondary`, which this project does not define → the platform value.
+    expect((screen.getByLabelText('Color 2 custom color') as HTMLInputElement).value).toBe('#0ea5e9');
   });
 });

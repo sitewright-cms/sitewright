@@ -13,6 +13,26 @@ const EMPTY: CiRichPalette = { colors: [], fonts: [] };
 
 const CiPaletteContext = createContext<CiRichPalette>(EMPTY);
 
+/**
+ * The open project's brand colours keyed by CI token (`primary`, `secondary`, …), or `null` when no
+ * project is open.
+ *
+ * Separate from {@link CiPaletteContext}, which is the rich-text TOOLBAR's view — an ordered list of
+ * labelled swatches with the text-only tokens filtered out. A consumer resolving a `--sw-color-<token>`
+ * fallback needs the raw map, and reconstructing one from labels would be guesswork.
+ */
+const CiBrandColorsContext = createContext<Readonly<Record<string, string>> | null>(null);
+
+/**
+ * The open project's CI colours, or `null` when none is open.
+ *
+ * `null` is meaningful and must not be flattened to `{}`: it is what tells a caller to fall back to
+ * the PLATFORM palette rather than render a project's brand as missing.
+ */
+export function useCiBrandColors(): Readonly<Record<string, string>> | null {
+  return useContext(CiBrandColorsContext);
+}
+
 /** Provide the CI palette derived from a project's identity (or nothing while it's still loading). The value
  *  is memoised per-identity so its object identity is stable across renders — consumers (CodePageEditor's
  *  post-to-bridge effect) can depend on it without re-firing every render. */
@@ -24,7 +44,14 @@ export function CiPaletteProvider({
   children: ReactNode;
 }) {
   const value = useMemo(() => (identity ? ciRichPalette(identity) : EMPTY), [identity]);
-  return <CiPaletteContext.Provider value={value}>{children}</CiPaletteContext.Provider>;
+  // The schema guarantees the mandatory tokens are present on a stored identity, so this is a complete
+  // palette whenever there is one at all.
+  const brand = useMemo(() => identity?.colors ?? null, [identity]);
+  return (
+    <CiPaletteContext.Provider value={value}>
+      <CiBrandColorsContext.Provider value={brand}>{children}</CiBrandColorsContext.Provider>
+    </CiPaletteContext.Provider>
+  );
 }
 
 /** The current project's brand colours + font slots for the rich-text toolbar. */

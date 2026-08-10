@@ -11,6 +11,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **The Animated Backgrounds studio previewed every project in the PLATFORM's brand colours.** A CI
+  slot (`primary`, `secondary`, …) resolves to `var(--sw-color-<token>, <fallback>)`, and the editor
+  SPA does not define those variables on its own DOM — so the fallback is what the preview actually
+  paints, and it was always the platform default. Whatever the project's brand, the studio showed
+  indigo and sky: a picture of the wrong site, and the one screen where the colours are the entire
+  point. The fallback is now the **open project's** CI palette, falling back per token, with the
+  platform defaults reserved for the only case that has nothing to read — no project open. Switching a
+  slot to a custom colour now seeds the swatch with the colour the author was just looking at, for the
+  same reason. The emitted markup is unchanged: it names tokens, which resolve against the real site.
+
+### Fixed
+
 - **The consent screen could not be scrolled to its buttons on a short viewport.** It centred with
   `align-items:center`, which clips a panel taller than the viewport at *both* ends with nothing to
   scroll to — with a long project list and the permissions fieldset, Approve was what fell off the

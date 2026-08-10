@@ -163,28 +163,42 @@ export function editorIsDark(): boolean {
   return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark';
 }
 
+/**
+ * A brand palette keyed by CI token (`primary`, `secondary`, …) — the ACTIVE PROJECT's, when one is
+ * open. Absent means "no project", and the platform defaults stand in.
+ */
+export type BrandColors = Readonly<Record<string, string>>;
+
 /** The CSS color expression a `data-colors` slot resolves to (pure — no DOM), mirroring the published
  *  runtime's `slot()`: `auto` → the base-surface token; a CI-token name → its `--sw-color-*` var; a
  *  hex/rgb() → itself. CRUCIALLY, CI tokens carry the shared DEFAULT_BRAND_COLORS fallback — the editor
  *  SPA does NOT define `--sw-color-*` on its own DOM (they exist only in rendered site documents), so
  *  without the fallback every CI slot would resolve to the inherited text color and the preview would go
- *  flat/uniform. On the published site the real `--sw-color-*` win; here the fallback gives a
- *  distinguishable brand-default preview. */
-export function slotCssExpr(value: string, isDark: boolean): string {
+ *  flat/uniform. On the published site the real `--sw-color-*` win; here the fallback stands in.
+ *
+ *  ★ WHICH fallback is the point. With a project open it is THAT PROJECT'S CI palette, so the studio
+ *  previews the colours the site will actually use; with no project open there is nothing to read, so
+ *  the platform defaults stand in. Previewing every project in the platform's indigo/sky regardless of
+ *  its own brand made the preview a picture of the wrong site. */
+export function slotCssExpr(value: string, isDark: boolean, brand?: BrandColors): string {
   if (value.toLowerCase() === SHADER_AUTO_TOKEN) {
     return `var(--sw-color-base-100, ${isDark ? SHADER_AUTO_DARK : SHADER_AUTO_LIGHT})`;
   }
   if (value.charAt(0) === '#' || value.includes('(')) return value; // literal color
-  const fallback = DEFAULT_BRAND_COLORS[value as MandatoryColorToken] ?? '#888888';
+  const fallback = brand?.[value] ?? DEFAULT_BRAND_COLORS[value as MandatoryColorToken] ?? '#888888';
   return `var(--sw-color-${value}, ${fallback})`;
 }
 
 /** Resolve one `data-colors` slot to an RGB triple (via a hidden probe). See {@link slotCssExpr}. */
-export function resolveSlot(value: string, isDark: boolean): RGB {
-  return cssToRGB(slotCssExpr(value, isDark));
+export function resolveSlot(value: string, isDark: boolean, brand?: BrandColors): RGB {
+  return cssToRGB(slotCssExpr(value, isDark, brand));
 }
 
 /** A palette from three `data-colors` slot values (each a hex, a CI token, or `auto`), theme-resolved. */
-export function paletteFromSlots(slots: [string, string, string], isDark: boolean): ShaderPalette {
-  return { c1: resolveSlot(slots[0], isDark), c2: resolveSlot(slots[1], isDark), c3: resolveSlot(slots[2], isDark) };
+export function paletteFromSlots(slots: [string, string, string], isDark: boolean, brand?: BrandColors): ShaderPalette {
+  return {
+    c1: resolveSlot(slots[0], isDark, brand),
+    c2: resolveSlot(slots[1], isDark, brand),
+    c3: resolveSlot(slots[2], isDark, brand),
+  };
 }

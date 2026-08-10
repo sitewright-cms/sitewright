@@ -66,6 +66,7 @@
   "GET /media/:projectSlug/:assetId/file/:file",
   "GET /media/:projectSlug/:file",
   "GET /oauth/authorize",
+  "GET /oauth/consent.js",
   "GET /oauth/device",
   "GET /preview-site/:projectId/:sig/*",
   "GET /preview/:slug/:token",

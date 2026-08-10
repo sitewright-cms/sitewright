@@ -11,6 +11,7 @@ import {
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
   DEFAULT_HSTS,
+  FrameAncestorOriginSchema,
   DEFAULT_BACKUP_RETENTION,
   DEFAULT_FORM_MODES,
   DEFAULT_LOG_LEVEL,
@@ -166,6 +167,11 @@ export function InstanceSettings() {
   const [hstsIncludeSub, setHstsIncludeSub] = useState(false);
   const [hstsPreload, setHstsPreload] = useState(false);
   const [hstsApplySites, setHstsApplySites] = useState(false);
+  const [embedEnabled, setEmbedEnabled] = useState(false);
+  const [embedAllowSelf, setEmbedAllowSelf] = useState(false);
+  const [embedOrigins, setEmbedOrigins] = useState<string[]>([]);
+  const [embedDraft, setEmbedDraft] = useState('');
+  const [embedError, setEmbedError] = useState<string | null>(null);
 
   // Ops: server log verbosity + DB backup management (retention + live storage usage + purge).
   const [logLevel, setLogLevel] = useState<LogLevel>(DEFAULT_LOG_LEVEL);
@@ -379,6 +385,11 @@ export function InstanceSettings() {
     setHstsIncludeSub(s.hsts?.includeSubDomains ?? false);
     setHstsPreload(s.hsts?.preload ?? false);
     setHstsApplySites(s.hsts?.applyToServedSites ?? false);
+    setEmbedEnabled(s.embedding?.enabled ?? false);
+    setEmbedAllowSelf(s.embedding?.allowSelf ?? false);
+    setEmbedOrigins(s.embedding?.origins ?? []);
+    setEmbedDraft('');
+    setEmbedError(null);
     setLogLevel(s.logLevel ?? DEFAULT_LOG_LEVEL);
     setBackupRetention(s.backupRetention ?? DEFAULT_BACKUP_RETENTION);
     // Trim on hydrate so the "changed?" guard compares like-for-like (the save sends the trimmed value);
@@ -462,6 +473,7 @@ export function InstanceSettings() {
       : null; // disabling clears the platform assistant (and its key)
     // HSTS: send the full policy (no secrets). enabled=false stores an OFF policy (preserves the other
     // fields for when it's re-enabled) rather than clearing the section.
+    input.embedding = { enabled: embedEnabled, origins: embedOrigins, allowSelf: embedAllowSelf };
     const hstsMaxAgeClamped = clampHstsMaxAge(hstsMaxAge);
     input.hsts = {
       enabled: hstsEnabled,
@@ -585,6 +597,24 @@ export function InstanceSettings() {
   // The logo preview: a freshly-picked upload, the stored logo (cache-busted), or none (removed/unset).
   const logoPreview =
     logoDraft ? `data:${logoDraft.mime};base64,${logoDraft.data}` : logoDraft === undefined && hasLogo ? `/branding/logo?v=${logoBust}` : null;
+
+  /**
+   * Validates a typed origin with the SAME schema the server enforces (imported, not re-derived — a
+   * second regex here would drift and reject or accept the wrong thing) and appends it. Duplicates are
+   * ignored rather than erroring: adding one twice is a no-op, not a mistake worth a message.
+   */
+  function addEmbedOrigin() {
+    const value = embedDraft.trim();
+    if (!value) return;
+    const parsed = FrameAncestorOriginSchema.safeParse(value);
+    if (!parsed.success) {
+      setEmbedError(parsed.error.issues[0]?.message ?? 'not a valid origin');
+      return;
+    }
+    setEmbedOrigins((prev) => (prev.includes(parsed.data) ? prev : [...prev, parsed.data]));
+    setEmbedDraft('');
+    setEmbedError(null);
+  }
 
   return (
     <>
@@ -1129,6 +1159,100 @@ export function InstanceSettings() {
           </button>
         </div>
         {rotateMsg && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{rotateMsg}</p>}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Embedding (iframe)
+          <SectionHelp tip="By default no site may put this admin panel in an iframe (frame-ancestors 'none' + X-Frame-Options: DENY). Add the origins of the portals or intranets you want to embed it in. Only the admin panel is affected — your clients' published sites keep their own strict policy." />
+        </legend>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          Off by default. Each entry is an origin —{' '}
+          <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">https://portal.example.com</code> — optionally with a{' '}
+          <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">*.</code> wildcard for subdomains. No paths.
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            className={toggleInput}
+            aria-label="Allow embedding"
+            checked={embedEnabled}
+            onChange={(e) => setEmbedEnabled(e.target.checked)}
+          />
+          <span className="font-medium">Allow this admin panel to be embedded in an iframe</span>
+        </label>
+        {embedEnabled && (
+          <div className="mt-3 flex flex-col gap-3">
+            <div>
+              <span className="mb-1 block text-sm font-medium">Allowed origins</span>
+              {embedOrigins.length === 0 ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  No origins yet — embedding stays denied until you add one (or allow same-origin below).
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-1.5">
+                  {embedOrigins.map((o) => (
+                    <li key={o} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/60 px-2.5 py-1.5 text-sm dark:border-white/10 dark:bg-white/5">
+                      <code className="truncate">{o}</code>
+                      <button
+                        type="button"
+                        className={`${ghostButton} px-2 py-0.5 text-xs`}
+                        aria-label={`Remove ${o}`}
+                        onClick={() => setEmbedOrigins((prev) => prev.filter((x) => x !== o))}
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex flex-wrap items-start gap-2">
+              <input
+                className={`${glassInput} min-w-[16rem] flex-1`}
+                aria-label="Origin to allow"
+                placeholder="https://portal.example.com"
+                value={embedDraft}
+                onChange={(e) => {
+                  setEmbedDraft(e.target.value);
+                  setEmbedError(null);
+                }}
+                onKeyDown={(e) => {
+                  // Enter adds the origin rather than submitting the whole settings form — typing an
+                  // origin and pressing Enter must not save a half-entered allowlist.
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addEmbedOrigin();
+                  }
+                }}
+              />
+              <button type="button" className={ghostButton} onClick={addEmbedOrigin} disabled={!embedDraft.trim()}>
+                Add origin
+              </button>
+            </div>
+            {embedError && <p className="text-xs text-rose-600 dark:text-rose-400">{embedError}</p>}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                aria-label="Allow same-origin framing"
+                checked={embedAllowSelf}
+                onChange={(e) => setEmbedAllowSelf(e.target.checked)}
+              />
+              <span>
+                Also allow same-origin framing (<code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">&apos;self&apos;</code>)
+                <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">not needed by the editor itself</span>
+              </span>
+            </label>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              While an allowlist is active the panel sends{' '}
+              <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">frame-ancestors</code> and drops{' '}
+              <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">X-Frame-Options</code>, which cannot express a
+              list. Browsers too old for <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">frame-ancestors</code>{' '}
+              lose framing protection.
+            </p>
+          </div>
+        )}
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

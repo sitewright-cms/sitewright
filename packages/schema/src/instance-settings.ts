@@ -144,6 +144,79 @@ export const DEFAULT_HSTS: Readonly<Hsts> = Object.freeze({
   applyToServedSites: false,
 });
 
+/**
+ * One origin permitted to frame the admin panel, as a CSP `frame-ancestors` source.
+ *
+ * ★ This string is written VERBATIM into a Content-Security-Policy response header, so the grammar is
+ * deliberately narrow rather than "whatever `new URL()` accepts". A CSP header is a `;`-separated list
+ * of directives whose sources are separated by SPACES — so a value containing either would not be
+ * rejected by the browser, it would be silently reinterpreted as MORE POLICY. `https://evil.test;
+ * default-src *` in a naive implementation rewrites the whole policy. Same class of bug as the CSS
+ * comment-injection guard: the sink is a text format, so validate for the sink, not for plausibility.
+ *
+ * Accepted: `scheme://host[:port]`, where scheme is http or https, the host is a DNS name (optionally
+ * with ONE leading `*.` wildcard label, which CSP itself understands) or an IPv4 literal, and the port
+ * is numeric. Rejected: any path/query/fragment, credentials, whitespace, `;`, `,`, `'`, control
+ * characters, a bare `*`, and `data:`/`blob:`/other schemes.
+ *
+ * A bare `*` is refused ON PURPOSE. "Framable by anyone" is a clickjacking hole on an authenticated
+ * admin surface, and an operator who genuinely wants it can enumerate the origins.
+ */
+export const FrameAncestorOriginSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(
+    /^https?:\/\/(\*\.)?(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*(?::[0-9]{1,5})?$/,
+    'must be scheme://host[:port] — e.g. https://portal.example.com or https://*.example.com',
+  )
+  .refine((v) => {
+    const port = v.split(':')[2];
+    return port === undefined || Number(port) <= 65535;
+  }, 'port must be <= 65535');
+
+/**
+ * Who may EMBED the admin panel in an iframe. Off by default: the platform ships `frame-ancestors
+ * 'none'` + `X-Frame-Options: DENY`, and an operator opts specific origins in.
+ *
+ * Scope is the APP origin only — the editor SPA and the API surfaces it talks to. Locally-hosted
+ * client sites (`<slug>.<sitesDomain>`, `/sites/…`), the sandboxed preview document and the inline-PDF
+ * route all set their own framing policy and are deliberately untouched by this setting.
+ *
+ * ★ `X-Frame-Options` cannot express a list — its `ALLOW-FROM` was removed from every browser — so
+ * once an allowlist is active the app origin emits `frame-ancestors` ALONE and drops XFO. That is the
+ * modern guard and the only one that can express "these origins"; a browser too old for
+ * `frame-ancestors` simply loses this protection, which is the unavoidable cost of the feature.
+ */
+export const EmbeddingSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Origins allowed to frame the admin panel. Empty (or `enabled: false`) → framing stays denied. */
+  origins: z.array(FrameAncestorOriginSchema).max(20).default([]),
+  /** Also let the app frame ITSELF (`'self'`). Off by default — same-origin framing is not needed by
+   *  the editor and allowing it widens the clickjacking surface for no gain. */
+  allowSelf: z.boolean().default(false),
+});
+export type Embedding = z.infer<typeof EmbeddingSchema>;
+
+/** Embedding denied — the safe default before an admin opts in (frozen). */
+export const DEFAULT_EMBEDDING: Readonly<Embedding> = Object.freeze({
+  enabled: false,
+  origins: Object.freeze([]) as unknown as string[],
+  allowSelf: false,
+});
+
+/**
+ * The `frame-ancestors` source list for an embedding policy, or `null` when framing stays denied
+ * (disabled, or enabled with nothing to allow — an empty list would emit a policy that allows
+ * everything if it were spliced in naively, so it collapses back to "denied" here, once, rather than
+ * at each of the call sites).
+ */
+export function frameAncestorsFor(embedding: Embedding | undefined): string | null {
+  if (!embedding?.enabled) return null;
+  const sources = [...(embedding.allowSelf ? ["'self'"] : []), ...embedding.origins];
+  return sources.length > 0 ? sources.join(' ') : null;
+}
+
 /** Server log verbosity — the pino levels, most-verbose last. Admin-settable; live-applied. */
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export const LogLevelSchema = z.enum(LOG_LEVELS);
@@ -333,6 +406,8 @@ export const InstanceSettingsStoredSchema = z.object({
   defaultImageFormat: z.enum(['webp', 'avif']).optional(),
   /** HTTP Strict-Transport-Security policy (admin opt-in; unset → OFF). See {@link HstsSchema}. */
   hsts: HstsSchema.optional(),
+  /** Who may iframe the admin panel (admin opt-in; unset → framing denied). See {@link EmbeddingSchema}. */
+  embedding: EmbeddingSchema.optional(),
   /** How many pre-migration DB snapshots to keep (oldest pruned). Unset → DEFAULT_BACKUP_RETENTION (2). */
   backupRetention: z.number().int().min(1).max(100).optional(),
   /** Server log verbosity (pino level). Unset → the LOG_LEVEL env, else 'info'. Applied live on save. */
@@ -459,6 +534,9 @@ export const InstanceSettingsInputSchema = z.object({
   // HSTS policy: an object sets it (all fields defaulted), `null` clears it (revert to OFF), and an
   // absent (undefined) value leaves the stored one unchanged.
   hsts: HstsSchema.nullable().optional(),
+  // Embedding allowlist: an object sets it (all fields defaulted), `null` clears it (revert to
+  // framing DENIED), and an absent (undefined) value leaves the stored one unchanged.
+  embedding: EmbeddingSchema.nullable().optional(),
   // Pre-migration DB snapshot retention: a number sets it, `null` reverts to the default (2), undefined leaves it.
   backupRetention: z.number().int().min(1).max(100).nullable().optional(),
   // Log verbosity: a level sets it, `null` reverts to the env/'info' default, undefined leaves it.
@@ -543,6 +621,8 @@ export interface InstanceSettingsPublic {
   defaultImageFormat?: 'webp' | 'avif';
   /** HSTS policy (not a secret), or absent when unset (HSTS off). */
   hsts?: Hsts;
+  /** Embedding allowlist (not a secret), or absent when unset (framing denied). */
+  embedding?: Embedding;
   /** Pre-migration DB snapshot retention, or absent when using the default (2). */
   backupRetention?: number;
   /** Server log verbosity (pino level), or absent when using the env/'info' default. */
@@ -592,6 +672,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.platformBackground !== undefined) result.platformBackground = stored.platformBackground;
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
+  if (stored.embedding !== undefined) result.embedding = stored.embedding; // non-secret — surfaced as-is
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
   if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;
   return result;

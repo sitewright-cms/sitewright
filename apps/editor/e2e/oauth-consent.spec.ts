@@ -10,7 +10,7 @@ const REDIRECT = 'http://127.0.0.1:8976/callback';
 // End-to-end OAuth authorization-code + PKCE in a real browser: render the
 // consent page, approve, capture the redirected code, exchange it for tokens, and
 // use the access token on the API (cookieless — the agent/CLI path).
-test('OAuth consent → code → token, then the access token works', async ({ page, playwright, baseURL }) => {
+test('OAuth consent → code → token, then the access token works', async ({ page, context, playwright, baseURL }) => {
   const api = page.request; // shares the browser cookie jar
 
   await signUp(page, `oauth-${stamp}@e2e.test`);
@@ -40,18 +40,33 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   // option is pre-checked; check it explicitly so the test still states which project it authorises.
   await page.locator('input[name="project"]').first().check();
 
-  // Approve and read the 302's redirect target directly (no dependency on the
-  // dead-loopback navigation completing).
-  const [resp] = await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/oauth/authorize') && r.request().method() === 'POST'),
-    page.getByRole('button', { name: 'Approve' }).click(),
-  ]);
-  expect(resp.status()).toBe(302);
-  const back = new URL(resp.headers()['location'] as string);
-  expect(back.origin).toBe('http://127.0.0.1:8976'); // redirected to the registered loopback
-  expect(back.searchParams.get('state')).toBe('cli-state');
-  const code = back.searchParams.get('code');
+  // Approve. There is NO automatic redirect any more: the code is shown for the user to copy,
+  // because a client's callback is frequently unreachable from the browser doing the authorizing.
+  await page.getByRole('button', { name: 'Approve' }).click();
+  await expect(page.getByRole('heading', { name: /Approved/ })).toBeVisible();
+  const code = (await page.locator('#sw-code').textContent())?.trim();
   expect(code).toBeTruthy();
+
+  // The continue button names the destination host and carries the same code + state a redirect
+  // would have — it is now a CHOICE rather than something that happens to the user.
+  const href = await page.locator('a[href] >> nth=0').getAttribute('href');
+  const back = new URL(href!);
+  expect(back.origin).toBe('http://127.0.0.1:8976');
+  expect(back.searchParams.get('state')).toBe('cli-state');
+  expect(back.searchParams.get('code')).toBe(code);
+  await expect(page.getByRole('button', { name: /Continue to 127\.0\.0\.1:8976/ })).toBeVisible();
+
+  // Copy works and SAYS it worked. Note the deployed instance is reached over plain HTTP here, so
+  // `navigator.clipboard` does not exist (it needs a secure context) — this is the execCommand
+  // fallback path running, which is precisely the case a self-hosted LAN instance hits. Read the
+  // clipboard back only where the API is actually available.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await page.getByRole('button', { name: 'Copy code' }).click();
+  await expect(page.getByText('Code copied to clipboard')).toBeVisible();
+  const clip = await page.evaluate(() =>
+    navigator.clipboard?.readText ? navigator.clipboard.readText() : Promise.resolve(null),
+  );
+  if (clip !== null) expect(clip).toBe(code);
 
   // Exchange the code for tokens (cookieless — like the CLI).
   const bot = await playwright.request.newContext({ baseURL });

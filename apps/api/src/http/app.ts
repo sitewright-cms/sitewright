@@ -37,6 +37,7 @@ import {
   InstanceSettingsInputSchema,
   maskInstanceSettings,
   DEFAULT_HSTS,
+  frameAncestorsFor,
   type LogLevel,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
@@ -1188,6 +1189,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // at boot and refreshed after a settings PUT — so the per-response security hook doesn't hit the DB and
   // an admin change still takes effect without a restart.
   let hstsPolicy = await instanceSettingsRepo.getHstsPolicy();
+  // Who may FRAME the admin panel (admin instance setting; denied by default). Cached in the same
+  // mutable-ref style as hstsPolicy, and pre-resolved to the `frame-ancestors` source list (or null =
+  // stay denied) so the per-response hook does no work beyond a null check.
+  let frameAncestors = frameAncestorsFor(await instanceSettingsRepo.getEmbedding());
   // Custom HMAC sign/verify for the session cookie (NOT @fastify/cookie's `signed`, whose secret is
   // fixed at plugin-registration time) so a runtime rotation of `currentCookieSecret` applies live.
   const signSession = (token: string): string =>
@@ -1467,8 +1472,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // the operator turns it on only when the origin is reliably on TLS. A served client site
     // (`<slug>.<sitesDomain>` or `/sites/…`) is EXCLUDED unless `applyToServedSites`, because those hosts
     // have independent (often plain-HTTP / non-app-cert) TLS and pinning them to HTTPS would hard-break them.
+    // Is this response a locally-hosted CLIENT site rather than the app itself? Both the HSTS opt-in
+    // and the framing allowlist need the distinction, so it is computed once.
+    const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
     if (hstsPolicy.enabled && !reply.hasHeader('strict-transport-security')) {
-      const servedSite = siteSubdomainSlug(req.headers.host) !== null || (req.url ?? '').startsWith('/sites/');
       if (!servedSite || hstsPolicy.applyToServedSites) {
         let value = `max-age=${hstsPolicy.maxAgeSeconds}`;
         if (hstsPolicy.includeSubDomains) value += '; includeSubDomains';
@@ -1481,14 +1488,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // does, don't override its CSP — and skip the default DENY framing too, since
     // that route opts into its own framing policy.
     if (!reply.hasHeader('content-security-policy')) {
-      reply.header('x-frame-options', 'DENY');
+      // Framing: denied unless an admin has allowlisted origins (the `embedding` instance setting),
+      // and then ONLY for the app origin — a locally-hosted client site keeps the strict default, so
+      // opting the admin panel into an iframe never makes every tenant's site framable too.
+      const allowFraming = frameAncestors !== null && !servedSite;
+      // X-Frame-Options cannot express an allowlist (ALLOW-FROM is dead in every browser), so when
+      // framing is permitted it is OMITTED rather than set to a value that would contradict the CSP.
+      // `frame-ancestors` is the real guard; see EmbeddingSchema.
+      if (!allowFraming) reply.header('x-frame-options', 'DENY');
       // `img-src … https:` lets the editor's stock picker preview provider-CDN
       // thumbnails (Unsplash/Pexels/Openverse sources). Their terms require
       // hotlinking previews (no proxy/cache); imported images are still downloaded
       // + self-hosted under 'self'. Published exports reference 'self' images only.
       reply.header(
         'content-security-policy',
-        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; " +
+          `frame-ancestors ${allowFraming ? frameAncestors : "'none'"}`,
       );
     }
   });
@@ -2462,6 +2477,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // single-process cache (like currentCookieSecret / the render pool / preview store — this app is
       // single-container by design); a multi-replica deployment would need cross-replica invalidation.
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
+      frameAncestors = frameAncestorsFor(settings.embedding);
       // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
       // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
       // which has any prior stored value baked in at boot). Only meaningful when the logger is active.
@@ -7739,10 +7755,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // in apps/editor/index.html ever changes, recompute this hash (sha256, base64, of the script body).
     // If the hash ever mismatches, the script is simply blocked and main.tsx applies the theme instead
     // (a brief flash, never broken).
-    const editorCsp =
+    // Computed PER RESPONSE, not once at registration: `frameAncestors` is live-updated when an admin
+    // saves the embedding setting, and this is the document an embedder actually frames — baking the
+    // policy in at boot would mean the setting only took effect after a restart.
+    const editorCsp = (): string =>
       "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: https:; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
-      "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+      `object-src 'none'; base-uri 'self'; frame-ancestors ${frameAncestors ?? "'none'"}`;
+    /** Stamps the SPA shell's framing headers: XFO is omitted once an allowlist is active (it cannot
+     *  express one), leaving `frame-ancestors` as the guard. */
+    const applyShellFraming = (reply: { header(k: string, v: string): unknown }): void => {
+      reply.header('content-security-policy', editorCsp());
+      if (frameAncestors === null) reply.header('x-frame-options', 'DENY');
+    };
     // `dotfiles: 'deny'` makes the posture explicit (don't rely on @fastify/send's 'ignore'
     // default): a dotfile under editorDist (e.g. a stray .env) is never served.
     await app.register(fastifyStatic, {
@@ -7754,8 +7779,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // reply.header(...) rather than res.setHeader(...).
       setHeaders: (reply, path) => {
         if (path.endsWith('index.html')) {
-          reply.header('content-security-policy', editorCsp);
-          reply.header('x-frame-options', 'DENY');
+          applyShellFraming(reply);
           // The SPA entry must always revalidate so a new deploy's content-hashed asset URLs are picked up.
           reply.header('cache-control', 'no-cache');
         } else if (/[/\\]assets[/\\]/.test(path)) {
@@ -7767,9 +7791,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {
+        applyShellFraming(reply);
         return reply
-          .header('content-security-policy', editorCsp)
-          .header('x-frame-options', 'DENY')
           .header('cache-control', 'no-cache') // SPA shell: revalidate so a new deploy is picked up on refresh
           .sendFile('index.html');
       }

@@ -4,7 +4,7 @@ import { makeTestDb } from './helpers.js';
 import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ApiKeyRepository } from '../src/repo/api-keys.js';
-import { OAuthRepository, OAuthError, ACCESS_TTL_MS, REFRESH_TTL_MS, type Grant } from '../src/repo/oauth.js';
+import { OAuthRepository, OAuthError, ACCESS_TTL_MS, REFRESH_TTL_MS, AUTH_CODE_TTL_MS, type Grant } from '../src/repo/oauth.js';
 import { s256Challenge } from '../src/auth/pkce.js';
 import { apiKeys } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
@@ -87,7 +87,9 @@ describe('OAuthRepository — authorization code', () => {
       oauth.redeemAuthCode({ code: wrongClient, clientId: 'evil', redirectUri: REDIRECT, codeVerifier: VERIFIER }),
     ).rejects.toThrow(OAuthError);
 
-    const expired = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, new Date(Date.now() - 120_000));
+    // Derived from the TTL, not a hardcoded "2 minutes ago": that literal silently stopped meaning
+    // "expired" when the code lifetime was raised for the copy-the-code consent screen.
+    const expired = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, new Date(Date.now() - AUTH_CODE_TTL_MS - 1000));
     await expect(
       oauth.redeemAuthCode({ code: expired, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER }),
     ).rejects.toMatchObject({ code: 'invalid_grant' });

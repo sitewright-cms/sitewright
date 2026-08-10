@@ -10,7 +10,8 @@ import { registerAccount } from '../src/repo/accounts.js';
 import type { StockServiceLike } from '../src/http/stock-routes.js';
 import { StockProviderError } from '../src/stock/providers.js';
 import { EncryptionUnavailableError } from '../src/repo/instance-settings.js';
-import type { StockProviderName } from '@sitewright/schema';
+import { makePng } from './png.js';
+import type { StockSearchProvider } from '@sitewright/schema';
 
 // A tiny but valid 1x1 PNG so the sharp pipeline can decode + optimize the "imported" image.
 const PNG_1X1 = Buffer.from(
@@ -64,11 +65,24 @@ function fakeStock(overrides: Partial<StockServiceLike> = {}): StockServiceLike 
         { name: 'pexels', available: false, requiresKey: true },
       ],
     }),
-    search: async (provider: StockProviderName, query: string, page: number) => ({
+    search: async (provider: StockSearchProvider, query: string, page: number) => ({
       provider,
       page,
+      hasMore: false,
       results: [
-        { provider, id: 'hit1', thumbUrl: 'https://cdn.example/hit1', width: 4, height: 3, author: 'Ann', sourceUrl: 'https://src/hit1', license: 'CC0' },
+        {
+          // A fan-out echoes `all` at the top level, but every RESULT still names a concrete
+          // provider — that is what the import call passes back.
+          provider: provider === 'all' ? ('openverse' as const) : provider,
+          id: 'hit1',
+          thumbUrl: 'https://cdn.example/hit1',
+          previewUrl: 'https://cdn.example/hit1-large',
+          width: 4,
+          height: 3,
+          author: 'Ann',
+          sourceUrl: 'https://src/hit1',
+          license: 'CC0',
+        },
       ],
     }),
     testKey: async () => ({ ok: true }),
@@ -209,5 +223,75 @@ describe('stock API — injected fake service', () => {
     const { t, base } = await setup(app, db, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(502);
+  });
+
+  it('accepts provider=all and echoes it, while each result still names its own provider', async () => {
+    const { app, db } = await makeApp(fakeStock());
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=all&q=cats`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { provider: string; hasMore: boolean; results: Array<{ provider: string; previewUrl: string }> };
+    expect(body.provider).toBe('all');
+    expect(body.hasMore).toBe(false);
+    expect(body.results[0]?.provider).toBe('openverse');
+    expect(body.results[0]?.previewUrl).toBe('https://cdn.example/hit1-large');
+  });
+
+  it('passes the requested page through to the service', async () => {
+    const { app, db } = await makeApp(fakeStock());
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=all&q=cats&page=3`, cookies: { sw_session: t } });
+    expect((res.json() as { page: number }).page).toBe(3);
+  });
+
+  it('caps an oversized import at 2400px (the provider hands over a full-resolution original)', async () => {
+    // 3200px wide → the cap bites: downscaled to 2400 and re-encoded to WebP.
+    const wide = makePng(3200, 100, [10, 20, 30]);
+    const { app, db } = await makeApp(
+      fakeStock({
+        fetchForImport: async () => ({
+          buffer: wide,
+          contentType: 'image/png',
+          attribution: { provider: 'unsplash', author: 'Bo', sourceUrl: 'https://src/u1', license: 'Unsplash License' },
+        }),
+      }),
+    );
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({
+      method: 'POST',
+      url: `${base}/stock/import`,
+      cookies: { sw_session: t },
+      payload: { provider: 'unsplash', id: 'u1' },
+    });
+    expect(res.statusCode).toBe(201);
+    const asset = (res.json() as { item: { width: number; format: string } }).item;
+    expect(asset.width).toBe(2400);
+    expect(asset.format).toBe('webp');
+  });
+
+  it('a LOWER project upload cap wins over the stock import cap', async () => {
+    const wide = makePng(3200, 100, [10, 20, 30]);
+    const { app, db } = await makeApp(
+      fakeStock({
+        fetchForImport: async () => ({
+          buffer: wide,
+          contentType: 'image/png',
+          attribution: { provider: 'unsplash', author: 'Bo', sourceUrl: 'https://src/u1', license: 'Unsplash License' },
+        }),
+      }),
+    );
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const cookies = { sw_session: t };
+    const cur = (await app.inject({ method: 'GET', url: `${base}/content/settings/settings`, cookies })).json() as {
+      item: { website?: Record<string, unknown> };
+    };
+    const item = cur.item;
+    item.website = { ...(item.website ?? {}), imageUploadCap: 900 };
+    expect((await app.inject({ method: 'PUT', url: `${base}/content/settings/settings`, cookies, payload: item })).statusCode).toBe(200);
+
+    const res = await app.inject({ method: 'POST', url: `${base}/stock/import`, cookies, payload: { provider: 'unsplash', id: 'u1' } });
+    expect(res.statusCode).toBe(201);
+    // 900, not 2400: a project that deliberately caps its images is not overridden by an import path.
+    expect((res.json() as { item: { width: number } }).item.width).toBe(900);
   });
 });

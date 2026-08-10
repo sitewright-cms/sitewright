@@ -23,6 +23,7 @@ import {
   BINDING_NAMESPACES,
   LOOP_VARIABLES,
   StockProviderNameSchema,
+  StockSearchProviderSchema,
   LenientScreenshotViewportNameSchema,
   SCREENSHOT_VIEWPORT_NAMES,
   MediaFolderSchema,
@@ -1025,7 +1026,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_stock_providers',
     {
       description:
-        'List the configured stock-image providers and whether each is available (openverse needs no key; unsplash/pexels need an instance-admin key).',
+        'List the configured stock-image providers and whether each is available (openverse needs no key; unsplash/pexels need an instance-admin key). Only needed to explain a gap — search_stock_images with provider "all" already uses every available one.',
     },
     gate('content:read', () => client.stockProviders()),
   );
@@ -1034,9 +1035,9 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'search_stock_images',
     {
       description:
-        'Search a stock-image provider for photos. Returns provider-hosted thumbnails to preview; use import_stock_image to bring one into the project.',
+        'Search stock photos. `provider: "all"` (the default choice) queries every available provider at once and interleaves the results; name one provider to search only that. Each hit carries its own `provider` — pass it back to import_stock_image along with the id. Returns provider-hosted `thumbUrl` (grid) and `previewUrl` (full-size preview); `hasMore` says whether page+1 is worth fetching.',
       inputSchema: {
-        provider: StockProviderNameSchema,
+        provider: StockSearchProviderSchema,
         query: z.string().min(1).max(200),
         page: z.number().int().min(1).max(100).optional(),
       },

@@ -29,14 +29,23 @@ export interface ResolvedStock {
 export interface StockProvider {
   readonly name: StockProviderName;
   readonly requiresKey: boolean;
+  /** Results this provider returns per page — its own upstream maximum, not a shared one. The
+   *  service uses it to decide whether another page exists (a FULL page means "ask for more"). */
+  readonly pageSize: number;
   search(query: string, page: number, key: string | null): Promise<StockResult[]>;
   resolve(id: string, key: string | null): Promise<ResolvedStock | null>;
 }
 
-// 20 is the hard cap for Openverse's keyless (anonymous) tier: an anonymous request
-// with page_size > 20 is rejected with 401. Unsplash (max 30) and Pexels (max 80)
-// both accept 20, so one shared page size keeps all three providers working.
-const PAGE_SIZE = 20;
+// Per-provider page sizes: each upstream's own limit, not a lowest-common-denominator. 20 is the
+// hard cap for Openverse's keyless (anonymous) tier — an anonymous request with page_size > 20 is
+// rejected with 401 — while Unsplash allows 30 and Pexels 80. Taking each provider's own maximum
+// means a single-provider search shows as much as that provider will give, and a fan-out still
+// interleaves cleanly (round-robin tolerates uneven list lengths).
+const OPENVERSE_PAGE_SIZE = 20;
+const UNSPLASH_PAGE_SIZE = 30;
+// Pexels permits 80, but 30 keeps a fan-out page balanced and the grid quick to scan; `hasMore`
+// + "Load more" reaches the rest.
+const PEXELS_PAGE_SIZE = 30;
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 /** Provider-supplied URL, but only if it is https — else '' (defense-in-depth: these
@@ -59,12 +68,13 @@ export class StockProviderError extends Error {}
 export class OpenverseProvider implements StockProvider {
   readonly name = 'openverse' as const;
   readonly requiresKey = false;
+  readonly pageSize = OPENVERSE_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
   // Openverse needs no key, so it ignores the StockProvider `key` arg entirely
   // (a narrower signature still satisfies the interface; callers may pass a key).
   async search(query: string, page: number): Promise<StockResult[]> {
-    const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page=${page}&page_size=${PAGE_SIZE}`;
+    const url = `https://api.openverse.org/v1/images/?q=${encodeURIComponent(query)}&page=${page}&page_size=${OPENVERSE_PAGE_SIZE}`;
     const data = (await getJson(this.fetchImpl, url)) as { results?: unknown[] };
     const rows = Array.isArray(data.results) ? data.results : [];
     return rows.map((r) => openverseResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
@@ -94,6 +104,8 @@ function openverseResult(r: Record<string, unknown>): StockResult | null {
     provider: 'openverse',
     id,
     thumbUrl,
+    // Openverse offers only the ~600px proxy thumbnail and the original — no mid-size rendition.
+    previewUrl: httpsUrl(r.url) || thumbUrl,
     width: num(r.width),
     height: num(r.height),
     author: str(r.creator) || 'Unknown',
@@ -107,10 +119,11 @@ function openverseResult(r: Record<string, unknown>): StockResult | null {
 export class UnsplashProvider implements StockProvider {
   readonly name = 'unsplash' as const;
   readonly requiresKey = true;
+  readonly pageSize = UNSPLASH_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
   async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
-    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&page=${page}&per_page=${PAGE_SIZE}`;
+    const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&page=${page}&per_page=${UNSPLASH_PAGE_SIZE}`;
     const data = (await getJson(this.fetchImpl, url, { Authorization: `Client-ID ${key ?? ''}` })) as { results?: unknown[] };
     const rows = Array.isArray(data.results) ? data.results : [];
     return rows
@@ -123,10 +136,11 @@ export class UnsplashProvider implements StockProvider {
       Authorization: `Client-ID ${key ?? ''}`,
     })) as Record<string, unknown>;
     const urls = (data.urls ?? {}) as Record<string, unknown>;
-    // Prefer `regular` (~1080px, web-sized) over `full`/`raw` originals: the pipeline
-    // re-encodes to AVIF/WebP anyway, so a multi-MB original would just waste bandwidth
-    // (and could exceed the download size cap) for no quality gain at typical web sizes.
-    const downloadUrl = httpsUrl(urls.regular) || httpsUrl(urls.full) || httpsUrl(urls.raw);
+    // Take the FULL-resolution rendition. `regular` is only ~1080px wide, which is visibly soft in a
+    // full-bleed hero and cannot serve a 2x srcset — and the import caps at STOCK_IMPORT_CAP anyway,
+    // so the bytes are bounded on our side rather than by picking a small upstream size. `full` (the
+    // original at q=75) over `raw` (uncompressed original): same pixels, a fraction of the download.
+    const downloadUrl = httpsUrl(urls.full) || httpsUrl(urls.raw) || httpsUrl(urls.regular);
     if (!downloadUrl) return null;
     const user = (data.user ?? {}) as Record<string, unknown>;
     const links = (data.links ?? {}) as Record<string, unknown>;
@@ -154,6 +168,7 @@ function unsplashResult(r: Record<string, unknown>): StockResult | null {
     provider: 'unsplash',
     id,
     thumbUrl,
+    previewUrl: httpsUrl(urls.regular) || httpsUrl(urls.small) || thumbUrl,
     width: num(r.width),
     height: num(r.height),
     author: str(user.name) || 'Unknown',
@@ -167,10 +182,11 @@ function unsplashResult(r: Record<string, unknown>): StockResult | null {
 export class PexelsProvider implements StockProvider {
   readonly name = 'pexels' as const;
   readonly requiresKey = true;
+  readonly pageSize = PEXELS_PAGE_SIZE;
   constructor(private readonly fetchImpl: FetchLike) {}
 
   async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
-    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&page=${page}&per_page=${PAGE_SIZE}`;
+    const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&page=${page}&per_page=${PEXELS_PAGE_SIZE}`;
     const data = (await getJson(this.fetchImpl, url, { Authorization: key ?? '' })) as { photos?: unknown[] };
     const rows = Array.isArray(data.photos) ? data.photos : [];
     return rows.map((r) => pexelsResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
@@ -181,7 +197,8 @@ export class PexelsProvider implements StockProvider {
       Authorization: key ?? '',
     })) as Record<string, unknown>;
     const src = (data.src ?? {}) as Record<string, unknown>;
-    const downloadUrl = httpsUrl(src.large2x) || httpsUrl(src.large) || httpsUrl(src.original);
+    // `original` is the full-resolution file; large2x (1880px) / large (940px) are fallbacks only.
+    const downloadUrl = httpsUrl(src.original) || httpsUrl(src.large2x) || httpsUrl(src.large);
     if (!downloadUrl) return null;
     return {
       downloadUrl,
@@ -204,6 +221,7 @@ function pexelsResult(r: Record<string, unknown>): StockResult | null {
     provider: 'pexels',
     id,
     thumbUrl,
+    previewUrl: httpsUrl(src.large) || httpsUrl(src.large2x) || httpsUrl(src.original) || thumbUrl,
     width: num(r.width),
     height: num(r.height),
     author: str(r.photographer) || 'Unknown',

@@ -1,13 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   StockImportSchema,
-  StockProviderNameSchema,
+  StockSearchProviderSchema,
   type MediaAsset,
   type StockProviderName,
   type StockProvidersStatus,
+  type StockSearchProvider,
   type StockSearchResult,
 } from '@sitewright/schema';
-import { StockNotConfiguredError, StockUnknownProviderError } from '../stock/service.js';
+import { STOCK_IMPORT_CAP, StockNotConfiguredError, StockUnknownProviderError } from '../stock/service.js';
 import { StockProviderError } from '../stock/providers.js';
 import { MediaValidationError } from '../media/errors.js';
 import { EncryptionUnavailableError } from '../repo/instance-settings.js';
@@ -21,7 +22,7 @@ type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 /** The subset of StockService the routes use (so tests can inject a fake). */
 export interface StockServiceLike {
   availability(): Promise<StockProvidersStatus>;
-  search(name: StockProviderName, query: string, page: number): Promise<StockSearchResult>;
+  search(name: StockSearchProvider, query: string, page: number): Promise<StockSearchResult>;
   testKey(name: StockProviderName, key?: string): Promise<{ ok: boolean; error?: string }>;
   fetchForImport(
     name: StockProviderName,
@@ -41,6 +42,7 @@ export interface StockRoutesDeps {
     projectSlug: string,
     buffer: Buffer,
     meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
+    storeOpts?: { cap?: number },
   ) => Promise<MediaAsset>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
@@ -69,7 +71,8 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
     async (req, reply) => {
       await resolveProject(req, 'content:read');
       const q = req.query as { provider?: string; q?: string; page?: string };
-      const provider = StockProviderNameSchema.safeParse(q.provider);
+      // `all` fans out across every available provider; a name searches just that one.
+      const provider = StockSearchProviderSchema.safeParse(q.provider);
       if (!provider.success) return reply.code(400).send({ error: 'unknown or missing provider' });
       const query = (q.q ?? '').trim();
       if (!query || query.length > MAX_QUERY_LEN) return reply.code(400).send({ error: 'missing or oversized query' });
@@ -92,15 +95,22 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
       try {
         const fetched = await stockService.fetchForImport(body.provider, body.id);
         if (!fetched) return reply.code(404).send({ error: 'stock image not found' });
-        const asset = await createMediaAsset(ctx, project.slug, fetched.buffer, {
-          // id is display-only here (the on-disk path uses a UUID), but strip path-ish
-          // characters so the stored filename stays clean.
-          filename: `${body.provider}-${body.id.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
-          mimetype: fetched.contentType,
-          ...(body.folder ? { folder: body.folder } : {}),
-          ...(body.alt ? { alt: body.alt } : {}),
-          attribution: fetched.attribution,
-        });
+        const asset = await createMediaAsset(
+          ctx,
+          project.slug,
+          fetched.buffer,
+          {
+            // id is display-only here (the on-disk path uses a UUID), but strip path-ish
+            // characters so the stored filename stays clean.
+            filename: `${body.provider}-${body.id.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+            mimetype: fetched.contentType,
+            ...(body.folder ? { folder: body.folder } : {}),
+            ...(body.alt ? { alt: body.alt } : {}),
+            attribution: fetched.attribution,
+          },
+          // The provider hands over a full-resolution original; bound what we store.
+          { cap: STOCK_IMPORT_CAP },
+        );
         return reply.code(201).send({ item: asset });
       } catch (err) {
         if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });

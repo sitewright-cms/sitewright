@@ -9,12 +9,30 @@ import { MediaFolderSchema } from './media.js';
 export const StockProviderNameSchema = z.enum(['openverse', 'unsplash', 'pexels']);
 export type StockProviderName = z.infer<typeof StockProviderNameSchema>;
 
-/** A normalized search hit (provider-agnostic). `thumbUrl` is the provider CDN preview. */
+/**
+ * What a SEARCH may target: one provider, or `all` to fan out across every available one.
+ *
+ * Search-only. An IMPORT always names a concrete provider — ids are unique only WITHIN a provider,
+ * so `all` could not identify a photo; each hit carries its own `StockResult.provider` for that.
+ */
+export const StockSearchProviderSchema = z.enum(['openverse', 'unsplash', 'pexels', 'all']);
+export type StockSearchProvider = z.infer<typeof StockSearchProviderSchema>;
+
+/**
+ * A normalized search hit (provider-agnostic).
+ *
+ * Three image URLs, all provider-hosted, in ascending size: `thumbUrl` for the grid tile,
+ * `previewUrl` for the full-size lightbox (~1000px — big enough to judge the photo, small enough
+ * to load on hover), and the true original, which is never exposed here: `import` re-resolves it
+ * server-side by id so the client can't point the downloader at a URL of its choosing.
+ */
 export interface StockResult {
   provider: StockProviderName;
   /** Provider-specific id; passed back to `import`. */
   id: string;
   thumbUrl: string;
+  /** A larger rendition for the full-size preview. Falls back to `thumbUrl` if the provider has none. */
+  previewUrl: string;
   width: number;
   height: number;
   author: string;
@@ -26,9 +44,18 @@ export interface StockResult {
 }
 
 export interface StockSearchResult {
-  provider: StockProviderName;
+  /** Echoes what was searched — a provider name, or `all` for a fan-out. */
+  provider: StockSearchProvider;
   page: number;
   results: StockResult[];
+  /** True when at least one provider filled its page, i.e. asking for `page + 1` is worth doing. */
+  hasMore: boolean;
+  /**
+   * Providers that failed for THIS query, in `all` mode. A fan-out never fails as a whole while any
+   * provider answered — a dead upstream is reported here instead of 502-ing the search. Absent (or
+   * empty) when everything answered. A single-provider search still throws.
+   */
+  errors?: Array<{ provider: StockProviderName; error: string }>;
 }
 
 /** Which providers are usable on this instance (openverse always; others if keyed). */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { StockProviderNameSchema, StockImportSchema } from '../src/stock.js';
+import { StockProviderNameSchema, StockSearchProviderSchema, StockImportSchema } from '../src/stock.js';
 import {
   InstanceSettingsInputSchema,
   InstanceSettingsStoredSchema,
@@ -17,6 +17,22 @@ describe('StockProviderNameSchema + StockImportSchema', () => {
   it('validates an import body', () => {
     expect(StockImportSchema.parse({ provider: 'unsplash', id: 'abc', alt: 'A cat' })).toMatchObject({ provider: 'unsplash', id: 'abc' });
     expect(() => StockImportSchema.parse({ provider: 'unsplash' })).toThrow(); // id required
+  });
+
+  it('SEARCH additionally accepts `all`, but an IMPORT does not (ids are per-provider)', () => {
+    expect(StockSearchProviderSchema.parse('all')).toBe('all');
+    expect(StockSearchProviderSchema.parse('pexels')).toBe('pexels');
+    expect(() => StockSearchProviderSchema.parse('shutterstock')).toThrow();
+    // `all` cannot name a photo — every concrete provider stays valid for an import, 'all' does not.
+    expect(() => StockProviderNameSchema.parse('all')).toThrow();
+    expect(() => StockImportSchema.parse({ provider: 'all', id: 'abc' })).toThrow();
+  });
+
+  it('every concrete provider is searchable (the two enums cannot drift apart)', () => {
+    for (const name of StockProviderNameSchema.options) {
+      expect(StockSearchProviderSchema.parse(name)).toBe(name);
+    }
+    expect(StockSearchProviderSchema.options).toHaveLength(StockProviderNameSchema.options.length + 1);
   });
 });
 

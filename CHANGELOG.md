@@ -11,6 +11,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Stock image search now covers every provider at once, pages, and previews full size.** The
+  provider select gained an **All providers** entry and defaults to it: the server fans out to every
+  *available* provider concurrently and interleaves the pages round-robin, so the top of the grid is
+  a mix rather than one provider's page followed by another's. A provider without a key is skipped
+  rather than treated as an error, and one that fails is reported next to the results the others
+  returned — a dead upstream no longer 502s the whole search. Each tile still names its own provider,
+  which is what an import passes back (ids are unique only *within* a provider, so an import always
+  names a concrete one).
+
+  Results are no longer a single fixed page of 20. Each provider is asked for its own page limit
+  (Openverse 20 — its anonymous tier rejects more; Unsplash and Pexels 30), and a **Load more**
+  button appends the next page instead of replacing what you were already scanning. New hits are
+  deduped against what is on screen, because a provider can serve the same rows twice: Openverse's
+  anonymous tier returns an identical page 1 and 2 for some queries (reproducible for `mountains`,
+  absent for `cats`), which would otherwise append nothing and read as a broken button — when a page
+  is all duplicates the picker skips ahead one more.
+
+  Clicking a tile now opens the photo **full size** before you commit to importing it, with its true
+  dimensions, licence, a link to the provider page and an Import button. Results carry a new
+  `previewUrl` — a mid-size provider rendition, measured at 1024px against a 600px grid thumbnail —
+  so the decision is no longer made from a 96px crop.
+
 - **`date`, `time` and `datetime` form field types.** A form field can now capture a day, a clock time,
   or both, alongside the existing text/email/select/radio/checkbox primitives — pick the type in Forms
   and the field renders as a brand-themed picker. They render as a TEXT input carrying the
@@ -26,6 +48,20 @@ The running version of an instance is reported at `GET /version` (baked into the
   script was never linked, leaving a dead text box. `componentTypesInSource` now takes the ids of the
   forms that carry a picker field; called without that context it over-ships one chunk rather than
   breaking the widget. (The preview path scans rendered HTML and already saw the marker.)
+
+### Fixed
+
+- **An imported stock photo was capped at the provider's *web* size, not its full resolution.** The
+  Unsplash import asked for the `regular` rendition — 1080px wide, always — so a photo imported for a
+  full-bleed hero was soft and had no pixels left for a 2x srcset, while Pexels took `large2x` and
+  Openverse the true original: three providers, three different ceilings. Every provider is now asked
+  for its full-resolution file (Unsplash `full`, Pexels `original`), and the *storage* bound moved to
+  where the other import paths already keep it — 2400px, downscaled and re-encoded to WebP only when
+  it actually bites.
+
+  A project's own `website.imageUploadCap` now bounds an import as well: previously an explicit
+  caller cap won outright, so a project that deliberately capped its images at 1600px would have been
+  overridden to 2400 by an import. Both caps apply and the smaller one wins.
 
 ## [0.16.0] — 2026-08-09
 

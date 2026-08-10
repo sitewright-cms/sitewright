@@ -266,6 +266,11 @@ function htmlPage(title: string, body: string, chrome: ConsentChrome = DEFAULT_C
       border-radius:.7rem;background:var(--field);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;
       word-break:break-all;user-select:all}
     .expiry{font-size:.78rem}
+    /* The "just the code" alternative: present but folded away, so the URL (what most clients ask
+       for) is the obvious action and the code is still one click from anyone who needs it. */
+    details.alt{margin-top:.9rem}
+    details.alt summary{cursor:pointer;font-size:.82rem;color:var(--muted)}
+    details.alt summary:hover{color:var(--ink)}
     /* Copy confirmation. Hidden until the script shows it; it never appears without JS, and without JS
        the code is still visible and selectable, so nothing depends on it. */
     .toast{position:fixed;left:50%;bottom:1.5rem;transform:translate(-50%,1rem);opacity:0;pointer-events:none;
@@ -293,32 +298,45 @@ function redirectHost(redirectUri: string): string {
 }
 
 /**
- * The post-approval screen: the issued authorization code, a copy button, and the redirect as an
- * explicit choice rather than something that happens TO the user.
+ * The post-approval screen: what the client needs in order to finish, offered in BOTH the shapes
+ * clients ask for, plus the redirect as an explicit choice rather than something that happens TO the
+ * user.
  *
- * Why show the code at all — it is single-use and bound to the client's PKCE `code_verifier`, so on
- * its own it authorises nothing; what it does is let a user complete the flow when the client's
- * callback is unreachable from their browser (an agent running in a sandbox or on another machine),
- * by pasting it where the client asks. That is the normal manual fallback those clients offer, and it
- * was previously impossible here because the code only ever existed inside a redirect the browser
- * followed automatically.
+ * ★ Two values, because clients disagree about what "paste it here" means. Claude Code's manual
+ * fallback asks for the whole **callback URL** and rejects a bare code; other clients (and the
+ * `sitewright` CLI's own prompt) ask for just the **code**. Shipping only the code made this screen
+ * useless for the very client it was built for, so the URL leads — it is the more common ask and it
+ * CONTAINS the code — with the code kept a click away for the clients that want it alone.
  *
- * The page is `no-store` + `no-referrer` (see the caller) and the code expires in minutes.
+ * Neither value authorises anything by itself: the code is single-use and bound to the client's PKCE
+ * `code_verifier`, and the URL is that same code inside the redirect the browser would have followed.
+ * What they buy is a way to finish when the callback is unreachable from this browser — an agent in a
+ * container or on another machine — which is exactly when the automatic redirect strands the user.
+ *
+ * The page is `no-store` + `no-referrer` (see the caller) and both values expire with the code.
  */
 function issuedCodePage(code: string, continueUrl: string, redirectUri: string, chrome: ConsentChrome): string {
   const minutes = Math.max(1, Math.round(AUTH_CODE_TTL_MS / 60000));
   return htmlPage(
     'Authorization approved',
-    `<h1>Approved — here is your <strong>code</strong></h1>
-     <p>Paste it into the client that asked for it. It can be used once, and expires in ${minutes} minutes.</p>
+    `<h1>Approved — finish in <strong>${escapeHtml(redirectHost(redirectUri))}</strong></h1>
+     <p>Most clients (including Claude Code) ask you to paste the whole callback URL. It can be used
+        once, and expires in ${minutes} minutes.</p>
      <div class="card">
-       <span class="lbl">Authorization code</span>
-       <div class="code-box"><span id="sw-code">${escapeHtml(code)}</span></div>
+       <span class="lbl">Callback URL</span>
+       <div class="code-box"><span id="sw-url">${escapeHtml(continueUrl)}</span></div>
        <div class="row">
-         <button class="primary" type="button" id="sw-copy">Copy code</button>
-         <a href="${escapeHtml(continueUrl)}"><button type="button">Continue to ${escapeHtml(redirectHost(redirectUri))}</button></a>
+         <button class="primary" type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied">Copy URL</button>
+         <a href="${escapeHtml(continueUrl)}"><button type="button">Open it in this browser</button></a>
        </div>
-       <p class="expiry">Continue only works if this browser can reach that address — otherwise copy the code.</p>
+       <details class="alt">
+         <summary>My client asks for just the code</summary>
+         <div class="code-box"><span id="sw-code">${escapeHtml(code)}</span></div>
+         <div class="row">
+           <button type="button" id="sw-copy" data-copy="sw-code" data-copied="Code copied">Copy code</button>
+         </div>
+       </details>
+       <p class="expiry">Opening it only works if this browser can reach ${escapeHtml(redirectHost(redirectUri))} — otherwise copy and paste.</p>
      </div>`,
     chrome,
     { script: true },

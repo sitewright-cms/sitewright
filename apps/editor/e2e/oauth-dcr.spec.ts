@@ -48,12 +48,13 @@ test('dynamically-registered client completes the OAuth flow', async ({ page, pl
   // as a choice. The continue link still carries it.
   await page.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByRole('heading', { name: /Approved/ })).toBeVisible();
+  await page.getByText('My client asks for just the code').click();
   const code = (await page.locator('#sw-code').textContent())?.trim();
   expect(code).toBeTruthy();
-  const back = new URL((await page.locator('a[href] >> nth=0').getAttribute('href'))!.replace(/&amp;/g, '&'));
+  const back = new URL((await page.locator('#sw-url').textContent())!.trim());
   expect(back.origin).toBe('https://hosted.example.test');
   expect(back.searchParams.get('code')).toBe(code);
-  await expect(page.getByRole('button', { name: /Continue to hosted\.example\.test/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Open it in this browser' })).toBeVisible();
 
   // Exchange the code for tokens (cookieless), then use the access token.
   const bot = await playwright.request.newContext({ baseURL });

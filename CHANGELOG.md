@@ -60,14 +60,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
-- **★ Approving an agent authorization now shows you the code instead of redirecting.** The consent
-  screen used to bounce the browser straight at the client's callback. That works when the callback is
+- **★ Approving an agent authorization now shows you what to paste instead of redirecting.** The
+  consent screen used to bounce the browser straight at the client's callback. That works when the callback is
   reachable from the browser doing the authorizing — and frequently it is not: an agent running in a
   container or sandbox advertises a loopback address that only resolves *inside* it, so the redirect
   landed on a dead page and the only way forward was to dig the code back out of the URL bar. The
-  screen now shows the authorization code with a **Copy code** button, and offers the redirect as a
-  **Continue to `<host>`** button for the flows where it does work. Denial still redirects immediately
-  — there is nothing to hand over, and the client should hear about it.
+  screen now shows the **callback URL** with a **Copy URL** button — that is what Claude Code's manual
+  fallback asks for, and it rejects a bare code — with the bare code one click away under *"my client
+  asks for just the code"*, since the `sitewright` CLI and some other clients want that instead. The
+  redirect is still offered, as an **Open it in this browser** button, for the flows where it works.
+  Denial still redirects immediately — there is nothing to hand over, and the client should hear.
 
   The authorization code's lifetime went from 60 seconds to 10 minutes (the maximum RFC 6749
   recommends) as a direct consequence: a minute is ample machine-to-machine, but not for reading a

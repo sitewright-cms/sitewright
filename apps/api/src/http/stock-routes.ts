@@ -8,7 +8,7 @@ import {
   type StockSearchProvider,
   type StockSearchResult,
 } from '@sitewright/schema';
-import { STOCK_IMPORT_CAP, StockNotConfiguredError, StockUnknownProviderError } from '../stock/service.js';
+import { STOCK_IMPORT_CAP, StockImageTooLargeError, StockNotConfiguredError, StockUnknownProviderError } from '../stock/service.js';
 import { StockProviderError } from '../stock/providers.js';
 import { MediaValidationError } from '../media/errors.js';
 import { EncryptionUnavailableError } from '../repo/instance-settings.js';
@@ -122,6 +122,9 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
 
 function mapStockError(err: unknown, reply: FastifyReply) {
   if (err instanceof StockNotConfiguredError) return reply.code(400).send({ error: err.message });
+  // 413, not the generic 502: the provider answered fine, the photo is just too big. The message is
+  // safe to pass through — it is our own sentence about our own limit, with no upstream detail.
+  if (err instanceof StockImageTooLargeError) return reply.code(413).send({ error: err.message });
   if (err instanceof StockUnknownProviderError) return reply.code(404).send({ error: err.message });
   if (err instanceof EncryptionUnavailableError) return reply.code(503).send({ error: err.message });
   if (err instanceof StockProviderError) return reply.code(502).send({ error: 'stock provider unavailable — please try again' });

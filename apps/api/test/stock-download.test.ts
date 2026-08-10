@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { defaultDownloadImage } from '../src/stock/service.js';
+import { StockImageTooLargeError } from '../src/stock/service.js';
 import { StockProviderError } from '../src/stock/providers.js';
 
 type DlInit = { redirect?: string; signal?: AbortSignal };
@@ -53,14 +54,25 @@ describe('defaultDownloadImage (SSRF + size + type guards)', () => {
     await expect(defaultDownloadImage('https://cdn.example/x.png')).rejects.toThrow(/not an image/);
   });
 
+  // The size cap is its own error type, NOT a StockProviderError: the provider answered perfectly
+  // well, so the route must not tell the author "provider unavailable — please try again" and send
+  // them into a retry that cannot succeed. Reaching this got likelier when imports moved to
+  // full-resolution originals, so the message names both sizes and the way out.
   it('rejects when the declared Content-Length exceeds the cap', async () => {
     vi.stubGlobal('fetch', fetchReturning({ contentType: 'image/jpeg', contentLength: String(20 * 1024 * 1024) }));
-    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toThrow(/size limit/);
+    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toBeInstanceOf(StockImageTooLargeError);
+    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toThrow(/20\.0 MB.*15\.0 MB import limit.*pick a different one/);
   });
 
   it('rejects when the actual body exceeds the cap (no/again small declared length)', async () => {
     vi.stubGlobal('fetch', fetchReturning({ contentType: 'image/jpeg', contentLength: '0', bytes: 16 * 1024 * 1024 }));
-    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toThrow(/size limit/);
+    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toBeInstanceOf(StockImageTooLargeError);
+    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.toThrow(/16\.0 MB/);
+  });
+
+  it('an oversized image is not reported as a provider failure', async () => {
+    vi.stubGlobal('fetch', fetchReturning({ contentType: 'image/jpeg', contentLength: String(20 * 1024 * 1024) }));
+    await expect(defaultDownloadImage('https://cdn.example/x.jpg')).rejects.not.toBeInstanceOf(StockProviderError);
   });
 
   it('returns the buffer and a charset-stripped content-type on success', async () => {

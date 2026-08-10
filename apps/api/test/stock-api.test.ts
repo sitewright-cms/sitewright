@@ -9,6 +9,7 @@ import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import type { StockServiceLike } from '../src/http/stock-routes.js';
 import { StockProviderError } from '../src/stock/providers.js';
+import { StockImageTooLargeError } from '../src/stock/service.js';
 import { EncryptionUnavailableError } from '../src/repo/instance-settings.js';
 import { makePng } from './png.js';
 import type { StockSearchProvider } from '@sitewright/schema';
@@ -223,6 +224,21 @@ describe('stock API — injected fake service', () => {
     const { t, base } = await setup(app, db, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(502);
+  });
+
+  it('an oversized photo is a 413 that names the limit, NOT a generic "provider unavailable" 502', async () => {
+    const { app, db } = await makeApp(
+      fakeStock({
+        fetchForImport: async () => {
+          throw new StockImageTooLargeError('this photo is 22.0 MB, over the 15.0 MB import limit — pick a different one');
+        },
+      }),
+    );
+    const { t, base } = await setup(app, db, 'a@acme.test');
+    const res = await app.inject({ method: 'POST', url: `${base}/stock/import`, cookies: { sw_session: t }, payload: { provider: 'unsplash', id: 'x' } });
+    expect(res.statusCode).toBe(413);
+    // Retrying cannot help, so the message has to say what happened rather than "try again".
+    expect((res.json() as { error: string }).error).toMatch(/22\.0 MB.*15\.0 MB import limit/);
   });
 
   it('accepts provider=all and echoes it, while each result still names its own provider', async () => {

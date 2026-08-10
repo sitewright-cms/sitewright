@@ -63,6 +63,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   caller cap won outright, so a project that deliberately capped its images at 1600px would have been
   overridden to 2400 by an import. Both caps apply and the smaller one wins.
 
+- **An oversized stock photo reported itself as a provider outage.** The 15 MB download cap threw the
+  same error as an unreachable upstream, so the author saw "stock provider unavailable — please try
+  again" and retried something that could never succeed. Asking providers for full-resolution
+  originals makes that limit reachable, so it is now its own failure: a 413 naming the photo's size,
+  the limit, and the fact that a different photo is the way out.
+
 ## [0.16.0] — 2026-08-09
 
 ### Fixed

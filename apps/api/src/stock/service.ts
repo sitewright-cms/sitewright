@@ -22,6 +22,15 @@ export const STOCK_IMPORT_CAP = 2400;
 
 /** A provider whose key isn't configured (→ 400 at the route). */
 export class StockNotConfiguredError extends Error {}
+/**
+ * The chosen photo is bigger than the import can accept (→ 413 at the route).
+ *
+ * Distinct from StockProviderError because the provider did nothing wrong and "stock provider
+ * unavailable — please try again" would send the author into a retry loop that cannot succeed.
+ * Reaching this got MORE likely when imports moved to full-resolution originals, so it needs to say
+ * what actually happened and that a different photo is the way out.
+ */
+export class StockImageTooLargeError extends Error {}
 /** An unknown provider name (→ 404 at the route). */
 export class StockUnknownProviderError extends Error {}
 
@@ -38,6 +47,10 @@ export interface DownloadedImage {
 
 /** Downloads an image URL to a Buffer, applying SSRF + size + type guards. */
 export type ImageDownloader = (url: string) => Promise<DownloadedImage>;
+
+const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+const tooLargeMessage = (bytes: number): string =>
+  `this photo is ${mb(bytes)}, over the ${mb(MAX_IMAGE_BYTES)} import limit — pick a different one`;
 
 /**
  * Default image downloader: https-only, public-host-only (SSRF guard), no redirects
@@ -56,9 +69,11 @@ export const defaultDownloadImage: ImageDownloader = async (url) => {
     const contentType = res.headers.get('content-type') ?? '';
     if (!contentType.startsWith('image/')) throw new StockProviderError('download is not an image');
     const declared = Number(res.headers.get('content-length') ?? '0');
-    if (declared > MAX_IMAGE_BYTES) throw new StockProviderError('image exceeds size limit');
+    if (declared > MAX_IMAGE_BYTES) throw new StockImageTooLargeError(tooLargeMessage(declared));
     const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.length > MAX_IMAGE_BYTES) throw new StockProviderError('image exceeds size limit');
+    // Backstop for a missing/lying Content-Length: the bytes are already in memory here, but the
+    // pre-check above means that only happens when the provider didn't declare a length.
+    if (buffer.length > MAX_IMAGE_BYTES) throw new StockImageTooLargeError(tooLargeMessage(buffer.length));
     // Strip any `; charset=…` parameter so the stored format is a clean MIME type.
     return { buffer, contentType: contentType.split(';')[0]?.trim() || 'image/jpeg' };
   } finally {

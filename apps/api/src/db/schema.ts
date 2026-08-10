@@ -650,6 +650,30 @@ export const formFiltered = sqliteTable(
  * the same CPU as a real submission) and are swept once expired: an expired challenge is refused by
  * the signature/TTL check before the claim is ever reached, so a swept row cannot be replayed.
  */
+/**
+ * The last published RELEASE of a project — publishedAt, route/byte counts, and any page failures.
+ *
+ * ★ WHY IT IS A ROW AND NOT A FILE. This lived as `release.json` INSIDE the built site directory,
+ * which made it a hostage to that directory's lifetime. The build is derived output that only Local
+ * Hosting ever serves, so it is a natural thing to reap — but reaping it also destroyed the answer to
+ * "is the published site out of date?", and a remote-only project would start reporting that it had
+ * never been published at all. Separating the small durable FACT from the large derived BYTES is what
+ * makes the build safe to delete.
+ *
+ * `release.json` is still written into the build (it is part of the artifact, and excluded from
+ * deploys); this row is what the API reports from.
+ */
+export const projectReleases = sqliteTable('project_releases', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id),
+  publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
+  routes: integer('routes').notNull().default(0),
+  bytes: integer('bytes').notNull().default(0),
+  /** Draft-preview page failures, as stored in the manifest. Absent/empty when everything rendered. */
+  pageFailures: text('page_failures', { mode: 'json' }),
+});
+
 export const formPowSpent = sqliteTable('form_pow_spent', {
   challenge: text('challenge').primaryKey(),
   expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),

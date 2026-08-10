@@ -183,6 +183,13 @@
       "when": 1786299089281,
       "tag": "0025_glossy_gressill",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1786361222210,
+      "tag": "0026_worthless_quicksilver",
+      "breakpoints": true
     }
   ]
 }

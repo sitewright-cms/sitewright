@@ -1212,6 +1212,18 @@ export const api = {
   /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */
   pruneThumbnails: (projectId: string) =>
     request<{ removed: number }>('POST', `/projects/${projectId}/media/prune-thumbnails`, {}),
+  /** Media nothing in the project refers to, with what the scan actually covered. */
+  unusedMedia: (projectId: string) =>
+    request<{ items: Array<MediaAsset & { onlyInHistory?: boolean }>; scanned: { assets: number; contentRows: number; globalRows: number; revisionRows: number } }>(
+      'GET',
+      `/projects/${projectId}/media/unused`,
+    ),
+  /** What this project occupies on disk, per store (reporting only — nothing enforces a quota). */
+  projectStorage: (projectId: string) =>
+    request<{ media: number; build: number; preview: number; sourceRefs: number; total: number; derived: number }>(
+      'GET',
+      `/projects/${projectId}/storage`,
+    ),
   // --- media Recycle Bin (soft-delete → restore / purge) ---
   listDeletedMedia: (projectId: string) =>
     request<{ items: Array<MediaAsset & { deletedAt: number }> }>('GET', `/projects/${projectId}/media/deleted`),

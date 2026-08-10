@@ -1,7 +1,7 @@
 import { COLOR_TOKEN_LABELS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
 import { SubLabel } from './ui';
 import { TokenEditor } from './TokenEditor';
-import { ColorCard } from './ColorPicker';
+import { ColorCard } from '../ui/ColorPicker';
 import { newPair, type KeyedPair } from './model';
 
 const MANDATORY = new Set<string>(MANDATORY_COLOR_TOKENS);

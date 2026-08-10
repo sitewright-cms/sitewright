@@ -7,6 +7,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton } from '../../theme';
 import { useScrollPaging } from '../../lib/useScrollPaging';
+import { BrandColorField } from '../ui/ColorPicker';
 
 // A background-colour choice: `preview` is the swatch/thumbnail colour shown in the editor (the CI
 // tokens aren't defined on the editor document, so we preview with their default palette value); `css`
@@ -99,14 +100,13 @@ export function TexturePicker({ onClose }: { onClose: () => void; projectId?: st
                 style={{ background: c.preview }}
               />
             ))}
-            <label
-              className={`grid h-6 w-6 cursor-pointer place-items-center rounded-md border ${custom ? 'ring-2 ring-indigo-400' : 'border-slate-300 dark:border-slate-600'}`}
-              style={{ background: custom ?? 'transparent' }}
-              title="Custom colour"
-            >
-              <input type="color" value={custom ?? '#cfe0ff'} onChange={(e) => setCustom(e.target.value)} className="sr-only" />
-              {!custom && <span className="text-xs leading-none text-slate-500 dark:text-slate-400">+</span>}
-            </label>
+            {/* The platform picker, not the browser's — and it offers the project's brand colours
+                first, which is what a texture tint usually wants. */}
+            <BrandColorField
+              value={custom ?? '#cfe0ff'}
+              onChange={(c) => setCustom(c)}
+              label="Custom colour"
+            />
           </div>
         </div>
 

@@ -6,7 +6,7 @@ import {
   rgbToHsv,
   hsvToRgb,
   type Rgba,
-} from '../src/views/settings/color';
+} from '../src/views/ui/color';
 
 const RGBA = (r: number, g: number, b: number, a = 1): Rgba => ({ r, g, b, a });
 

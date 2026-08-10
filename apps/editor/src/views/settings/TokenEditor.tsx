@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { glassInput, ghostButton } from '../../theme';
-import { ColorField } from './ColorPicker';
-import { SAFE_COLOR } from './color';
+import { ColorField } from '../ui/ColorPicker';
+import { SAFE_COLOR } from '../ui/color';
 import { newPair, type KeyedPair } from './model';
 
 /**

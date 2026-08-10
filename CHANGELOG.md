@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A banner missing its `hidden` attribute no longer ships visible.** The attribute is documented as
+  required — the server renders the banner hidden and the runtime reveals it — but forgetting it failed
+  in a confusing direction: the banner rendered immediately at the default `bottom-right` position, as
+  a card floating over the page that could not be dismissed until JS loaded. That reads as a broken
+  component rather than a missing attribute. The render-time marker pass now supplies it. Nothing is
+  lost by doing so: the banner stylesheet hides `[hidden]` and the runtime removes the attribute to
+  reveal, so a server-visible banner was never the intent, and with no JS there is nothing to dismiss
+  it with. Injecting at render rather than rejecting at validation also fixes hand-authored markup,
+  imported pages and every page already stored, without touching anyone's source.
+
 ### Added
 
 - **`data-sw-parallax-layer="content"` — an in-flow parallax layer.** Every layer in a depth scene is

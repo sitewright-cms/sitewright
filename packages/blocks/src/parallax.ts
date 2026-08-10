@@ -272,3 +272,75 @@ const PARALLAX_MARKER = 'data-sw-parallax';
 export function usesParallax(html: string | null | undefined): boolean {
   return typeof html === 'string' && html.includes(PARALLAX_MARKER);
 }
+
+// ─── STATIC APPEARANCE STATE ───────────────────────────────────────────────────────────────────────
+// ★ WHY THIS EXISTS. `PARALLAX_JS` returns immediately under `prefers-reduced-motion`, and never runs
+// at all without JS. For TRANSLATE and SCALE that is exactly right: the element sits at its natural
+// position, which is what "no motion" should mean. For OPACITY and BLUR it is not — those are
+// APPEARANCE, not movement, so dropping them does not remove an animation, it renders a different
+// design. A background photo authored as `data-sw-parallax-opacity="0.08,0.18"` showed at FULL
+// opacity and drowned the copy over it.
+//
+// It also corrupted the platform's own measurements: `screenshot.ts` captures with
+// `reducedMotion: 'reduce'`, so visual_audit / compare_to_source / fidelity_check / preview_page were
+// all judging a page that no reduced-motion visitor ever sees.
+//
+// The fix is to put the channel's FIRST frame in the markup, so the un-animated state IS the intended
+// look. With JS the runtime animates on from the same value (no flash); without it, or under reduced
+// motion, the design simply holds still.
+
+/** Appearance channels only — `translate`/`scale` are deliberately absent (see above). */
+const STATIC_CHANNELS: ReadonlyArray<{ attr: string; decl: (v: string) => string }> = [
+  { attr: 'data-sw-parallax-opacity', decl: (v) => `opacity:${v}` },
+  { attr: 'data-sw-parallax-blur', decl: (v) => `filter:blur(${v}px)` },
+];
+
+/** A bare number (the channel grammar). Anything else is ignored rather than pasted into CSS. */
+const NUMBER_RE = /^-?\d+(?:\.\d+)?$|^-?\.\d+$/;
+
+/**
+ * The value the channel starts at: the `from` half of `from,to`, or a lone constant.
+ *
+ * EVERY part must be a bare number, not just the first. A half-valid channel like `0.1,;color:red`
+ * would otherwise bake in `opacity:0.1` — harmless in itself (the junk never reaches the output) but
+ * it would mean the static state disagrees with a channel the runtime rejects. Emitting nothing for
+ * anything malformed keeps the two ends telling the same story.
+ */
+function startValue(raw: string | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const parts = raw.split(',').map((p) => p.trim());
+  if (parts.length < 1 || parts.length > 2) return null;
+  if (!parts.every((p) => NUMBER_RE.test(p))) return null;
+  return parts[0]!;
+}
+
+/**
+ * Bake the start value of every appearance channel into the element's inline style.
+ *
+ * Declarations are PREPENDED, so an author who also wrote `opacity:` themselves still wins on source
+ * order. Idempotent: a style that already opens with our declaration is left alone.
+ *
+ * String-spliced rather than parsed and re-serialized, for the reason set out in `entry-marker.ts` —
+ * a round trip through a serializer renormalizes quoting, boolean attributes and entities, which is a
+ * far bigger change than the one being made.
+ */
+export function applyParallaxStaticState(html: string): string {
+  if (typeof html !== 'string' || !html.includes(PARALLAX_MARKER)) return html;
+  // One pass over opening tags. The attribute grammar here is our own (numbers), so a tolerant
+  // tag-level regex is enough — and it can only ever ADD a style declaration.
+  return html.replace(/<([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g, (tag, name: string, attrs: string) => {
+    const decls: string[] = [];
+    for (const { attr, decl } of STATIC_CHANNELS) {
+      const m = new RegExp(`${attr}\\s*=\\s*"([^"]*)"`).exec(attrs);
+      const v = startValue(m?.[1]);
+      if (v !== null) decls.push(decl(v));
+    }
+    if (decls.length === 0) return tag;
+    const style = decls.join(';');
+    const existing = /\sstyle\s*=\s*"([^"]*)"/.exec(attrs);
+    if (!existing) return `<${name} style="${style}"${attrs}>`;
+    if (existing[1]!.startsWith(style)) return tag; // already applied
+    const at = existing.index + existing[0].indexOf('"') + 1;
+    return `<${name}${attrs.slice(0, at)}${style};${attrs.slice(at)}>`;
+  });
+}

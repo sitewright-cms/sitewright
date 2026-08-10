@@ -30,6 +30,7 @@ import {
 } from './image-map-embed.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { addComponentBlockMarkers } from './components.js';
+import { applyParallaxStaticState } from './parallax.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
@@ -1256,6 +1257,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // source that authored only the component marker still gets the component's CSS (unsized slides /
   // a visible "Slide x of y" live region / inert controls otherwise). No-op without a marker.
   html = addComponentBlockMarkers(html);
+  // Bake the FIRST FRAME of every parallax appearance channel (opacity / blur) into the markup, so the
+  // un-animated state is the intended look rather than the raw element. The runtime does not run under
+  // `prefers-reduced-motion` or without JS, and for those channels "no motion" must not mean "no styling".
+  html = applyParallaxStaticState(html);
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
   if (html.length > max) throw new TemplateError('template output exceeded the size limit');
   return html;

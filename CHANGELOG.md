@@ -9,6 +9,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A parallax `opacity` or `blur` channel was dropped entirely under reduced motion, and without JS.**
+  The runtime returns early when `prefers-reduced-motion` is set, so an element whose only styling for
+  a property came from a channel rendered at its raw authored value — a background photo dimmed to
+  `0.08,0.18` showed at FULL opacity and drowned the copy on top of it. For `translate`/`scale`,
+  sitting still IS the correct reduced-motion answer; opacity and blur are appearance, not movement,
+  so dropping them does not remove an animation, it renders a different design.
+
+  The first frame of each appearance channel is now baked into the markup at render, so the
+  un-animated state is the intended look: with JS the runtime animates on from the same value (no
+  flash), and under reduced motion or with no JS the design simply holds still. Declarations are
+  prepended, so an author's own `opacity:` still wins.
+
+  This also quietly corrupted the platform's own measurements — screenshots are captured with
+  `reducedMotion: 'reduce'`, so `visual_audit`, `compare_to_source`, `fidelity_check` and
+  `preview_page` were all judging a page no reduced-motion visitor ever sees.
+
 ### Added
 
 - **`date`, `time` and `datetime` form field types.** A form field can now capture a day, a clock time,

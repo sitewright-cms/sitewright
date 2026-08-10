@@ -59,6 +59,19 @@ test('unused files: finds only what nothing references, and deletes to the Recyc
   const dialog = page.getByRole('dialog', { name: 'Unused files' });
   await expect(dialog).toBeVisible();
 
+  // The body carries its own inset — Modal supplies the panel, not the padding, so a body rendered
+  // straight into it sits flush against the panel edge. Measure the GAP between the panel edge and
+  // the first content element: a class-name check is not an inset (a `[class*="p-"]` probe matched
+  // `py-2` on an inner row and passed against the unpadded build).
+  const inset = await dialog.evaluate((d) => {
+    const scroller = d.lastElementChild as HTMLElement; // Modal: header, then the body scroller
+    const body = scroller?.firstElementChild as HTMLElement | undefined;
+    // The wrapper's OWN padding, not its left edge: the wrapper is full-width and starts at the
+    // panel edge either way, so its position says nothing (measuring that read 1px on both builds).
+    return body ? parseFloat(getComputedStyle(body).paddingLeft) : 0;
+  });
+  expect(inset).toBeGreaterThan(8);
+
   // ★ The whole point: the referenced file is absent, the unreferenced one is present and PRE-TICKED.
   await expect(dialog.getByText('nobody-wants-me.png')).toBeVisible();
   await expect(dialog.getByText('on-the-page.png')).toHaveCount(0);

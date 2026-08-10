@@ -125,7 +125,15 @@ export const PARALLAX_JS = `(function(){
   });
   if(items.length===0)return;
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){
-    es.forEach(function(e){for(var i=0;i<items.length;i++){if(items[i].el===e.target){items[i].active=e.isIntersecting;items[i].el.style.willChange=e.isIntersecting?items[i].wc:'';}}});
+    var woke=false;
+    es.forEach(function(e){for(var i=0;i<items.length;i++){if(items[i].el===e.target){
+      if(e.isIntersecting&&!items[i].active)woke=true;
+      items[i].active=e.isIntersecting;items[i].el.style.willChange=e.isIntersecting?items[i].wc:'';}}});
+    // An element that just came INTO view has to paint at the current scroll position rather than
+    // wait for the next scroll event, or it shows the frame it was frozen at when it went inactive.
+    // Continuous scrolling hides that (the next event is milliseconds away); an ANCHOR JUMP does not,
+    // because it is a single scroll. Leaving view needs no render — there is nothing to paint.
+    if(woke)onScroll();
   },{rootMargin:'25% 0px 25% 0px'}):null;
   if(io)items.forEach(function(it){io.observe(it.el);});
   var vh=window.innerHeight,ticking=false;

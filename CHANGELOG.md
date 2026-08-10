@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A parallax layer coming into view painted one frame stale.** The runtime renders on scroll, and an
+  IntersectionObserver marks off-screen elements inactive so they neither compute nor hold a GPU layer
+  — but the observer only flipped the flag, it never asked for a render. An element that had just come
+  into view therefore kept the transform it was frozen at until the next scroll event arrived.
+  Continuous scrolling hides this entirely; an anchor jump does not, because `#section` is a single
+  scroll. The observer now schedules a render when an element wakes (and still does nothing when one
+  leaves — there is nothing to paint).
+
+### Fixed
+
 - **A banner missing its `hidden` attribute no longer ships visible.** The attribute is documented as
   required — the server renders the banner hidden and the runtime reveals it — but forgetting it failed
   in a confusing direction: the banner rendered immediately at the default `bottom-right` position, as

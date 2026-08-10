@@ -13,10 +13,15 @@ describe('addComponentBlockMarkers (pair data-sw-block with data-sw-component)',
     // Carousel and Lightbox moved here: their stylesheets key on data-sw-component, the same attribute
     // the runtime enhances, so a paired block attribute is no longer load-bearing. See the regression
     // test below for why that matters.
-    for (const name of ['carousel', 'lightbox', 'modal', 'tabs', 'banner', 'datetimepicker', 'shader-bg']) {
+    for (const name of ['carousel', 'lightbox', 'modal', 'tabs', 'datetimepicker', 'shader-bg']) {
       const tag = `<div data-sw-component="${name}"></div>`;
       expect(addComponentBlockMarkers(tag)).toBe(tag);
     }
+    // Banner is component-keyed too, so it gains no data-sw-block — but the SAME pass supplies its
+    // `hidden` attribute (see banner-hidden.test.ts), so it is not byte-identical.
+    const banner = addComponentBlockMarkers('<div data-sw-component="banner"></div>');
+    expect(banner).not.toContain('data-sw-block');
+    expect(banner).toContain(' hidden');
   });
 
   it('is idempotent — leaves a tag that already has data-sw-block untouched, never doubles it', () => {

@@ -1341,9 +1341,21 @@ const BLOCK_KEYED_TYPES: ReadonlySet<string> = new Set(
 export function addComponentBlockMarkers(html: string): string {
   if (typeof html !== 'string' || html.indexOf('data-sw-component=') === -1) return html;
   return html.replace(/<[a-zA-Z][^>]*\bdata-sw-component="([a-z-]+)"[^>]*>/g, (tag: string, name: string) => {
+    let out = tag;
+    // ★ A BANNER ALWAYS SHIPS HIDDEN. The attribute is documented as the author's job, and forgetting
+    // it fails in a confusing direction: the banner renders immediately at the default bottom-right
+    // position, as a card floating over the page that cannot be dismissed until JS loads. That reads
+    // as "the banner component is broken" rather than "an attribute is missing". Nothing is lost by
+    // supplying it — the banner stylesheet hides `[hidden]` and the runtime removes the attribute to
+    // reveal, so a server-visible banner is never what anyone wanted, and with no JS there is nothing
+    // to dismiss it with. Injecting here rather than validating means it also fixes hand-authored
+    // markup, imported pages, and every page already stored, without touching anyone's source.
+    if (name === 'banner' && !/\shidden(?=[\s/>=])/i.test(out)) {
+      out = out.replace(`data-sw-component="${name}"`, `data-sw-component="${name}" hidden`);
+    }
     const type = COMPONENT_NAME_TO_TYPE.get(name);
-    if (!type || !BLOCK_KEYED_TYPES.has(type) || /\bdata-sw-block\s*=/.test(tag)) return tag;
-    return tag.replace(`data-sw-component="${name}"`, `data-sw-component="${name}" data-sw-block="${type}"`);
+    if (!type || !BLOCK_KEYED_TYPES.has(type) || /\bdata-sw-block\s*=/.test(out)) return out;
+    return out.replace(`data-sw-component="${name}"`, `data-sw-component="${name}" data-sw-block="${type}"`);
   });
 }
 

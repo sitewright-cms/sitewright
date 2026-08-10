@@ -41,7 +41,7 @@
     "nodemailer": "^9.0.3",
     "openid-client": "^6.8.4",
     "otplib": "^12.0.1",
-    "playwright-core": "1.62.0",
+    "playwright-core": "1.62.1",
     "secure-json-parse": "^4",
     "ssh2-sftp-client": "^11",
     "terser": "^5.49.0",

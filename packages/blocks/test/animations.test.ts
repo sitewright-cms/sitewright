@@ -93,9 +93,12 @@ describe('animation runtime', () => {
   it('never suppresses/restores an inline transition (no transition:none reflow hack) — CSS hides pre-paint', () => {
     // Since content is hidden from FIRST PAINT by CSS, there is no already-painted state to suppress an
     // animate-OUT for: the reveal is the only transition, so the runtime must not touch el.style.transition.
+    // THE TRANSITION WRITES ARE THE REAL GUARD — the hack is "set transition:none, force a reflow,
+    // restore", and it is impossible without them. A blanket ban on `offsetHeight` used to stand in for
+    // it, but that proxy stopped being valid once the runtime read layout legitimately (measuring an
+    // element's untransformed box, so an animation cannot feed its own trigger). Ban the hack itself.
     expect(ANIMATION_JS).not.toContain("el.style.transition='none'");
     expect(ANIMATION_JS).not.toContain("el.style.transition=''");
-    expect(ANIMATION_JS).not.toContain('offsetHeight');
   });
 
   it('EXCLUDES Banner roots from the scroll observer (a data-sw-animation Banner drives its own entrance on reveal)', () => {
@@ -277,5 +280,38 @@ describe('a clobbered transition heals itself', () => {
     // An author who names opacity or transform themselves is a deliberate retune — left alone.
     expect(js).toMatch(/indexOf\('transform'\)<0/);
     expect(js).toMatch(/indexOf\('all'\)<0/);
+  });
+});
+
+describe('★ an animation must not feed its own trigger', () => {
+  // The reported symptom: elements at the TOP edge of the screen flickering — animating above the edge
+  // and back below, over and over, for as long as you rested there.
+  //
+  // IntersectionObserver measures the TRANSFORMED box. An element leaving past the top was reset, its
+  // hidden transform shoved it back into view (fade-up is 4rem down; slide-up is a FULL ELEMENT HEIGHT
+  // down), the reveal fired, the transform came off, it snapped back out, and it reset again. The
+  // hidden state was moving the element into the very region that triggers it.
+  it('decides both reveal and reset on the LAYOUT box, not the transformed one', () => {
+    // Reset: only once the element has genuinely left, not when its own transform carried it out.
+    expect(ANIMATION_JS).toContain("classList.contains('sw-animation-active')&&swLayoutOffscreen(entry.target)");
+    // Reveal: a hidden element pushed back into view by its transform is not something to reveal.
+    expect(ANIMATION_JS).toContain('&&!swLayoutOffscreen(el)');
+  });
+
+  it('measures with layout properties, which transforms do not move', () => {
+    // offsetTop/offsetHeight are layout values — the whole point. getBoundingClientRect would carry
+    // the transform straight back in and reinstate the loop.
+    expect(ANIMATION_JS).toContain('offsetTop');
+    expect(ANIMATION_JS).toContain('offsetHeight');
+  });
+
+  it('falls back to the observer when the layout box cannot be measured', () => {
+    // A fixed or detached element has no offsetParent chain to walk; guessing there would be worse
+    // than deferring to the observer, so an unmeasurable element keeps the old verdict.
+    expect(ANIMATION_JS).toContain('if(!b)return true');
+  });
+
+  it('still parses as a function (the template-literal backtick trap)', () => {
+    expect(() => new Function(ANIMATION_JS)).not.toThrow();
   });
 });

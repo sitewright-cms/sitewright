@@ -139,7 +139,7 @@ describe('animation runtime', () => {
     // never fires again below it), which is what broke bottom-exit replay.
     expect(ANIMATION_JS).toContain('var exitIo=new IntersectionObserver(');
     expect(ANIMATION_JS).toMatch(/exitIo=new IntersectionObserver\([\s\S]*?\},\{threshold:\[0\],root:scrollRoot\}\)/);
-    expect(ANIMATION_JS).toContain("entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active')");
+    expect(ANIMATION_JS).toContain("!entry.isIntersecting&&entry.target.classList.contains('sw-animation-active')");
     expect(ANIMATION_JS).toContain("entry.target.classList.remove('sw-animation-active')");
     // Every armed element is observed by BOTH its reveal observer and the reset observer.
     expect(ANIMATION_JS).toContain('revealIo.observe(el)');
@@ -147,6 +147,41 @@ describe('animation runtime', () => {
     // The old single-observer reset machinery (WeakSet gate + boundingClientRect off-screen probe) is GONE.
     expect(ANIMATION_JS).not.toContain('new WeakSet()');
     expect(ANIMATION_JS).not.toContain('r.top>=vp');
+  });
+
+  it('★ resets on !isIntersecting, NEVER on intersectionRatio===0', () => {
+    // These are not interchangeable. The ratio is ALSO 0 when the element is exactly TOUCHING the root
+    // edge — zero area, but present — which is the instant it arrives while scrolling UP. Testing the
+    // ratio therefore reset an element at the very moment the reveal observer was announcing it: the
+    // two fought over one frame, the reset won, and with a single threshold there was no later
+    // callback to undo it, so the element stayed hidden for the rest of the session.
+    expect(ANIMATION_JS).toContain('!entry.isIntersecting');
+    expect(ANIMATION_JS).not.toContain('entry.intersectionRatio===0');
+  });
+
+  it('★ RE-OFFERS a reveal the layout check declined, instead of dropping it', () => {
+    // intersectionRatio saturates as an element enters, so once the last threshold is crossed the
+    // observer goes quiet. A declined reveal is therefore declined FOREVER unless something re-offers
+    // it — which is precisely how the flicker fix (#900) left fade-up and slide-up permanently
+    // invisible on the way back up. The queue is drained against the LAYOUT box on scroll.
+    expect(ANIMATION_JS).toContain('swDefer(el)');
+    expect(ANIMATION_JS).toContain('swDrainDeferred');
+    expect(ANIMATION_JS).toContain('swLayoutInRoot');
+    expect(ANIMATION_JS).toMatch(/addEventListener\('scroll',swDeferredTick/);
+    // A ladder of thresholds so the common cases resolve inside the observer rather than on the queue.
+    expect(ANIMATION_JS).toContain('[0.01,0.1,0.25,0.5,0.75,1]');
+  });
+
+  it('★ keeps slide-* on the queue: the observer can never report them in time', () => {
+    // slide-* translate by 100% of the element's OWN size, so a tall one is drawn an entire height away
+    // from where it belongs — centre a 1200px slide-up in an 800px viewport and the box the observer
+    // watches is 1200px below the fold, never intersecting, never reported. There is no callback to
+    // re-offer, so these hold their place in the queue from init and again after every reset.
+    expect(ANIMATION_JS).toContain("indexOf('slide-')===0");
+    expect(ANIMATION_JS).toContain('if(swBlind(el))swDefer(el)');
+    expect(ANIMATION_JS).toContain('if(swBlind(entry.target))swDefer(entry.target)');
+    // …and they are exempt from the out-of-range eviction that keeps the queue small.
+    expect(ANIMATION_JS).toContain('&&!swBlind(el))deferred.splice');
   });
 
   it('reveals at the VIEWPORT reveal line, with NO element-fraction gate by default', () => {
@@ -294,8 +329,11 @@ describe('★ an animation must not feed its own trigger', () => {
   it('decides both reveal and reset on the LAYOUT box, not the transformed one', () => {
     // Reset: only once the element has genuinely left, not when its own transform carried it out.
     expect(ANIMATION_JS).toContain("classList.contains('sw-animation-active')&&swLayoutOffscreen(entry.target)");
-    // Reveal: a hidden element pushed back into view by its transform is not something to reveal.
-    expect(ANIMATION_JS).toContain('&&!swLayoutOffscreen(el)');
+    // Reveal: a hidden element pushed back into view by its transform is not something to reveal. The
+    // test is now `swLayoutInRoot` rather than `!swLayoutOffscreen` — same idea, held to the reveal
+    // LINE instead of merely the viewport, so the queue drain and the observer apply one criterion.
+    expect(ANIMATION_JS).toContain('if(swLayoutInRoot(el))swReveal(el);');
+    expect(ANIMATION_JS).toMatch(/function swLayoutInRoot\(el\)\{[\s\S]*?b\.bottom>0&&b\.top</);
   });
 
   it('measures with layout properties, which transforms do not move', () => {

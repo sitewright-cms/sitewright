@@ -11,6 +11,32 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **★ Most button effects, every hover accent and every shape did nothing at all.** Reported against
+  the Button effects modal and the Button builder, but the previews were faithful — the defaults
+  themselves were inert, on published sites too. Measured as computed style against a no-effect
+  control: **13 of 28 effects changed nothing** (lift, glow, ring, bounce, long-shadow, width-expand,
+  magnetic, outline-fill, frost, gradient-move, two-tone, ghost-gradient), **all four hover accents**
+  left `--sw-btn-fx` at the baseline's secondary, and **all eight shapes** left the radius at the
+  baseline's `.7rem` — only `cut` / `skewed` showed anything, through `clip-path`, the one property
+  the baseline does not set.
+  The axes ship in `@layer sw-effects`, while the platform's `.btn` baseline ships **unlayered** in
+  the page's inline `<style>` — and a layered declaration loses to an unlayered one *whatever its
+  specificity*, so every axis that touched a property the baseline also sets was discarded. The
+  survivors were exactly the effects that animate a `::before` / `::after` or a `@keyframes`: the ones
+  with nothing unlayered to lose to. The layer was introduced for the **nav** schemes, whose (0,4,1)
+  selectors no author could beat; it took the button axes with it and silently voided the specificity
+  contract `base-css.ts` is written around (`.btn:where(…):hover` is deliberately held at (0,2,0) so
+  an effect's (0,3,0) rule wins). The `sw-btn-*` axes are now emitted unlayered; the nav schemes stay
+  layered, and an author's own rule still outranks them.
+- **The Blob nav scheme has never worked.** Its rule was authored, listed in `NAV_EFFECTS`, offered in
+  the picker — and never emitted, for anyone who picked it. The `@utility` scanner matched on a bare
+  `indexOf('@utility ')`, which found that string inside the *prose* of the comment above the block
+  ("nested inside the @utility they get pruned"), read the scheme name as the rest of that sentence,
+  and swallowed the rule the comment introduced. A second prose match ate its `@keyframes` on the way
+  past. The `@keyframes` scanner had already been hardened against exactly this collision; the
+  `@utility` one had not. Both are line-anchored now, and a test asserts every schema-listed scheme
+  reaches the stylesheet rather than merely existing in the source.
+
 - **★ Scroll animations flickered on and off at the top edge of the screen.** An element that had
   scrolled just past the top would animate above the edge and back below, repeatedly, for as long as
   you rested there — measured at **136 class changes in 1.5 seconds**.

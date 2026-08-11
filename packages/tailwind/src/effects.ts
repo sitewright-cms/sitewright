@@ -87,8 +87,13 @@ const btnFace = (s = ''): string =>
  * Scheme names are the source-of-truth `NAV_EFFECTS` / `BUTTON_EFFECTS` in @sitewright/schema; a test
  * asserts every name here has a matching `@utility`.
  *
- * NOT emitted directly — {@link effectCss} rewrites the used blocks into `@layer sw-effects` first.
- * See that function for why.
+ * NOT emitted directly — {@link effectCss} rewrites the used blocks first: the nav schemes and the box
+ * ornaments into `@layer sw-effects`, the `sw-btn-*` axes UNLAYERED (they have to outrank the platform's
+ * own unlayered `.btn` baseline). See that function for why.
+ *
+ * ★ When you write prose here, remember it is parsed: a line that STARTS with `@utility` or
+ * `@keyframes` is read as one. Mid-sentence mentions are fine — both scans are line-anchored — but
+ * that was learned twice, once per scan, and the second time cost the Blob nav scheme entirely.
  */
 export const EFFECT_UTILITIES = `
 /* ── nav schemes ─────────────────────────────────────────────────────────── */
@@ -550,6 +555,27 @@ export const EFFECT_UTILITIES = `
  * deciding whether the active item beats the resting one. The layer is declared last, so it still
  * outranks daisyUI's own layered `.menu a` rules.
  *
+ * ★ WHY THE BUTTON AXES ARE **NOT** IN IT. The nav schemes compete only with daisyUI's own layered
+ * `.menu a` rules, so a layer costs them nothing. The button axes compete with the platform's OWN
+ * `.btn` baseline (blocks/base-css.ts), which ships UNLAYERED in the page's inline `<style>` — and
+ * "layered loses to unlayered whatever its specificity" cuts both ways: it made every effect that
+ * touches a property the baseline also sets simply not apply. base-css.ts sizes its selectors for
+ * exactly this — `.btn:where(:not(…)):hover` is held at (0,2,0) so a per-button effect's (0,3,0)
+ * rule wins — and moving the effects into a layer silently voided that whole calculation.
+ *
+ * MEASURED before this split (computed styles, real browser, against a no-effect control): 13 of 28
+ * effects changed NOTHING at all — lift/glow/ring/bounce/long-shadow/width-expand (transform +
+ * box-shadow), frost/gradient-move/two-tone/ghost-gradient (background + colour), outline-fill,
+ * magnetic. ALL FOUR hover accents left `--sw-btn-fx` at the baseline's secondary, and ALL EIGHT
+ * shapes left `--sw-btn-radius` at the baseline's `.7rem` (only cut/skewed showed anything, via the
+ * one property the baseline does not set — `clip-path`). The survivors were exactly the effects that
+ * animate a `::before`/`::after` or a `@keyframes`, i.e. the ones with nothing unlayered to lose to.
+ *
+ * So `sw-btn-*` ships unlayered, restoring the specificity contract base-css.ts documents. The cost
+ * is that an author beats a button effect by specificity/order rather than automatically — the same
+ * terms on which they already beat the `.btn` baseline itself, and no worse than the status quo,
+ * since a dead rule was never something they had to beat.
+ *
  * WHY THE REWRITE. `@utility` gives per-scheme tree-shaking (only what the HTML uses is emitted) but
  * Tailwind puts utilities in the UNLAYERED utilities sheet — the thing we are moving away from. So we
  * keep authoring them as `@utility` (one source of truth, and the shape the tests assert) and do the
@@ -565,17 +591,31 @@ export function effectCss(isUsed: (className: string) => boolean): string {
   const src = EFFECT_UTILITIES;
   const passthrough: string[] = [];
   const layered: string[] = [];
+  // the button axes (fx / shape / accent) — unlayered, so they can beat the unlayered `.btn` baseline
+  const unlayered: string[] = [];
   let i = 0;
 
-  while (i < src.length) {
-    const at = src.indexOf('@utility ', i);
-    if (at === -1) {
+  // ★ LINE-ANCHORED, exactly like the `@keyframes` scan below and for exactly the same reason: the
+  // PROSE in this file talks ABOUT `@utility`, and a bare `indexOf('@utility ')` happily matched the
+  // sentence "nested inside the @utility they get pruned". It then read the scheme name as the rest of
+  // that comment and swallowed the block the comment introduces — so `.sw-nav-blob` was NEVER emitted,
+  // for any page that asked for it, since the day that comment was written. (A second prose match,
+  // "never inside an @utility", ate `@keyframes sw-nav-blob` on its way past.) The keyframes scan was
+  // already hardened against this after a comment got spliced into the stylesheet; the utility scan was
+  // not, and its failure is quieter — a missing rule looks like a scheme that just does nothing.
+  // An at-rule always starts its own line here; a sentence about one never does.
+  const UTILITY_AT = /(?:^|\n)[ \t]*@utility[ \t]+([\w-]+)[ \t]*\{/g;
+  for (;;) {
+    UTILITY_AT.lastIndex = i;
+    const m = UTILITY_AT.exec(src);
+    if (!m) {
       passthrough.push(src.slice(i));
       break;
     }
+    const at = m.index + m[0].indexOf('@utility');
+    const name = m[1]!;
+    const braceAt = m.index + m[0].length - 1;
     passthrough.push(src.slice(i, at));
-    const braceAt = src.indexOf('{', at);
-    const name = src.slice(at + '@utility '.length, braceAt).trim();
     // Walk to the matching close brace — bodies nest (`&`, @media), so counting is required.
     let depth = 0;
     let end = braceAt;
@@ -584,14 +624,18 @@ export function effectCss(isUsed: (className: string) => boolean): string {
       else if (src[end] === '}' && --depth === 0) break;
     }
     const body = src.slice(braceAt + 1, end);
-    if (isUsed(name)) layered.push(`.${name} {${body}}`);
+    if (isUsed(name)) (name.startsWith('sw-btn-') ? unlayered : layered).push(`.${name} {${body}}`);
     i = end + 1;
   }
 
-  // Keyframes ride INSIDE the layer, with the rules that animate them. Lightning CSS drops a
-  // top-level `@keyframes` whose only reference sits inside `@media` inside `@layer` — it keeps the
+  // Keyframes ride INSIDE the layer, with (most of) the rules that animate them. Lightning CSS drops
+  // a top-level `@keyframes` whose only reference sits inside `@media` inside `@layer` — it keeps the
   // `animation:` and deletes the animation, which is a dead effect and no warning. Verified: the same
   // block keeps its keyframes when they are declared in the layer and loses them when they are not.
+  // A layered `@keyframes` still drives the now-UNLAYERED button rules: layers only arbitrate between
+  // two definitions of the SAME name, they do not scope which rules may reference one. (Measured:
+  // pulse / jelly / shine / sparkle all still interpolate after the split.) The layer block is
+  // therefore emitted whenever ANY scheme is used, even if only button ones are.
   // `@property` and the comments stay outside: a registration is not a declaration to lose a cascade.
   let rest = passthrough.join('');
   const keyframes: string[] = [];
@@ -615,6 +659,9 @@ export function effectCss(isUsed: (className: string) => boolean): string {
   // No scheme on the page → emit NOTHING. The passthrough is prose and registrations that only mean
   // something next to a scheme, and its comments name `.btn`, which a page using no effects should
   // not carry (a test asserts a pure-Tailwind page never mentions daisyUI's classes).
-  if (!layered.length) return '';
-  return `${rest}\n@layer sw-effects {\n${keyframes.join('\n')}\n${layered.join('\n')}\n}\n`;
+  if (!layered.length && !unlayered.length) return '';
+  return (
+    `${rest}\n@layer sw-effects {\n${keyframes.join('\n')}\n${layered.join('\n')}\n}\n` +
+    (unlayered.length ? `${unlayered.join('\n')}\n` : '')
+  );
 }

@@ -159,6 +159,11 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type(`<div>${marker}</div>`);
   await dialog.getByRole('button', { name: 'Save changes' }).click();
+  // Saving no longer CLOSES the editor (#898) — editing a slot is save-look-keep-going, so the loop
+  // stays where you are working. Closing used to be the commit signal; the Save control disabling is
+  // what replaced it, so that is what to wait on before closing by hand.
+  await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
 
   // The compact CodeField shows a line count (no inline source preview); the source itself
@@ -202,9 +207,11 @@ test('edit website.data via the JSON source view, save, and persist across reloa
   await expect(dialog).toBeHidden();
   await expect(page.getByText('2 keys')).toBeVisible(); // summary reflects the saved object
 
-  // Persist the settings bundle.
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Settings saved')).toBeVisible();
+  // The modal's own Save PERSISTS website.data now (#899) — it used to only stage into the settings
+  // form, so the author still had to find the tab's Save. There is nothing left to stage, and the
+  // tab's Save being DISABLED is what proves the modal wrote through rather than dropping the edit.
+  // (The reload round-trip below is the other half of that proof.)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
 
   // Reload → reopen → the data round-tripped (verify via the source view).
   await page.reload();

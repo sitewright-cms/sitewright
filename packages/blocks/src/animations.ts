@@ -195,9 +195,34 @@ export const ANIMATION_JS = `(function(){
   // reveal observer's bottom-20% margin band — keeps ratio>0 here, so it's never yanked back hidden; (b) an
   // element scrolled fully off the BOTTOM still resets — which the -20% reveal observer CANNOT detect (it
   // reads ratio 0 already at the -20% line and never fires again as the element continues off-screen).
+  // LAYOUT position, ignoring the element's own transform. IntersectionObserver measures the TRANSFORMED
+  // box, which is what let the hidden state feed its own trigger: an element leaving past the top reset,
+  // the hidden transform shoved it back into view (fade-up is 4rem DOWN; slide-up is a full element
+  // height DOWN), the reveal fired, the transform came off, it snapped back out, and it reset again —
+  // a visible flicker loop at the top edge for as long as you stayed there. offsetTop/offsetHeight are
+  // layout values and are unaffected by transforms, so the decision is made on where the element
+  // actually SITS rather than where its animation has momentarily put it.
+  // Returns null when the chain cannot be walked (a fixed/detached element, no offsetParent) — the
+  // caller then falls back to the observer's own numbers rather than guessing.
+  function swLayoutBox(el){
+    if(!el.offsetParent&&el.offsetTop===0)return null;
+    var t=0,n=el;
+    while(n){t+=n.offsetTop||0;n=n.offsetParent;}
+    var sy=scrollRoot?scrollRoot.scrollTop:(window.pageYOffset||document.documentElement.scrollTop||0);
+    var vh=scrollRoot?scrollRoot.clientHeight:(window.innerHeight||document.documentElement.clientHeight);
+    return {top:t-sy,bottom:t+(el.offsetHeight||0)-sy,vh:vh};
+  }
+  // True when the element's LAYOUT box is entirely outside the viewport.
+  function swLayoutOffscreen(el){
+    var b=swLayoutBox(el);
+    if(!b)return true; // unmeasurable: keep the observer's verdict
+    return b.bottom<=0||b.top>=b.vh;
+  }
   var exitIo=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
-      if(entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active'))entry.target.classList.remove('sw-animation-active');
+      // ★ Both conditions, and the second is the one that stops the flicker: an element is only reset
+      // once it has genuinely LEFT, not when its own hidden transform has carried it out.
+      if(entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active')&&swLayoutOffscreen(entry.target))entry.target.classList.remove('sw-animation-active');
     });
   },{threshold:[0],root:scrollRoot});
   // Reveal an element once. data-sw-once="true" then stops BOTH observers watching it → it can never reset.
@@ -211,7 +236,10 @@ export const ANIMATION_JS = `(function(){
   function swRevealCb(entries){
     entries.forEach(function(entry){
       var el=entry.target;
-      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO}))swReveal(el);
+      // ★ The layout check is the other half of the same guard: a hidden element whose transform has
+      // pushed it back into view is not something the reader has scrolled to, and revealing it there
+      // is what completed the loop. Its LAYOUT box has to be on screen too.
+      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO})&&!swLayoutOffscreen(el))swReveal(el);
     });
   }
   // BOTTOM-OF-DOCUMENT FAILSAFE. The reveal line sits 20% up from the viewport bottom, which an element

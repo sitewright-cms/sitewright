@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **★ Scroll animations flickered on and off at the top edge of the screen.** An element that had
+  scrolled just past the top would animate above the edge and back below, repeatedly, for as long as
+  you rested there — measured at **136 class changes in 1.5 seconds**.
+  IntersectionObserver measures the *transformed* box, so the hidden state was moving the element into
+  the very region that triggers it: the element left past the top → the reveal was re-armed → the
+  hidden transform shoved it back into view (`fade-up` is 4rem **down**; `slide-up` is a full element
+  height **down**) → the reveal fired → the transform came off → it snapped back out → re-armed again.
+  The trouble band matched each effect's own translate distance exactly, which is what identified it.
+  Both the reveal and the re-arm are now decided on the element's **layout** box — `offsetTop` /
+  `offsetHeight`, which transforms do not move — so an animation can no longer feed its own trigger.
+  Replay in both scroll directions is unchanged.
+
 ### Changed
 
 - **Saving a website slot, critical CSS or a code record no longer closes the editor.** Editing these

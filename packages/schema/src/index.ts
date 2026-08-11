@@ -9,6 +9,7 @@ export * from './brand.js';
 export * from './company.js';
 export * from './corporate-identity.js';
 export * from './migrate-identity.js';
+export * from './migrate-translations.js';
 export * from './dataset.js';
 export * from './deploy-target.js';
 export * from './captcha.js';

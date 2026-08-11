@@ -35,11 +35,11 @@ describe('TranslationsEditor — reserved ghost rows', () => {
     const header = screen.getByRole('button', { name: /Shop · Cart/ });
     expect(header).toBeTruthy();
     expect(header.getAttribute('aria-expanded')).toBe('false'); // collapsed by default
-    expect(screen.queryByLabelText('cart_add — de')).toBeNull(); // rows hidden while collapsed
+    expect(screen.queryByLabelText('cart.add — de')).toBeNull(); // rows hidden while collapsed
     fireEvent.click(header);
-    expect(screen.getByText('cart_add')).toBeTruthy();
+    expect(screen.getByText('cart.add')).toBeTruthy();
     // the EN built-in default is shown as a placeholder (discoverability), not a stored value
-    const deCell = screen.getByLabelText('cart_add — de') as HTMLInputElement;
+    const deCell = screen.getByLabelText('cart.add — de') as HTMLInputElement;
     expect(deCell.placeholder).toBe('Add to cart');
     expect(deCell.value).toBe('');
   });
@@ -49,18 +49,29 @@ describe('TranslationsEditor — reserved ghost rows', () => {
     expect(screen.queryByText('Shop · Cart')).toBeNull();
   });
 
-  it('does NOT surface ghost rows for a single-locale site (nothing to translate into)', () => {
+  // The shop group carries merchant COPY and CONFIG, not a11y boilerplate: `cart.currency_symbol` is how a
+  // single-locale Namibian shop turns "$" into "N$". Gating it on a 2nd locale left that shop with no UI for
+  // it at all — while Shop settings pointed the operator at a Translations row that never rendered.
+  it('surfaces the shop group on a SINGLE-LOCALE site whenever the shop is on', () => {
     render(<Harness initial={[]} locales={['en']} shopEnabled />);
-    expect(screen.queryByText('Shop · Cart')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Shop · Cart/ }));
+    expect(screen.getByLabelText('cart.currency_symbol — en')).toBeTruthy();
+  });
+
+  // …but the SYSTEM group keeps its locale gate: those are component a11y strings ("Close", "Next slide")
+  // identical to the built-in defaults on an English site, so surfacing them there is pure clutter.
+  it('still hides the system group on a single-locale English site', () => {
+    render(<Harness initial={[]} locales={['en']} shopEnabled />);
+    expect(screen.queryByText('System · Components')).toBeNull();
   });
 
   it('materializes a ghost row into the catalog when an other-locale cell is edited', () => {
     render(<Harness initial={[]} locales={['en', 'de']} shopEnabled />);
     fireEvent.click(screen.getByRole('button', { name: /Shop · Cart/ }));
-    const deCell = screen.getByLabelText('cart_add — de') as HTMLInputElement;
+    const deCell = screen.getByLabelText('cart.add — de') as HTMLInputElement;
     fireEvent.change(deCell, { target: { value: 'In den Warenkorb' } });
     // the row stays visible (lastTouched keeps its group open) and holds the new value
-    expect((screen.getByLabelText('cart_add — de') as HTMLInputElement).value).toBe('In den Warenkorb');
+    expect((screen.getByLabelText('cart.add — de') as HTMLInputElement).value).toBe('In den Warenkorb');
   });
 
   it('surfaces extra (shop.<key>) ghost groups regardless of locale count, and materializes on edit', () => {
@@ -72,10 +83,9 @@ describe('TranslationsEditor — reserved ghost rows', () => {
         { key: 'shop.name', label: 'Order field', default: '' },
       ],
     };
-    // single-locale: the reserved cart_* group does NOT surface, but the extra shop group DOES (its keys
-    // have no platform default, so they must be fillable even with one locale).
+    // Single-locale: the extra shop group surfaces because its keys have no platform default at all, so
+    // they must be fillable even with one locale — the same reason the reserved shop group now surfaces too.
     render(<Harness initial={[]} locales={['en']} shopEnabled extraGhostGroups={[shopGroup]} />);
-    expect(screen.queryByRole('button', { name: /Shop · Cart/ })).toBeNull();
     const header = screen.getByRole('button', { name: /Shop · Channels & fields/ });
     expect(header.getAttribute('aria-expanded')).toBe('false'); // collapsed by default
     fireEvent.click(header);

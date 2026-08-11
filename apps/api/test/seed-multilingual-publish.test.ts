@@ -170,14 +170,14 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
   it('localizes the site chrome from one shared source (Consent Manager banner, footer columns, mobile nav)', async () => {
     const en = await page('index.html');
     expect(en).toContain('data-sw-consent'); // the AUTO-INJECTED consent-manager banner mount
-    expect(en).toContain('We value your privacy'); // consent banner heading (en), from the consent_title catalog key
+    expect(en).toContain('We value your privacy'); // consent banner heading (en), from the consent.title catalog key
     expect(en).toContain('>Legal<'); // footer Legal column heading
     // The chrome now localizes via the EDITABLE data-sw-translate directive (S()→T()); the marker must
     // still be stripped from the published artifact (only the resolved text remains).
     expect(en).not.toContain('data-sw-translate');
     expect(en).toMatch(/aria-label="Menu"/); // mobile slot hamburger
     const de = await page('de/index.html');
-    expect(de).toContain('Wir schätzen Ihre Privatsphäre'); // consent banner (de), from consent_title
+    expect(de).toContain('Wir schätzen Ihre Privatsphäre'); // consent banner (de), from consent.title
     expect(de).toContain('>Rechtliches<');
     expect(de).toMatch(/aria-label="Menü"/);
     expect(de).toContain('Datenschutz'); // the Legal column lists the German legal pages
@@ -230,20 +230,20 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('localizes the shop drawer + add-to-cart label from the translation catalog (reserved cart_* keys)', async () => {
     const en = await page('shop/index.html');
-    expect(en).toContain('data-cart-title="Your cart"'); // cart_title (en) from website.translations
-    expect(en).toContain('>Add to cart</button>'); // cart_add (en)
+    expect(en).toContain('data-cart-title="Your cart"'); // cart.title (en) from website.translations
+    expect(en).toContain('>Add to cart</button>'); // cart.add (en)
     expect(en).toContain('Studio Tee'); // products (en)
     expect(en).toContain('Order on WhatsApp'); // channel label (en) from shop.whatsapp
-    expect(en).toContain('data-currency-symbol="$"'); // cart_currency_symbol (en)
+    expect(en).toContain('data-currency-symbol="$"'); // cart.currency_symbol (en)
     const de = await page('de/shop/index.html');
-    expect(de).toContain('data-cart-title="Warenkorb"'); // cart_title (de) — bare {{sw-cart}}, no per-page hash
+    expect(de).toContain('data-cart-title="Warenkorb"'); // cart.title (de) — bare {{sw-cart}}, no per-page hash
     expect(de).toContain('data-empty-label="Ihr Warenkorb ist leer."');
-    expect(de).toContain('>In den Warenkorb</button>'); // cart_add (de) — the button now localizes too
+    expect(de).toContain('>In den Warenkorb</button>'); // cart.add (de) — the button now localizes too
     expect(de).toContain('Per WhatsApp bestellen'); // channel label (de) from shop.whatsapp (in data-channels JSON)
     expect(de).toContain('Studio-Shirt'); // products-de auto-resolved
     const es = await page('es/tienda/index.html');
     expect(es).toContain('data-cart-title="Su carrito"');
-    expect(es).toContain('>Añadir al carrito</button>'); // cart_add (es)
+    expect(es).toContain('>Añadir al carrito</button>'); // cart.add (es)
     expect(es).toContain('Pedir por WhatsApp'); // channel label (es) from shop.whatsapp
   });
 

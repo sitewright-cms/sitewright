@@ -12,7 +12,7 @@ interface TranslationsEditorProps {
   defaultLocale: string;
   /** Whether the shop is enabled — gates the reserved cart-string (shop_cart) ghost rows. */
   shopEnabled?: boolean;
-  /** Whether themes are enabled — gates the reserved theme (theme_toggle) ghost row. */
+  /** Whether themes are enabled — gates the reserved theme (theme.toggle) ghost row. */
   themesEnabled?: boolean;
   /** Whether the consent manager is enabled — gates the reserved consent (consent_*) ghost rows. */
   consentEnabled?: boolean;
@@ -99,29 +99,31 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
     }
   };
 
-  // Reserved groups surfaced as ghost rows: the feature is active AND there's more than one locale to
-  // translate into (a single-locale site renders the English defaults, so no table clutter). When a group
-  // is NOT surfaced (feature off), any rows the operator already materialized for its keys simply appear
-  // as ordinary free rows — harmless (the render still floors to the English default). Extend the feature
-  // switch below when a second ReservedTranslationGroup.feature is added.
+  // Reserved groups surfaced as ghost rows. When a group is NOT surfaced, any rows the operator already
+  // materialized for its keys simply appear as ordinary free rows — harmless (the render still floors to
+  // the English default), and they now group under their own scope. Extend the switch below when a new
+  // ReservedTranslationGroup.feature is added.
   const multiLocale = localeCodes.length > 1;
-  // Reserved (registry) groups need >1 locale (single-locale uses the built-in EN defaults). Extra ghost
-  // groups (e.g. the shop `shop.<key>` channel/field labels) are surfaced as passed — they have no platform
+  // A FEATURE-GATED group (shop / themes / consent) surfaces whenever its feature is ON — locale count is
+  // irrelevant. These are merchant-facing COPY and CONFIGURATION, not a11y boilerplate: `cart.currency_symbol`
+  // is how a Namibian shop turns "$" into "N$", and `cart.title` is how "Your cart" becomes "Your order".
+  // Gating them on a 2nd locale meant a single-locale English shop had NO surface for them at all — the
+  // operator had to know the key by heart and write it through the API, while Shop settings pointed at a
+  // Translations row that was never rendered. Ghost rows persist nothing until typed, so the table stays clean.
+  //
+  // The SYSTEM group is different and keeps the locale gate: those six are component a11y strings ("Close",
+  // "Next slide") that are identical to the built-in defaults on an English site, so surfacing them there
+  // would be pure clutter. It shows on any multi-locale site, or a single-locale NON-English one (so a
+  // German-only site can still localize them).
+  // Extra ghost groups (the `shop.<key>` channel/field labels) are surfaced as passed — they have no platform
   // default, so they must be fillable even single-locale. Empty groups (no keys) are dropped.
-  // Feature-gated groups (shop) surface only when that feature is on AND there's a 2nd locale to fill.
-  // A SYSTEM group (no `feature`) carries a11y strings that exist on EVERY site, so it also surfaces on
-  // a single-locale NON-English site (so e.g. a German-only site can localize the carousel/close labels
-  // — a single English site already matches the built-in defaults, so it stays clutter-free).
   const reservedSurfaced = RESERVED_TRANSLATION_GROUPS.filter((g) =>
     g.feature === 'shop'
-      ? shopEnabled && multiLocale
+      ? shopEnabled
       : g.feature === 'themes'
-        ? // the toggle's aria-label is an a11y string — also surface it on a single-locale NON-English
-          // site (so e.g. a German-only site can localize it without adding a second locale)
-          themesEnabled && (multiLocale || defaultLocale !== 'en')
+        ? themesEnabled
         : g.feature === 'consent'
-          ? // consent copy is shown to EVERY visitor — surface it for a single-locale non-English site too
-            consentEnabled && (multiLocale || defaultLocale !== 'en')
+          ? consentEnabled
           : multiLocale || defaultLocale !== 'en',
   );
   const surfacedGroups: Array<{ id: string; label: string; keys: readonly ReservedTranslation[] }> = [...reservedSurfaced, ...extraGhostGroups].filter(

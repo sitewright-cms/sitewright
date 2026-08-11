@@ -46,7 +46,7 @@ export const CONSENT_CATEGORIES = ['functional', 'analytics', 'marketing'] as co
 /**
  * The CONSENT MANAGER mount markup — the `<div id="sw-consent" data-sw-consent …>` carrying the escaped
  * runtime config. AUTO-INJECTED by the publish/render pipeline whenever `consent.enabled` (no authored
- * `{{sw-consent}}` needed). `tr(key)` localizes a reserved `consent_*` key for the page locale; `grantAll`
+ * `{{sw-consent}}` needed). `tr(key)` localizes a reserved `consent.*` key for the page locale; `grantAll`
  * pre-grants every category (PREVIEW only, for WYSIWYG). Returns '' when the manager is off.
  */
 export function consentMountMarkup(
@@ -60,7 +60,7 @@ export function consentMountMarkup(
     Array.isArray(consent.categories) && consent.categories.length
       ? (consent.categories as unknown[]).filter((c): c is string => typeof c === 'string')
       : [...CAT_KEYS];
-  const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent_${id}`), desc: tr(`consent_${id}_desc`) }));
+  const cats = CAT_KEYS.filter((id) => want.includes(id)).map((id) => ({ id, label: tr(`consent.${id}`), desc: tr(`consent.${id}_desc`) }));
   const version = typeof consent.version === 'number' && consent.version > 0 ? Math.floor(consent.version) : 1;
   const cfg: Record<string, unknown> = {
     v: version,
@@ -68,19 +68,19 @@ export function consentMountMarkup(
     deny: consent.denyButton !== false,
     cats,
     t: {
-      title: tr('consent_title'),
-      intro: tr('consent_intro'),
-      acceptAll: tr('consent_accept_all'),
-      rejectAll: tr('consent_reject_all'),
-      customize: tr('consent_customize'),
-      save: tr('consent_save'),
-      prefsTitle: tr('consent_prefs_title'),
-      necessary: tr('consent_necessary'),
-      necessaryDesc: tr('consent_necessary_desc'),
-      privacyLabel: tr('consent_privacy'),
-      allowOnce: tr('consent_allow_once'),
-      alwaysAllow: tr('consent_always_allow'),
-      embedNote: tr('consent_embed_note'),
+      title: tr('consent.title'),
+      intro: tr('consent.intro'),
+      acceptAll: tr('consent.accept_all'),
+      rejectAll: tr('consent.reject_all'),
+      customize: tr('consent.customize'),
+      save: tr('consent.save'),
+      prefsTitle: tr('consent.prefs_title'),
+      necessary: tr('consent.necessary'),
+      necessaryDesc: tr('consent.necessary_desc'),
+      privacyLabel: tr('consent.privacy'),
+      allowOnce: tr('consent.allow_once'),
+      alwaysAllow: tr('consent.always_allow'),
+      embedNote: tr('consent.embed_note'),
     },
   };
   if (opts.grantAll) cfg.grantAll = true;

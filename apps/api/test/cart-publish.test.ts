@@ -28,8 +28,8 @@ describe('mini shop cart → publish', () => {
   };
   // Currency symbol/code + channel labels are translatable → the catalog (resolved per locale at render).
   const shopTr = {
-    cart_currency_symbol: { en: '€' },
-    cart_currency_code: { en: 'EUR' },
+    'cart.currency_symbol': { en: '€' },
+    'cart.currency_code': { en: 'EUR' },
     'shop.whatsapp': { en: 'Order on WhatsApp' },
     'shop.pay': { en: 'Pay with PayPal' },
   };
@@ -123,8 +123,8 @@ describe('mini shop cart → publish', () => {
       path: 'warenkorb',
       title: 'Shop',
       root: { id: 'r', type: 'Section' },
-      data: { cart_title: 'Warenkorb', cart_empty: 'Ihr Warenkorb ist leer.' },
-      source: '<section>{{sw-cart title=(lookup page.data "cart_title") empty=(lookup page.data "cart_empty")}}</section>',
+      data: { 'cart.title': 'Warenkorb', 'cart.empty': 'Ihr Warenkorb ist leer.' },
+      source: '<section>{{sw-cart title=(lookup page.data "cart.title") empty=(lookup page.data "cart.empty")}}</section>',
     };
     expect((await proj.putContent('page', 'shop-de', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
@@ -144,9 +144,9 @@ describe('mini shop cart → publish', () => {
             footer: '{{sw-cart}}',
             shop,
             translations: {
-              cart_add: { en: 'Add to cart' },
-              cart_title: { en: 'Your cart' },
-              cart_empty: { en: 'Your cart is empty.' },
+              'cart.add': { en: 'Add to cart' },
+              'cart.title': { en: 'Your cart' },
+              'cart.empty': { en: 'Your cart is empty.' },
             },
           },
           settings: {},
@@ -166,7 +166,7 @@ describe('mini shop cart → publish', () => {
     const html = (await client.get(`/sites/${slug}/index.html`)).body;
     expect(html).toContain('data-cart-title="Your cart"'); // from website.translations, no hash
     expect(html).toContain('data-empty-label="Your cart is empty."');
-    expect(html).toContain('>Add to cart</button>'); // sw-add-to-cart label from cart_add
+    expect(html).toContain('>Add to cart</button>'); // sw-add-to-cart label from cart.add
   });
 
   it('ships NOTHING extra for a site that uses no cart', async () => {

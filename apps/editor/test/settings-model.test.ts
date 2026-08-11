@@ -200,6 +200,36 @@ describe('settings model', () => {
     ]);
   });
 
+  it('shopLabelKeys adds a shop.<key>.options row for CHOICE fields only, next to the label row', () => {
+    const channels = [
+      {
+        ...newShopChannel(),
+        kind: 'whatsapp' as const,
+        key: 'whatsapp',
+        number: '+1',
+        fields: [
+          { ...newShopField(), key: 'size', type: 'select' as const },
+          { ...newShopField(), key: 'delivery', type: 'radio' as const },
+          { ...newShopField(), key: 'wrap', type: 'checkbox' as const }, // a toggle needs no choices
+          { ...newShopField(), key: 'note', type: 'text' as const },
+        ],
+      },
+    ];
+    const keys = shopLabelKeys(channels).map((k) => k.key);
+    // the options row sits immediately after its own label row, so the two read as a pair in the table
+    expect(keys).toEqual([
+      'shop.whatsapp',
+      'shop.size',
+      'shop.size.options',
+      'shop.delivery',
+      'shop.delivery.options',
+      'shop.wrap',
+      'shop.note',
+    ]);
+    // the row label is the only place the CSV format is explained, so it must carry an example
+    expect(shopLabelKeys(channels).find((k) => k.key === 'shop.size.options')!.label).toMatch(/comma-separated/i);
+  });
+
   it('round-trips website.effects (nav/button effects) and omits "None"', () => {
     const withEffects: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

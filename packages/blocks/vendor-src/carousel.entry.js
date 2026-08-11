@@ -152,7 +152,7 @@ function enhance(root) {
   // visually-hidden live region. Auto-rotating carousels stay SILENT (aria-live="off") —
   // announcing every autoplay/autoscroll tick is noise; user-driven ones announce politely.
   if (!root.hasAttribute('role')) root.setAttribute('role', 'region');
-  if (!root.hasAttribute('aria-roledescription')) root.setAttribute('aria-roledescription', swT('carousel_label', 'carousel'));
+  if (!root.hasAttribute('aria-roledescription')) root.setAttribute('aria-roledescription', swT('system.carousel_label', 'carousel'));
   var auto = attr('data-autoscroll', '') === 'true' || attr('data-autoplay', '') === 'true';
   var live = document.createElement('div');
   live.className = 'sw-sr-only';
@@ -210,8 +210,8 @@ function enhance(root) {
 
   var prev = root.querySelector('[data-sw-part="prev"]');
   var next = root.querySelector('[data-sw-part="next"]');
-  if (prev) { if (!prev.getAttribute('aria-label')) prev.setAttribute('aria-label', swT('slide_prev', 'Previous slide')); addRipple(prev); prev.addEventListener('click', function () { embla.scrollPrev(); }); }
-  if (next) { if (!next.getAttribute('aria-label')) next.setAttribute('aria-label', swT('slide_next', 'Next slide')); addRipple(next); next.addEventListener('click', function () { embla.scrollNext(); }); }
+  if (prev) { if (!prev.getAttribute('aria-label')) prev.setAttribute('aria-label', swT('system.slide_prev', 'Previous slide')); addRipple(prev); prev.addEventListener('click', function () { embla.scrollPrev(); }); }
+  if (next) { if (!next.getAttribute('aria-label')) next.setAttribute('aria-label', swT('system.slide_next', 'Next slide')); addRipple(next); next.addEventListener('click', function () { embla.scrollNext(); }); }
 
   // Click-to-slide: the whole slide advances the carousel (the navigation-less "full-screen" pattern).
   // DEFAULT ON for the hero/full-screen style — a single full-width slide with EDGE arrows — so a
@@ -274,7 +274,7 @@ function enhance(root) {
       var b = document.createElement('button');
       b.type = 'button';
       b.innerHTML = DOT_SVG; // trusted constant above — never tenant data
-      b.setAttribute('aria-label', swT('go_to_slide', 'Go to slide {n}').replace(/\{n\}/g, i + 1));
+      b.setAttribute('aria-label', swT('system.go_to_slide', 'Go to slide {n}').replace(/\{n\}/g, i + 1));
       addRipple(b);
       b.addEventListener('click', function () { embla.scrollTo(i); });
       dotsWrap.appendChild(b);
@@ -311,7 +311,7 @@ function enhance(root) {
       dots[i].setAttribute('aria-current', i === sel ? 'true' : 'false');
     }
     var active = snapRegistry();
-    live.textContent = swT('slide_x_of_y', 'Slide {n} of {total}').replace(/\{n\}/g, sel + 1).replace(/\{total\}/g, embla.scrollSnapList().length);
+    live.textContent = swT('system.slide_x_of_y', 'Slide {n} of {total}').replace(/\{n\}/g, sel + 1).replace(/\{total\}/g, embla.scrollSnapList().length);
     for (var s = 0; s < slides.length; s++) {
       if (active.indexOf(s) !== -1) slides[s].setAttribute('data-active', '');
     }

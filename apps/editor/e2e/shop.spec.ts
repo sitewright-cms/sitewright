@@ -30,7 +30,7 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
         ],
       },
       translations: {
-        cart_currency_symbol: { en: '$' },
+        'cart.currency_symbol': { en: '$' },
         'shop.whatsapp': { en: 'Order on WhatsApp' },
         'shop.pay': { en: 'Pay now' },
       },
@@ -202,7 +202,7 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
       },
       // The cart note + channel label are translatable → the catalog (resolved per locale at render).
       translations: {
-        cart_note: { en: 'We confirm every order by hand.' },
+        'cart.note': { en: 'We confirm every order by hand.' },
         'shop.whatsapp': { en: 'Order on WhatsApp' },
       },
     },

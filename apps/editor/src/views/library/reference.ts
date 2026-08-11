@@ -253,7 +253,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'Outputs a translated string for the current page locale from the project translation catalog (website.translations), falling back to the default locale, then to default=, then to empty. No JS — resolved at build (works in the live preview too). The output is escaped, so it is safe in text OR an attribute (alt / aria-label / placeholder / title). The catalog is a dedicated per-locale table, separate from website.data.',
         args: [
-          { name: 'key', desc: 'The translation key — an identifier like nav_cta or cart_title.' },
+          { name: 'key', desc: 'The translation key — an identifier or dotted scope path like nav_cta or cart.title.' },
           { name: 'default', desc: 'Optional hash — text shown when the key has no value in any locale.' },
         ],
         example: '<a href="{{sw-url "/contact"}}">{{sw-translate "nav_contact" default="Contact"}}</a>',
@@ -298,7 +298,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-consent-settings',
         keywords: 'cookie settings consent reopen preferences withdraw manage privacy',
         description:
-          'A button that RE-OPENS the consent preferences (for a footer “Cookie settings” link so visitors can change or withdraw consent). Needs consent enabled; with it off it renders nothing. The label localizes via the reserved `consent_settings` key.',
+          'A button that RE-OPENS the consent preferences (for a footer “Cookie settings” link so visitors can change or withdraw consent). Needs consent enabled; with it off it renders nothing. The label localizes via the reserved `consent.settings` key.',
         example: '{{sw-consent-settings class="link"}}',
         note: 'Pairs with {{sw-consent}}. Any element carrying data-sw-consent-open re-opens the banner too.',
       },
@@ -308,7 +308,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-theme-toggle',
         keywords: 'dark light mode theme toggle color scheme switch night sun moon',
         description:
-          'A light/dark toggle button for the opt-in THEMES feature (turn it on in Settings → Website → “Themes (light / dark)”, where you also pick the default theme). It shows a sun/moon icon for the active theme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With themes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme_toggle` translation key.',
+          'A light/dark toggle button for the opt-in THEMES feature (turn it on in Settings → Website → “Themes (light / dark)”, where you also pick the default theme). It shows a sun/moon icon for the active theme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With themes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme.toggle` translation key.',
         example: '{{sw-theme-toggle class="btn btn-ghost btn-circle"}}',
         note: 'Dark mode works WITHOUT this button (the default theme — or each visitor’s OS preference on “auto” — already applies); the toggle just lets visitors override it. It only appears, and its tiny runtime only ships, when themes are enabled.',
       },

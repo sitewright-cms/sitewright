@@ -6,6 +6,7 @@ import {
   CaptchaStoredSchema,
   CorporateIdentitySchema,
   mergeLegacyIdentity,
+  mergeLegacyTranslations,
   DatasetSchema,
   DeployTargetSchema,
   AiConfigSchema,
@@ -50,9 +51,12 @@ import { rewriteDatasetRefsInSource, sourceReferencesDataset, rewriteReferenceTa
  * The project's settings singleton (Corporate Identity + website settings + locale).
  * `mergeLegacyIdentity` runs first so a row written in the old `{brand,company}`
  * shape upgrades to `{identity}` transparently on read (it re-persists on next put).
+ * `mergeLegacyTranslations` then lifts a catalog still holding the FLAT reserved keys
+ * onto their scoped names — the reserved rename is hard, with no read-time alias, so
+ * without this a stored override silently reverts to the built-in English default.
  */
 export const SettingsSchema = z.preprocess(
-  mergeLegacyIdentity,
+  (raw) => mergeLegacyTranslations(mergeLegacyIdentity(raw)),
   z.object({
     identity: CorporateIdentitySchema,
     website: WebsiteSettingsSchema.optional(),
@@ -541,9 +545,11 @@ export class ContentRepository {
       .object({
         // Accept a v2 `{identity}` project OR a legacy `{brand,company}` one
         // (mergeLegacyIdentity folds the latter), so old exported bundles import.
+        // mergeLegacyTranslations likewise lifts a bundle whose catalog still holds the
+        // flat reserved keys, so an old export keeps its cart/consent/theme overrides.
         project: z
           .preprocess(
-            mergeLegacyIdentity,
+            (raw) => mergeLegacyTranslations(mergeLegacyIdentity(raw)),
             z.object({
               identity: CorporateIdentitySchema,
               website: WebsiteSettingsSchema.optional(),

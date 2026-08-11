@@ -145,7 +145,17 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
-  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea,[data-sw-cart] [data-sw-part="order-field"] select{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
+  // CHOICE + TOGGLE order fields. A radio group is a <fieldset> (its <legend> replaces the usual >span
+  // label, hence the reset), and a radio/checkbox input must NOT inherit the full-width text-input rule
+  // above — it sits inline next to its own label instead.
+  '[data-sw-cart] [data-sw-part="order-choice"]{display:block;margin-bottom:.5rem;font-size:.8125rem;border:0;padding:0;min-width:0}',
+  '[data-sw-cart] [data-sw-part="order-choice"]>legend{padding:0;margin-bottom:.15rem}',
+  '[data-sw-cart] [data-sw-part="order-option"]{display:flex;align-items:center;gap:.4rem;margin:.15rem 0;font-weight:400}',
+  '[data-sw-cart] [data-sw-part="order-option"] input,[data-sw-cart] [data-sw-part="order-toggle"] input[type="checkbox"]{width:auto;margin:0;padding:0;flex:none}',
+  '[data-sw-cart] [data-sw-part="order-toggle"]{display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;font-size:.8125rem}',
+  '[data-sw-cart] [data-sw-part="order-toggle"]>span{margin:0}',
+  '[data-sw-cart] [data-sw-part="order-toggle"] input{width:auto;margin:0;flex:none}',
   // order-submit / channel-submit are checkout CTAs — they render as .btn.btn-primary.btn-block; only
   // their stacking gap + the submitting cursor are kept (the face/hover come from .btn).
   '[data-sw-cart] [data-sw-part="order-submit"]{margin-top:.25rem}',
@@ -243,6 +253,7 @@ export const CART_JS = `(function(){
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
+      yesLabel:mount.getAttribute('data-yes-label')||'Yes', // the value a ticked checkbox order field contributes
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
       channels:channels
     };
@@ -454,17 +465,66 @@ export const CART_JS = `(function(){
       var form=part('form','channel-form');form.hidden=true;
       var inputs=[];
       for(var i=0;i<fields.length;i++){
-        (function(f){
+        (function(f,idx){
           var label=clip(String(f&&f.label!=null?f.label:''),60);
           if(!label){return;}
-          var t=(f&&(f.type==='textarea'||f.type==='tel'||f.type==='email'))?f.type:'text';
+          var type=(f&&typeof f.type==='string')?f.type:'text';
           var req=!!(f&&f.required);
-          var wrap=part('label','order-field');wrap.appendChild(mk('span',null,req?(label+' *'):label));
+          var opts=(f&&f.options&&f.options.length)?f.options:null;
+          var prompt=req?(label+' *'):label;
+
+          // SELECT — one <option> per choice. A required select gets a leading EMPTY option so the browser's
+          // own validity check fails while nothing is chosen (a select whose first option is a real choice is
+          // never "empty", so 'required' would be a no-op).
+          if(type==='select'&&opts){
+            var wrapS=part('label','order-field');wrapS.appendChild(mk('span',null,prompt));
+            var sel=document.createElement('select');if(req){sel.required=true;sel.appendChild(mk('option',null,''));}
+            for(var s=0;s<opts.length;s++){var o=mk('option',null,String(opts[s]));o.value=String(opts[s]);sel.appendChild(o);}
+            wrapS.appendChild(sel);form.appendChild(wrapS);
+            inputs.push({label:label,read:function(){return sel.value||'';},focus:function(){sel.focus();}});
+            return;
+          }
+
+          // RADIO — a <fieldset>/<legend> group. 'required' goes on EVERY input of the group: the browser
+          // treats same-name radios as one constraint, so any of them carrying it blocks submit, and marking
+          // all keeps it true no matter which the operator reorders to the front.
+          if(type==='radio'&&opts){
+            var fs=part('fieldset','order-choice');fs.appendChild(mk('legend',null,prompt));
+            var gname='sw-of-'+idx+'-'+Math.random().toString(36).slice(2,8); // unique per group, per form
+            var radios=[];
+            for(var r=0;r<opts.length;r++){
+              var rowL=part('label','order-option');
+              var ri=document.createElement('input');ri.type='radio';ri.name=gname;ri.value=String(opts[r]);
+              if(req){ri.required=true;}
+              rowL.appendChild(ri);rowL.appendChild(mk('span',null,String(opts[r])));
+              fs.appendChild(rowL);radios.push(ri);
+            }
+            form.appendChild(fs);
+            inputs.push({label:label,read:function(){for(var k=0;k<radios.length;k++){if(radios[k].checked){return radios[k].value;}}return '';},focus:function(){if(radios[0]){radios[0].focus();}}});
+            return;
+          }
+
+          // CHECKBOX — a single toggle. Ticked contributes the localized "Yes"; UNticked contributes nothing
+          // at all (the blank-value drop below), so an order never carries a line the buyer did not ask for.
+          if(type==='checkbox'){
+            var wrapC=part('label','order-toggle');
+            var cb=document.createElement('input');cb.type='checkbox';if(req){cb.required=true;}
+            wrapC.appendChild(cb);wrapC.appendChild(mk('span',null,prompt));
+            form.appendChild(wrapC);
+            inputs.push({label:label,read:function(){return cb.checked?cfg.yesLabel:'';},focus:function(){cb.focus();}});
+            return;
+          }
+
+          // Everything else is a one-line/multi-line text control. An unknown type (an older field written by
+          // a newer editor, or a choice type whose options row is empty) degrades to 'text' rather than
+          // emitting an input the browser would not understand.
+          var t=(type==='textarea'||type==='tel'||type==='email'||type==='number'||type==='url'||type==='date'||type==='time')?type:'text';
+          var wrap=part('label','order-field');wrap.appendChild(mk('span',null,prompt));
           var inp=t==='textarea'?document.createElement('textarea'):document.createElement('input');
           if(t!=='textarea'){inp.type=t;}if(req){inp.required=true;}
           wrap.appendChild(inp);form.appendChild(wrap);
-          inputs.push({label:label,req:req,inp:inp});
-        })(fields[i]);
+          inputs.push({label:label,read:function(){return inp.value||'';},focus:function(){inp.focus();}});
+        })(fields[i],i);
       }
       var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','channel-status');
@@ -476,14 +536,14 @@ export const CART_JS = `(function(){
         // field blocks submit before this handler runs, so here we just collect the non-empty values.
         var values=[];
         for(var i=0;i<inputs.length;i++){
-          var v=(inputs[i].inp.value||'').trim();
+          var v=(inputs[i].read()||'').trim();
           if(v){values.push({label:inputs[i].label,value:v});}
         }
         runChannel(ch,items,cfg,values);
         // Collapse + re-sync the toggle's a11y state so it doesn't report "expanded" over a hidden form.
         form.hidden=true;status.textContent='';toggleBtn.setAttribute('aria-expanded','false');
       });
-      return {form:form,open:function(){if(inputs[0]){inputs[0].inp.focus();}}};
+      return {form:form,open:function(){if(inputs[0]){inputs[0].focus();}}};
     }
 
     // The "form" channel: an inline order form (contact fields) that POSTs name/email/phone/note +

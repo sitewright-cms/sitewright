@@ -556,7 +556,7 @@ describe('component registry', () => {
     // The auto close button's aria-label localizes from the CSP-safe <html data-sw-i18n> attribute
     // (data-close-label override wins), flooring to 'Close'.
     expect(js).toContain('data-sw-i18n');
-    expect(js).toContain("swt('close','Close')");
+    expect(js).toContain("swt('system.close','Close')");
     // The close button's appearance: primary background, white icon, hover zoom + 180° spin.
     expect(css).toContain('[data-sw-part="autoclose"]');
     expect(css).toContain('var(--sw-color-primary');

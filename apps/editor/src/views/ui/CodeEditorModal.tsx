@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { CodeEditor, type CodeLanguage } from '../../lib/code-editor';
 
@@ -6,9 +6,9 @@ interface CodeEditorModalProps {
   title: string;
   /** Initial source. */
   value: string;
-  /** Persist the edited source (and, when {@link nameEdit} is set, the edited name). The modal
-   *  closes once this resolves; if it REJECTS the modal stays open (so a failed save doesn't discard
-   *  the in-progress edit). Sync handlers always close. */
+  /** Persist the edited source (and, when {@link nameEdit} is set, the edited name). The modal STAYS
+   *  OPEN either way — a rejected save keeps the draft, and a successful one leaves you where you
+   *  were working. */
   onSave: (value: string, name?: string) => void | Promise<void>;
   onClose: () => void;
   /** Optional one-line hint shown above the editor (e.g. available bindings). */
@@ -41,31 +41,70 @@ interface CodeEditorModalProps {
 
 /**
  * A large, full-height code editor in the global Modal — the platform's single surface for editing
- * any HTML/Handlebars source (partials, raw slots, …). The editor is the black/single-accent
- * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes (staying open if the save rejects).
+ * any HTML/Handlebars source (partials, raw slots, critical CSS, …). The editor is the
+ * black/single-accent CodeMirror; Save (header ✓ or ⌘S) commits the draft.
+ *
+ * ★ SAVING DOES NOT CLOSE IT. Editing a slot or a stylesheet is iterative — save, look at the result,
+ * keep going — and closing on every save turned that loop into a reopen each time, on the surfaces
+ * where the loop is the whole activity. Two things replace closing as the feedback: the Save control
+ * disables the moment the draft matches what is stored, and the header says "Saved" for a beat.
+ *
+ * ★ AND CLOSING NOW HAS TO ASK. While save-then-close was the only exit, unsaved work could not be
+ * lost; leaving the modal open makes an Escape or a backdrop click a way to discard edits that were
+ * never committed. `onBeforeClose` confirms first — the same guard the slot editor already carries.
  */
 export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit, fork }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
   // intentionally ignored — the user's live edits take precedence until they Save or close.
   const [draft, setDraft] = useState(value);
   const [draftName, setDraftName] = useState(nameEdit?.value ?? '');
+  // What is actually stored, as far as this modal knows — the baseline `dirty` is measured against,
+  // moved forward only by a save that RESOLVED. A rejected save must leave the editor still dirty.
+  const [saved, setSaved] = useState({ value, name: nameEdit?.value ?? '' });
+  const [saving, setSaving] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const nameError = nameEdit?.validate ? nameEdit.validate(draftName) : null;
+  const dirty = draft !== saved.value || (nameEdit ? draftName !== saved.name : false);
+
+  // Clear the "Saved" flash on a timer, and on unmount so a late tick never touches a dead component.
+  const flash = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(flash.current), []);
+
   return (
     <Modal
       title={title}
       size="screen"
       onClose={onClose}
-      saveDisabled={!!nameError}
+      // Leaving with uncommitted edits is now possible, so it has to be deliberate.
+      onBeforeClose={() => !dirty || window.confirm('Discard unsaved changes?')}
+      saving={saving}
+      saveDisabled={!!nameError || !dirty}
+      titleExtra={
+        justSaved ? (
+          // ★ "Applied", not "Saved" — this modal CANNOT KNOW whether the caller persisted. Critical
+          // CSS writes straight through; a website slot only patches the settings form, which still
+          // needs its own Save. Claiming "Saved" there would invite closing the tab on unsaved work.
+          // The real signal is the Save control going disabled: nothing left to commit from HERE.
+          <span className="text-xs font-medium text-emerald-500 dark:text-emerald-400">Applied</span>
+        ) : dirty ? (
+          <span className="text-xs text-slate-500 dark:text-slate-400">Unsaved changes</span>
+        ) : undefined
+      }
       onSave={() => {
-        // Close only once the save resolves; a rejected save keeps the editor open with the draft.
         void (async () => {
+          setSaving(true);
           try {
             // Only pass the name when name-editing is active, so callers that wired `onSave` as a
             // plain `(value) => …` (e.g. CodeField) keep their single-argument contract.
             await (nameEdit ? onSave(draft, draftName) : onSave(draft));
-            onClose();
+            setSaved({ value: draft, name: draftName });
+            setJustSaved(true);
+            clearTimeout(flash.current);
+            flash.current = setTimeout(() => setJustSaved(false), 2000);
           } catch {
-            /* stay open — the caller surfaces the error and the draft is preserved */
+            /* stay open and still DIRTY — the caller surfaces the error, the draft is preserved */
+          } finally {
+            setSaving(false);
           }
         })();
       }}

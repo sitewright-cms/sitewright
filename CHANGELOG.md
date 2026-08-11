@@ -11,6 +11,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Saving a website slot, critical CSS or a code record no longer closes the editor.** Editing these
+  is iterative — save, look at the result, keep going — and closing on every save turned that loop
+  into a reopen each time, on the surfaces where the loop is the whole activity. Save (✓ or ⌘/Ctrl+S)
+  now commits and leaves you where you were working.
+  - Closing **was** the confirmation, so two things replace it: the Save control disables the moment
+    the draft matches what is stored, and the header reports the state.
+  - It says **"Applied"**, not "Saved" — the editor cannot know whether the caller persisted. Critical
+    CSS writes straight through, but a website slot only patches the settings form, which still needs
+    its own Save; claiming "Saved" there would invite closing the tab on unsaved work.
+  - **Closing now asks before discarding.** While save-then-close was the only exit, uncommitted work
+    could not be lost; leaving the editor open makes an Escape or a backdrop click a way to lose it.
+  - A **rejected** save leaves the draft dirty, so a failure can never read as a successful commit.
+
+### Changed
+
 - **One colour picker everywhere.** The Animated Backgrounds and Background Textures studios used the
   browser's native `<input type="color">` — no alpha, no colour spaces, no way to reach the project's
   own brand, and a different control on every operating system. Both now use the platform picker that

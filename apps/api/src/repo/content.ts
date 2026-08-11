@@ -198,6 +198,23 @@ export class ContentRepository {
     }
   }
 
+  /**
+   * Normalize a stored row on the way OUT.
+   *
+   * Reads return `row.data` RAW — the kind's schema (and therefore its `z.preprocess`) runs on WRITE
+   * only. So a shape migration wired solely into SettingsSchema would reach a project just once it next
+   * SAVED, and every read until then (publish, preview, editor, MCP) would see the old shape. For the
+   * flat→scoped reserved-translation rename that is a SILENT regression: `cart_currency_symbol` stops
+   * resolving and the cart quietly falls back to the built-in `$`.
+   *
+   * So settings are normalized here too, at the read boundary. It is cheap (one key scan; the migrator
+   * returns the SAME reference when there is nothing to lift) and idempotent, and the next `put` of that
+   * project persists the lifted shape — the same converge-on-write pattern `mergeLegacyIdentity` uses.
+   */
+  private normalizeOnRead(kind: ContentKind, data: unknown): unknown {
+    return kind === 'settings' ? mergeLegacyTranslations(data) : data;
+  }
+
   async list(ctx: ProjectContext, kind: ContentKind): Promise<unknown[]> {
     const rows = await this.db
       .select()
@@ -206,7 +223,7 @@ export class ContentRepository {
       // exports, fonts — transparently skips items in the Recycle Bin. `deletedAt` is NULL for all other
       // kinds, so this is a no-op for them.
       .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
-    return rows.map((row) => row.data);
+    return rows.map((row) => this.normalizeOnRead(kind, row.data));
   }
 
   /**
@@ -267,7 +284,7 @@ export class ContentRepository {
   async get(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<unknown> {
     const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
-    return row.data;
+    return this.normalizeOnRead(kind, row.data);
   }
 
   /**

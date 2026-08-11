@@ -179,6 +179,17 @@ export const ANIMATION_JS = `(function(){
   function swRatio(el,attr,def){var v=parseFloat(el.getAttribute(attr));return isNaN(v)?def:Math.max(0,Math.min(v,1));}
   var thrSet={};thrSet['0']=1;
   Array.prototype.forEach.call(els,function(el){thrSet[swRatio(el,'data-sw-threshold',${REVEAL_RATIO})]=1;});
+  // ★ A LADDER, not just the crossings. The default threshold is 0, so with only the per-element
+  // values this observer fires EXACTLY ONCE as an element enters — at the instant it first touches
+  // the root, ratio 0. Any reveal declined at that instant (see the layout check in swRevealCb) is
+  // therefore declined FOREVER: the ratio climbs 0 → 1 with no further threshold to cross, so no
+  // second callback ever arrives and the element stays at opacity 0 while the reader looks straight
+  // at it. Entering from the TOP always lands on that instant, because the root's top edge is not
+  // inset the way its bottom is — which is exactly why this only ever showed up scrolling UP.
+  // Measured: 4 of 8 effects permanently invisible on the way back up, in every version since the
+  // reveal observer was written. The extra rungs cost nothing (a handful of callbacks per element
+  // per entry) and give every later decision another chance to say yes.
+  [0.01,0.1,0.25,0.5,0.75,1].forEach(function(t){thrSet[t]=1;});
   var THRESHOLDS=[];for(var tk in thrSet)THRESHOLDS.push(parseFloat(tk));
   // Scroll ROOT for both observers. In the whole-site PREVIEW the page scrolls on <body> (the renderer sets
   // html{overflow:hidden} body{overflow-y:auto} for a styled scrollbar in the sandboxed frame) — a NON-ROOT
@@ -220,9 +231,16 @@ export const ANIMATION_JS = `(function(){
   }
   var exitIo=new IntersectionObserver(function(entries){
     entries.forEach(function(entry){
-      // ★ Both conditions, and the second is the one that stops the flicker: an element is only reset
-      // once it has genuinely LEFT, not when its own hidden transform has carried it out.
-      if(entry.intersectionRatio===0&&entry.target.classList.contains('sw-animation-active')&&swLayoutOffscreen(entry.target))entry.target.classList.remove('sw-animation-active');
+      // ★ \`!isIntersecting\`, NOT \`intersectionRatio===0\`. Those look interchangeable and are not: the
+      // ratio is ALSO 0 when the element is exactly TOUCHING the root edge — zero area, but present —
+      // and that is the precise moment it arrives while scrolling UP. So the old test reset an element
+      // at the very instant the reveal observer was announcing it; the two fought over one frame and
+      // the reset won, and with a single threshold there was no later callback to undo it. The element
+      // then stayed hidden for good. \`isIntersecting\` is false only when there is genuinely no
+      // intersection, which is what "it has left" was always meant to mean.
+      // ★ And the layout check: an element is only reset once it has genuinely LEFT, not when its own
+      // hidden transform has carried it out — that fed the flicker loop at the top edge (#900).
+      if(!entry.isIntersecting&&entry.target.classList.contains('sw-animation-active')&&swLayoutOffscreen(entry.target)){entry.target.classList.remove('sw-animation-active');if(swBlind(entry.target))swDefer(entry.target);}
     });
   },{threshold:[0],root:scrollRoot});
   // Reveal an element once. data-sw-once="true" then stops BOTH observers watching it → it can never reset.
@@ -233,13 +251,61 @@ export const ANIMATION_JS = `(function(){
   // SCROLL-REVEAL: fires once the element crosses the reveal line — 20% up from the viewport bottom by
   // default, or data-sw-offset px in. Height-INDEPENDENT, so a 200px card and a 3000px section behave the
   // same. data-sw-threshold can additionally demand a fraction of the element. Reveal only; exitIo owns reset.
+  // The reveal criterion applied to the element's LAYOUT box — the same line the observer uses, minus
+  // the element's own transform. Unmeasurable (fixed/detached) → defer to the observer.
+  function swLayoutInRoot(el){
+    var b=swLayoutBox(el);
+    if(!b)return true;
+    var off=swOffset(el);
+    return b.bottom>0&&b.top<b.vh-(off===null?b.vh*0.2:off);
+  }
+  // ★ DECLINED IS NOT DENIED. A reveal the layout check turns down must be RE-OFFERED, because the
+  // observer will not offer it again: intersectionRatio saturates as an element enters, and once the
+  // last threshold is crossed there are no more callbacks. slide-up made that concrete — its hidden
+  // state sits a full element height BELOW its layout box, so the ratio reaches its maximum at exactly
+  // the moment the layout box arrives, and the one callback that could have revealed it was the one
+  // being declined. Adding thresholds narrowed this (4 stuck effects → 1) but cannot close it: for an
+  // element taller than the viewport the ratio never reaches the upper rungs at all. So a declined
+  // element goes on a list that is re-checked on scroll, against its LAYOUT box, until it qualifies or
+  // drifts out of range. The list only ever holds elements the observer has already pointed at.
+  // ★ The slide-* family is INVISIBLE TO THE OBSERVER. Their hidden transform is 100% of the element's
+  // OWN size, so a tall one is drawn an entire height away from where it belongs: bring a 1200px
+  // slide-up into the middle of an 800px viewport and the thing the observer is watching sits 1200px
+  // below the fold, never intersecting, never reported. No threshold and no re-offer can help, because
+  // there is no callback to re-offer — the element simply never enters the observer's world while the
+  // reader is looking straight at the space it should occupy. (Measured stuck before AND after #900,
+  // so this one is older than that fix.) They therefore stay on the deferred list on their own account,
+  // from init and again after every reset, and are revealed off their LAYOUT box like everything else.
+  function swBlind(el){return (el.getAttribute('data-sw-animation')||'').indexOf('slide-')===0;}
+  var deferred=[],deferredTick=false;
+  function swDefer(el){if(deferred.indexOf(el)<0&&deferred.length<400)deferred.push(el);}
+  function swDrainDeferred(){
+    deferredTick=false;
+    for(var i=deferred.length-1;i>=0;i--){
+      var el=deferred[i];
+      if(el.classList.contains('sw-animation-active')){deferred.splice(i,1);continue;}
+      if(swLayoutInRoot(el)){swReveal(el);deferred.splice(i,1);continue;}
+      // Well out of range: drop it, so the per-scroll cost stays proportional to what is near the
+      // viewport. Safe for everything the observer CAN see — it re-offers them on the way back. A
+      // slide-* element has no such safety net, so it keeps its place in the queue.
+      var b=swLayoutBox(el);
+      if(b&&(b.bottom<-b.vh||b.top>2*b.vh)&&!swBlind(el))deferred.splice(i,1);
+    }
+  }
+  function swDeferredTick(){if(!deferredTick&&deferred.length){deferredTick=true;requestAnimationFrame(swDrainDeferred);}}
+  // capture:true so a scroll inside an INNER container counts too (scroll events do not bubble).
+  addEventListener('scroll',swDeferredTick,{passive:true,capture:true});
+  addEventListener('resize',swDeferredTick,{passive:true});
   function swRevealCb(entries){
     entries.forEach(function(entry){
       var el=entry.target;
-      // ★ The layout check is the other half of the same guard: a hidden element whose transform has
-      // pushed it back into view is not something the reader has scrolled to, and revealing it there
-      // is what completed the loop. Its LAYOUT box has to be on screen too.
-      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO})&&!swLayoutOffscreen(el))swReveal(el);
+      // ★ The layout check is the other half of the flicker guard: a hidden element whose transform
+      // has pushed it back into view is not something the reader has scrolled to, and revealing it
+      // there is what completed the loop (#900). Its LAYOUT box has to have arrived too.
+      if(entry.isIntersecting&&entry.intersectionRatio>=swRatio(el,'data-sw-threshold',${REVEAL_RATIO})){
+        if(swLayoutInRoot(el))swReveal(el);
+        else swDefer(el);
+      }
     });
   }
   // BOTTOM-OF-DOCUMENT FAILSAFE. The reveal line sits 20% up from the viewport bottom, which an element
@@ -315,7 +381,8 @@ export const ANIMATION_JS = `(function(){
       var revealIo=swIoFor(el);  // reveal: the -20% line, or data-sw-offset px
       el.__swIo=revealIo;        // remembered so data-sw-once can unobserve the RIGHT observer
       revealIo.observe(el);
-      exitIo.observe(el);  // reset (replay) when FULLY off the viewport
+      exitIo.observe(el);
+      if(swBlind(el))swDefer(el);  // see swBlind: the observer can never report this one in time  // reset (replay) when FULLY off the viewport
     });
     // ON-LOAD entrance: a THIRD observer against the FULL viewport (NO -20% bottom margin) reveals whatever
     // is already MEANINGFULLY in view at load — an above-the-fold entrance (a section under a tall hero, whose

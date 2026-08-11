@@ -11,6 +11,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **★ Scrolling back UP left animated elements permanently invisible.** Reported as "some elements are
+  not animated in anymore and stay invisible", and measured exactly that way — come to rest on the
+  element, wait, ask whether it is visible. Across 14 configurations: **19 permanently invisible
+  before, 0 after.** The regression came in with the flicker fix below (6 stuck before it, 19 after),
+  so both directions now have a browser test that would have caught it.
+  The reveal observer's only threshold is `0`, so it fires **exactly once** as an element enters — at
+  the instant it first touches the root, ratio 0. Entering from the top always lands on that instant,
+  because the root's top edge is not inset the way its bottom is; a reveal declined there (the layout
+  check that stops the flicker) was therefore declined *forever*, since no second callback ever came.
+  Compounding it, the reset observer treated `intersectionRatio === 0` as "gone" — but the ratio is
+  also 0 when an element is merely *touching* the edge, so it reset elements at the very moment they
+  arrived. Three changes: the reset now keys on `!isIntersecting`; the reveal observer gained a ladder
+  of thresholds; and a declined reveal is **re-offered** against the element's layout box on scroll
+  instead of being dropped.
+  That last one also closes a case older than the flicker fix: `slide-*` translates by 100% of the
+  element's own size, so a 1200px `slide-up` centred in an 800px viewport is drawn entirely below the
+  fold — the observer never sees it at all, and no threshold could have helped. Those stay queued
+  until they are revealed.
+
 - **★ Most button effects, every hover accent and every shape did nothing at all.** Reported against
   the Button effects modal and the Button builder, but the previews were faithful — the defaults
   themselves were inert, on published sites too. Measured as computed style against a no-effect

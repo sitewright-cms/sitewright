@@ -8,7 +8,11 @@ interface CodeEditorModalProps {
   value: string;
   /** Persist the edited source (and, when {@link nameEdit} is set, the edited name). The modal STAYS
    *  OPEN either way — a rejected save keeps the draft, and a successful one leaves you where you
-   *  were working. */
+   *  were working.
+   *
+   *  ★ IT MUST ACTUALLY PERSIST, and must REJECT if it could not. The editor reports "Saved" and marks
+   *  the draft clean purely on this resolving; a handler that stages into a form needing a separate
+   *  submit, or that swallows its own error, turns that into a lie an author acts on. */
   onSave: (value: string, name?: string) => void | Promise<void>;
   onClose: () => void;
   /** Optional one-line hint shown above the editor (e.g. available bindings). */
@@ -81,11 +85,10 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
       saveDisabled={!!nameError || !dirty}
       titleExtra={
         justSaved ? (
-          // ★ "Applied", not "Saved" — this modal CANNOT KNOW whether the caller persisted. Critical
-          // CSS writes straight through; a website slot only patches the settings form, which still
-          // needs its own Save. Claiming "Saved" there would invite closing the tab on unsaved work.
-          // The real signal is the Save control going disabled: nothing left to commit from HERE.
-          <span className="text-xs font-medium text-emerald-500 dark:text-emerald-400">Applied</span>
+          // "Saved" is now the honest word: every caller PERSISTS on save rather than staging into a
+          // form that needs its own submit. It only stays honest because a caller whose write failed
+          // REJECTS — the draft then stays dirty and this never shows. See CodeEditorModalProps.onSave.
+          <span className="text-xs font-medium text-emerald-500 dark:text-emerald-400">Saved</span>
         ) : dirty ? (
           <span className="text-xs text-slate-500 dark:text-slate-400">Unsaved changes</span>
         ) : undefined

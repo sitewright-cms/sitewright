@@ -17,9 +17,15 @@ The running version of an instance is reported at `GET /version` (baked into the
   now commits and leaves you where you were working.
   - Closing **was** the confirmation, so two things replace it: the Save control disables the moment
     the draft matches what is stored, and the header reports the state.
-  - It says **"Applied"**, not "Saved" — the editor cannot know whether the caller persisted. Critical
-    CSS writes straight through, but a website slot only patches the settings form, which still needs
-    its own Save; claiming "Saved" there would invite closing the tab on unsaved work.
+  - It says **"Saved"**, and that is now literally true: **every code editor persists on its own
+    Save**, with no second form submission. The nav, button and preloader slots and the website-data
+    modal only staged into the settings form, so an author who saved inside the editor and closed the
+    tab lost the work — "I saved and it didn't save". They now write through like critical CSS, the
+    `<head>`/scripts blocks and the chrome slots already did.
+  - **A failed save is no longer indistinguishable from a successful one.** The settings save caught
+    its own error and returned nothing, so the editor marked the draft clean and reported "Saved"
+    while the toast said it had failed. It now reports whether it persisted, and the editor keeps the
+    draft dirty when it did not.
   - **Closing now asks before discarding.** While save-then-close was the only exit, uncommitted work
     could not be lost; leaving the editor open makes an Escape or a backdrop click a way to lose it.
   - A **rejected** save leaves the draft dirty, so a failure can never read as a successful commit.

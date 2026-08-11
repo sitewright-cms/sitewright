@@ -15,7 +15,8 @@ function CodeIcon() {
 interface CodeFieldProps {
   label: string;
   value: string;
-  onChange: (value: string) => void;
+  /** Commit the edited source. May return a promise; the editor awaits it and keeps the draft if it rejects. */
+  onChange: (value: string) => void | Promise<void>;
   /** Modal title (defaults to the label). */
   title?: string;
   /** Optional one-line hint shown above the editor. */
@@ -60,7 +61,7 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
       {starter && trimmed === '' && (
         <button
           type="button"
-          onClick={() => onChange(starter.code)}
+          onClick={() => void onChange(starter.code)}
           className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 text-[11px] font-medium text-indigo-700 dark:text-indigo-300 transition hover:bg-indigo-100 dark:hover:bg-indigo-500/15"
         >
           + {starter.label}

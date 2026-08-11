@@ -184,8 +184,14 @@ export function SettingsView({
    * straight after it would still close over the PREVIOUS form and quietly persist the old value.
    * Passing the same partial to both is what makes "Save" in that modal mean saved.
    */
-  async function save(overrides?: Partial<SettingsForm>) {
-    if (!form || !base) return;
+  /**
+   * Persist the active section. Returns WHETHER IT PERSISTED — it still toasts the error itself, but
+   * a caller that has its own UI riding on the outcome (the code editor's "Saved" state) must be able
+   * to tell success from failure. Swallowing the error AND returning void made every failed save look
+   * identical to a successful one from the outside.
+   */
+  async function save(overrides?: Partial<SettingsForm>): Promise<boolean> {
+    if (!form || !base) return false;
     setSaving(true);
     const snapshot = overrides ? { ...form, ...overrides } : form; // the values being persisted (form may change during the await)
     try {
@@ -201,8 +207,10 @@ export function SettingsView({
       // Clear ONLY this section's dirty state; the other section's pending edits remain dirty.
       setBaseline((b) => (b ? mergeSection(b, snapshot, section) : toForm(res.item)));
       toast.show('Settings saved', 'success');
+      return true;
     } catch (err) {
       toast.show(err instanceof Error ? err.message : 'Failed to save settings', 'error');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -333,9 +341,12 @@ export function SettingsView({
                   // Saving inside a code editor SAVES. Without this the modal's Save button only
                   // staged the change into the form and the author had to find the tab's own Save —
                   // which reads, correctly, as "I saved and it didn't save".
-                  saveNow={(p) => {
+                  saveNow={async (p) => {
                     patch(p);
-                    void save(p);
+                    // Reject on failure so the editor stays dirty and keeps the draft — the toast has
+                    // already said what went wrong; what must not happen is the editor reporting the
+                    // work as stored when it is not.
+                    if (!(await save(p))) throw new Error('settings save failed');
                   }}
                   projectId={project.id}
                   onLocalesChanged={onLocalesChanged}

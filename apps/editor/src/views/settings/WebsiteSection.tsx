@@ -84,7 +84,8 @@ export function WebsiteSection({
   form: SettingsForm;
   patch: Patch;
   /** Apply a change AND persist it in the same gesture — for a code editor's own Save / Ctrl+S. */
-  saveNow: (p: Partial<SettingsForm>) => void;
+  /** Persist immediately (and stage). Rejects when the save failed, so a code editor can keep its draft. */
+  saveNow: (p: Partial<SettingsForm>) => void | Promise<void>;
   projectId: string;
   /** The project — the slot editor previews through its slug. Optional so the section still renders
    *  in contexts that don't have it (the full-editor entry points are then simply not offered). */
@@ -134,21 +135,21 @@ export function WebsiteSection({
     nav: {
       title: 'Custom nav effect code',
       code: form.navCode,
-      set: (v: string) => patch({ navCode: v }),
+      set: (v: string) => saveNow({ navCode: v }),
       forks: forks?.nav ?? [],
       hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. .menu a — the built-in schemes only style links inside a .menu) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
     },
     button: {
       title: 'Custom button effect code',
       code: form.buttonCode,
-      set: (v: string) => patch({ buttonCode: v }),
+      set: (v: string) => saveNow({ buttonCode: v }),
       forks: forks?.button ?? [],
       hint: 'Applied site-wide while Button effect is “None / Custom Code”. Target buttons (.btn) and use --sw-color-* tokens for dark-mode safety.',
     },
     preloader: {
       title: 'Custom preloader code',
       code: form.preloaderCode,
-      set: (v: string) => patch({ preloaderCode: v }),
+      set: (v: string) => saveNow({ preloaderCode: v }),
       forks: forks?.preloader ?? [],
       hint: 'A full-screen overlay injected as the first body child while Preloader is “None / Custom Code”. Mark it data-sw-preloader and hide it once loaded — fork a preset for a complete, working example.',
     },
@@ -204,7 +205,9 @@ export function WebsiteSection({
       {dataOpen && (
         <WebsiteDataModal
           value={form.data}
-          onSave={(data) => patch({ data })}
+          // Its own Save is the only Save an author sees from inside that modal, so it persists too —
+          // the same reasoning as the code editors, applied to the structured-data one.
+          onSave={(data) => saveNow({ data })}
           onClose={() => setDataOpen(false)}
         />
       )}

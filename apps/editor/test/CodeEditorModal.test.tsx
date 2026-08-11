@@ -63,15 +63,13 @@ describe('CodeEditorModal', () => {
     await waitFor(() => expect(saveBtn()).toBeDisabled());
   });
 
-  it('says "Applied" rather than "Saved", because it cannot know if the caller persisted', async () => {
-    // Critical CSS writes through; a website slot only patches the settings form, which still needs
-    // its own Save. Claiming "Saved" there would invite closing the tab on unsaved work.
+  it('reports the state: "Unsaved changes" while dirty, "Saved" once it went through', async () => {
+    // "Saved" is only honest because a caller that could not persist REJECTS — see the test below.
     open();
     type('<p>b</p>');
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     fireEvent.click(saveBtn());
-    await waitFor(() => expect(screen.getByText('Applied')).toBeInTheDocument());
-    expect(screen.queryByText('Saved')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Saved')).toBeInTheDocument());
   });
 
   it('★ a REJECTED save leaves the draft dirty and the editor open', async () => {
@@ -84,6 +82,7 @@ describe('CodeEditorModal', () => {
     expect(onClose).not.toHaveBeenCalled();
     expect(saveBtn()).toBeEnabled(); // still dirty — the baseline did not move
     expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(screen.queryByText('Saved')).not.toBeInTheDocument(); // never claims a write that failed
   });
 
   describe('★ closing has to ask, now that it is a way to lose work', () => {

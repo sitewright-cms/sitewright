@@ -6,12 +6,65 @@ import { NAV_EFFECTS, BUTTON_EFFECTS, BUTTON_SHAPES, BUTTON_ACCENTS, BUTTON_EFFE
 const theme = { colors: { primary: '#4f46e5', 'base-100': '#ffffff', 'base-content': '#1a1a23' } };
 const compile = (html: string) => compileUtilityCss([html], theme, { minify: false });
 
+/** Index of the `}` closing the block opened after `from` — the bodies nest, so counting is required. */
+function matchingBraceAfter(css: string, from: number): number {
+  let depth = 0;
+  for (let i = css.indexOf('{', from); i < css.length; i++) {
+    if (css[i] === '{') depth++;
+    else if (css[i] === '}' && --depth === 0) return i;
+  }
+  return css.length;
+}
+
 describe('nav/button effect utilities', () => {
   it('defines a @utility for every schema-listed scheme (no drift)', () => {
     for (const n of NAV_EFFECTS) expect(EFFECT_UTILITIES).toContain(`@utility sw-nav-${n}`);
     for (const n of BUTTON_EFFECTS) expect(EFFECT_UTILITIES).toContain(`@utility sw-btn-fx-${n}`);
     for (const s of BUTTON_SHAPES) expect(EFFECT_UTILITIES).toContain(`@utility sw-btn-shape-${s}`);
     for (const a of BUTTON_ACCENTS) expect(EFFECT_UTILITIES).toContain(`@utility sw-btn-accent-${a}`);
+  });
+
+  it('★ EMITS every schema-listed scheme when it is used (the @utility above is not enough)', async () => {
+    // The test above proves each scheme is AUTHORED. This one proves the emitter can still find it.
+    // `sw-nav-blob` was authored, listed, and silently never emitted: the `@utility` scan was a bare
+    // `indexOf('@utility ')`, which matched the PROSE in the comment above that block ("nested inside
+    // the @utility they get pruned"), read the scheme name as the rest of the sentence, and swallowed
+    // the rule the comment introduced. Picking Blob in the editor produced a nav with no effect and
+    // nothing anywhere reported a problem. The keyframes scan had already been hardened against the
+    // same prose collision; this one had not, so assert the OUTPUT, not the source.
+    const names = [
+      ...NAV_EFFECTS.map((n) => `sw-nav-${n}`),
+      ...BUTTON_EFFECTS.map((n) => `sw-btn-fx-${n}`),
+      ...BUTTON_SHAPES.map((s) => `sw-btn-shape-${s}`),
+      ...BUTTON_ACCENTS.map((a) => `sw-btn-accent-${a}`),
+    ];
+    const css = await compile(`<body class="${names.join(' ')}"><ul class="menu"><a class="active">x</a></ul><button class="btn">b</button></body>`);
+    expect(names.filter((n) => !css.includes(`.${n}`))).toEqual([]);
+  });
+
+  it('★ keeps the BUTTON axes OUT of the layer, so they can beat the unlayered .btn baseline', async () => {
+    // The nav schemes compete only with daisyUI's own LAYERED `.menu a`, so a layer costs them
+    // nothing. The button axes compete with the platform's own `.btn` baseline, which ships unlayered
+    // in the page's inline <style> — and layered-loses-to-unlayered cut the other way there: measured
+    // in a browser, 13 of 28 effects changed nothing, all 4 accents left `--sw-btn-fx` at the
+    // baseline's secondary, and all 8 shapes left the radius at `.7rem`. The cascade itself is
+    // asserted in apps/editor/e2e/button-effects.spec.ts, which is the only place it can be; here we
+    // pin the structural precondition, which is what silently regressed.
+    const css = await compile(
+      '<body class="sw-nav-line-bottom"><ul class="menu"><a class="active">x</a></ul>' +
+        '<button class="btn sw-btn-fx-lift sw-btn-shape-pill sw-btn-accent-accent">b</button></body>',
+    );
+    const layerAt = css.indexOf('@layer sw-effects');
+    const layerEnd = matchingBraceAfter(css, layerAt);
+    for (const n of ['sw-btn-fx-lift', 'sw-btn-shape-pill', 'sw-btn-accent-accent']) {
+      expect(css.indexOf(`.${n}`), `${n} must sit outside @layer sw-effects`).toBeGreaterThan(layerEnd);
+    }
+    // …and the nav scheme is still inside it, so the author-override fix is untouched.
+    expect(css.indexOf('.sw-nav-line-bottom')).toBeGreaterThan(layerAt);
+    expect(css.indexOf('.sw-nav-line-bottom')).toBeLessThan(layerEnd);
+    // The keyframes the (now unlayered) button rules animate still ride inside the layer — layers
+    // arbitrate between two definitions of one name, they do not scope who may reference it.
+    expect(css.slice(layerAt, layerEnd)).toContain('@keyframes sw-btn-pulse');
   });
 
   it('ships the schemes in @layer sw-effects, so the AUTHOR always outranks them', async () => {
@@ -31,8 +84,13 @@ describe('nav/button effect utilities', () => {
   it('still tree-shakes per scheme (an unused scheme is not emitted at all)', async () => {
     const css = await compile('<body class="sw-nav-line-bottom"><ul class="menu"><a class="active">x</a></ul></body>');
     expect(css).toContain('sw-nav-line-bottom');
-    expect(css).not.toContain('sw-nav-blob');
-    expect(css).not.toContain('sw-btn-fx-jelly');
+    // The RULE is what tree-shakes. The `@keyframes` do not and never did — they are emitted at the
+    // top level for ALL schemes because a nested one gets pruned (see EFFECT_UTILITIES), which is the
+    // documented ~0.5KB cost of them working at all. So match the selector, not the bare name:
+    // `sw-nav-blob` is also a keyframes name, and asserting the bare string here quietly asserted that
+    // the blob keyframes were absent — which they were, but only because a parser bug had eaten them.
+    expect(css).not.toContain('.sw-nav-blob');
+    expect(css).not.toContain('.sw-btn-fx-jelly');
   });
 
   it('emits a nav scheme scoped to the .menu links, filled with the brand + derived foreground', async () => {

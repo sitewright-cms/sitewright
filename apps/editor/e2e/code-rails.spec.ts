@@ -113,6 +113,10 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   await editor.locator('.cm-content').click();
   await page.keyboard.type('<h1 class="font-bold">{{company.name}}</h1>');
   await editor.getByRole('button', { name: 'Save changes' }).click();
+  // The editor stays open on save now (#898), and it covers the rail — so close it before reaching
+  // for anything behind it. (Every step after this used to run against a modal-covered page.)
+  await editor.getByRole('button', { name: 'Close' }).click();
+  await expect(editor).toBeHidden();
   await expect(panel.getByText('previewcard', { exact: true })).toBeVisible();
 
   // Hover the eye → the sandboxed preview iframe server-renders the snippet ({{company.name}} → the
@@ -129,6 +133,8 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   const editor2 = page.getByRole('dialog', { name: /— snippet$/ });
   await editor2.getByLabel('snippet name').fill('renamedcard');
   await editor2.getByRole('button', { name: 'Save changes' }).click();
+  await editor2.getByRole('button', { name: 'Close' }).click();
+  await expect(editor2).toBeHidden();
 
   // The rail now shows the new name and not the old; the rename round-trips through the API.
   await expect(panel.getByText('renamedcard', { exact: true })).toBeVisible();

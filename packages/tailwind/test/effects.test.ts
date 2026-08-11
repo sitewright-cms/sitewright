@@ -290,6 +290,11 @@ describe('sw-border-beam (box ornament)', () => {
     expect(css).toContain('-webkit-mask-composite: xor'); // Safari's spelling of the same op
     expect(css).toContain('border-radius: inherit'); // follows the host's rounding
     expect(css).toContain('pointer-events: none'); // never eats a click meant for the caption
+    // …and it must OUTRANK positioned children. Without this the ring shares the positioned layer at
+    // `z-index:auto` with any `position:relative` descendant, where DOM order decides — the pseudo is
+    // first, so the child paints over it. A `.waves-effect` image link (the ripple sheet makes it
+    // relative) hid the entire top edge of a product card's ring exactly this way.
+    expect(css).toContain('z-index: 1');
   });
 
   it('defaults the beam to the dark-mode-aware brand primary, over NO track', async () => {

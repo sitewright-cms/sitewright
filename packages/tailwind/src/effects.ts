@@ -520,6 +520,15 @@ export const EFFECT_UTILITIES = `
     inset: 0;
     /* purely decorative: never intercept a click meant for the caption's link/button underneath */
     pointer-events: none;
+    /* Lift the ring above POSITIONED children. Both this pseudo-element and any 'position:relative'
+       descendant sit in the positioned-painting layer at 'z-index:auto', where DOM order decides — and
+       the pseudo-element comes first, so the descendant wins and the ring vanishes behind it. The
+       everyday trigger is '.waves-effect', which the ripple sheet gives 'position:relative': a beamed
+       card whose image is a rippling link lost the whole top edge of its ring. (Only outside
+       prefers-reduced-motion, since that sheet is gated on it — which is exactly why the bug survives
+       a reduced-motion screenshot.) Safe to raise: the ring is masked to the border band and already
+       pointer-events:none, so it covers no content and swallows no clicks. */
+    z-index: 1;
     padding: var(--sw-beam-width, 8px);
     border-radius: inherit;
     background:

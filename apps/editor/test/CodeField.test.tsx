@@ -26,7 +26,7 @@ describe('CodeField', () => {
     expect(screen.queryByText(/a\s+b\s+c/)).toBeNull();
   });
 
-  it('opens the editor modal on Edit, then saves the edited value and closes', async () => {
+  it('opens the editor modal on Edit, then saves the edited value and STAYS OPEN', async () => {
     const onChange = vi.fn();
     render(<CodeField label="mainNav" title="mainNav partial" value="<nav/>" onChange={onChange} />);
 
@@ -42,8 +42,10 @@ describe('CodeField', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(onChange).toHaveBeenCalledWith('<nav>new</nav>');
-    // Modal closes once the (now async-aware) save resolves — a microtask later.
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    // ★ The editor stays put: editing code is iterative, and closing on every save made the loop a
+    // reopen each time. The Save control disabling is what reports that the draft went through.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled());
+    expect(screen.getByRole('dialog', { name: 'mainNav partial' })).toBeInTheDocument();
   });
 
   it('renders the hint inside the editor modal', () => {

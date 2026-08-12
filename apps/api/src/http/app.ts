@@ -213,6 +213,7 @@ import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore, PDF_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
+import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
@@ -6425,12 +6426,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.send({ connected: sessions.length + pats.length });
       },
     );
-
-    // Whether a preview path is a STATIC ASSET (a bundled binary under `_assets/`, or a root-level
-    // platform text asset: the compiled stylesheet / runtime bundles / robots / sitemap). Everything
-    // else is a page (HTML) request.
-    const isPreviewAssetPath = (path: string): boolean =>
-      path.startsWith('_assets/') || /^[^/]+\.(css|js|xml|txt)$/.test(path);
 
     // The member-only endpoint that hands the editor (and a "copy link" affordance) the SIGNED,
     // share-able preview base — `/preview/<projectId>/<sig>/`. Resolving it requires content:read, so

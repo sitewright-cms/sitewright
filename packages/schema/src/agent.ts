@@ -530,20 +530,26 @@ Effects compose with ANY face — three kinds:
 Also ACCENT \`sw-btn-accent-<primary|secondary|accent|neutral>\`, SHAPE \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle=icon-only). Any axis = a class on the button OR website.effects.{buttonEffect,buttonAccent,buttonShape}. \`magnetic\`/\`spotlight\` (+ripple) load a tiny runtime. Prefer these over hand-rolled hover CSS.
 
 BORDER BEAM — \`sw-border-beam\` puts a light travelling around ANY box's edge (the rotating / "lighthouse"
-border) in the brand primary, dark-mode aware. The DEFAULT is the bold hero look — an 8px beam over NO
-static ring, so only the moving light is lit — i.e. \`<div class="sw-caption sw-border-beam rounded-xl">\`
-needs no configuration at all. Put the class on the ONE element you are decorating — a slider
+border) in the brand primary, dark-mode aware. It runs TWO independent timelines: the comet TRAVELS (one
+lap per \`--sw-beam-speed\`) and separately BREATHES — its length eases between \`--sw-beam-arc\` and
+\`--sw-beam-arc-max\` once per \`--sw-beam-pulse\`, so the light spreads along the edge and narrows back to a
+point. The DEFAULT is a 5px ring that breathes 40deg→350deg over 7s while lapping every 1.8s, over NO
+static ring — i.e. \`<div class="sw-caption sw-border-beam rounded-xl">\` needs no configuration at all. Put the class on the ONE element you are decorating — a slider
 \`.sw-caption\`, a featured card, a pricing tier, an image frame — there is no site-wide form. It needs no
 runtime and never covers the box's content or intercepts clicks: the ring is a masked pseudo-element, so a
 frosted/translucent caption stays see-through. Tune with arbitrary properties on the same element:
 \`--sw-beam-color\` (default primary) · \`--sw-beam-track\` (the always-on ring under the beam, default
-\`transparent\`) · \`--sw-beam-width\` (default 8px) · \`--sw-beam-speed\` (default 4s) · \`--sw-beam-arc\` (comet
-length, default 90deg). For a FINER card edge, thin the beam and light the whole edge with a
+\`transparent\`) · \`--sw-beam-width\` (default 5px) · \`--sw-beam-speed\` (one lap, default 1.8s) ·
+\`--sw-beam-arc\` (the NARROW comet length + its resting length, default 40deg) · \`--sw-beam-arc-max\` (the
+WIDE length it spreads to, default 350deg) · \`--sw-beam-pulse\` (one breath, default 7s). To STOP the
+breathing and keep a constant comet, set \`--sw-beam-arc-max\` equal to \`--sw-beam-arc\`:
+\`<div class="sw-border-beam rounded-2xl [--sw-beam-arc:90deg] [--sw-beam-arc-max:90deg]">\`. For a FINER card edge, thin the beam and light the whole edge with a
 semi-transparent brand track (underscores become spaces):
 \`<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-width:3px] [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\`.
 Pair it with a \`rounded-*\` class — the ring inherits the radius.
 It repaints a gradient each frame, so use it on a hero accent, NOT on every card in a grid; under
-prefers-reduced-motion the beam parks (the border stays). Prefer it over hand-rolled conic-gradient CSS.
+prefers-reduced-motion BOTH animations drop — the beam parks at the narrow arc and the border stays.
+Prefer it over hand-rolled conic-gradient CSS.
 
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
 so it stays visible while scrolling. The modes are POSITIONAL ONLY — \`pinned\` (always visible) or

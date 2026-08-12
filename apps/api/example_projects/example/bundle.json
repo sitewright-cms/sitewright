@@ -175,72 +175,77 @@
           "de": "Ausgeschrieben",
           "es": "Publicado"
         },
-        "carousel_label": {
+        "system.carousel_label": {
           "en": "carousel",
           "de": "Karussell",
           "es": "carrusel"
         },
-        "cart_add": {
+        "cart.add": {
           "en": "Add to cart",
           "de": "In den Warenkorb",
           "es": "Añadir al carrito"
         },
-        "cart_added": {
+        "cart.added": {
           "en": "Added",
           "de": "Hinzugefügt",
           "es": "Añadido"
         },
-        "cart_clear": {
+        "cart.clear": {
           "en": "Clear cart",
           "de": "Warenkorb leeren",
           "es": "Vaciar carrito"
         },
-        "cart_currency_code": {
+        "cart.currency_code": {
           "en": "USD",
           "de": "USD",
           "es": "USD"
         },
-        "cart_currency_symbol": {
+        "cart.yes": {
+          "en": "Yes",
+          "de": "Ja",
+          "es": "Sí"
+        },
+        "cart.currency_symbol": {
           "en": "$",
           "de": "$",
           "es": "$"
         },
-        "cart_empty": {
+        "cart.empty": {
           "en": "Your cart is empty.",
           "de": "Ihr Warenkorb ist leer.",
           "es": "Su carrito está vacío."
         },
-        "cart_note": {
+        "cart.note": {
           "en": "Prices are indicative. This sends an order request — the seller confirms availability and final price.",
           "de": "Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.",
           "es": "Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final."
         },
-        "cart_order_lead": {
+        "cart.order_lead": {
           "en": "I’d like to order:",
           "de": "Ich möchte gerne bestellen:",
           "es": "Me gustaría hacer un pedido:"
         },
-        "cart_sent": {
+        "cart.sent": {
           "en": "Order sent — we will be in touch.",
           "de": "Bestellung gesendet — wir melden uns.",
           "es": "Pedido enviado — le contactaremos."
         },
-        "cart_title": {
+        "cart.title": {
           "en": "Your cart",
           "de": "Warenkorb",
           "es": "Su carrito"
         },
-        "cart_toggle": {
+        "cart.toggle": {
           "en": "Shopping Cart",
           "de": "Warenkorb",
           "es": "Carrito"
         },
-        "cart_total": {
+        "cart.total": {
           "en": "Total",
           "de": "Gesamt",
           "es": "Total"
         },
-        "close": {
+        "system.close": {
           "en": "Close",
           "de": "Schließen",
           "es": "Cerrar"
@@ -813,102 +818,102 @@
           "de": "Die First-Party-Komponenten, mit denen diese Website gebaut ist — jede in allen Konfigurationen, erst die Standardeinstellungen, dann jede Option. Alles funktioniert mit Tastatur, Touch und ohne JavaScript.",
           "es": "Los componentes propios con los que está construido este sitio, cada uno en todas sus configuraciones — primero los valores por defecto, después cada opción. Todo funciona con teclado, táctil y sin JavaScript."
         },
-        "consent_accept_all": {
+        "consent.accept_all": {
           "en": "Accept all",
           "de": "Alle akzeptieren",
           "es": "Aceptar todo"
         },
-        "consent_allow_once": {
+        "consent.allow_once": {
           "en": "Allow once",
           "de": "Einmal erlauben",
           "es": "Permitir una vez"
         },
-        "consent_always_allow": {
+        "consent.always_allow": {
           "en": "Always allow",
           "de": "Immer erlauben",
           "es": "Permitir siempre"
         },
-        "consent_analytics": {
+        "consent.analytics": {
           "en": "Analytics",
           "de": "Statistik",
           "es": "Analíticas"
         },
-        "consent_analytics_desc": {
+        "consent.analytics_desc": {
           "en": "Helps us understand how visitors use the site.",
           "de": "Hilft uns zu verstehen, wie Besucher die Website nutzen.",
           "es": "Nos ayuda a entender cómo usan el sitio los visitantes."
         },
-        "consent_customize": {
+        "consent.customize": {
           "en": "Customize",
           "de": "Anpassen",
           "es": "Personalizar"
         },
-        "consent_embed_note": {
+        "consent.embed_note": {
           "en": "This content is loaded from a third party. Allow it to load?",
           "de": "Dieser Inhalt wird von einem Drittanbieter geladen. Laden zulassen?",
           "es": "Este contenido se carga desde un tercero. ¿Permitir que se cargue?"
         },
-        "consent_functional": {
+        "consent.functional": {
           "en": "Functional",
           "de": "Funktional",
           "es": "Funcionales"
         },
-        "consent_functional_desc": {
+        "consent.functional_desc": {
           "en": "Remembers your preferences and enables enhanced features.",
           "de": "Speichert Ihre Einstellungen und ermöglicht erweiterte Funktionen.",
           "es": "Recuerda sus preferencias y habilita funciones mejoradas."
         },
-        "consent_intro": {
+        "consent.intro": {
           "en": "We use cookies to enhance your experience and analyze our traffic. Choose which categories you allow.",
           "de": "Wir verwenden Cookies, um Ihr Erlebnis zu verbessern und unseren Verkehr zu analysieren. Wählen Sie, welche Kategorien Sie zulassen.",
           "es": "Usamos cookies para mejorar su experiencia y analizar nuestro tráfico. Elija qué categorías permite."
         },
-        "consent_marketing": {
+        "consent.marketing": {
           "en": "Marketing",
           "de": "Marketing",
           "es": "Marketing"
         },
-        "consent_marketing_desc": {
+        "consent.marketing_desc": {
           "en": "Used to deliver relevant ads and measure campaigns.",
           "de": "Dient dazu, relevante Werbung auszuspielen und Kampagnen zu messen.",
           "es": "Se usa para mostrar anuncios relevantes y medir campañas."
         },
-        "consent_necessary": {
+        "consent.necessary": {
           "en": "Strictly necessary",
           "de": "Unbedingt erforderlich",
           "es": "Estrictamente necesarias"
         },
-        "consent_necessary_desc": {
+        "consent.necessary_desc": {
           "en": "Required for the site to function. Always on.",
           "de": "Für den Betrieb der Website erforderlich. Immer aktiv.",
           "es": "Necesarias para que el sitio funcione. Siempre activas."
         },
-        "consent_prefs_title": {
+        "consent.prefs_title": {
           "en": "Privacy preferences",
           "de": "Datenschutzeinstellungen",
           "es": "Preferencias de privacidad"
         },
-        "consent_privacy": {
+        "consent.privacy": {
           "en": "Privacy policy",
           "de": "Datenschutzerklärung",
           "es": "Política de privacidad"
         },
-        "consent_reject_all": {
+        "consent.reject_all": {
           "en": "Reject all",
           "de": "Alle ablehnen",
           "es": "Rechazar todo"
         },
-        "consent_save": {
+        "consent.save": {
           "en": "Save preferences",
           "de": "Einstellungen speichern",
           "es": "Guardar preferencias"
         },
-        "consent_settings": {
+        "consent.settings": {
           "en": "Cookie settings",
           "de": "Cookie-Einstellungen",
           "es": "Configuración de cookies"
         },
-        "consent_title": {
+        "consent.title": {
           "en": "We value your privacy",
           "de": "Wir schätzen Ihre Privatsphäre",
           "es": "Valoramos su privacidad"
@@ -1012,7 +1017,7 @@
           "de": "Studio",
           "es": "Estudio"
         },
-        "go_to_slide": {
+        "system.go_to_slide": {
           "en": "Go to slide {n}",
           "de": "Zu Folie {n}",
           "es": "Ir a la diapositiva {n}"
@@ -1354,22 +1359,22 @@
           "de": "Per WhatsApp bestellen",
           "es": "Pedir por WhatsApp"
         },
-        "slide_next": {
+        "system.slide_next": {
           "en": "Next slide",
           "de": "Nächste Folie",
           "es": "Diapositiva siguiente"
         },
-        "slide_prev": {
+        "system.slide_prev": {
           "en": "Previous slide",
           "de": "Vorherige Folie",
           "es": "Diapositiva anterior"
         },
-        "slide_x_of_y": {
+        "system.slide_x_of_y": {
           "en": "Slide {n} of {total}",
           "de": "Folie {n} von {total}",
           "es": "Diapositiva {n} de {total}"
         },
-        "theme_toggle": {
+        "theme.toggle": {
           "en": "Toggle dark mode",
           "de": "Dunkelmodus umschalten",
           "es": "Cambiar modo oscuro"

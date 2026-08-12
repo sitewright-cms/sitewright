@@ -6,6 +6,7 @@ import {
   CaptchaStoredSchema,
   CorporateIdentitySchema,
   mergeLegacyIdentity,
+  mergeLegacyTranslations,
   DatasetSchema,
   DeployTargetSchema,
   AiConfigSchema,
@@ -50,9 +51,12 @@ import { rewriteDatasetRefsInSource, sourceReferencesDataset, rewriteReferenceTa
  * The project's settings singleton (Corporate Identity + website settings + locale).
  * `mergeLegacyIdentity` runs first so a row written in the old `{brand,company}`
  * shape upgrades to `{identity}` transparently on read (it re-persists on next put).
+ * `mergeLegacyTranslations` then lifts a catalog still holding the FLAT reserved keys
+ * onto their scoped names — the reserved rename is hard, with no read-time alias, so
+ * without this a stored override silently reverts to the built-in English default.
  */
 export const SettingsSchema = z.preprocess(
-  mergeLegacyIdentity,
+  (raw) => mergeLegacyTranslations(mergeLegacyIdentity(raw)),
   z.object({
     identity: CorporateIdentitySchema,
     website: WebsiteSettingsSchema.optional(),
@@ -194,6 +198,23 @@ export class ContentRepository {
     }
   }
 
+  /**
+   * Normalize a stored row on the way OUT.
+   *
+   * Reads return `row.data` RAW — the kind's schema (and therefore its `z.preprocess`) runs on WRITE
+   * only. So a shape migration wired solely into SettingsSchema would reach a project just once it next
+   * SAVED, and every read until then (publish, preview, editor, MCP) would see the old shape. For the
+   * flat→scoped reserved-translation rename that is a SILENT regression: `cart_currency_symbol` stops
+   * resolving and the cart quietly falls back to the built-in `$`.
+   *
+   * So settings are normalized here too, at the read boundary. It is cheap (one key scan; the migrator
+   * returns the SAME reference when there is nothing to lift) and idempotent, and the next `put` of that
+   * project persists the lifted shape — the same converge-on-write pattern `mergeLegacyIdentity` uses.
+   */
+  private normalizeOnRead(kind: ContentKind, data: unknown): unknown {
+    return kind === 'settings' ? mergeLegacyTranslations(data) : data;
+  }
+
   async list(ctx: ProjectContext, kind: ContentKind): Promise<unknown[]> {
     const rows = await this.db
       .select()
@@ -202,7 +223,7 @@ export class ContentRepository {
       // exports, fonts — transparently skips items in the Recycle Bin. `deletedAt` is NULL for all other
       // kinds, so this is a no-op for them.
       .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
-    return rows.map((row) => row.data);
+    return rows.map((row) => this.normalizeOnRead(kind, row.data));
   }
 
   /**
@@ -263,7 +284,7 @@ export class ContentRepository {
   async get(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<unknown> {
     const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
-    return row.data;
+    return this.normalizeOnRead(kind, row.data);
   }
 
   /**
@@ -541,9 +562,11 @@ export class ContentRepository {
       .object({
         // Accept a v2 `{identity}` project OR a legacy `{brand,company}` one
         // (mergeLegacyIdentity folds the latter), so old exported bundles import.
+        // mergeLegacyTranslations likewise lifts a bundle whose catalog still holds the
+        // flat reserved keys, so an old export keeps its cart/consent/theme overrides.
         project: z
           .preprocess(
-            mergeLegacyIdentity,
+            (raw) => mergeLegacyTranslations(mergeLegacyIdentity(raw)),
             z.object({
               identity: CorporateIdentitySchema,
               website: WebsiteSettingsSchema.optional(),

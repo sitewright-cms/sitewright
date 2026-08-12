@@ -20,19 +20,19 @@ describe('consentMountMarkup — the auto-injected mount (config builder, no {{s
     expect(out).toContain('id="sw-consent"');
     expect(out).toContain('data-sw-consent ');
     expect(out).toContain('data-sw-consent-config="');
-    expect(out).toContain('consent_accept_all'); // the t.acceptAll slot fed by idTr
+    expect(out).toContain('consent.accept_all'); // the t.acceptAll slot fed by idTr
   });
 
   it('honors layout + denyButton + version + a category subset', () => {
     const out = consentMountMarkup(on({ layout: 'box', denyButton: false, version: 3, categories: ['analytics'] }), idTr);
     expect(out).toContain('data-layout="box"');
     expect(out).toMatch(/&quot;v&quot;:3/); // escaped JSON in the attribute
-    expect(out).toContain('consent_analytics');
-    expect(out).not.toContain('consent_marketing'); // only the requested category is offered
+    expect(out).toContain('consent.analytics');
+    expect(out).not.toContain('consent.marketing'); // only the requested category is offered
   });
 
   it('localizes copy via the tr function', () => {
-    expect(consentMountMarkup(on(), enTr({ consent_accept_all: 'Alle akzeptieren' }))).toContain('Alle akzeptieren');
+    expect(consentMountMarkup(on(), enTr({ 'consent.accept_all': 'Alle akzeptieren' }))).toContain('Alle akzeptieren');
   });
 
   it('sanitizes the privacy link (javascript: dropped; internal path kept)', () => {

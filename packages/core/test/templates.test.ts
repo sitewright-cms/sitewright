@@ -69,7 +69,7 @@ describe('resolveTemplateSource (code-first templates)', () => {
     // translation catalog (reserved cart_* keys), so a locale variant needs no per-page hash wiring.
     expect(shop!.source).toContain('{{sw-cart}}');
     // The currency symbol is translatable (catalog), NOT the removed website.shop.currency.symbol field.
-    expect(shop!.source).toContain('{{sw-translate "cart_currency_symbol" default="$"}}');
+    expect(shop!.source).toContain('{{sw-translate "cart.currency_symbol" default="$"}}');
     expect(shop!.source).not.toContain('currency.symbol');
     // The editable headings are page.data leaves with declared defaults.
     expect(shop!.source).toContain('data-sw-text="page.data.heading"');

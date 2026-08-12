@@ -685,7 +685,7 @@ const MODAL_JS = `(function(){
       // beats .waves-effect's position:relative, so the overhang placement is untouched.
       x.className='waves-effect waves-light';
       x.setAttribute('data-sw-part','autoclose');
-      x.setAttribute('aria-label',root.getAttribute('data-close-label')||swt('close','Close'));
+      x.setAttribute('aria-label',root.getAttribute('data-close-label')||swt('system.close','Close'));
       x.innerHTML=CLOSE_SVG;
       x.addEventListener('click',function(){dialog.close();});
       panel.appendChild(x);

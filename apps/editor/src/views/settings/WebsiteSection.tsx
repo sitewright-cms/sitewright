@@ -437,7 +437,7 @@ export function WebsiteSection({
         wide
       >
         {/* Master switch. OFF (default) = single-theme site, byte-identical output; gates the
-            {{sw-theme-toggle}} helper (renders nothing) + the reserved theme_toggle ghost row. */}
+            {{sw-theme-toggle}} helper (renders nothing) + the reserved theme.toggle ghost row. */}
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
             <span className={fieldLabel}>Enable themes</span>

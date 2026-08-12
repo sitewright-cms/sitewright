@@ -35,7 +35,8 @@ import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedi
 import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
 import {
-  type CaptchaRenderConfig, RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
+  type CaptchaRenderConfig, RESERVED_TRANSLATION_DEFAULTS,
+  SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, parseShopFieldOptions } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -364,7 +365,7 @@ function pad(n: number): string {
  * A non-empty translated string for a RESERVED catalog key, read from the pre-resolved per-locale map
  * `website.t` (own-property + proto-guarded). Empty/missing → '' so the caller's fallback chain applies.
  * The mini-shop cart helpers use this to localize their built-in labels from `website.translations`
- * (the reserved `cart_*` keys — see @sitewright/schema's RESERVED_TRANSLATION_GROUPS for the full set)
+ * (the reserved `cart.*` keys — see @sitewright/schema's RESERVED_TRANSLATION_GROUPS for the full set)
  * without a per-page hash override.
  */
 function reservedTr(root: { website?: { t?: Record<string, unknown> } }, key: string): string {
@@ -686,9 +687,9 @@ function createInstance(): typeof Handlebars {
     if (!key) return new Handlebars.SafeString('');
     const priceNum = Number(h.price);
     const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
-    // Label precedence: explicit hash → translation catalog (reserved `cart_add`, localized per page
+    // Label precedence: explicit hash → translation catalog (reserved `cart.add`, localized per page
     // locale) → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
-    const label = str(h.label) || reservedTr(root, 'cart_add') || RESERVED_TRANSLATION_DEFAULTS.cart_add!;
+    const label = str(h.label) || reservedTr(root, 'cart.add') || RESERVED_TRANSLATION_DEFAULTS['cart.add']!;
     let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
     const img = str(h.image);
     if (img) {
@@ -727,8 +728,8 @@ function createInstance(): typeof Handlebars {
     const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
     let attrs = 'data-sw-cart';
     // Currency SYMBOL + CODE are translatable (reserved keys); position + decimals are non-text settings.
-    attrs += ` data-currency-symbol="${escapeAttr(tr('cart_currency_symbol'))}"`;
-    attrs += ` data-currency-code="${escapeAttr(tr('cart_currency_code'))}"`;
+    attrs += ` data-currency-symbol="${escapeAttr(tr('cart.currency_symbol'))}"`;
+    attrs += ` data-currency-code="${escapeAttr(tr('cart.currency_code'))}"`;
     if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
     // Drawer-string precedence per key: explicit hash → translation catalog (reserved cart_* key, localized
@@ -736,17 +737,19 @@ function createInstance(): typeof Handlebars {
     // truth). The default floor makes every label always resolve, so a bare {{sw-cart}} auto-localizes from
     // website.translations with zero per-page wiring and an untranslated locale falls back to English.
     const rt = tr; // alias for the reserved cart_* drawer strings below
-    attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart_title'))}"`;
-    attrs += ` data-toggle-label="${escapeAttr(str(h.toggle) || rt('cart_toggle'))}"`;
-    attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart_note'))}"`;
-    attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart_added'))}"`;
-    attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart_empty'))}"`;
-    attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart_total'))}"`;
-    attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart_clear'))}"`;
-    attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart_sent'))}"`;
+    attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart.title'))}"`;
+    attrs += ` data-toggle-label="${escapeAttr(str(h.toggle) || rt('cart.toggle'))}"`;
+    attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart.note'))}"`;
+    attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart.added'))}"`;
+    attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart.empty'))}"`;
+    attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart.total'))}"`;
+    attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart.clear'))}"`;
+    attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart.sent'))}"`;
+    // The word a ticked `checkbox` order field contributes to the message ("Gift wrap: Yes").
+    attrs += ` data-yes-label="${escapeAttr(str(h.yes) || rt('cart.yes'))}"`;
     // The order-message lead-in ({{sw-cart}} → cart.js prepends it to the deep-link order summary). The
     // "Hi <brand> — " greeting connective in cart.js stays fixed; this lead sentence localizes.
-    attrs += ` data-order-lead="${escapeAttr(str(h.orderLead) || rt('cart_order_lead'))}"`;
+    attrs += ` data-order-lead="${escapeAttr(str(h.orderLead) || rt('cart.order_lead'))}"`;
     // The merchant's brand/business name (the always-present Corporate Identity `name`, projected into the
     // render ctx as `company`) — cart.js uses it for the email greeting ("Hi <brand> — I'd like to order:").
     // Emitted only when present, so a no-args {{sw-cart}} with no identity stays byte-identical.
@@ -764,8 +767,23 @@ function createInstance(): typeof Handlebars {
         .map((x): Record<string, unknown> | null => {
           if (!x || typeof x !== 'object') return null;
           const fx = x as Record<string, unknown>;
+          const key = str(fx.key);
+          const type = fx.type;
+          // A CHOICE field (select/radio) carries its options, resolved per locale from the sibling
+          // catalog key `shop.<key>.options` (a comma-separated list). Emitted only when the type needs
+          // them AND at least one parses, so a mis-typed or empty row leaves the JSON byte-stable and the
+          // runtime falls back to a plain text input rather than rendering an empty <select>.
+          const options =
+            typeof type === 'string' && (SHOP_CHOICE_FIELD_TYPES as readonly string[]).includes(type)
+              ? parseShopFieldOptions(key ? reservedTr(root, `shop.${key}${SHOP_OPTIONS_KEY_SUFFIX}`) : '')
+              : [];
           // `required` only when truthy (mirrors the model.ts projection) — keeps the JSON minimal/explicit.
-          return { label: shopLabel(str(fx.key)), type: fx.type, ...(fx.required ? { required: true } : {}) };
+          return {
+            label: shopLabel(key),
+            type,
+            ...(fx.required ? { required: true } : {}),
+            ...(options.length ? { options } : {}),
+          };
         })
         .filter((x): x is Record<string, unknown> => x !== null);
       return out.length ? out : undefined;
@@ -802,14 +820,14 @@ function createInstance(): typeof Handlebars {
   // website.consent.enabled — there is no `{{sw-consent}}` helper. See consentMountMarkup + renderDocument.)
   // {{sw-consent-settings [label="…"] [class="…"]}} → a button that RE-OPENS the consent preferences
   // (e.g. a footer "Cookie settings" link for GDPR withdrawal). Gated on website.consent.enabled. Carries
-  // data-sw-consent-open, which the consent.js runtime delegates. The label localizes (consent_settings).
+  // data-sw-consent-open, which the consent.js runtime delegates. The label localizes (consent.settings).
   hb.registerHelper('sw-consent-settings', function swConsentSettings(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
     const root = (options.data?.root ?? {}) as { website?: { consent?: Record<string, unknown>; t?: Record<string, unknown> } };
     if ((root.website?.consent as Record<string, unknown> | undefined)?.enabled !== true) return new Handlebars.SafeString('');
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
-    const label = str(h.label) || reservedTr(root, 'consent_settings') || RESERVED_TRANSLATION_DEFAULTS.consent_settings || 'Cookie settings';
+    const label = str(h.label) || reservedTr(root, 'consent.settings') || RESERVED_TRANSLATION_DEFAULTS['consent.settings'] || 'Cookie settings';
     const cls = str(h.class);
     const classAttr = escapeAttr(cls || 'sw-consent-link');
     return new Handlebars.SafeString(`<button type="button" data-sw-consent-open class="${classAttr}">${escapeHtml(label)}</button>`);
@@ -820,7 +838,7 @@ function createInstance(): typeof Handlebars {
   // JS, and the `data-sw-theme-toggle` marker ships the no-flash + click runtime (THEME_TOGGLE_JS).
   // Gated by the master switch: with themes OFF (no dark palette, no runtime) it renders
   // nothing, even if the helper stays in the template. Drop it ONCE in the nav/header slot. The
-  // accessible label localizes: explicit hash → reserved `theme_toggle` catalog key → English default.
+  // accessible label localizes: explicit hash → reserved `theme.toggle` catalog key → English default.
   hb.registerHelper('sw-theme-toggle', function swThemeToggle(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
@@ -828,7 +846,7 @@ function createInstance(): typeof Handlebars {
     if (root.website?.enableThemes !== true) return new Handlebars.SafeString('');
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const label =
-      str(h.label) || reservedTr(root, 'theme_toggle') || RESERVED_TRANSLATION_DEFAULTS.theme_toggle || 'Toggle dark mode';
+      str(h.label) || reservedTr(root, 'theme.toggle') || RESERVED_TRANSLATION_DEFAULTS['theme.toggle'] || 'Toggle dark mode';
     const cls = str(h.class);
     const classAttr = cls ? `sw-theme-toggle ${cls}` : 'sw-theme-toggle';
     // Sun/moon come from the shared icon renderer (Phosphor fill); the `sw-tt-*` class is the CSS picker

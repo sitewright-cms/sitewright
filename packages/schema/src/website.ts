@@ -82,7 +82,7 @@ function shopHasControlChars(value: string): boolean {
 /**
  * Currency FORMATTING for the cart total — symbol placement + fraction digits (client-side,
  * display-only, non-authoritative). The display SYMBOL + ISO CODE are translatable (per-locale) so they
- * live in the translation catalog under the reserved `cart_currency_symbol` / `cart_currency_code` keys,
+ * live in the translation catalog under the reserved `cart.currency_symbol` / `cart.currency_code` keys,
  * NOT here — a multi-region site can show `$`/`USD` for one locale and `€`/`EUR` for another.
  */
 export const ShopCurrencySchema = z.object({
@@ -103,9 +103,50 @@ const ShopItemKeySchema = z
   // flat lookup), but reject it at the boundary so the key set stays clean.
   .refine((k) => k !== '__proto__' && k !== 'constructor' && k !== 'prototype', 'disallowed key');
 
-/** Input types a buyer-collected order field may use — controls the rendered control + mobile keyboard. */
-export const SHOP_FIELD_TYPES = ['text', 'textarea', 'tel', 'email'] as const;
+/**
+ * Input types a buyer-collected order field may use — controls the rendered control + mobile keyboard.
+ *
+ * Scoped to what a deep-link order can actually carry: every one of these produces a `Label: value` line
+ * a merchant can act on. Deliberately ABSENT — `file` (there is no upload; a wa.me/mailto link cannot
+ * attach anything), `password` (an order is not a credential), and `color`/`range`/`month`/`week` (a hex
+ * triplet or a raw slider number is not an order instruction).
+ *
+ * CHOICE types (`select`, `radio`) read their options from the catalog key `shop.<key>.options` as a
+ * comma-separated list, so the choices localize with everything else — see SHOP_CHOICE_FIELD_TYPES.
+ */
+export const SHOP_FIELD_TYPES = [
+  'text',
+  'textarea',
+  'tel',
+  'email',
+  'number',
+  'url',
+  'date',
+  'time',
+  'select',
+  'radio',
+  'checkbox',
+] as const;
 export type ShopFieldType = (typeof SHOP_FIELD_TYPES)[number];
+
+/** The field types that need a `shop.<key>.options` CSV row (one ghost row per choice list). */
+export const SHOP_CHOICE_FIELD_TYPES: readonly ShopFieldType[] = ['select', 'radio'];
+
+/** Suffix appended to a choice field's `shop.<key>` catalog key to hold its comma-separated options. */
+export const SHOP_OPTIONS_KEY_SUFFIX = '.options';
+
+/**
+ * Split a `shop.<key>.options` catalog value into choices. Trims each and drops empties, so trailing
+ * commas and stray whitespace are forgiving. A comma cannot appear INSIDE a choice label — that is the
+ * documented cost of a one-line, translator-friendly format (the editor row says so).
+ */
+export function parseShopFieldOptions(csv: unknown): string[] {
+  if (typeof csv !== 'string') return [];
+  return csv
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+}
 
 /**
  * A custom buyer-input field collected in the cart drawer BEFORE a WhatsApp / mailto order is sent.

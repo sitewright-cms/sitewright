@@ -276,6 +276,9 @@ export const EFFECT_UTILITIES = `
 @keyframes sw-btn-shine { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
 @keyframes sw-btn-sparkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
 @keyframes sw-beam-spin { to { --sw-beam-angle: 360deg; } }
+/* Only the midpoint is declared: 0%/100% fall back to the element's own --sw-beam-arc, so overriding
+   the narrow value automatically re-anchors the breath instead of needing both ends restated. */
+@keyframes sw-beam-pulse { 50% { --sw-beam-arc: var(--sw-beam-arc-max, 350deg); } }
 
 /* ── button EFFECTS (sw-btn-fx-<name>) — the HOVER/MOTION axis, orthogonal to the FACE (the daisyUI
    variant btn-primary / btn-ghost / btn-outline / … that owns the RESTING look). Effects layer on the
@@ -496,22 +499,36 @@ export const EFFECT_UTILITIES = `
    The travel is the registered \`--sw-beam-angle\` animating 0→360deg (a custom property must be
    @property-registered to be interpolatable; unregistered it would jump discretely once per cycle).
 
+   TWO INDEPENDENT TIMELINES. The comet TRAVELS (\`--sw-beam-angle\`, one lap per \`--sw-beam-speed\`) and
+   separately BREATHES — \`--sw-beam-arc\` eases between \`--sw-beam-arc\` and \`--sw-beam-arc-max\` once per
+   \`--sw-beam-pulse\`, so the light spreads along the edge and narrows back to a point as it goes. Both
+   are registered custom properties: a custom property must be @property-registered to interpolate, and
+   unregistered \`--sw-beam-arc\` would JUMP at the halfway mark instead of gliding. Set
+   \`--sw-beam-arc-max\` equal to \`--sw-beam-arc\` for a constant-length comet (the pre-pulse look).
+
    KNOBS — set them with Tailwind arbitrary properties on the same element, e.g.
    \`class="sw-border-beam [--sw-beam-width:3px] [--sw-beam-speed:6s]"\`:
-     --sw-beam-color  the beam (default: the brand primary, dark-mode aware)
-     --sw-beam-track  the always-on ring UNDER the beam (default \`transparent\` — beam only). Give it a
-                      semi-transparent brand tint to also draw the rest of the edge, e.g.
-                      \`[--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]\`
-                      (Tailwind turns the underscores back into spaces).
-     --sw-beam-width  ring thickness (default 8px — the bold hero look; 2-3px for a fine card edge)
-     --sw-beam-speed  one lap (default 4s)
-     --sw-beam-arc    comet length in degrees (default 90deg — a quarter of the perimeter)
+     --sw-beam-color    the beam (default: the brand primary, dark-mode aware)
+     --sw-beam-track    the always-on ring UNDER the beam (default \`transparent\` — beam only). Give it a
+                        semi-transparent brand tint to also draw the rest of the edge, e.g.
+                        \`[--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]\`
+                        (Tailwind turns the underscores back into spaces).
+     --sw-beam-width    ring thickness (default 5px; 2-3px for a fine card edge, 8px+ for a hero)
+     --sw-beam-speed    one lap (default 1.8s)
+     --sw-beam-arc      the NARROW comet length (default 40deg) — also the resting length
+     --sw-beam-arc-max  the WIDE length it spreads to (default 350deg — nearly the whole edge lit)
+     --sw-beam-pulse    one breath, narrow → wide → narrow (default 7s)
+   A calmer breath on a single card, and a constant comet with no breath at all:
+   \`class="sw-border-beam [--sw-beam-arc:60deg] [--sw-beam-arc-max:180deg] [--sw-beam-pulse:4s]"\`
+   \`class="sw-border-beam [--sw-beam-arc:90deg] [--sw-beam-arc-max:90deg]"\`
    \`border-radius: inherit\` makes the ring follow the element's own rounding, so pair it with rounded-*.
-   REDUCED MOTION: the lap is dropped and the beam rests at its 0deg position — still a gradient-lit
-   border, no travel. NO @property support (Firefox <128 / Safari <16.4): same static resting state.
+   REDUCED MOTION: BOTH animations drop — the beam rests at 0deg with the narrow \`--sw-beam-arc\`, still a
+   gradient-lit border, no travel and no breathing. NO @property support (Firefox <128 / Safari <16.4):
+   same static resting state.
    Costs a repaint per frame (a gradient, not a transform), so it is opt-in per element by design —
    decorate the hero caption, not every card in a grid. */
 @property --sw-beam-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@property --sw-beam-arc { syntax: "<angle>"; initial-value: 40deg; inherits: false; }
 @utility sw-border-beam {
   position: relative;
   &::before {
@@ -520,13 +537,22 @@ export const EFFECT_UTILITIES = `
     inset: 0;
     /* purely decorative: never intercept a click meant for the caption's link/button underneath */
     pointer-events: none;
-    padding: var(--sw-beam-width, 8px);
+    /* Lift the ring above POSITIONED children. Both this pseudo-element and any 'position:relative'
+       descendant sit in the positioned-painting layer at 'z-index:auto', where DOM order decides — and
+       the pseudo-element comes first, so the descendant wins and the ring vanishes behind it. The
+       everyday trigger is '.waves-effect', which the ripple sheet gives 'position:relative': a beamed
+       card whose image is a rippling link lost the whole top edge of its ring. (Only outside
+       prefers-reduced-motion, since that sheet is gated on it — which is exactly why the bug survives
+       a reduced-motion screenshot.) Safe to raise: the ring is masked to the border band and already
+       pointer-events:none, so it covers no content and swallows no clicks. */
+    z-index: 1;
+    padding: var(--sw-beam-width, 5px);
     border-radius: inherit;
     background:
       conic-gradient(from var(--sw-beam-angle), transparent 0deg,
-        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .4),
-        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 90deg) * .6),
-        transparent var(--sw-beam-arc, 90deg)),
+        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 40deg) * .4),
+        var(--sw-beam-color, ${P}) calc(var(--sw-beam-arc, 40deg) * .6),
+        transparent var(--sw-beam-arc, 40deg)),
       linear-gradient(var(--sw-beam-track, transparent) 0 0);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -534,7 +560,13 @@ export const EFFECT_UTILITIES = `
     mask-composite: exclude;
   }
   @media (prefers-reduced-motion: no-preference) {
-    &::before { animation: sw-beam-spin var(--sw-beam-speed, 4s) linear infinite; }
+    /* Two timelines on one pseudo-element: the lap, and the breath. Independent, so either can be
+       retuned alone — and setting --sw-beam-arc-max equal to --sw-beam-arc parks the breath. */
+    &::before {
+      animation:
+        sw-beam-spin var(--sw-beam-speed, 1.8s) linear infinite,
+        sw-beam-pulse var(--sw-beam-pulse, 7s) ease-in-out infinite;
+    }
   }
 }
 `;

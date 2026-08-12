@@ -43,9 +43,6 @@ async function writePage(page: import('@playwright/test').Page) {
 const frameOf = async (page: import('@playwright/test').Page): Promise<Frame> =>
   (await (await page.locator('iframe[title="Preview"]').elementHandle())!.contentFrame())!;
 
-const scrollerOf = (f: Frame) =>
-  f.evaluate(() => (getComputedStyle(document.body).overflowY === 'auto' ? 'body' : 'doc'));
-
 const scrollTo = (f: Frame, y: number) =>
   f.evaluate((v) => {
     const s = getComputedStyle(document.body).overflowY === 'auto' ? document.body : document.documentElement;

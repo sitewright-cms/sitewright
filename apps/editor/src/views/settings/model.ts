@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -714,18 +714,29 @@ const SHOP_KIND_LABEL: Record<KeyedShopChannel['kind'], string> = {
 
 /**
  * The translatable LABEL keys a shop config implies — one `shop.<key>` per configured channel and order
- * field. The editor surfaces these as ghost rows in Translations & Labels so the operator can fill the
- * label text (per locale) without hand-typing the keys. Deduped by key (a field key reused across channels
- * — e.g. `name` — is one row); blank keys skipped. The cart resolves these at render via `shop.<key>`.
+ * field, PLUS a `shop.<key>.options` row for every CHOICE field (select/radio), which holds that field's
+ * comma-separated choices. The editor surfaces these as ghost rows in Translations & Labels so the operator
+ * can fill the text (per locale) without hand-typing the keys — and so the choices localize like everything
+ * else. Deduped by key (a field key reused across channels — e.g. `name` — is one row); blank keys skipped.
+ * The cart resolves both at render via `shop.<key>` / `shop.<key>.options`.
  */
 export function shopLabelKeys(channels: KeyedShopChannel[]): Array<{ key: string; label: string; default: string }> {
   const byKey = new Map<string, { key: string; label: string; default: string }>();
+  const add = (key: string, label: string) => {
+    if (!byKey.has(key)) byKey.set(key, { key, label, default: '' });
+  };
   for (const c of channels) {
     const ck = c.key.trim();
-    if (ck && !byKey.has(`shop.${ck}`)) byKey.set(`shop.${ck}`, { key: `shop.${ck}`, label: SHOP_KIND_LABEL[c.kind], default: '' });
+    if (ck) add(`shop.${ck}`, SHOP_KIND_LABEL[c.kind]);
     for (const f of c.fields) {
       const fk = f.key.trim();
-      if (fk && !byKey.has(`shop.${fk}`)) byKey.set(`shop.${fk}`, { key: `shop.${fk}`, label: 'Order field', default: '' });
+      if (!fk) continue;
+      add(`shop.${fk}`, 'Order field');
+      // A choice field is useless without its options, so the row is offered the moment the type is picked.
+      // The label doubles as the how-to: this is the only place the CSV format is explained.
+      if ((SHOP_CHOICE_FIELD_TYPES as readonly string[]).includes(f.type)) {
+        add(`shop.${fk}${SHOP_OPTIONS_KEY_SUFFIX}`, 'Order field choices — comma-separated, e.g. Small, Medium, Large');
+      }
     }
   }
   return [...byKey.values()];

@@ -253,7 +253,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'Outputs a translated string for the current page locale from the project translation catalog (website.translations), falling back to the default locale, then to default=, then to empty. No JS — resolved at build (works in the live preview too). The output is escaped, so it is safe in text OR an attribute (alt / aria-label / placeholder / title). The catalog is a dedicated per-locale table, separate from website.data.',
         args: [
-          { name: 'key', desc: 'The translation key — an identifier like nav_cta or cart_title.' },
+          { name: 'key', desc: 'The translation key — an identifier or dotted scope path like nav_cta or cart.title.' },
           { name: 'default', desc: 'Optional hash — text shown when the key has no value in any locale.' },
         ],
         example: '<a href="{{sw-url "/contact"}}">{{sw-translate "nav_contact" default="Contact"}}</a>',
@@ -298,7 +298,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-consent-settings',
         keywords: 'cookie settings consent reopen preferences withdraw manage privacy',
         description:
-          'A button that RE-OPENS the consent preferences (for a footer “Cookie settings” link so visitors can change or withdraw consent). Needs consent enabled; with it off it renders nothing. The label localizes via the reserved `consent_settings` key.',
+          'A button that RE-OPENS the consent preferences (for a footer “Cookie settings” link so visitors can change or withdraw consent). Needs consent enabled; with it off it renders nothing. The label localizes via the reserved `consent.settings` key.',
         example: '{{sw-consent-settings class="link"}}',
         note: 'Pairs with {{sw-consent}}. Any element carrying data-sw-consent-open re-opens the banner too.',
       },
@@ -308,7 +308,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-theme-toggle',
         keywords: 'dark light mode theme toggle color scheme switch night sun moon',
         description:
-          'A light/dark toggle button for the opt-in THEMES feature (turn it on in Settings → Website → “Themes (light / dark)”, where you also pick the default theme). It shows a sun/moon icon for the active theme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With themes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme_toggle` translation key.',
+          'A light/dark toggle button for the opt-in THEMES feature (turn it on in Settings → Website → “Themes (light / dark)”, where you also pick the default theme). It shows a sun/moon icon for the active theme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With themes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme.toggle` translation key.',
         example: '{{sw-theme-toggle class="btn btn-ghost btn-circle"}}',
         note: 'Dark mode works WITHOUT this button (the default theme — or each visitor’s OS preference on “auto” — already applies); the toggle just lets visitors override it. It only appears, and its tiny runtime only ships, when themes are enabled.',
       },
@@ -589,12 +589,12 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'fx-border-beam',
-        syntax: 'sw-border-beam · --sw-beam-color / -track / -width / -speed / -arc',
+        syntax: 'sw-border-beam · --sw-beam-color / -track / -width / -speed / -arc / -arc-max / -pulse',
         name: 'Border beam (rotating border)',
         keywords:
           'border beam rotating spinning animated glow glowing edge outline ring light travelling lighthouse conic gradient caption slider hero card frame highlight attention marquee border',
         description:
-          'A light travels around the edge of a box — the rotating / "lighthouse" border — in your brand primary (it follows the built-in dark theme too). The default IS the hero look: an 8px beam and no static ring, so only the moving light is lit. Put sw-border-beam on the ONE element you want to decorate: a slider caption, a featured card, a pricing tier, an image frame. Unlike the nav/button schemes there is no site-wide form and no Website setting — it is a per-element ornament. The ring is drawn OUTSIDE the content (a masked pseudo-element), so a frosted or translucent caption stays see-through and clicks still reach the link underneath. Pair it with a rounded-* class — the ring follows the element\'s own rounding. Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the always-on ring under the beam — default transparent; give it a semi-transparent tint to light the whole edge), --sw-beam-width (default 8px; 2-3px for a fine card edge), --sw-beam-speed (one lap, default 4s), --sw-beam-arc (how long the comet is, default 90deg). It repaints a gradient every frame, so use it as a hero accent rather than on every card in a grid. Under prefers-reduced-motion the beam parks in place and the border stays.',
+          'A light travels around the edge of a box — the rotating / "lighthouse" border — in your brand primary (it follows the built-in dark theme too). The light does two things at once: it TRAVELS around the edge, and it BREATHES — the comet spreads along the edge and narrows back to a point on its own timeline. The default is a 5px ring that breathes from 40° to 350° over 7s while lapping every 1.8s, with no static ring, so only the moving light is lit. Put sw-border-beam on the ONE element you want to decorate: a slider caption, a featured card, a pricing tier, an image frame. Unlike the nav/button schemes there is no site-wide form and no Website setting — it is a per-element ornament. The ring is drawn OUTSIDE the content (a masked pseudo-element), so a frosted or translucent caption stays see-through and clicks still reach the link underneath. Pair it with a rounded-* class — the ring follows the element\'s own rounding. Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the always-on ring under the beam — default transparent; give it a semi-transparent tint to light the whole edge), --sw-beam-width (default 5px; 2-3px for a fine card edge, 8px+ for a hero), --sw-beam-speed (one lap, default 1.8s), --sw-beam-arc (the NARROW comet length, and where it rests, default 40deg), --sw-beam-arc-max (the WIDE length it spreads to, default 350deg — nearly the whole edge lit), --sw-beam-pulse (one breath, default 7s). Set --sw-beam-arc-max to the same value as --sw-beam-arc for a constant-length comet that does not breathe. It repaints a gradient every frame, so use it as a hero accent rather than on every card in a grid. Under prefers-reduced-motion both the lap and the breath drop: the beam parks at its narrow arc and the border stays.',
         example:
           '{{! The default IS the hero caption look — 8px beam, no track, nothing to configure: }}\n' +
           '<div class="sw-caption sw-border-beam rounded-xl">\n' +
@@ -606,7 +606,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '            [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\n' +
           '  <h3>Most popular</h3>\n' +
           '</div>',
-        note: 'Needs no JavaScript. Put it on a block/flex box (not an inline <span>). Very old browsers without @property support show the same border with the beam parked — nothing breaks. Want a different look? --sw-beam-arc:360deg makes the whole ring a rotating gradient instead of a comet.',
+        note: 'Needs no JavaScript. Put it on a block/flex box (not an inline <span>). Very old browsers without @property support show the same border with the beam parked — nothing breaks. Want a different look? Raise --sw-beam-arc so the comet is never short, or match it to --sw-beam-arc-max to switch the breathing off entirely.',
       },
       {
         id: 'fx-sticky-header',

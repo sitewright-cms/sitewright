@@ -312,8 +312,11 @@ describe('WebsiteSettingsSchema', () => {
       expect(() =>
         WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '+14155550123', fields: [{ key: 'a b' }] }] } }),
       ).toThrow(); // key not an identifier
+      // `file` is one of the DELIBERATE exclusions: a wa.me/mailto deep link cannot carry an upload, so a
+      // file input would render a control the buyer can fill and the merchant can never receive.
+      // (`password`, `color`, `range`, `month`, `week` are excluded for the same "not an order line" reason.)
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', key: 'e', email: 'a@b.test', fields: [{ key: 'x', type: 'date' }] }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', key: 'e', email: 'a@b.test', fields: [{ key: 'x', type: 'file' }] }] } }),
       ).toThrow();
       const manyFields = Array.from({ length: 9 }, (_, i) => ({ key: `f${i}` }));
       expect(() =>
@@ -513,7 +516,7 @@ describe('WebsiteSettingsSchema', () => {
 
   describe('translations (i18n message catalog — key-first)', () => {
     it('accepts a key-first table and is optional + separate from data', () => {
-      const w = { translations: { nav_home: { en: 'Home', de: 'Start' }, cart_title: { en: 'Your cart' } } };
+      const w = { translations: { nav_home: { en: 'Home', de: 'Start' }, 'cart.title': { en: 'Your cart' } } };
       const parsed = WebsiteSettingsSchema.parse(w);
       expect(parsed.translations?.nav_home).toEqual({ en: 'Home', de: 'Start' });
       expect(WebsiteSettingsSchema.parse({}).translations).toBeUndefined();

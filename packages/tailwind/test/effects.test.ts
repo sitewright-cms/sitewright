@@ -290,6 +290,44 @@ describe('sw-border-beam (box ornament)', () => {
     expect(css).toContain('-webkit-mask-composite: xor'); // Safari's spelling of the same op
     expect(css).toContain('border-radius: inherit'); // follows the host's rounding
     expect(css).toContain('pointer-events: none'); // never eats a click meant for the caption
+    // …and it must OUTRANK positioned children. Without this the ring shares the positioned layer at
+    // `z-index:auto` with any `position:relative` descendant, where DOM order decides — the pseudo is
+    // first, so the child paints over it. A `.waves-effect` image link (the ripple sheet makes it
+    // relative) hid the entire top edge of a product card's ring exactly this way.
+    expect(css).toContain('z-index: 1');
+  });
+
+  // The comet TRAVELS and BREATHES on two independent timelines. The breath is what makes the arc a
+  // moving target, so --sw-beam-arc has to be @property-registered too: unregistered it cannot
+  // interpolate and would JUMP at the midpoint instead of gliding.
+  it('breathes: a second animation eases --sw-beam-arc out to --sw-beam-arc-max and back', async () => {
+    const css = await beam();
+    expect(css).toContain('@property --sw-beam-arc');
+    expect(css).toContain('syntax: "<angle>"');
+    expect(css).toContain('sw-beam-spin var(--sw-beam-speed, 1.8s) linear infinite');
+    expect(css).toContain('sw-beam-pulse var(--sw-beam-pulse, 7s) ease-in-out infinite');
+    // only the midpoint is declared, so 0%/100% take the element's OWN --sw-beam-arc: overriding the
+    // narrow value re-anchors the breath without restating both ends.
+    expect(css).toContain('@keyframes sw-beam-pulse');
+    expect(css).toContain('50% { --sw-beam-arc: var(--sw-beam-arc-max, 350deg); }');
+  });
+
+  it('ships the agreed defaults: 5px ring, 40deg→350deg breath over 7s, 1.8s lap', async () => {
+    const css = await beam();
+    expect(css).toContain('padding: var(--sw-beam-width, 5px)');
+    expect(css).toContain('transparent var(--sw-beam-arc, 40deg)');
+    expect(css).toContain('var(--sw-beam-arc-max, 350deg)');
+    expect(css).toContain('var(--sw-beam-pulse, 7s)');
+    expect(css).toContain('var(--sw-beam-speed, 1.8s)');
+  });
+
+  // Both animations sit inside the SAME no-preference gate, so the breath inherits the motion opt-out
+  // for free and the ring rests at its narrow arc rather than mid-swell.
+  it('drops BOTH timelines under reduced motion', async () => {
+    const css = await beam();
+    const gate = css.slice(css.indexOf('prefers-reduced-motion'));
+    expect(gate).toContain('sw-beam-spin');
+    expect(gate).toContain('sw-beam-pulse');
   });
 
   it('defaults the beam to the dark-mode-aware brand primary, over NO track', async () => {
@@ -309,9 +347,9 @@ describe('sw-border-beam (box ornament)', () => {
 
   it('exposes the width / speed / arc knobs as overridable vars', async () => {
     const css = await beam();
-    expect(css).toContain('var(--sw-beam-width, 8px)');
-    expect(css).toContain('var(--sw-beam-speed, 4s)');
-    expect(css).toContain('var(--sw-beam-arc, 90deg)');
+    expect(css).toContain('var(--sw-beam-width, 5px)');
+    expect(css).toContain('var(--sw-beam-speed, 1.8s)');
+    expect(css).toContain('var(--sw-beam-arc, 40deg)');
     // and an arbitrary-property override on the same element compiles to a real declaration
     expect(await beam('[--sw-beam-width:3px]')).toContain('--sw-beam-width: 3px');
   });
@@ -346,7 +384,10 @@ describe('sw-border-beam (box ornament)', () => {
   it('gates the lap behind prefers-reduced-motion, and the RULE tree-shakes when unused', async () => {
     const css = await beam();
     expect(css).toMatch(
-      /@media \(prefers-reduced-motion: no-preference\) \{\s*&::before \{\s*animation: sw-beam-spin/,
+      // Both timelines live inside the ONE gate, so the motion opt-out drops the lap AND the breath.
+      // Matched loosely on purpose: the assertion is about WHAT is gated, not how the block is
+      // formatted — a comment between the media rule and the selector is not a regression.
+      /@media \(prefers-reduced-motion: no-preference\)[\s\S]*?&::before[\s\S]*?sw-beam-spin[\s\S]*?sw-beam-pulse/,
     );
     // the ring itself is NOT inside the media query — reduced motion parks the beam, it does not
     // remove the border.

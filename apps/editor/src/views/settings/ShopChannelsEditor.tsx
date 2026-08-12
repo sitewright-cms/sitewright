@@ -1,8 +1,10 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { SHOP_MAX_CHANNEL_FIELDS, type ShopFieldType } from '@sitewright/schema';
+import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, type ShopFieldType } from '@sitewright/schema';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
+import { useReorder } from './use-reorder';
+import { ReorderHandle } from './ReorderHandle';
 
 /** Glass select styling WITHOUT a width util, so a native <select> auto-sizes to its widest option. */
 const glassSelectAuto =
@@ -21,7 +23,17 @@ const FIELD_TYPES = [
   { value: 'textarea', label: 'Multi-line' },
   { value: 'tel', label: 'Phone' },
   { value: 'email', label: 'Email' },
+  { value: 'number', label: 'Number' },
+  { value: 'url', label: 'URL' },
+  { value: 'date', label: 'Date' },
+  { value: 'time', label: 'Time' },
+  { value: 'select', label: 'Dropdown' },
+  { value: 'radio', label: 'Choice (radio)' },
+  { value: 'checkbox', label: 'Toggle (yes/no)' },
 ] satisfies Array<{ value: ShopFieldType; label: string }>;
+
+/** True for a type whose choices come from the `shop.<key>.options` catalog row. */
+const isChoice = (t: ShopFieldType) => (SHOP_CHOICE_FIELD_TYPES as readonly string[]).includes(t);
 
 /**
  * Per-channel buyer-input fields (whatsapp/mailto only). Each row is a label + input type + a required
@@ -39,14 +51,33 @@ function OrderFieldsEditor({
 }) {
   const setField = (id: string, patch: Partial<KeyedShopField>) =>
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  const { dragId, dragProps, move } = useReorder(fields, onChange);
+  const anyChoice = fields.some((f) => isChoice(f.type));
   return (
     <div className="mt-2 rounded-md border border-slate-200/60 dark:border-slate-700/60 bg-slate-50/50 dark:bg-white/5 p-2">
       <p className="mb-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
-        Order fields — collected before sending. Each has a stable <em>key</em>; its label text is set in Translations &amp; Labels under <code>shop.&lt;key&gt;</code>.
+        Order fields — collected before sending, in this order. Each has a stable <em>key</em>; its label text is set in Translations &amp; Labels under <code>shop.&lt;key&gt;</code>.
       </p>
+      {anyChoice && (
+        <p className="mb-1.5 text-xs text-slate-500 dark:text-slate-400">
+          A dropdown or choice field also reads its options from <code>shop.&lt;key&gt;.options</code> — a comma-separated
+          list (e.g. <em>Small, Medium, Large</em>). Until that row has a value the field falls back to a plain text input.
+        </p>
+      )}
       <div className="flex flex-col gap-2">
         {fields.map((f, fi) => (
-          <div key={f.id} className="flex items-center gap-2">
+          <div
+            key={f.id}
+            {...dragProps(f.id)}
+            className={`flex items-center gap-2 ${dragId === f.id ? 'opacity-50' : ''}`}
+          >
+            <ReorderHandle
+              label={`field ${fi + 1} in channel ${channelIndex + 1}`}
+              onUp={() => move(f.id, -1)}
+              onDown={() => move(f.id, 1)}
+              canUp={fi > 0}
+              canDown={fi < fields.length - 1}
+            />
             <input
               aria-label={`Channel ${channelIndex + 1} field ${fi + 1} key`}
               className={`${glassInput} flex-1 font-mono`}
@@ -107,6 +138,7 @@ function OrderFieldsEditor({
  */
 export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[]; onChange: (rows: KeyedShopChannel[]) => void }) {
   const set = (id: string, patch: Partial<KeyedShopChannel>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const { dragId, dragProps, move } = useReorder(rows, onChange);
   return (
     <div className="flex flex-col gap-3">
       <AnimatePresence initial={false}>
@@ -120,7 +152,18 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="rounded-lg border border-slate-200/70 dark:border-slate-700/70 p-3"
           >
+            {/* The HTML5 drag props live on a plain child, NOT on the motion.div: framer-motion types
+                `onDragStart`/`onDrag` as its own PAN-gesture handlers, so putting them on the animated
+                element collides at the type level and would hand the wrong event object at runtime. */}
+            <div {...dragProps(r.id)} className={dragId === r.id ? 'opacity-50' : undefined}>
             <div className="flex items-center gap-2">
+              <ReorderHandle
+                label={`channel ${i + 1}`}
+                onUp={() => move(r.id, -1)}
+                onDown={() => move(r.id, 1)}
+                canUp={i > 0}
+                canDown={i < rows.length - 1}
+              />
               <select
                 aria-label={`Channel ${i + 1} kind`}
                 className={`${glassInput} w-40`}
@@ -179,6 +222,7 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
             {(r.kind === 'whatsapp' || r.kind === 'mailto') && (
               <OrderFieldsEditor fields={r.fields} onChange={(fields) => set(r.id, { fields })} channelIndex={i} />
             )}
+            </div>
           </motion.div>
         ))}
       </AnimatePresence>

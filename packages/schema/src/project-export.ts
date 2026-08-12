@@ -12,6 +12,7 @@ import { ImageMapSchema } from './image-map.js';
 import { MediaAssetSchema, MediaFolderRecordSchema } from './media.js';
 import { IdSchema, SlugSchema } from './primitives.js';
 import { mergeLegacyIdentity } from './migrate-identity.js';
+import { mergeLegacyTranslations } from './migrate-translations.js';
 
 /**
  * The **complete**, portable project bundle — the `bundle.json` inside a project
@@ -55,10 +56,12 @@ export const PROJECT_EXPORT_FORMAT = 1;
 /**
  * The project manifest fields carried in the bundle. `id`/`name`/`slug` are
  * advisory on import (a new project mints fresh ones); `mergeLegacyIdentity`
- * folds a pre-v2 `{brand,company}` project so older JSON exports still parse.
+ * folds a pre-v2 `{brand,company}` project so older JSON exports still parse, and
+ * `mergeLegacyTranslations` lifts a catalog still on the flat reserved key names so
+ * an old bundle keeps its cart/consent/theme overrides.
  */
 const ExportBundleProjectSchema = z.preprocess(
-  mergeLegacyIdentity,
+  (raw) => mergeLegacyTranslations(mergeLegacyIdentity(raw)),
   z.object({
     id: IdSchema,
     name: z.string().min(1).max(200),

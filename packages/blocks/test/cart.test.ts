@@ -91,7 +91,7 @@ describe('cart runtime', () => {
 
   it('reads the localizable drawer strings from mount attrs, with the previous literals as defaults', () => {
     expect(CART_JS).toContain("mount.getAttribute('data-empty-label')||'Your cart is empty.'");
-    expect(CART_JS).toContain("mount.getAttribute('data-total-label')||'Total'"); // footer label (cart_total)
+    expect(CART_JS).toContain("mount.getAttribute('data-total-label')||'Total'"); // footer label (cart.total)
     expect(CART_JS).toContain("mount.getAttribute('data-clear-label')||'Clear cart'");
     expect(CART_JS).toContain("mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.'");
     // the previously-hardcoded literals are now sourced from cfg at every call site
@@ -186,7 +186,7 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_JS).not.toContain("mk('button',null,'+')"); // old text glyph gone
   });
 
-  it('names the footer grand-total row data-sw-part="total" and reads the cart_total label', () => {
+  it('names the footer grand-total row data-sw-part="total" and reads the cart.total label', () => {
     expect(CART_JS).toContain("part('div','total')"); // footer total row (was 'subtotal')
     expect(CART_JS).not.toContain("part('div','subtotal')");
     expect(CART_CSS).toContain('[data-sw-part="total"]{display:flex;justify-content:space-between');

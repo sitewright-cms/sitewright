@@ -9,8 +9,50 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-08-12
+
+### Added
+
+- **Shop order fields cover the controls a real order needs.** A checkout field was text-only, so a
+  shop could not ask "Size?" or "Gift wrap?" — the two most ordinary order questions there are.
+  `select`, `radio`, `checkbox`, `number`, `url`, `date` and `time` join the original four, and a
+  field with no type declared still means text, so nothing stored changes meaning. Choices for a
+  select or radio are written as **comma-separated text** in a `shop.<key>.options` row alongside
+  the label, which makes them translatable per locale like every other piece of shop copy. The
+  browser enforces `required` natively — an empty required select blocks the submit, and an unticked
+  checkbox contributes no line to the order at all.
+- **Checkout channels and their order fields can be dragged into order.** Both lists rendered in
+  insertion order with no way to change it. Move up / move down buttons drive the same reorder, so
+  the feature works from the keyboard rather than pointer-only.
+
+### Changed
+
+- **★ The platform's own translatable strings are now discoverable, and scoped.** The cart, consent,
+  theme and system strings had **no UI surface at all** on a single-locale site: the Shop group was
+  gated on a project having more than one locale, so an English shop selling in Namibian dollars got
+  no row for its currency symbol — and the Shop settings dialog pointed at a row that did not exist.
+  These are merchant copy and configuration, not accessibility boilerplate, so a feature's group now
+  surfaces whenever that feature is on. The 39 reserved keys also move from flat names to dotted
+  scopes (`cart_add` → `cart.add`, plus `consent.*`, `theme.*`, `system.*`) so they group in the
+  translations table the way operator keys already do.
+  **Stored overrides are migrated automatically** on read, so an existing project keeps every string
+  it had customised; the legacy names remain valid input and are lifted to the new ones.
+- **The rotating border beam breathes.** Its arc now widens and narrows on a slow second timeline
+  independent of the lap, tuned to a 40°→350° sweep every 7s against a 1.8s rotation. The arc, its
+  maximum, the breath period and the width are all documented custom properties.
+
 ### Fixed
 
+- **★ No published site had a `favicon.ico`, an apple-touch icon or a web app manifest.** The whole
+  icon set is derived from the single Corporate-Identity icon, and the code that resolved that icon
+  back to a media asset still assumed the old `<id>/<file>` folder layout. Under the current flat
+  media scheme it matched nothing and gave up — on every project. Nothing surfaced the loss, because
+  the fallback still emits a plain `<link rel="icon">`: the tab kept its icon, and only the phone
+  home screen and the installable-app path were actually broken.
+- **★ The border beam was painted over by any positioned child.** The ring is drawn in a `::before`
+  with no `z-index`, so on a product tile with an add-to-cart button — anything carrying
+  `position: relative`, including a ripple effect's own layer — the child stacked above the ring and
+  hid it behind the product image. The ring now claims its own layer.
 - **★ Scrolling back UP left animated elements permanently invisible.** Reported as "some elements are
   not animated in anymore and stay invisible", and measured exactly that way — come to rest on the
   element, wait, ask whether it is visible. Across 14 configurations: **19 permanently invisible
@@ -1913,6 +1955,7 @@ First tagged release + the production-readiness work.
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
 [Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...HEAD
+[0.17.0]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/sitewright-cms/sitewright/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/sitewright-cms/sitewright/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/sitewright-cms/sitewright/compare/v0.13.0...v0.14.0

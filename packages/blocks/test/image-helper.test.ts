@@ -235,3 +235,59 @@ describe('{{sw-image lightbox=true}} — gallery item markup', () => {
     expect(html).not.toContain('<a href');
   });
 });
+
+describe('buildSwImage — editable= (data-sw-src on a responsive image)', () => {
+  const svg: RenderMedia = { ...img, id: 'v1', filename: 'logo.svg', url: '/media/acme/v1/logo.svg' };
+
+  it('emits data-sw-src on the RESPONSIVE branch without disturbing srcset/dims/LQIP', () => {
+    const html = buildSwImage(img.url, [img], { editable: 'hero' });
+    expect(html).toContain('data-sw-src="hero"');
+    // the whole point of the parameter: responsiveness survives
+    expect(html).toContain('srcset=');
+    expect(html).toContain('width="2000"');
+    expect(html).toContain('height="1000"');
+    expect(html).toContain('data:image/webp;base64');
+  });
+
+  it('emits it on the SVG branch too (vectors take no srcset, but stay replaceable)', () => {
+    const html = buildSwImage(svg.url, [svg], { editable: 'mark' });
+    expect(html).toContain('data-sw-src="mark"');
+    expect(html).not.toContain('srcset=');
+  });
+
+  it('emits it on the UNRESOLVED/external branch', () => {
+    const html = buildSwImage('https://cdn.example/x.jpg', [], { editable: 'ext' });
+    expect(html).toContain('data-sw-src="ext"');
+  });
+
+  it('emits it inside a lightbox wrapper', () => {
+    const html = buildSwImage(img.url, [img], { editable: 'shot', lightbox: true });
+    expect(html).toContain('data-sw-src="shot"');
+    expect(html).toContain('<a ');
+  });
+
+  it('omits the attribute entirely when not asked for — existing markup is byte-identical', () => {
+    expect(buildSwImage(img.url, [img])).toBe(buildSwImage(img.url, [img], {}));
+    expect(buildSwImage(img.url, [img])).not.toContain('data-sw-src');
+  });
+
+  it('escapes the key rather than letting it break out of the attribute', () => {
+    const html = buildSwImage(img.url, [img], { editable: 'a"><script>x</script>' });
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&quot;');
+  });
+
+  it('is reachable from the {{sw-image}} helper, and an empty key stays OFF', () => {
+    // The directive pass KEEPS markers in the editor render and STRIPS them on publish, so the
+    // marker is asserted against a preview render — and its absence from the publish render is the
+    // other half of the contract: an editable image adds nothing to the shipped HTML.
+    const on = renderTemplate('{{sw-image "/media/acme/a1/photo.jpg" editable="hero"}}', { media: [img], preview: true });
+    expect(on).toContain('data-sw-src="hero"');
+    expect(on).toContain('srcset='); // still responsive through the helper path
+    const published = renderTemplate('{{sw-image "/media/acme/a1/photo.jpg" editable="hero"}}', { media: [img] });
+    expect(published).not.toContain('data-sw-src');
+    expect(published).toContain('srcset=');
+    const off = renderTemplate('{{sw-image "/media/acme/a1/photo.jpg" editable=""}}', { media: [img], preview: true });
+    expect(off).not.toContain('data-sw-src');
+  });
+});

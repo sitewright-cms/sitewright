@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`{{sw-image ... editable="key"}}` — an image that is both responsive and replaceable.** Until now
+  an author had to choose: a hand-written `<img data-sw-src>` that a client can swap from the preview
+  but which ships one uncapped file to every device, or `{{sw-image}}`, which is responsive but
+  frozen. The new parameter puts the editable-leaf marker on the `<img>` that helper already emits,
+  so the srcset, intrinsic dimensions, blur-up placeholder and lazy-loading all still apply. Like
+  every other directive it is kept in the editor render and stripped on publish, so an editable image
+  adds nothing to the shipped HTML.
+
 ### Fixed
 
 - **The PWA manifest 404'd on the draft preview.** `site.webmanifest` is written to the site root

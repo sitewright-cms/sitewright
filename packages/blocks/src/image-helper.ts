@@ -32,6 +32,20 @@ export interface SwImageOptions {
   /** 'webp' (default: single <img>) or 'avif' (a <picture> with an AVIF source above the WebP one). */
   format?: 'webp' | 'avif';
   /**
+   * Make the image REPLACEABLE in the editor: emits `data-sw-src="<key>"` on the `<img>`, so clicking
+   * it in the preview opens the file picker and the choice is stored under that key.
+   *
+   * Without this, an author had to choose: a hand-written `<img data-sw-src>` that is editable but
+   * ships one uncapped file to every device, or `{{sw-image}}` which is responsive but frozen. The
+   * directive is a plain attribute on the element `{{sw-image}}` already emits, so there is nothing
+   * to reconcile — the srcset, dimensions, LQIP and lazy-loading all still apply.
+   *
+   * On a LAZY image the directive writes into `data-src` rather than `src` (see directives.ts), which
+   * is exactly the attribute the blur-up markup already uses — so an editable lazy image keeps its
+   * placeholder instead of flashing.
+   */
+  editable?: string;
+  /**
    * Wrap the image in the `<a href><img>` pair a Lightbox gallery item is made of, with the href
    * pointing at the LARGEST usable variant while the thumbnail keeps its own responsive srcset.
    *
@@ -97,17 +111,20 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   // it first), unless the caller overrode the priority. `auto` is the browser default, so emit nothing.
   const priority = opts.fetchpriority ?? (loading === 'eager' ? 'high' : undefined);
   const fp = priority && priority !== 'auto' ? ` fetchpriority="${priority}"` : '';
+  // The editable-leaf marker. Emitted on EVERY <img> branch below (svg, unresolved, responsive) so
+  // "is this image replaceable" never depends on which branch the asset happens to take.
+  const edit = opts.editable ? ` data-sw-src="${escapeAttr(opts.editable)}"` : '';
 
   // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
   // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).
   if (/\.svg(?:$|\?)/i.test(src)) {
     const svgDims = asset && asset.kind === 'image' && asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : '';
-    return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${fp}${cls}>`;
+    return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${fp}${edit}${cls}>`;
   }
 
   // Unresolved / external / dimensionless → a plain lazy <img> (no srcset/dims/LQIP available).
   if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) {
-    return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${fp}${cls}>`;
+    return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${fp}${edit}${cls}>`;
   }
 
   const { width, height } = asset as { width: number; height: number };
@@ -157,12 +174,12 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
       '<picture>' +
         `<source type="image/avif" srcset="${avifSrcset}" sizes="${sizesAttr}">` +
         `<source type="image/webp" srcset="${webpSrcset}" sizes="${sizesAttr}">` +
-        `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${cls}${lqip}>` +
+        `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>` +
         '</picture>',
     );
   }
   return galleryWrap(
     `<img src="${imgSrc}" srcset="${webpSrcset}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
-      `loading="${loading}" decoding="async"${fp}${cls}${lqip}>`,
+      `loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>`,
   );
 }

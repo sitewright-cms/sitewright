@@ -155,7 +155,7 @@ export const BORDER_ITEMS: LibraryItem[] = [
     keywords:
       'border beam track ring static edge semi-transparent translucent tint color-mix primary thin fine card sw-beam-track sw-beam-width',
     description:
-      'Add --sw-beam-track to light the WHOLE edge under the beam instead of only the moving comet — a semi-transparent brand tint reads as a fine border that the beam runs along. Pair it with a slimmer --sw-beam-width for a card or badge, where the 8px default would be chunky. Any colour works; color-mix against the primary keeps it on-CI in both light and dark. Tailwind turns the underscores back into spaces.',
+      'Add --sw-beam-track to light the WHOLE edge under the beam instead of only the moving comet — a semi-transparent brand tint reads as a fine border that the beam runs along. Pair it with a slimmer --sw-beam-width for a card or badge, where the 5px default is still a touch heavy. Any colour works; color-mix against the primary keeps it on-CI in both light and dark. Tailwind turns the underscores back into spaces.',
     example:
       '<div class="sw-border-beam rounded-2xl p-6 [--sw-beam-width:3px]\n' +
       '            [--sw-beam-track:color-mix(in_oklab,var(--sw-color-primary)_25%,transparent)]">\n' +
@@ -167,11 +167,24 @@ export const BORDER_ITEMS: LibraryItem[] = [
     name: 'Beam knobs (colour, width, speed, arc)',
     keywords: 'border beam variable custom colour color width speed arc comet length slow fast accent',
     description:
-      'Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the ring under the beam — default transparent, i.e. beam only), --sw-beam-width (8px), --sw-beam-speed (one lap, 4s), --sw-beam-arc (comet length, 90deg — use 360deg to make the whole ring a rotating gradient). It repaints every frame, so use it as an accent, not on every card in a grid; reduced motion parks the beam and keeps the border.',
+      'Tune it with arbitrary properties on the same element: --sw-beam-color (default: brand primary), --sw-beam-track (the ring under the beam — default transparent, i.e. beam only), --sw-beam-width (5px), --sw-beam-speed (one lap, 1.8s), --sw-beam-arc (the narrow comet length, 40deg). It repaints every frame, so use it as an accent, not on every card in a grid; reduced motion parks the beam and keeps the border.',
     example:
       '<div class="sw-border-beam rounded-full px-6 py-3\n' +
       '            [--sw-beam-color:var(--sw-color-accent)] [--sw-beam-width:4px] [--sw-beam-arc:140deg]">\n' +
       '  Limited offer\n' +
+      '</div>',
+  },
+  {
+    id: 'beam-pulse',
+    name: 'Beam that spreads and narrows',
+    keywords:
+      'border beam pulse breathe breathing spread narrow grow shrink arc max comet length rhythm sw-beam-arc-max sw-beam-pulse steady constant',
+    description:
+      'The beam BREATHES by default: its comet eases from --sw-beam-arc (40deg) out to --sw-beam-arc-max (350deg, nearly the whole edge lit) and back, once per --sw-beam-pulse (7s) — on its own timeline, independent of the lap. Widen the gap between the two arcs for a more dramatic swell, or narrow it for a barely-there shimmer. Setting --sw-beam-arc-max to the SAME value as --sw-beam-arc switches the breathing off and leaves a constant-length comet.',
+    example:
+      '<div class="sw-border-beam rounded-2xl p-6\n' +
+      '            [--sw-beam-arc:60deg] [--sw-beam-arc-max:180deg] [--sw-beam-pulse:4s]">\n' +
+      '  <h3>Featured</h3>\n' +
       '</div>',
   },
 ];

@@ -1,6 +1,9 @@
 {
   "properties": [
     "--sw-beam-angle",
+    "--sw-beam-arc",
+    "--sw-beam-arc-max",
+    "--sw-beam-pulse",
     "--sw-beam-speed",
     "--sw-beam-track",
     "--sw-beam-width",

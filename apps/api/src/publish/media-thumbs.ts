@@ -88,7 +88,7 @@ function parseQuery(query: string): { size: SizeToken | 'original'; format: Thum
  * caller leaves the url untouched. Distinguishing the two on the slash keeps the flat `<id>-<name>` from
  * being mistaken for a folder and vice-versa.
  */
-function splitMediaPath(rest: string): { id: string; name: string; isRaw: boolean } | undefined {
+export function splitMediaPath(rest: string): { id: string; name: string; isRaw: boolean } | undefined {
   const slash = rest.indexOf('/');
   if (slash === 0) return undefined; // leading slash → malformed
   if (slash > 0) {

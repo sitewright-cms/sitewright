@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { generateFaviconSet, FAVICON_FILES } from '@sitewright/image-pipeline';
 import type { CorporateIdentity, MediaAsset } from '@sitewright/schema';
+import { splitMediaPath } from './media-thumbs.js';
 
 // The favicon / PWA icon set + Web App Manifest, derived at publish from the single Corporate-Identity
 // `icon`. Files land at the SITE ROOT (`favicon.ico`, `site.webmanifest`) + under `_assets/_icons/`
@@ -51,8 +52,16 @@ export async function emitFaviconSet(
   // can't be read here, so it stays a single <link rel="icon"> (the caller's fallback).
   const prefix = `/media/${projectSlug}/`;
   if (!icon.startsWith(prefix)) return undefined;
-  const assetId = icon.slice(prefix.length).split('/')[0];
-  const asset = media.find((a) => a.id === assetId);
+  // Parse with the SHARED splitter, which knows both media-url shapes. This used to be a local
+  // `split('/')[0]`, written when every media url was a `<id>/<file>` FOLDER. Under the flat
+  // `<id>-<name>` scheme there is no slash after the prefix, so that expression returned the whole
+  // FILENAME, matched no asset id, and this function bailed to `undefined` on every modern project
+  // — silently costing them favicon.ico, the apple-touch icon and the whole PWA manifest while the
+  // caller's single <link rel="icon"> fallback kept a favicon visible enough to hide it.
+  const rest = icon.slice(prefix.length);
+  const seg = splitMediaPath(rest.split('?')[0] ?? rest);
+  if (!seg) return undefined;
+  const asset = media.find((a) => a.id === seg.id);
   if (!asset) return undefined;
 
   const source = await readIconSource(asset, readMedia);

@@ -46,7 +46,7 @@ describe('cart order fields — the control types a channel can collect', () => 
   it('renders a select from its options and carries the choice into the order', () => {
     const { form } = run([{ label: 'Size', type: 'select', options: ['Small', 'Large'] }]);
     const sel = form.querySelector('select') as HTMLSelectElement;
-    expect([...sel.options].map((o) => o.value)).toEqual(['Small', 'Large']); // no blank rung when optional
+    expect(Array.from(sel.options).map((o) => o.value)).toEqual(['Small', 'Large']); // no blank rung when optional
     sel.value = 'Large';
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(opened).toContain('Size: Large');
@@ -67,7 +67,7 @@ describe('cart order fields — the control types a channel can collect', () => 
     const fs = form.querySelector('[data-sw-part="order-choice"]') as HTMLFieldSetElement;
     expect(fs.tagName).toBe('FIELDSET');
     expect(fs.querySelector('legend')!.textContent).toBe('Delivery *');
-    const radios = [...form.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+    const radios = Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"]'));
     expect(radios).toHaveLength(2);
     expect(new Set(radios.map((r) => r.name)).size).toBe(1); // one group, so only one can be chosen
     expect(radios.every((r) => r.required)).toBe(true);
@@ -82,7 +82,7 @@ describe('cart order fields — the control types a channel can collect', () => 
       { label: 'Delivery', type: 'radio', options: ['Collect', 'Courier'] },
       { label: 'Wrap', type: 'radio', options: ['Plain', 'Gift'] },
     ]);
-    const names = new Set([...form.querySelectorAll<HTMLInputElement>('input[type="radio"]')].map((r) => r.name));
+    const names = new Set(Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"]')).map((r) => r.name));
     expect(names.size).toBe(2);
   });
 
@@ -111,7 +111,7 @@ describe('cart order fields — the control types a channel can collect', () => 
       { label: 'Site', type: 'url' },
       { label: 'Odd', type: 'colour-picker-from-the-future' },
     ]);
-    const types = [...form.querySelectorAll<HTMLInputElement>('input')].map((i) => i.type);
+    const types = Array.from(form.querySelectorAll<HTMLInputElement>('input')).map((i) => i.type);
     expect(types).toEqual(['number', 'date', 'url', 'text']);
   });
 
@@ -131,7 +131,7 @@ describe('cart order fields — the control types a channel can collect', () => 
       { label: 'Second', type: 'select', options: ['B'] },
       { label: 'Third', type: 'text' },
     ]);
-    const [a, b] = [...form.querySelectorAll<HTMLInputElement>('input[type="text"]')];
+    const [a, b] = Array.from(form.querySelectorAll<HTMLInputElement>('input[type="text"]'));
     a!.value = 'one';
     b!.value = 'three';
     (form.querySelector('select') as HTMLSelectElement).value = 'B';

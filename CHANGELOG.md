@@ -9,6 +9,14 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The PWA manifest 404'd on the draft preview.** `site.webmanifest` is written to the site root
+  beside `robots.txt` and linked from every page's `<head>`, but the preview's static-asset rule
+  listed only `css`, `js`, `xml` and `txt` — so the one file that makes a site installable came back
+  404 there. Local hosting has no such allowlist and served it correctly, which is why it went
+  unnoticed. The rule now lives in its own module with the root files it accepts spelled out.
+
 ## [0.17.0] — 2026-08-12
 
 ### Added

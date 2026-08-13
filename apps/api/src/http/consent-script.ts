@@ -109,4 +109,26 @@ export const CONSENT_SCRIPT = `(function(){
       });
     })(copyButtons[b]);
   }
+
+  // ---- Enter copies the callback URL -------------------------------------
+  // The button is autofocused in the markup, so Enter already activates it natively on arrival — this
+  // covers AFTER focus has moved: selecting the URL text to read it, opening the "just the code"
+  // disclosure, tabbing past. On a screen whose only purpose is "copy this and go back to your
+  // terminal", Enter should mean copy wherever you happen to be standing.
+  //
+  // It fires only when Enter would otherwise do NOTHING: if the target is a control that has its own
+  // Enter behaviour (a button, a link, the disclosure summary, a field), that behaviour wins — so
+  // Enter on "Open it in this browser" still opens, and Enter on the focused Copy URL button copies
+  // once, not twice.
+  var primaryCopy = document.getElementById('sw-copy-url');
+  if(primaryCopy){
+    document.addEventListener('keydown', function(e){
+      if(e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return;
+      var t = e.target;
+      if(t && t !== document && t !== document.body && t.closest &&
+         t.closest('button, a, summary, input, textarea, select, [contenteditable]')) return;
+      e.preventDefault();
+      primaryCopy.click();
+    });
+  }
 })();`;

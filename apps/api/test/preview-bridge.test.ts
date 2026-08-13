@@ -26,18 +26,17 @@ describe('preview bridge — opening an image map in the Studio', () => {
   });
 
   it('marks a map the way every other region is marked', () => {
-    // A region an author can act on is OUTLINED at rest and tinted on hover; a map was the one
-    // clickable thing on the page with no affordance at all, so nothing said it could be opened.
-    expect(PREVIEW_BRIDGE_JS).toContain("[data-sw-imagemap].sw-imap-on{cursor:pointer;outline:2px dashed #14b8a6");
-    // Teal, like a dataset row: both mean "a click opens a dedicated editor", not "edit in place".
-    expect(PREVIEW_BRIDGE_JS).toContain("[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6");
-    // An INSET tint, not a background: the map paints its own image over the element's background.
-    expect(PREVIEW_BRIDGE_JS).toContain('[data-sw-imagemap].sw-imap-on:hover{box-shadow:inset 0 0 0 9999px');
+    // A region an author can act on is boxed at rest and tinted on hover — in the OVERLAY (see the
+    // "never restyles the page" suite below). A map was the one clickable thing on the page with no
+    // affordance at all, so nothing said it could be opened.
+    expect(PREVIEW_BRIDGE_JS).toContain('[data-sw-imagemap].sw-imap-on,[data-sw-form].sw-form-on{cursor:pointer}');
     // Applied and removed with the other content-mode affordances…
     expect(PREVIEW_BRIDGE_JS).toContain("el.classList.add('sw-imap-on')");
     expect(PREVIEW_BRIDGE_JS).toContain("el.classList.remove('sw-imap-on')");
-    // …and only for a STORED map, or the outline would promise an editor that never opens.
-    expect(PREVIEW_BRIDGE_JS).toMatch(/if \(on && \(el\.getAttribute\('data-sw-imagemap'\) \|\| ''\)\)/);
+    // …and only for a STORED map, or the marker would promise an editor that never opens.
+    expect(PREVIEW_BRIDGE_JS).toMatch(/if \(on && \(el\.getAttribute\('data-sw-imagemap'\) \|\| ''\)\) \{ el\.classList\.add\('sw-imap-on'\)/);
+    // …and it joins the at-rest layer, in the teal a dataset row uses ("a click opens an editor").
+    expect(PREVIEW_BRIDGE_JS).toContain("restPush(el, 'entry')");
   });
 
   it('lists a map in the Regions rail, and the rail opens it', () => {
@@ -119,7 +118,7 @@ describe('preview bridge — clicking an embedded form opens its definition', ()
   });
 
   it('marks a form the way every other actionable region is marked', () => {
-    expect(PREVIEW_BRIDGE_JS).toContain("[data-sw-form].sw-form-on{cursor:pointer");
+    expect(PREVIEW_BRIDGE_JS).toContain('[data-sw-imagemap].sw-imap-on,[data-sw-form].sw-form-on{cursor:pointer}');
     expect(PREVIEW_BRIDGE_JS).toContain("el.classList.add('sw-form-on')");
   });
 
@@ -129,5 +128,132 @@ describe('preview bridge — clicking an embedded form opens its definition', ()
     // the foreign-slot gate must not apply to it.
     const marking = PREVIEW_BRIDGE_JS.slice(PREVIEW_BRIDGE_JS.indexOf("eachEl('[data-sw-form]'"));
     expect(marking.slice(0, 220)).not.toContain('inForeignSlot');
+  });
+});
+
+describe('preview bridge — the affordances never restyle the page', () => {
+  /**
+   * ★ THE INVARIANT: an editable region is MARKED, not MODIFIED.
+   *
+   * The affordances used to be CSS on the host — a dashed outline, a 2px border-radius, a hover
+   * background, an inset box-shadow. Each of those overwrote a property the site had authored, so
+   * turning on content mode changed what the page LOOKED like: rounded cards went square, a hover
+   * blanked a coloured card's background to a pale wash, and on an image-backed element the tint was
+   * invisible (which is why images had already been forced onto an inset shadow — which in turn
+   * replaced whatever shadow they were designed with). Everything now paints in a fixed overlay.
+   *
+   * The check is structural rather than a list of remembered rules: pull every selector in the
+   * injected stylesheet that targets a HOST element (a data-sw-* attribute or an on-state class) and
+   * assert its declaration block sets nothing but `cursor`. A new affordance written the old way
+   * fails here, whatever it is called.
+   */
+  const HOST_SELECTOR = /(\[data-sw-|\.sw-(edit|tr|link|img|entry|imap|form)-on)/;
+  /** Editor-OWNED markup, stripped before publish — styling those is not restyling the page. */
+  const EDITOR_OWNED = /\.sw-(ov|tb|pop|rz|slot|control-on|flash)/;
+
+  /** Every `selector{decls}` pair in the bridge's stylesheet strings. */
+  function rules(): { sel: string; decls: string }[] {
+    const out: { sel: string; decls: string }[] = [];
+    for (const m of PREVIEW_BRIDGE_JS.matchAll(/'([^']*?\{[^']*?\})'/g)) {
+      for (const r of (m[1] ?? '').matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        out.push({ sel: (r[1] ?? '').trim(), decls: (r[2] ?? '').trim() });
+      }
+    }
+    return out;
+  }
+
+  it('sets NOTHING but cursor on an element the page owns', () => {
+    const hostRules = rules().filter((r) => HOST_SELECTOR.test(r.sel) && !EDITOR_OWNED.test(r.sel));
+    expect(hostRules.length, 'the host rules should still exist — this test would pass vacuously').toBeGreaterThan(0);
+    for (const r of hostRules) {
+      const props = r.decls
+        .split(';')
+        .map((d) => d.split(':')[0]?.trim())
+        .filter((p): p is string => !!p);
+      // `display:none` on [data-sw-control] is the one exception, and it is not the page's element:
+      // the control chip is editor-only markup that publish removes entirely.
+      const allowed = r.sel.includes('data-sw-control') ? ['cursor', 'display'] : ['cursor'];
+      expect(props.filter((prop) => !allowed.includes(prop)), `${r.sel} { ${r.decls} }`).toEqual([]);
+    }
+  });
+
+  it('paints the at-rest marker, the hover tint and the locate flash in the OVERLAY', () => {
+    // A fixed, pointer-events:none layer over the document — so a tint COMPOSITES over whatever the
+    // element paints (a photo, a gradient, a video) instead of replacing its background.
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-rest{position:fixed;inset:0;pointer-events:none');
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-r{position:fixed;box-sizing:border-box;border:2px dashed #6366f1');
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-fill{position:fixed;pointer-events:none');
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-flash{position:fixed;pointer-events:none');
+    // …and the focused slot's ring, for the same reason: a landmark is a real element with real styling.
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-slot-ring{position:fixed;pointer-events:none');
+  });
+
+  it('the at-rest layer is built from what setEditing ACTUALLY wired, and cleared with it', () => {
+    // Not from a querySelectorAll of every data-sw-* on the page: a leaf inside a dataset row, or a
+    // chrome slot's shared string viewed from a page, is deliberately NOT editable here. Marking those
+    // would advertise an edit that does not exist.
+    expect(PREVIEW_BRIDGE_JS).toContain("restPush(el, 'text')");
+    expect(PREVIEW_BRIDGE_JS).toContain("restPush(el, 'translate')");
+    expect(PREVIEW_BRIDGE_JS).toContain("restPush(el, 'entry')");
+    // applySlotFocus re-runs the wiring as setEditing(false)+setEditing(true), so the list must be
+    // reset each pass or it doubles on every focus change.
+    expect(PREVIEW_BRIDGE_JS).toMatch(/if \(on\) ensureStyle\(\);[\s\S]{0,400}?clearRest\(\);/);
+  });
+
+  it('repaints the fixed boxes when the layout moves under them', () => {
+    // They are position:fixed over content that scrolls, reflows and grows as it is typed into. Without
+    // a repaint they would be correct on arrival and progressively wrong from then on.
+    expect(PREVIEW_BRIDGE_JS).toContain('scheduleRest()');
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('input', scheduleRest, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain('new ResizeObserver(scheduleRest)');
+    expect(PREVIEW_BRIDGE_JS).toContain("document.removeEventListener('input', scheduleRest, true)");
+    // Coalesced to one frame — a scroll fires a burst of events, not one.
+    expect(PREVIEW_BRIDGE_JS).toMatch(/restTick = true;\s*requestAnimationFrame/);
+  });
+
+  it('bounds the repaint: viewport-culled and capped', () => {
+    // A page can carry hundreds of regions. Reads all happen before writes, so a repaint costs one
+    // layout pass rather than one per box.
+    expect(PREVIEW_BRIDGE_JS).toContain('REST_MAX = 400');
+    expect(PREVIEW_BRIDGE_JS).toContain('REST_MARGIN = 400');
+    expect(PREVIEW_BRIDGE_JS).toMatch(/hits\.length < REST_MAX/);
+  });
+});
+
+describe('preview bridge — moving between chrome slots, and modals that live in one', () => {
+  it('offers "Edit <slot>" on every landmark EXCEPT the one already being edited', () => {
+    // It used to bail on `if (slotFocus) return`, so inside a slot editor there was no way to reach
+    // another slot at all — you closed it and went back to Settings. Now only the focused slot is
+    // skipped, because you are already in it.
+    expect(PREVIEW_BRIDGE_JS).toContain("if (!meta || meta[0] === slotFocus) { hideSlotButton(); return; }");
+    expect(PREVIEW_BRIDGE_JS).toContain("b.textContent = 'Edit ' + meta[2]");
+    expect(PREVIEW_BRIDGE_JS).toContain("post({ type: 'edit-slot', slot: key })");
+  });
+
+  it('a receded OTHER slot stays hoverable while its CONTENTS stay inert', () => {
+    // .sw-slot-dim is pointer-events:none, which would swallow the hover the offer depends on. The
+    // other landmarks get a variant that takes pointer events on the LANDMARK and denies them to every
+    // descendant — so the band can offer to be edited without its receded nav being clickable.
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-slot-other{opacity:.25;filter:grayscale(1);pointer-events:auto;cursor:pointer}');
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-slot-other *{pointer-events:none}');
+    expect(PREVIEW_BRIDGE_JS).toContain("el.className += ' sw-slot-other'");
+    // …and the reset must clear it, or a landmark stays dimmed after the focus moves on.
+    expect(PREVIEW_BRIDGE_JS).toContain('sw-slot-(dim|target|other)');
+  });
+
+  it('follows an open modal into the TOP LAYER, where z-index does not reach', () => {
+    // A site-wide <dialog> is authored in the Bottom slot and stays a DOM descendant of #bottom when
+    // shown — so the slot lookup already resolved it. What did not work was being SEEN: the top layer
+    // paints above every z-index, so the pill sat behind the modal it was labelling. It moves into the
+    // dialog instead, which is the only way to share that layer.
+    expect(PREVIEW_BRIDGE_JS).toContain("if (tag === 'dialog' && el.hasAttribute('open')) return el;");
+    expect(PREVIEW_BRIDGE_JS).toContain("el.matches(':popover-open')");
+    expect(PREVIEW_BRIDGE_JS).toContain('if (b.parentNode !== parent) parent.appendChild(b);');
+    // …and it anchors to the MODAL's box: the landmark holding a set of dialogs is usually 0-height.
+    expect(PREVIEW_BRIDGE_JS).toContain('var anchor = host || land;');
+  });
+
+  it(':popover-open is probed defensively — an older engine must not break the offer', () => {
+    expect(PREVIEW_BRIDGE_JS).toMatch(/try \{ if \(el\.matches\(':popover-open'\)\) return el; \} catch \(err\)/);
   });
 });

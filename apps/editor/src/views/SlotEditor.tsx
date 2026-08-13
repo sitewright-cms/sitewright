@@ -48,6 +48,16 @@ interface SlotEditorProps {
   value: string;
   /** Persist the slot (the caller owns the settings write). */
   onSave: (slot: ChromeSlotKey, source: string) => Promise<void> | void;
+  /**
+   * Switch this editor to a DIFFERENT chrome slot — from the header picker, or from clicking the
+   * "Edit <slot>" affordance on another landmark in the preview.
+   *
+   * The owner performs the switch (it holds the slot's source), and it must REPLACE rather than stack:
+   * two slot editors open at once would each be previewing the same skeleton against its own draft,
+   * with only one of them able to be right. Absent → the editor is fixed to one slot and shows a plain
+   * title instead of a picker.
+   */
+  onSwitchSlot?: (slot: ChromeSlotKey) => void;
   /** Project locales, default-first — the locale an inline translation edit writes. */
   locales?: readonly string[];
   onClose: () => void;
@@ -59,7 +69,7 @@ interface SlotEditorProps {
  * device rail. No audit tab (that scores a page, and a slot is not one), and it opens in CODE mode
  * because a slot is markup first. Stacks OVER the page editor when reached from there.
  */
-export function SlotEditor({ project, slot, value, onSave, locales = [], onClose }: SlotEditorProps) {
+export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales = [], onClose }: SlotEditorProps) {
   // A slot renders on every locale, so an inline translation edit writes the DEFAULT locale's cell —
   // the one the authored fallback stands in for. Per-locale wording stays the Translations table's job.
   const locale = locales[0] ?? 'en';
@@ -195,7 +205,7 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
       if (e.source !== iframeRef.current?.contentWindow) return;
       const d = e.data as {
         source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number;
-        text?: string; textHit?: string; ds?: string; key?: string; value?: string; html?: string;
+        text?: string; textHit?: string; ds?: string; key?: string; value?: string; html?: string; slot?: string;
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'ready') {
@@ -221,6 +231,10 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
         });
         if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
         wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
+      } else if (d.type === 'edit-slot' && typeof d.slot === 'string') {
+        // The preview offers "Edit <slot>" on every landmark that is NOT the one being edited. Clicking
+        // it switches THIS editor rather than opening a second one — see onSwitchSlot.
+        if (CHROME_SLOTS.some((c) => c.key === d.slot)) switchSlotRef.current(d.slot as ChromeSlotKey);
       } else if (d.type === 'open-form' && typeof d.id === 'string' && d.id !== '') {
         void api
           .listForms(project.id)
@@ -250,6 +264,21 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, [syncPreview, flushTranslations, flushWebsiteData]);
+
+  /**
+   * Move this editor to another slot. Guarded on `dirty` because the switch REPLACES the draft — the
+   * slot editor's Save owns the source, and nothing else would ever write it back.
+   */
+  const switchSlot = useCallback(
+    (next: ChromeSlotKey) => {
+      if (!onSwitchSlot || next === slot) return;
+      if (dirty && !window.confirm(`Discard unsaved changes to ${slotLabel(slot)}?`)) return;
+      onSwitchSlot(next);
+    },
+    [onSwitchSlot, slot, dirty],
+  );
+  const switchSlotRef = useRef(switchSlot);
+  switchSlotRef.current = switchSlot;
 
   const save = useCallback(async () => {
     if (saving) return;
@@ -283,6 +312,26 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
     </div>
   );
 
+  // The title IS the slot picker: the five slots are one subject seen five ways, and the editor is
+  // identical for each, so getting from one to another should not mean closing this and going back to
+  // Settings. Falls back to a plain title when the owner cannot switch (no onSwitchSlot).
+  const slotPicker = onSwitchSlot ? (
+    <label className="flex min-w-0 items-center gap-1.5">
+      <span className="sr-only">Chrome slot</span>
+      <select
+        value={slot}
+        onChange={(e) => switchSlot(e.target.value as ChromeSlotKey)}
+        className="max-w-[16rem] cursor-pointer truncate rounded-lg border border-transparent bg-transparent py-0.5 pl-1.5 pr-6 text-sm font-bold text-slate-800 outline-none transition hover:border-slate-300 hover:bg-white/70 dark:text-slate-100 dark:hover:border-white/15 dark:hover:bg-white/10"
+      >
+        {CHROME_SLOTS.map((c) => (
+          <option key={c.key} value={c.key}>
+            {c.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  ) : undefined;
+
   return (
     <Modal
       title={slotLabel(slot)}
@@ -294,6 +343,7 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
       saveDisabled={!dirty}
       headerLeft={editModeSwitch}
       centerTitle
+      titleControl={slotPicker}
       titleExtra={<span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">skeleton slot · every page</span>}
     >
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">

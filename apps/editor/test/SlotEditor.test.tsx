@@ -339,3 +339,58 @@ describe('SlotEditor — a form embedded in a slot opens its definition', () => 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('gone'));
   });
 });
+
+describe('SlotEditor — switching to another slot', () => {
+  /** Post a message as if it came from this editor's own preview iframe. */
+  const fromPreview = (data: Record<string, unknown>) => {
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    fireEvent(window, new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }));
+  };
+
+  it('the title becomes a picker of the five slots, and choosing one switches', () => {
+    const onSwitchSlot = vi.fn();
+    render(<SlotEditor project={project} slot="mainNav" value={SLOT_SOURCE} onSave={vi.fn()} onSwitchSlot={onSwitchSlot} onClose={vi.fn()} />);
+    const picker = screen.getByLabelText('Chrome slot') as HTMLSelectElement;
+    expect(picker.value).toBe('mainNav');
+    expect([...picker.options].map((o) => o.value)).toEqual(['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom']);
+    fireEvent.change(picker, { target: { value: 'footer' } });
+    expect(onSwitchSlot).toHaveBeenCalledWith('footer');
+    // The dialog keeps its accessible name even though the visible title is now a control.
+    expect(screen.getByRole('dialog', { name: 'Main Navigation' })).toBeInTheDocument();
+  });
+
+  it('the preview\u2019s "Edit <slot>" affordance switches THIS editor', () => {
+    const onSwitchSlot = vi.fn();
+    render(<SlotEditor project={project} slot="mainNav" value={SLOT_SOURCE} onSave={vi.fn()} onSwitchSlot={onSwitchSlot} onClose={vi.fn()} />);
+    fromPreview({ type: 'edit-slot', slot: 'bottom' });
+    expect(onSwitchSlot).toHaveBeenCalledWith('bottom');
+    // An unknown key is ignored rather than switching to nothing.
+    onSwitchSlot.mockClear();
+    fromPreview({ type: 'edit-slot', slot: 'not-a-slot' });
+    expect(onSwitchSlot).not.toHaveBeenCalled();
+  });
+
+  it('asks before discarding an unsaved draft, and stays put when the answer is no', () => {
+    const onSwitchSlot = vi.fn();
+    render(<SlotEditor project={project} slot="mainNav" value={SLOT_SOURCE} onSave={vi.fn()} onSwitchSlot={onSwitchSlot} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Main Navigation source'), { target: { value: '<div>edited</div>' } });
+
+    // The slot editor\u2019s Save owns the source \u2014 nothing else would write this draft back.
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.change(screen.getByLabelText('Chrome slot'), { target: { value: 'footer' } });
+    expect(confirm).toHaveBeenCalledWith('Discard unsaved changes to Main Navigation?');
+    expect(onSwitchSlot).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    fireEvent.change(screen.getByLabelText('Chrome slot'), { target: { value: 'footer' } });
+    expect(onSwitchSlot).toHaveBeenCalledWith('footer');
+    confirm.mockRestore();
+  });
+
+  it('shows a plain title when the owner cannot switch', () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText('Chrome slot')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Footer' })).toBeInTheDocument();
+  });
+});

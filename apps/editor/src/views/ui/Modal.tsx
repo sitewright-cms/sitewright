@@ -68,6 +68,12 @@ interface ModalProps {
   headerLeft?: ReactNode;
   /** Optional inline content shown right after the title text (e.g. a path / status badges). */
   titleExtra?: ReactNode;
+  /**
+   * Replaces the rendered title TEXT with a control (e.g. a picker that switches what the modal is
+   * editing). `title` is still required and becomes the dialog's accessible name via a visually-hidden
+   * heading — the control's own label is about choosing, not about naming the dialog.
+   */
+  titleControl?: ReactNode;
   /** Center the title block in the space between `headerLeft` and the right-side actions. */
   centerTitle?: boolean;
   /** Optional extra header content shown just BEFORE the Save/Close actions (right side). */
@@ -99,7 +105,7 @@ interface ModalProps {
  * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
  * ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, titleControl, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
@@ -264,7 +270,14 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3 dark:border-white/10">
               {headerLeft}
               <div className={`flex min-w-0 flex-1 items-center gap-2 ${centerTitle ? 'justify-center' : ''}`}>
-                <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                {titleControl ? (
+                  <>
+                    <h2 id={titleId} className="sr-only">{title}</h2>
+                    {titleControl}
+                  </>
+                ) : (
+                  <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                )}
                 {titleExtra}
               </div>
               {headerExtra}

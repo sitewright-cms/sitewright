@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { makeTestDb } from './helpers.js';
-import { OAUTH_CLIENT_RETENTION_DAYS, reapUnusedOAuthClients, sweepExpiredAuthRows } from '../src/repo/maintenance.js';
+import {
+  DEAD_PAT_RETENTION_DAYS,
+  OAUTH_CLIENT_RETENTION_DAYS,
+  reapDeadPats,
+  reapUnusedOAuthClients,
+  sweepExpiredAuthRows,
+} from '../src/repo/maintenance.js';
 import {
   apiKeys,
   oauthClients,
@@ -153,5 +159,58 @@ describe('reapUnusedOAuthClients', () => {
   it('is a safe no-op on an empty instance', async () => {
     const db = await makeTestDb();
     await expect(reapUnusedOAuthClients(db)).resolves.toBeUndefined();
+  });
+});
+
+describe('reapDeadPats', () => {
+  it('drops PATs dead longer than the retention window, keeps recently-dead and live ones', async () => {
+    const db = await makeTestDb();
+    await seedUser(db);
+    await seedProject(db);
+    const now = new Date();
+    const day = 24 * 60 * 60 * 1000;
+    const longDead = new Date(now.getTime() - (DEAD_PAT_RETENTION_DAYS + 1) * day);
+    const recentlyDead = new Date(now.getTime() - 30 * day);
+    const future = new Date(now.getTime() + 365 * day);
+    const pat = (id: string, extra: Partial<{ expiresAt: Date; revokedAt: Date | null; source: 'pat' | 'oauth' }>) => ({
+      id,
+      projectId: 'p1',
+      name: id,
+      role: 'owner' as const,
+      capabilities: [],
+      tokenHash: `hash-${id}`,
+      tokenPrefix: `swk_${id}`,
+      expiresAt: future,
+      revokedAt: null,
+      createdBy: 'u1',
+      source: 'pat' as const,
+      createdAt: longDead,
+      ...extra,
+    });
+
+    await db.insert(apiKeys).values([
+      pat('expired-long-ago', { expiresAt: longDead }),
+      pat('expired-recently', { expiresAt: recentlyDead }), // still worth SEEING, so still listed
+      pat('revoked-long-ago', { revokedAt: longDead }), // dead by revocation, expiry still in the future
+      pat('revoked-recently', { revokedAt: recentlyDead }),
+      pat('live', {}),
+      // An OAuth access token expired long ago is sweepExpiredAuthRows' business, not this one's —
+      // but it must not be left behind by a function that only claims to touch PATs either.
+      pat('oauth-expired', { source: 'oauth', expiresAt: longDead }),
+    ]);
+
+    await reapDeadPats(db, now);
+
+    expect((await db.select({ id: apiKeys.id }).from(apiKeys)).map((r) => r.id).sort()).toEqual([
+      'expired-recently',
+      'live',
+      'oauth-expired',
+      'revoked-recently',
+    ]);
+  });
+
+  it('is a safe no-op on an empty instance', async () => {
+    const db = await makeTestDb();
+    await expect(reapDeadPats(db)).resolves.toBeUndefined();
   });
 });

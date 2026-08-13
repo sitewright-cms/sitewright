@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lt, lte, notExists, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, lte, notExists, or, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -55,10 +55,44 @@ export async function sweepExpiredAuthRows(db: Database, now: Date = new Date())
 }
 
 /**
+ * How long a DEAD personal access token (expired, or revoked) is kept before housekeeping drops it.
+ *
+ * The window is the whole point. A PAT is not like an OAuth access token: it is user-managed and it
+ * appears in the editor's API Keys screen, where an expired row is a USEFUL signal — "this key died,
+ * rotate it". Deleting one the moment it expires would erase that. Three months later it is only
+ * clutter, and the audit value has been read or never will be.
+ */
+export const DEAD_PAT_RETENTION_DAYS = 90;
+
+/**
  * How long a dynamically-registered OAuth client survives with nothing referencing it. Generous on
  * purpose: the row is tiny, and the cost of dropping one a client still wanted is a re-registration.
  */
 export const OAUTH_CLIENT_RETENTION_DAYS = 30;
+
+/**
+ * Deletes personal access tokens that have been DEAD — expired, or revoked — for longer than
+ * {@link DEAD_PAT_RETENTION_DAYS}. Either state alone qualifies: a key revoked early is dead even
+ * though its expiry is a year out, and a key that quietly expired was never revoked at all.
+ *
+ * ★ WHY PATS NEEDED A WINDOW AND OAUTH TOKENS DID NOT. The expired-row sweep deliberately spares
+ * PATs so their owner can still see a dead key and rotate it. That reasoning holds for a key a human
+ * made and forgot — but not for MACHINE-minted keys, and those are the ones that pile up: an agent
+ * fleet mints one PAT per agent per site, and on a real instance 55 of 56 PATs were dead, only 12 of
+ * them ever explicitly revoked. The rest were simply left to expire and then kept forever. So the
+ * rule is not "spare PATs" but "spare them while the signal is worth something".
+ */
+export async function reapDeadPats(db: Database, now: Date = new Date()): Promise<void> {
+  const cutoff = new Date(now.getTime() - DEAD_PAT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  await db
+    .delete(apiKeys)
+    .where(
+      and(
+        eq(apiKeys.source, 'pat'),
+        or(lte(apiKeys.expiresAt, cutoff), and(isNotNull(apiKeys.revokedAt), lte(apiKeys.revokedAt, cutoff))),
+      ),
+    );
+}
 
 /**
  * Deletes RFC 7591 dynamic client registrations that are older than the retention window and have

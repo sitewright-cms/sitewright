@@ -100,10 +100,14 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
       // The ROUND set is a subset — five flags have no circular variant — so filter to the ones that
       // actually exist in the chosen shape rather than offering a tile that renders nothing.
       const suffix = flagShape === 'circle' ? FLAG_CIRCLE_SUFFIX : '';
-      const all = FLAG_CODES.filter((code: string) => flagShape === 'rect' || flagIcon(code)?.circle).map(
-        (code: string) => `${FLAG_PREFIX}${code}${suffix}`,
-      );
-      return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
+      // Matched on the COUNTRY NAME as well as the code: nobody looking for the Dutch flag types "nl",
+      // and searching "netherlands" against a list of ISO codes returned nothing at all. The code stays
+      // searchable because it is what a template author already has in front of them.
+      const all = FLAG_CODES.map((code: string) => ({ code, flag: flagIcon(code) }))
+        .filter((f) => f.flag && (flagShape === 'rect' || f.flag.circle))
+        .filter((f) => !q || f.code.includes(q) || (f.flag?.name ?? '').toLowerCase().includes(q))
+        .map((f) => `${FLAG_PREFIX}${f.code}${suffix}`);
+      return all.slice(0, PAGE);
     }
     // Phosphor: the platform's own scored search when there's a query (it understands synonyms —
     // "car" finds `taxi`), the plain name list when there isn't.
@@ -123,7 +127,7 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
       role={role}
       aria-checked={role === 'radio' ? active : undefined}
       onClick={onClick}
-      className={`rounded-lg px-3 py-1 text-xs ${
+      className={`waves-effect rounded-lg px-3 py-1 text-xs capitalize ${
         active ? 'bg-white font-bold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
       }`}
     >
@@ -143,19 +147,17 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
           </div>
           <input
             className={`${glassInput} max-w-xs`}
-            placeholder={tab === 'icons' ? 'Search — try “car”, “bed”, “wifi”' : 'Search'}
+            placeholder={
+              tab === 'icons' ? 'Search — try “car”, “bed”, “wifi”' : tab === 'flags' ? 'Search a country — “Germany”, “de”' : 'Search'
+            }
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Search icons"
           />
           {tab === 'icons' && (
-            <select className={`${glassInput} w-32`} value={weight} onChange={(e) => setWeight(e.target.value as PhosphorWeight)} aria-label="Icon weight">
-              {PHOSPHOR_WEIGHTS.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
+            <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              {PHOSPHOR_WEIGHTS.map((w) => pill(weight === w, w, () => setWeight(w), w, 'radio'))}
+            </div>
           )}
           {tab === 'flags' && (
             <div role="radiogroup" aria-label="Flag shape" className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
@@ -164,22 +166,24 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
           )}
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-auto pr-1">
+        {/* content-start: the grid is a flex CHILD filling the modal, so without it the few rows a
+            narrow search returns stretch to the full height and each tile becomes a tall empty box. */}
+        <div className="grid min-h-0 flex-1 auto-rows-min content-start grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-auto pr-1">
           {names.map((name: string) => (
             <button
               key={name}
               type="button"
-              title={name}
+              title={`${tileLabel(name)} — ${name}`}
               onClick={() => {
                 onPick(name);
                 onClose();
               }}
-              className={`flex flex-col items-center gap-1 rounded-xl border p-2 transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
+              className={`waves-effect flex h-[4.5rem] flex-col items-center justify-center gap-1 rounded-xl border p-2 transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
                 name === value ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40' : 'border-slate-200 dark:border-slate-700'
               }`}
             >
-              <span className="block h-7 w-7 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name) }} />
-              <span className="w-full truncate text-[10px] text-slate-500 dark:text-slate-400">{shortLabel(name)}</span>
+              <span className="block h-7 w-7 shrink-0 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name) }} />
+              <span className="w-full truncate text-[10px] text-slate-500 dark:text-slate-400">{tileLabel(name)}</span>
             </button>
           ))}
           {names.length === 0 && <p className="col-span-full p-6 text-center text-sm text-slate-500 dark:text-slate-400">Nothing matched “{query}”.</p>}
@@ -197,13 +201,16 @@ function currentWeight(name: string): PhosphorWeight {
 }
 
 /** `brand:github` → `github`, `map-pin:fill` → `map-pin` — the prefix/weight is already shown above. */
-function shortLabel(name: string): string {
-  // The `-circle` strip is scoped to FLAGS on purpose: Phosphor ships `check-circle`, `x-circle`,
-  // `plus-circle` … and at the `regular` weight those arrive here with no `:weight` suffix, so a blanket
-  // strip would label them "check", "x", "plus" — three different icons collapsed onto one name.
+function tileLabel(name: string): string {
+  // A flag is labelled by its COUNTRY, not its code: a grid of two-letter codes is unreadable, and the
+  // one thing the author knows is the country's name. (The code is still in the tooltip, and still
+  // searchable.) The `-circle` strip is scoped to flags on purpose — Phosphor ships `check-circle`,
+  // `x-circle`, `plus-circle` …, and at the `regular` weight those arrive with no `:weight` suffix, so
+  // a blanket strip would label them "check", "x", "plus": three different icons on one name.
   if (name.startsWith(FLAG_PREFIX)) {
-    const code = name.slice(FLAG_PREFIX.length);
-    return code.endsWith(FLAG_CIRCLE_SUFFIX) ? code.slice(0, -FLAG_CIRCLE_SUFFIX.length) : code;
+    const spec = name.slice(FLAG_PREFIX.length);
+    const code = spec.endsWith(FLAG_CIRCLE_SUFFIX) ? spec.slice(0, -FLAG_CIRCLE_SUFFIX.length) : spec;
+    return flagIcon(code)?.name ?? code;
   }
   const withoutPrefix = name.replace(/^brand:/, '');
   const colon = withoutPrefix.lastIndexOf(':');

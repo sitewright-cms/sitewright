@@ -5,7 +5,7 @@ import { FilePicker } from '../../files/FilePicker';
 import type { AcceptFilter } from '../../files/FileBrowser';
 import { TYPE_LABELS, ICON_PCT_MAX, ICON_PCT_MIN, artboardSize, iconNameOf, iconPct, isIconSpot, objectBounds, round } from './model';
 import { BrandColorField } from '../../ui/ColorPicker';
-import { IconField } from './IconField';
+import { IconField } from '../../ui/IconPicker';
 import { iconSvg } from './icon-svg';
 import { TooltipBuilder } from './TooltipBuilder';
 

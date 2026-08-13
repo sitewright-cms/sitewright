@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **An `icon` dataset field type — pick from the library instead of typing a name.** Any per-row icon
+  (a category tile, a feature card) previously meant a `text` field holding something like
+  `beer-bottle:duotone`. It is the one field where a typo is **invisible**: `{{sw-icon}}` renders
+  nothing for an unknown name, so the row just looks broken with no clue why. The new type shows the
+  whole platform library — Phosphor at every weight, brand logos, country flags — as a picker, and
+  stores the same plain name the renderer already understands. The picker itself is the one the image
+  map Studio already used, promoted out of it so both surfaces share one control.
+
 ### Changed
 
 - **A chrome slot's shared strings are now edited in the skeleton editor, and only there.** A slot's

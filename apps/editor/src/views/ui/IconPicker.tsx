@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { BRAND_ICON_NAMES, FLAG_CODES, PHOSPHOR_NAMES, PHOSPHOR_WEIGHTS, searchIcons, type PhosphorWeight } from '@sitewright/blocks';
-import { Modal } from '../../ui/Modal';
-import { fieldLabel, ghostButton, glassInput } from '../../../theme';
-import { FLAG_PREFIX, iconSvg } from './icon-svg';
+import { Modal } from './Modal';
+import { fieldLabel, ghostButton, glassInput } from '../../theme';
+import { FLAG_PREFIX, iconSvg } from '../library/imagemap/icon-svg';
 
 /**
  * Pick the artwork an Icon hotspot draws.
@@ -20,13 +20,35 @@ type Tab = 'icons' | 'brands' | 'flags';
 /** How many results a tab shows at once. Enough to browse, few enough to stay responsive. */
 const PAGE = 120;
 
-export function IconField({ value, onChange }: { value: string; onChange: (name: string) => void }) {
+/**
+ * Pick an icon from the platform library. Promoted out of the image-map Studio when dataset fields
+ * gained an `icon` type — the picker was already the whole library (Phosphor at every weight, brand
+ * logos, country flags), and the alternative for a dataset row was typing the name by hand, where a
+ * typo renders nothing at all and looks like a broken row.
+ *
+ * `label` is caller-supplied and `hideLabel` suppresses it entirely, because an entry-form field
+ * already prints its own label above the control.
+ */
+export function IconField({
+  value,
+  onChange,
+  label = 'Icon',
+  hideLabel = false,
+  inputId,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  label?: string;
+  hideLabel?: boolean;
+  inputId?: string;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <span className={fieldLabel}>Icon</span>
+      {!hideLabel && <span className={fieldLabel}>{label}</span>}
       <button
         type="button"
+        id={inputId}
         onClick={() => setOpen(true)}
         className={`${ghostButton} flex w-full items-center gap-2 px-2 py-1.5 text-left`}
         aria-label="Choose the icon"

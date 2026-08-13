@@ -8,7 +8,10 @@ import { IdSchema, KeyNameSchema, DatasetSlugSchema, EntryIdSchema, safeRecord }
  *
  *  The asset-valued leaves store a STRING: `image`/`file` hold a media URL or path (an `<img src>` /
  *  download link), `folder` holds a media-library folder PATH (e.g. `gallery/team`, '' = root) — handy
- *  for templates that enumerate a folder's contents. `json` holds an arbitrary parsed value. */
+ *  for templates that enumerate a folder's contents. `icon` holds an icon NAME from the platform
+ *  library (a Phosphor name with optional `:weight`, `brand:<slug>`, or a `flag:<code>`) — the value a
+ *  {{sw-icon}} takes, chosen from a picker so a row cannot carry a typo that renders nothing.
+ *  `json` holds an arbitrary parsed value. */
 export const FieldTypeSchema = z.enum([
   'text',
   'richtext',
@@ -18,6 +21,7 @@ export const FieldTypeSchema = z.enum([
   'time',
   'datetime',
   'image',
+  'icon',
   'file',
   'folder',
   'reference',

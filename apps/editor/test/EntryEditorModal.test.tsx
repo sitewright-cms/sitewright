@@ -3,8 +3,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { Dataset, Entry } from '@sitewright/schema';
 
 // Mock the API so submit() resolves without a backend.
-const { putEntry } = vi.hoisted(() => ({ putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>() }));
-vi.mock('../src/api', () => ({ api: { putEntry: (pid: string, e: Entry) => putEntry(pid, e) } }));
+const { putEntry, listPages } = vi.hoisted(() => ({
+  putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>(),
+  listPages: vi.fn<(pid: string) => Promise<unknown>>(),
+}));
+vi.mock('../src/api', () => ({
+  api: { putEntry: (pid: string, e: Entry) => putEntry(pid, e), listPages: (pid: string) => listPages(pid) },
+}));
 
 // Swap CodeMirror for a plain textarea so the json edit→validate flow runs in jsdom; the real
 // editor is covered by the Playwright browser E2E (mirrors CodeField.test).
@@ -42,6 +47,8 @@ const entry: Entry = {
 beforeEach(() => {
   putEntry.mockReset();
   putEntry.mockResolvedValue(undefined);
+  listPages.mockReset();
+  listPages.mockResolvedValue({ items: [] });
 });
 
 describe('EntryEditorModal — recursive nested-list editing', () => {
@@ -170,12 +177,42 @@ describe('EntryEditorModal — config-driven + temporal inputs', () => {
     render(
       <EntryEditorModal projectId="p" dataset={posts} entry={row({ dataset: 'posts', values: { author: '' } })} allDatasets={[posts, authors]} allEntries={[jane]} onSaved={() => {}} onClose={() => {}} />,
     );
-    const sel = screen.getByLabelText('author') as HTMLSelectElement;
-    expect(Array.from(sel.options).map((o) => o.textContent)).toContain('Jane');
-    fireEvent.change(sel, { target: { value: 'jane' } });
+    // Searchable rather than a native select: a dataset is not five rows, and the entry you want sits
+    // in an order you cannot predict.
+    fireEvent.click(screen.getByRole('button', { name: 'author' }));
+    fireEvent.change(screen.getByLabelText('Search author'), { target: { value: 'jane' } });
+    fireEvent.click(screen.getByRole('option', { name: /Jane/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(1));
     expect(putEntry.mock.calls[0]![1].values.author).toBe('jane');
+  });
+
+  it('a `page` field picks a PAGE and stores its id', async () => {
+    listPages.mockResolvedValue({
+      items: [
+        { id: 'web', title: 'Web design', path: 'web-design', status: 'published' },
+        { id: 'nav-only', title: 'External', path: '', kind: 'link', status: 'published' },
+      ],
+    });
+    const promos = ds([{ name: 'target', type: 'page', required: false, localized: false }], { id: 'promos', slug: 'promos', name: 'Promos' });
+    render(<EntryEditorModal projectId="p" dataset={promos} entry={row({ dataset: 'promos', values: { target: '' } })} onSaved={() => {}} onClose={() => {}} />);
+    // The list is fetched by the MODAL, not passed in — it opens from several places and a prop
+    // threaded through only one of them means an empty picker in the others.
+    await waitFor(() => expect(listPages).toHaveBeenCalledWith('p'));
+    fireEvent.click(screen.getByRole('button', { name: 'target' }));
+    // A kind:"link" placeholder has no route of its own, so pointing a row at one links to nowhere.
+    expect(screen.queryByRole('option', { name: /External/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('option', { name: /Web design/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(1));
+    // The ID, not the path — that is what survives the page being renamed, moved or re-slugged.
+    expect(putEntry.mock.calls[0]![1].values.target).toBe('web');
+  });
+
+  it('does not fetch pages for a dataset with no page field', () => {
+    const plain = ds([{ name: 'title', type: 'text', required: false, localized: false }]);
+    render(<EntryEditorModal projectId="p" dataset={plain} entry={row({ values: {} })} onSaved={() => {}} onClose={() => {}} />);
+    expect(listPages).not.toHaveBeenCalled();
   });
 
   it('renders native time + datetime-local inputs for the temporal field types', () => {

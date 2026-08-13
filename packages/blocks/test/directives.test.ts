@@ -209,6 +209,47 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     expect(published).not.toContain('javascript'); // neutralized to an empty src
   });
 
+  it('an override DROPS the old image’s srcset/sizes, LQIP and <picture> sources', () => {
+    // The bug this pins: {{sw-image editable="photo1"}} emits src + srcset + sizes + a blur-up LQIP.
+    // The browser picks its candidate from srcset in PREFERENCE to src, so replacing only `src` left
+    // the OLD photo on screen — clicking the image in the editor and choosing a new one did nothing.
+    const emitted =
+      '<img src="/media/p/a/old.jpg?size=lg" srcset="/media/p/a/old.jpg?size=sm 480w, /media/p/a/old.jpg?size=lg 1200w" ' +
+      'sizes="100vw" alt="" width="1200" height="800" loading="lazy" decoding="async" data-sw-src="photo1" ' +
+      'style="background-image:url(\'data:image/webp;base64,OLD\');background-size:cover">';
+    const out = resolveDirectives(emitted, { data: { photo1: '/media/p/a/new.jpg' }, preview: true });
+    expect(out).toContain('src="/media/p/a/new.jpg"');
+    expect(out).not.toContain('old.jpg'); // no srcset, no LQIP — nothing left describing the old file
+    expect(out).not.toContain('srcset');
+    expect(out).not.toContain('base64');
+    expect(out).toContain('width="1200"'); // dimensions/alt/loading are the ELEMENT's, not the art's
+
+    // format=avif wraps it in <picture>; a matching <source> outranks the <img> entirely.
+    const pic =
+      '<picture><source type="image/avif" srcset="/media/p/a/old.jpg?size=lg&format=avif 1200w" sizes="100vw">' +
+      '<img src="/media/p/a/old.jpg?size=lg" alt="" data-sw-src="photo1"></picture>';
+    const outPic = resolveDirectives(pic, { data: { photo1: '/media/p/a/new.jpg' }, preview: true });
+    expect(outPic).not.toContain('<source');
+    expect(outPic).toContain('src="/media/p/a/new.jpg"');
+
+    // No override → the responsive markup is untouched (an unedited image keeps every rung).
+    expect(resolveDirectives(emitted, { preview: true })).toContain('srcset=');
+  });
+
+  it('keeps unrelated style declarations when replacing a background — even across a data: URI', () => {
+    // A `;` lives inside `url('data:image/webp;base64,…')`, so splitting the style attribute on bare
+    // semicolons cuts the data URI in half and leaves its tail behind as garbage CSS.
+    const out = resolveDirectives(
+      '<section data-sw-bg="bg" style="padding:2rem;background-image:url(\'data:image/webp;base64,AAAA\');color:red">x</section>',
+      { data: { bg: '/media/p/a/x.jpg' }, preview: true },
+    );
+    expect(out).toContain('padding:2rem');
+    expect(out).toContain('color:red');
+    expect(out).not.toContain('base64');
+    expect(out).not.toContain('AAAA');
+    expect(out).toContain('/media/p/a/x.jpg');
+  });
+
   it('sets a CSS-guarded background-image, merging existing style; refuses a breakout URL', () => {
     // (the url() delimiter single-quotes appear LITERALLY in the double-quoted style attribute —
     //  escapeAttribute only escapes " and &, not ' — so the assertions avoid the quote char.)

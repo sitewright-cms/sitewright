@@ -236,10 +236,15 @@ test('data-sw-href: edit a link URL + text via the popover, persists', async ({ 
   await expect(page.getByText('Saved')).toBeVisible();
 });
 
-// The resting edit overlay (dashed outline) must render for a data-sw-href anchor in content mode.
-// Regression guard: the bridge's base outline rule previously omitted [data-sw-href], so a link with
-// NO data-sw-text (which wouldn't match the [data-sw-text] base rule) showed no editable affordance.
-test('data-sw-href: shows the in-preview edit overlay (resting outline) in content mode', async ({ page }) => {
+// A data-sw-href anchor must show an at-rest edit affordance in content mode.
+// Regression guard: the affordance once came from a base rule that omitted [data-sw-href], so a link
+// with NO data-sw-text showed nothing at all.
+//
+// It is also the browser-level guard for the invariant the unit tests can only assert about CSS TEXT:
+// the affordance is drawn in an OVERLAY and the edited element is NOT restyled. Only a real browser
+// can confirm both that the host's computed outline is untouched AND that a box actually paints over
+// the link — a rule that is correct in the stylesheet but positioned wrong is invisible here otherwise.
+test('data-sw-href: marks the link with an OVERLAY box, without restyling the link', async ({ page }) => {
   await setup(page, 'swhref-overlay');
   await setSource(page, '<a data-sw-href="cta" href="/old">Visit</a>');
 
@@ -249,10 +254,29 @@ test('data-sw-href: shows the in-preview edit overlay (resting outline) in conte
 
   await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(link).toHaveClass(/sw-link-on/); // bridge marked it editable
-  // In content mode the always-on affordance is a DASHED outline at rest (the base rule's
-  // outline-style + the on-state's outline-color), going solid only on focus.
-  const outlineStyle = await link.evaluate((el) => getComputedStyle(el).outlineStyle);
-  expect(outlineStyle).toBe('dashed');
+
+  // ★ The element the author is editing keeps its own painting: no outline, no imposed radius, and
+  // the pointer shape is the only thing content mode puts on it.
+  const own = await link.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { outlineStyle: cs.outlineStyle, borderRadius: cs.borderTopLeftRadius, cursor: cs.cursor };
+  });
+  expect(own.outlineStyle).toBe('none');
+  expect(own.borderRadius).toBe('0px');
+  expect(own.cursor).toBe('pointer');
+
+  // …and the affordance is a box in the fixed overlay layer, painted OVER the link's own rect.
+  const restBox = preview.locator('.sw-ov-rest .sw-ov-r').first();
+  await expect(restBox).toBeVisible();
+  const [boxRect, linkRect] = await Promise.all([
+    restBox.evaluate((el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number }),
+    link.evaluate((el) => el.getBoundingClientRect().toJSON() as { x: number; y: number; width: number; height: number }),
+  ]);
+  // Same box, within a pixel — the marker tracks the element rather than approximating it.
+  expect(Math.abs(boxRect.x - linkRect.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(boxRect.y - linkRect.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(boxRect.width - linkRect.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(boxRect.height - linkRect.height)).toBeLessThanOrEqual(1);
 });
 
 // A hover/focus label badge (CSS ::before) names the field a region binds to, anchored to the element

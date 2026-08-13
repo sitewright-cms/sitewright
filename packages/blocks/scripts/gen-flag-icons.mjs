@@ -1,9 +1,10 @@
 // Generates src/flag-icons.ts from flag-icons (rectangular 4:3) + circle-flags (circular),
 // both MIT. Run via:  node scripts/gen-flag-icons.mjs
-// Country flags are FULL-COLOR (unlike the currentColor Lucide/brand sets), so they get their
-// own `{{sw-flag}}` helper. We inline the SVG body for every ISO 3166-1 country in BOTH shapes:
-//   {{sw-flag "de"}}         → rectangular 4:3   (flag-icons)
-//   {{sw-flag "de-circle"}}  → circular          (circle-flags)
+// Country flags are FULL-COLOR (unlike the currentColor Lucide/brand sets), which is why they keep
+// their own fills and an accessible name — but they are reached through the ONE icon helper, under
+// the `flag:` prefix. We inline the SVG body for every ISO 3166-1 country in BOTH shapes:
+//   {{sw-icon "flag:de"}}         → rectangular 4:3   (flag-icons)
+//   {{sw-icon "flag:de-circle"}}  → circular          (circle-flags)
 // The published site inlines only the flags a template actually uses; the full set rides the
 // render worker + a lazy editor gallery chunk. Re-run to refresh, then commit the generated file.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';

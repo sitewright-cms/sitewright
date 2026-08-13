@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-08-13
+
 ### Added
 
 - **An `icon` dataset field type — pick from the library instead of typing a name.** Any per-row icon
@@ -2015,6 +2017,7 @@ First tagged release + the production-readiness work.
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
 [Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...HEAD
+[0.19.0]: https://github.com/sitewright-cms/sitewright/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/sitewright-cms/sitewright/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/sitewright-cms/sitewright/compare/v0.15.0...v0.16.0

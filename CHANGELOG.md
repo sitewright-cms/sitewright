@@ -9,6 +9,104 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.20.0] — 2026-08-13
+
+### Added
+
+- **A `page` dataset field — link a row to a page of this site without hand-typing its path.** A
+  hand-typed path in a `text` field goes stale the moment the page is renamed, moved under a
+  different parent or re-slugged — and it goes stale **silently**: the link still renders, it just
+  404s. The new type stores the page **ID**, which survives all three, and the render projection
+  swaps it for the page's attributes on the way into a template, so a loop reads what it obviously
+  wants: `{{#each dataset.promos}}<a href="{{sw-url target.path}}">{{target.title}}</a>{{/each}}`.
+  `.path` is the full route computed from the parent chain, alongside `.title` / `.slug` / `.locale`
+  / `.description` / `.image` — deliberately the same names `pages.<slug>._attributes` uses. An id
+  that no longer resolves reads as **empty**, never a link to a 404, which is also what makes a
+  reference to a draft page correct on publish.
+
+- **The European Union flag.** `{{sw-icon "flag:eu"}}` and `{{sw-icon "flag:eu-circle"}}` — the one
+  flag an ordinary site actually reaches for (a GDPR notice, a "ships within the EU" badge, a
+  funding strip), and the only way to show it before this was pasting foreign SVG. 254 → 255 flags.
+
+- **Critical CSS is one chord away: `Ctrl/⌘+Alt+C`.** It already lived in Settings → Website, but
+  critical CSS is written *while looking at the page it is fixing* — which sits behind the page
+  editor, a modal the settings modal cannot open over. It now opens above whatever is on screen, and
+  Escape returns you to the editor you were in.
+
+- **Move between chrome slots without leaving the skeleton editor.** Its title is now a picker of the
+  five slots, and the preview offers **"Edit &lt;slot&gt;"** on every landmark except the one being
+  edited. Either route switches the open editor rather than opening a second one. A site-wide
+  `<dialog>` authored in the Bottom slot offers the same affordance while it is open.
+
+### Changed
+
+- **One icon helper: flags moved into `{{sw-icon}}` under the `flag:` prefix.** `{{sw-icon "flag:de"}}`
+  / `{{sw-icon "flag:de-circle"}}` sit alongside `brand:github`, so an author picks an icon by name
+  without first having to know which library it came from. A flag keeps its own colours, its
+  per-shape default size and — alone among icons — an accessible name rather than `aria-hidden`.
+  `{{sw-flag "de"}}` still renders (it is written into every site already built with it) but is
+  **deprecated**; the reference documents only `sw-icon`. A bare two-letter country code also
+  resolves as a last resort, after Phosphor and Lucide both miss, so the documented dynamic switcher
+  `{{sw-icon (lookup website.data.locale_flags locale)}}` keeps working against an existing
+  `{ en: "gb" }` map with no migration.
+
+- **Editable regions are marked, not modified.** Every affordance in the editor's preview used to be
+  CSS on the element itself, and each property overwrote one the site had authored — so turning on
+  content mode changed what the page **looked like**: a 2px `border-radius` squared off every
+  editable card and pill, a hover `background` replaced (rather than tinted) a coloured card's
+  background and was invisible on an image-backed one, and the locate flash overwrote an element's
+  shadow and corners for over a second. The at-rest marker, the hover tint, the editing ring and the
+  flash now paint in an overlay above the page; the only property left on an edited element is
+  `cursor`.
+
+- **The icon picker searches and reads like a picker.** Flags were listed and matched by two-letter
+  ISO code, so the grid was a wall of unreadable pairs and searching "Netherlands" returned nothing —
+  "nl" being precisely the thing the author does not know. Tiles are labelled by country and matched
+  on the name (the code still works, and is in the tooltip). Icon weight is a row of pills like every
+  other choice in the picker, tiles keep a constant size however few match, and selecting one gives
+  the same ripple as every other control.
+
+- **A reference field is searchable, in both editors.** A native dropdown is fine for five options
+  and useless for five hundred, and its own type-ahead matches only the *start* of a label. The entry
+  editor's reference picker, the schema editor's target-dataset picker and the new page field all
+  filter on a mid-string match of the name, and say `(missing)` when a stored value no longer exists
+  rather than looking like an empty field.
+
+- **The TailwindCSS Reference opens from inside the page and slot editors.** Its shortcut was
+  suppressed while any modal was open and while the cursor was in a text field — which together
+  meant it could not open from the code editor, the one place an author reaches for a class
+  reference.
+
+### Fixed
+
+- **An edited `{{sw-image editable="…"}}` now actually changes the picture.** The override was
+  landing — `data-sw-src` set `src` correctly — but `{{sw-image}}` emits a responsive image, and
+  `src` is the *last* candidate a browser considers: the `srcset`, the blur-up placeholder and (under
+  `format=avif`) the `<picture>` sources all still pointed at the previous file. So choosing a new
+  photo in the editor appeared to do nothing. An applied override now clears everything describing
+  the old image. Also fixes a related flaw where replacing an existing `background-image` cut a
+  `data:` URI in half at the semicolon inside its base64 payload.
+
+- **The form editor's fields no longer run into the edges of its panel.**
+
+- **OAuth grant rows are swept, and dynamic client registrations are reaped.** An access token lives
+  an hour and every refresh writes a new `api_keys` row *and* a new `oauth_refresh_tokens` row, so
+  the rows that grew fastest — per **hour**, not per login — were the ones the maintenance sweep did
+  not clean. Separately, `oauth_clients` had a hard 10,000-row cap and no removal path at all, so an
+  instance reaching it could never accept a new MCP client again; registrations idle for 30 days with
+  nothing pointing at them are now reaped.
+
+- **Machine-minted personal access tokens are reaped after 90 days dead**, and `scripts/fleet-agent.sh`
+  revokes its own key when a run exits — a key valid for days after its agent finished is a live
+  credential nobody is watching, which a retention window bounds but does not fix.
+
+### Security
+
+- **nanoid pinned to 3.3.18** (GHSA-2v37-7h3g-55p8). It reaches the runtime tree through
+  postcss → sanitize-html, not just the toolchain. The advisory's affected range was widened after
+  the previous pin, which is why a previously-correct override started failing the audit gate.
+
+
 ## [0.19.0] — 2026-08-13
 
 ### Added
@@ -2017,6 +2115,7 @@ First tagged release + the production-readiness work.
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
 [Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...HEAD
+[0.20.0]: https://github.com/sitewright-cms/sitewright/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/sitewright-cms/sitewright/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/sitewright-cms/sitewright/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...v0.17.0

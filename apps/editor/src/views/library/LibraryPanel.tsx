@@ -7,6 +7,8 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryItem, type LibrarySection } from './catalog';
+// TYPE-only — the catalog-icons module itself stays lazily imported (it carries the flag + brand data).
+import type { FlagShapeKey } from './catalog-icons';
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
@@ -346,11 +348,67 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
   );
 }
 
+/** One choice in a {@link SwitcherPills} row — a label plus an optional sample glyph drawn in it. */
+interface SwitcherOption<T extends string> {
+  id: T;
+  label: string;
+  sample?: string;
+}
+
+/**
+ * The gallery's variant switcher: a row of pills, each previewing the option it selects.
+ *
+ * Shared by the Icons tab's WEIGHT row and the Flags tab's SHAPE row, because they are the same
+ * question — "which cut of this glyph do you want?" — and answering it two different ways (pills here,
+ * a dropdown there) makes the second one read as a different kind of control.
+ */
+function SwitcherPills<T extends string>({
+  ariaLabel,
+  options,
+  value,
+  onSelect,
+}: {
+  ariaLabel: string;
+  options: SwitcherOption<T>[];
+  value: T;
+  onSelect: (id: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={ariaLabel} className="flex flex-wrap gap-2">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          role="radio"
+          aria-checked={value === o.id}
+          onClick={() => onSelect(o.id)}
+          className={`flex min-w-[7rem] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium capitalize leading-none transition ${
+            value === o.id
+              ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
+              : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
+          }`}
+        >
+          {o.sample && (
+            <span
+              aria-hidden
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: o.sample }}
+            />
+          )}
+          <span>{o.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** A lazy-loaded grid tab (brand logos or country flags) — the large sets are code-split and paged
- *  in on scroll; searching narrows the full set. Clicking a tile copies its snippet. */
+ *  in on scroll; searching narrows the full set. Clicking a tile copies its snippet. Flags add a SHAPE
+ *  row (rectangular · round), the same control the Icons tab uses for weight. */
 function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: string; label: string }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
+  const [shape, setShape] = useState<FlagShapeKey>('rect');
+  const [shapeOpts, setShapeOpts] = useState<SwitcherOption<FlagShapeKey>[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -359,7 +417,8 @@ function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: strin
     void import('./catalog-icons')
       .then((m) => {
         if (!alive) return;
-        setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.FLAG_ITEMS);
+        setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.flagItems(shape));
+        setShapeOpts(lazy === 'flags' ? m.FLAG_SHAPES.map((s) => ({ id: s.id, label: s.label, sample: m.FLAG_SHAPE_SAMPLES[s.id] })) : []);
         setLoading(false);
       })
       .catch(() => {
@@ -371,7 +430,7 @@ function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: strin
     return () => {
       alive = false;
     };
-  }, [lazy]);
+  }, [lazy, shape]);
 
   const q = query.trim().toLowerCase();
   const filtered = useMemo(
@@ -388,6 +447,9 @@ function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: strin
   return (
     <div role="tabpanel" aria-label={label} className="flex min-h-0 flex-1 flex-col gap-3">
       <p className="text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
+      {shapeOpts.length > 0 && (
+        <SwitcherPills ariaLabel="Flag shape" options={shapeOpts} value={shape} onSelect={(s) => { setShape(s); reset(); }} />
+      )}
       <SearchField
         ariaLabel={`Search ${label}`}
         autoFocus
@@ -520,30 +582,12 @@ function IconsTab({ blurb }: { blurb: string }) {
     <div role="tabpanel" aria-label="Icons" className="flex min-h-0 flex-1 flex-col gap-3">
       <p className="text-sm text-slate-500 dark:text-slate-400">{blurb}</p>
       {/* Weight switcher — each button shows a sample glyph in that weight; fill is the default. */}
-      <div role="radiogroup" aria-label="Icon weight" className="flex flex-wrap gap-2">
-        {weights.map((w) => (
-          <button
-            key={w}
-            role="radio"
-            aria-checked={weight === w}
-            onClick={() => setWeight(w)}
-            className={`flex min-w-[7rem] items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium capitalize leading-none transition ${
-              weight === w
-                ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-400/10 dark:text-indigo-200'
-                : 'border-slate-200/70 text-slate-500 hover:border-indigo-300 dark:border-slate-700 dark:text-slate-400'
-            }`}
-          >
-            {sample[w] && (
-              <span
-                aria-hidden
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center [&>svg]:h-full [&>svg]:w-full"
-                dangerouslySetInnerHTML={{ __html: sample[w]! }}
-              />
-            )}
-            <span>{w}</span>
-          </button>
-        ))}
-      </div>
+      <SwitcherPills
+        ariaLabel="Icon weight"
+        options={weights.map((w) => ({ id: w, label: w, sample: sample[w] }))}
+        value={weight}
+        onSelect={setWeight}
+      />
       <SearchField
         ariaLabel="Search icons"
         autoFocus

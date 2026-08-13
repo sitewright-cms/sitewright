@@ -17,8 +17,7 @@
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
-import { renderIconSvg } from './icon-render.js';
-import { flagIcon } from './flag-icons.js';
+import { renderIconSvg, FLAG_PREFIX } from './icon-render.js';
 import { resolveDirectives } from './directives.js';
 import { markEntry } from './entry-marker.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
@@ -441,34 +440,34 @@ function createInstance(): typeof Handlebars {
   // {{sw-icon "name" "css-class"}} → inline an icon as an <svg>. "name" is a PHOSPHOR icon; an optional
   // ":weight" suffix picks the weight (thin|light|regular|bold|fill|duotone), DEFAULT fill —
   // {{sw-icon "gear"}} is a filled gear, {{sw-icon "gear:bold"}} a bold one. `brand:<slug>` is a
-  // simple-icons filled logo (unchanged). RESOLUTION per name: Phosphor(name) → Lucide-name→Phosphor
-  // alias → Lucide OUTLINE fallback — so a familiar/agent-written Lucide name still renders (as its
-  // Phosphor twin where mapped, else a Lucide outline), never an invisible 0×0 gap. The emitted <svg>
-  // carries size-less class HOOKS `sw-icon sw-icon-<name> sw-icon-<weight>` (weight is `lucide` for a
-  // fallback) so a site can style by name/weight while authored + CSS-owned sizing still wins. Bodies
-  // come ONLY from the trusted build-time icon maps, never tenant markup; author DATA is just the name +
-  // class (both attribute-escaped). viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback.
+  // simple-icons filled logo (unchanged), and `flag:<cc>` a FULL-COLOR country flag (`flag:de-circle`
+  // for the round one) — ONE helper for every set the platform ships, so an author picks an icon by
+  // NAME and never has to know which library it came from. RESOLUTION per name: Phosphor(name) →
+  // Lucide-name→Phosphor alias → Lucide OUTLINE fallback — so a familiar/agent-written Lucide name
+  // still renders (as its Phosphor twin where mapped, else a Lucide outline), never an invisible 0×0
+  // gap. The emitted <svg> carries size-less class HOOKS `sw-icon sw-icon-<name> sw-icon-<weight>`
+  // (weight is `lucide` for a fallback, `sw-icon-flag-<cc> sw-icon-flag-rect|circle` for a flag) so a
+  // site can style by name/weight while authored + CSS-owned sizing still wins. Bodies come ONLY from
+  // the trusted build-time icon maps, never tenant markup; author DATA is just the name + class (both
+  // attribute-escaped). viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback, the flag
+  // set's own for a flag.
   hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) =>
     new Handlebars.SafeString(typeof name === 'string' ? renderIconSvg(name, typeof cls === 'string' ? cls : undefined) : ''),
   );
-  // {{sw-flag "de" "h-4"}} → inline a FULL-COLOR country flag as an <svg>. A bare alpha-2 code is the
-  // rectangular 4:3 flag; a `<code>-circle` name is the circular variant (e.g. {{sw-flag "de-circle"}}).
-  // Unlike sw-icon these keep their own fills (a flag in currentColor would be a blob), so it is a
-  // SEPARATE helper. The markup is ONLY from the trusted, build-time flag set (per-country namespaced
-  // ids so flags never collide on a page); an unknown code → empty. The country name is the accessible
-  // label + <title>. Use in element context.
-  hb.registerHelper('sw-flag', (name: unknown, cls?: unknown) => {
-    if (typeof name !== 'string') return new Handlebars.SafeString('');
-    const isCircle = name.endsWith('-circle');
-    const flag = flagIcon(isCircle ? name.slice(0, -'-circle'.length) : name);
-    const shape = flag && (isCircle ? flag.circle : flag.rect);
-    if (!flag || !shape) return new Handlebars.SafeString('');
-    const klass = escapeAttr(typeof cls === 'string' ? cls : isCircle ? 'h-5 w-5' : 'h-4');
-    return new Handlebars.SafeString(
-      `<svg class="${klass}" viewBox="${escapeAttr(shape.viewBox)}" role="img" aria-label="${escapeAttr(flag.name)}">` +
-        `<title>${Handlebars.escapeExpression(flag.name)}</title>${shape.body}</svg>`,
-    );
-  });
+  // {{sw-flag "de" "h-4"}} — DEPRECATED ALIAS of {{sw-icon "flag:de" "h-4"}}, kept because it is
+  // written into pages, snippets and slots on every site already built with it; removing it would blank
+  // a language switcher on publish, silently. Flags now live in sw-icon under the `flag:` prefix (the
+  // same spelling the icon PICKER has always stored), so there is ONE helper to learn and one set of
+  // class hooks to style. It forwards to the SAME renderer, so both spellings produce the same artwork,
+  // accessible name and per-shape default size; the only difference from the pre-consolidation output is
+  // that a flag now also carries the `sw-icon sw-icon-flag-*` hooks every other icon has (additive
+  // classes — no rule ships for them, so nothing re-renders). New authoring should use sw-icon; the
+  // reference documents only that.
+  hb.registerHelper('sw-flag', (name: unknown, cls?: unknown) =>
+    new Handlebars.SafeString(
+      typeof name === 'string' ? renderIconSvg(`${FLAG_PREFIX}${name}`, typeof cls === 'string' ? cls : undefined) : '',
+    ),
+  );
   // {{sw-label}} inside {{#each nav.*}} → the nav item's render-ready label. A link placeholder's
   // rich name (HTML + icon helpers) and a page title are both pre-rendered into `labelHtml` by
   // `decorateNav`; this emits it as a SafeString (the markup is already validated/escaped there), so

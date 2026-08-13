@@ -18,7 +18,7 @@ export interface NavItem {
   newTab?: boolean;
   /**
    * Whether the label may contain rich markup (a link placeholder's name supports basic HTML +
-   * `{{sw-icon}}`/`{{sw-flag}}`). Plain page titles are NOT rich (escaped). Consumed by
+   * `{{sw-icon}}`). Plain page titles are NOT rich (escaped). Consumed by
    * `decorateNav` (blocks), which renders rich labels into {@link labelHtml}.
    */
   rich?: boolean;

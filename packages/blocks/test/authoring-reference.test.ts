@@ -30,6 +30,21 @@ describe('SW_HELPERS ↔ the registered sw-* helpers', () => {
     }
   });
 
+  it('a DEPRECATED helper still renders and still names its replacement', () => {
+    // A deprecated helper is documented, not deleted: the set is pinned to what the engine registers,
+    // so removing the entry while the engine still answers to the name would make the registry lie.
+    // What it must never do is sit there unlabelled, where an agent reads it as current advice.
+    const deprecated = SW_HELPERS.filter((h) => h.deprecated);
+    expect(deprecated.map((h) => h.name)).toEqual(['sw-flag']);
+    for (const h of deprecated) {
+      expect(h.summary, h.name).toMatch(/DEPRECATED/);
+      expect(h.deprecated, h.name).toContain('sw-icon');
+      expect(registeredSwHelpers(), h.name).toContain(h.name); // still registered → still renders
+    }
+    // …and it renders the SAME thing as its replacement, which is the whole basis for deprecating it.
+    expect(renderTemplate('{{sw-flag "de"}}', {})).toBe(renderTemplate('{{sw-icon "flag:de"}}', {}));
+  });
+
   it('no bare content helper ships undocumented: our additions are sw-* or an allowlisted logic helper', () => {
     // The drift test above only covers `sw-*` helpers (registeredSwHelpers filters by prefix), so a NEW
     // BARE helper — like the {{json}} that shipped in #555 — would ship, work, and never appear in the

@@ -31,17 +31,50 @@ function flagSvg(viewBox: string, body: string, cls = 'h-6'): string {
   return `<svg class="${cls}" viewBox="${viewBox}" aria-hidden="true">${body}</svg>`;
 }
 
-/** The built-in country flags — inserted with the `{{sw-flag}}` helper; `-circle` for the round variant. */
-export const FLAG_ITEMS: LibraryItem[] = FLAG_CODES.map((code) => {
-  const f = flagIcon(code)!;
-  return {
-    id: `flag-${code}`,
-    name: f.name,
-    keywords: `flag country nation ${code} ${f.name}`,
-    description: f.circle
-      ? `${f.name} (${code.toUpperCase()}) — rectangular. Use "${code}-circle" for the round variant.`
-      : `${f.name} (${code.toUpperCase()}) — rectangular only (no circular variant).`,
-    example: `{{sw-flag "${code}" "h-4"}}`,
-    svg: flagSvg(f.rect.viewBox, f.rect.body),
-  };
-});
+/** The two shapes every flag is drawn in. A handful of flags ship only the rectangle. */
+export type FlagShapeKey = 'rect' | 'circle';
+
+/** How each shape is labelled + what the snippet spells — one place, so the pills and the copied
+ *  snippet can never disagree about which variant is on screen. */
+export const FLAG_SHAPES: { id: FlagShapeKey; label: string; suffix: string; cls: string }[] = [
+  { id: 'rect', label: 'Rectangular', suffix: '', cls: 'h-4' },
+  { id: 'circle', label: 'Round', suffix: '-circle', cls: 'h-5 w-5' },
+];
+
+/**
+ * The built-in country flags in ONE shape — inserted with `{{sw-icon "flag:<code>"}}`.
+ *
+ * The circular set is a SUBSET: five flags have no round variant upstream, and listing them under
+ * "Round" with their rectangle drawn instead would hand the author a snippet whose preview lies. So
+ * the round tab simply omits them, and its count says how many there are.
+ */
+export function flagItems(shape: FlagShapeKey): LibraryItem[] {
+  const def = FLAG_SHAPES.find((s) => s.id === shape)!;
+  return FLAG_CODES.flatMap((code) => {
+    const f = flagIcon(code)!;
+    const art = shape === 'circle' ? f.circle : f.rect;
+    if (!art) return [];
+    return [
+      {
+        id: `flag-${shape}-${code}`,
+        name: f.name,
+        keywords: `flag country nation ${code} ${f.name}`,
+        description: `${f.name} (${code.toUpperCase()}) — ${def.label.toLowerCase()}.`,
+        example: `{{sw-icon "flag:${code}${def.suffix}" "${def.cls}"}}`,
+        svg: flagSvg(art.viewBox, art.body, shape === 'circle' ? 'h-6 w-6' : 'h-6'),
+      },
+    ];
+  });
+}
+
+/** A sample glyph per shape for the switcher pills — the EU flag, which ships in both. */
+export const FLAG_SHAPE_SAMPLES: Record<FlagShapeKey, string> = {
+  rect: sampleFlag('rect'),
+  circle: sampleFlag('circle'),
+};
+
+function sampleFlag(shape: FlagShapeKey): string {
+  const f = flagIcon('eu') ?? flagIcon(FLAG_CODES[0] ?? '');
+  const art = f && (shape === 'circle' ? f.circle : f.rect);
+  return art ? flagSvg(art.viewBox, art.body, shape === 'circle' ? 'h-5 w-5' : 'h-5') : '';
+}

@@ -1,6 +1,6 @@
 // Navigation-placeholder rendering + client runtime.
 //
-// A `kind:'link'` placeholder's NAME is rich (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`). `decorateNav`
+// A `kind:'link'` placeholder's NAME is rich (basic HTML + `{{sw-icon}}`, flags included). `decorateNav`
 // renders each nav item's label into a ready-to-emit `labelHtml`, which the `{{sw-label}}` Handlebars
 // helper (see template.ts) outputs as a SafeString — so templates avoid the forbidden `{{{` triple-
 // stache. A rich label goes through the SAME validated engine as a page/slot (`renderTemplate`, which
@@ -33,7 +33,7 @@ interface NavItemLike {
 }
 
 /**
- * Render a nav PLACEHOLDER's rich label string (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) to safe HTML
+ * Render a nav PLACEHOLDER's rich label string (basic HTML + `{{sw-icon}}`) to safe HTML
  * via the SAME validated engine the live nav uses (`renderTemplate` — icon/flag helpers resolve;
  * scripts/handlers/`{{{` are rejected). Falls back to the escaped plain text on any error, so a bad
  * label never produces unsafe output. Exposed so the editor's Pages list can preview a placeholder's

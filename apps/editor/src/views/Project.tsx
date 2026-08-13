@@ -933,7 +933,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     required
                   />
                   <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
+                    Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-icon "flag:de"}}'}</code>.
                   </span>
                 </div>
                 <div className="flex flex-col">

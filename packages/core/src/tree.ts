@@ -86,7 +86,7 @@ export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
  */
 export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLASS_TOKENS): string[] {
   const attrRe = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
-  // {{sw-icon "name" "classes"}} / {{sw-flag "cc" "classes"}}: the helpers emit their second
+  // {{sw-icon "name" "classes"}} (incl. "flag:<cc>"): the helper emits its second
   // argument as the svg's class attribute at RENDER time. A source-level scan must read it
   // here too, or icon utility classes (the catalog's own `{{sw-icon "caret-left" "size-6"}}`
   // pattern) never reach the compiled sheet and icons render unsized.

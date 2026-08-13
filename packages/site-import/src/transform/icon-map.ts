@@ -183,8 +183,7 @@ export function mapMaterialLigature(text: string | null | undefined, classStr?: 
 }
 
 /**
- * Resolve a country-flag icon-font CLASS to a platform flag CODE (for `{{sw-flag}}`, a separate helper from
- * `{{sw-icon}}`), or null. Covers the common flag-font conventions: `flag-icon flag-icon-de` (flag-icon-css),
+ * Resolve a country-flag icon-font CLASS to a platform flag CODE (for `{{sw-icon "flag:<cc>"}}`), or null. Covers the common flag-font conventions: `flag-icon flag-icon-de` (flag-icon-css),
  * `fi fi-de` (lipis flag-icons), and `flag flag-de` — the code (ISO 3166-1 alpha-2) must exist in FLAG_CODES.
  * @example mapFlagClass('flag-icon flag-icon-de') // { flag: 'de' }
  * @example mapFlagClass('fi fi-us')               // { flag: 'us' }

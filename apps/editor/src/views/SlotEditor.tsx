@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
+import { isTranslationKey, websiteDataPathOf } from '../lib/page-data';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -45,6 +46,8 @@ interface SlotEditorProps {
   value: string;
   /** Persist the slot (the caller owns the settings write). */
   onSave: (slot: ChromeSlotKey, source: string) => Promise<void> | void;
+  /** Project locales, default-first — the locale an inline translation edit writes. */
+  locales?: readonly string[];
   onClose: () => void;
 }
 
@@ -54,7 +57,10 @@ interface SlotEditorProps {
  * device rail. No audit tab (that scores a page, and a slot is not one), and it opens in CODE mode
  * because a slot is markup first. Stacks OVER the page editor when reached from there.
  */
-export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditorProps) {
+export function SlotEditor({ project, slot, value, onSave, locales = [], onClose }: SlotEditorProps) {
+  // A slot renders on every locale, so an inline translation edit writes the DEFAULT locale's cell —
+  // the one the authored fallback stands in for. Per-locale wording stays the Translations table's job.
+  const locale = locales[0] ?? 'en';
   const [source, setSource] = useState(value);
   const [mode, setMode] = useState<'source' | 'content'>('source'); // slots are markup first
   const [device, setDevice] = useState<PreviewDeviceKey>('desktop');
@@ -116,14 +122,97 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
     syncPreview();
   }, [mode, syncPreview]);
 
+  // --- The two stores a SLOT can actually write to ------------------------------------------------
+  // A slot is not a page, so it has no page.data: its editable leaves are the SHARED project
+  // translation catalog (data-sw-translate) and the site-wide website.data store (an explicit
+  // `website.data.<path>` key). Both auto-save on their own endpoints, debounced, exactly as the page
+  // editor does — the slot's own Save button owns the SOURCE, never these values.
+  //
+  // These edits are only reachable HERE: the preview bridge wires a chrome-slot leaf only while that
+  // slot is focused, so the same shared string can't also be edited from a page, where it would read
+  // as a page-local change while quietly rewriting every page.
+  const pendingTrRef = useRef(new Map<string, { key: string; value: string }>());
+  const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingWdRef = useRef(new Map<string, { key: string; value: string }>());
+  const wdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [storeError, setStoreError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  const flushTranslations = useCallback(async () => {
+    trTimerRef.current = null;
+    const cells = [...pendingTrRef.current.values()];
+    pendingTrRef.current.clear();
+    for (const c of cells) {
+      try {
+        await api.setTranslation(project.id, c.key, locale, c.value);
+      } catch (err) {
+        if (mounted.current) setStoreError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+      }
+    }
+  }, [project.id, locale]);
+
+  const flushWebsiteData = useCallback(async () => {
+    wdTimerRef.current = null;
+    const cells = [...pendingWdRef.current.values()];
+    pendingWdRef.current.clear();
+    for (const c of cells) {
+      try {
+        await api.setWebsiteData(project.id, c.key, c.value);
+      } catch (err) {
+        if (mounted.current) setStoreError(err instanceof Error ? `Website data not saved: ${err.message}` : 'Website data not saved');
+      }
+    }
+  }, [project.id]);
+
+  // Flush anything still inside the debounce window if the editor closes — otherwise the last
+  // keystrokes of an edit are lost precisely when the user thinks they are done.
+  useEffect(
+    () => () => {
+      if (trTimerRef.current) {
+        clearTimeout(trTimerRef.current);
+        for (const c of pendingTrRef.current.values()) void api.setTranslation(project.id, c.key, locale, c.value).catch(() => {});
+      }
+      if (wdTimerRef.current) {
+        clearTimeout(wdTimerRef.current);
+        for (const c of pendingWdRef.current.values()) void api.setWebsiteData(project.id, c.key, c.value).catch(() => {});
+      }
+    },
+    [project.id, locale],
+  );
+
   // The preview → editor bridge: click-to-code, scoped by the preview to this slot's landmark.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
-      const d = e.data as { source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number; text?: string; textHit?: string; ds?: string } | null;
+      const d = e.data as {
+        source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number;
+        text?: string; textHit?: string; ds?: string; key?: string; value?: string; html?: string;
+      } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'ready') {
         syncPreview();
+      } else if (d.type === 'translate-edit' && typeof d.key === 'string' && typeof d.value === 'string' && isTranslationKey(d.key)) {
+        // data-sw-translate in this slot → the SHARED catalog. The contenteditable already shows the
+        // new text, so nothing re-renders; only the write is queued.
+        pendingTrRef.current.set(d.key, { key: d.key, value: d.value });
+        if (trTimerRef.current) clearTimeout(trTimerRef.current);
+        trTimerRef.current = setTimeout(() => void flushTranslations(), 600);
+      } else if (
+        (d.type === 'edit' || d.type === 'rich-edit') &&
+        typeof d.key === 'string' &&
+        websiteDataPathOf(d.key) !== null &&
+        typeof (d.type === 'edit' ? d.value : d.html) === 'string'
+      ) {
+        // data-sw-text / data-sw-html with a `website.data.<path>` key → the site-wide store. A BARE
+        // key never reaches here: the bridge does not wire one inside a slot, because a slot has no
+        // page.data for it to land in and the edit would silently evaporate.
+        pendingWdRef.current.set(d.key, {
+          key: websiteDataPathOf(d.key) as string,
+          value: (d.type === 'edit' ? d.value : d.html) as string,
+        });
+        if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
+        wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
       } else if (d.type === 'locate-source' && typeof d.tag === 'string' && modeRef.current === 'source') {
         const range =
           findElementRange(sourceRef.current, {
@@ -143,7 +232,7 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [syncPreview]);
+  }, [syncPreview, flushTranslations, flushWebsiteData]);
 
   const save = useCallback(async () => {
     if (saving) return;
@@ -225,6 +314,19 @@ export function SlotEditor({ project, slot, value, onSave, onClose }: SlotEditor
         <div className="relative min-h-0 flex-1">
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Slot preview" iframeRef={iframeRef} />
+            {/* A shared-store write is auto-saved and separate from the slot's own Save, so a failure
+                has no other way to surface — without this it would look like the edit stuck. */}
+            {storeError && (
+              <div
+                role="alert"
+                className="absolute inset-x-3 bottom-3 z-10 flex items-center justify-between gap-3 rounded-xl border border-rose-300 dark:border-rose-500/40 bg-rose-50 dark:bg-rose-950/70 px-3 py-2 text-sm text-rose-800 dark:text-rose-200 shadow-lg backdrop-blur"
+              >
+                <span>{storeError}</span>
+                <button type="button" className="shrink-0 rounded-lg px-2 py-0.5 font-semibold hover:bg-rose-100 dark:hover:bg-rose-900" onClick={() => setStoreError(null)}>
+                  Dismiss
+                </button>
+              </div>
+            )}
           </DevicePreview>
           <div
             role="group"

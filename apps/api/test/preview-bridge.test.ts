@@ -54,3 +54,47 @@ describe('preview bridge — opening an image map in the Studio', () => {
     expect(handler.slice(0, 400)).toContain('e.stopPropagation()');
   });
 });
+
+describe('preview bridge — a chrome slot is edited in the SKELETON editor, not on a page', () => {
+  it('gates every editable leaf on inForeignSlot, alongside the dataset-row gate it mirrors', () => {
+    // A slot's stores are SHARED (website.translations / website.data), so the same string is
+    // reachable from every page. Editing it from a page would read as a page-local change while
+    // silently rewriting the whole site — so the leaf is wired only where its slot is focused.
+    for (const guard of [
+      "eachEl('[data-sw-text]', function (el) {",
+      "eachEl('[data-sw-translate]', function (el) {",
+      "eachEl('[data-sw-html]', function (el) {",
+      "eachEl('[data-sw-href]', function (el) {",
+      "eachEl('[data-sw-src],[data-sw-bg]', function (el) {",
+    ]) {
+      expect(PREVIEW_BRIDGE_JS).toContain(guard);
+    }
+    // five wirings, each returning early for a foreign slot
+    expect(PREVIEW_BRIDGE_JS.match(/inForeignSlot\(el\)/g)?.length).toBe(5);
+  });
+
+  it('treats every landmark as foreign when no slot is focused (i.e. on a page)', () => {
+    // slotFocus '' → slotElementId('') is '' → no landmark id can match, so every slot leaf is skipped.
+    expect(PREVIEW_BRIDGE_JS).toContain("if (land.id !== slotElementId(slotFocus)) return true;");
+  });
+
+  it('inside the FOCUSED slot, offers only keys that can actually persist', () => {
+    // A slot has no page.data, so a BARE data-sw-text/html/src key there resolves to nothing and the
+    // edit evaporates on save — the exact dead-directive bug this rule exists to prevent. Only the
+    // translation catalog and an explicit website.data.<path> key have a store behind them.
+    expect(PREVIEW_BRIDGE_JS).toContain("if (el.hasAttribute('data-sw-translate')) return false;");
+    expect(PREVIEW_BRIDGE_JS).toContain("if (v && v.indexOf('website.data.') === 0) return false;");
+  });
+
+  it('re-wires when the focus changes, so a newly focused slot is live immediately', () => {
+    // Which leaves are editable depends on slotFocus, so a focus change inside content mode has to
+    // re-run setEditing — otherwise the slot just opened stays inert until the mode is toggled.
+    expect(PREVIEW_BRIDGE_JS).toContain('if (changed && editing) { setEditing(false); setEditing(true); }');
+  });
+
+  it('shares ONE landmark selector between focus handling and the gate', () => {
+    // Two copies would drift: a slot added to one list and not the other becomes editable from a page.
+    expect(PREVIEW_BRIDGE_JS).toContain("var SLOT_SEL = '#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom';");
+    expect(PREVIEW_BRIDGE_JS.match(/#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom/g)?.length).toBe(1);
+  });
+});

@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { preview, selectRange } = vi.hoisted(() => ({ preview: vi.fn(), selectRange: vi.fn() }));
+const { preview, selectRange, setTranslation, setWebsiteData } = vi.hoisted(() => ({
+  preview: vi.fn(), selectRange: vi.fn(), setTranslation: vi.fn(), setWebsiteData: vi.fn(),
+}));
 vi.mock('../src/api', () => ({
-  api: { preview: (...args: unknown[]) => preview(...args) },
+  api: {
+    preview: (...args: unknown[]) => preview(...args),
+    setTranslation: (...args: unknown[]) => setTranslation(...args),
+    setWebsiteData: (...args: unknown[]) => setWebsiteData(...args),
+  },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
 // CodeMirror doesn't run in jsdom — a textarea exercises the same authoring flow, and the handle
@@ -26,6 +32,10 @@ const SLOT_SOURCE = '<div class="navbar">{{#each nav.header}}<a class="nav-item"
 beforeEach(() => {
   preview.mockReset();
   selectRange.mockReset();
+  setTranslation.mockReset();
+  setWebsiteData.mockReset();
+  setTranslation.mockResolvedValue(undefined);
+  setWebsiteData.mockResolvedValue(undefined);
   preview.mockResolvedValue({ html: '<!doctype html>', token: 'tok-1' });
 });
 
@@ -194,4 +204,103 @@ describe('SlotEditor layout (matches the page editor)', () => {
     expect(rail.className).toContain('absolute');
     expect(screen.getByRole('button', { name: 'Preview: Mobile' })).toBeTruthy();
   });
+});
+
+/**
+ * A chrome slot's editable leaves write the SHARED stores — the project translation catalog and
+ * website.data. The preview bridge wires them only while that slot is focused, which makes this
+ * editor the one place they can be changed; before this, it listened for `locate-source` alone and
+ * silently dropped every edit the preview posted.
+ */
+describe('SlotEditor — inline edits reach the shared stores', () => {
+  // The handler only trusts messages whose `source` IS the preview iframe's window, so the stub has
+  // to be installed and used as the event source — exactly as the click-to-code tests above do.
+  const post = (data: Record<string, unknown>) => {
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    if (!iframe.contentWindow) {
+      Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    }
+    fireEvent(window, new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }));
+  };
+
+  it('writes a data-sw-translate edit to the catalog, debounced, at the default locale', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} locales={['de', 'en']} onSave={vi.fn()} onClose={vi.fn()} />);
+      post({ type: 'translate-edit', key: 'footer.tagline', value: 'Erste' });
+      post({ type: 'translate-edit', key: 'footer.tagline', value: 'Zweite' });
+      expect(setTranslation).not.toHaveBeenCalled(); // debounced, not per keystroke
+      await vi.advanceTimersByTimeAsync(700);
+      // one call, the LAST value, against the project's default locale
+      expect(setTranslation).toHaveBeenCalledTimes(1);
+      expect(setTranslation).toHaveBeenCalledWith('p', 'footer.tagline', 'de', 'Zweite');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('routes a website.data.<path> key to the site-wide store, not the catalog', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+      post({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' });
+      post({ type: 'rich-edit', key: 'website.data.footer_disclaimer', html: '<p>Terms</p>' });
+      await vi.advanceTimersByTimeAsync(700);
+      // the `website.data.` prefix is stripped — the endpoint takes the PATH
+      expect(setWebsiteData).toHaveBeenCalledWith('p', 'footer_note', 'Hello');
+      expect(setWebsiteData).toHaveBeenCalledWith('p', 'footer_disclaimer', '<p>Terms</p>');
+      expect(setTranslation).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores an edit whose key has no store behind it', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+      // A BARE key is page.data, which a slot does not have. The bridge will not wire one, and if a
+      // stale preview posts it anyway it must be dropped rather than written somewhere it doesn't belong.
+      post({ type: 'edit', key: 'footer_tagline', value: 'x' });
+      post({ type: 'translate-edit', key: 'not a key!', value: 'x' });
+      await vi.advanceTimersByTimeAsync(700);
+      expect(setWebsiteData).not.toHaveBeenCalled();
+      expect(setTranslation).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('flushes a pending edit when the editor closes inside the debounce window', async () => {
+    vi.useFakeTimers();
+    try {
+      const { unmount } = render(
+        <SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />,
+      );
+      post({ type: 'translate-edit', key: 'footer.rights', value: 'All rights reserved' });
+      unmount(); // closed mid-debounce — the last keystrokes must not be lost
+      expect(setTranslation).toHaveBeenCalledWith('p', 'footer.rights', 'en', 'All rights reserved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+it('surfaces a failed shared-store write instead of losing it silently', async () => {
+  // Real timers here: the alert is set in an async catch AFTER the debounce fires, so the assertion
+  // has to await React's flush rather than just advancing a fake clock.
+  setTranslation.mockRejectedValue(new Error('offline'));
+  render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+  const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+  Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+  fireEvent(
+    window,
+    new MessageEvent('message', {
+      data: { source: 'sitewright-preview', type: 'translate-edit', key: 'footer.tagline', value: 'x' },
+      source: iframe.contentWindow,
+    }),
+  );
+  // These writes auto-save independently of the slot's own Save button, so a failure has no other way
+  // to reach the user — without the alert the edit just looks like it stuck.
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('offline'), { timeout: 3000 });
 });

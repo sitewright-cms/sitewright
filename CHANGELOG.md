@@ -9,6 +9,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **A chrome slot's shared strings are now edited in the skeleton editor, and only there.** A slot's
+  editable leaves write the SHARED stores — the project translation catalog and `website.data` — so
+  the same string is reachable from every page. Editing it from a page read as a page-local change
+  while quietly rewriting the whole site. Those leaves are now wired only while their slot is
+  focused, which is the skeleton editor.
+  Inside a focused slot only keys that can actually persist are offered: `data-sw-translate` and an
+  explicit `website.data.<path>`. A **bare** `data-sw-text`/`-html`/`-src` key in a slot resolves to
+  nothing (a slot has no `page.data`), so it rendered the authored default forever while looking
+  editable — offering an edit that silently discards itself is worse than offering none.
+
+### Fixed
+
+- **The skeleton editor dropped every inline edit.** It offered a content mode that outlined the
+  regions and made them editable, then listened for `locate-source` alone — so typing into a slot's
+  translation or website-data region changed the preview and saved nothing. Both stores now write
+  (debounced, flushed if the editor closes mid-edit), and a failed write raises an alert instead of
+  looking like it stuck.
+
 ## [0.18.0] — 2026-08-13
 
 ### Added

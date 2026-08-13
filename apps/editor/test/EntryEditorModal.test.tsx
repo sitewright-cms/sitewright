@@ -188,3 +188,24 @@ describe('EntryEditorModal — config-driven + temporal inputs', () => {
     expect((screen.getByLabelText('when') as HTMLInputElement).type).toBe('datetime-local');
   });
 });
+
+describe('an `icon` field', () => {
+  it('offers the icon PICKER rather than a text box', () => {
+    // The one field type where a typo is invisible: {{sw-icon}} renders nothing for an unknown name,
+    // so the row just looks broken with no clue why. The control must be a chooser, not free text.
+    const iconSet: Dataset = {
+      id: 'ranges',
+      name: 'Ranges',
+      slug: 'ranges',
+      fields: [{ name: 'icon', type: 'icon', required: false, localized: false }],
+    };
+    const row: Entry = { id: 'drinks', dataset: 'ranges', status: 'published', values: { icon: 'leaf:duotone' } };
+    render(<EntryEditorModal projectId="p" dataset={iconSet} entry={row} onSaved={() => {}} onClose={() => {}} />);
+
+    const control = screen.getByRole('button', { name: /choose the icon/i });
+    // it shows the CURRENT name, so a row's icon is identifiable without opening the picker
+    expect(control.textContent).toContain('leaf:duotone');
+    // and it is not a free-text input
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+});

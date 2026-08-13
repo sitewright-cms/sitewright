@@ -105,3 +105,34 @@ describe('Dataset schemas', () => {
     expect(e.status).toBe('draft');
   });
 });
+
+describe('the `icon` field type', () => {
+  it('is accepted as a scalar field, carrying no child fields', () => {
+    const parsed = DatasetSchema.safeParse({
+      id: 'ranges',
+      name: 'Ranges',
+      slug: 'ranges',
+      fields: [{ name: 'icon', type: 'icon', required: false, localized: false }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('is rejected if given child fields — it is scalar, not a group', () => {
+    const parsed = DatasetSchema.safeParse({
+      id: 'ranges',
+      name: 'Ranges',
+      slug: 'ranges',
+      fields: [{ name: 'icon', type: 'icon', fields: [{ name: 'x', type: 'text' }] }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('stores the icon NAME as a plain string, exactly as {{sw-icon}} takes it', () => {
+    // Phosphor, Phosphor+weight, a brand logo and a flag are all just names — the picker constrains
+    // the choice in the editor, the stored value stays a string the renderer already understands.
+    for (const name of ['leaf', 'leaf:duotone', 'brand:whatsapp', 'flag:na']) {
+      const parsed = EntrySchema.safeParse({ id: 'r1', dataset: 'ranges', values: { icon: name } });
+      expect(parsed.success).toBe(true);
+    }
+  });
+});

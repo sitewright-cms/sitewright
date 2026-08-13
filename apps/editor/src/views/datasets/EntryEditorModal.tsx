@@ -24,6 +24,7 @@ import { AssetField } from '../files/AssetField';
 import { FolderField } from '../files/FolderField';
 import { ACCEPT } from '../files/FileBrowser';
 import { CodeEditor } from '../../lib/code-editor';
+import { IconField } from '../ui/IconPicker';
 
 // Monotonic key source for list items (stable React keys that travel with an item across reorder,
 // without polluting the saved data shape). See ListField.
@@ -470,6 +471,12 @@ function FieldInput({
     case 'file':
       return (
         <AssetField label={field.name} inputId={id} hideLabel value={typeof value === 'string' ? value : ''} onChange={onRaw} projectId={projectId} accept={ACCEPT.any} placeholder="/files/brochure.pdf" />
+      );
+    case 'icon':
+      // The whole platform library behind a picker. Typing an icon name by hand is the one field
+      // where a typo is INVISIBLE — {{sw-icon}} renders nothing, so the row just looks broken.
+      return (
+        <IconField value={typeof value === 'string' ? value : ''} onChange={onRaw} inputId={id} hideLabel />
       );
     case 'folder':
       return (

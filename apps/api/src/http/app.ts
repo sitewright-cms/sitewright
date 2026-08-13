@@ -269,7 +269,7 @@ import {
   resolveOidcUser,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
-import { sweepExpiredAuthRows, reapDeletedMedia } from '../repo/maintenance.js';
+import { sweepExpiredAuthRows, reapDeletedMedia, reapUnusedOAuthClients } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
 import { OidcRepository } from '../repo/oidc.js';
 import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
@@ -8132,7 +8132,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * health check never waits behind one.
    */
   const runMaintenanceSweeps = (): void => {
-    void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
+    // Chained, not concurrent: the client reap only drops registrations nothing points at, so it has
+    // to see the token sweep's deletions or a dead client survives on the strength of expired rows.
+    void sweepExpiredAuthRows(db)
+      .then(() => reapUnusedOAuthClients(db))
+      .catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
     void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
     // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
     // an expired challenge fails verification before the spent-check is ever consulted.

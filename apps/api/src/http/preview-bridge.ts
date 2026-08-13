@@ -1386,21 +1386,83 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (r.bottom < -REST_MARGIN || r.top > vh + REST_MARGIN || r.right < -REST_MARGIN || r.left > vw + REST_MARGIN) continue;
       hits.push({ r: r, k: restList[i].k });
     }
+    var moved = false;
     for (i = 0; i < hits.length; i++) {
       var box = restPool[i];
-      if (!box) { box = document.createElement('div'); restPool[i] = box; restLayer.appendChild(box); }
+      if (!box) { box = document.createElement('div'); restPool[i] = box; restLayer.appendChild(box); moved = true; }
+      var l = hits[i].r.left + 'px', t = hits[i].r.top + 'px', w = hits[i].r.width + 'px', h = hits[i].r.height + 'px';
+      // Compare before writing: this is what lets the motion loop settle on REST, and it also avoids
+      // dirtying style on every frame of a scroll where most boxes have not actually moved.
+      if (box.style.left !== l || box.style.top !== t || box.style.width !== w || box.style.height !== h) {
+        box.style.left = l; box.style.top = t; box.style.width = w; box.style.height = h;
+        moved = true;
+      }
       box.className = 'sw-ov-r' + restKlass(hits[i].k);
       box.style.display = 'block';
-      box.style.left = hits[i].r.left + 'px'; box.style.top = hits[i].r.top + 'px';
-      box.style.width = hits[i].r.width + 'px'; box.style.height = hits[i].r.height + 'px';
     }
-    for (; i < restPool.length; i++) restPool[i].style.display = 'none';
+    for (; i < restPool.length; i++) {
+      if (restPool[i].style.display !== 'none') { restPool[i].style.display = 'none'; moved = true; }
+    }
+    return moved;
   }
   /** Repaint on the next frame, coalescing the burst a scroll or a reflow produces. */
   function scheduleRest() {
     if (restTick || !editing) return;
     restTick = true;
     requestAnimationFrame(function () { restTick = false; paintRest(); });
+  }
+
+  // ---- MOTION TRACKING -----------------------------------------------------------------------------
+  // ★ A TRANSFORM CHANGES NO LAYOUT SIZE, so a ResizeObserver never fires for one — and transform is
+  // what nearly every animation on these pages animates: scroll-reveal (data-sw-animation), parallax,
+  // a carousel slide, a marquee, a hover lift. The markers were therefore not merely LATE on animated
+  // elements, they were not updating AT ALL until the next scroll or resize: placed once at wiring
+  // time and then left behind by anything that moved.
+  //
+  // The fix is to TRACK, not to WAIT. Holding the marker back until an animation "finishes" fails on
+  // its own terms: a marquee or a looping carousel never finishes, an interrupted transition fires no
+  // transitionend, and the marker would be missing during exactly the moment the author is watching.
+  //
+  // So: while motion is in flight, reposition every frame; when it settles, stop. 'getAnimations()' is
+  // the authoritative signal (CSS animations, CSS transitions and Web Animations all appear there), and
+  // the settle test is REST — two consecutive frames in which nothing moved — rather than a timer,
+  // because a timer either cuts an animation off or burns frames after it ended.
+  var motionRaf = 0, motionStill = 0, motionSince = 0;
+  var MOTION_SETTLE_FRAMES = 2;
+  // An INFINITE animation (a marquee, a looping gradient) never settles, and chasing it at 60fps
+  // forever is a cost the author gets nothing for. After this long of unbroken motion the loop keeps
+  // tracking but drops to a coarse interval — still roughly glued, no longer per-frame.
+  var MOTION_FULL_RATE_MS = 4000;
+  function pageIsAnimating() {
+    if (!document.getAnimations) return false;
+    try {
+      var anims = document.getAnimations();
+      for (var i = 0; i < anims.length; i++) if (anims[i].playState === 'running') return true;
+    } catch (e) { /* older engine → fall back to the settle test alone */ }
+    return false;
+  }
+  function motionFrame(now) {
+    motionRaf = 0;
+    if (!editing) { motionStill = 0; motionSince = 0; return; }
+    var moved = paintRest(); // returns true when any box actually changed position
+    repositionActiveHud();
+    positionSlotRing();
+    if (moved || pageIsAnimating()) motionStill = 0;
+    else motionStill++;
+    if (motionStill >= MOTION_SETTLE_FRAMES) { motionSince = 0; return; } // come to REST, then stop
+    if (!motionSince) motionSince = now || 0;
+    // Past the full-rate window we are almost certainly chasing an infinite animation: keep up, but
+    // at a fraction of the cost.
+    if (motionSince && now && now - motionSince > MOTION_FULL_RATE_MS) {
+      setTimeout(function () { motionRaf = requestAnimationFrame(motionFrame); }, 200);
+      return;
+    }
+    motionRaf = requestAnimationFrame(motionFrame);
+  }
+  function trackMotion() {
+    if (motionRaf || !editing) return;
+    motionStill = 0;
+    motionRaf = requestAnimationFrame(motionFrame);
   }
   function clearRest() {
     restList = [];
@@ -1468,12 +1530,16 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function hideHud() { ovTimer = null; ovActive = null; if (ovBox) ovBox.style.display = 'none'; if (ovFill) ovFill.style.display = 'none'; if (ovRow) ovRow.style.display = 'none'; }
   function scheduleHide() { if (ovTimer) return; ovTimer = setTimeout(hideHud, 180); }
-  function repositionHud() {
+  /** The per-frame part: the active element's box/tint/badges and the image-resize handles. */
+  function repositionActiveHud() {
     if (editing && ovActive && ovActive.length) { outlineFor(ovActive[0], primaryKind(ovActive[0])); positionRow(ovActive[0]); }
+    if (editing && rzImg) rzPosition(); // keep the image-resize handles on the image
+  }
+  function repositionHud() {
+    repositionActiveHud();
     // Keep the floating rich-text toolbar glued to its selection as the page scrolls / the viewport resizes
     // (a resize can also change how many buttons fit → re-flow the overflow set).
     if (editing && toolbar && toolbar.style.display !== 'none') positionToolbar();
-    if (editing && rzImg) rzPosition(); // keep the image-resize handles on the image
     scheduleRest(); // the at-rest boxes are fixed-positioned, so they move with the page too
     positionSlotRing();
   }
@@ -1607,9 +1673,21 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (typeof ResizeObserver !== 'undefined') {
         if (!restRO) restRO = new ResizeObserver(scheduleRest);
         try { restRO.observe(document.body); } catch (e) {}
+        // …and each marked element itself. The body observer misses a region that changes size while
+        // the document does not — a details/accordion opening, a textarea growing, a card whose image
+        // finally decodes inside a fixed-height page.
+        for (var ri = 0; ri < restList.length; ri++) { try { restRO.observe(restList[ri].el); } catch (e) {} }
       }
       document.addEventListener('input', scheduleRest, true);
       window.addEventListener('load', scheduleRest);
+      // MOTION: a transform animates nothing a ResizeObserver can see, so these are what start the
+      // tracking loop. 'transitionrun' (not transitionend) fires as the transition BEGINS, which is the
+      // only useful moment — by the time it ends the marker has already been wrong for its whole
+      // duration. Capture phase so a transition on any descendant counts.
+      document.addEventListener('animationstart', trackMotion, true);
+      document.addEventListener('transitionrun', trackMotion, true);
+      document.addEventListener('transitionstart', trackMotion, true);
+      trackMotion(); // the page may already be animating when content mode is switched on
       scheduleRest();
       postRegions(); // publish the editable-regions manifest to the editor's Regions panel
     } else {
@@ -1626,6 +1704,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       window.removeEventListener('resize', repositionHud);
       document.removeEventListener('input', scheduleRest, true);
       window.removeEventListener('load', scheduleRest);
+      document.removeEventListener('animationstart', trackMotion, true);
+      document.removeEventListener('transitionrun', trackMotion, true);
+      document.removeEventListener('transitionstart', trackMotion, true);
+      if (motionRaf) { cancelAnimationFrame(motionRaf); motionRaf = 0; }
       if (restRO) { try { restRO.disconnect(); } catch (e) {} }
       clearRest();
       rzHide();

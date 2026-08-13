@@ -388,7 +388,7 @@ describe('content API — settings patch/merge (?merge=1)', () => {
       payload: { name: 'Team' },
     });
     expect(res.statusCode).toBe(400);
-    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings" and "page" kinds/i);
+    expect((res.json() as { error: string }).error).toMatch(/only supported for the "settings", "page" and "entry" kinds/i);
   });
 
   it('returns an actionable 404 when there is no settings row to merge into', async () => {
@@ -807,5 +807,99 @@ describe('content list pagination', () => {
       cookies: { sw_session: t },
     });
     expect((res.json() as { limit: number }).limit).toBe(500);
+  });
+});
+
+describe('content API — ENTRY patch/merge (?merge=1)', () => {
+  /** A catalogue sync moves prices; an operator edits copy. Both write the same rows, so a sync that
+   *  re-sends a whole row reverts whatever the operator changed since it read it. */
+  const seed = async (t: string, projectId: string) => {
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/dataset/products`, cookies: { sw_session: t },
+      payload: { id: 'products', name: 'Products', slug: 'products', fields: [
+        { name: 'name', type: 'text' }, { name: 'price', type: 'number' },
+        { name: 'description', type: 'text' }, { name: 'listed', type: 'boolean' },
+      ] },
+    });
+    await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1`, cookies: { sw_session: t },
+      payload: { id: 'p1', dataset: 'products', status: 'published',
+                 values: { name: 'Aloe Gel', price: 100, description: 'Original copy', listed: true } },
+    });
+  };
+  const row = async (t: string, projectId: string) =>
+    ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/entry/p1?dataset=products`, cookies: { sw_session: t } })
+      .then((r) => r.json())) as { item: { values: Record<string, unknown>; status: string } }).item;
+
+  it('patches ONE field and leaves every operator-edited sibling alone', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'entrymerge');
+    await seed(t, projectId);
+    const res = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'products', values: { price: 149 } },
+    });
+    expect(res.statusCode).toBe(200);
+    const item = await row(t, projectId);
+    expect(item.values.price).toBe(149);
+    expect(item.values.description).toBe('Original copy'); // the whole point
+    expect(item.values.name).toBe('Aloe Gel');
+    expect(item.values.listed).toBe(true);
+  });
+
+  it('accepts a FLAT fragment and still applies it — the fold must happen BEFORE the merge', async () => {
+    // normalizeEntryValues resolves collisions as {...folded, ...existing}: existing wins. Folding
+    // after the merge would therefore discard the new price in favour of the row's current one, and
+    // the write would report 200 having changed nothing.
+    const { t, projectId } = await setup('owner@acme.test', 'entrymergeflat');
+    await seed(t, projectId);
+    const res = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'products', price: 149 },
+    });
+    expect(res.statusCode).toBe(200);
+    const item = await row(t, projectId);
+    expect(item.values.price).toBe(149);
+    expect(item.values.description).toBe('Original copy');
+  });
+
+  it('404s with an actionable message when the row (or its dataset) is wrong', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'entrymerge404');
+    await seed(t, projectId);
+    const missing = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/nope?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'products', values: { price: 1 } },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect((missing.json() as { error: string }).error).toMatch(/create it with a full write first/i);
+    // right id, WRONG dataset → the prior is scoped by dataset, so this must not silently full-write
+    const wrongSet = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'other', values: { price: 1 } },
+    });
+    expect(wrongSet.statusCode).toBe(404);
+    expect((wrongSet.json() as { error: string }).error).toMatch(/dataset/i);
+  });
+
+  it('still validates the MERGED row against the dataset schema', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'entrymergevalid');
+    await seed(t, projectId);
+    const bad = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'products', status: 'not-a-status', values: { price: 1 } },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('a patch that omits `values` entirely changes nothing about them', async () => {
+    const { t, projectId } = await setup('owner@acme.test', 'entrymergestatus');
+    await seed(t, projectId);
+    const res = await app.inject({
+      method: 'PUT', url: `/projects/${projectId}/content/entry/p1?merge=1`, cookies: { sw_session: t },
+      payload: { dataset: 'products', status: 'draft' },
+    });
+    expect(res.statusCode).toBe(200);
+    const item = await row(t, projectId);
+    expect(item.status).toBe('draft');
+    expect(item.values).toEqual({ name: 'Aloe Gel', price: 100, description: 'Original copy', listed: true });
   });
 });

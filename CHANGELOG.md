@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`?merge=1` now works for dataset entries.** A row is editor-owned but also machine-written: a
+  catalogue sync that only wants to move a price had to read the row, splice one number in and write
+  the whole thing back — silently reverting every field an operator had edited in between. A merge
+  patches just the fields you send. The fragment may be flat (`{dataset, price: 149}`) or nested
+  (`{dataset, values: {price: 149}}`); either way it is folded into `values` **before** the merge,
+  because the fold resolves collisions in favour of the existing value and would otherwise discard
+  the new one and report success. A merge into a row that does not exist 404s with the dataset named,
+  rather than quietly creating a half-populated row.
+
 ### Removed
 
 - **Dataset-driven collection pages (`page.collection` + `[param]` paths).** A page with

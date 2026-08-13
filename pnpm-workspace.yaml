@@ -90,7 +90,11 @@ overrides:
   "js-yaml@>=4.0.0 <4.3.1": ^4.3.1
   # GHSA-2v37-7h3g-55p8 — a custom generator loops forever on size 0. Reached transitively through
   # postcss (sanitize-html → @sitewright/blocks), so it is in the RUNTIME tree, not just the toolchain.
-  "nanoid@<3.3.17": ^3.3.17
+  # ★ The advisory's affected RANGE was widened after we first pinned it: 3.3.17 was the fix, then was
+  # itself marked vulnerable and 3.3.18 became the fix. So an override that was correct when written
+  # started failing the gate with no change on our side — worth knowing the next time a pinned advisory
+  # reappears out of nowhere. Re-check the advisory's range before assuming the pin is stale.
+  "nanoid@<3.3.18": ^3.3.18
   "nodemailer@<9.0.1": ">=9.0.1"
   "postcss@<8.5.18": ^8.5.18
   "shell-quote@<1.9.0": ^1.9.0

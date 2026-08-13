@@ -134,8 +134,9 @@ In \`source\`:
   knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds
   {{#sw-folder page.data.gallery_folder}}, and {{sw-control target="list_dataset" as="dataset"}} feeds {{#each}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
-  <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
-  link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.
+  <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src, or
+  {{sw-image url editable="key"}} to stay responsive; link: data-sw-href; background: data-sw-bg).
+  The override is stored on the page as page.data.<key>.
 - NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{sw-url …}} helper.

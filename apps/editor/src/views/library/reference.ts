@@ -196,17 +196,18 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-image',
-        syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif] [lightbox=true] [caption=]}}',
+        syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif] [editable=key] [lightbox=true] [caption=]}}',
         name: 'sw-image',
-        keywords: 'image img picture responsive srcset lazy lqip thumbnail webp avif media photo',
+        keywords: 'image img picture responsive srcset lazy lqip thumbnail webp avif media photo editable replaceable data-sw-src',
         description:
-          'Responsive image for a PROJECT image. Pass a media URL (from the file manager, company.image, or a {{#sw-folder}}/dataset item) and it emits an <img> with a WebP srcset across sizes, intrinsic width/height (no layout shift), a blurred LQIP placeholder, and loading="lazy". Thumbnails are generated on demand and only the referenced sizes ship in the export. format=avif emits a <picture> with an AVIF source above the WebP one (smaller on supporting browsers, at ~2x the generated files). An external/unknown URL degrades to a plain lazy <img>.',
+          'Responsive image for a PROJECT image. Pass a media URL (from the file manager, company.image, or a {{#sw-folder}}/dataset item) and it emits an <img> with a WebP srcset across sizes, intrinsic width/height (no layout shift), a blurred LQIP placeholder, and loading="lazy". Thumbnails are generated on demand and only the referenced sizes ship in the export. format=avif emits a <picture> with an AVIF source above the WebP one (smaller on supporting browsers, at ~2x the generated files). An external/unknown URL degrades to a plain lazy <img>. Add editable="key" to make it replaceable from the preview (a hand-written <img data-sw-src> is editable but ships one uncapped file; this gives you both).',
         args: [
           { name: 'url', desc: 'A project media URL (e.g. company.image, a {{#sw-folder}} item url, or a dataset image field).' },
           { name: 'alt=', desc: "Alt text (defaults to the asset's stored alt)." },
           { name: 'sizes=', desc: 'The CSS `sizes` attribute — how wide it renders per breakpoint. Default 100vw.' },
           { name: 'class=', desc: 'Classes for the <img>/<picture> <img>.' },
           { name: 'format=', desc: 'avif to emit a <picture> with an AVIF tier (otherwise a single WebP <img>).' },
+          { name: 'editable=', desc: 'A key that makes the image REPLACEABLE in the editor (emits data-sw-src) while keeping the responsive srcset, dimensions and LQIP — click it in the preview to pick a different file.' },
         ],
         example: '{{sw-image company.image alt=company.name class="w-full rounded-xl"}}\n{{! GALLERY: thumbnails in the grid, full image in the lightbox }}\n{{#sw-folder "gallery"}}{{sw-image url alt=alt lightbox=true sizes="(min-width:640px) 33vw, 100vw"}}{{/sw-folder}}',
       },

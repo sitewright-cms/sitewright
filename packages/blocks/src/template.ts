@@ -1048,6 +1048,9 @@ function createInstance(): typeof Handlebars {
         ? { fetchpriority: hash.fetchpriority }
         : {}),
       format: hash.format === 'avif' || root.imageAvif === true ? 'avif' : 'webp',
+      // `editable="key"` marks the emitted <img> as a replaceable editable leaf. Only a non-empty
+      // string counts, so `editable=false` / `editable=""` stay off rather than binding an empty key.
+      ...(typeof hash.editable === 'string' && hash.editable ? { editable: hash.editable } : {}),
       ...(hash.lightbox === true || hash.lightbox === 'true' ? { lightbox: true } : {}),
       ...(typeof hash.caption === 'string' ? { caption: hash.caption } : {}),
     });

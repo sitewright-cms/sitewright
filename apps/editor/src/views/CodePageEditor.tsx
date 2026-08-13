@@ -1233,6 +1233,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       {/* Clicking a rendered dataset row opens its entry editor (stacked); saving refreshes the preview. */}
       {slotEdit && (
         <SlotEditor
+          key={slotEdit.slot}
           project={project}
           locales={locales}
           slot={slotEdit.slot}
@@ -1244,6 +1245,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             await api.putSettings(project.id, { ...item, website: { ...(item.website ?? {}), [key]: src } });
             setSlotEdit((cur) => (cur ? { ...cur, value: src } : cur));
             setPreviewNonce((n) => n + 1); // the page behind it renders this chrome too
+          }}
+          // Switching REPLACES the open editor — never a second one. Two slot editors would each be
+          // previewing the same skeleton against its own draft, with only one able to be right.
+          onSwitchSlot={(key) => {
+            void api
+              .getSettings(project.id)
+              .then(({ item }) => setSlotEdit({ slot: key, value: (item.website?.[key] as string | undefined) ?? '' }))
+              .catch(() => undefined);
           }}
           onClose={() => setSlotEdit(null)}
         />

@@ -96,7 +96,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     requestAnimationFrame(function () {
       ticking = false;
       post({ type: 'scroll', y: window.scrollY || window.pageYOffset || 0 });
-      repositionHud(); // keep the active-element HUD glued to its target as the page scrolls
+      repositionHud(); // keep the HUD, the at-rest boxes and the slot ring glued to their targets
     });
   }, { passive: true });
 
@@ -196,7 +196,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // thing a drawer overlays, and the scrollbar (whose width shifts the breakpoints).
     s.textContent =
       '.sw-slot-dim{opacity:.25;filter:grayscale(1);pointer-events:none}' +
-      '.sw-slot-target{outline:2px dashed #14b8a6;outline-offset:-2px}' +
+      // A receded OTHER SLOT is dimmed like the page, but stays hoverable so it can offer to be edited
+      // — that is how you get from one slot editor to the next without going back to Settings. Its
+      // CONTENTS are inert (a receded nav must not be clickable), so every pointer event in the band
+      // lands on the landmark itself and the only thing you can do with it is open its editor.
+      '.sw-slot-other{opacity:.25;filter:grayscale(1);pointer-events:auto;cursor:pointer}' +
+      '.sw-slot-other *{pointer-events:none}' +
+      // The focused slot's own ring is drawn in the overlay (.sw-slot-ring) rather than as an outline
+      // ON the landmark, for the same reason as every other affordance: a landmark is a real element
+      // with real styling, and an outline-offset:-2px ring paints over its top edge.
+      '.sw-slot-ring{position:fixed;pointer-events:none;z-index:2147483644;box-sizing:border-box;' +
+      'border:2px dashed #14b8a6;border-radius:3px;display:none}' +
       '.sw-slot-edit{position:fixed;z-index:2147483646;display:none;align-items:center;gap:6px;' +
       'padding:4px 10px;border:0;border-radius:9999px;background:#0f172a;color:#fff;cursor:pointer;' +
       'font:500 12px/1.4 ui-sans-serif,system-ui,sans-serif;box-shadow:0 4px 14px rgba(15,23,42,.28)}' +
@@ -215,17 +225,20 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var i, el;
     for (i = 0; i < SLOT_LANDMARKS.length; i++) {
       el = document.getElementById(SLOT_LANDMARKS[i][1]);
-      if (el) { el.className = el.className.replace(/\\s*sw-slot-(dim|target)/g, ''); }
+      if (el) { el.className = el.className.replace(/\\s*sw-slot-(dim|target|other)/g, ''); }
     }
     if (body) body.className = body.className.replace(/\\s*sw-slot-dim/g, '');
-    if (!slotFocus) { hideSlotButton(); return; }
+    if (!slotFocus) { hideSlotButton(); positionSlotRing(); return; }
     for (i = 0; i < SLOT_LANDMARKS.length; i++) {
       el = document.getElementById(SLOT_LANDMARKS[i][1]);
       if (!el) continue;
-      el.className += SLOT_LANDMARKS[i][0] === slotFocus ? ' sw-slot-target' : ' sw-slot-dim';
+      // DIM is deliberate on the page itself — receding the surroundings is the point, and it is the
+      // one effect meant to be seen ON the content. The focused slot's RING is drawn in the overlay.
+      if (SLOT_LANDMARKS[i][0] !== slotFocus) el.className += ' sw-slot-other';
     }
     if (body) body.className += ' sw-slot-dim';
     hideSlotButton();
+    positionSlotRing();
     // Open ON the thing being edited: a footer or bottom slot is below the fold of an empty canvas,
     // so focusing it without scrolling shows a blank page. Every candidate scroller is nudged rather
     // than assuming one — this preview scrolls the BODY, not the window.
@@ -240,6 +253,18 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     }
   }
   function hideSlotButton() { if (slotBtn) slotBtn.style.display = 'none'; }
+  /** Draw (or hide) the focused slot's ring in the overlay, over the landmark's box. */
+  var slotRing = null;
+  function positionSlotRing() {
+    var target = slotFocus ? document.getElementById(slotElementId(slotFocus)) : null;
+    if (!target || !target.getClientRects().length) { if (slotRing) slotRing.style.display = 'none'; return; }
+    ensureSlotStyle();
+    if (!slotRing) { slotRing = document.createElement('div'); slotRing.className = 'sw-slot-ring'; document.body.appendChild(slotRing); }
+    var r = target.getBoundingClientRect();
+    slotRing.style.display = 'block';
+    slotRing.style.left = r.left + 'px'; slotRing.style.top = r.top + 'px';
+    slotRing.style.width = r.width + 'px'; slotRing.style.height = r.height + 'px';
+  }
   function ensureSlotButton() {
     if (slotBtn) return slotBtn;
     ensureSlotStyle();
@@ -254,23 +279,49 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     document.body.appendChild(slotBtn);
     return slotBtn;
   }
+  /**
+   * The nearest OPEN top-layer ancestor of a node — a <dialog open> or an open popover.
+   *
+   * A modal authored in a chrome slot (the Bottom slot is where a site-wide <dialog> belongs) stays a
+   * DOM DESCENDANT of its landmark when shown, so the slot lookup already resolves it. What does NOT
+   * work is drawing over it: the top layer paints above EVERY z-index, so a position:fixed pill at
+   * 2147483646 renders behind an open modal. The pill therefore moves INTO the dialog while one is
+   * open, which is the only way to be in the same layer. Its box is also the right thing to pin the
+   * pill to — the landmark that contains a modal is usually a 0-height container of dialogs.
+   */
+  function openTopLayerHost(node) {
+    for (var el = node; el && el.nodeType === 1; el = el.parentElement) {
+      var tag = (el.tagName || '').toLowerCase();
+      if (tag === 'dialog' && el.hasAttribute('open')) return el;
+      if (el.hasAttribute && el.hasAttribute('popover')) {
+        try { if (el.matches(':popover-open')) return el; } catch (err) { /* older engine: no :popover-open */ }
+      }
+    }
+    return null;
+  }
   // Hovering a slot offers to edit it — chrome is authored elsewhere than the page, so without this
-  // there is no way in from the page you are looking at. Suppressed while a slot is already focused.
+  // there is no way in from the page you are looking at. While a slot IS focused this keeps working for
+  // the OTHER slots, which is how you move from one slot editor to the next; only the focused slot
+  // itself is skipped (you are already in it).
   document.addEventListener('mouseover', function (e) {
-    if (slotFocus) return;
     var t = e.target;
     if (!t || t.nodeType !== 1 || !t.closest) return;
     if (t.closest('.sw-slot-edit')) return;
     var land = t.closest(SLOT_SEL);
     var meta = land ? slotKeyForElement(land) : null;
-    if (!meta) { hideSlotButton(); return; }
+    if (!meta || meta[0] === slotFocus) { hideSlotButton(); return; }
     var b = ensureSlotButton();
-    var r = land.getBoundingClientRect();
+    // Pin to the open modal when the pointer is inside one, else to the landmark band.
+    var host = openTopLayerHost(t);
+    var anchor = host || land;
+    var parent = host || document.body;
+    if (b.parentNode !== parent) parent.appendChild(b);
+    var r = anchor.getBoundingClientRect();
     b.setAttribute('data-slot', meta[0]);
     b.textContent = 'Edit ' + meta[2];
     b.style.display = 'inline-flex';
-    // Pinned to the TOP-CENTRE of the landmark, clamped into the viewport on every side so it stays
-    // reachable when the landmark starts off-screen (a footer below the fold, a bottom slot at the
+    // Pinned to the TOP-CENTRE of the anchor, clamped into the viewport on every side so it stays
+    // reachable when the anchor starts off-screen (a footer below the fold, a bottom slot at the
     // document end) or runs wider than the window. Centred rather than right-aligned: the button names
     // the slot it belongs to, and over the centre it reads as a label for that band instead of
     // colliding with whatever the chrome itself puts in its top-right corner.
@@ -364,37 +415,36 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (styled) return; styled = true;
     var s = document.createElement('style');
     s.textContent =
-      // Base affordance for EVERY editable leaf: a THICK, INSET, dashed outline (transparent here —
-      // each on-state rule below supplies only the outline-COLOR). In content mode the on-state
-      // classes light this up so every editable element is clearly marked AT REST, no hover needed.
-      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-translate]{outline:2px dashed transparent;outline-offset:-2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
-      // Text/rich: dashed indigo at rest; a faint bg tint on hover; the outline goes SOLID while editing (focus).
-      '.sw-edit-on{cursor:text;outline-color:#6366f1}' +
-      '.sw-edit-on:hover{background:rgba(99,102,241,.08)}' +
-      '.sw-edit-on:focus{outline-style:solid;background:rgba(99,102,241,.12)}' +
-      // Translations: same plaintext editing, but GREEN (a site-wide shared string, not page content).
-      '.sw-tr-on{cursor:text;outline-color:#059669}' +
-      '.sw-tr-on:hover{background:rgba(5,150,105,.08)}' +
-      '.sw-tr-on:focus{outline-style:solid;background:rgba(5,150,105,.12)}' +
-      // Links: dashed indigo at rest; a bg tint on hover (a click opens the link editor).
-      '[data-sw-href].sw-link-on{cursor:pointer;outline-color:#6366f1}' +
-      '[data-sw-href].sw-link-on:hover{background:rgba(99,102,241,.10)}' +
-      // Images/bg: dashed indigo at rest; an inset tint overlay on hover (a click opens the picker).
-      '[data-sw-src].sw-img-on,[data-sw-bg].sw-img-on{cursor:pointer;outline-color:#6366f1}' +
-      '[data-sw-src].sw-img-on:hover,[data-sw-bg].sw-img-on:hover{box-shadow:inset 0 0 0 9999px rgba(99,102,241,.12)}' +
-      // Dataset rows: same always-on marker, in teal to distinguish a structured entry from inline content.
-      '[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,background-color .12s}' +
-      '[data-sw-entry].sw-entry-on:hover{background:rgba(20,184,166,.08)}' +
-      // Image maps: the same teal treatment as a dataset row, because they mean the same thing —
-      // a click opens a dedicated editor (the Studio) rather than editing in place. The hover tint is
-      // an INSET box-shadow, not a background: the map paints its own image over the element's
-      // background, so a background tint would be invisible on the one region it has to mark.
-      '[data-sw-imagemap].sw-imap-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,box-shadow .12s}' +
-      '[data-sw-imagemap].sw-imap-on:hover{box-shadow:inset 0 0 0 9999px rgba(20,184,166,.12)}' +
-      // An embedded FORM is one editable THING, not a set of editable leaves: its fields come from the
-      // stored definition, so the whole block is marked and a click opens that definition's editor.
-      '[data-sw-form].sw-form-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:3px;border-radius:6px;transition:outline-color .12s,box-shadow .12s}' +
-      '[data-sw-form].sw-form-on:hover{box-shadow:0 0 0 9999px rgba(20,184,166,.06) inset}' +
+      // ★ THE EDITED PAGE IS NEVER RESTYLED. Every affordance — the at-rest marker, the hover tint, the
+      // editing ring — is painted in the fixed OVERLAY layer below, over the element, never on it. The
+      // only property these rules set on a host is 'cursor', which changes no pixel of the page.
+      //
+      // It used to be the other way round, and each of those properties was a lie about the design:
+      //   · 'border-radius:2px' OVERRODE the site's own radius, so any editable card, pill or avatar
+      //     went square the moment content mode was on — an author "fixing" corners that were never
+      //     broken, or worse, shipping the fix.
+      //   · a hover 'background' REPLACES the element's background rather than tinting it, so hovering
+      //     a coloured card blanked it to a pale wash and hovering an image-backed hero showed nothing
+      //     at all (which is why the image rules had already been forced onto an inset box-shadow —
+      //     and THAT replaced any authored shadow instead).
+      //   · 'outline-offset:-2px' paints INSIDE the border box, over the element's own edge, and a
+      //     'transition' on background/outline fought whatever transition the site had authored.
+      // What is left below is the pointer shape per kind, and nothing else.
+      '.sw-edit-on,.sw-tr-on{cursor:text}' +
+      '[data-sw-href].sw-link-on,[data-sw-src].sw-img-on,[data-sw-bg].sw-img-on,' +
+      '[data-sw-entry].sw-entry-on,[data-sw-imagemap].sw-imap-on,[data-sw-form].sw-form-on{cursor:pointer}' +
+      // The REST layer: one dashed box per editable region, in the overlay. Indigo = page content,
+      // green = a shared translation, teal = something a click opens its own editor for (a dataset row,
+      // an image map, a form). Below the HUD's z so a badge always wins.
+      '.sw-ov-rest{position:fixed;inset:0;pointer-events:none;z-index:2147483645}' +
+      '.sw-ov-r{position:fixed;box-sizing:border-box;border:2px dashed #6366f1;border-radius:3px;pointer-events:none}' +
+      '.sw-ov-r.sw-k-tr{border-color:#059669}' +
+      '.sw-ov-r.sw-k-entry{border-color:#14b8a6}' +
+      // The HOVER/FOCUS tint: a translucent FILL drawn over the element. Composites onto whatever the
+      // element actually paints — a photo, a gradient, a video — instead of replacing it.
+      '.sw-ov-fill{position:fixed;pointer-events:none;box-sizing:border-box;border-radius:3px;display:none;background:rgba(99,102,241,.12)}' +
+      '.sw-ov-fill.sw-k-tr{background:rgba(5,150,105,.12)}' +
+      '.sw-ov-fill.sw-k-entry{background:rgba(20,184,166,.12)}' +
       // --- Editable-region OVERLAY HUD: the field-name BADGES + the active OUTLINE live in a body-level,
       // position:fixed, max-z layer (built in JS below) — NOT as a host ::before. So they are never
       // clipped by the host's (or an ancestor's) overflow, never covered by host content, immune to host
@@ -415,9 +465,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // the element's top edge, so below keeps the bubble in view + over the element). content=data-tip.
       '.sw-ov-badge[data-tip]:hover::after,.sw-ov-badge[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;left:0;top:calc(100% + 6px);z-index:1;width:max-content;max-width:300px;white-space:normal;word-break:break-word;padding:5px 9px;border-radius:5px;background:#111827;color:#fff;font:500 11.5px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;letter-spacing:normal;text-align:left;box-shadow:0 6px 20px rgba(0,0,0,.45)}' +
       '.sw-ov-badge[data-tip]:hover::before,.sw-ov-badge[data-tip]:focus-visible::before{content:"";position:absolute;left:11px;top:calc(100% + 1px);z-index:1;border:5px solid transparent;border-bottom-color:#111827}' +
-      // Locate flash: a brief amber ring when the Regions panel jumps to an element (fades out via the keyframe).
-      '@keyframes sw-flash{0%{box-shadow:0 0 0 3px #f59e0b}100%{box-shadow:0 0 0 3px rgba(245,158,11,0)}}' +
-      '.sw-flash{animation:sw-flash 1.2s ease-out;border-radius:3px}' +
+      // Locate flash: a brief amber ring when the Regions panel jumps to an element. In the OVERLAY like
+      // everything else — as a class on the host it set 'box-shadow' and 'border-radius', which is to say
+      // it deleted whatever shadow and corners the element was designed with, for 1.2 seconds.
+      '@keyframes sw-flash{0%{opacity:1}100%{opacity:0}}' +
+      '.sw-ov-flash{position:fixed;pointer-events:none;box-sizing:border-box;display:none;border-radius:3px;box-shadow:0 0 0 3px #f59e0b}' +
+      '.sw-ov-flash.sw-on{display:block;animation:sw-flash 1.2s ease-out forwards}' +
       // Floating rich-text toolbar — matches the dataset richtext toolbar's look (light bar, lucide-style SVG
       // icons, indigo hover, group separators). SOLID white (not translucent) so it stays legible over any
       // rendered site content it floats above.
@@ -1113,7 +1166,18 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     });
     post({ type: 'regions', items: items });
   }
-  function flashEl(el) { el.classList.add('sw-flash'); setTimeout(function () { el.classList.remove('sw-flash'); }, 1200); }
+  /** Amber ring over an element the Regions panel jumped to — drawn in the overlay, not on the host. */
+  function flashEl(el) {
+    ensureOverlay();
+    if (!ovFlash || !el.getClientRects || !el.getClientRects().length) return;
+    var r = el.getBoundingClientRect();
+    ovFlash.style.left = r.left + 'px'; ovFlash.style.top = r.top + 'px';
+    ovFlash.style.width = r.width + 'px'; ovFlash.style.height = r.height + 'px';
+    ovFlash.classList.remove('sw-on');
+    void ovFlash.offsetWidth; // restart the animation when the same element is located twice
+    ovFlash.classList.add('sw-on');
+    setTimeout(function () { if (ovFlash) ovFlash.classList.remove('sw-on'); }, 1300);
+  }
   // A small centred textarea popover for a plain-text leaf with no on-screen box (hidden content).
   var tpop = null, tpopEl = null;
   function openTextPop(el) {
@@ -1278,16 +1342,69 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     }
     return list;
   }
-  var ov = null, ovBox = null, ovRow = null, ovActive = null, ovTimer = null, ovTick = false;
+  var ov = null, ovBox = null, ovRow = null, ovFill = null, ovFlash = null, ovActive = null, ovTimer = null, ovTick = false;
   function ensureOverlay() {
     if (ov) return;
     ov = document.createElement('div'); ov.className = 'sw-ov';
     ovBox = document.createElement('div'); ovBox.className = 'sw-ov-box'; ovBox.style.display = 'none';
+    ovFill = document.createElement('div'); ovFill.className = 'sw-ov-fill';
+    ovFlash = document.createElement('div'); ovFlash.className = 'sw-ov-flash';
     ovRow = document.createElement('div'); ovRow.className = 'sw-ov-row'; ovRow.style.display = 'none';
     ovRow.addEventListener('mouseenter', function () { if (ovTimer) { clearTimeout(ovTimer); ovTimer = null; } });
     ovRow.addEventListener('mouseleave', scheduleHide);
-    ov.appendChild(ovBox); ov.appendChild(ovRow);
+    // Fill UNDER the outline box so the dashed edge stays crisp over the tint.
+    ov.appendChild(ovFill); ov.appendChild(ovFlash); ov.appendChild(ovBox); ov.appendChild(ovRow);
     document.body.appendChild(ov);
+  }
+
+  // ---- REST layer: the at-rest marker for every editable region ------------------------------------
+  // One dashed box per region, painted in the overlay rather than as an outline on the page. Built from
+  // the elements setEditing ACTUALLY WIRED, so a leaf that is deliberately not editable here (a field
+  // inside a dataset row, a chrome slot's string on a page) is not marked as if it were.
+  //
+  // Cost is bounded two ways: only regions intersecting the viewport (plus a margin) are drawn, and the
+  // count is capped. All the rects are READ first and the boxes written after, so a repaint is one
+  // layout pass, not one per region.
+  var restList = [], restLayer = null, restPool = [], restTick = false, restRO = null;
+  var REST_MAX = 400, REST_MARGIN = 400;
+  function restKlass(kind) { return kind === 'translate' ? ' sw-k-tr' : kind === 'entry' ? ' sw-k-entry' : ''; }
+  function restPush(el, kind) { restList.push({ el: el, k: kind }); }
+  function ensureRestLayer() {
+    if (restLayer) return restLayer;
+    restLayer = document.createElement('div'); restLayer.className = 'sw-ov-rest';
+    document.body.appendChild(restLayer);
+    return restLayer;
+  }
+  function paintRest() {
+    if (!editing || !restLayer) return;
+    var vh = window.innerHeight, vw = window.innerWidth, hits = [], i;
+    for (i = 0; i < restList.length && hits.length < REST_MAX; i++) {
+      var el = restList[i].el;
+      if (!el || !el.getClientRects || !el.getClientRects().length) continue;
+      var r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) continue;
+      if (r.bottom < -REST_MARGIN || r.top > vh + REST_MARGIN || r.right < -REST_MARGIN || r.left > vw + REST_MARGIN) continue;
+      hits.push({ r: r, k: restList[i].k });
+    }
+    for (i = 0; i < hits.length; i++) {
+      var box = restPool[i];
+      if (!box) { box = document.createElement('div'); restPool[i] = box; restLayer.appendChild(box); }
+      box.className = 'sw-ov-r' + restKlass(hits[i].k);
+      box.style.display = 'block';
+      box.style.left = hits[i].r.left + 'px'; box.style.top = hits[i].r.top + 'px';
+      box.style.width = hits[i].r.width + 'px'; box.style.height = hits[i].r.height + 'px';
+    }
+    for (; i < restPool.length; i++) restPool[i].style.display = 'none';
+  }
+  /** Repaint on the next frame, coalescing the burst a scroll or a reflow produces. */
+  function scheduleRest() {
+    if (restTick || !editing) return;
+    restTick = true;
+    requestAnimationFrame(function () { restTick = false; paintRest(); });
+  }
+  function clearRest() {
+    restList = [];
+    for (var i = 0; i < restPool.length; i++) restPool[i].style.display = 'none';
   }
   function badgeKlass(kind) { return kind === 'translate' ? 'sw-b-tr' : kind === 'entry' ? 'sw-b-entry' : ''; }
   function buildBadge(el, kind) {
@@ -1303,9 +1420,21 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     b.addEventListener('mouseenter', function () { outlineFor(el, kind); }); // highlight THIS badge's target, in its colour
     return b;
   }
+  /**
+   * Mark the element under the pointer/focus: the dashed BOX plus the translucent FILL that replaced
+   * the old ':hover{background}' rule. Both live in the overlay, so a tint composites over whatever the
+   * element paints (a photo, a gradient) instead of overwriting its background — which is what made the
+   * old rule invisible on an image and destructive on a coloured card.
+   */
   function outlineFor(el, kind) {
-    if (!el.getClientRects().length) { ovBox.style.display = 'none'; return; }
+    if (!el.getClientRects().length) { ovBox.style.display = 'none'; if (ovFill) ovFill.style.display = 'none'; return; }
     var r = el.getBoundingClientRect(), k = badgeKlass(kind);
+    if (ovFill) {
+      ovFill.className = 'sw-ov-fill' + (kind === 'translate' ? ' sw-k-tr' : kind === 'entry' ? ' sw-k-entry' : '');
+      ovFill.style.display = 'block';
+      ovFill.style.left = r.left + 'px'; ovFill.style.top = r.top + 'px';
+      ovFill.style.width = r.width + 'px'; ovFill.style.height = r.height + 'px';
+    }
     ovBox.className = 'sw-ov-box' + (k ? ' ' + k : '');
     ovBox.style.left = r.left + 'px'; ovBox.style.top = r.top + 'px';
     ovBox.style.width = r.width + 'px'; ovBox.style.height = r.height + 'px';
@@ -1337,7 +1466,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var first = stack[0];
     requestAnimationFrame(function () { positionRow(first); });
   }
-  function hideHud() { ovTimer = null; ovActive = null; if (ovBox) ovBox.style.display = 'none'; if (ovRow) ovRow.style.display = 'none'; }
+  function hideHud() { ovTimer = null; ovActive = null; if (ovBox) ovBox.style.display = 'none'; if (ovFill) ovFill.style.display = 'none'; if (ovRow) ovRow.style.display = 'none'; }
   function scheduleHide() { if (ovTimer) return; ovTimer = setTimeout(hideHud, 180); }
   function repositionHud() {
     if (editing && ovActive && ovActive.length) { outlineFor(ovActive[0], primaryKind(ovActive[0])); positionRow(ovActive[0]); }
@@ -1345,6 +1474,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // (a resize can also change how many buttons fit → re-flow the overflow set).
     if (editing && toolbar && toolbar.style.display !== 'none') positionToolbar();
     if (editing && rzImg) rzPosition(); // keep the image-resize handles on the image
+    scheduleRest(); // the at-rest boxes are fixed-positioned, so they move with the page too
+    positionSlotRing();
   }
   function onOvMove(e) {
     if (!editing) return;
@@ -1363,6 +1494,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (on === editing) return;
     editing = on;
     if (on) ensureStyle();
+    // The rest list is rebuilt from scratch by the wiring below. applySlotFocus re-runs this pass as
+    // setEditing(false) + setEditing(true), so appending without clearing would double it each time.
+    clearRest();
     // A FIELD inside a dataset loop row is edited via the row's item editor (a click opens it — onEntryClick),
     // NOT in-place: a fully-editable card would otherwise capture every click into a field, leaving the item
     // editor unreachable. So skip in-place wiring for any leaf inside a [data-sw-entry].
@@ -1397,36 +1531,36 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // Plain text — skip anchors that are link-editable (their text rides in the popover).
     eachEl('[data-sw-text]', function (el) {
       if (el.hasAttribute('data-sw-href') || inEntry(el) || inForeignSlot(el)) return;
-      if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
+      if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); restPush(el, 'text'); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
     });
     // Project translations — plaintext editing like data-sw-text, but the edit writes website.translations.
     eachEl('[data-sw-translate]', function (el) {
       if (inForeignSlot(el)) return;
-      if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-tr-on'); el.addEventListener('input', onTranslateInput); }
+      if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-tr-on'); el.addEventListener('input', onTranslateInput); restPush(el, 'translate'); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-tr-on'); el.removeEventListener('input', onTranslateInput); }
     });
     // Rich
     eachEl('[data-sw-html]', function (el) {
       if (inEntry(el) || inForeignSlot(el)) return;
-      if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); }
+      if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); restPush(el, 'text'); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
       if (el.hasAttribute('data-sw-html') || inEntry(el) || inForeignSlot(el)) return;
-      if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
+      if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); restPush(el, 'text'); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
     });
     // Images + backgrounds — click to replace via the editor's file picker.
     eachEl('[data-sw-src],[data-sw-bg]', function (el) {
       if (inEntry(el) || inForeignSlot(el)) return;
-      if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
+      if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); restPush(el, 'text'); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
     });
     // Dataset rows — a hover affordance; the click is handled by one delegated document listener.
     eachEl('[data-sw-entry]', function (el) {
-      if (on) el.classList.add('sw-entry-on');
+      if (on) { el.classList.add('sw-entry-on'); restPush(el, 'entry'); }
       else el.classList.remove('sw-entry-on');
     });
     // Image maps — a hover affordance; the click is handled by one delegated document listener
@@ -1434,14 +1568,14 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // whose config is inlined in the page has no Studio to open, so marking it would promise an
     // editor that never opens.
     eachEl('[data-sw-imagemap]', function (el) {
-      if (on && (el.getAttribute('data-sw-imagemap') || '')) el.classList.add('sw-imap-on');
+      if (on && (el.getAttribute('data-sw-imagemap') || '')) { el.classList.add('sw-imap-on'); restPush(el, 'entry'); }
       else el.classList.remove('sw-imap-on');
     });
     // Forms — same treatment: a hover affordance here, the click on one delegated listener. A form
     // renders inside chrome slots too, and unlike a translation its definition is NOT slot-scoped
     // (it is a project entity), so it stays clickable wherever it appears.
     eachEl('[data-sw-form]', function (el) {
-      if (on && (el.getAttribute('data-sw-form') || '')) el.classList.add('sw-form-on');
+      if (on && (el.getAttribute('data-sw-form') || '')) { el.classList.add('sw-form-on'); restPush(el, 'entry'); }
       else el.classList.remove('sw-form-on');
     });
     // Editor-only control chips — shown + clickable only in content mode.
@@ -1464,6 +1598,19 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.addEventListener('mousemove', onOvMove, true);
       document.addEventListener('mouseleave', onOvLeave, true);
       window.addEventListener('resize', repositionHud);
+      // The at-rest markers are fixed-positioned boxes over moving content, so they have to be
+      // repainted whenever the layout moves under them. Scroll + resize come via repositionHud; a
+      // ResizeObserver on <body> covers the rest — an image finishing its decode, a font swapping in,
+      // a contenteditable growing a line as it is typed into, a component animating open. Without it
+      // the boxes would be right on arrival and progressively wrong from then on.
+      ensureRestLayer();
+      if (typeof ResizeObserver !== 'undefined') {
+        if (!restRO) restRO = new ResizeObserver(scheduleRest);
+        try { restRO.observe(document.body); } catch (e) {}
+      }
+      document.addEventListener('input', scheduleRest, true);
+      window.addEventListener('load', scheduleRest);
+      scheduleRest();
       postRegions(); // publish the editable-regions manifest to the editor's Regions panel
     } else {
       document.removeEventListener('selectionchange', onSelChange);
@@ -1477,6 +1624,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.removeEventListener('mousemove', onOvMove, true);
       document.removeEventListener('mouseleave', onOvLeave, true);
       window.removeEventListener('resize', repositionHud);
+      document.removeEventListener('input', scheduleRest, true);
+      window.removeEventListener('load', scheduleRest);
+      if (restRO) { try { restRO.disconnect(); } catch (e) {} }
+      clearRest();
       rzHide();
       hideHud();
       hideToolbar();
@@ -1509,5 +1660,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height
+  // The slot ring tracks a landmark whose box changes on resize — and a slot can be FOCUSED in source
+  // mode, where the content-mode listeners are not registered at all.
+  window.addEventListener('resize', positionSlotRing);
   post({ type: 'ready' });
 })();`;

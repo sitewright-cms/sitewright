@@ -951,11 +951,13 @@ export function WebsiteSection({
           `saveNow` so it persists exactly like an inline edit. */}
       {project && slotEdit && (
         <SlotEditor
+          key={slotEdit}
           project={project}
           locales={localeCodes}
           slot={slotEdit}
           value={(form[slotEdit] as string | undefined) ?? ''}
           onSave={(key, src) => saveNow({ [key]: src })}
+          onSwitchSlot={setSlotEdit}
           onClose={() => setSlotEdit(null)}
         />
       )}

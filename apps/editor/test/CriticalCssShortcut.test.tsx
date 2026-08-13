@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { CriticalCssShortcut } from '../src/views/settings/CriticalCssShortcut';
 import { ToastProvider } from '../src/views/ui/Toast';
@@ -22,9 +22,9 @@ vi.mock('../src/lib/code-editor', () => ({
 
 // Spies are installed per-test, not at module scope: afterEach restores them, which would leave the
 // module-level handle patching nothing from the second test onward (test 1 green, the rest mystifying).
-let getSettings: ReturnType<typeof vi.spyOn<typeof api, 'getSettings'>>;
-let patchWebsiteSettings: ReturnType<typeof vi.spyOn<typeof api, 'patchWebsiteSettings'>>;
-let putSettings: ReturnType<typeof vi.spyOn<typeof api, 'putSettings'>>;
+let getSettings: MockInstance;
+let patchWebsiteSettings: MockInstance;
+let putSettings: MockInstance;
 
 // NOT a defaulted parameter: `mount(undefined)` would silently take the default and the
 // "no project selected" case would quietly test the p1 case instead.

@@ -199,8 +199,8 @@ lightbox galleries, tabs, accordions, banners, animated shader/gradient backgrou
 rather than a flat wall of static sections; prefer a first-party component over hand-rolling. Call
 get_components (contracts + skeletons) before laying out a page.
 USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
-thin|light|regular|bold|fill|duotone), brand:<slug> logos, flag:<cc> country flags; search_icons finds
-names. Don't ship an icon-less contact / footer / feature / stats section.
+thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag "de"}} country flags; search_icons
+finds names (countries by NAME too). Don't ship an icon-less contact / footer / feature / stats section.
 DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
 \`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if absent,
 don't attempt removals: ask the user to delete it in the editor, or to grant \`content:delete\`. Prefer
@@ -834,7 +834,7 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
   are gated).
 - Data & bindings → {{> dataset-grid}} ({{#each dataset.x}} + sw-date/sw-truncate),
   {{> folder-gallery}} ({{#sw-folder}} media reads), {{> i18n}} (sw-translate +
-  data-sw-translate + flag: switcher), {{> page-vars}} (data-sw-text/html/src/bg on
+  data-sw-translate + sw-flag switcher), {{> page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
 - Chrome & effects → {{> navbar}}, {{> banner-bar}}, {{> logo-marquee}}, {{> rotating-tiles}},
   {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).
@@ -871,7 +871,7 @@ get_guide("components") + the System Library slider recipes for their data-* con
   },
   icons: {
     title: "Icons & flags",
-    summary: "{{sw-icon}} — Phosphor (6 weights), brand: logos and flag: country flags",
+    summary: "{{sw-icon}} (Phosphor, 6 weights, brand:) and {{sw-flag}} country flags",
     body: `
 ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). Icons are
 PHOSPHOR (~1500, kebab-case) and render FILLED by default — {{sw-icon "gear"}} is a solid gear.
@@ -889,14 +889,18 @@ brand:x, brand:youtube, brand:instagram, brand:facebook, brand:whatsapp, brand:t
 brand:linkedin (a FILLED logo), brand:figma, brand:spotify, brand:discord, etc. Unknown names
 render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
 
-FLAGS: country flags live in the SAME helper under the "flag:" prefix — {{sw-icon "flag:de" "h-4"}}.
+FLAGS: country flags are FULL-COLOR, so they have their own helper — {{sw-flag "de" "h-4"}}.
 The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…), plus "eu" for the European Union; add
-"-circle" for the round variant ({{sw-icon "flag:de-circle"}}). All ~250 countries are built in. A
-flag is the one set that keeps its OWN colours (it does not take the text colour) and is therefore
-not aria-hidden — the country name is its accessible label. Flags are a poor proxy for LANGUAGES
-(Spanish ≠ Spain) — use them for country/region selectors; for a language switcher prefer text
-language names, or pass an explicit country code per locale. (A pre-existing {{sw-flag "de"}} still
-renders — it forwards to this — but it is DEPRECATED; write {{sw-icon "flag:de"}}.)
+"-circle" for the round variant ({{sw-flag "de-circle"}}). All ~250 countries are built in. A flag is
+the one set that keeps its OWN colours (it does not take the text colour) and is therefore not
+aria-hidden — the country name is its accessible label. ★ sw-flag is also the ONLY way to render a
+DYNAMIC flag: a template cannot concatenate strings, so a per-locale switcher is
+{{sw-flag (lookup @root.website.data.locale_flags locale)}} over a { "en":"gb" } map.
+{{sw-icon "flag:de"}} renders the same artwork — "flag:<cc>" is how a flag is spelled as an icon NAME,
+which is what a PICKER stores (a dataset "icon" field, an image-map hotspot). Write sw-flag by hand;
+the "flag:" spelling is for a picked name. Flags are a poor proxy for LANGUAGES (Spanish ≠ Spain) — use them for
+country/region selectors; for a language switcher prefer text language names, or an explicit country
+code per locale.
 `,
   },
   nav: {
@@ -964,8 +968,7 @@ for>. Loop {{#each nav.mobile}} (the "Mobile menu" pages), with an {{else}} fall
 until one is curated.
 
 AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}} (loop page.translations;
-{{sw-icon (lookup @root.website.data.locale_flags locale)}} — set website.data.locale_flags =
-{"en":"flag:gb",…}, prefix INCLUDED, since a template cannot concatenate strings);
+{{sw-flag (lookup @root.website.data.locale_flags locale)}} — set website.data.locale_flags = {"en":"gb",…});
 add {{sw-theme-toggle}} (renders nothing unless themes are enabled). Both auto-appear.
 
 NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own — set link.target
@@ -1624,7 +1627,8 @@ STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "
       Use it instead of a text field holding a hand-typed path.
     · image/file store a media URL/path string; folder stores a media-folder path.
     · icon stores an icon NAME the way {{sw-icon}} takes it — "leaf", "leaf:duotone", "brand:whatsapp",
-      "flag:na" — and the entry editor offers the whole library as a PICKER. Use it for any per-row icon
+      "flag:na" — and the entry editor offers the whole library as a PICKER (flags included, searchable
+      by country name). Use it for any per-row icon
       instead of a text field: a mistyped name renders nothing at all, so the row just looks broken.
     · list (repeatable group) and object (named sub-group) are NESTED — they MUST carry child \`fields: [ … ]\`
       (a list field \`slides\` with fields [{name:"image",type:"image"},{name:"caption",type:"text"}] models a slider).
@@ -1764,7 +1768,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
   { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
   { need: 'rotating / animated / glowing border on a caption, card or image', where: 'the sw-border-beam class — get_guide("effects")' },
-  { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, flag:<cc>; search_icons finds names' },
+  { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, {{sw-flag}}; search_icons finds names' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
   { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },

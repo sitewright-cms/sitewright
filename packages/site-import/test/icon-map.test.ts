@@ -210,10 +210,9 @@ describe('sanitizeForSource icon pass (via transformBody)', () => {
     expect(() => validateTemplate(source)).not.toThrow();
   });
 
-  it('maps a country flag font to {{sw-icon "flag:<cc>"}}', () => {
+  it('maps a country flag font to the {{sw-flag}} helper', () => {
     const { source, diagnostics } = run('<span class="flag-icon flag-icon-de"></span>');
-    expect(source).toContain('{{sw-icon "flag:de" "h-4"}}'); // one icon helper, flag-appropriate default height
-    expect(source).not.toContain('sw-flag'); // the deprecated alias is never EMITTED, only accepted
+    expect(source).toContain('{{sw-flag "de" "h-4"}}'); // flag helper, flag-appropriate default height
     expect(source).not.toContain('flag-icon-de');
     expect(diagnostics.some((d) => d.code === 'icon-mapped')).toBe(true);
     expect(() => validateTemplate(source)).not.toThrow();

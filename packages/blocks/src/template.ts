@@ -454,15 +454,17 @@ function createInstance(): typeof Handlebars {
   hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) =>
     new Handlebars.SafeString(typeof name === 'string' ? renderIconSvg(name, typeof cls === 'string' ? cls : undefined) : ''),
   );
-  // {{sw-flag "de" "h-4"}} — DEPRECATED ALIAS of {{sw-icon "flag:de" "h-4"}}, kept because it is
-  // written into pages, snippets and slots on every site already built with it; removing it would blank
-  // a language switcher on publish, silently. Flags now live in sw-icon under the `flag:` prefix (the
-  // same spelling the icon PICKER has always stored), so there is ONE helper to learn and one set of
-  // class hooks to style. It forwards to the SAME renderer, so both spellings produce the same artwork,
-  // accessible name and per-shape default size; the only difference from the pre-consolidation output is
-  // that a flag now also carries the `sw-icon sw-icon-flag-*` hooks every other icon has (additive
-  // classes — no rule ships for them, so nothing re-renders). New authoring should use sw-icon; the
-  // reference documents only that.
+  // {{sw-flag "de" "h-4"}} → a FULL-COLOR country flag. A bare alpha-2 code is the rectangular 4:3 flag;
+  // a `<code>-circle` name is the circular variant. This is the helper to WRITE for a flag, and the only
+  // one that works for a DYNAMIC code — a template cannot concatenate strings, so
+  // `{{sw-flag (lookup @root.website.data.locale_flags locale)}}` over a stored `{ en: "gb" }` map is
+  // the language-switcher idiom, and nothing can express it through a prefixed name.
+  //
+  // {{sw-icon "flag:de"}} renders the same thing, because `flag:<code>` is how a flag is spelled as an
+  // ICON NAME — which is what the icon PICKER stores and therefore what a dataset `icon` field, an
+  // image-map hotspot or a nav placeholder carries. The two are one renderer: same artwork, same
+  // accessible name, same per-shape default size. Reach for sw-flag when writing a flag by hand;
+  // `flag:` exists so a picked NAME can be a flag.
   hb.registerHelper('sw-flag', (name: unknown, cls?: unknown) =>
     new Handlebars.SafeString(
       typeof name === 'string' ? renderIconSvg(`${FLAG_PREFIX}${name}`, typeof cls === 'string' ? cls : undefined) : '',

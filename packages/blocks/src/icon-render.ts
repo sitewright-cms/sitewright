@@ -101,21 +101,12 @@ export function renderIconSvg(name: string, cls?: string): string {
     weight = name.slice(colon + 1) as PhosphorWeight;
     base = name.slice(0, colon);
   }
-  return phosphorSvg(base, weight, authorCls) ?? lucideSvg(base, authorCls) ?? bareFlagSvg(name, cls) ?? '';
-}
-
-/**
- * LAST-RESORT: a bare ISO 3166-1 alpha-2 code (`gb`, `de`, `gb-circle`) as a flag.
- *
- * Only reached when Phosphor AND Lucide both have nothing for the name, so it can never shadow an
- * icon — it can only turn a render that was already empty into the flag the author meant. That is
- * what makes it safe, and it is what a DYNAMIC flag needs: a template cannot concatenate strings, so
- * `{{sw-icon (lookup website.data.locale_flags locale)}}` over the documented `{ en: "gb" }` map has
- * no way to add the `flag:` prefix. Sites that stored those maps before flags moved into sw-icon keep
- * rendering, with no data migration. Two letters exactly, so `mail`/`gear`/`x` can't drift in here.
- */
-function bareFlagSvg(name: string, cls?: string): string | undefined {
-  const code = name.endsWith(FLAG_CIRCLE_SUFFIX) ? name.slice(0, -FLAG_CIRCLE_SUFFIX.length) : name;
-  if (!/^[a-zA-Z]{2}$/.test(code) || !flagIcon(code)) return undefined;
-  return flagSvg(name, cls) || undefined;
+  // NO bare-country-code fallback. One briefly existed so that `{{sw-icon (lookup locale_flags locale)}}`
+  // could resolve a stored `{ en: "gb" }` map — a template cannot concatenate, so it had no way to add
+  // the `flag:` prefix itself. It was safe in the sense that it could never SHADOW an icon (it ran last),
+  // but it turned 249 of the 251 two-letter codes from an empty render into a WRONG one: `{{sw-icon "id"}}`
+  // drew the Indonesian flag, and `me`/`in`/`no`/`so`/`to`/`is`/`it`/`be`/`do` likewise. An empty render is
+  // the clearer failure. The need vanished with {{sw-flag}} restored as a first-class helper — a DYNAMIC
+  // flag is written `{{sw-flag (lookup …)}}`, which takes the bare code by design.
+  return phosphorSvg(base, weight, authorCls) ?? lucideSvg(base, authorCls) ?? '';
 }

@@ -12,3 +12,4 @@ export * from './translate.js';
 export * from './website-data.js';
 export * from './validate.js';
 export * from './routes.js';
+export * from './page-refs.js';

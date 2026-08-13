@@ -11,7 +11,14 @@ import { IdSchema, KeyNameSchema, DatasetSlugSchema, EntryIdSchema, safeRecord }
  *  for templates that enumerate a folder's contents. `icon` holds an icon NAME from the platform
  *  library (a Phosphor name with optional `:weight`, `brand:<slug>`, or a `flag:<code>`) — the value a
  *  {{sw-icon}} takes, chosen from a picker so a row cannot carry a typo that renders nothing.
- *  `json` holds an arbitrary parsed value. */
+ *  `json` holds an arbitrary parsed value.
+ *
+ *  `page` stores a PAGE ID and is the one field type whose stored value is not what a template reads:
+ *  the render projection swaps the id for the page's ATTRIBUTES, so a loop reads `{{link.path}}` /
+ *  `{{link.title}}` rather than an opaque id it could do nothing with. Storing the id (not the path)
+ *  is what makes the reference survive the page being renamed, moved under a new parent, or
+ *  re-slugged — the link follows it. An id that no longer resolves reads as empty, so a deleted page
+ *  leaves a blank, never a link to a 404. */
 export const FieldTypeSchema = z.enum([
   'text',
   'richtext',
@@ -25,6 +32,7 @@ export const FieldTypeSchema = z.enum([
   'file',
   'folder',
   'reference',
+  'page',
   'select',
   'json',
   'list',

@@ -50,6 +50,7 @@ import {
   isLinkPage,
   type StickyHeaderSetting,
   type CorporateIdentity,
+  type Dataset,
   type Entry,
   type FileAsset,
   type VideoAsset,
@@ -148,6 +149,7 @@ import {
   resolveTemplateSource,
   resolveCodeRef,
   resolveLocaleDatasets,
+  resolveDatasetPageRefs,
   compareEntryOrder,
   keyedDatasets,
   translationsOf,
@@ -3882,7 +3884,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...WIDGET_PARTIALS,
       };
       const sourceData = Object.fromEntries(byDataset);
-      const localeData = resolveLocaleDatasets(sourceData, page.locale);
+      // A `page` field stores an id; a template needs the page's attributes ({{link.path}} /
+      // {{link.title}}). Resolved HERE and in the publish build — both surfaces, one resolver, or the
+      // loop renders correctly in the editor and blank on the published site.
+      const localeData = resolveDatasetPageRefs(
+        resolveLocaleDatasets(sourceData, page.locale),
+        (await contentRepo.list(ctx, 'dataset')) as Dataset[],
+        allSavedPages,
+        defaultLocale,
+      );
       // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
       // addresses by key, so a looping-only page pays nothing.
       const item = keyedDatasets(pageSource, localeData);

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical, History } from 'lucide-react';
-import type { Dataset, Entry, Field } from '@sitewright/schema';
-import { compareEntryOrder } from '@sitewright/core';
+import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
+import { compareEntryOrder, hasPageField } from '@sitewright/core';
 import {
   coerceFieldValue,
   defaultFieldValues,
@@ -25,6 +25,7 @@ import { FolderField } from '../files/FolderField';
 import { ACCEPT } from '../files/FileBrowser';
 import { CodeEditor } from '../../lib/code-editor';
 import { IconField } from '../ui/IconPicker';
+import { SearchSelect, type SearchOption } from '../ui/SearchSelect';
 
 // Monotonic key source for list items (stable React keys that travel with an item across reorder,
 // without polluting the saved data shape). See ListField.
@@ -35,6 +36,7 @@ let listKeySeq = 0;
 // re-render loop for an invalid field). Module constants keep the context stable when omitted.
 const NO_DATASETS: readonly Dataset[] = [];
 const NO_ENTRIES: readonly Entry[] = [];
+const NO_PAGES: readonly Page[] = [];
 
 /**
  * Project-wide data the entry form's leaf inputs need: the dataset/entry lists (for a `reference`
@@ -44,6 +46,8 @@ const NO_ENTRIES: readonly Entry[] = [];
 interface EntryFormCtx {
   datasets: readonly Dataset[];
   entries: readonly Entry[];
+  /** The project's pages, for a `page` field's picker. Fetched by the modal on demand — see below. */
+  pages: readonly Page[];
   reportValidity: (path: string, valid: boolean) => void;
 }
 const EntryFormContext = createContext<EntryFormCtx | null>(null);
@@ -344,20 +348,22 @@ function SelectField({ field, value, onRaw, id, ariaLabel }: { field: Field; val
   );
 }
 
-/** A `reference` field: a dropdown of the target dataset's entries (config.dataset), each shown by its
- *  label; stores the chosen entry's id (read in templates via {{item.<target>.<id>.…}}). Falls back to
- *  a text input + hint when no target dataset is configured. */
+/** A `reference` field: a SEARCHABLE list of the target dataset's entries (config.dataset), each shown
+ *  by its label; stores the chosen entry's id (read in templates via {{item.<target>.<id>.…}}). Falls
+ *  back to a text input + hint when no target dataset is configured. */
 function ReferenceField({ field, value, onRaw, id, ariaLabel }: { field: Field; value: unknown; onRaw: (raw: unknown) => void; id: string; ariaLabel: string }) {
   const ctx = useContext(EntryFormContext);
   const targetSlug = fieldReferenceDataset(field);
   const targetDataset = ctx?.datasets.find((d) => d.slug === targetSlug);
   const options = useMemo(() => {
-    if (!ctx || !targetDataset) return [] as { id: string; label: string }[];
+    if (!ctx || !targetDataset) return [] as SearchOption[];
     return ctx.entries
       .filter((e) => e.dataset === targetSlug)
       .slice()
       .sort(compareEntryOrder)
-      .map((e) => ({ id: e.id, label: entryLabel(targetDataset, e) }));
+      // The entry ID is the HINT, not the label: it is what the stored value actually is, so it has to
+      // be visible and searchable — but a human picks the row by its title.
+      .map((e) => ({ value: e.id, label: entryLabel(targetDataset, e), hint: e.id }));
   }, [ctx, targetSlug, targetDataset]);
   const cur = typeof value === 'string' ? value : '';
   if (!targetSlug || !targetDataset) {
@@ -368,18 +374,33 @@ function ReferenceField({ field, value, onRaw, id, ariaLabel }: { field: Field; 
       </>
     );
   }
-  const missing = cur !== '' && !options.some((o) => o.id === cur);
-  return (
-    <select id={id} aria-label={ariaLabel} className={glassInput} value={cur} onChange={(e) => onRaw(e.target.value)}>
-      <option value="">— none —</option>
-      {missing ? <option value={cur}>{cur} (missing)</option> : null}
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+  // Searchable because a dataset is not five rows: scrolling a native select for the one entry you
+  // want, in an order you cannot predict, is the whole problem — and its type-ahead only matches a
+  // PREFIX of the label, which is the part you are least likely to remember.
+  return <SearchSelect id={id} ariaLabel={ariaLabel} value={cur} options={options} onChange={onRaw} searchPlaceholder="Search entries…" />;
+}
+
+/**
+ * A `page` field: pick one of the project's pages; stores its ID.
+ *
+ * The id — not the path — is what survives the page being renamed, moved under another parent or
+ * re-slugged, and the render projection swaps it for the page's attributes on the way into a
+ * template, so a loop reads `{{target.path}}` / `{{target.title}}` rather than an opaque id.
+ *
+ * Link PLACEHOLDERS are excluded: a `kind:"link"` page is a menu entry with no route of its own, so
+ * pointing a dataset row at one gives a link to nowhere.
+ */
+function PageField({ value, onRaw, id, ariaLabel }: { value: unknown; onRaw: (raw: unknown) => void; id: string; ariaLabel: string }) {
+  const ctx = useContext(EntryFormContext);
+  const options = useMemo(
+    () =>
+      (ctx?.pages ?? [])
+        .filter((p) => p.kind !== 'link')
+        .map((p) => ({ value: p.id, label: p.title || p.id, hint: p.path })),
+    [ctx],
   );
+  const cur = typeof value === 'string' ? value : '';
+  return <SearchSelect id={id} ariaLabel={ariaLabel} value={cur} options={options} onChange={onRaw} placeholder="— no page —" searchPlaceholder="Search pages…" />;
 }
 
 /** A `json` field: the platform's CodeMirror editor in JSON mode — syntax highlighting + an inline
@@ -486,6 +507,8 @@ function FieldInput({
       return <SelectField field={field} value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;
     case 'reference':
       return <ReferenceField field={field} value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;
+    case 'page':
+      return <PageField value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;
     case 'object':
       return <ObjectField field={field} value={value} projectId={projectId} path={path} onRaw={onRaw} />;
     case 'list':
@@ -548,7 +571,30 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       return next;
     });
   }, []);
-  const ctx = useMemo<EntryFormCtx>(() => ({ datasets: allDatasets ?? NO_DATASETS, entries: allEntries ?? NO_ENTRIES, reportValidity }), [allDatasets, allEntries, reportValidity]);
+  // The pages a `page` field picks from. FETCHED HERE rather than passed in, because this modal opens
+  // from several places (the Data panel, a click on a dataset row in the preview, the entry loader) and
+  // a prop threaded through only one of them means an empty picker in the others. Gated on the schema
+  // actually declaring a page field, so an ordinary dataset makes no request at all.
+  const [pages, setPages] = useState<readonly Page[]>(NO_PAGES);
+  const needsPages = hasPageField(dataset.fields);
+  useEffect(() => {
+    if (!needsPages) return;
+    let alive = true;
+    void api
+      .listPages(projectId)
+      .then(({ items }) => {
+        if (alive) setPages(items);
+      })
+      .catch(() => undefined); // best-effort: the picker shows "nothing to choose from" rather than breaking the form
+    return () => {
+      alive = false;
+    };
+  }, [projectId, needsPages]);
+
+  const ctx = useMemo<EntryFormCtx>(
+    () => ({ datasets: allDatasets ?? NO_DATASETS, entries: allEntries ?? NO_ENTRIES, pages, reportValidity }),
+    [allDatasets, allEntries, pages, reportValidity],
+  );
 
   const keyFieldOpen = keyEditable || editKey;
   const typedKey = keyFieldOpen && keyInput.trim() !== '';

@@ -24,6 +24,7 @@ import {
   resolveTemplateSource,
   GLOBAL_TEMPLATE_PREFIX,
   resolveLocaleDatasets,
+  resolveDatasetPageRefs,
   resolveCodeRef,
   translationsOf,
   localeOf as localeOfPage,
@@ -1020,7 +1021,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
         // ROOT-RELATIVE page path — same as nav — so the `{{sw-url}}` helper (which only
         // accepts `/…`/`http(s)`/`#`) emits a real link rather than its `#` fallback.
-        const localeData = resolveLocaleDatasets(datasets, page.locale);
+        // A `page` field stores an id; a template needs the page's attributes. Resolved against the
+        // pages THIS build ships, so a reference to a draft/removed page reads as empty here — which is
+        // the honest answer, because on the live site that page is not there.
+        const localeData = resolveDatasetPageRefs(
+          resolveLocaleDatasets(datasets, page.locale),
+          bundle.datasets,
+          pubBundle.pages,
+          defaultLocale,
+        );
         const pageTranslations = group.map((m) => ({ locale: m.locale, path: m.path, title: m.title }));
         // `{{ page.path }}` is the page's FULL route (computed from the parent chain), not
         // its bare slug — so a code-first page can reference its own URL.

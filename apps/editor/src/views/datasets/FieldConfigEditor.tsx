@@ -3,6 +3,7 @@ import { X, Plus } from 'lucide-react';
 import type { Field } from '@sitewright/schema';
 import { fieldReferenceDataset } from '../../lib/entry-form';
 import { glassInput } from '../../theme';
+import { SearchSelect } from '../ui/SearchSelect';
 
 /** Minimal dataset shape the reference picker needs (the target list). */
 export interface DatasetRef {
@@ -37,22 +38,32 @@ export function FieldConfigEditor({
     const target = fieldReferenceDataset(field);
     return (
       <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-6 text-xs">
-        <span className="text-slate-500 dark:text-slate-400">links to</span>
-        <select
-          aria-label={`Reference target for ${field.name}`}
-          className={`${glassInput} w-auto px-2 py-1 text-xs`}
-          value={datasets.some((d) => d.slug === target) ? target : ''}
-          onChange={(e) => onChange({ ...cfg, dataset: e.target.value })}
-        >
-          <option value="">— choose dataset —</option>
-          {datasets.map((d) => (
-            <option key={d.slug} value={d.slug}>
-              {d.name} /{d.slug}
-            </option>
-          ))}
-        </select>
+        <span className="shrink-0 text-slate-500 dark:text-slate-400">links to</span>
+        {/* Searchable for the same reason the ENTRY picker is: a project accumulates datasets, and the
+            one you want is findable by name long before it is findable by scrolling. */}
+        <div className="w-56">
+          <SearchSelect
+            ariaLabel={`Reference target for ${field.name}`}
+            value={datasets.some((d) => d.slug === target) ? target : ''}
+            options={datasets.map((d) => ({ value: d.slug, label: d.name, hint: `/${d.slug}` }))}
+            onChange={(slug) => onChange({ ...cfg, dataset: slug })}
+            placeholder="— choose dataset —"
+            searchPlaceholder="Search datasets…"
+          />
+        </div>
         {target === '' && <span className="text-amber-600 dark:text-amber-400">pick a dataset to choose entries from</span>}
       </div>
+    );
+  }
+
+  if (field.type === 'page') {
+    // No config to set — the choice is per ENTRY, not per field. Says what the field stores and how a
+    // template reads it, because "stores an id, reads as attributes" is the one non-obvious part.
+    return (
+      <p className="mt-1.5 pl-6 text-xs text-slate-500 dark:text-slate-400">
+        Each entry picks a page. In a template the value is the PAGE, not its id — <code>{'{{'}{field.name}.path{'}}'}</code>,{' '}
+        <code>{'{{'}{field.name}.title{'}}'}</code>. Renaming or moving the page keeps the link.
+      </p>
     );
   }
 

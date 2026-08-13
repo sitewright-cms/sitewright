@@ -39,9 +39,22 @@ describe('FieldConfigEditor', () => {
     expect(cfg().options).toEqual(['Live']);
   });
 
-  it('reference: picks the target dataset', () => {
+  it('reference: picks the target dataset, searchably', () => {
     render(<Harness initial={{ name: 'author', type: 'reference', required: false, localized: false }} />);
-    fireEvent.change(screen.getByLabelText('Reference target for author'), { target: { value: 'authors' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reference target for author' }));
+    // Searchable for the same reason the entry picker is: a project accumulates datasets, and the one
+    // you want is findable by name long before it is findable by scrolling.
+    fireEvent.change(screen.getByLabelText('Search Reference target for author'), { target: { value: 'auth' } });
+    fireEvent.click(screen.getByRole('option', { name: /Authors/ }));
     expect(cfg().dataset).toBe('authors');
+  });
+
+  it('page: has no config — it explains what the field stores instead', () => {
+    // The choice is per ENTRY, not per field. What is NOT obvious is that the stored value (an id) is
+    // not what a template reads (the page), so the hint says exactly that.
+    render(<Harness initial={{ name: 'target', type: 'page', required: false, localized: false }} />);
+    expect(screen.getByText(/Each entry picks a page/)).toBeInTheDocument();
+    expect(screen.getByText(/target.path/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Reference target/ })).toBeNull();
   });
 });

@@ -29,6 +29,7 @@ const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'file',
   'folder',
   'reference',
+  'page',
   'select',
   'json',
   // Structural group types — hold child `fields` (edited via the NestedFieldsEditor). A top-level

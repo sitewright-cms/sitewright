@@ -216,3 +216,112 @@ describe('DatasetManager', () => {
     expect(within(screen.getByText('subtitle').closest('li')!).queryByText('title')).toBeNull();
   });
 });
+
+describe('DatasetManager — schema editor UX', () => {
+  const openSchema = async () => {
+    await renderAndSelectAlpha();
+    fireEvent.click(screen.getByRole('button', { name: /schema/ }));
+  };
+
+  it('the add-field form is CLOSED until asked for, then submits from its own Add button', async () => {
+    await openSchema();
+    // Two empty inputs sitting under the schema read as part of it — an unnamed field the author has
+    // half-filled in, which is exactly what they are not.
+    expect(screen.queryByLabelText('New field name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Add field/ }));
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'subtitle' } });
+    fireEvent.change(screen.getByLabelText('New field type'), { target: { value: 'richtext' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+
+    expect(screen.queryByLabelText('New field name')).toBeNull(); // closes again
+    fireEvent.click(screen.getByRole('button', { name: 'Save schema' }));
+    await waitFor(() => expect(putDataset).toHaveBeenCalled());
+    expect(putDataset.mock.calls[0]![1].fields.map((f) => f.name)).toEqual(['title', 'subtitle']);
+  });
+
+  it('offers the field types ALPHABETICALLY, with the structural pair last', async () => {
+    await openSchema();
+    fireEvent.click(screen.getByRole('button', { name: /Add field/ }));
+    const opts = within(screen.getByLabelText('New field type'))
+      .getAllByRole('option')
+      .map((o) => (o as HTMLOptionElement).value);
+    const values = opts.slice(0, -2);
+    expect(values).toEqual([...values].sort()); // a curated order is one only its author can predict
+    // list/object hold child fields rather than a value — a different kind of choice, so pinned last.
+    expect(opts.slice(-2)).toEqual(['list', 'object']);
+  });
+
+  it('★ renaming a field MOVES the entries’ values — the name IS the key they are stored under', async () => {
+    await openSchema();
+    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
+    fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save schema' }));
+    await waitFor(() => expect(putDataset).toHaveBeenCalled());
+    expect(putDataset.mock.calls[0]![1].fields[0]!.name).toBe('heading');
+
+    // Without this the old content sits under the old key while the renamed field reads empty — the
+    // data is not lost, but it is invisible, which is worse than an error.
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(2));
+    const written = putEntry.mock.calls.map((c) => c[1]);
+    expect(written.map((e) => e.values)).toEqual([{ heading: 'First post' }, { heading: 'Second post' }]);
+    expect(JSON.stringify(written)).not.toContain('"title"');
+  });
+
+  it('a rename that does not survive to the save moves nothing', async () => {
+    await openSchema();
+    // Rename, then rename back: the chain resolves to a no-op rather than to two separate moves.
+    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
+    fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
+    fireEvent.doubleClick(screen.getByTitle('heading — double-click to rename'));
+    fireEvent.change(screen.getByLabelText('Rename field heading'), { target: { value: 'title' } });
+    fireEvent.keyDown(screen.getByLabelText('Rename field heading'), { key: 'Enter' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save schema' }));
+    await waitFor(() => expect(putDataset).toHaveBeenCalled());
+    expect(putEntry).not.toHaveBeenCalled();
+  });
+
+  it('Escape abandons a rename, and a duplicate name is refused', async () => {
+    await openSchema();
+    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
+    fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Escape' });
+    expect(screen.getByTitle('title — double-click to rename')).toBeInTheDocument();
+
+    // …and a name already taken is rejected rather than silently merging two fields' values.
+    fireEvent.click(screen.getByRole('button', { name: /Add field/ }));
+    fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'body' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'body' } });
+    fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
+    expect(screen.getByText(/field "body" already exists/)).toBeInTheDocument();
+    expect(screen.getByTitle('title — double-click to rename')).toBeInTheDocument();
+  });
+});
+
+describe('DatasetManager — filtering entries', () => {
+  it('filters on the title, the entry KEY, and any other text value', async () => {
+    await renderAndSelectAlpha();
+    await screen.findByText('First post');
+    const filter = screen.getByLabelText('Filter entries');
+
+    fireEvent.change(filter, { target: { value: 'second' } });
+    expect(screen.queryByText('First post')).toBeNull();
+    expect(screen.getByText('Second post')).toBeInTheDocument();
+    expect(screen.getByText('1 of 2')).toBeInTheDocument();
+
+    // The id is the {{item.<set>.<key>}} key, so it is often what an author has in hand.
+    fireEvent.change(filter, { target: { value: 'e1' } });
+    expect(screen.getByText('First post')).toBeInTheDocument();
+    expect(screen.queryByText('Second post')).toBeNull();
+
+    // An empty result says so, rather than looking like an empty dataset.
+    fireEvent.change(filter, { target: { value: 'zzz' } });
+    expect(screen.getByText(/No entry matches/)).toBeInTheDocument();
+    expect(screen.queryByText('No entries yet.')).toBeNull();
+  });
+});

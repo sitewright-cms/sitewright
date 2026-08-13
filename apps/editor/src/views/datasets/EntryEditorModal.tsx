@@ -710,9 +710,14 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
             </label>
           ) : (
             <div className="flex items-center gap-2">
+              {/* The BINDING, not a description of it. The old wording spent its width on "Key: x — read
+                  it directly with" and then showed the path with a "…" where the part you actually have
+                  to fill in goes. What an author needs to copy is the whole expression with the field
+                  name marked, so that is all this is. */}
               <p className="flex-1 text-[11px] text-slate-500 dark:text-slate-400">
-                Key: <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">{base.id}</code> — read it directly with{' '}
-                <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">{`{{item.${dataset.slug}.${base.id}.…}}`}</code>
+                <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">
+                  {`{{item.${dataset.slug}.${base.id}.<attribute>}}`}
+                </code>
               </p>
               <button
                 type="button"

@@ -16,27 +16,16 @@ import { Tooltip } from './ui/Tooltip';
 import { SearchField } from './ui/SearchField';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 
-const FIELD_TYPES: ReadonlyArray<FieldType> = [
-  'text',
-  'richtext',
-  'number',
-  'boolean',
-  'date',
-  'time',
-  'datetime',
-  'image',
-  'icon',
-  'file',
-  'folder',
-  'reference',
-  'page',
-  'select',
-  'json',
-  // Structural group types — hold child `fields` (edited via the NestedFieldsEditor). A top-level
-  // field is schema level 1, so its children are level 2 (within MAX_FIELD_DEPTH).
-  'list',
-  'object',
+// Alphabetical: the list is long enough that a curated order is one nobody but its author can
+// predict, and every other picker in the editor sorts. The two STRUCTURAL types stay pinned to the
+// end — `list`/`object` hold child `fields` rather than a value, so they are a different kind of
+// choice, and burying them mid-list among the value types reads as if they were one. (A top-level
+// field is schema level 1, so its children are level 2 — within MAX_FIELD_DEPTH.)
+const VALUE_FIELD_TYPES: ReadonlyArray<FieldType> = [
+  'boolean', 'date', 'datetime', 'file', 'folder', 'icon', 'image', 'json',
+  'number', 'page', 'reference', 'richtext', 'select', 'text', 'time',
 ];
+const FIELD_TYPES: ReadonlyArray<FieldType> = [...VALUE_FIELD_TYPES, 'list', 'object'];
 
 /** Scrolls the nearest scrollable ancestor of `el` (the Data side-panel's scroll area) back to the
  *  top — so selecting a dataset reveals its schema + entries rather than leaving the panel scrolled. */
@@ -83,6 +72,19 @@ export function DatasetManager({ project }: { project: Project }) {
   const [draftFields, setDraftFields] = useState<Field[]>([]);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('text');
+  // The add-field form is CLOSED until asked for. Two empty inputs sitting under the schema read as
+  // part of it — an unnamed field the author has half-filled in — which is exactly what they are not.
+  const [addingField, setAddingField] = useState(false);
+  // Which FIELD's name is being edited in place (double-click to rename), and its draft text.
+  // (`renaming` below is the DATASET-rename modal — a different thing, deliberately not reused.)
+  const [renamingField, setRenamingField] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
+  // ORIGINAL field name → its current draft name, for every rename made since this dataset was
+  // selected. Kept because a rename is indistinguishable from a delete-plus-add once the draft is just
+  // a list of names, and the entry migration on save needs to know which is which.
+  const [renamedFields, setRenamedFields] = useState<Record<string, string>>({});
+  // Free-text filter over the selected dataset's entries.
+  const [entryQuery, setEntryQuery] = useState('');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
@@ -172,6 +174,10 @@ export function DatasetManager({ project }: { project: Project }) {
     setEditingEntry(null);
     setSchemaOpen(false); // each dataset opens with its schema collapsed
     setRenaming(false);
+    setEntryQuery(''); // an inherited filter reads as "this dataset is empty"
+    setAddingField(false);
+    setRenamingField(null);
+    setRenamedFields({});
   }, [selId, datasets]);
 
   async function createDataset(e: FormEvent) {
@@ -210,6 +216,33 @@ export function DatasetManager({ project }: { project: Project }) {
     // normalize → a list/object gains an empty `fields` so its nested editor appears.
     setDraftFields([...draftFields, normalizeFieldForType({ name, type: newFieldType, required: false, localized: false })]);
     setNewFieldName('');
+    setAddingField(false);
+  }
+
+  /**
+   * Rename a field in the DRAFT schema (double-click its name).
+   *
+   * ★ A field name is the key its VALUES are stored under, so a rename orphans every existing entry's
+   * value for it — the new name reads empty and the old data is still sitting there under the old key.
+   * The schema save migrates the entries (see saveSchema), so the rename is announced here as what it
+   * actually is rather than looking like a label edit.
+   */
+  function commitRename(from: string) {
+    const to = identifierize(renameText);
+    setRenamingField(null);
+    if (!to || to === from) return;
+    if (draftFields.some((f) => f.name === to)) {
+      setError(`field "${to}" already exists`);
+      return;
+    }
+    setError(null);
+    setDraftFields((fs) => fs.map((f) => (f.name === from ? { ...f, name: to } : f)));
+    setRenamedFields((m) => {
+      // Follow a CHAIN: renaming a→b then b→c must still map the original a→c, or the migration
+      // would look for a field called "b" that no entry ever had.
+      const original = Object.keys(m).find((k) => m[k] === from) ?? from;
+      return { ...m, [original]: to };
+    });
   }
 
   async function saveSchema() {
@@ -221,6 +254,29 @@ export function DatasetManager({ project }: { project: Project }) {
     }
     try {
       await api.putDataset(project.id, { ...selected, fields: draftFields });
+      // ★ A FIELD NAME IS THE KEY ITS VALUES ARE STORED UNDER, so a rename without this leaves every
+      // existing row's content sitting under the old key while the renamed field reads empty — the
+      // data is not lost, but it is invisible, which is worse than an error. Move it with the field.
+      // Only renames that SURVIVED to the saved schema are applied (rename a→b then b back to a, or
+      // delete the field afterwards, and nothing moves).
+      const moves = Object.entries(renamedFields).filter(([from, to]) => from !== to && draftFields.some((f) => f.name === to));
+      if (moves.length) {
+        const rows = entries.filter((e) => e.dataset === selected.slug);
+        for (const row of rows) {
+          const values = { ...(row.values ?? {}) } as Record<string, unknown>;
+          let touched = false;
+          for (const [from, to] of moves) {
+            if (!Object.prototype.hasOwnProperty.call(values, from)) continue;
+            // eslint-disable-next-line security/detect-object-injection -- keys are KeyNameSchema field names off the draft schema
+            values[to] = values[from];
+            // eslint-disable-next-line security/detect-object-injection -- as above
+            delete values[from];
+            touched = true;
+          }
+          if (touched) await api.putEntry(project.id, { ...row, values });
+        }
+      }
+      setRenamedFields({});
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save schema');
@@ -348,6 +404,20 @@ export function DatasetManager({ project }: { project: Project }) {
   const datasetEntries = selected
     ? entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder)
     : [];
+  // The FILTERED view the list renders. Matched on the entry's title AND its id (the id is the
+  // {{item.<set>.<key>}} key, so it is what an author often has in hand) AND its other text values —
+  // a dataset is browsed by what is IN a row, not by the one field that happens to be its title.
+  // The unfiltered list stays the source for ids/order, so reordering and key-uniqueness are unaffected.
+  const shownEntries = useMemo(() => {
+    const q = entryQuery.trim().toLowerCase();
+    if (!q || !selected) return datasetEntries;
+    return datasetEntries.filter((e) => {
+      if (e.id.toLowerCase().includes(q) || entryLabel(selected, e).toLowerCase().includes(q)) return true;
+      return Object.values(e.values ?? {}).some((v) => typeof v === 'string' && v.toLowerCase().includes(q));
+    });
+    // `datasetEntries` is rebuilt each render; depending on the identity would defeat the memo, so key
+    // it on what actually decides the result.
+  }, [entryQuery, selected, entries]);
   // The field that serves as the entry title in lists: the FIRST text field (see entryLabel). Drag
   // to reorder so a different field becomes the title.
   const titleFieldName = draftFields.find((f) => f.type === 'text')?.name;
@@ -526,7 +596,28 @@ export function DatasetManager({ project }: { project: Project }) {
                     >
                       <GripVertical className="h-4 w-4" />
                     </span>
-                    <span className="w-40 truncate font-mono text-xs">{field.name}</span>
+                    {renamingField === field.name ? (
+                      <input
+                        autoFocus
+                        aria-label={`Rename field ${field.name}`}
+                        className={`${glassInput} w-40 px-2 py-0.5 font-mono text-xs`}
+                        value={renameText}
+                        onChange={(e) => setRenameText(e.target.value)}
+                        onBlur={() => commitRename(field.name)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitRename(field.name); }
+                          if (e.key === 'Escape') { e.preventDefault(); setRenamingField(null); }
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className="w-40 cursor-text truncate font-mono text-xs"
+                        title={`${field.name} — double-click to rename`}
+                        onDoubleClick={() => { setRenamingField(field.name); setRenameText(field.name); }}
+                      >
+                        {field.name}
+                      </span>
+                    )}
                     {field.name === titleFieldName && (
                       <Tooltip tip="Used as the entry title in lists" side="top">
                         <span className="shrink-0 rounded bg-indigo-100 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
@@ -596,32 +687,17 @@ export function DatasetManager({ project }: { project: Project }) {
                 {draftFields.length === 0 && <li className="text-xs text-slate-500 dark:text-slate-400">No fields yet.</li>}
               </ul>
 
-              <div className="flex flex-wrap items-end gap-2">
-                <input
-                  aria-label="New field name"
-                  className={`${glassInput} w-auto`}
-                  value={newFieldName}
-                  onChange={(e) => setNewFieldName(e.target.value)}
-                  placeholder="title"
-                />
-                <select
-                  aria-label="New field type"
-                  className={`${glassInput} w-auto`}
-                  value={newFieldType}
-                  onChange={(e) => setNewFieldType(e.target.value as FieldType)}
-                >
-                  {FIELD_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+              {/* The add-field FORM is closed until asked for, and opens BELOW its own button. Two empty
+                  inputs permanently under the schema read as part of it — a half-filled-in field that
+                  is not there — and pushed the Save control away from the list it saves. */}
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={addField}
+                  onClick={() => { setAddingField((v) => !v); setNewFieldName(''); }}
+                  aria-expanded={addingField}
                   className={ghostButton}
                 >
-                  Add field
+                  <Plus className="mr-1 inline h-3.5 w-3.5" /> Add field
                 </button>
                 <button
                   type="button"
@@ -631,6 +707,40 @@ export function DatasetManager({ project }: { project: Project }) {
                   Save schema
                 </button>
               </div>
+              {addingField && (
+                <div className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-indigo-300/70 dark:border-indigo-500/30 p-2.5">
+                  <input
+                    autoFocus
+                    aria-label="New field name"
+                    className={`${glassInput} w-auto`}
+                    value={newFieldName}
+                    onChange={(e) => setNewFieldName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') { e.preventDefault(); addField(); }
+                      if (e.key === 'Escape') { e.preventDefault(); setAddingField(false); }
+                    }}
+                    placeholder="title"
+                  />
+                  <select
+                    aria-label="New field type"
+                    className={`${glassInput} w-auto`}
+                    value={newFieldType}
+                    onChange={(e) => setNewFieldType(e.target.value as FieldType)}
+                  >
+                    {FIELD_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <button type="button" onClick={addField} className={primaryButton}>
+                    Add
+                  </button>
+                  <button type="button" onClick={() => setAddingField(false)} className={ghostButton}>
+                    Cancel
+                  </button>
+                </div>
+              )}
 
                   {/* Dataset-level actions, tucked inside the schema editor. */}
                   <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-200/60 dark:border-slate-700/60 pt-3">
@@ -665,8 +775,23 @@ export function DatasetManager({ project }: { project: Project }) {
 
             {/* Entries */}
             <div className={`${glassCard} p-4`}>
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">Entries</h3>
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <h3 className="shrink-0 text-sm font-bold text-slate-700 dark:text-slate-200">Entries</h3>
+                {datasetEntries.length > 0 && (
+                  <input
+                    type="search"
+                    aria-label="Filter entries"
+                    placeholder="Filter…"
+                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
+                    value={entryQuery}
+                    onChange={(e) => setEntryQuery(e.target.value)}
+                  />
+                )}
+                {entryQuery.trim() !== '' && (
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {shownEntries.length} of {datasetEntries.length}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => {
@@ -680,14 +805,14 @@ export function DatasetManager({ project }: { project: Project }) {
                       values: defaultEntryValues(selected),
                     });
                   }}
-                  className={ghostButton}
+                  className={`${ghostButton} ml-auto`}
                 >
                   New entry
                 </button>
               </div>
 
               <ul className="mb-3 flex flex-col gap-1">
-                {datasetEntries.map((e) => (
+                {shownEntries.map((e) => (
                   <li
                     key={e.id}
                     draggable
@@ -772,6 +897,9 @@ export function DatasetManager({ project }: { project: Project }) {
                   </li>
                 ))}
                 {datasetEntries.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No entries yet.</li>}
+                {datasetEntries.length > 0 && shownEntries.length === 0 && (
+                  <li className="text-sm text-slate-500 dark:text-slate-400">No entry matches “{entryQuery.trim()}”.</li>
+                )}
               </ul>
 
               {editingEntry && (

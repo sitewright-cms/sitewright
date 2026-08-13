@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Settings, RotateCcw, History, ExternalLink } from 'lucide-react';
-import type { JsonValue, Page, Template } from '@sitewright/schema';
+import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATES,
   GLOBAL_TEMPLATE_PREFIX,
@@ -48,6 +48,7 @@ import {
 } from '../lib/page-data';
 import { primaryButton, gradientSurface } from '../theme';
 import { PageAuditPanel } from './pagespeed/PageAuditPanel';
+import { FormEditorModal } from './FormEditorModal';
 
 export type EditMode = 'source' | 'content' | 'audit';
 
@@ -137,6 +138,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [openImageMap, setOpenImageMap] = useState<string | null>(null);
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
   const [regions, setRegions] = useState<RegionItem[]>([]);
+  // The form whose definition is open in the modal (clicked on the canvas).
+  const [formEdit, setFormEdit] = useState<Form | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   // A chrome slot opened from the preview's hover affordance — stacked OVER this editor, so
   // closing it returns to the page you were on. null = not editing a slot.
@@ -544,6 +547,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             (r) => r && Number.isInteger(r.rid) && typeof r.kind === 'string' && typeof r.label === 'string',
           ),
         );
+      } else if (d.type === 'open-form' && typeof d.id === 'string' && d.id !== '') {
+        // Clicked an embedded form on the canvas → edit its DEFINITION in a modal. The definition is a
+        // project entity, not page content, so this is deliberately not a page.data edit and does not
+        // touch the page draft.
+        void api
+          .listForms(project.id)
+          .then(({ items }) => {
+            const found = items.find((f) => f.id === d.id);
+            if (found) setFormEdit(found);
+            else setSaveError(`Form "${d.id}" no longer exists`);
+          })
+          .catch((err: unknown) => setSaveError(err instanceof Error ? err.message : 'failed to load form'));
       } else if (d.type === 'locate-source' && typeof d.tag === 'string' && modeRef.current === 'source') {
         // Source mode: clicked an element in the preview → select the markup that rendered it. Silent
         // when it can't be placed (a chrome slot, a runtime-injected node, or source edited since the
@@ -1201,6 +1216,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           onEdit={(rid) =>
             iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
           }
+        />
+      )}
+
+      {/* An embedded form clicked on the canvas: edit its DEFINITION, then re-render so a changed
+          field list shows immediately. */}
+      {formEdit && (
+        <FormEditorModal
+          project={project}
+          form={formEdit}
+          onSaved={() => setPreviewNonce((n) => n + 1)}
+          onClose={() => setFormEdit(null)}
         />
       )}
 

@@ -952,6 +952,7 @@ export function WebsiteSection({
       {project && slotEdit && (
         <SlotEditor
           project={project}
+          locales={localeCodes}
           slot={slotEdit}
           value={(form[slotEdit] as string | undefined) ?? ''}
           onSave={(key, src) => saveNow({ [key]: src })}

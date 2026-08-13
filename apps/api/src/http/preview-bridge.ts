@@ -176,6 +176,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     ['footer', 'footer', 'Footer'],
     ['bottom', 'bottom', 'Bottom']
   ];
+  var SLOT_SEL = '#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom';
   var slotFocus = '';
   var slotStyled = false;
   var slotBtn = null;
@@ -204,8 +205,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   /** Recede everything except the slot being edited; '' restores the page. */
   function applySlotFocus(key) {
+    var changed = slotFocus !== (key || '');
     slotFocus = key || '';
     ensureSlotStyle();
+    // Which leaves are editable depends on the focus, so a focus change while content mode is on has
+    // to re-run the wiring — otherwise the slot you just focused stays inert until the mode is toggled.
+    if (changed && editing) { setEditing(false); setEditing(true); }
     var body = document.getElementById('page-content');
     var i, el;
     for (i = 0; i < SLOT_LANDMARKS.length; i++) {
@@ -256,7 +261,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var t = e.target;
     if (!t || t.nodeType !== 1 || !t.closest) return;
     if (t.closest('.sw-slot-edit')) return;
-    var land = t.closest('#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom');
+    var land = t.closest(SLOT_SEL);
     var meta = land ? slotKeyForElement(land) : null;
     if (!meta) { hideSlotButton(); return; }
     var b = ensureSlotButton();
@@ -1343,32 +1348,60 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // NOT in-place: a fully-editable card would otherwise capture every click into a field, leaving the item
     // editor unreachable. So skip in-place wiring for any leaf inside a [data-sw-entry].
     var inEntry = function (el) { return !!(el.closest && el.closest('[data-sw-entry]')); };
+    // A leaf inside a CHROME SLOT belongs to the SKELETON, not to the page that happens to render it.
+    // Its stores are the shared ones (website.translations / website.data), so the same string is
+    // reachable from every page — editing it from a page reads as a page edit but silently changes the
+    // whole site. It is therefore editable only where that slot is FOCUSED, i.e. the skeleton editor;
+    // on a page (slotFocus '') every landmark is foreign and stays read-only. Same shape as inEntry:
+    // not "uneditable", just "edited somewhere else".
+    // Returns true when this leaf must NOT be wired here. Three cases:
+    //   not in a slot            → page context, wire it (unchanged behaviour)
+    //   in an UNFOCUSED slot     → belongs to the skeleton editor, skip
+    //   in the FOCUSED slot      → wire it ONLY if its key can actually persist from a slot. A slot has
+    //                              no page.data, so a BARE data-sw-text/html/src key there resolves to
+    //                              nothing and renders the authored default forever — offering an edit
+    //                              that silently discards itself is worse than offering none. Only
+    //                              data-sw-translate (the shared catalog) and an explicit
+    //                              a 'website.data.…' key have a store behind them.
+    var SLOT_ATTRS = ['data-sw-text', 'data-sw-html', 'data-sw-href', 'data-sw-src', 'data-sw-bg'];
+    var inForeignSlot = function (el) {
+      var land = el.closest && el.closest(SLOT_SEL);
+      if (!land) return false;
+      if (land.id !== slotElementId(slotFocus)) return true;
+      if (el.hasAttribute('data-sw-translate')) return false;
+      for (var i = 0; i < SLOT_ATTRS.length; i++) {
+        var v = el.getAttribute(SLOT_ATTRS[i]);
+        if (v && v.indexOf('website.data.') === 0) return false;
+      }
+      return true;
+    };
     // Plain text — skip anchors that are link-editable (their text rides in the popover).
     eachEl('[data-sw-text]', function (el) {
-      if (el.hasAttribute('data-sw-href') || inEntry(el)) return;
+      if (el.hasAttribute('data-sw-href') || inEntry(el) || inForeignSlot(el)) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
     });
     // Project translations — plaintext editing like data-sw-text, but the edit writes website.translations.
     eachEl('[data-sw-translate]', function (el) {
+      if (inForeignSlot(el)) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-tr-on'); el.addEventListener('input', onTranslateInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-tr-on'); el.removeEventListener('input', onTranslateInput); }
     });
     // Rich
     eachEl('[data-sw-html]', function (el) {
-      if (inEntry(el)) return;
+      if (inEntry(el) || inForeignSlot(el)) return;
       if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
-      if (el.hasAttribute('data-sw-html') || inEntry(el)) return;
+      if (el.hasAttribute('data-sw-html') || inEntry(el) || inForeignSlot(el)) return;
       if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
     });
     // Images + backgrounds — click to replace via the editor's file picker.
     eachEl('[data-sw-src],[data-sw-bg]', function (el) {
-      if (inEntry(el)) return;
+      if (inEntry(el) || inForeignSlot(el)) return;
       if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
     });

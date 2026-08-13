@@ -156,3 +156,14 @@ export function websiteDataPathOf(key: string): string | null {
   if (path === '' || !isSafeKey(path)) return null;
   return path;
 }
+
+/**
+ * A valid translation-catalog key — a flat identifier OR a dotted scope path; mirrors
+ * @sitewright/schema TranslationKeySchema. Guards an inline write before the PUT, so a scoped
+ * `data-sw-translate` key like `footer.tagline` passes instead of being silently dropped.
+ * Shared by the page and slot editors — the same catalog is reachable from both.
+ */
+export function isTranslationKey(key: string): boolean {
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear (dot-separated segments), length-capped
+  return key.length <= 128 && /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(key) && !DANGEROUS_KEYS.has(key);
+}

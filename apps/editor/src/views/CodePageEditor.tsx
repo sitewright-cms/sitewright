@@ -39,6 +39,7 @@ import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
   isSafeKey,
+  isTranslationKey,
   mergeDefaults,
   pageDataGet,
   pageDataObject,
@@ -53,14 +54,6 @@ export type EditMode = 'source' | 'content' | 'audit';
 /** Human label for a mode-switcher tab (the enum values stay `source`/`content`/`audit`). */
 function editModeLabel(mode: EditMode): string {
   return mode === 'content' ? 'Content Editor' : mode === 'audit' ? 'Page Audit' : 'Code Editor';
-}
-
-/** A valid translation-catalog key — a flat identifier OR a dotted scope path; mirrors @sitewright/schema
- *  TranslationKeySchema. Guards the inline write before the PUT (a scoped data-sw-translate key like
- *  `home.headline` must pass, or the inline edit is silently dropped). */
-function isTranslationKey(key: string): boolean {
-  // eslint-disable-next-line security/detect-unsafe-regex -- linear (dot-separated segments), length-capped — see TranslationKeySchema
-  return key.length <= 128 && /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(key) && !DANGEROUS_KEYS.has(key);
 }
 
 interface CodePageEditorProps {
@@ -1215,6 +1208,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       {slotEdit && (
         <SlotEditor
           project={project}
+          locales={locales}
           slot={slotEdit.slot}
           value={slotEdit.value}
           onSave={async (key, src) => {

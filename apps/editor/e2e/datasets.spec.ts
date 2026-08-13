@@ -20,8 +20,9 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   // Add an entry; it appears in the entry list.
@@ -77,11 +78,13 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('photo');
   await page.getByLabel('New field type').selectOption('image');
-  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   // New entry: the photo field is an AssetField (Browse button); the text field is not.
@@ -115,8 +118,9 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   // Add an entry via the modal.
@@ -159,8 +163,9 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
   await page.getByRole('button', { name: 'New entry' }).click();
   await page.getByLabel('title', { exact: true }).fill('Hello');
@@ -200,8 +205,9 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
   await page.getByRole('button', { name: 'New entry' }).click();
   await page.getByLabel('title', { exact: true }).fill('Hello');
@@ -253,10 +259,12 @@ test('drag-reorder schema fields to change which field is the entry title', asyn
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('blurb');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('heading');
-  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   // An entry: its list label uses the first text field (blurb).
@@ -279,4 +287,45 @@ test('drag-reorder schema fields to change which field is the entry title', asyn
   // The entry is now titled by `heading`.
   await expect(page.getByRole('button', { name: 'Heading text' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Blurb text' })).toHaveCount(0);
+});
+
+// The entry filter sits INLINE with the "Entries" heading — one row, heading left, New entry right.
+// It first shipped with flex-wrap, and in the narrow Data drawer a fixed-width input plus a heading
+// plus a button do not fit, so it wrapped onto a row of its own and cost a line of the list. jsdom has
+// no layout, so this is the only place the question "is it actually on one line" can be answered.
+test('the entry filter is inline with the Entries heading, not wrapped below it', async ({ page }) => {
+  await signUp(page, `filterrow-${stamp}@e2e.test`);
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Filter Row');
+  await page.getByLabel('Project slug').fill(`filterrow-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
+  await page.getByLabel('Dataset name').fill('Posts');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await page.getByRole('button', { name: 'Save schema' }).click();
+
+  // A filter only appears once there is something to filter.
+  await page.getByRole('button', { name: 'New entry' }).click();
+  await page.getByLabel('title', { exact: true }).fill('Hello World');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  const heading = page.getByRole('heading', { name: /Entries/ });
+  const filter = page.getByLabel('Filter entries');
+  const newEntry = page.getByRole('button', { name: 'New entry' });
+  await expect(filter).toBeVisible();
+
+  const [h, f, n] = await Promise.all([heading.boundingBox(), filter.boundingBox(), newEntry.boundingBox()]);
+  // Vertically centred on the same line — compare CENTRES, since the three have different heights.
+  const centre = (b: { y: number; height: number } | null) => b!.y + b!.height / 2;
+  expect(Math.abs(centre(h) - centre(f))).toBeLessThanOrEqual(4);
+  expect(Math.abs(centre(h) - centre(n))).toBeLessThanOrEqual(4);
+  // …and in reading order across it: heading, filter, then the action on the right.
+  expect(h!.x).toBeLessThan(f!.x);
+  expect(f!.x + f!.width).toBeLessThanOrEqual(n!.x + 1);
 });

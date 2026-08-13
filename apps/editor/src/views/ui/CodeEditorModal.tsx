@@ -41,6 +41,9 @@ interface CodeEditorModalProps {
     options: { value: string; label: string }[];
     snippetFor: (value: string) => string;
   };
+  /** Force the elevated layer — for an editor reached by a global shortcut, which can be summoned
+   *  while another modal (the page editor) is already open. See {@link Modal}'s `elevate`. */
+  elevate?: boolean;
 }
 
 /**
@@ -57,7 +60,7 @@ interface CodeEditorModalProps {
  * lost; leaving the modal open makes an Escape or a backdrop click a way to discard edits that were
  * never committed. `onBeforeClose` confirms first — the same guard the slot editor already carries.
  */
-export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit, fork }: CodeEditorModalProps) {
+export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit, fork, elevate = false }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
   // intentionally ignored — the user's live edits take precedence until they Save or close.
   const [draft, setDraft] = useState(value);
@@ -78,6 +81,7 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
     <Modal
       title={title}
       size="screen"
+      elevate={elevate}
       onClose={onClose}
       // Leaving with uncommitted edits is now possible, so it has to be deliberate.
       onBeforeClose={() => !dirty || window.confirm('Discard unsaved changes?')}

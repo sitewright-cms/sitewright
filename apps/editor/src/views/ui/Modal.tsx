@@ -73,6 +73,16 @@ interface ModalProps {
   /** Optional extra header content shown just BEFORE the Save/Close actions (right side). */
   headerExtra?: ReactNode;
   /**
+   * Force the ELEVATED layer (normally reserved for a modal opened from inside a SidePanel).
+   *
+   * For a dialog reached by a GLOBAL SHORTCUT: it can be summoned while the page editor — itself a
+   * modal — is open, and at equal z-index the winner is whichever portal happens to be later in the
+   * document. "Whichever mounted last" is true today and is not a rule anything enforces, so the
+   * elevation is stated instead of relied upon. Elevation only; the panel HOLD is still governed by
+   * `pinPanel`, and outside a panel there is no panel to hold.
+   */
+  elevate?: boolean;
+  /**
    * Guard consulted on EVERY close request (×, Escape, backdrop) before the modal animates
    * out. Return false (or a Promise resolving false) to abort — e.g. when there are unsaved
    * changes, show a confirm and only allow the close if the user discards. Absent → always
@@ -89,7 +99,7 @@ interface ModalProps {
  * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
  * ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
@@ -135,7 +145,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   const stackId = useRef<object>({});
   // A modal opened from WITHIN a side panel must sit above the panel layer (z-60/61); a normal
   // modal sits below the panel tabs so they stay visible over it.
-  const elevated = useContext(InSidePanel);
+  const elevated = useContext(InSidePanel) || elevate;
   // While this (panel-owned) modal lives, pin the panel open so it can't collapse behind us.
   //
   // `pinPanel={false}` opts out while KEEPING the elevation above: the two are separate concerns, and

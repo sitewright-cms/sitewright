@@ -353,7 +353,7 @@ export function TailwindReferenceModal({ onClose }: { onClose: () => void }) {
   }, [closePanel]);
 
   return (
-    <Modal title="TailwindCSS Reference" size="full" pinPanel={false} onClose={onClose}>
+    <Modal title="TailwindCSS Reference" size="full" pinPanel={false} elevate onClose={onClose}>
       <div className="flex h-full min-h-0 gap-4 p-5">
         <nav className="hidden w-44 shrink-0 flex-col gap-1 overflow-auto sm:flex">
           {categories.map((c) => (

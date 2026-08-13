@@ -35,19 +35,36 @@ describe('fieldsHaveEmptyGroup', () => {
 });
 
 describe('NestedFieldsEditor', () => {
-  it('adds a child field via the add row', () => {
+  it('adds a child field — the form OPENS from the button, then submits', () => {
     render(<Harness initial={[]} />);
-    fireEvent.change(screen.getByLabelText('New nested field name'), { target: { value: 'caption' } });
+    // The inputs are not there until asked for: a permanently-visible empty name + type reads as a
+    // child field that is half-entered, and at depth 3-4 that noise multiplies.
+    expect(screen.queryByLabelText('New nested field name')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    fireEvent.change(screen.getByLabelText('New nested field name'), { target: { value: 'caption' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     expect(state()).toEqual([{ name: 'caption', type: 'text', required: false, localized: false }]);
+    // …and it closes again, so the next thing you see is the field you just made.
+    expect(screen.queryByLabelText('New nested field name')).toBeNull();
+  });
+
+  it('the add form cancels, and Escape closes it', () => {
+    render(<Harness initial={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByLabelText('New nested field name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    fireEvent.keyDown(screen.getByLabelText('New nested field name'), { key: 'Escape' });
+    expect(screen.queryByLabelText('New nested field name')).toBeNull();
+    expect(state()).toEqual([]); // nothing was added by either exit
   });
 
   it('retyping a child to a group adds an empty child list + reveals a nested editor', () => {
     render(<Harness initial={[{ name: 'rows', type: 'text', required: false, localized: false }]} />);
     fireEvent.change(screen.getByLabelText('Type of rows'), { target: { value: 'object' } });
     expect(state()[0]).toMatchObject({ type: 'object', fields: [] });
-    // A nested add row appears for the new group's children.
-    expect(screen.getAllByLabelText('New nested field name').length).toBeGreaterThan(1);
+    // A nested add BUTTON appears for the new group's children (the inputs stay behind it).
+    expect(screen.getAllByRole('button', { name: 'Add field' }).length).toBeGreaterThan(1);
   });
 
   it('removes a child', () => {
@@ -58,6 +75,7 @@ describe('NestedFieldsEditor', () => {
 
   it('does NOT offer list/object once the depth cap is reached', () => {
     render(<Harness initial={[]} depth={MAX_FIELD_DEPTH} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add field' }));
     const typeSelect = screen.getByLabelText('New nested field type');
     const opts = within(typeSelect).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
     expect(opts).not.toContain('list');

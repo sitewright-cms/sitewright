@@ -7,7 +7,8 @@ import { glassInput, toggleInput } from '../../theme';
 import { FieldConfigEditor, type DatasetRef } from './FieldConfigEditor';
 
 /** Scalar (leaf) field types — every type except the two structural group types. */
-export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['text', 'richtext', 'number', 'boolean', 'date', 'time', 'datetime', 'image', 'icon', 'file', 'folder', 'reference', 'select', 'json'];
+/** The non-structural types, ALPHABETICAL — same order as the top-level picker (see DatasetManager). */
+export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['boolean', 'date', 'datetime', 'file', 'folder', 'icon', 'image', 'json', 'number', 'page', 'reference', 'richtext', 'select', 'text', 'time'];
 
 /** `list` (ordered repeatable group) and `object` (named sub-group) carry child `fields`. */
 export function isGroupFieldType(t: FieldType): boolean {
@@ -56,6 +57,9 @@ export function NestedFieldsEditor({
   const [name, setName] = useState('');
   const [type, setType] = useState<FieldType>('text');
   const [error, setError] = useState<string | null>(null);
+  // Closed until asked for — same reason as the top-level editor: a permanently-visible empty name +
+  // type reads as a child field that is half-entered, and at depth 3 or 4 that noise multiplies.
+  const [adding, setAdding] = useState(false);
 
   // Children here are at level `depth`; a child may nest (be a group) only if its OWN children
   // (level depth+1) would still be within the cap — i.e. depth < MAX_FIELD_DEPTH.
@@ -79,6 +83,7 @@ export function NestedFieldsEditor({
     setError(null);
     onChange([...value, normalizeFieldForType({ name: n, type, required: false, localized: false })]);
     setName('');
+    setAdding(false);
   };
 
   return (
@@ -133,25 +138,48 @@ export function NestedFieldsEditor({
         {value.length === 0 && <li className="text-xs text-amber-600 dark:text-amber-400">Add at least one field — a list/object needs children to save.</li>}
       </ul>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          aria-label="New nested field name"
-          className={`${glassInput} w-32 px-2 py-1 text-xs`}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addChild(); } }}
-          placeholder="field"
-        />
-        <select aria-label="New nested field type" className={`${glassInput} w-auto px-2 py-1 text-xs`} value={type} onChange={(e) => setType(e.target.value as FieldType)}>
-          {types.map((t) => (<option key={t} value={t}>{t}</option>))}
-        </select>
+      <div>
         <button
           type="button"
-          onClick={addChild}
+          onClick={() => { setAdding((v) => !v); setName(''); setError(null); }}
+          aria-expanded={adding}
           className="inline-flex items-center gap-1 rounded-md border border-dashed border-indigo-300/70 px-2.5 py-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10"
         >
           <Plus className="h-3.5 w-3.5" /> Add field
         </button>
+        {adding && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-indigo-300/70 dark:border-indigo-500/30 p-2">
+            <input
+              autoFocus
+              aria-label="New nested field name"
+              className={`${glassInput} w-32 px-2 py-1 text-xs`}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); addChild(); }
+                if (e.key === 'Escape') { e.preventDefault(); setAdding(false); }
+              }}
+              placeholder="field"
+            />
+            <select aria-label="New nested field type" className={`${glassInput} w-auto px-2 py-1 text-xs`} value={type} onChange={(e) => setType(e.target.value as FieldType)}>
+              {types.map((t) => (<option key={t} value={t}>{t}</option>))}
+            </select>
+            <button
+              type="button"
+              onClick={addChild}
+              className="rounded-md bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-indigo-500"
+            >
+              Add
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdding(false)}
+              className="rounded-md px-2 py-1 text-xs text-slate-500 transition hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
       {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
     </div>

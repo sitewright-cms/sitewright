@@ -134,15 +134,9 @@ In \`source\`:
   knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds
   {{#sw-folder page.data.gallery_folder}}, and {{sw-control target="list_dataset" as="dataset"}} feeds {{#each}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
-  <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
-  link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.
-  ★ For a {{sw-image}} use its \`editable="key"\` parameter rather than hand-writing an
-  <img data-sw-src>: you keep the responsive srcset/dimensions/LQIP AND get the file picker.
-  ★ A CHROME SLOT (mainNav/footer/bottom) is not a page, so a bare data-sw-text key resolves to
-  nothing there — it renders the authored default forever. In a slot use data-sw-translate="key"
-  (shared plain text, edited in Translations) or a website.data.<path> key for a rich region.
-  ★ Never put a data-sw-* key inside an {{#each}}: every row would share the one stored value.
-  Dataset rows are edited through the entry editor (the loop adds data-sw-entry automatically).
+  <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src, or
+  {{sw-image url editable="key"}} to stay responsive; link: data-sw-href; background: data-sw-bg).
+  The override is stored on the page as page.data.<key>.
 - NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{sw-url …}} helper.

@@ -314,6 +314,12 @@ function redirectHost(redirectUri: string): string {
  * container or on another machine — which is exactly when the automatic redirect strands the user.
  *
  * The page is `no-store` + `no-referrer` (see the caller) and both values expire with the code.
+ *
+ * Copy URL is AUTOFOCUSED, so Enter copies the moment the page lands — the only thing anyone comes
+ * here to do, and the whole screen exists because the user is mid-flow in a terminal somewhere else.
+ * Plain HTML, so it works with JS disabled; the consent script adds an Enter fallback for after focus
+ * has moved (selecting the URL text, opening the code disclosure), and the focus ring is what makes
+ * the shortcut discoverable rather than hidden.
  */
 function issuedCodePage(code: string, continueUrl: string, redirectUri: string, chrome: ConsentChrome): string {
   const minutes = Math.max(1, Math.round(AUTH_CODE_TTL_MS / 60000));
@@ -326,7 +332,7 @@ function issuedCodePage(code: string, continueUrl: string, redirectUri: string, 
        <span class="lbl">Callback URL</span>
        <div class="code-box"><span id="sw-url">${escapeHtml(continueUrl)}</span></div>
        <div class="row">
-         <button class="primary" type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied">Copy URL</button>
+         <button class="primary" type="button" id="sw-copy-url" data-copy="sw-url" data-copied="Callback URL copied" autofocus>Copy URL</button>
          <a href="${escapeHtml(continueUrl)}"><button type="button">Open it in this browser</button></a>
        </div>
        <details class="alt">

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { CONSENT_SCRIPT } from '../src/http/consent-script.js';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
@@ -221,6 +222,31 @@ describe('consent screen — the approved code is shown, not fired at the callba
     expect(url.searchParams.get('state')).toBe('st');
     const shownCode = /<span id="sw-code">([^<]+)<\/span>/.exec(res.body)?.[1];
     expect(url.searchParams.get('code')).toBe(shownCode); // the two values agree
+  });
+
+  it('★ Enter copies the callback URL: the button is AUTOFOCUSED, and the script covers moved focus', async () => {
+    // The one thing anyone comes to this screen to do. The user is mid-flow in a terminal somewhere
+    // else, so the hand is on the keyboard, not the mouse.
+    const { session, ids } = await userWithProjects(['Only']);
+    const res = await approve(session, ids[0]!);
+
+    // Plain HTML autofocus, so Enter works on arrival even with JS disabled — and the focus ring is
+    // what makes the shortcut discoverable instead of hidden.
+    expect(res.body).toMatch(/<button[^>]*id="sw-copy-url"[^>]*autofocus[^>]*>/);
+    // …and it is the CALLBACK URL that gets focus, not the bare code (which is a click away, for the
+    // clients that ask for it instead).
+    expect(res.body).not.toMatch(/<button[^>]*id="sw-copy"[^>]*autofocus/);
+
+    // The script's fallback, for after focus has moved (selecting the URL text, opening the details).
+    expect(CONSENT_SCRIPT).toContain("var primaryCopy = document.getElementById('sw-copy-url')");
+    expect(CONSENT_SCRIPT).toContain('primaryCopy.click()');
+    // It must NOT steal Enter from a control that has its own meaning for it — otherwise "Open it in
+    // this browser" would copy instead of opening, and the focused button would copy twice.
+    expect(CONSENT_SCRIPT).toContain("t.closest('button, a, summary, input, textarea, select, [contenteditable]')");
+    // …nor from a modified chord (Ctrl/Cmd/Alt+Enter is somebody else's shortcut).
+    expect(CONSENT_SCRIPT).toContain("if(e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return;");
+    // The page has to actually load the script for any of that to happen.
+    expect(res.body).toContain('/oauth/consent.js');
   });
 
   it('the displayed code is the REAL one — it exchanges for a token', async () => {

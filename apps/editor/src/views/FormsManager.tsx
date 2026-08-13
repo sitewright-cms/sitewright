@@ -1,29 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { X } from 'lucide-react';
-import { DEFAULT_FORM_MODES, isPlatformRoutedMode, type Form, type FormField, type FormMode } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, type Form, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
-import { identifierize, slugify } from '../lib/entry-form';
+import { slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { ProjectCaptcha } from './ProjectCaptcha';
 import { SubmissionsInbox } from './SubmissionsInbox';
+import { FormEditorModal } from './FormEditorModal';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
-import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput, gradientHover } from '../theme';
-
-const FIELD_TYPES: ReadonlyArray<FormField['type']> = [
-  'text', 'email', 'tel', 'url', 'number', 'textarea', 'select', 'radio', 'checkbox', 'date', 'time', 'datetime',
-];
-/** Field types whose entries come from an options list (select/radio, and a checkbox GROUP). */
-const OPTION_TYPES = new Set<FormField['type']>(['select', 'radio', 'checkbox']);
-
-const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
-  { value: 'globalSmtp', label: 'Platform email (global SMTP)' },
-  { value: 'userSmtp', label: 'Platform email (project SMTP)' },
-  { value: 'contactPhp', label: 'contact.php (host mail)' },
-  { value: 'contactPhpSmtp', label: 'contact.php (SMTP)' },
-  { value: 'thirdParty', label: 'Third-party endpoint' },
-];
+import { glassCard, glassInput, primaryButton, ghostButton, dangerButton, gradientHover } from '../theme';
 
 type EnabledModes = Record<FormMode, boolean>;
 
@@ -129,66 +115,10 @@ export function FormsManager({ project }: { project: Project }) {
     setNewName('');
   }
 
-  function patch(updates: Partial<Form>) {
-    setDraft((d) => (d ? { ...d, ...updates } : d));
-  }
 
-  function patchField(index: number, updates: Partial<FormField>) {
-    setDraft((d) =>
-      d ? { ...d, fields: d.fields.map((f, i) => (i === index ? { ...f, ...updates } : f)) } : d,
-    );
-  }
 
-  function addField() {
-    setDraft((d) => (d ? { ...d, fields: [...d.fields, { name: '', label: '', type: 'text', required: false }] } : d));
-  }
 
-  function removeField(index: number) {
-    setDraft((d) => (d ? { ...d, fields: d.fields.filter((_, i) => i !== index) } : d));
-  }
 
-  async function save() {
-    if (!draft) return;
-    setError(null);
-    setSaved(false);
-    // Normalize field names to safe identifiers, then validate client-side so the
-    // author gets an inline error instead of a delayed server 400.
-    const form: Form = { ...draft, fields: draft.fields.map((f) => ({ ...f, name: identifierize(f.name) })) };
-    if (form.fields.length === 0) {
-      setError('a form needs at least one field');
-      return;
-    }
-    const blankName = form.fields.findIndex((f) => f.name === '');
-    if (blankName !== -1) {
-      setError(`field ${blankName + 1} needs a name`);
-      return;
-    }
-    const blankLabel = form.fields.findIndex((f) => f.label.trim() === '');
-    if (blankLabel !== -1) {
-      setError(`field ${blankLabel + 1} needs a label`);
-      return;
-    }
-    const names = form.fields.map((f) => f.name);
-    const dup = names.find((n, i) => names.indexOf(n) !== i);
-    if (dup) {
-      setError(`duplicate field name "${dup}" (names are normalized — make them distinct)`);
-      return;
-    }
-    // A radio field is nothing without options (the schema also refuses it) — catch it before the round-trip.
-    const radioNoOptions = form.fields.findIndex((f) => f.type === 'radio' && !f.options?.length);
-    if (radioNoOptions !== -1) {
-      setError(`field ${radioNoOptions + 1} (radio) needs at least one option`);
-      return;
-    }
-    try {
-      await api.putForm(project.id, form);
-      setSaved(true);
-      setDraft(null);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to save form');
-    }
-  }
 
   async function remove(id: string) {
     if (!(await confirm({ title: 'Delete form', message: `Delete form "${id}"? Existing submissions are kept.`, confirmLabel: 'Delete' }))) return;
@@ -204,261 +134,6 @@ export function FormsManager({ project }: { project: Project }) {
 
   if (loading) return <SkeletonList rows={3} label="Loading forms…" />;
 
-  if (draft) {
-    return (
-      <div className={`flex flex-col gap-5 ${glassCard} p-5`}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200">
-            Edit form <code className="text-xs text-slate-500 dark:text-slate-400">{draft.id}</code>
-          </h3>
-          <button className={ghostButton} onClick={() => setDraft(null)}>
-            Cancel
-          </button>
-        </div>
-
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Name
-          <input
-            aria-label="Form name"
-            className={`${glassInput} mt-1`}
-            value={draft.name}
-            onChange={(e) => patch({ name: e.target.value })}
-          />
-        </label>
-
-        <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-          Recipient email (where submissions are sent — kept server-side)
-          <input
-            aria-label="Recipient email"
-            type="email"
-            className={`${glassInput} mt-1`}
-            value={draft.recipient}
-            onChange={(e) => patch({ recipient: e.target.value })}
-            placeholder="leads@acme.com"
-            required
-          />
-        </label>
-
-        <fieldset className={`${glassPanel} p-3`}>
-          <legend className="px-1 text-xs font-bold text-slate-500 dark:text-slate-400">Fields</legend>
-          <ul className="flex flex-col gap-2">
-            {draft.fields.map((field, i) => (
-              <li key={i} className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/10 pb-2 text-sm last:border-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    aria-label={`Field ${i + 1} name`}
-                    className={`${glassInput} w-32 px-2 py-1 font-mono text-xs`}
-                    value={field.name}
-                    onChange={(e) => patchField(i, { name: e.target.value })}
-                    placeholder="email"
-                  />
-                  <input
-                    aria-label={`Field ${i + 1} label`}
-                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
-                    value={field.label}
-                    onChange={(e) => patchField(i, { label: e.target.value })}
-                    placeholder="Your email"
-                  />
-                  <select
-                    aria-label={`Field ${i + 1} type`}
-                    className={`${glassInput} w-auto px-2 py-1 text-xs`}
-                    value={field.type}
-                    onChange={(e) => patchField(i, { type: e.target.value as FormField['type'] })}
-                  >
-                    {FIELD_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
-                  <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                    <input
-                      type="checkbox"
-                      className={toggleInput}
-                      aria-label={`Field ${i + 1} required`}
-                      checked={field.required}
-                      onChange={(e) => patchField(i, { required: e.target.checked })}
-                    />
-                    required
-                  </label>
-                  <button
-                    aria-label={`Remove field ${i + 1}`}
-                    className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
-                    onClick={() => removeField(i)}
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 pl-1">
-                  <input
-                    aria-label={`Field ${i + 1} placeholder`}
-                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
-                    value={field.placeholder ?? ''}
-                    onChange={(e) => patchField(i, { placeholder: e.target.value || undefined })}
-                    placeholder="placeholder (optional)"
-                  />
-                  {OPTION_TYPES.has(field.type) && (
-                    <input
-                      aria-label={`Field ${i + 1} options`}
-                      className={`${glassInput} flex-1 px-2 py-1 text-xs`}
-                      value={(field.options ?? []).join(', ')}
-                      onChange={(e) =>
-                        patchField(i, {
-                          options: e.target.value
-                            .split(',')
-                            .map((o) => o.trim())
-                            .filter(Boolean),
-                        })
-                      }
-                      placeholder={field.type === 'checkbox' ? 'options (blank = single checkbox)' : 'option A, option B, …'}
-                    />
-                  )}
-                  {field.type === 'checkbox' && (field.options?.length ?? 0) > 0 && field.required && (
-                    <span className="w-full text-xs text-amber-600 dark:text-amber-400">
-                      “required” isn’t enforced on a multi-select checkbox group (the browser has no “at least one” rule).
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            onClick={addField}
-            className={`${ghostButton} mt-2`}
-          >
-            Add field
-          </button>
-        </fieldset>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Submit button label
-            <input
-              aria-label="Submit label"
-              className={`${glassInput} mt-1`}
-              value={draft.submitLabel}
-              onChange={(e) => patch({ submitLabel: e.target.value })}
-            />
-          </label>
-          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Thank-you redirect (optional; overrides the inline message)
-            <input
-              aria-label="Redirect URL"
-              className={`${glassInput} mt-1`}
-              value={draft.redirectUrl ?? ''}
-              onChange={(e) => patch({ redirectUrl: e.target.value || undefined })}
-              placeholder="/thank-you"
-            />
-          </label>
-          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Success message
-            <input
-              aria-label="Success message"
-              className={`${glassInput} mt-1`}
-              value={draft.successMessage}
-              onChange={(e) => patch({ successMessage: e.target.value })}
-            />
-          </label>
-          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-            Error message
-            <input
-              aria-label="Error message"
-              className={`${glassInput} mt-1`}
-              value={draft.errorMessage}
-              onChange={(e) => patch({ errorMessage: e.target.value })}
-            />
-          </label>
-        </div>
-
-        <label className="flex max-w-sm flex-col text-xs text-slate-500 dark:text-slate-400">
-          Delivery mode
-          <select
-            aria-label="Delivery mode"
-            className={`${glassInput} mt-1`}
-            value={draft.mode}
-            onChange={(e) => {
-              const mode = e.target.value as FormMode;
-              // Drop the third-party URL when leaving thirdParty so it never lingers
-              // (and never reaches the published HTML) for another mode.
-              patch(mode === 'thirdParty' ? { mode } : { mode, thirdPartyUrl: undefined });
-            }}
-          >
-            {MODE_LABELS.filter((m) => enabledModes[m.value] || m.value === draft.mode).map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-          <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-            Only modes enabled by an instance admin are listed.
-          </span>
-        </label>
-
-        {draft.mode === 'thirdParty' && (
-          <label className="flex max-w-lg flex-col text-xs text-slate-500 dark:text-slate-400">
-            Third-party endpoint URL (the form posts here directly)
-            <input
-              aria-label="Third-party endpoint URL"
-              type="url"
-              className={`${glassInput} mt-1`}
-              value={draft.thirdPartyUrl ?? ''}
-              onChange={(e) => patch({ thirdPartyUrl: e.target.value || undefined })}
-              placeholder="https://formspree.io/f/xxxx"
-              required
-            />
-          </label>
-        )}
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className={toggleInput}
-            aria-label="Require a captcha"
-            checked={draft.captcha}
-            disabled={!isPlatformRoutedMode(draft.mode)}
-            onChange={(e) => patch({ captcha: e.target.checked })}
-          />
-          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-500 dark:text-slate-400' : ''}>
-            Require a captcha (which one is set per project, in Captcha below)
-            {!isPlatformRoutedMode(draft.mode) &&
-              ' — not available for this mode (the platform can’t verify a remote endpoint)'}
-          </span>
-        </label>
-        {draft.captcha && isPlatformRoutedMode(draft.mode) && !captchaReady && (
-          <p className="rounded-md bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:bg-red-950/40 dark:text-red-200">
-            This project has no captcha configured, so this form will reject every submission. Set a provider and
-            keys in <strong>Captcha</strong> below, or turn this off.
-          </p>
-        )}
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            className={toggleInput}
-            aria-label="Require proof of work"
-            checked={draft.pow}
-            disabled={!isPlatformRoutedMode(draft.mode)}
-            onChange={(e) => patch({ pow: e.target.checked })}
-          />
-          <span className={!isPlatformRoutedMode(draft.mode) ? 'text-slate-500 dark:text-slate-400' : ''}>
-            Require proof of work (no third party, no keys — the visitor’s browser spends a moment of CPU)
-            {!isPlatformRoutedMode(draft.mode)
-              ? ' — not available for this mode (the platform can’t verify a remote endpoint)'
-              : ' — needs HTTPS (the browser crypto it uses is unavailable on plain http), and is best left off unless the filtered count says you need it'}
-          </span>
-        </label>
-
-        <div className="flex items-center gap-3">
-          <button onClick={save} className={primaryButton}>
-            Save form
-          </button>
-          {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
-        </div>
-      </div>
-    );
-  }
-
   // Open a form in the editor draft — cloned (incl. each field) so editing never aliases the list row.
   // Shared by the whole-row click and the name button so the two can't diverge.
   const openForm = (f: (typeof forms)[number]) => {
@@ -469,6 +144,21 @@ export function FormsManager({ project }: { project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       {dialog}
+      {/* The editor is a MODAL over the list, not a view swap: the list stays visible behind it, and
+          the same component is what a page/skeleton preview opens when a form on the canvas is clicked. */}
+      {draft && (
+        <FormEditorModal
+          project={project}
+          form={draft}
+          enabledModes={enabledModes}
+          captchaReady={captchaReady}
+          onSaved={() => {
+            setSaved(true);
+            void load();
+          }}
+          onClose={() => setDraft(null)}
+        />
+      )}
       {/* Per-project SMTP config. BOTH modes that send with the project's own credentials need it:
           `userSmtp` (the platform mailer sends) and `contactPhpSmtp` (the exported contact.php
           sends). They read the same stored record, and `contactPhpSmtp` is deliberately a separate

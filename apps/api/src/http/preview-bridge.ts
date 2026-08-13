@@ -391,6 +391,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // background, so a background tint would be invisible on the one region it has to mark.
       '[data-sw-imagemap].sw-imap-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,box-shadow .12s}' +
       '[data-sw-imagemap].sw-imap-on:hover{box-shadow:inset 0 0 0 9999px rgba(20,184,166,.12)}' +
+      // An embedded FORM is one editable THING, not a set of editable leaves: its fields come from the
+      // stored definition, so the whole block is marked and a click opens that definition's editor.
+      '[data-sw-form].sw-form-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:3px;border-radius:6px;transition:outline-color .12s,box-shadow .12s}' +
+      '[data-sw-form].sw-form-on:hover{box-shadow:0 0 0 9999px rgba(20,184,166,.06) inset}' +
       // --- Editable-region OVERLAY HUD: the field-name BADGES + the active OUTLINE live in a body-level,
       // position:fixed, max-z layer (built in JS below) — NOT as a host ::before. So they are never
       // clipped by the host's (or an ancestor's) overflow, never covered by host content, immune to host
@@ -1041,6 +1045,21 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     post({ type: 'open-imagemap', id: id });
   }
 
+  // --- Embedded FORMS: click a form on the canvas to edit its DEFINITION (fields, recipient, delivery
+  //     mode) in a modal. The reference attribute is kept in preview and stripped on publish, so the id
+  //     is right there. Capture phase + preventDefault, so clicking a form in the editor never submits
+  //     it or focuses an input instead of opening the editor. ---
+  function onFormClick(e) {
+    if (!editing) return;
+    var el = closestAttr(e.target, 'data-sw-form');
+    if (!el) return;
+    var id = el.getAttribute('data-sw-form') || '';
+    if (!id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post({ type: 'open-form', id: id });
+  }
+
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
 
   // ---- Editable-regions manifest + locate/edit (drives the editor's Regions side-panel) ------------
@@ -1418,6 +1437,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (on && (el.getAttribute('data-sw-imagemap') || '')) el.classList.add('sw-imap-on');
       else el.classList.remove('sw-imap-on');
     });
+    // Forms — same treatment: a hover affordance here, the click on one delegated listener. A form
+    // renders inside chrome slots too, and unlike a translation its definition is NOT slot-scoped
+    // (it is a project entity), so it stays clickable wherever it appears.
+    eachEl('[data-sw-form]', function (el) {
+      if (on && (el.getAttribute('data-sw-form') || '')) el.classList.add('sw-form-on');
+      else el.classList.remove('sw-form-on');
+    });
     // Editor-only control chips — shown + clickable only in content mode.
     eachEl('[data-sw-control]', function (el) {
       if (on) { el.classList.add('sw-control-on'); el.addEventListener('click', onControlClick); }
@@ -1430,6 +1456,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
       document.addEventListener('click', onImageMapClick, true);
+      document.addEventListener('click', onFormClick, true);
       document.addEventListener('click', rzClick, true); // image-resize handle select / dismiss
       document.addEventListener('dblclick', tbImgDblClick, true); // double-click an image → edit dialog
       // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
@@ -1442,6 +1469,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
       document.removeEventListener('click', onImageMapClick, true);
+      document.removeEventListener('click', onFormClick, true);
       document.removeEventListener('click', rzClick, true);
       document.removeEventListener('dblclick', tbImgDblClick, true);
       document.removeEventListener('mousemove', rzMove, true); // clear any in-flight drag listeners

@@ -98,3 +98,36 @@ describe('preview bridge — a chrome slot is edited in the SKELETON editor, not
     expect(PREVIEW_BRIDGE_JS.match(/#main-nav, #sidebar-left, #sidebar-right, #footer, #bottom/g)?.length).toBe(1);
   });
 });
+
+describe('preview bridge — clicking an embedded form opens its definition', () => {
+  it('posts open-form with the referenced id', () => {
+    // `data-sw-form` is kept in preview and stripped on publish, so the id is on the element already.
+    expect(PREVIEW_BRIDGE_JS).toContain("post({ type: 'open-form', id: id })");
+    expect(PREVIEW_BRIDGE_JS).toContain("closestAttr(e.target, 'data-sw-form')");
+  });
+
+  it('cancels the native click so the editor never submits the form it is editing', () => {
+    expect(PREVIEW_BRIDGE_JS).toMatch(/function onFormClick\(e\) \{[\s\S]*?e\.preventDefault\(\);\s*e\.stopPropagation\(\);/);
+    // capture phase, like the entry/imagemap handlers, so it beats a field focusing instead
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('click', onFormClick, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain("document.removeEventListener('click', onFormClick, true)");
+  });
+
+  it('does nothing in source mode, or for a form with no id', () => {
+    expect(PREVIEW_BRIDGE_JS).toMatch(/function onFormClick\(e\) \{\s*if \(!editing\) return;/);
+    expect(PREVIEW_BRIDGE_JS).toMatch(/var id = el\.getAttribute\('data-sw-form'\) \|\| '';\s*if \(!id\) return;/);
+  });
+
+  it('marks a form the way every other actionable region is marked', () => {
+    expect(PREVIEW_BRIDGE_JS).toContain("[data-sw-form].sw-form-on{cursor:pointer");
+    expect(PREVIEW_BRIDGE_JS).toContain("el.classList.add('sw-form-on')");
+  });
+
+  it('stays clickable inside a chrome slot — a form definition is NOT slot-scoped', () => {
+    // Translations and website.data are gated on slot focus because they are shared STRINGS edited in
+    // the skeleton editor. A form is a project ENTITY: the same definition wherever it is embedded, so
+    // the foreign-slot gate must not apply to it.
+    const marking = PREVIEW_BRIDGE_JS.slice(PREVIEW_BRIDGE_JS.indexOf("eachEl('[data-sw-form]'"));
+    expect(marking.slice(0, 220)).not.toContain('inForeignSlot');
+  });
+});

@@ -2,14 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { preview, selectRange, setTranslation, setWebsiteData } = vi.hoisted(() => ({
-  preview: vi.fn(), selectRange: vi.fn(), setTranslation: vi.fn(), setWebsiteData: vi.fn(),
+const { preview, selectRange, setTranslation, setWebsiteData, listForms } = vi.hoisted(() => ({
+  preview: vi.fn(), selectRange: vi.fn(), setTranslation: vi.fn(), setWebsiteData: vi.fn(), listForms: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
     preview: (...args: unknown[]) => preview(...args),
     setTranslation: (...args: unknown[]) => setTranslation(...args),
     setWebsiteData: (...args: unknown[]) => setWebsiteData(...args),
+    listForms: (...args: unknown[]) => listForms(...args),
   },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
@@ -36,6 +37,8 @@ beforeEach(() => {
   setWebsiteData.mockReset();
   setTranslation.mockResolvedValue(undefined);
   setWebsiteData.mockResolvedValue(undefined);
+  listForms.mockReset();
+  listForms.mockResolvedValue({ items: [] });
   preview.mockResolvedValue({ html: '<!doctype html>', token: 'tok-1' });
 });
 
@@ -303,4 +306,36 @@ it('surfaces a failed shared-store write instead of losing it silently', async (
   // These writes auto-save independently of the slot's own Save button, so a failure has no other way
   // to reach the user — without the alert the edit just looks like it stuck.
   await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('offline'), { timeout: 3000 });
+});
+
+describe('SlotEditor — a form embedded in a slot opens its definition', () => {
+  it('looks the form up by the id the preview reported', async () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: { source: 'sitewright-preview', type: 'open-form', id: 'newsletter' },
+        source: iframe.contentWindow,
+      }),
+    );
+    // A form definition is a project entity, so it is fetched rather than read out of the slot source.
+    await waitFor(() => expect(listForms).toHaveBeenCalledWith('p'));
+  });
+
+  it('says so when the referenced form no longer exists, rather than opening an empty editor', async () => {
+    listForms.mockResolvedValue({ items: [] });
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: { source: 'sitewright-preview', type: 'open-form', id: 'gone' },
+        source: iframe.contentWindow,
+      }),
+    );
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('gone'));
+  });
 });

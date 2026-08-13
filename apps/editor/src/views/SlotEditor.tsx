@@ -3,6 +3,8 @@ import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
 import { isTranslationKey, websiteDataPathOf } from '../lib/page-data';
+import { FormEditorModal } from './FormEditorModal';
+import type { Form } from '@sitewright/schema';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -67,6 +69,9 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
   const [previewSrc, setPreviewSrc] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Bumped when something OUTSIDE the slot source changes what it renders (a saved form
+  // definition), so the preview re-POSTs instead of showing the stale embed.
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [saving, setSaving] = useState(false);
   // The source strip peeks on open and expands while hovered or focused — the page editor's gesture,
   // so the preview keeps the room until you actually reach for the code.
@@ -115,7 +120,7 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
       clearTimeout(handle);
       setPreviewLoading(false);
     };
-  }, [project.id, project.slug, slot, source]);
+  }, [project.id, project.slug, slot, source, previewNonce]);
 
   // Push mode changes to a preview that is already loaded.
   useEffect(() => {
@@ -136,6 +141,9 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
   const pendingWdRef = useRef(new Map<string, { key: string; value: string }>());
   const wdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
+  // A form embedded IN a slot (a footer newsletter sign-up, say) — its definition is a project
+  // entity, not slot markup, so it opens the same modal the page editor and Forms tab use.
+  const [formEdit, setFormEdit] = useState<Form | null>(null);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
@@ -213,6 +221,15 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
         });
         if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
         wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
+      } else if (d.type === 'open-form' && typeof d.id === 'string' && d.id !== '') {
+        void api
+          .listForms(project.id)
+          .then(({ items }) => {
+            const found = items.find((f) => f.id === d.id);
+            if (found) setFormEdit(found);
+            else setStoreError(`Form "${d.id}" no longer exists`);
+          })
+          .catch((err: unknown) => setStoreError(err instanceof Error ? err.message : 'failed to load form'));
       } else if (d.type === 'locate-source' && typeof d.tag === 'string' && modeRef.current === 'source') {
         const range =
           findElementRange(sourceRef.current, {
@@ -316,6 +333,14 @@ export function SlotEditor({ project, slot, value, onSave, locales = [], onClose
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Slot preview" iframeRef={iframeRef} />
             {/* A shared-store write is auto-saved and separate from the slot's own Save, so a failure
                 has no other way to surface — without this it would look like the edit stuck. */}
+            {formEdit && (
+              <FormEditorModal
+                project={project}
+                form={formEdit}
+                onSaved={() => setPreviewNonce((n) => n + 1)}
+                onClose={() => setFormEdit(null)}
+              />
+            )}
             {storeError && (
               <div
                 role="alert"

@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **The form editor is a modal, reachable from the page and skeleton editors.** Editing a form meant
+  opening the Forms tab, where selecting one replaced the whole list with an editor whose only exit
+  was a corner "Cancel". A form is embedded IN a page or a chrome slot, so the place an author wants
+  to edit it is where they can see it: **clicking a form on the preview canvas now opens its
+  definition** — fields, recipient, delivery mode — in a modal with explicit **Save** and **Discard**,
+  over whichever editor you were already in. Discard asks only when something was actually changed.
+  The Forms tab opens the same modal over its list instead of swapping the view away.
+
+### Changed
+
 - **A chrome slot's shared strings are now edited in the skeleton editor, and only there.** A slot's
   editable leaves write the SHARED stores — the project translation catalog and `website.data` — so
   the same string is reachable from every page. Editing it from a page read as a page-local change

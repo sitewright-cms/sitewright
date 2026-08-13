@@ -147,7 +147,10 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
       saving={saving}
     >
       {dialog}
-      <div className="flex flex-col gap-5">
+      {/* The Modal shell deliberately supplies NO padding — each modal owns its own, because a
+          full-bleed surface (a preview, a code editor) must be able to reach the panel edge. This one
+          is a form, and its fields were running into all four edges. */}
+      <div className="flex flex-col gap-5 p-5">
       <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
         Name
         <input

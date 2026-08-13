@@ -1036,6 +1036,18 @@ export const api = {
       `/projects/${projectId}/content/settings/settings`,
       bundle,
     ),
+  /**
+   * PATCH a few `website.*` fields, leaving every other setting alone (`?merge=1`, deep-merged server
+   * side). For a caller that owns ONE field and never loaded the rest — the Critical CSS shortcut, say.
+   * `putSettings` REPLACES the whole singleton, so using it from such a caller would silently wipe
+   * whatever it didn't happen to be holding.
+   */
+  patchWebsiteSettings: (projectId: string, patch: Partial<WebsiteSettings>) =>
+    request<{ item: SettingsBundle }>(
+      'PUT',
+      `/projects/${projectId}/content/settings/settings?merge=1`,
+      { website: patch },
+    ),
 
   // --- content revision history (any revisioned kind: page/template/snippet/translation/dataset/entry/form/settings) ---
   listRevisions: (projectId: string, kind: string, id: string, dataset?: string) =>

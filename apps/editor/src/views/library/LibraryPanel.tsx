@@ -116,7 +116,10 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
   const [imapOpen, setImapOpen] = useState(false);
   const [twOpen, setTwOpen] = useState(false);
 
-  useGlobalShortcut(TAILWIND_SHORTCUTS, () => setTwOpen(true), !twOpen);
+  // `overOverlays` because the reference is a REFERENCE: the moment you most want it is while you are
+  // already inside the page editor or a slot editor (both modals) writing the classes it documents.
+  // It opens ABOVE whatever is open and Escape unwinds it first, so nothing behind it is touched.
+  useGlobalShortcut(TAILWIND_SHORTCUTS, () => setTwOpen(true), { enabled: !twOpen, overOverlays: true });
 
   const groups: { label: string; accent: Accent; cards: LibraryCardDef[] }[] = [
     {

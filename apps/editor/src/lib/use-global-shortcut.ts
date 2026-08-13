@@ -1,12 +1,21 @@
 // App-wide keyboard shortcuts.
 //
 // The editor's existing key handling is all LOCAL — a modal closing on Escape, CodeMirror's own
-// undo binding. This is the first shortcut that has to work from anywhere in the app, so it gets a
-// shared hook rather than another bespoke listener.
+// undo binding. These are the shortcuts that have to work from anywhere in the app, so they share a
+// hook rather than each growing a bespoke listener.
 //
-// Two rules it enforces that a hand-rolled listener usually forgets:
-//   · never fire while the user is typing (an input, textarea, contentEditable, or CodeMirror), and
-//   · never fire while an overlay is open, so a shortcut cannot act behind a modal the user is in.
+// Two rules it enforces that a hand-rolled listener usually forgets — both now scoped to the case
+// they were written for, because applied bluntly they silently disabled the shortcuts they guard:
+//
+//   · NEVER STEAL A KEY THE USER IS TYPING. Only a shortcut with no modifier can do that, so the
+//     typing guard applies to those alone. A modified chord (Ctrl+Alt+T) produces no character, and
+//     suppressing it inside an <input> or CodeMirror just meant "the reference doesn't open while the
+//     cursor is in the code editor" — exactly where an author reaches for a reference.
+//
+//   · NEVER ACT BEHIND A MODAL. The danger is a shortcut that mutates or navigates the page the user
+//     can no longer see. A shortcut that OPENS AN OVERLAY OF ITS OWN is the opposite: it stacks on
+//     top, Escape unwinds it first, and the page underneath is untouched. Those opt in with
+//     `overOverlays`, and everything else keeps the blanket suppression.
 import { useEffect } from 'react';
 import { OVERLAY_STACK } from '../views/ui/overlay';
 
@@ -19,12 +28,31 @@ export interface Shortcut {
   shift?: boolean;
 }
 
-/** True while focus is somewhere the user is composing text and a shortcut must not steal the key. */
+/** True while focus is somewhere the user is composing text and a bare-key shortcut must not steal it. */
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target.isContentEditable) return true;
   const tag = target.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+}
+
+/** A chord with Ctrl/⌘, Alt or Shift can't be produced by typing, so it never competes with text. */
+function hasModifier(s: Shortcut): boolean {
+  return !!(s.mod || s.alt || s.shift);
+}
+
+/** Options for {@link useGlobalShortcut}. */
+export interface ShortcutOptions {
+  /**
+   * `false` unregisters entirely rather than no-oping inside the handler, so a disabled shortcut
+   * cannot swallow the key from anything else that wants it. Default `true`.
+   */
+  enabled?: boolean;
+  /**
+   * Fire even while a modal/drawer is open. ONLY for a shortcut whose action is to open an overlay
+   * that stacks ABOVE the current one — never for one that changes the page behind it.
+   */
+  overOverlays?: boolean;
 }
 
 function matches(e: KeyboardEvent, s: Shortcut): boolean {
@@ -35,19 +63,18 @@ function matches(e: KeyboardEvent, s: Shortcut): boolean {
   return true;
 }
 
-/**
- * Fire `onFire` when any of `shortcuts` is pressed.
- *
- * `enabled: false` unregisters entirely rather than no-oping inside the handler, so a disabled
- * shortcut cannot swallow the key from anything else that wants it.
- */
-export function useGlobalShortcut(shortcuts: Shortcut[], onFire: () => void, enabled = true): void {
+/** Fire `onFire` when any of `shortcuts` is pressed. See the header for the two guards. */
+export function useGlobalShortcut(shortcuts: Shortcut[], onFire: () => void, opts: ShortcutOptions = {}): void {
+  const { enabled = true, overOverlays = false } = opts;
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e: KeyboardEvent) => {
-      if (isTypingTarget(e.target)) return;
-      if (OVERLAY_STACK.length > 0) return;
-      if (!shortcuts.some((s) => matches(e, s))) return;
+      if (!overOverlays && OVERLAY_STACK.length > 0) return;
+      // Matched FIRST so the typing guard can be applied per-shortcut: a bare key is suppressed while
+      // composing text, a modified chord is not.
+      const hit = shortcuts.find((s) => matches(e, s));
+      if (!hit) return;
+      if (!hasModifier(hit) && isTypingTarget(e.target)) return;
       e.preventDefault();
       onFire();
     };
@@ -55,7 +82,7 @@ export function useGlobalShortcut(shortcuts: Shortcut[], onFire: () => void, ena
     return () => window.removeEventListener('keydown', onKey);
     // `shortcuts` is a literal array at every call site; depending on its JSON keeps the effect from
     // re-subscribing on every render without asking callers to memoise it.
-  }, [JSON.stringify(shortcuts), onFire, enabled]);
+  }, [JSON.stringify(shortcuts), onFire, enabled, overOverlays]);
 }
 
 /** Render a shortcut the way the current platform writes it (⌥⌘T vs Ctrl+Alt+T). */

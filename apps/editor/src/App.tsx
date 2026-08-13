@@ -8,6 +8,7 @@ import { ForcePasswordChange } from './views/ForcePasswordChange';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
 import { LibraryPanel } from './views/library/LibraryPanel';
+import { CriticalCssShortcut } from './views/settings/CriticalCssShortcut';
 import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { WidgetsPanel } from './views/widgets/WidgetsPanel';
 import { DataPanel } from './views/datasets/DataPanel';
@@ -581,6 +582,10 @@ function MainApp({
       {/* The System Library (global reference: snippets/templates/icons/builders) is project-agnostic,
           so it stays on the left edge even with NO project selected — a reachable reference at all times. */}
       <LibraryPanel projectId={inProject?.id} isInstanceAdmin={isInstanceAdmin} />
+      {/* Critical CSS on Ctrl/⌘+Alt+C. Mounted here rather than in Settings because it is written
+          WHILE looking at the page it is fixing — which is behind the page editor, a modal the
+          settings modal cannot open over. It renders nothing until the chord is pressed. */}
+      <CriticalCssShortcut projectId={inProject?.id} />
       {/* Project-scoped edge side-panels (any project member): File Manager (right), and the bottom
           rails — Datasets (left), the paired Snippets + Widgets (center), Templates (right). They render
           above modals so their tabs stay reachable; each opens on hover/click of its own edge tab. */}

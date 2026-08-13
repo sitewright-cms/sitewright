@@ -20,8 +20,9 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
   await page.getByRole('button', { name: 'New entry' }).click();
   await page.getByLabel('title', { exact: true }).fill('Hello');

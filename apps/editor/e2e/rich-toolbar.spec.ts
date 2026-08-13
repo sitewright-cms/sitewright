@@ -29,9 +29,10 @@ async function openRichTextEntry(page: Page, key: string): Promise<void> {
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('body');
   await page.getByLabel('New field type').selectOption('richtext');
-  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   await page.getByRole('button', { name: 'New entry' }).click();
@@ -183,9 +184,10 @@ test("a brand colour renders the PROJECT's brand, not the editor's default palet
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('body');
   await page.getByLabel('New field type').selectOption('richtext');
-  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
   await page.getByRole('button', { name: 'New entry' }).click();
 

@@ -19,8 +19,9 @@ test('keyed dataset access: set an entry key, then read it directly with {{item.
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
-  await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
 
   // New entry WITH a custom key "web_development".

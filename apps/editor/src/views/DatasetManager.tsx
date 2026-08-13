@@ -775,22 +775,32 @@ export function DatasetManager({ project }: { project: Project }) {
 
             {/* Entries */}
             <div className={`${glassCard} p-4`}>
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <h3 className="shrink-0 text-sm font-bold text-slate-700 dark:text-slate-200">Entries</h3>
+              {/* ONE line: heading left, New entry right, the filter taking the space between them.
+                  NOT flex-wrap — this lives in the narrow Data drawer, where a fixed-width input plus a
+                  heading plus a button do not fit, so wrapping put the filter on a row of its own and
+                  cost a line of the list. `flex-1 min-w-0` lets it give up width instead of wrapping
+                  (min-w-0 is the part that matters: a flex item will not shrink below its intrinsic
+                  content width without it). */}
+              <div className="mb-3 flex items-center gap-2">
+                {/* The match count rides in the HEADING rather than as a third item competing for the
+                    row's width — and only while filtering, when "how many of them" is the question. */}
+                <h3 className="flex shrink-0 items-baseline gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-200">
+                  Entries
+                  {entryQuery.trim() !== '' && (
+                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                      {`${shownEntries.length} of ${datasetEntries.length}`}
+                    </span>
+                  )}
+                </h3>
                 {datasetEntries.length > 0 && (
                   <input
                     type="search"
                     aria-label="Filter entries"
                     placeholder="Filter…"
-                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
+                    className={`${glassInput} min-w-0 flex-1 px-2 py-1 text-xs`}
                     value={entryQuery}
                     onChange={(e) => setEntryQuery(e.target.value)}
                   />
-                )}
-                {entryQuery.trim() !== '' && (
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {shownEntries.length} of {datasetEntries.length}
-                  </span>
                 )}
                 <button
                   type="button"

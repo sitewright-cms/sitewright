@@ -471,25 +471,44 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(out).not.toContain('stroke="currentColor"');
   });
 
-  it('{{sw-flag}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {
-    const rect = renderTemplate('{{sw-flag "de" "h-4 rounded-sm"}}', ctx);
-    expect(rect).toContain('<svg class="h-4 rounded-sm" viewBox="0 0 640 480"');
+  it('{{sw-icon "flag:…"}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {
+    const rect = renderTemplate('{{sw-icon "flag:de" "h-4 rounded-sm"}}', ctx);
+    expect(rect).toContain('<svg class="sw-icon sw-icon-flag-de sw-icon-flag-rect h-4 rounded-sm" viewBox="0 0 640 480"');
     expect(rect).toContain('role="img" aria-label="Germany"');
     expect(rect).toContain('<title>Germany</title>');
     expect(rect).toContain('fill='); // keeps its own colors — NOT currentColor
     expect(rect).not.toContain('currentColor');
+    // A flag NAMES a country, so unlike every other icon it is not aria-hidden.
+    expect(rect).not.toContain('aria-hidden');
 
-    const circle = renderTemplate('{{sw-flag "de-circle"}}', ctx);
+    const circle = renderTemplate('{{sw-icon "flag:de-circle"}}', ctx);
     expect(circle).toContain('viewBox="0 0 512 512"');
+    expect(circle).toContain('sw-icon-flag-de sw-icon-flag-circle h-5 w-5'); // per-SHAPE default size
     expect(circle).toContain('mask id="cde-a"'); // namespaced per country+shape
 
     // Two flags on one page keep distinct ids (no clip/mask collision).
-    const two = renderTemplate('{{sw-flag "de-circle"}}{{sw-flag "fr-circle"}}', ctx);
+    const two = renderTemplate('{{sw-icon "flag:de-circle"}}{{sw-icon "flag:fr-circle"}}', ctx);
     expect([...two.matchAll(/mask id="(c..-a)"/g)].map((m) => m[1])).toEqual(['cde-a', 'cfr-a']);
 
     // Unknown code → nothing; a class with a quote can't break out (escaped).
-    expect(renderTemplate('[{{sw-flag "zz"}}]', ctx)).toBe('[]');
-    expect(renderTemplate('{{sw-flag "de" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
+    expect(renderTemplate('[{{sw-icon "flag:zz"}}]', ctx)).toBe('[]');
+    expect(renderTemplate('{{sw-icon "flag:de" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
+  });
+
+  it('the EUROPEAN UNION flag ships in both shapes, named so it is searchable', () => {
+    const rect = renderTemplate('{{sw-icon "flag:eu"}}', ctx);
+    expect(rect).toContain('sw-icon-flag-eu sw-icon-flag-rect');
+    expect(rect).toContain('aria-label="European Union"');
+    expect(renderTemplate('{{sw-icon "flag:eu-circle"}}', ctx)).toContain('sw-icon-flag-eu sw-icon-flag-circle');
+  });
+
+  it('{{sw-flag}} still renders — the deprecated alias forwards to sw-icon, byte for byte', () => {
+    // Every site built before the consolidation has {{sw-flag}} in its pages, snippets and slots.
+    // Dropping it would blank a language switcher on the next publish, silently — so it forwards.
+    for (const spec of ['de', 'de-circle', 'eu', 'zz']) {
+      expect(renderTemplate(`[{{sw-flag "${spec}"}}]`, ctx)).toBe(renderTemplate(`[{{sw-icon "flag:${spec}"}}]`, ctx));
+    }
+    expect(renderTemplate('{{sw-flag "de" "h-6"}}', ctx)).toBe(renderTemplate('{{sw-icon "flag:de" "h-6"}}', ctx));
   });
 });
 

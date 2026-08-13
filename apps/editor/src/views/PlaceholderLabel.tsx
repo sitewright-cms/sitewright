@@ -25,7 +25,7 @@ function isRich(name: string): boolean {
 
 /**
  * Previews a page/placeholder's MENU label in the Pages list the way it renders in the menu. A plain
- * title renders as text directly; a RICH label (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) shows a
+ * title renders as text directly; a RICH label (basic HTML + `{{sw-icon}}`) shows a
  * readable text fallback synchronously, then swaps in the icon-rendered HTML once the lazy renderer
  * chunk loads — instead of dumping the raw template markup.
  */

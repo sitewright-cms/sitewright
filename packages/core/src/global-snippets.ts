@@ -542,10 +542,13 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     category: 'data',
     description:
       'Translate text with {{sw-translate}} + editable data-sw-translate, plus a flag language switcher over page.translations.',
-    demonstrates: ['sw-translate', 'data-sw-translate', 'sw-flag', '{{#each page.translations}}', 'sw-url'],
+    demonstrates: ['sw-translate', 'data-sw-translate', 'sw-icon "flag:*"', '{{#each page.translations}}', 'sw-url'],
     source: `{{!-- Translatable content. {{sw-translate "key"}} prints from the project translation catalog
   (falls back to default= when the key is empty). data-sw-translate makes the text editable per-locale.
-  Loop page.translations for a switcher to this page's other locales; {{sw-flag}} draws the flag. --}}
+  Loop page.translations for a switcher to this page's other locales; {{sw-icon "flag:de"}} draws a flag.
+  A flag needs a COUNTRY code and a locale is a LANGUAGE code, so map the two in website.data —
+  locale_flags = { "en": "flag:gb", "de": "flag:de" } — prefix stored IN the value, because a template
+  has no string concatenation (a bare "gb" also works). Until the map exists the code simply prints. --}}
 <section class="mx-auto max-w-3xl px-6 py-16 text-center">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="home.headline">Welcome</h2>
   <p class="mt-4 text-base-content/60">{{sw-translate "home.lead" default="This line is resolved from the translation catalog."}}</p>
@@ -553,7 +556,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   {{!-- A language switcher. NOTE: content can't use a <nav> landmark (the skeleton owns those) — use a <div>/<ul>. --}}
   <div class="mt-8 flex flex-wrap items-center justify-center gap-3" aria-label="Languages">
     {{#each page.translations}}
-    <a class="inline-flex items-center gap-2 rounded-full border border-base-200 px-3 py-1.5 text-sm font-semibold" href="{{sw-url path}}">{{sw-flag locale "size-5"}}<span class="uppercase">{{locale}}</span></a>
+    <a class="inline-flex items-center gap-2 rounded-full border border-base-200 px-3 py-1.5 text-sm font-semibold" href="{{sw-url path}}">{{sw-icon (lookup @root.website.data.locale_flags locale) "size-5"}}<span class="uppercase">{{locale}}</span></a>
     {{/each}}
   </div>
   {{/if}}
@@ -596,7 +599,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     category: 'chrome',
     description:
       'The full default site header: data-driven desktop bar with hover dropdowns + a pure-CSS mobile slide-in drawer (accordions, logo, close), an auto language dropdown when the page is translated, and an auto light/dark toggle when themes are on.',
-    demonstrates: ['nav.header', 'nav.mobile', 'sw-active', 'sw-label', 'dropdown-hover', 'peer-checkbox drawer', 'details accordion', 'sw-flag', 'sw-theme-toggle'],
+    demonstrates: ['nav.header', 'nav.mobile', 'sw-active', 'sw-label', 'dropdown-hover', 'peer-checkbox drawer', 'details accordion', 'sw-icon "flag:*"', 'sw-theme-toggle'],
     // Goes in the MAIN NAVIGATION slot (Website settings) — the skeleton wraps it in <nav id="main-nav">.
     // Desktop loops nav.header (pages in the "Main navigation" slot); the mobile DRAWER loops nav.mobile
     // (pages in the "Mobile menu" slot) and falls back to nav.header until you curate a mobile menu. The
@@ -604,7 +607,9 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     // backdrop/panel. "Show child pages in dropdown" (page settings) → a hover dropdown (parent stays a
     // real link) on desktop + a <details> accordion in the drawer. The language dropdown auto-appears when
     // the page has translations; {{sw-theme-toggle}} appears when themes are on. For flags, set
-    // website.data.locale_flags = { "en": "gb", "de": "de", "es": "es" }.
+    // website.data.locale_flags = { "en": "flag:gb", "de": "flag:de", "es": "flag:es" } — a locale is a
+    // LANGUAGE code and a flag wants a COUNTRY, so the map is where the two meet. (A bare "gb" from an
+    // older project still resolves: sw-icon falls back to a 2-letter country code.)
     source: `<div>
   {{!-- DESKTOP bar (>=lg) --}}
   <div class="navbar hidden border-b border-base-200 bg-base-100 px-4 sm:px-8 lg:flex">
@@ -631,8 +636,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <div class="navbar-end gap-2">
       {{#if page.translations}}
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1.5">{{sw-flag (lookup @root.website.data.locale_flags page.locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{page.locale}}</span>{{sw-icon "caret-down" "h-3 w-3 opacity-60"}}</div>
-        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-40 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each page.translations}}<li><a href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a></li>{{/each}}</ul>
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1.5">{{sw-icon (lookup @root.website.data.locale_flags page.locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{page.locale}}</span>{{sw-icon "caret-down" "h-3 w-3 opacity-60"}}</div>
+        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-40 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each page.translations}}<li><a href="{{sw-url path}}" hreflang="{{locale}}">{{sw-icon (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a></li>{{/each}}</ul>
       </div>
       {{/if}}
       {{sw-theme-toggle}}
@@ -666,7 +671,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </ul>
       {{#if page.translations}}
       <div class="border-t border-base-200 p-3">
-        <div class="flex flex-wrap gap-1" aria-label="{{sw-translate "aria_language" default='Language'}}">{{#each page.translations}}<a class="btn btn-ghost btn-sm gap-1.5" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a>{{/each}}</div>
+        <div class="flex flex-wrap gap-1" aria-label="{{sw-translate "aria_language" default='Language'}}">{{#each page.translations}}<a class="btn btn-ghost btn-sm gap-1.5" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-icon (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a>{{/each}}</div>
       </div>
       {{/if}}
     </div>

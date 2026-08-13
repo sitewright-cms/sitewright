@@ -1,4 +1,4 @@
-// Renders a nav-placeholder's rich NAME (basic HTML + {{sw-icon}}/{{sw-flag}}) to SAFE preview HTML
+// Renders a nav-placeholder's rich NAME (basic HTML + {{sw-icon}}, flags included) to SAFE preview HTML
 // for the Pages list — the icon/flag + text, the way it renders in the menu.
 //
 // STATIC named imports (NOT the engine's `renderTemplate`): vite tree-shakes these to just the
@@ -8,7 +8,7 @@
 //
 // We deliberately do NOT call `renderTemplate` here: it pulls htmlparser2 / sanitize-html (Node-only)
 // and breaks in the browser bundle. Instead we render the {{sw-icon}}/{{sw-flag}} tokens directly,
-// mirroring the sw-icon / sw-flag helpers in @sitewright/blocks (template.ts).
+// mirroring the sw-icon helper (and its deprecated sw-flag alias) in @sitewright/blocks (template.ts).
 import { iconBody, brandIcon, flagIcon } from '@sitewright/blocks';
 
 const ICON_RE = /\{\{\s*sw-(icon|flag)\s+"([^"]*)"(?:\s+"([^"]*)")?\s*\}\}/g;
@@ -17,9 +17,11 @@ const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ESC[c]!);
 /** Drop any handlebars helper (incl. `{{{…}}}`) — no stray brace left. */
 const stripMustache = (s: string): string => s.replace(/\{\{\{?[^}]*\}\}\}?/g, ' ');
 
-/** One {{sw-icon}} token → inline SVG, matching the helper (bare = Lucide stroke, `brand:` = fill). */
+/** One {{sw-icon}} token → inline SVG, matching the helper (bare = Lucide stroke, `brand:` = fill,
+ *  `flag:` = a full-colour country flag, which is where flags live now that the helpers are one). */
 function iconSvg(name: string, cls: string): string {
   const klass = esc(cls || 'h-5 w-5');
+  if (name.startsWith('flag:')) return flagSvg(name.slice('flag:'.length), cls);
   if (name.startsWith('brand:')) {
     const b = brandIcon(name.slice('brand:'.length));
     if (!b) return '';
@@ -30,7 +32,8 @@ function iconSvg(name: string, cls: string): string {
   return `<svg class="${klass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 }
 
-/** One {{sw-flag}} token → full-color flag SVG, matching the helper (`-circle` = round variant). */
+/** A flag spec → full-color flag SVG, matching the helper (`-circle` = round variant). Reached from
+ *  `{{sw-icon "flag:de"}}` and from the deprecated `{{sw-flag "de"}}` alias, which render identically. */
 function flagSvg(code: string, cls: string): string {
   const isCircle = code.endsWith('-circle');
   const f = flagIcon(isCircle ? code.slice(0, -'-circle'.length) : code);
@@ -42,7 +45,7 @@ function flagSvg(code: string, cls: string): string {
 
 /**
  * Build SAFE preview HTML from a placeholder name: drop the authored HTML wrapper, render
- * `{{sw-icon}}`/`{{sw-flag}}` tokens to inline SVG from the trusted icon maps, and escape the
+ * `{{sw-icon}}` (and legacy `{{sw-flag}}`) tokens to inline SVG from the trusted icon maps, and escape the
  * remaining text (other mustaches stripped). The only non-escaped HTML is the icon SVG built from
  * first-party data (no reflected user markup), so the result is XSS-safe.
  */

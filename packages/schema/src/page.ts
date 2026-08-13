@@ -160,7 +160,7 @@ const PageFields = z
      * `nav.slots`) and either groups its child pages in a dropdown (`nav.dropdown`) or links somewhere
      * (`link.target`). A link page is routing-transparent: `path:''` (no slug segment, contributes
      * nothing to child routes) with a stub `root`. Its `title` is the menu label (may contain inline
-     * HTML + `{{sw-icon}}`/`{{sw-flag}}` helpers, rendered + sanitized into the nav).
+     * HTML + `{{sw-icon}}` helpers, rendered + sanitized into the nav).
      */
     kind: z.enum(['page', 'link']).optional(),
     /** For a `kind:'link'` placeholder: where the nav item points + whether it opens a new tab. */

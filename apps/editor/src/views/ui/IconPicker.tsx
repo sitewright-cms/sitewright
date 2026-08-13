@@ -1,5 +1,14 @@
 import { useMemo, useState } from 'react';
-import { BRAND_ICON_NAMES, FLAG_CODES, PHOSPHOR_NAMES, PHOSPHOR_WEIGHTS, searchIcons, type PhosphorWeight } from '@sitewright/blocks';
+import {
+  BRAND_ICON_NAMES,
+  FLAG_CIRCLE_SUFFIX,
+  FLAG_CODES,
+  flagIcon,
+  PHOSPHOR_NAMES,
+  PHOSPHOR_WEIGHTS,
+  searchIcons,
+  type PhosphorWeight,
+} from '@sitewright/blocks';
 import { Modal } from './Modal';
 import { fieldLabel, ghostButton, glassInput } from '../../theme';
 import { FLAG_PREFIX, iconSvg } from '../library/imagemap/icon-svg';
@@ -16,6 +25,13 @@ import { FLAG_PREFIX, iconSvg } from '../library/imagemap/icon-svg';
  */
 
 type Tab = 'icons' | 'brands' | 'flags';
+
+/** The two cuts a flag comes in — the flags tab's answer to the Phosphor weight switcher. */
+type FlagShape = 'rect' | 'circle';
+const FLAG_SHAPE_TABS: [FlagShape, string][] = [
+  ['rect', 'Rectangular'],
+  ['circle', 'Round'],
+];
 
 /** How many results a tab shows at once. Enough to browse, few enough to stay responsive. */
 const PAGE = 120;
@@ -70,6 +86,9 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
   const [tab, setTab] = useState<Tab>(value.startsWith('brand:') ? 'brands' : value.startsWith(FLAG_PREFIX) ? 'flags' : 'icons');
   const [query, setQuery] = useState('');
   const [weight, setWeight] = useState<PhosphorWeight>(currentWeight(value));
+  // Shape is to a flag what weight is to a Phosphor glyph — the same artwork, cut differently — so it
+  // gets the same control, and re-opening the picker lands on the shape the value already uses.
+  const [flagShape, setFlagShape] = useState<FlagShape>(value.endsWith(FLAG_CIRCLE_SUFFIX) ? 'circle' : 'rect');
 
   const names = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -78,7 +97,12 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
       return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
     }
     if (tab === 'flags') {
-      const all = FLAG_CODES.map((code: string) => `${FLAG_PREFIX}${code}`);
+      // The ROUND set is a subset — five flags have no circular variant — so filter to the ones that
+      // actually exist in the chosen shape rather than offering a tile that renders nothing.
+      const suffix = flagShape === 'circle' ? FLAG_CIRCLE_SUFFIX : '';
+      const all = FLAG_CODES.filter((code: string) => flagShape === 'rect' || flagIcon(code)?.circle).map(
+        (code: string) => `${FLAG_PREFIX}${code}${suffix}`,
+      );
       return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
     }
     // Phosphor: the platform's own scored search when there's a query (it understands synonyms —
@@ -88,20 +112,25 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
       .filter((n: string) => !n.startsWith('brand:'))
       .slice(0, PAGE)
       .map((n) => (weight === 'regular' ? n : `${n}:${weight}`));
-  }, [tab, query, weight]);
+  }, [tab, query, weight, flagShape]);
 
-  const tabBtn = (id: Tab, label: string) => (
+  // The segmented pill: one look for the SET switcher (icons/brands/flags) and the flag SHAPE switcher,
+  // so a second row of choices reads as another facet of the same picker, not a new kind of control.
+  const pill = (active: boolean, label: string, onClick: () => void, key: string, role?: 'radio') => (
     <button
-      key={id}
+      key={key}
       type="button"
-      onClick={() => setTab(id)}
+      role={role}
+      aria-checked={role === 'radio' ? active : undefined}
+      onClick={onClick}
       className={`rounded-lg px-3 py-1 text-xs ${
-        tab === id ? 'bg-white font-bold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+        active ? 'bg-white font-bold text-slate-900 shadow-sm dark:bg-slate-900 dark:text-slate-100' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
       }`}
     >
       {label}
     </button>
   );
+  const tabBtn = (id: Tab, label: string) => pill(tab === id, label, () => setTab(id), id);
 
   return (
     <Modal title="Choose an icon" onClose={onClose} size="2xl">
@@ -127,6 +156,11 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
                 </option>
               ))}
             </select>
+          )}
+          {tab === 'flags' && (
+            <div role="radiogroup" aria-label="Flag shape" className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+              {FLAG_SHAPE_TABS.map(([id, label]) => pill(flagShape === id, label, () => setFlagShape(id), id, 'radio'))}
+            </div>
           )}
         </div>
 
@@ -164,7 +198,14 @@ function currentWeight(name: string): PhosphorWeight {
 
 /** `brand:github` → `github`, `map-pin:fill` → `map-pin` — the prefix/weight is already shown above. */
 function shortLabel(name: string): string {
-  const withoutPrefix = name.replace(/^(brand|flag):/, '');
+  // The `-circle` strip is scoped to FLAGS on purpose: Phosphor ships `check-circle`, `x-circle`,
+  // `plus-circle` … and at the `regular` weight those arrive here with no `:weight` suffix, so a blanket
+  // strip would label them "check", "x", "plus" — three different icons collapsed onto one name.
+  if (name.startsWith(FLAG_PREFIX)) {
+    const code = name.slice(FLAG_PREFIX.length);
+    return code.endsWith(FLAG_CIRCLE_SUFFIX) ? code.slice(0, -FLAG_CIRCLE_SUFFIX.length) : code;
+  }
+  const withoutPrefix = name.replace(/^brand:/, '');
   const colon = withoutPrefix.lastIndexOf(':');
   return colon > 0 ? withoutPrefix.slice(0, colon) : withoutPrefix;
 }

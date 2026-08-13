@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { registeredSwHelpers } from '@sitewright/blocks';
+import { SW_HELPERS } from '@sitewright/schema';
 import { REFERENCE_GROUPS } from '../src/views/library/reference';
 
 // The Template reference's HELPER docs are pinned to the engine's actually-registered sw-* helpers,
@@ -26,9 +27,19 @@ describe('Template reference stays in sync with the engine’s helpers', () => {
     expect(registered.length).toBeGreaterThan(5);
   });
 
-  it('documents every registered sw-* helper', () => {
+  it('documents every registered sw-* helper (except the deprecated ones)', () => {
+    // A DEPRECATED helper gets no entry of its own on purpose: an entry is a thing to copy, and the
+    // point of deprecating it is that nobody should copy it. It is mentioned in its REPLACEMENT's note
+    // instead — enough for someone who meets the old spelling in existing code to look it up, without
+    // offering it as a current option. The exemption is sourced from SW_HELPERS (the canonical registry)
+    // rather than an allowlist here, so it can't be used to quietly drop a live helper from the docs.
+    const deprecated = new Set(SW_HELPERS.filter((h) => h.deprecated).map((h) => h.name));
     const documented = documentedSwHelperInvocations();
     for (const h of registered) {
+      if (deprecated.has(h)) {
+        expect(documented, `${h} is DEPRECATED — it must NOT have a reference entry of its own`).not.toContain(h);
+        continue;
+      }
       expect(documented, `${h} is registered but not documented in the Template reference`).toContain(h);
     }
   });

@@ -24,9 +24,15 @@ describe('REFERENCE_GROUPS', () => {
       expect(all.some((e) => e.syntax.includes(directive)), directive).toBe(true);
     }
     // The content helpers are sw-prefixed (kept clear of the dataset field namespace).
-    for (const helper of ['sw-url', 'sw-date', 'sw-icon', 'sw-flag', 'sw-truncate']) {
+    for (const helper of ['sw-url', 'sw-date', 'sw-icon', 'sw-truncate']) {
       expect(all.some((e) => e.syntax.includes(helper)), helper).toBe(true);
     }
+    // …and flags are no longer a helper of their own: sw-icon documents the `flag:` prefix, and the
+    // deprecated {{sw-flag}} spelling survives only as a note, never as an entry someone would copy.
+    expect(all.some((e) => e.syntax.includes('sw-flag'))).toBe(false);
+    const icon = all.find((e) => e.id === 'h-icon');
+    expect(icon?.description).toContain('flag:');
+    expect(icon?.example).toContain('{{sw-icon "flag:de" "h-4 rounded-sm"}}');
     // eachEntry was merged into #each — the loop entry documents dataset click-to-edit.
     expect(all.some((e) => e.syntax.includes('eachEntry'))).toBe(false);
     const eachEntry = all.find((e) => e.id === 'b-each');

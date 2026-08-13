@@ -59,8 +59,16 @@ function extract(svg, prefix, where) {
   return { viewBox: vb[1], body: body.replace(/>\s+</g, '><').replace(/\s{2,}/g, ' ').trim() };
 }
 
-// Non-ISO organisation flags to include anyway (rectangle-only — no circular variant exists).
-const EXTRA_ORGS = new Set(['asean', 'cefta', 'eac', 'arab', 'pc']);
+// Non-ISO organisation flags to include anyway. Most are rectangle-only, but this set only decides
+// MEMBERSHIP — the loop below picks up a circular variant whenever circle-flags ships one, which for
+// `eu` it does. The EU flag is the one an ordinary site actually reaches for (a cookie/GDPR notice, a
+// "ships within the EU" badge, an EU-funding strip), and leaving it out meant pasting foreign SVG.
+const EXTRA_ORGS = new Set(['eu', 'asean', 'cefta', 'eac', 'arab', 'pc']);
+
+// Names upstream spells differently from what someone searching the library would type. flag-icons
+// calls `eu` "Europe", but the artwork is the EUROPEAN UNION's flag and that is what an author looks
+// for — and the name is also the <title>/aria-label the helper emits, so it has to be the accurate one.
+const NAME_OVERRIDES = { eu: 'European Union' };
 
 const entries = [];
 let missingCircle = 0;
@@ -75,7 +83,7 @@ for (const c of countries) {
   let circle = null;
   if (existsSync(circPath)) circle = extract(readFileSync(circPath, 'utf8'), `c${code}`, `circle-flags/${code}`);
   else missingCircle += 1;
-  entries.push({ code, name: c.name, rect, circle });
+  entries.push({ code, name: NAME_OVERRIDES[code] ?? c.name, rect, circle });
 }
 entries.sort((a, b) => a.code.localeCompare(b.code));
 

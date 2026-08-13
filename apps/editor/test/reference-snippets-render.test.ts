@@ -119,14 +119,25 @@ describe('reference cookbook — primitives sampler render', () => {
   it('i18n: resolves the catalog (sw-translate + data-sw-translate) and the flag switcher', () => {
     const t = { 'home.headline': 'Hallo', 'home.lead': 'Aus dem Katalog' };
     const html = renderTemplate(src('i18n'), {
-      website: { t }, // data-sw-translate + {{sw-translate}} both read website.t
+      website: { t, data: { locale_flags: { de: 'flag:de', fr: 'flag:fr' } } },
       page: { translations: [ { locale: 'de', path: '/de' }, { locale: 'fr', path: '/fr' } ] },
     });
     expect(html).toContain('Hallo'); // data-sw-translate replaced the default heading
     expect(html).toContain('Aus dem Katalog'); // {{sw-translate}}
     expect(html).toContain('href="/de"');
     expect(html).toContain('href="/fr"');
-    expect(html).toContain('<svg'); // {{sw-flag}} rendered
+    expect(html).toContain('<svg'); // the flag rendered via {{sw-icon (lookup … locale)}}
+    expect(html).toContain('sw-icon-flag-de');
+
+    // A locale with NO entry in the map degrades to the bare locale code — never a broken glyph.
+    const partial = renderTemplate(src('i18n'), {
+      website: { t, data: { locale_flags: { de: 'flag:de' } } },
+      page: { translations: [ { locale: 'de', path: '/de' }, { locale: 'fr', path: '/fr' } ] },
+    });
+    expect(partial).toContain('sw-icon-flag-de');
+    expect(partial).not.toContain('sw-icon-flag-fr');
+    expect(partial).toContain('href="/fr"'); // the switcher link still renders, labelled by its locale
+    expect(partial).toContain('>fr</span>');
 
     const noTr = renderTemplate(src('i18n'), {});
     expect(noTr).not.toContain('aria-label="Languages"'); // switcher hidden without page.translations
@@ -332,7 +343,10 @@ describe('reference cookbook — navigation recipes render', () => {
     const on = renderTemplate(src('nav-header'), navCtx());
     expect(on).toContain('hreflang="de"'); // the language switcher
     expect(on).toContain('hreflang="es"');
-    expect(on).toContain('<svg'); // {{sw-flag}} rendered (locale_flags maps en→gb etc.)
+    // locale_flags here holds BARE country codes — the pre-consolidation spelling every existing
+    // project stored. sw-icon must still resolve those, or moving flags into it would blank the
+    // language switcher of every multilingual site on its next publish.
+    expect(on).toContain('sw-icon-flag-de');
     expect(on).toContain('data-sw-theme-toggle'); // {{sw-theme-toggle}} present (themes on)
 
     const off = renderTemplate(src('nav-header'), navCtx({ page: { path: '/', locale: 'en' }, website: { enableThemes: false } }));

@@ -4,20 +4,53 @@
 //
 // "name" is a PHOSPHOR icon; an optional ":weight" suffix picks the weight (thin|light|regular|bold|fill|
 // duotone), DEFAULT fill — `gear` is a filled gear, `gear:bold` a bold one. `brand:<slug>` is a
-// simple-icons filled logo. RESOLUTION per name: Phosphor(name) → Lucide-name→Phosphor alias → Lucide
+// simple-icons filled logo, and `flag:<cc>` a FULL-COLOR country flag (`flag:<cc>-circle` = the round
+// variant). RESOLUTION per name: Phosphor(name) → Lucide-name→Phosphor alias → Lucide
 // OUTLINE fallback — so a familiar/agent-written Lucide name still renders (its Phosphor twin where mapped,
 // else a Lucide outline), never an invisible 0×0 gap. The emitted <svg> carries size-less class HOOKS
 // `sw-icon sw-icon-<name> sw-icon-<weight>` (weight is `lucide` for a fallback) for styling; authored + CSS
 // sizing still wins. Bodies come ONLY from the trusted build-time icon maps, never tenant markup; the name
-// + class are attribute-escaped. viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback.
+// + class are attribute-escaped. viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback, and the
+// flag set's own for a flag.
 import { iconBody } from './icons.js';
 import { phosphorBody, isPhosphorName, PHOSPHOR_WEIGHTS, type PhosphorWeight } from './phosphor-icons.js';
 import { aliasToPhosphor } from './icon-aliases.js';
 import { brandIcon } from './brand-icons.js';
-import { escapeAttr } from './escape.js';
+import { flagIcon } from './flag-icons.js';
+import { escapeAttr, escapeHtml } from './escape.js';
 
 const svgTag = (hooks: string, authorCls: string, attrs: string, body: string): string =>
   `<svg class="${escapeAttr(`sw-icon ${hooks} ${authorCls}`.trim())}" ${attrs} aria-hidden="true">${body}</svg>`;
+
+/** The `flag:` prefix that selects a country flag inside an {@link renderIconSvg} name. */
+export const FLAG_PREFIX = 'flag:';
+/** The suffix on a flag code that selects the ROUND variant (`flag:de-circle`). */
+export const FLAG_CIRCLE_SUFFIX = '-circle';
+
+/**
+ * Render `flag:<cc>` / `flag:<cc>-circle` — a full-colour country flag.
+ *
+ * Flags are the one set that does NOT draw in `currentColor`: they carry their own fills (a flag
+ * recoloured to the text colour is a blob), so they are also the one set that is not `aria-hidden`.
+ * A flag says something — the country — so it gets `role="img"` + an `aria-label`/`<title>` naming it.
+ *
+ * The two shapes have DIFFERENT natural sizes, so an omitted class defaults per shape: `h-4` for the
+ * 4:3 rectangle (width follows the aspect ratio) and `h-5 w-5` for the square circle. Passing `''`
+ * still hands sizing to CSS, exactly as it does for every other icon.
+ */
+function flagSvg(spec: string, cls?: string): string {
+  const circle = spec.endsWith(FLAG_CIRCLE_SUFFIX);
+  const code = (circle ? spec.slice(0, -FLAG_CIRCLE_SUFFIX.length) : spec).toLowerCase();
+  const flag = flagIcon(code);
+  const shape = flag && (circle ? flag.circle : flag.rect);
+  if (!flag || !shape) return '';
+  const authorCls = typeof cls === 'string' ? cls : circle ? 'h-5 w-5' : 'h-4';
+  const hooks = `sw-icon-flag-${code} sw-icon-flag-${circle ? 'circle' : 'rect'}`;
+  return (
+    `<svg class="${escapeAttr(`sw-icon ${hooks} ${authorCls}`.trim())}" viewBox="${escapeAttr(shape.viewBox)}" ` +
+    `role="img" aria-label="${escapeAttr(flag.name)}"><title>${escapeHtml(flag.name)}</title>${shape.body}</svg>`
+  );
+}
 
 function lucideSvg(name: string, authorCls: string): string | undefined {
   const body = iconBody(name);
@@ -39,11 +72,16 @@ function phosphorSvg(name: string, weight: PhosphorWeight, authorCls: string): s
 
 /**
  * Render an icon to an inline `<svg>` string (empty string when the name resolves to nothing). `cls` is the
- * CSS class list added after the name/weight hooks; omit it (or pass undefined) to default to `h-5 w-5`,
- * pass `''` to let base CSS own the size.
+ * CSS class list added after the name/weight hooks; omit it (or pass undefined) to default to `h-5 w-5`
+ * (a flag defaults per shape — see {@link flagSvg}), pass `''` to let base CSS own the size.
  */
 export function renderIconSvg(name: string, cls?: string): string {
   if (typeof name !== 'string') return '';
+
+  // flag:<cc> — a full-colour country flag. Checked BEFORE the author-class default is resolved,
+  // because the two flag shapes have their own defaults and `h-5 w-5` would squash the 4:3 rectangle.
+  if (name.startsWith(FLAG_PREFIX)) return flagSvg(name.slice(FLAG_PREFIX.length), cls);
+
   const authorCls = typeof cls === 'string' ? cls : 'h-5 w-5';
 
   // brand:<slug> — a simple-icons filled logo; where simple-icons lacks the slug (e.g. linkedin, removed at
@@ -63,5 +101,21 @@ export function renderIconSvg(name: string, cls?: string): string {
     weight = name.slice(colon + 1) as PhosphorWeight;
     base = name.slice(0, colon);
   }
-  return phosphorSvg(base, weight, authorCls) ?? lucideSvg(base, authorCls) ?? '';
+  return phosphorSvg(base, weight, authorCls) ?? lucideSvg(base, authorCls) ?? bareFlagSvg(name, cls) ?? '';
+}
+
+/**
+ * LAST-RESORT: a bare ISO 3166-1 alpha-2 code (`gb`, `de`, `gb-circle`) as a flag.
+ *
+ * Only reached when Phosphor AND Lucide both have nothing for the name, so it can never shadow an
+ * icon — it can only turn a render that was already empty into the flag the author meant. That is
+ * what makes it safe, and it is what a DYNAMIC flag needs: a template cannot concatenate strings, so
+ * `{{sw-icon (lookup website.data.locale_flags locale)}}` over the documented `{ en: "gb" }` map has
+ * no way to add the `flag:` prefix. Sites that stored those maps before flags moved into sw-icon keep
+ * rendering, with no data migration. Two letters exactly, so `mail`/`gear`/`x` can't drift in here.
+ */
+function bareFlagSvg(name: string, cls?: string): string | undefined {
+  const code = name.endsWith(FLAG_CIRCLE_SUFFIX) ? name.slice(0, -FLAG_CIRCLE_SUFFIX.length) : name;
+  if (!/^[a-zA-Z]{2}$/.test(code) || !flagIcon(code)) return undefined;
+  return flagSvg(name, cls) || undefined;
 }

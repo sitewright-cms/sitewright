@@ -178,4 +178,28 @@ describe('LibraryPanel', () => {
     fireEvent.click(gh);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "brand:github" "h-6 w-6"}}');
   }, 20000);
+
+  it('Flags tab: the shape pills re-cut the set and the copied snippet, EU included', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+    render(<LibraryPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
+    fireEvent.click(screen.getByRole('button', { name: /Icons & flags/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Icons & flags' }, { timeout: 15000 });
+    fireEvent.click(within(dialog).getByRole('tab', { name: 'Flags' }));
+
+    // Rectangular is the default shape; the EU flag is one of the set (it used to be missing entirely).
+    const shapes = await within(dialog).findByRole('radiogroup', { name: 'Flag shape' }, { timeout: 15000 });
+    expect(within(shapes).getByRole('radio', { name: /Rectangular/ })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.change(within(dialog).getByLabelText('Search Country flags'), { target: { value: 'european union' } });
+    // Matched on the TITLE (which carries the snippet), not the accessible name: both shapes of a flag
+    // are called "European Union", so a name-only query would happily return the tile from before the
+    // switch and the assertion below would pass without the pill having done anything.
+    fireEvent.click(await within(dialog).findByTitle(/flag:eu"/, {}, { timeout: 15000 }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "flag:eu" "h-4"}}');
+
+    // Switching to Round re-cuts the SAME flag — the snippet must follow the pill, not stay rectangular.
+    fireEvent.click(within(shapes).getByRole('radio', { name: /Round/ }));
+    fireEvent.click(await within(dialog).findByTitle(/flag:eu-circle"/, {}, { timeout: 15000 }));
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('{{sw-icon "flag:eu-circle" "h-5 w-5"}}');
+  }, 20000);
 });

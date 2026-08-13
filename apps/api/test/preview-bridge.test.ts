@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
 import { PREVIEW_BRIDGE_JS } from '../src/http/preview-bridge.js';
 
 /**
@@ -255,5 +257,78 @@ describe('preview bridge — moving between chrome slots, and modals that live i
 
   it(':popover-open is probed defensively — an older engine must not break the offer', () => {
     expect(PREVIEW_BRIDGE_JS).toMatch(/try \{ if \(el\.matches\(':popover-open'\)\) return el; \} catch \(err\)/);
+  });
+});
+
+describe('preview bridge — the injected string is real JavaScript', () => {
+  /**
+   * ★ THE BRIDGE IS ONE BIG TEMPLATE LITERAL, so a stray BACKTICK inside it — most easily a `code
+   * span` written into a comment — terminates the string early. TypeScript then reports a cascade of
+   * TS1005/TS1443 errors hundreds of lines away from the cause, and when the file happens to stay
+   * parseable the damage is silent: the browser receives truncated JS and the whole editor preview
+   * goes inert with no error anyone connects to a comment.
+   *
+   * This caught it three times in one day, so it stops being a thing anyone has to remember.
+   */
+  it('parses, so no comment can have terminated the template literal', () => {
+    expect(() => new Script(PREVIEW_BRIDGE_JS)).not.toThrow();
+    expect(PREVIEW_BRIDGE_JS.trimEnd().endsWith('})();')).toBe(true); // the whole IIFE, not a prefix
+  });
+
+  it('has no UNESCAPED backtick inside the literal — checked in the SOURCE, where escaping is visible', () => {
+    // Read the .ts, not the exported string: by the time the literal is evaluated a legitimate \` and a
+    // string-terminating ` are the same character, so only the source can tell them apart.
+    const src = readFileSync(new URL('../src/http/preview-bridge.ts', import.meta.url), 'utf8');
+    const lines = src.split('\n');
+    const open = lines.findIndex((l) => l.includes('PREVIEW_BRIDGE_JS = `'));
+    const close = lines.findIndex((l) => l.trim() === '})();`;');
+    expect(open, 'the literal delimiters moved — update this guard').toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(open);
+    const offenders = lines
+      .slice(open + 1, close)
+      .map((line, i) => ({ line: open + 2 + i, text: line }))
+      .filter(({ text }) => /(^|[^\\])`/.test(text));
+    expect(offenders.map((o) => `${o.line}: ${o.text.trim().slice(0, 80)}`)).toEqual([]);
+  });
+});
+
+describe('preview bridge — markers TRACK an animating element', () => {
+  /**
+   * ★ A TRANSFORM CHANGES NO LAYOUT SIZE, so a ResizeObserver never fires for one — and transform is
+   * what nearly every animation here animates (scroll-reveal, parallax, a carousel, a marquee, a hover
+   * lift). The markers were therefore not merely late on animated elements: they did not update AT ALL
+   * until the next scroll or resize.
+   */
+  it('starts a tracking loop from the events a transform actually fires', () => {
+    // transitionRUN, not transitionEND: by the time a transition ends the marker has already been
+    // wrong for its entire duration.
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('animationstart', trackMotion, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('transitionrun', trackMotion, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('transitionstart', trackMotion, true)");
+    // …and unregisters them, and cancels the loop, when content mode goes off.
+    expect(PREVIEW_BRIDGE_JS).toContain("document.removeEventListener('animationstart', trackMotion, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain('if (motionRaf) { cancelAnimationFrame(motionRaf); motionRaf = 0; }');
+  });
+
+  it('settles on REST, not on a timer', () => {
+    // paintRest reports whether anything MOVED; the loop stops after N still frames with no running
+    // animation. A timer would either cut an animation off or burn frames after it ended.
+    expect(PREVIEW_BRIDGE_JS).toContain('MOTION_SETTLE_FRAMES');
+    expect(PREVIEW_BRIDGE_JS).toMatch(/if \(moved \|\| pageIsAnimating\(\)\) motionStill = 0;\s*else motionStill\+\+;/);
+    expect(PREVIEW_BRIDGE_JS).toMatch(/if \(motionStill >= MOTION_SETTLE_FRAMES\)/);
+    expect(PREVIEW_BRIDGE_JS).toContain("anims[i].playState === 'running'");
+  });
+
+  it('does not chase an INFINITE animation at full frame rate forever', () => {
+    // A marquee never settles. Keep tracking, but drop to a coarse interval rather than burning a
+    // frame callback for the life of the tab.
+    expect(PREVIEW_BRIDGE_JS).toContain('MOTION_FULL_RATE_MS');
+    expect(PREVIEW_BRIDGE_JS).toMatch(/now - motionSince > MOTION_FULL_RATE_MS/);
+  });
+
+  it('observes the marked ELEMENTS, not only <body>', () => {
+    // A region that changes size while the document does not — an accordion opening, a textarea
+    // growing — is invisible to a body-level observer.
+    expect(PREVIEW_BRIDGE_JS).toMatch(/for \(var ri = 0; ri < restList\.length; ri\+\+\) \{ try \{ restRO\.observe\(restList\[ri\]\.el\); \}/);
   });
 });

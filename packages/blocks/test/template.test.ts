@@ -502,13 +502,32 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-icon "flag:eu-circle"}}', ctx)).toContain('sw-icon-flag-eu sw-icon-flag-circle');
   });
 
-  it('{{sw-flag}} still renders — the deprecated alias forwards to sw-icon, byte for byte', () => {
-    // Every site built before the consolidation has {{sw-flag}} in its pages, snippets and slots.
-    // Dropping it would blank a language switcher on the next publish, silently — so it forwards.
+  it('{{sw-flag}} is the helper you WRITE — including for a DYNAMIC code', () => {
+    // The reason it cannot be folded away: a template has no string concatenation, so a per-locale
+    // switcher over a stored { en: "gb" } map has no way to produce the "flag:" prefixed name that
+    // sw-icon would need. This is the language-switcher idiom every multilingual site uses.
+    const out = renderTemplate(
+      '{{#each page.translations}}{{sw-flag (lookup @root.website.data.locale_flags locale) "h-4"}}{{/each}}',
+      { page: { translations: [{ locale: 'de' }, { locale: 'en' }] }, website: { data: { locale_flags: { de: 'de', en: 'gb' } } } },
+    );
+    expect(out).toContain('sw-icon-flag-de');
+    expect(out).toContain('sw-icon-flag-gb');
+    // …and it is the SAME renderer as the icon-name spelling, so the two can never drift.
     for (const spec of ['de', 'de-circle', 'eu', 'zz']) {
       expect(renderTemplate(`[{{sw-flag "${spec}"}}]`, ctx)).toBe(renderTemplate(`[{{sw-icon "flag:${spec}"}}]`, ctx));
     }
-    expect(renderTemplate('{{sw-flag "de" "h-6"}}', ctx)).toBe(renderTemplate('{{sw-icon "flag:de" "h-6"}}', ctx));
+  });
+
+  it('a BARE country code is NOT an icon — {{sw-icon "id"}} renders nothing', () => {
+    // ★ A fallback once resolved a bare 2-letter code to a flag, so `{{sw-icon "id"}}` drew the
+    // Indonesian flag: 249 of 251 codes turned an EMPTY render into a WRONG one, across names an
+    // author plausibly types meaning an icon (id, me, in, no, so, to, is, it, be, do…). An empty
+    // render is the clearer failure, and with sw-flag first-class nothing needs the fallback.
+    for (const bare of ['id', 'me', 'in', 'no', 'so', 'gb', 'de']) {
+      expect(renderTemplate(`[{{sw-icon "${bare}"}}]`, ctx), bare).toBe('[]');
+    }
+    // …while a real icon that happens to be two letters is unaffected.
+    expect(renderTemplate('{{sw-icon "tv"}}', ctx)).toContain('sw-icon-tv');
   });
 });
 

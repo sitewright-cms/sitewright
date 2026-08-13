@@ -390,7 +390,7 @@ export const SCROLLSPY_ITEMS: LibraryItem[] = [
 export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'icons', label: 'Icons', blurb: 'The full Phosphor icon set — filled by default. Pick a weight (thin…duotone) with the row above; insert with {{sw-icon "name"}} (add ":weight" for another weight).', items: [], lazy: 'icons' },
   { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{sw-icon "brand:slug"}}.', items: [], lazy: 'brand' },
-  { category: 'flags', label: 'Country flags', blurb: 'Full-color country flags — the EU included. Pick a shape with the row above; insert with {{sw-icon "flag:de"}} (rectangular) or {{sw-icon "flag:de-circle"}} (round).', items: [], lazy: 'flags' },
+  { category: 'flags', label: 'Country flags', blurb: 'Full-color country flags — the EU included. Pick a shape with the row above; insert with {{sw-flag "de"}} (rectangular) or {{sw-flag "de-circle"}} (round).', items: [], lazy: 'flags' },
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'animation', label: 'Animation (Entrance + Scroll-Reveal)', blurb: 'Animate elements as they scroll into view via data-sw-animation.', items: ANIMATION_ITEMS },
   { category: 'parallax', label: 'Parallax (scroll-linked)', blurb: 'Depth, fade, scale & blur tied to scroll via data-sw-parallax* — or compose one in the builder above.', items: PARALLAX_ITEMS },

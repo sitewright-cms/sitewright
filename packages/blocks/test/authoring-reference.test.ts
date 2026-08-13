@@ -30,19 +30,18 @@ describe('SW_HELPERS ↔ the registered sw-* helpers', () => {
     }
   });
 
-  it('a DEPRECATED helper still renders and still names its replacement', () => {
-    // A deprecated helper is documented, not deleted: the set is pinned to what the engine registers,
-    // so removing the entry while the engine still answers to the name would make the registry lie.
-    // What it must never do is sit there unlabelled, where an agent reads it as current advice.
-    const deprecated = SW_HELPERS.filter((h) => h.deprecated);
-    expect(deprecated.map((h) => h.name)).toEqual(['sw-flag']);
-    for (const h of deprecated) {
-      expect(h.summary, h.name).toMatch(/DEPRECATED/);
-      expect(h.deprecated, h.name).toContain('sw-icon');
-      expect(registeredSwHelpers(), h.name).toContain(h.name); // still registered → still renders
+  it('{{sw-flag "de"}} and {{sw-icon "flag:de"}} are ONE renderer, both first-class', () => {
+    // Two spellings for one thing, on purpose and permanently — not a deprecation. sw-flag is what you
+    // WRITE (and the only form that takes a dynamic code, since a template cannot join strings);
+    // `flag:<cc>` is how a flag is spelled as an icon NAME, which is what a picker stores. They must
+    // never drift, so this pins them to the same output rather than to two remembered rule sets.
+    for (const spec of ['de', 'de-circle', 'eu', 'zz']) {
+      expect(renderTemplate(`[{{sw-flag "${spec}"}}]`, {})).toBe(renderTemplate(`[{{sw-icon "flag:${spec}"}}]`, {}));
     }
-    // …and it renders the SAME thing as its replacement, which is the whole basis for deprecating it.
-    expect(renderTemplate('{{sw-flag "de"}}', {})).toBe(renderTemplate('{{sw-icon "flag:de"}}', {}));
+    expect(renderTemplate('{{sw-flag "de" "h-6"}}', {})).toBe(renderTemplate('{{sw-icon "flag:de" "h-6"}}', {}));
+    // Both are registered, so both stay in the reference (the drift test above enforces that).
+    expect(registeredSwHelpers()).toContain('sw-flag');
+    expect(registeredSwHelpers()).toContain('sw-icon');
   });
 
   it('no bare content helper ships undocumented: our additions are sw-* or an allowlisted logic helper', () => {

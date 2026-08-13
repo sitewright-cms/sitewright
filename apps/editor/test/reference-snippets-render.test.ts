@@ -119,25 +119,17 @@ describe('reference cookbook — primitives sampler render', () => {
   it('i18n: resolves the catalog (sw-translate + data-sw-translate) and the flag switcher', () => {
     const t = { 'home.headline': 'Hallo', 'home.lead': 'Aus dem Katalog' };
     const html = renderTemplate(src('i18n'), {
-      website: { t, data: { locale_flags: { de: 'flag:de', fr: 'flag:fr' } } },
+      website: { t }, // data-sw-translate + {{sw-translate}} both read website.t
       page: { translations: [ { locale: 'de', path: '/de' }, { locale: 'fr', path: '/fr' } ] },
     });
     expect(html).toContain('Hallo'); // data-sw-translate replaced the default heading
     expect(html).toContain('Aus dem Katalog'); // {{sw-translate}}
     expect(html).toContain('href="/de"');
     expect(html).toContain('href="/fr"');
-    expect(html).toContain('<svg'); // the flag rendered via {{sw-icon (lookup … locale)}}
+    // The switcher passes the LOCALE straight to {{sw-flag}} — which works where a locale happens to
+    // be a country code (de, fr) and is exactly why the docs tell you to map locale→country instead.
     expect(html).toContain('sw-icon-flag-de');
-
-    // A locale with NO entry in the map degrades to the bare locale code — never a broken glyph.
-    const partial = renderTemplate(src('i18n'), {
-      website: { t, data: { locale_flags: { de: 'flag:de' } } },
-      page: { translations: [ { locale: 'de', path: '/de' }, { locale: 'fr', path: '/fr' } ] },
-    });
-    expect(partial).toContain('sw-icon-flag-de');
-    expect(partial).not.toContain('sw-icon-flag-fr');
-    expect(partial).toContain('href="/fr"'); // the switcher link still renders, labelled by its locale
-    expect(partial).toContain('>fr</span>');
+    expect(html).toContain('sw-icon-flag-fr');
 
     const noTr = renderTemplate(src('i18n'), {});
     expect(noTr).not.toContain('aria-label="Languages"'); // switcher hidden without page.translations

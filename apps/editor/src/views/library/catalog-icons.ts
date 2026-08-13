@@ -60,7 +60,7 @@ export function flagItems(shape: FlagShapeKey): LibraryItem[] {
         name: f.name,
         keywords: `flag country nation ${code} ${f.name}`,
         description: `${f.name} (${code.toUpperCase()}) — ${def.label.toLowerCase()}.`,
-        example: `{{sw-icon "flag:${code}${def.suffix}" "${def.cls}"}}`,
+        example: `{{sw-flag "${code}${def.suffix}" "${def.cls}"}}`,
         svg: flagSvg(art.viewBox, art.body, shape === 'circle' ? 'h-6 w-6' : 'h-6'),
       },
     ];

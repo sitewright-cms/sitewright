@@ -221,10 +221,10 @@ function mapForeignIcons(nodes: AnyNode[], ctx: TransformCtx, diags: ImportDiagn
     let target = '';
     if (el.name === 'i' || el.name === 'span') {
       if (el.children.some(isTag)) continue; // a wrapper holding real elements is not a bare icon carrier
-      const flag = mapFlagClass(cls); // a country flag rides the `flag:` prefix (its own default size)
+      const flag = mapFlagClass(cls); // a country flag uses the {{sw-flag}} helper (its own default size)
       if (flag) {
         target = `flag:${flag.flag}`;
-        mustache = `{{sw-icon "flag:${flag.flag}" "${preserveIconSizeClasses(cls, 'h-4')}"}}`;
+        mustache = `{{sw-flag "${flag.flag}" "${preserveIconSizeClasses(cls, 'h-4')}"}}`;
         label = iconSourceLabel(cls);
       } else {
         let mapping: IconMapping | null;

@@ -194,12 +194,12 @@ describe('LibraryPanel', () => {
     // Matched on the TITLE (which carries the snippet), not the accessible name: both shapes of a flag
     // are called "European Union", so a name-only query would happily return the tile from before the
     // switch and the assertion below would pass without the pill having done anything.
-    fireEvent.click(await within(dialog).findByTitle(/flag:eu"/, {}, { timeout: 15000 }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "flag:eu" "h-4"}}');
+    fireEvent.click(await within(dialog).findByTitle(/"eu"/, {}, { timeout: 15000 }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-flag "eu" "h-4"}}');
 
     // Switching to Round re-cuts the SAME flag — the snippet must follow the pill, not stay rectangular.
     fireEvent.click(within(shapes).getByRole('radio', { name: /Round/ }));
-    fireEvent.click(await within(dialog).findByTitle(/flag:eu-circle"/, {}, { timeout: 15000 }));
-    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('{{sw-icon "flag:eu-circle" "h-5 w-5"}}');
+    fireEvent.click(await within(dialog).findByTitle(/"eu-circle"/, {}, { timeout: 15000 }));
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('{{sw-flag "eu-circle" "h-5 w-5"}}');
   }, 20000);
 });

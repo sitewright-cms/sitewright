@@ -258,7 +258,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'multilingual (i18n)',
     keywords: 'language switcher locale translation multilingual flag hreflang i18n alternates',
     description:
-      'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages (a flag takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root. Store the map with the icon prefix already on it, since there is no string concatenation in a template: website.data.locale_flags = { en: "flag:gb", de: "flag:de" } then {{sw-icon (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>_<locale>" UNDERSCORE suffix that auto-resolves on a page in that locale ({{#each dataset.services}} on a "de" page reads "services_de" when it exists, else "services") — see the {{#each}} helper.',
+      'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages ({{sw-flag}} takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root: website.data.locale_flags = { en: "gb", de: "de" } then {{sw-flag (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>_<locale>" UNDERSCORE suffix that auto-resolves on a page in that locale ({{#each dataset.services}} on a "de" page reads "services_de" when it exists, else "services") — see the {{#each}} helper.',
     example:
       '<html lang="{{page.locale}}">\n' +
       '\n' +
@@ -266,7 +266,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
       '  <nav aria-label="Language">\n' +
       '    {{#each page.translations}}\n' +
       '      <a href="{{sw-url path}}" hreflang="{{locale}}">\n' +
-      '        {{sw-icon (lookup @root.website.data.locale_flags locale) "h-4 rounded-sm"}} {{locale}}\n' +
+      '        {{sw-flag (lookup @root.website.data.locale_flags locale) "h-4 rounded-sm"}} {{locale}}\n' +
       '      </a>\n' +
       '    {{/each}}\n' +
       '  </nav>\n' +
@@ -408,7 +408,7 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
     example:
       '{{#each page.translations}}\n' +
       '  {{! `locale` is the loop item; @root reaches website.data: }}\n' +
-      '  {{sw-icon (lookup @root.website.data.locale_flags locale)}}\n' +
+      '  {{sw-flag (lookup @root.website.data.locale_flags locale)}}\n' +
       '{{/each}}',
   },
   {
@@ -440,14 +440,6 @@ export interface SwHelper {
   syntax: string;
   /** One-line summary of what it does. */
   summary: string;
-  /**
-   * Set when the helper still RENDERS but should not be written any more — the value names what to
-   * write instead. A deprecated helper stays in this list rather than vanishing from it, for two
-   * reasons: the set is drift-pinned to what the engine actually registers (dropping the entry while
-   * keeping the registration would make the registry lie), and an agent reading a site built before
-   * the change needs to recognise the spelling it finds there.
-   */
-  deprecated?: string;
 }
 
 /** The complete set of registered `{{sw-*}}` helpers (alphabetical). Concise by design — the deep
@@ -460,7 +452,7 @@ export const SW_HELPERS: readonly SwHelper[] = [
   { name: 'sw-consent-settings', syntax: '{{sw-consent-settings [label=] [class=]}}', summary: 'A button that RE-OPENS the consent preferences (e.g. a footer “Cookie settings” link; a plain <a href="#sw-consent"> works too). The banner itself auto-appears when website.consent.enabled — no placeholder needed. Label localizes via the reserved consent_settings key.' },
   { name: 'sw-control', syntax: '{{sw-control "path" as="type" [options/min/max/…]}}', summary: 'Content-editor-only inline CONTROL chip (text/number/color/date/select/…) bound to page.data.* or website.data.*. Renders the plain value on the published site.' },
   { name: 'sw-date', syntax: '{{sw-date value [format]}}', summary: 'Formats a date as UTC YYYY-MM-DD, or "iso" (full ISO) / "YYYY" (year only). A value of "now" (or a bare {{sw-date}}) uses the current date — {{sw-date "now" "YYYY"}} renders the current year. Empty for an unparseable value.' },
-  { name: 'sw-flag', syntax: '{{sw-flag "code" ["classes"]}}', summary: 'DEPRECATED alias of {{sw-icon "flag:<code>"}} — renders identically (it forwards), kept so sites written before flags moved into sw-icon keep working. Write {{sw-icon "flag:de"}} / {{sw-icon "flag:de-circle"}} in new code.', deprecated: '{{sw-icon "flag:<code>"}}' },
+  { name: 'sw-flag', syntax: '{{sw-flag "code" ["classes"]}}', summary: 'Inlines a FULL-COLOR country-flag SVG by ISO 3166-1 alpha-2 code (plus "eu"); "code-circle" for the round variant. The country name is its accessible label. This is also the ONLY way to render a DYNAMIC flag — a template cannot concatenate strings, so a per-locale switcher is {{sw-flag (lookup @root.website.data.locale_flags locale)}} over a { en: "gb" } map. Flags are a poor proxy for languages — map locale→country first. ({{sw-icon "flag:de"}} renders the same artwork; that spelling is what an icon NAME takes, e.g. a dataset `icon` field.)' },
   { name: 'sw-folder', syntax: '{{#sw-folder "name"}}…{{/sw-folder}}', summary: 'Block helper that loops the images of a media FOLDER (galleries); the block context is each image (url/alt/width/height).' },
   { name: 'sw-form', syntax: '{{sw-form "id"}}', summary: 'Embeds a configured web FORM by id (locale-suffix aware). Never hand-wire the endpoint; submissions land in the inbox.' },
   { name: 'sw-imagemap', syntax: '{{sw-imagemap "id" [class=]}}', summary: 'Embeds a stored INTERACTIVE IMAGE MAP by id: an image or SVG with clickable/hoverable hotspots, rich tooltips, multiple artboards (floors/layers), zoom and a searchable object list. Renders the component wrapper, a no-JS fallback <img>, and the map config as a JSON data block. Drive it from elsewhere on the page with the data-sw-imap-* attributes.' },
@@ -468,7 +460,7 @@ export const SW_HELPERS: readonly SwHelper[] = [
   // NOTE: this used to say a bare name was a "Lucide line glyph" — it is not, and the icons guide,
   // search_icons and the import guide all said Phosphor. An agent following the contradiction picked the
   // wrong WEIGHT every time (the default is FILL, not a line glyph).
-  { name: 'sw-icon', syntax: '{{sw-icon "name[:weight]" ["classes"]}}', summary: 'Inlines an SVG icon — ONE helper for every built-in set. A BARE name is a PHOSPHOR glyph, FILLED by default; ":weight" picks thin|light|regular|bold|fill|duotone (e.g. "check:thin"). A Lucide name still works (it maps to its Phosphor twin, else renders as a Lucide outline). "brand:slug" is a themed brand/social logo (e.g. "brand:whatsapp"). "x" ≠ "brand:x". "flag:cc" is a FULL-COLOR country flag by ISO 3166-1 alpha-2 code (plus "flag:eu"), "flag:cc-circle" the round variant — a flag keeps its own colours and is a poor proxy for a LANGUAGE, so map locale→country first. (The old {{sw-flag "de"}} helper still renders but is DEPRECATED — write {{sw-icon "flag:de"}}.) Find names with search_icons.' },
+  { name: 'sw-icon', syntax: '{{sw-icon "name[:weight]" ["classes"]}}', summary: 'Inlines an SVG icon — ONE helper for every built-in set. A BARE name is a PHOSPHOR glyph, FILLED by default; ":weight" picks thin|light|regular|bold|fill|duotone (e.g. "check:thin"). A Lucide name still works (it maps to its Phosphor twin, else renders as a Lucide outline). "brand:slug" is a themed brand/social logo (e.g. "brand:whatsapp"). "x" ≠ "brand:x". "flag:cc" / "flag:cc-circle" is a country flag (plus "flag:eu") — the spelling a flag takes as an icon NAME, which is what a picker stores (a dataset `icon` field, an image-map hotspot); to write one by hand in a template use {{sw-flag "de"}}, same artwork. Find names with search_icons (it matches country NAMES too — "germany" → flag:de).' },
   { name: 'sw-image', syntax: '{{sw-image url [alt=] [sizes=] [class=] [loading=eager] [format=avif] [lightbox=true] [caption=]}}', summary: 'Responsive image for a PROJECT image (a delivery /media url, or a {{#sw-folder}}/dataset item url): emits an <img> with a WebP srcset, intrinsic width/height (no CLS), a blur-up LQIP, and loading=lazy. format=avif emits a <picture> with an AVIF tier. The server serves each size on demand; publish materializes only the referenced files. lightbox=true wraps the result in the <a href><img> pair a Lightbox gallery item needs — the anchor on the largest variant, the img keeping its own srcset; pair it with sizes= describing the tile width, or every thumbnail fetches the largest rung.' },
   { name: 'sw-json', syntax: '{{sw-json value}}', summary: 'Pretty-prints any value as indented JSON — for INSPECTING/DEBUGGING data (e.g. <pre>{{sw-json page.data}}</pre>). HTML-escaped like every binding, so NOT valid inside a <script type="application/ld+json"> block; use it to read, not to emit machine-parsed JSON. Empty for a missing/non-serializable value; length-capped.' },
   { name: 'sw-label', syntax: '{{sw-label}}', summary: 'Renders the current nav item\'s (possibly rich, {{sw-icon}}-bearing) label inside {{#each nav.*}}.' },

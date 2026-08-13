@@ -123,23 +123,39 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'h-icon',
         syntax: '{{sw-icon "name[:weight]" ["classes"]}}',
         name: 'sw-icon',
-        keywords: 'svg phosphor lucide glyph icon brand logo social whatsapp github weight thin bold duotone flag country nation locale region de us gb eu circle',
+        keywords: 'svg phosphor lucide glyph icon brand logo social whatsapp github weight thin bold duotone flag',
         description:
-          'Inlines a built-in icon as an SVG — ONE helper for every set the platform ships. A BARE name is a PHOSPHOR glyph, FILLED by default — add ":weight" to pick thin, light, regular, bold, fill or duotone (e.g. "check:thin"). Browse names in the Library → Icons gallery (click one to copy its snippet). A familiar Lucide name still works: it renders its Phosphor twin where one is mapped, else a Lucide outline. A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. A "flag:cc" name is a FULL-COLOR country flag by ISO 3166-1 alpha-2 code (plus "flag:eu" for the European Union) — rectangular 4:3, or add "-circle" for the round variant ("flag:de-circle"); a flag keeps its own colors (it is the one set that does NOT take the text color) and the country name becomes its accessible label. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
+          'Inlines a built-in icon as an SVG. A BARE name is a PHOSPHOR glyph, FILLED by default — add ":weight" to pick thin, light, regular, bold, fill or duotone (e.g. "check:thin"). Browse names in the Library → Icons gallery (click one to copy its snippet). A familiar Lucide name still works: it renders its Phosphor twin where one is mapped, else a Lucide outline. A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. A "flag:cc" name is a country flag — the spelling a flag takes as an icon NAME, which is what a PICKER stores (a dataset "icon" field, an image-map hotspot); to write a flag by hand use {{sw-flag "de"}}, which renders the same artwork. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
         args: [
-          { name: 'name', desc: 'A Phosphor name with an optional weight (e.g. "arrow-right", "check:thin"), "brand:slug" for a brand logo (e.g. "brand:x"), or "flag:cc" / "flag:cc-circle" for a country flag (e.g. "flag:de", "flag:eu-circle").' },
-          { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5"; a flag defaults to "h-4" rectangular, "h-5 w-5" round).' },
+          { name: 'name', desc: 'A Phosphor name with an optional weight (e.g. "arrow-right", "check:thin"), "brand:slug" for a brand logo (e.g. "brand:x"), or "flag:cc" / "flag:cc-circle" for a country flag.' },
+          { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
         example:
           '{{sw-icon "arrow-right" "h-4 w-4"}}\n' +
           '{{sw-icon "brand:whatsapp"}}\n' +
-          '{{sw-icon "flag:de" "h-4 rounded-sm"}}\n' +
-          '{{sw-icon "flag:jp-circle"}}\n' +
           '\n' +
           '{{#each company.social}}\n' +
           '  {{sw-icon icon}}\n' +
           '{{/each}}',
-        note: 'Flags used to have their own {{sw-flag "de"}} helper. It still renders (every site built with it keeps working) but it is DEPRECATED — write {{sw-icon "flag:de"}}. Building a language switcher? See the “multilingual (i18n)” entry — map each locale to a COUNTRY code first (a flag wants a country, so en→gb, pt-BR→br, uk→ua), don’t pass the locale straight in.',
+      },
+      {
+        id: 'h-flag',
+        syntax: '{{sw-flag "code" ["classes"]}}',
+        name: 'sw-flag',
+        keywords: 'flag country nation language locale region svg de us gb eu circle',
+        description:
+          'Inlines a FULL-COLOR country flag as an SVG (its own colors — unlike sw-icon it is NOT themeable, which is why it is a separate helper). The argument is an ISO 3166-1 alpha-2 country code, plus "eu" for the European Union: a bare code is the rectangular 4:3 flag; a "code-circle" suffix is the round variant (e.g. "de-circle"). Browse them in the Library → Country flags gallery, searchable by country name. The country name becomes the accessible label. This is also the only way to render a DYNAMIC flag — a template cannot join strings, so a per-locale switcher looks up a bare code from a map. Tip: flags are a poor proxy for LANGUAGES (Spanish ≠ Spain) — prefer them for country/region selectors, and pass an explicit country code per locale in a language switcher.',
+        args: [
+          { name: 'code', desc: 'An ISO alpha-2 country code ("de", "us", "gb", "eu"), or "code-circle" for the round flag.' },
+          { name: 'classes', desc: 'Optional Tailwind classes (default "h-4"; circular default "h-5 w-5").' },
+        ],
+        example:
+          '{{sw-flag "de" "h-4 rounded-sm"}}\n' +
+          '{{sw-flag "jp-circle"}}\n' +
+          '\n' +
+          '{{! a dynamic flag — the map holds bare COUNTRY codes }}\n' +
+          '{{sw-flag (lookup @root.website.data.locale_flags locale)}}',
+        note: 'Building a language switcher? See the “multilingual (i18n)” entry — map each locale to a COUNTRY code first ({{sw-flag}} wants a country, so en→gb, pt-BR→br, uk→ua), don’t pass the locale straight in. ({{sw-icon "flag:de"}} renders the same flag — that spelling is for a picked icon NAME, e.g. a dataset “icon” field.)',
       },
       {
         id: 'h-truncate',
@@ -445,7 +461,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '    <li><a href="{{sw-url path}}">{{sw-label}}</a></li>\n' +
           '  {{/each}}\n' +
           '</ul>',
-        note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
+        note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-flag, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
       },
       {
         id: 'b-if',

@@ -376,7 +376,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
               <span className="flex items-center gap-1.5">
                 {isLink ? 'Name (menu label)' : 'Title'}
-                {isLink && <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-icon "flag:de"}}.'} />}
+                {isLink && <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}}.'} />}
               </span>
               <input
                 aria-label={isLink ? 'Placeholder name' : 'Page title'}

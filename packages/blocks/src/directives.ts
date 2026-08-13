@@ -160,6 +160,76 @@ function resolveUrlOverride(ctx: DirectiveContext, key: string): string | undefi
 }
 
 /**
+ * Remove the declarations of a `style` attribute whose PROPERTY matches `drop`, keeping the rest.
+ *
+ * Splits on `;` only at nesting depth 0 and outside quotes — because a `background-image:url('data:
+ * image/webp;base64,…')` contains a semicolon INSIDE its url(), and a naive `split(';')` cuts the data
+ * URI in half and leaves `style="base64,…')"` behind. Same reason the property is matched against the
+ * text BEFORE the first colon rather than with a `[^;]*` regex.
+ */
+function dropDeclarations(style: string, drop: RegExp): string {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  const push = (decl: string): void => {
+    const trimmed = decl.trim();
+    if (trimmed === '') return;
+    const colon = trimmed.indexOf(':');
+    if (colon > 0 && drop.test(trimmed.slice(0, colon).trim())) return;
+    out.push(trimmed);
+  };
+  for (let i = 0; i < style.length; i++) {
+    const ch = style[i]!;
+    if (quote) {
+      if (ch === quote) quote = '';
+    } else if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && depth === 0) {
+      push(style.slice(start, i));
+      start = i + 1;
+    }
+  }
+  push(style.slice(start));
+  return out.join('; ');
+}
+
+/**
+ * After a `data-sw-src` override replaces an image's `src`, remove the OLD image's competing art.
+ *
+ * `{{sw-image}}` (and any hand-written responsive image) emits `srcset` + `sizes` alongside `src`, and a
+ * blur-up LQIP as an inline `background-image`; `format=avif` wraps the whole thing in a `<picture>` with
+ * its own `<source srcset>`. A browser picks a candidate from `srcset` — or from a matching `<source>` —
+ * in PREFERENCE to `src`. So swapping only `src` left every one of those pointing at the previous file
+ * and the picture never changed: clicking an editable {{sw-image}} in the editor, choosing a new photo,
+ * and watching nothing happen. The override is authoritative, so everything describing the old file goes.
+ *
+ * Dropping the srcset costs the overridden image its responsive rungs (the browser fetches the one URL
+ * that was chosen). That is the right trade: a correctly-sized picture of the WRONG image is not an
+ * optimization. Rebuilding the rungs is not possible here — the `w` descriptors come from the original
+ * asset's intrinsic width, which is not knowable for the replacement at this layer.
+ */
+function dropStaleResponsiveArt(el: Element): void {
+  delete el.attribs.srcset;
+  delete el.attribs.sizes;
+  // The LQIP is painted BEHIND the image; left alone it flashes the old photo under the new one.
+  const style = el.attribs.style;
+  if (typeof style === 'string' && /background-image\s*:/i.test(style)) {
+    const rest = dropDeclarations(style, /^background-(image|size|repeat)$/i);
+    if (rest) el.attribs.style = rest;
+    else delete el.attribs.style;
+  }
+  // <picture><source srcset>…<img data-sw-src> — a matching <source> outranks the <img> entirely.
+  const parent = el.parent;
+  if (parent && 'name' in parent && (parent as Element).name === 'picture') {
+    for (const child of [...(parent as Element).children]) {
+      if ('name' in child && (child as Element).name === 'source') removeElement(child);
+    }
+  }
+}
+
+/**
  * The translated STRING for a `data-sw-translate` key, read from the pre-resolved per-locale `t` map
  * (own-property + proto-guarded). Undefined → no translation (keep the element's authored fallback text);
  * an empty cell is already omitted from `t`, so a present-but-empty value never blanks the element.
@@ -245,6 +315,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       if (value !== undefined && value !== '') {
         const target = Object.prototype.hasOwnProperty.call(el.attribs, 'data-src') ? 'data-src' : 'src';
         el.attribs[target] = safeUrl(value, '');
+        dropStaleResponsiveArt(el);
       }
     }
     const bgKey = el.attribs[BG_ATTR];
@@ -264,8 +335,11 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
         } else {
           const css = cssUrlEscape(safe);
           if (css) {
-            const existing = (el.attribs.style ?? '').replace(/background-image\s*:[^;]*;?/gi, '').trim();
-            const prefix = existing ? existing.replace(/;?$/, '; ') : '';
+            // Drop only the PREVIOUS background-image, keeping every other authored declaration. Parsed
+            // declaration-wise rather than with `[^;]*`, which would cut an existing data-URI background
+            // at the `;` inside its base64 payload and leave the tail behind as garbage CSS.
+            const existing = dropDeclarations(el.attribs.style ?? '', /^background-image$/i);
+            const prefix = existing ? `${existing}; ` : '';
             el.attribs.style = `${prefix}background-image:url('${css}')`;
           }
         }

@@ -454,6 +454,31 @@ const STORAGE_BOUND_EMBED_HOSTS: ReadonlyArray<{ match: RegExp; label: string }>
   { match: /^player\.vimeo\.com$/i, label: 'Vimeo' },
 ];
 
+/**
+ * Drop the LOADING-PLACEHOLDER classes when copying an embed's class list onto a static stand-in.
+ *
+ * The platform's media rule puts `loading="lazy"` + a `.skeleton` shimmer on iframes, so a lazy embed's
+ * class list usually carries `skeleton` and/or `loading`. Copying those verbatim onto the placeholder
+ * breaks it in two ways, and neither is subtle:
+ *
+ *   · `.skeleton` is an ANIMATED SHIMMER with its own background-color. On a real embed it is covered
+ *     the moment the content paints; on the placeholder nothing ever paints over it, so the card sits
+ *     under a pulsing grey wash forever.
+ *   · `.loading` is worse. base-css neutralises daisyUI's spinner ONLY for media —
+ *     `:is(iframe, img, video, embed, object).loading` — and the placeholder is a DIV, so it gets the
+ *     raw component instead: a 1.5rem box with `aspect-ratio:1` and a mask. The card collapses to a
+ *     small square with its contents masked away, which reads as "the preview is broken".
+ *
+ * The `loading-*` modifiers go with it: they only mean anything alongside `loading`, and leaving them
+ * behind is litter that a future daisyUI could give independent meaning.
+ */
+function dropLoadingPlaceholderClasses(cls: string): string {
+  return cls
+    .split(/\s+/)
+    .filter((c) => c !== '' && c !== 'skeleton' && c !== 'loading' && !c.startsWith('loading-'))
+    .join(' ');
+}
+
 /** The watch URL a visitor should be sent to for an embed URL (`/embed/<id>` → a real watch page). */
 function watchUrlFor(src: string): string {
   const m = /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\/([A-Za-z0-9_-]{5,20})/i.exec(src);
@@ -488,7 +513,9 @@ export function replacePreviewStorageEmbeds(html: string): string {
     // NOT `&`, which is already encoded — re-escaping would double-encode it.
     const esc = (v: string): string => v.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const title = esc(/\btitle="([^"]*)"/i.exec(tag)?.[1] || `${hit.label} video`);
-    const cls = esc(/\bclass="([^"]*)"/i.exec(tag)?.[1] || '');
+    // The loading-placeholder classes are stripped BEFORE escaping — this is a static stand-in, not a
+    // thing that will finish loading (see dropLoadingPlaceholderClasses).
+    const cls = esc(dropLoadingPlaceholderClasses(/\bclass="([^"]*)"/i.exec(tag)?.[1] || ''));
     const style = esc(/\bstyle="([^"]*)"/i.exec(tag)?.[1] || '');
     // The watch URL is usually rebuilt from an id we matched ourselves — but watchUrlFor FALLS BACK to
     // the author's own src for a host we recognise on a path we don't, so it is not inherently clean.

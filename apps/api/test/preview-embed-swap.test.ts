@@ -17,6 +17,33 @@ describe('replacePreviewStorageEmbeds', () => {
     expect(out).toContain('Our film');
   });
 
+  it('★ drops the LOADING-PLACEHOLDER classes — the stand-in never finishes loading', () => {
+    // The platform puts loading="lazy" + a .skeleton shimmer on iframes, so a lazy embed arrives here
+    // carrying them. Copied onto the placeholder they do not decorate it, they break it:
+    //   · .skeleton is an animated shimmer with its own background — on a real embed the content paints
+    //     over it, on the placeholder nothing ever does, so the card sits under a pulsing grey wash.
+    //   · .loading is worse: base-css neutralises daisyUI's spinner only for MEDIA
+    //     (:is(iframe,img,video,embed,object).loading) and the placeholder is a DIV, so it gets the raw
+    //     component — 1.5rem, aspect-ratio:1, masked — and the card collapses to a small square.
+    const out = replacePreviewStorageEmbeds(
+      iframe('class="skeleton loading loading-spinner loading-lg aspect-video w-full rounded-xl" src="https://www.youtube.com/embed/ayFX9ocE_hE"'),
+    );
+    // The author's LAYOUT classes survive — dropping those would stop the preview representing the page.
+    expect(out).toContain('class="aspect-video w-full rounded-xl"');
+    for (const gone of ['skeleton', 'loading', 'loading-spinner', 'loading-lg']) {
+      expect(out.match(new RegExp(`class="[^"]*\\b${gone}\\b`)), gone).toBeNull();
+    }
+    // …and the placeholder itself is still there.
+    expect(out).toContain('Watch on YouTube');
+  });
+
+  it('emits no class attribute at all when nothing survives the strip', () => {
+    const out = replacePreviewStorageEmbeds(iframe('class="skeleton loading" src="https://www.youtube.com/embed/ayFX9ocE_hE"'));
+    expect(out).not.toContain('class=""'); // an empty attribute, not just an empty value
+    expect(out).not.toContain('class=');
+    expect(out).toContain('Watch on YouTube');
+  });
+
   it('finds the URL in data-src — the platform lazy-loads third-party embeds', () => {
     // The real defect: every authored embed carries data-src (no src at all), so a src-only
     // matcher silently swapped nothing and the blank frame stayed blank.

@@ -7,8 +7,8 @@ interface Canned {
   body?: string;
 }
 
-function fakeFetch(handler: (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Canned) {
-  const calls: Array<{ input: string; init?: { method?: string; headers?: Record<string, string>; body?: string } }> = [];
+function fakeFetch(handler: (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array }) => Canned) {
+  const calls: Array<{ input: string; init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array } }> = [];
   const impl: FetchLike = async (input, init) => {
     calls.push({ input, init });
     const r = handler(input, init);
@@ -70,7 +70,7 @@ describe('SitewrightClient', () => {
     expect(put.input).toBe('https://cms.test/projects/p1/content/page/home');
     expect(put.init?.method).toBe('PUT');
     expect(put.init?.headers?.['content-type']).toBe('application/json');
-    expect(JSON.parse(put.init!.body!)).toEqual(page);
+    expect(JSON.parse(String(put.init!.body))).toEqual(page);
   });
 
   it('appends ?merge=1 only when merge is requested', async () => {
@@ -114,7 +114,7 @@ describe('SitewrightClient', () => {
     const post = calls[1]!;
     expect(post.input).toBe('https://cms.test/projects/p1/locales');
     expect(post.init?.method).toBe('POST');
-    expect(JSON.parse(post.init!.body!)).toEqual({ locale: 'de' });
+    expect(JSON.parse(String(post.init!.body))).toEqual({ locale: 'de' });
   });
 
   it('removeLocale DELETEs /locales/:locale', async () => {
@@ -276,7 +276,7 @@ describe('SitewrightClient', () => {
     // query is URL-encoded
     expect(paths[2]).toBe('GET /projects/p1/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
     expect(paths[3]).toBe('POST /projects/p1/stock/import');
-    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
+    expect(JSON.parse(String(calls[3]!.init!.body))).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
   });
 
   it('falls back to statusText when the error body is not JSON', async () => {
@@ -327,9 +327,9 @@ describe('SitewrightClient', () => {
     expect(await client.importImageUrl('https://x.test/a.jpg')).toEqual(asset);
     expect(calls[1]!.input).toBe('https://cms.test/projects/p1/media/import-url');
     expect(calls[1]!.init?.method).toBe('POST');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test/a.jpg' });
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ url: 'https://x.test/a.jpg' });
     await client.importImageUrl('https://x.test/b.jpg', 'team');
-    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test/b.jpg', folder: 'team' });
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ url: 'https://x.test/b.jpg', folder: 'team' });
   });
 
   it('lists, creates and renames media folders on the /media/folders routes', async () => {
@@ -340,10 +340,10 @@ describe('SitewrightClient', () => {
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/media/folders');
     await client.createMediaFolder('About/Gallery');
     expect(`${calls[2]!.init?.method} ${calls[2]!.input}`).toBe('POST https://cms.test/projects/p1/media/folders');
-    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ path: 'About/Gallery' });
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ path: 'About/Gallery' });
     await client.renameMediaFolder('About', 'Company');
     expect(calls[3]!.input).toBe('https://cms.test/projects/p1/media/folders/rename');
-    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ from: 'About', to: 'Company' });
+    expect(JSON.parse(String(calls[3]!.init!.body))).toEqual({ from: 'About', to: 'Company' });
   });
 
   it('updateMedia PATCHes /media/:id and unwraps the saved item', async () => {
@@ -353,7 +353,7 @@ describe('SitewrightClient', () => {
     );
     expect(await client.updateMedia('m1', { folder: 'Main', filename: 'logo.svg' })).toEqual(asset);
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('PATCH https://cms.test/projects/p1/media/m1');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ folder: 'Main', filename: 'logo.svg' });
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ folder: 'Main', filename: 'logo.svg' });
   });
 
   it('deleteMedia DELETEs /media/:id', async () => {
@@ -370,7 +370,7 @@ describe('SitewrightClient', () => {
     );
     await client.renameDataset('ds1', 'features');
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('POST https://cms.test/projects/p1/datasets/ds1/rename');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ slug: 'features', cascade: true });
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ slug: 'features', cascade: true });
   });
 
   it('compareToSource GETs /compare/:id (encoded) with optional viewports', async () => {
@@ -450,7 +450,7 @@ describe('SitewrightClient — optional-argument branches', () => {
   it('omits alt from the stock-import body when no alt is given', async () => {
     const { client, calls } = await introspected(ok);
     await client.importStock('openverse', 'ov1');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1' }); // no alt key
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ provider: 'openverse', id: 'ov1' }); // no alt key
   });
 
   it('includes foundation / inferDatasets in the import-website body only when passed', async () => {
@@ -458,11 +458,11 @@ describe('SitewrightClient — optional-argument branches', () => {
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{}' },
     );
     await client.importWebsite('https://x.test');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test' }); // no keys — server defaults apply
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ url: 'https://x.test' }); // no keys — server defaults apply
     await client.importWebsite('https://x.test', { foundation: true });
-    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true });
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ url: 'https://x.test', foundation: true });
     await client.importWebsite('https://x.test', { foundation: true, inferDatasets: true, renderMode: 'always' });
-    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ url: 'https://x.test', foundation: true, inferDatasets: true, renderMode: 'always' });
+    expect(JSON.parse(String(calls[3]!.init!.body))).toEqual({ url: 'https://x.test', foundation: true, inferDatasets: true, renderMode: 'always' });
   });
 
   it('polls an async import job by id', async () => {
@@ -482,11 +482,11 @@ describe('SitewrightClient — optional-argument branches', () => {
     );
     const res = await client.deleteContentBulk('page', ['a', 'b']);
     expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/page/bulk-delete');
-    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ ids: ['a', 'b'] }); // no dataset key for a global kind
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ ids: ['a', 'b'] }); // no dataset key for a global kind
     // The partial-success report is returned verbatim — a failed id is never swallowed.
     expect(res).toEqual({ deleted: ['a'], failed: [{ id: 'b', error: 'page not found' }], requested: 2 });
     await client.deleteContentBulk('entry', ['row_1'], 'team');
-    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ ids: ['row_1'], dataset: 'team' });
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ ids: ['row_1'], dataset: 'team' });
   });
 
   it('folds non-empty zod formErrors into the thrown error, and stays clean when there are none', async () => {
@@ -506,5 +506,80 @@ describe('SitewrightClient — optional-argument branches', () => {
     );
     await expect(empty.client.listContent('page')).rejects.toThrow(SitewrightApiError);
     await expect(empty.client.listContent('page')).rejects.not.toThrow(/ — /);
+  });
+});
+
+describe('SitewrightClient — inline base64 upload', () => {
+  /** Mint-ticket + PUT, the two calls uploadMediaBase64 makes. */
+  const uploadHandler = (input: string) => {
+    if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+    if (input.endsWith('/media/upload-ticket')) {
+      return { status: 201, body: JSON.stringify({ uploadPath: '/media-upload/tok-9', expiresInSeconds: 600, maxBytes: 999 }) };
+    }
+    if (input.includes('/media-upload/tok-9')) {
+      return { status: 201, body: JSON.stringify({ item: { id: 'm9', kind: 'image', url: '/media/p/m9/logo.png' } }) };
+    }
+    return { status: 404, body: '{}' };
+  };
+
+  it('decodes the bytes and PUTs them to a freshly minted ticket', async () => {
+    const png = Buffer.from('iVBORw0KGgo=', 'base64');
+    const { client, calls } = await introspected(uploadHandler);
+    const item = await client.uploadMediaBase64('logo.png', png.toString('base64'), 'Logos');
+    expect(item).toMatchObject({ url: '/media/p/m9/logo.png' });
+
+    // Reuses the ticket flow rather than a second endpoint — one thing to keep working, not two.
+    const mint = calls.find((c) => c.input.endsWith('/media/upload-ticket'))!;
+    expect(mint.init?.method).toBe('POST');
+    expect(JSON.parse(String(mint.init?.body))).toEqual({ folder: 'Logos' });
+
+    const put = calls.find((c) => c.input.includes('/media-upload/tok-9'))!;
+    expect(put.init?.method).toBe('PUT');
+    // The FILENAME rides in the query — a raw PUT carries none, and the asset is named from it.
+    expect(put.input).toContain('?filename=logo.png');
+    expect(put.init?.headers?.['content-type']).toBe('application/octet-stream');
+    // The BYTES go up, not the base64 text.
+    expect(Buffer.from(put.init!.body as Uint8Array).equals(png)).toBe(true);
+  });
+
+  it('accepts a data: URI and wrapped/whitespaced base64 — both are things an agent actually produces', async () => {
+    const png = Buffer.from('iVBORw0KGgo=', 'base64');
+    for (const payload of [`data:image/png;base64,${png.toString('base64')}`, `${png.toString('base64').slice(0, 8)}\n  ${png.toString('base64').slice(8)}`]) {
+      const { client, calls } = await introspected(uploadHandler);
+      await client.uploadMediaBase64('logo.png', payload);
+      const put = calls.find((c) => c.input.includes('/media-upload/tok-9'))!;
+      expect(Buffer.from(put.init!.body as Uint8Array).equals(png)).toBe(true);
+    }
+  });
+
+  it('★ REFUSES malformed base64 rather than storing plausible garbage', async () => {
+    // Buffer.from(s, 'base64') silently drops non-base64 characters, so a truncated or corrupted
+    // payload would decode to something that looks like a file and is not one — written into the
+    // library under a real filename, where it fails much later and much less legibly.
+    const { client, calls } = await introspected(uploadHandler);
+    // ('YWJj' is deliberately absent — it IS valid base64, decoding to 'abc'.)
+    for (const bad of ['not base64!!', 'YWJjZA=', '****', 'YWJ']) {
+      await expect(client.uploadMediaBase64('x.png', bad)).rejects.toThrow(/valid base64/);
+    }
+    expect(calls.filter((c) => c.input.includes('/media-upload/'))).toHaveLength(0); // nothing was sent
+  });
+
+  it('refuses an empty payload and one over the inline cap, naming the tool to use instead', async () => {
+    const { client } = await introspected(uploadHandler);
+    await expect(client.uploadMediaBase64('x.png', '')).rejects.toThrow(/valid base64/);
+    // 300 KB > the 256 KB inline cap.
+    const big = Buffer.alloc(300 * 1024, 7).toString('base64');
+    await expect(client.uploadMediaBase64('big.png', big)).rejects.toThrow(/create_media_upload/);
+  });
+
+  it('surfaces the redeem route’s own error rather than a generic failure', async () => {
+    const { client } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : input.endsWith('/media/upload-ticket')
+          ? { status: 201, body: JSON.stringify({ uploadPath: '/media-upload/tok-9', expiresInSeconds: 600, maxBytes: 9 }) }
+          : { status: 400, body: JSON.stringify({ error: 'invalid or unsafe SVG' }) },
+    );
+    await expect(client.uploadMediaBase64('bad.svg', Buffer.from('<svg/>').toString('base64'))).rejects.toThrow(/invalid or unsafe SVG/);
   });
 });

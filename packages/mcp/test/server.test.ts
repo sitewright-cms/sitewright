@@ -137,6 +137,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     createMediaUpload: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-1', expiresInSeconds: 600, maxBytes: 209715200 })),
+    uploadMediaBase64: vi.fn(async () => ({ id: 'm3', kind: 'image', url: '/media/p/m3/icon.svg' })),
     listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
     createMediaFolder: vi.fn(async () => ({ ok: true })),
     renameMediaFolder: vi.fn(async () => ({ ok: true })),
@@ -471,6 +472,48 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(denied.isError).toBe(true);
     expect(text(denied)).toMatch(/content:write/);
     expect(callsOf(reader).createMediaUpload).not.toHaveBeenCalled();
+  });
+
+  it('upload_media sends a SMALL file inline, gated on content:write', async () => {
+    // The one-call path, for when there is no shell and the file is small enough that its base64 does
+    // not dominate the conversation.
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const b64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
+    const res = await w.callTool({ name: 'upload_media', arguments: { filename: 'icon.svg', content_base64: b64, folder: 'Icons' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).uploadMediaBase64).toHaveBeenCalledWith('icon.svg', b64, 'Icons');
+
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const denied = await r.callTool({ name: 'upload_media', arguments: { filename: 'a.svg', content_base64: b64 } });
+    expect(denied.isError).toBe(true);
+    expect(text(denied)).toMatch(/content:write/);
+    expect(callsOf(reader).uploadMediaBase64).not.toHaveBeenCalled();
+  });
+
+  it('★ upload_media REFUSES an oversized payload at the schema, before it is ever decoded', async () => {
+    // The cap is about the CONVERSATION, so it belongs on the argument: a 1MB image is ~370k tokens of
+    // base64. Rejecting at the schema means the tool never buffers what it is about to refuse.
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const tooBig = 'A'.repeat(400 * 1024);
+    const res = await w.callTool({ name: 'upload_media', arguments: { filename: 'big.png', content_base64: tooBig } });
+    expect(res.isError).toBe(true);
+    expect(callsOf(writer).uploadMediaBase64).not.toHaveBeenCalled();
+  });
+
+  it('the two upload tools TELL the agent which to reach for', async () => {
+    // Two tools for one job only works if each says when it is the wrong one.
+    const c = fakeClient();
+    const w = await connect(c, writeScope);
+    const tools = await w.listTools();
+    const inline = tools.tools.find((t) => t.name === 'upload_media')!;
+    const ticket = tools.tools.find((t) => t.name === 'create_media_upload')!;
+    expect(inline.description).toMatch(/create_media_upload/);   // "bigger than this? use that one"
+    expect(inline.description).toMatch(/256 KB/);                 // …and where the line is
+    expect(ticket.description).toMatch(/curl -T/);                // how to actually send the bytes
+    expect(ticket.description).toMatch(/filename=/);              // the part that is easy to forget
   });
 
   it('compare_to_source returns BUILD + SOURCE image blocks (content:read) + notes the cached source', async () => {

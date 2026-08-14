@@ -218,6 +218,7 @@ import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-sit
 import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
+import { UploadTicketStore } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
@@ -339,7 +340,7 @@ import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type 
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
 import { runPagespeedAudit, redactOrigin, rebaseFindingUrls, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
 import { extractHeadings, analyzeHeadingOutline, type HeadingOutline } from '../render/heading-outline.js';
-import { serveBuiltSite } from '../render/serve-built-site.js';
+import { serveBuiltSite, mimeTypeForFilename } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
@@ -1267,6 +1268,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
   const previewStore = new PreviewStore();
+  // Short-lived, single-use tickets that let an AGENT hand a LOCAL file to the media library — see
+  // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
+  const uploadTickets = new UploadTicketStore();
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const aiProvider = opts.aiProvider;
   const agentProvider = opts.agentProvider;
@@ -4514,6 +4518,85 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
     // Upload ANY file: images are optimized (AVIF/WebP/LQIP); everything else is stored as-is
     // (download-only). The optional `?folder=` query files the asset under a virtual folder.
+    /**
+     * Store one uploaded FILE, whatever brought the bytes in.
+     *
+     * Extracted so the multipart route and the agent UPLOAD-TICKET route dispatch identically. The
+     * per-kind rules here (SVG sanitized + kept verbatim, raster optimized, fonts detected by magic
+     * bytes, video inline, everything else download-only) are the actual media contract; two copies
+     * would drift the moment a kind is added to one caller and not the other.
+     *
+     * Returns a discriminated result rather than writing a reply, so each caller keeps its own status
+     * conventions.
+     */
+    type StoredUpload = { ok: true; item: unknown } | { ok: false; status: number; error: string };
+    const storeUploadBuffer = async (
+      ctx: ProjectContext,
+      projectSlug: string,
+      buffer: Buffer,
+      meta: { filename: string; mimetype: string; folder: string },
+      font?: { family?: string; weight?: string; style?: string; fallback?: string },
+    ): Promise<StoredUpload> => {
+      // An SVG upload is SANITIZED (scripts/handlers/remote refs stripped) and kept VERBATIM as a
+      // vector image (never routed through sharp) — served inline under a locked-down CSP. Malformed
+      // SVG (nothing usable after sanitization) → 400.
+      const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
+      if (isSvg) {
+        if (buffer.length > MAX_SVG_BYTES) return { ok: false, status: 413, error: 'SVG exceeds the 4MB limit' };
+        const saved = await createSvgAsset(ctx, projectSlug, buffer.toString('utf8'), { filename: meta.filename, folder: meta.folder });
+        if (!saved) return { ok: false, status: 400, error: 'invalid or unsafe SVG' };
+        return { ok: true, item: saved };
+      }
+      // An optimizable raster `image/*` upload is optimized (corrupt/oversized images 400). Any other
+      // type is stored as-is (download-only).
+      if (meta.mimetype.startsWith('image/')) {
+        try {
+          return { ok: true, item: await createMediaAsset(ctx, projectSlug, buffer, meta) };
+        } catch (err) {
+          if (err instanceof MediaValidationError) return { ok: false, status: 400, error: err.message };
+          throw err;
+        }
+      }
+      // A real font (by magic bytes) → a `kind:'font'` asset. The font picker sends family/weight/
+      // style/fallback; a generic drop falls back to sensible, editable defaults.
+      const format = detectFontFormat(buffer);
+      if (format) {
+        if (buffer.length > MAX_FONT_BYTES) return { ok: false, status: 413, error: 'file exceeds size limit' };
+        const fontMeta = FontUploadMeta.safeParse({
+          family: font?.family ?? meta.filename.replace(/\.[^.]+$/, ''),
+          weight: font?.weight,
+          style: font?.style,
+          fallback: font?.fallback,
+        });
+        if (!fontMeta.success) return { ok: false, status: 400, error: 'invalid font metadata' };
+        try {
+          const saved = await createFontAsset(ctx, projectSlug, {
+            family: fontMeta.data.family,
+            fallback: fontMeta.data.fallback,
+            source: 'local',
+            folder: meta.folder,
+            faces: [{ weight: fontMeta.data.weight, style: fontMeta.data.style, format, bytes: buffer }],
+          });
+          return { ok: true, item: saved };
+        } catch (err) {
+          if (err instanceof z.ZodError) return { ok: false, status: 400, error: 'invalid font' };
+          throw err;
+        }
+      }
+      try {
+        // A playable video/audio goes to the INLINE video kind; everything else stays download-only.
+        const saved = isVideoExt(meta.filename)
+          ? await createVideoAsset(ctx, projectSlug, buffer, meta)
+          : await createFileAsset(ctx, projectSlug, buffer, meta);
+        return { ok: true, item: saved };
+      } catch (err) {
+        // A bad client-supplied contentType (the only externally-shaped field) → clean 400, never the
+        // global handler's field-name-leaking ZodError envelope.
+        if (err instanceof z.ZodError) return { ok: false, status: 400, error: 'invalid upload' };
+        throw err;
+      }
+    };
+
     app.post<{ Params: { projectId: string }; Querystring: { folder?: string; family?: string; weight?: string; style?: string; fallback?: string } }>(
       '/projects/:projectId/media',
       { config: rl(30) },
@@ -4543,67 +4626,119 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
 
         const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
-        // An SVG upload is SANITIZED (scripts/handlers/remote refs stripped) and kept VERBATIM as a
-        // vector image (never routed through sharp) — served inline under a locked-down CSP. Malformed
-        // SVG (nothing usable after sanitization) → 400.
-        const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
-        if (isSvg) {
-          if (buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });
-          const saved = await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename: meta.filename, folder });
-          if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
-          return reply.code(201).send({ item: saved });
-        }
-        // An optimizable raster `image/*` upload is optimized (corrupt/oversized images 400). Any other
-        // type is stored as-is (download-only).
-        if (meta.mimetype.startsWith('image/')) {
-          try {
-            const saved = await createMediaAsset(ctx, project.slug, buffer, meta);
-            return reply.code(201).send({ item: saved });
-          } catch (err) {
-            if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
-            throw err;
-          }
-        }
-        // A real font (by magic bytes) → a `kind:'font'` asset. The font picker sends family/weight/
-        // style/fallback as query params; a generic drop falls back to sensible, editable defaults.
-        const format = detectFontFormat(buffer);
-        if (format) {
-          if (buffer.length > MAX_FONT_BYTES) return reply.code(413).send({ error: 'file exceeds size limit' });
-          const fontMeta = FontUploadMeta.safeParse({
-            family: req.query.family ?? meta.filename.replace(/\.[^.]+$/, ''),
-            weight: req.query.weight,
-            style: req.query.style,
-            fallback: req.query.fallback,
-          });
-          if (!fontMeta.success) return reply.code(400).send({ error: 'invalid font metadata' });
-          try {
-            const saved = await createFontAsset(ctx, project.slug, {
-              family: fontMeta.data.family,
-              fallback: fontMeta.data.fallback,
-              source: 'local',
-              folder,
-              faces: [{ weight: fontMeta.data.weight, style: fontMeta.data.style, format, bytes: buffer }],
-            });
-            return reply.code(201).send({ item: saved });
-          } catch (err) {
-            if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid font' });
-            throw err;
-          }
-        }
-        try {
-          // A playable video/audio goes to the INLINE video kind; everything else stays download-only.
-          const saved = isVideoExt(meta.filename)
-            ? await createVideoAsset(ctx, project.slug, buffer, meta)
-            : await createFileAsset(ctx, project.slug, buffer, meta);
-          return reply.code(201).send({ item: saved });
-        } catch (err) {
-          // A bad client-supplied contentType (the only externally-shaped field) → clean 400,
-          // never the global handler's field-name-leaking ZodError envelope.
-          if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid upload' });
-          throw err;
-        }
+        const stored = await storeUploadBuffer(ctx, project.slug, buffer, meta, {
+          family: req.query.family,
+          weight: req.query.weight,
+          style: req.query.style,
+          fallback: req.query.fallback,
+        });
+        if (!stored.ok) return reply.code(stored.status).send({ error: stored.error });
+        return reply.code(201).send({ item: stored.item });
       },
     );
+
+    /**
+     * Mint an UPLOAD TICKET so an agent can put a LOCAL file into the media library.
+     *
+     * An MCP agent has files on its own disk and, until this, no way to hand one over: `import_image`
+     * takes a PUBLIC url the SERVER fetches, and the multipart route above needs the bearer token —
+     * which the MCP client holds and the model never sees. Base64 in a tool argument is the obvious
+     * alternative and it fails on arithmetic: the MODEL would have to emit the bytes, and a 1MB image
+     * is ~370k tokens.
+     *
+     * So the agent asks HERE (authenticated, `content:write`-gated, exactly like any other write) and
+     * gets back a one-shot URL it can curl. The bytes then travel over a channel the model is not part
+     * of, and file size stops being a context problem. Every dimension except the bytes is pinned now,
+     * at a point where the caller is known — see UploadTicketStore.
+     */
+    app.post<{ Params: { projectId: string }; Body: unknown }>(
+      '/projects/:projectId/media/upload-ticket',
+      { config: rl(30) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:write');
+        if (!WRITE_ROLES.has(ctx.role)) {
+          return reply.code(403).send({ error: 'insufficient role for this operation' });
+        }
+        const parsed = z.object({ folder: MediaFolderSchema.optional() }).safeParse(req.body ?? {});
+        if (!parsed.success) return reply.code(400).send({ error: 'invalid folder' });
+        const token = uploadTickets.put({
+          projectId: project.id,
+          projectSlug: project.slug,
+          userId: ctx.userId,
+          folder: parsed.data.folder ?? '',
+        });
+        return reply.code(201).send({
+          uploadPath: `/media-upload/${token}`,
+          expiresInSeconds: uploadTickets.ttlSeconds,
+          maxBytes: MAX_UPLOAD_BYTES,
+        });
+      },
+    );
+
+    /**
+     * REDEEM an upload ticket: the raw request body becomes a media asset.
+     *
+     * ★ NO SESSION, deliberately — the ticket IS the credential, and the agent curling this has no
+     * cookie and no bearer. That is safe only because the ticket was minted by an authenticated,
+     * `content:write`-gated caller and pins the project, the user and the folder; the holder chooses the
+     * BYTES and nothing else. `take()` consumes it, so a replay is indistinguishable from an unknown
+     * token — both 404, which is also why the failure says nothing about whether the token ever existed.
+     *
+     * Raw body, not multipart: an agent uploads with `curl -T FILE URL`, which is the shortest correct
+     * thing to ask of it (`--data-binary` mangles nothing either, but -T needs no flags to avoid). The
+     * filename rides in `?filename=`, because a raw PUT carries none and the stored asset is named from
+     * it. Content type is derived from that name rather than trusted from the header — the header is
+     * attacker-chosen here in a way it is not on the session-authenticated route.
+     */
+    // ENCAPSULATED so the wildcard body parser below applies to THIS ROUTE ONLY. Fastify scopes
+    // content-type parsers to the plugin that registers them; adding `'*'` at app level would make
+    // every other route silently accept a body of any declared type instead of answering 415.
+    await app.register(async (uploadScope) => {
+      // A raw PUT arrives as octet-stream (or whatever curl guessed), and none of it is JSON — take the
+      // bytes verbatim. The type claimed here is NOT trusted: the stored asset's type comes from the
+      // filename, because on this route the header is chosen by whoever holds the ticket.
+      uploadScope.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+      uploadScope.put<{ Params: { token: string }; Querystring: { filename?: string } }>(
+      '/media-upload/:token',
+      {
+        config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+        // The ticket caps what may be spent on an unauthenticated request; the same ceiling the
+        // multipart route uses, enforced before the body is buffered.
+        bodyLimit: MAX_UPLOAD_BYTES,
+      },
+      async (req, reply) => {
+        const scope = uploadTickets.take(req.params.token);
+        // One message for unknown / expired / already-redeemed. Distinguishing them would tell a holder
+        // which tokens ever existed.
+        if (!scope) return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
+
+        const body = req.body;
+        const buffer = Buffer.isBuffer(body) ? body : typeof body === 'string' ? Buffer.from(body) : null;
+        if (!buffer || buffer.length === 0) return reply.code(400).send({ error: 'empty upload' });
+
+        const rawName = typeof req.query.filename === 'string' ? req.query.filename : '';
+        // Basename only: a ticket must not be able to write outside the media library by naming a path.
+        const filename = rawName.replace(/\\/g, '/').split('/').pop()?.slice(0, 200).trim() || 'upload';
+
+        // ★ Membership is RE-CHECKED here, not pinned into the ticket. Authorization should be current:
+        // a member removed from the project during the ticket's window must not still be able to write
+        // to it, and pinning the role would have bought exactly that hole for the sake of one query.
+        const role = await resolveProjectRole(db, scope.userId, scope.projectId);
+        if (!role || !WRITE_ROLES.has(role)) {
+          return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
+        }
+        const ctx: ProjectContext = { userId: scope.userId, projectId: scope.projectId, role, actor: 'agent' };
+
+        const stored = await storeUploadBuffer(ctx, scope.projectSlug, buffer, {
+          filename,
+          mimetype: mimeTypeForFilename(filename),
+          folder: scope.folder,
+        });
+        if (!stored.ok) return reply.code(stored.status).send({ error: stored.error });
+        return reply.code(201).send({ item: stored.item });
+      },
+      );
+    });
 
     // Import a remote URL INTO the library (download + self-host), so a field that pasted a URL can
     // keep the published export self-contained. Raster images are optimized (createMediaAsset); SVG is

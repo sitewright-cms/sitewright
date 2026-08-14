@@ -2,11 +2,23 @@ import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
 import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
-// Bounded to limit build-output amplification (these fields are injected into
-// every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
-// HTML head/footer blocks in practice.
-const CSS_MAX = 32_000;
-const HTML_MAX = 64_000;
+// Bounded to limit build-output amplification: these fields are injected into every page of a publish
+// (up to MAX_BUNDLE.pages). That is a real concern, but it applies EQUALLY to the chrome slots below —
+// and those are 256 KB each. So 32 KB of CSS was never a principled ceiling next to 1.25 MB of slots;
+// it was just the number nobody revisited, and it is the field an author edits most.
+//
+// ★ IT WAS A DEADLINE, NOT A LIMIT. `website.criticalCss` is where a site's SIGNATURE chrome CSS has to
+// live — a chrome slot rejects <style>, so every header/footer rule an author writes lands here and the
+// sheet only ever grows. One real site reached 31,866 of 32,000 characters (99.6%) in normal use, at
+// which point a ONE-LINE rule was refused: `.ph-bar{width:var(--ph-w,100%)}` (31 chars) failed to save.
+// A ceiling you reach by using the product as intended is a bug with a countdown on it.
+//
+// Now uniform with SLOT_MAX and the page/template/snippet `source` caps — ONE authoring ceiling across
+// every field an author types into, instead of four different numbers with no story between them.
+// The real backstops are unchanged and are the ones that actually bound cost: the HTTP body limit, the
+// per-bundle page count, and the export/decompression caps.
+const CSS_MAX = 256 * 1024;
+const HTML_MAX = 256 * 1024;
 // Chrome SLOTS (mainNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
 // they hold a full shared header/footer — and a mechanically NATIVIZED chrome (ported from an imported
 // site) is verbose (responsive variants + per-element utilities). A real footer already strained 20k; a

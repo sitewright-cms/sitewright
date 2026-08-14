@@ -2,9 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { preview, selectRange, setTranslation, setWebsiteData, listForms, listDatasets, getEntry } = vi.hoisted(() => ({
+const {
+  preview, selectRange, setTranslation, setWebsiteData, listForms, listDatasets, getEntry,
+  listImageMaps, listImageMapTemplates, getSettings, listEntries,
+} = vi.hoisted(() => ({
   preview: vi.fn(), selectRange: vi.fn(), setTranslation: vi.fn(), setWebsiteData: vi.fn(), listForms: vi.fn(),
-  listDatasets: vi.fn(), getEntry: vi.fn(),
+  listDatasets: vi.fn(), getEntry: vi.fn(), listImageMaps: vi.fn(), listImageMapTemplates: vi.fn(), getSettings: vi.fn(), listEntries: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -14,6 +17,11 @@ vi.mock('../src/api', () => ({
     listForms: (...args: unknown[]) => listForms(...args),
     listDatasets: (...args: unknown[]) => listDatasets(...args),
     getEntry: (...args: unknown[]) => getEntry(...args),
+    listImageMaps: (...args: unknown[]) => listImageMaps(...args),
+    listImageMapTemplates: (...args: unknown[]) => listImageMapTemplates(...args),
+    imageMapPreviewUrl: () => '/imagemap-preview',
+    getSettings: (...args: unknown[]) => getSettings(...args),
+    listEntries: (...args: unknown[]) => listEntries(...args),
   },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
@@ -46,6 +54,18 @@ beforeEach(() => {
   listDatasets.mockResolvedValue({ items: [] });
   getEntry.mockReset();
   getEntry.mockResolvedValue({ item: null });
+  listImageMaps.mockReset();
+  // Shaped like the real ImageMapSchema (name lives under `general`) — a looser stub renders the
+  // Studio's list against undefined and throws, which vitest counts as an unhandled error.
+  listImageMaps.mockResolvedValue({
+    items: [{ id: 'floorplan', general: { name: 'Floorplan' }, artboards: [{ id: 'a1', name: 'Ground', image: '/media/x.png', objects: [] }] }],
+  });
+  listImageMapTemplates.mockReset();
+  listImageMapTemplates.mockResolvedValue({ templates: [] }); // the Studio reads `.templates`, not `.items`
+  getSettings.mockReset();
+  getSettings.mockResolvedValue({ item: { website: {} } });
+  listEntries.mockReset();
+  listEntries.mockResolvedValue({ items: [] });
   preview.mockResolvedValue({ html: '<!doctype html>', token: 'tok-1' });
 });
 
@@ -444,5 +464,155 @@ describe('SlotEditor — a dataset row in a slot opens its entry editor', () => 
     clickRow({ type: 'open-entry', dataset: '', id: 'we_offer' });
     await waitFor(() => expect(preview).toHaveBeenCalled());
     expect(getEntry).not.toHaveBeenCalled();
+  });
+});
+
+// ★ THE SLOT EDITOR USED TO ANSWER ONLY 8 OF THE BRIDGE'S 19 OUTBOUND MESSAGES. The other eleven
+// rendered their affordance, highlighted on hover, swallowed the click — and did nothing, with no
+// error anywhere. The gate for "does this belong in a slot?" is not the message, it is the STORE
+// behind it: a slot has no page.data, so only `website.data.<path>` keys can persist. These cover
+// each newly-wired message AND the refusal of the targets a slot genuinely cannot write.
+describe('SlotEditor — the rest of the preview bridge', () => {
+  const send = (data: Record<string, unknown>) => {
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    if (!(iframe as unknown as { contentWindow: unknown }).contentWindow) {
+      Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    }
+    fireEvent(
+      window,
+      new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }),
+    );
+  };
+  const openFooter = () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+  };
+
+  it('★ pick-image on a website.data region opens the picker — the header logo is replaceable at last', async () => {
+    openFooter();
+    send({ type: 'pick-image', key: 'website.data.logo' });
+    expect(await screen.findByText(/Replace image/i)).toBeInTheDocument();
+  });
+
+  it('ignores pick-image for a BARE key — a slot has no page.data, so that pick could never persist', async () => {
+    openFooter();
+    send({ type: 'pick-image', key: 'logo' });
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(screen.queryByText(/Replace image/i)).toBeNull();
+  });
+
+  it('★ a {{sw-control}} writes a website.data target, and REFUSES a page one', async () => {
+    openFooter();
+    send({ type: 'control-edit', target: 'website.data.tagline', value: 'Built in Namibia' });
+    await waitFor(() => expect(setWebsiteData).toHaveBeenCalledWith('p', 'tagline', 'Built in Namibia'));
+    setWebsiteData.mockClear();
+    // `page.title` / a bare page.data key belong to whatever page happens to render this chrome —
+    // writing one here would attribute a site-wide edit to a single page.
+    send({ type: 'control-edit', target: 'page.title', value: 'nope' });
+    send({ type: 'control-edit', target: 'hero_heading', value: 'nope' });
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(setWebsiteData).not.toHaveBeenCalled();
+  });
+
+  it('scheme-sanitizes a control URL before it reaches the store', async () => {
+    openFooter();
+    send({ type: 'control-edit', target: 'website.data.cta', as: 'url', value: 'javascript:alert(1)' });
+    await waitFor(() => expect(setWebsiteData).toHaveBeenCalledWith('p', 'cta', ''));
+  });
+
+  it('★ the link popover writes both the href and the text leaf, sanitized', async () => {
+    openFooter();
+    send({ type: 'link-edit', hrefKey: 'website.data.cta_href', href: '/contact', textKey: 'website.data.cta_text', text: 'Talk to us' });
+    await waitFor(() => expect(setWebsiteData).toHaveBeenCalledWith('p', 'cta_href', '/contact'));
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'cta_text', 'Talk to us');
+  });
+
+  it('★ edit-html-source opens the HTML source view for a rich region', async () => {
+    openFooter();
+    send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>hi</p>' });
+    expect(await screen.findByRole('dialog', { name: /HTML/i })).toBeInTheDocument();
+  });
+
+  it('★ a stored image map opens the Studio (it is a project entity, editable from its slot)', async () => {
+    openFooter();
+    send({ type: 'open-imagemap', id: 'floorplan' });
+    await waitFor(() => expect(document.querySelectorAll('[role="dialog"]').length).toBeGreaterThan(1));
+  });
+
+  it('★ remembers the preview scroll, so a footer does not leave the screen on every keystroke', async () => {
+    openFooter();
+    await waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+    send({ type: 'scroll', y: 1240 });
+    fireEvent.change(screen.getByLabelText('Footer source'), { target: { value: '<div>edited</div>' } });
+    await waitFor(() => expect(screen.getByTitle('Slot preview')).toHaveAttribute('src', '/preview/acme/tok-1#sw-y=1240'));
+  });
+
+  it('★ seeds the on-page rich toolbar with the project CI palette on every (re)load', async () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = (await screen.findByTitle('Slot preview')) as HTMLIFrameElement;
+    const posted: Array<{ type?: string }> = [];
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: (m: { type?: string }) => posted.push(m) }, configurable: true });
+    fireEvent(window, new MessageEvent('message', { data: { source: 'sitewright-preview', type: 'ready' }, source: iframe.contentWindow }));
+    await waitFor(() => expect(posted.some((m) => m.type === 'ci-palette')).toBe(true));
+  });
+
+  it('a link click in the chrome is deliberately inert (a slot editor has nowhere to navigate)', async () => {
+    openFooter();
+    send({ type: 'link-click', href: '/about' });
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(screen.queryByRole('alert')).toBeNull(); // no error surfaced, nothing thrown
+  });
+});
+
+// The Regions rail is described in the bridge as "the RELIABLE way to reach any editable thing —
+// including content the page occludes, hides (display:none), or repeats". Chrome is full of exactly
+// that (a carousel slide, a drawer that is closed until you open it), and the slot editor had no rail
+// at all: it ignored the manifest, so the one affordance built for unreachable content was missing
+// from the surface that needs it most.
+describe('SlotEditor — the Regions rail', () => {
+  const MANIFEST = [
+    { rid: 0, kind: 'entry', label: 'We offer HIGH-END DEVELOPMENTS', dataset: 'footer_config', id: 'config' },
+    { rid: 1, kind: 'image', label: 'website.data.logo' },
+  ];
+
+  it('★ lists the regions the bridge reports, in CONTENT mode', async () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    const posted: Array<{ type?: string; rid?: number }> = [];
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: (m: never) => posted.push(m) }, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: { source: 'sitewright-preview', type: 'regions', items: MANIFEST },
+        source: iframe.contentWindow,
+      }),
+    );
+    const row = await screen.findByText(/HIGH-END DEVELOPMENTS/);
+    fireEvent.click(row);
+    // Clicking a row asks the preview to scroll to + flash + edit that region — by rid, the only thing
+    // the editor sends back, so a stale manifest can never address the wrong element by key.
+    await waitFor(() => expect(posted).toContainEqual({ source: 'sitewright-editor', type: 'edit-region', rid: 0 }));
+  });
+
+  it('drops a structurally invalid manifest row instead of rendering it', async () => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' }));
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: {
+          source: 'sitewright-preview',
+          type: 'regions',
+          items: [{ rid: 'nope', kind: 'text', label: 'bad rid' }, { rid: 2, kind: 'text', label: 'good row' }],
+        },
+        source: iframe.contentWindow,
+      }),
+    );
+    expect(await screen.findByText('good row')).toBeInTheDocument();
+    expect(screen.queryByText('bad rid')).toBeNull();
   });
 });

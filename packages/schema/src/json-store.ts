@@ -11,10 +11,13 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 
 const JSON_STORE_MAX_DEPTH = 12;
 const JSON_STORE_MAX_NODES = 5000;
-// 64 KB per string: a page.data leaf may be rich HTML bound to a `data-sw-html` directive (this is
-// the single editable store), so the per-value cap matches the retired `richContent` bound rather
-// than the plainer-text default. Total publish payload stays bounded by the 4 MB render-IPC guard.
-const JSON_STORE_MAX_STRING = 64_000;
+// 256 KB per string: a page.data / website.data leaf may be rich HTML bound to a `data-sw-html`
+// directive (this is the single editable store), so the per-value cap tracks the same authoring
+// ceiling as a page/template/snippet `source`, a chrome slot and website.criticalCss — one number
+// for "how much can an author put in one field", rather than a different one per field. The caps that
+// actually bound cost are unchanged and sit above this: MAX_NODES/MAX_DEPTH here, and the 4 MB
+// render-IPC guard on the total publish payload.
+const JSON_STORE_MAX_STRING = 256 * 1024;
 const JSON_STORE_MAX_KEY = 200;
 const JSON_STORE_RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 

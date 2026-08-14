@@ -137,9 +137,27 @@ describe('WebsiteSettingsSchema', () => {
   });
 
   it('rejects fields beyond the size caps', () => {
-    expect(() => WebsiteSettingsSchema.parse({ criticalCss: 'a'.repeat(32_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ head: 'a'.repeat(64_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ scripts: 'a'.repeat(64_001) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ criticalCss: 'a'.repeat(256 * 1024 + 1) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ head: 'a'.repeat(256 * 1024 + 1) })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ scripts: 'a'.repeat(256 * 1024 + 1) })).toThrow();
+  });
+
+  // ★ criticalCss used to stop at 32 KB while every chrome slot took 256 KB — and criticalCss is where
+  // a site's signature chrome CSS is FORCED to live, because a slot rejects <style>. One real site hit
+  // 31,866/32,000 in ordinary use, at which point a 31-character rule could no longer be saved. These
+  // assert the headroom is actually there, so the ceiling can't quietly regress to a countdown again.
+  it('★ accepts a criticalCss / head / scripts far past the old 32-64 KB ceilings', () => {
+    const big = 'a'.repeat(200_000);
+    expect(WebsiteSettingsSchema.parse({ criticalCss: big }).criticalCss).toHaveLength(200_000);
+    expect(WebsiteSettingsSchema.parse({ head: big }).head).toHaveLength(200_000);
+    expect(WebsiteSettingsSchema.parse({ scripts: big }).scripts).toHaveLength(200_000);
+  });
+
+  it('★ every author-typed field shares ONE ceiling (no field is the odd one out)', () => {
+    // The bug was not the number, it was the INCONSISTENCY: four caps, no story between them.
+    const atCap = 'a'.repeat(256 * 1024);
+    expect(WebsiteSettingsSchema.parse({ criticalCss: atCap }).criticalCss).toHaveLength(256 * 1024);
+    expect(WebsiteSettingsSchema.parse({ footer: atCap }).footer).toHaveLength(256 * 1024);
   });
 
   it('rejects a </style> breakout in criticalCss (it is inlined inside <style>)', () => {
@@ -199,8 +217,14 @@ describe('WebsiteSettingsSchema', () => {
     });
 
     it('rejects an over-long string value and over-long keys', () => {
-      expect(() => WebsiteSettingsSchema.parse({ data: { big: 'a'.repeat(64_001) } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { big: 'a'.repeat(256 * 1024 + 1) } })).toThrow();
       expect(() => WebsiteSettingsSchema.parse({ data: { ['k'.repeat(201)]: 1 } })).toThrow();
+    });
+
+    it('★ a rich-HTML leaf gets the same headroom as every other author-typed field', () => {
+      // A data-sw-html region writes its rich HTML into THIS store; capping the leaf at 64 KB while a
+      // slot took 256 KB meant the same content was accepted in one field and refused in another.
+      expect(WebsiteSettingsSchema.parse({ data: { rich: 'a'.repeat(200_000) } }).data).toBeDefined();
     });
   });
 

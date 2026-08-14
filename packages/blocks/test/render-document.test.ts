@@ -313,6 +313,60 @@ describe('renderDocument — cascade order (author criticalCss vs platform compo
     const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', criticalCss: '.author-marker{gap:10px}' });
     expect(doc).toContain('.author-marker{gap:10px}');
   });
+
+  // ★ The utility sheet ships in TWO forms — LINKED (`stylesheets`: publish + the whole-site draft
+  // preview) and INLINED (`utilityCss`: the sandboxed preview documents, which cannot link one). Both
+  // must land on the SAME side of criticalCss, or the same project renders differently depending on
+  // which surface you look at. The inlined form used to travel as a trailing `inlineStyles` entry,
+  // which put it BEFORE criticalCss — so in the page editor ONLY, every equal-specificity tie flipped:
+  // a header classed `hidden lg:flex` sitting over an author `.ph-tabs{display:flex}` collapsed on the
+  // built site and never collapsed in the editor canvas. The test above covers the linked form; this
+  // one pins the inlined form to the identical position.
+  it('★ emits the INLINED utility sheet in the same place as the linked one — after criticalCss', () => {
+    const doc = renderDocument(page, {
+      brand,
+      bodyHtml: '<h1>Hi</h1>',
+      criticalCss: '.author-marker{gap:10px}',
+      inlineStyles: ['.sw-component-marker{gap:.25rem}'],
+      utilityCss: '.utility-marker{gap:0}',
+    });
+    const inlined = doc.indexOf('.utility-marker');
+    const o = order(doc);
+    expect(inlined).toBeGreaterThan(-1);
+    // platform base → platform components → AUTHOR → Tailwind utilities (identical to the linked form)
+    expect(o.base).toBeLessThan(o.component);
+    expect(o.component).toBeLessThan(o.critical);
+    expect(o.critical).toBeLessThan(inlined); // ← the fix: a utility class beats criticalCss HERE too
+  });
+
+  it('★ both forms of the utility sheet resolve a tie identically (editor canvas vs built site)', () => {
+    const common = { brand, bodyHtml: '<h1>Hi</h1>', criticalCss: '.author-marker{gap:10px}' } as const;
+    const linked = renderDocument(page, { ...common, stylesheets: ['/utilities.css'] });
+    const inlinedDoc = renderDocument(page, { ...common, utilityCss: '.utility-marker{gap:0}' });
+    // In BOTH documents the author's sheet is overridable by the utilities that follow it.
+    expect(linked.indexOf('.author-marker')).toBeLessThan(linked.indexOf('utilities.css'));
+    expect(inlinedDoc.indexOf('.author-marker')).toBeLessThan(inlinedDoc.indexOf('.utility-marker'));
+  });
+
+  it('rawFidelity skips the INLINED utility sheet too (same gate as the linked one)', () => {
+    // A replica brings its own stylesheet; Tailwind utilities would collide with its same-named
+    // classes. The linked form has always been gated — the inlined form must not be a way around it.
+    const doc = renderDocument(page, {
+      brand,
+      bodyHtml: '<div class="w-100">x</div>',
+      rawFidelity: true,
+      utilityCss: '.utility-marker{gap:0}',
+      stylesheets: ['/utilities.css'],
+    });
+    expect(doc).not.toContain('.utility-marker');
+    expect(doc).not.toContain('utilities.css');
+  });
+
+  it('neutralizes a `</style` sequence in the inlined utility sheet (it can never break out)', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', utilityCss: '.a{}</style><script>x' });
+    expect(doc).not.toContain('</style><script>');
+    expect(doc).toContain('<\\/style>');
+  });
 });
 
 // The site's content policy is enforced ONLY on platform-hosted origins, as a response header. In the

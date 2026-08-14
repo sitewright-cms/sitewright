@@ -151,10 +151,29 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   stylesheets?: readonly string[];
   /**
-   * CSS inlined as `<style>` blocks at the END of `<head>` (after the brand +
-   * critical CSS, alongside `stylesheets`) — the preview's self-contained
-   * equivalent of the linked utility sheet. Trusted, machine-generated CSS only
-   * (the compiled Tailwind output); never raw user input.
+   * The compiled Tailwind utility sheet INLINED — the self-contained equivalent of a `stylesheets`
+   * link, emitted at the SAME cascade position (after `criticalCss`), for a surface that cannot link
+   * one: the editor/member preview documents, which are served under an opaque-origin `sandbox` CSP.
+   *
+   * ★ It is deliberately NOT part of {@link inlineStyles}, which sits BEFORE `criticalCss`. Both fields
+   * carry machine-generated CSS, so lumping them together looks harmless and is not: `inlineStyles`
+   * holds PLATFORM component/effect sheets, which an author's criticalCss must be able to beat, while
+   * the utility sheet must beat criticalCss (a class on the element is the most local declaration —
+   * the normal Tailwind mental model, and the one the authoring guide promises). Passing the utility
+   * sheet as an `inlineStyles` entry put it on the wrong side of criticalCss and inverted exactly one
+   * of those two rules, in the page editor only: a header classed `hidden lg:flex` collapsed on the
+   * published site and in the whole-site draft preview (both LINK the sheet) but never collapsed in
+   * the page editor, because the author's own `.ph-tabs{display:flex}` — identical specificity, later
+   * in source order — silently won. Trusted, machine-generated CSS only; never raw user input.
+   */
+  utilityCss?: string;
+  /**
+   * CSS inlined as `<style>` blocks BEFORE `criticalCss` — the platform's own component/effect sheets
+   * (interactive components, the body-effect runtimes' CSS, fixed-background + theme-toggle support).
+   * Emitted ahead of the author's criticalCss ON PURPOSE, so an author rule wins a specificity tie with
+   * the platform (see the cascade comment at the emit site). For the compiled Tailwind utilities, which
+   * must land on the OTHER side of criticalCss, use {@link utilityCss}. Trusted, machine-generated CSS
+   * only (platform sheets); never raw user input.
    */
   inlineStyles?: readonly string[];
   /**
@@ -291,6 +310,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     metaCsp,
     criticalCss,
     stylesheets,
+    utilityCss,
     inlineStyles,
     headScripts,
     headInlineScripts,
@@ -435,11 +455,17 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // invalid states), so layering just the component sheets would make all of those start beating
     // component CSS — a far larger behaviour change than the one being fixed.
     // Tailwind's utility sheet still loads AFTER this, so a utility class still beats criticalCss (the
-    // normal Tailwind mental model) — only the platform-vs-author tie flips.
+    // normal Tailwind mental model) — only the platform-vs-author tie flips. That holds for BOTH forms
+    // the sheet takes: the linked `stylesheets` (publish + whole-site draft preview) and the inlined
+    // `utilityCss` (the sandboxed preview documents). They are alternatives — no surface passes both.
     (criticalCss ? `<style>${mc(criticalCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n` : '') +
     // RAW-FIDELITY replicas also skip the platform's compiled utility sheet (styles.css) — its Tailwind
     // utilities collide with the imported site's same-named classes (e.g. `.w-100` = 100 spacing units
-    // here vs. the site's `width:100%`), which would clobber the imported layout.
+    // here vs. the site's `width:100%`), which would clobber the imported layout. Gated identically in
+    // both forms, so an inlining surface can't smuggle utilities into a replica the linking one omits.
+    (rawFidelity || !utilityCss
+      ? ''
+      : `<style>${mc(utilityCss).replace(/<\/(style)/gi, '<\\/$1')}</style>\n`) +
     (rawFidelity ? [] : (stylesheets ?? []))
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +

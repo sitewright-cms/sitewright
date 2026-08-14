@@ -877,10 +877,19 @@ async function styledSourceDocument(
         ...bodyEffectStyles(scanHtml),
         ...(fixedBg ? [FIXED_BG_PREVIEW_CSS] : []),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
-        ...(compileCandidates.length > 0
-          ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
-          : []),
       ];
+  // ★ The compiled utilities travel in their OWN field, NOT as a trailing `inlineStyles` entry — the two
+  // sit on opposite sides of the author's criticalCss (see RenderDocumentOptions.utilityCss). As an
+  // `inlineStyles` entry this sheet landed BEFORE criticalCss, so every equal-specificity tie between an
+  // author rule and a utility class resolved the opposite way here than on the built site: a header
+  // classed `hidden lg:flex` over a criticalCss `.ph-tabs{display:flex}` collapsed in the whole-site
+  // draft preview and on the published site, and never collapsed in this canvas. The publish path has
+  // always LINKED the sheet (build.ts `stylesheets`), which is emitted after criticalCss — this is the
+  // inline surface catching up to it, so both now agree by construction.
+  const utilityCss =
+    rawFidelity || compileCandidates.length === 0
+      ? undefined
+      : await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand));
   const inlineScripts = rawFidelity
     ? // Raw-HTML page: only the editor↔preview bridge runs (no platform component/effect JS).
       [PREVIEW_BRIDGE_JS]
@@ -916,6 +925,8 @@ async function styledSourceDocument(
     // A still-faithful imported page renders as a raw replica (no platform base CSS) in preview too.
     rawFidelity,
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
+    // Emitted AFTER criticalCss (renderDocument), exactly where the publish path's linked sheet goes.
+    utilityCss,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
     // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS).
     headInlineScripts: themeToggle ? [THEME_TOGGLE_JS] : undefined,

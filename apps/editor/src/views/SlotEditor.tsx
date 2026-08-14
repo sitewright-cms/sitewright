@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
-import { isTranslationKey, websiteDataPathOf } from '../lib/page-data';
+import { DANGEROUS_KEYS, isTranslationKey, websiteDataPathOf } from '../lib/page-data';
+import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { FormEditorModal } from './FormEditorModal';
 import type { Form } from '@sitewright/schema';
 import { PreviewPane } from './editor/PreviewPane';
@@ -154,6 +155,11 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   // A form embedded IN a slot (a footer newsletter sign-up, say) — its definition is a project
   // entity, not slot markup, so it opens the same modal the page editor and Forms tab use.
   const [formEdit, setFormEdit] = useState<Form | null>(null);
+  // The dataset row clicked in the preview (data-sw-entry), or null. A slot has no page.data, so its
+  // REPEATED content — nav-adjacent lists, client logos, "why us" slides, capability bars — can only
+  // come from a dataset; opening that row's editor from the slot it renders in is therefore the main
+  // way to edit a slot's content at all, not a side path.
+  const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
@@ -206,6 +212,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       const d = e.data as {
         source?: string; type?: string; tag?: string; id?: string; cls?: unknown; nth?: number;
         text?: string; textHit?: string; ds?: string; key?: string; value?: string; html?: string; slot?: string;
+        dataset?: string;
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'ready') {
@@ -235,6 +242,20 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         // The preview offers "Edit <slot>" on every landmark that is NOT the one being edited. Clicking
         // it switches THIS editor rather than opening a second one — see onSwitchSlot.
         if (CHROME_SLOTS.some((c) => c.key === d.slot)) switchSlotRef.current(d.slot as ChromeSlotKey);
+      } else if (
+        d.type === 'open-entry' &&
+        typeof d.dataset === 'string' &&
+        d.dataset !== '' &&
+        typeof d.id === 'string' &&
+        d.id !== '' &&
+        !DANGEROUS_KEYS.has(d.dataset) &&
+        !DANGEROUS_KEYS.has(d.id)
+      ) {
+        // Clicked a rendered dataset row in the slot preview → open that entry's editor, exactly as the
+        // page editor does for a row in the page body. Without this branch the bridge's `open-entry`
+        // arrived here and fell through to nothing: the row highlighted on hover and swallowed the click,
+        // so a dataset-driven footer looked like it simply could not be edited.
+        setOpenEntry({ dataset: d.dataset, id: d.id });
       } else if (d.type === 'open-form' && typeof d.id === 'string' && d.id !== '') {
         void api
           .listForms(project.id)
@@ -389,6 +410,20 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
                 form={formEdit}
                 onSaved={() => setPreviewNonce((n) => n + 1)}
                 onClose={() => setFormEdit(null)}
+              />
+            )}
+            {/* Same footing as the form editor above: a dataset row is a SHARED store, saved on its own
+                and independent of the slot's Save, so the preview must re-POST to show the new values. */}
+            {openEntry && (
+              <EntryEditorLoader
+                projectId={project.id}
+                dataset={openEntry.dataset}
+                id={openEntry.id}
+                onSaved={() => {
+                  setPreviewNonce((n) => n + 1);
+                  setOpenEntry(null);
+                }}
+                onClose={() => setOpenEntry(null)}
               />
             )}
             {storeError && (

@@ -1307,6 +1307,18 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:write', ({ url, folder }) => client.importImageUrl(url, folder)),
   );
 
+  // Upload a LOCAL file. The only media path that does not require the bytes to already be reachable
+  // from the server — see the tool description for why it is two steps rather than one.
+  server.registerTool(
+    'create_media_upload',
+    {
+      description:
+        'Upload a LOCAL file (a logo, a photo, a font, a PDF) into the project media library. Use this when the file is on YOUR disk; use import_image when it is at a public https URL. TWO STEPS: (1) call this to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./logo.png "<uploadUrl>?filename=logo.png"` — always pass ?filename=, since a raw upload carries no name and the stored asset is named from it. The response of THAT request is the stored asset; use its `url` in your markup. The ticket is single-use and expires (see expiresInSeconds), so mint one per file, immediately before sending it. It is deliberately not a single tool call: the bytes would have to pass through this conversation as base64, which for a 1MB image is roughly 370k tokens.',
+      inputSchema: { folder: z.string().max(1024).optional() },
+    },
+    gate('content:write', ({ folder }) => client.createMediaUpload(folder)),
+  );
+
   // Media organization — give the agent control over the per-page folder structure (a gallery in
   // its own folder, one-per-page heroes under "Header Images", loose singletons under "Main", …).
   server.registerTool(

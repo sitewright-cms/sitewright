@@ -14,6 +14,20 @@ import type { AddressInfo } from 'node:net';
  * the shell are no-cache). Bind to loopback only; the caller is responsible for `close()`.
  */
 
+/**
+ * The content type for a filename, by extension (`application/octet-stream` when unknown).
+ *
+ * Exported because an UPLOAD needs the same answer as a download: a raw `PUT` carries no filename and
+ * its `Content-Type` header is attacker-chosen, so the stored asset's type is derived from the name
+ * instead — and it must agree with what this server will later serve the file AS. Two maps would
+ * eventually disagree about some extension, and the failure (a file stored as one type, served as
+ * another) is the kind nobody notices until a browser refuses to render it.
+ */
+export function mimeTypeForFilename(name: string): string {
+  // eslint-disable-next-line security/detect-object-injection -- MIME is a fixed literal map; a miss falls through
+  return MIME[extname(name).toLowerCase()] ?? 'application/octet-stream';
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -120,7 +134,7 @@ export async function serveBuiltSite(root: string, host = '127.0.0.1'): Promise<
           res.end('not found');
           return;
         }
-        const contentType = MIME[extname(file).toLowerCase()] ?? 'application/octet-stream';
+        const contentType = mimeTypeForFilename(file);
         res.setHeader('content-type', contentType);
         res.setHeader('cache-control', cacheControlFor(rawUrl));
         // BYTE RANGES for video/audio. A <video> seeks by asking for a window; answering every request

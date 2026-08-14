@@ -34,6 +34,10 @@
     ]
   },
   {
+    "name": "create_media_upload",
+    "required": []
+  },
+  {
     "name": "delete_content",
     "required": [
       "id",

@@ -425,6 +425,9 @@ media url in \`source\`:
   hit's OWN \`provider\` back to import_stock_image with its id (downloaded, optimized, attributed);
   \`hasMore\` says whether page+1 is worth fetching.
 - BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).
+- FROM YOUR OWN DISK: create_media_upload → a one-shot uploadUrl you send the file to yourself
+  (curl -T ./logo.png "<uploadUrl>?filename=logo.png"). Two steps because the bytes must NOT travel
+  through the conversation — as base64 a 1MB image is ~370k tokens. Always pass ?filename=.
 - EXISTING: list_media to find assets already in the project and reuse their url.
 
 ORGANIZE — keep the media library tidy with virtual folders (grouping labels only; the asset url
@@ -1737,6 +1740,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
+  { name: 'create_media_upload', description: "Upload a LOCAL file (on YOUR disk) into the media library: returns a one-shot uploadUrl to send the file to yourself (curl -T). Use import_image instead when the file is already at a public URL.", capability: 'content:write' },
   { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },
   { name: 'import_status', description: "Poll a website import started by import_website: running | done | failed, the latest progress line, and the report once finished. Never start a second import while one is running.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },

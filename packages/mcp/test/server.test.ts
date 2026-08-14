@@ -136,6 +136,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     importStatus: vi.fn(async () => ({ id: 'imp_1', url: 'https://x.test/', status: 'running', startedAt: Date.now() - 120_000, progress: ['crawl: 7 pages'] })),
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
+    createMediaUpload: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-1', expiresInSeconds: 600, maxBytes: 209715200 })),
     listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
     createMediaFolder: vi.fn(async () => ({ ok: true })),
     renameMediaFolder: vi.fn(async () => ({ ok: true })),
@@ -449,6 +450,27 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
     expect(res.isError).toBeFalsy();
     expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
+  });
+
+  it('create_media_upload mints a one-shot URL for a LOCAL file, gated on content:write', async () => {
+    // The gap it fills: import_image takes a PUBLIC url the SERVER fetches, so a file on the agent's
+    // own disk had no way in. The bytes deliberately do NOT travel through the tool call — as base64 a
+    // 1MB image is ~370k tokens — so the tool hands back a URL the agent sends the file to itself.
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'create_media_upload', arguments: { folder: 'Logos' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).createMediaUpload).toHaveBeenCalledWith('Logos');
+    // The agent needs the URL back to be able to do anything with it.
+    expect(text(res)).toContain('https://sw.test/media-upload/tok-1');
+
+    // A read token gets a capability error and the client is never called.
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const denied = await r.callTool({ name: 'create_media_upload', arguments: {} });
+    expect(denied.isError).toBe(true);
+    expect(text(denied)).toMatch(/content:write/);
+    expect(callsOf(reader).createMediaUpload).not.toHaveBeenCalled();
   });
 
   it('compare_to_source returns BUILD + SOURCE image blocks (content:read) + notes the cached source', async () => {

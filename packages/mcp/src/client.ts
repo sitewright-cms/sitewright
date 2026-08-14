@@ -667,6 +667,23 @@ export class SitewrightClient {
     return res.item;
   }
 
+  /**
+   * Mint an UPLOAD TICKET and return it with an ABSOLUTE url the agent can curl.
+   *
+   * The absolute form is built from this client's own `baseUrl` — the address MCP is already talking
+   * to, so it is reachable from wherever the agent runs by definition. Deriving it from the server's
+   * configured public URL instead would be wrong exactly when it matters (a LAN instance, a tunnel, a
+   * container talking to a host port).
+   */
+  async createMediaUpload(folder?: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
+    const res = await this.request<{ uploadPath: string; expiresInSeconds: number; maxBytes: number }>(
+      'POST',
+      this.projectPath('/media/upload-ticket'),
+      folder ? { folder } : {},
+    );
+    return { uploadUrl: `${this.baseUrl}${res.uploadPath}`, expiresInSeconds: res.expiresInSeconds, maxBytes: res.maxBytes };
+  }
+
   /** List the project's virtual media FOLDERS (grouping labels for the media library). */
   async listMediaFolders(): Promise<unknown> {
     return this.request('GET', this.projectPath('/media/folders'));

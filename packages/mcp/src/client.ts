@@ -58,7 +58,8 @@ export type FetchLike = (
   init?: {
     method?: string;
     headers?: Record<string, string>;
-    body?: string;
+    /** A JSON payload, or raw BYTES — an inline media upload PUTs the decoded file itself. */
+    body?: string | Uint8Array;
   },
 ) => Promise<{ ok: boolean; status: number; statusText: string; text(): Promise<string> }>;
 
@@ -331,6 +332,37 @@ export interface ImportWebsiteResult {
   mediaSelfHosted?: number;
   warnings?: string[];
   [k: string]: unknown;
+}
+
+/**
+ * The most a file may be when its bytes come INLINE through a tool argument.
+ *
+ * The limit is the CONVERSATION, not the server: the model has to emit this base64 itself, and base64
+ * is ~1.37x the file plus roughly a token per 4 characters — so 256 KB already costs ~95k tokens. Past
+ * that the honest answer is not a bigger cap, it is `create_media_upload`, where the bytes never enter
+ * the conversation at all.
+ */
+export const MCP_INLINE_UPLOAD_MAX_BYTES = 256 * 1024;
+
+/** The longest base64 STRING that can decode within the cap — checked before decoding, so a huge
+ *  argument is rejected without first materialising it as a buffer. */
+export const MCP_INLINE_UPLOAD_MAX_B64_CHARS = Math.ceil(MCP_INLINE_UPLOAD_MAX_BYTES / 3) * 4;
+
+/**
+ * Decode base64 STRICTLY — `Buffer.from(s, 'base64')` silently ignores anything that is not a base64
+ * character, so a truncated or corrupted payload decodes to plausible-looking garbage and is stored as
+ * a broken file. Better to refuse than to write rubbish into the media library under a real filename.
+ *
+ * Tolerates two things an agent genuinely produces: surrounding whitespace/newlines (base64 is often
+ * wrapped), and a `data:<type>;base64,` prefix copied along with the payload.
+ */
+function decodeBase64(input: string): Buffer {
+  const withoutPrefix = input.replace(/^\s*data:[^;,]*;base64,/i, '');
+  const compact = withoutPrefix.replace(/\s+/g, '');
+  if (compact === '' || compact.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(compact)) {
+    throw new SitewrightApiError(400, 'content_base64 is not valid base64');
+  }
+  return Buffer.from(compact, 'base64');
 }
 
 export class SitewrightClient {
@@ -682,6 +714,43 @@ export class SitewrightClient {
       folder ? { folder } : {},
     );
     return { uploadUrl: `${this.baseUrl}${res.uploadPath}`, expiresInSeconds: res.expiresInSeconds, maxBytes: res.maxBytes };
+  }
+
+  /**
+   * Upload a SMALL local file whose bytes arrived inline as base64.
+   *
+   * Reuses the upload-ticket flow rather than adding an endpoint: mint a one-shot ticket, then PUT the
+   * decoded bytes to it. The redeem route needs no credential (the ticket IS one), so this is a plain
+   * fetch — and the whole path, including the per-kind media dispatch, is the one already proven by
+   * `create_media_upload`. A second server route would have been a second thing to keep in step.
+   */
+  async uploadMediaBase64(filename: string, contentBase64: string, folder?: string): Promise<unknown> {
+    const bytes = decodeBase64(contentBase64);
+    if (bytes.length === 0) throw new SitewrightApiError(400, 'content_base64 decoded to no bytes — is it valid base64?');
+    if (bytes.length > MCP_INLINE_UPLOAD_MAX_BYTES) {
+      throw new SitewrightApiError(
+        413,
+        `file is ${bytes.length} bytes; upload_media is capped at ${MCP_INLINE_UPLOAD_MAX_BYTES}. Use create_media_upload for anything larger — it does not send the bytes through the conversation.`,
+      );
+    }
+    const ticket = await this.createMediaUpload(folder);
+    const res = await this.fetchImpl(`${ticket.uploadUrl}?filename=${encodeURIComponent(filename)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: bytes,
+    });
+    const text = await res.text();
+    let parsed: unknown;
+    try {
+      parsed = text ? JSON.parse(text) : undefined;
+    } catch {
+      parsed = undefined;
+    }
+    if (!res.ok) {
+      const message = (parsed as { error?: string } | undefined)?.error ?? `upload failed (${res.status})`;
+      throw new SitewrightApiError(res.status, message);
+    }
+    return (parsed as { item?: unknown } | undefined)?.item ?? parsed;
   }
 
   /** List the project's virtual media FOLDERS (grouping labels for the media library). */

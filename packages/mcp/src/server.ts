@@ -31,7 +31,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView } from './client.js';
+import { SitewrightApiError, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -1317,6 +1317,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       inputSchema: { folder: z.string().max(1024).optional() },
     },
     gate('content:write', ({ folder }) => client.createMediaUpload(folder)),
+  );
+
+  // The INLINE path for a small file. Deliberately a separate tool from create_media_upload rather
+  // than one tool that guesses: the difference between them is a hard cost cliff, and an agent should
+  // be choosing it knowingly.
+  server.registerTool(
+    'upload_media',
+    {
+      description:
+        `Upload a SMALL local file (up to ${Math.round(MCP_INLINE_UPLOAD_MAX_BYTES / 1024)} KB) by sending its bytes INLINE as base64 — an SVG logo, an icon, a favicon. ONE call, no shell needed. For anything bigger use create_media_upload instead: base64 costs ~1.37x the file in characters and roughly a token per 4 characters, so a 1MB image would be ~370k tokens of this conversation, while create_media_upload sends the bytes over a channel that never enters it. \`content_base64\` may be bare base64 or a data: URI. Returns the stored asset — use its \`url\` in your markup.`,
+      inputSchema: {
+        filename: z.string().min(1).max(200),
+        content_base64: z.string().min(1).max(MCP_INLINE_UPLOAD_MAX_B64_CHARS),
+        folder: z.string().max(1024).optional(),
+      },
+    },
+    gate('content:write', ({ filename, content_base64, folder }) => client.uploadMediaBase64(filename, content_base64, folder)),
   );
 
   // Media organization — give the agent control over the per-page folder structure (a gallery in

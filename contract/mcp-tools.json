@@ -282,6 +282,13 @@
     "required": []
   },
   {
+    "name": "upload_media",
+    "required": [
+      "content_base64",
+      "filename"
+    ]
+  },
+  {
     "name": "visual_audit",
     "required": [
       "pageId"

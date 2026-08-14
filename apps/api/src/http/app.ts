@@ -4086,6 +4086,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // PER-PAGE slot content. Publish renders slots WITHOUT this flag (build.ts), so every marker is
           // stripped from the artifact.
           preview: true,
+          // ★ AND the dataset-row markers, exactly as the page body above gets them. Chrome is where
+          // site-wide lists actually live — a footer's client logos, "why us" slides, capability bars —
+          // and without this they rendered with no `data-sw-entry` at all: not clickable, and absent from
+          // the Regions panel, so a footer built entirely out of datasets read as "the lists were never
+          // converted" when in fact the datasets and their rows were all there. A slot is the ONE place
+          // the marker is most needed, because a slot has no page.data, so its repeated content has
+          // nowhere to live EXCEPT a dataset. Body-safe (it stamps the loop body's own roots, never an
+          // injected wrapper) and preview-only, same as on the page.
+          markEntries: true,
           media: renderMedia,
           forms: previewForms,
           // A slot (footer, sidebar, global modal) may embed a map too — same parity as forms.

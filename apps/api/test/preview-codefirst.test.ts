@@ -191,6 +191,69 @@ describe('code-first preview', () => {
     expect(html).not.toContain('--tw-'); // and no utility sheet
   });
 
+  // ★ A CHROME SLOT IS WHERE SITE-WIDE LISTS ACTUALLY LIVE, and it is the ONE surface whose repeated
+  // content can ONLY come from a dataset — a slot has no page.data to hold it. The page body was
+  // rendered with `markEntries` and the slots were not, so a footer's dataset rows arrived with no
+  // `data-sw-entry`: not clickable, and absent from the Regions panel. A footer built entirely out of
+  // datasets then read as "those lists were never converted" when every dataset and row existed.
+  describe('dataset rows inside a chrome slot are marked, exactly as in the page body', () => {
+    const FOOTER = '<div class="cols">{{#each dataset.why_us}}<p class="why">{{lead}}</p>{{/each}}</div>';
+
+    beforeEach(async () => {
+      const proj = client.project(projectId);
+      expect((await proj.putContent('dataset', 'why_us', {
+        id: 'why_us', name: 'Why Us', slug: 'why_us',
+        fields: [{ name: 'lead', type: 'text', required: true }],
+      })).statusCode).toBe(200);
+      expect((await proj.putContent('entry', 'we_offer', {
+        id: 'we_offer', dataset: 'why_us', status: 'published', order: 0, values: { lead: 'We offer' },
+      })).statusCode).toBe(200);
+    });
+
+    it('★ stamps data-sw-entry on a row rendered in the FOOTER slot', async () => {
+      const res = await client.post(`/projects/${projectId}/preview`, {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<section>page body</section>',
+        slots: { footer: FOOTER },
+      });
+      expect(res.statusCode).toBe(200);
+      const html = (res.json() as { html: string }).html;
+      const footer = html.slice(html.indexOf('<footer id="footer"'));
+      expect(footer).toContain('We offer'); // the row rendered at all…
+      expect(footer).toContain('data-sw-entry="we_offer"'); // …and carries the marker a click needs
+      expect(footer).toContain('data-sw-dataset="why_us"'); // …plus the dataset it belongs to
+    });
+
+    it('★ the marker lands on the AUTHORED element, never an injected wrapper', async () => {
+      // An injected wrapper has no counterpart in the source, which is what click-to-code matches on —
+      // and an empty iteration would wrap nothing into a real box (it once filled a grid with empty cells).
+      const res = await client.post(`/projects/${projectId}/preview`, {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<section>page body</section>',
+        slots: { footer: FOOTER },
+      });
+      const html = (res.json() as { html: string }).html;
+      const marked = html.match(/<([a-z]+)\b[^>]*data-sw-entry="we_offer"[^>]*>/);
+      expect(marked?.[1]).toBe('p'); // the row's OWN root, not a <div> wrapped around it
+      expect(marked?.[0]).toContain('class="why"'); // …with the authored classes intact
+    });
+
+    it('a slot row and a page-body row are marked the same way (no surface renders it differently)', async () => {
+      const res = await client.post(`/projects/${projectId}/preview`, {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<section>{{#each dataset.why_us}}<p class="body-why">{{lead}}</p>{{/each}}</section>',
+        slots: { footer: FOOTER },
+      });
+      const html = (res.json() as { html: string }).html;
+      const main = html.slice(html.indexOf('<main id="page-content"'), html.indexOf('<footer id="footer"'));
+      const footer = html.slice(html.indexOf('<footer id="footer"'));
+      for (const region of [main, footer]) {
+        expect(region).toContain('data-sw-entry="we_offer"');
+        expect(region).toContain('data-sw-dataset="why_us"');
+      }
+    });
+  });
+
   // ★ THE EDITOR CANVAS AND THE BUILT SITE MUST RESOLVE A CASCADE TIE THE SAME WAY.
   //
   // The canvas INLINES the compiled Tailwind sheet (it is served under an opaque-origin `sandbox` CSP,

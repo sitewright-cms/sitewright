@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { preview, selectRange, setTranslation, setWebsiteData, listForms } = vi.hoisted(() => ({
+const { preview, selectRange, setTranslation, setWebsiteData, listForms, listDatasets, getEntry } = vi.hoisted(() => ({
   preview: vi.fn(), selectRange: vi.fn(), setTranslation: vi.fn(), setWebsiteData: vi.fn(), listForms: vi.fn(),
+  listDatasets: vi.fn(), getEntry: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -11,6 +12,8 @@ vi.mock('../src/api', () => ({
     setTranslation: (...args: unknown[]) => setTranslation(...args),
     setWebsiteData: (...args: unknown[]) => setWebsiteData(...args),
     listForms: (...args: unknown[]) => listForms(...args),
+    listDatasets: (...args: unknown[]) => listDatasets(...args),
+    getEntry: (...args: unknown[]) => getEntry(...args),
   },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
@@ -39,6 +42,10 @@ beforeEach(() => {
   setWebsiteData.mockResolvedValue(undefined);
   listForms.mockReset();
   listForms.mockResolvedValue({ items: [] });
+  listDatasets.mockReset();
+  listDatasets.mockResolvedValue({ items: [] });
+  getEntry.mockReset();
+  getEntry.mockResolvedValue({ item: null });
   preview.mockResolvedValue({ html: '<!doctype html>', token: 'tok-1' });
 });
 
@@ -392,5 +399,50 @@ describe('SlotEditor — switching to another slot', () => {
     render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
     expect(screen.queryByLabelText('Chrome slot')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Footer' })).toBeInTheDocument();
+  });
+});
+
+// ★ A slot has NO page.data, so its repeated content — client logos, "why us" slides, capability bars —
+// can only come from a dataset. Clicking such a row is therefore the main way to edit a slot's content,
+// yet the bridge's `open-entry` used to arrive here and fall through to nothing: the row highlighted,
+// swallowed the click, and no editor opened. A footer built entirely out of datasets then read as
+// "those lists were never converted" when every dataset and row was already in place.
+describe('SlotEditor — a dataset row in a slot opens its entry editor', () => {
+  const DATASET = { id: 'why', slug: 'why_phoenix', name: 'Why PHOENIX', fields: [{ name: 'lead', type: 'text', required: true }] };
+  const ENTRY = { id: 'we_offer', dataset: 'why_phoenix', status: 'published', values: { lead: 'We offer' } };
+
+  const clickRow = (data: Record<string, unknown>) => {
+    render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    fireEvent(
+      window,
+      new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }),
+    );
+  };
+
+  it('★ opens the clicked row’s editor, resolving the dataset by the SLUG the marker carries', async () => {
+    listDatasets.mockResolvedValue({ items: [DATASET] });
+    getEntry.mockResolvedValue({ item: ENTRY });
+    clickRow({ type: 'open-entry', dataset: 'why_phoenix', id: 'we_offer' });
+    // Fetched by (dataset slug + entry id) — an entry id is unique only WITHIN its dataset.
+    await waitFor(() => expect(getEntry).toHaveBeenCalledWith('p', 'we_offer', 'why_phoenix'));
+    // …and the editor is actually on screen, not merely loaded.
+    expect(await screen.findByRole('dialog', { name: /Edit We offer/ })).toBeInTheDocument();
+  });
+
+  it('ignores a row whose dataset or id is a prototype-polluting key', async () => {
+    listDatasets.mockResolvedValue({ items: [DATASET] });
+    getEntry.mockResolvedValue({ item: ENTRY });
+    clickRow({ type: 'open-entry', dataset: '__proto__', id: 'we_offer' });
+    clickRow({ type: 'open-entry', dataset: 'why_phoenix', id: 'constructor' });
+    await waitFor(() => expect(preview).toHaveBeenCalled()); // let any async work settle
+    expect(getEntry).not.toHaveBeenCalled();
+  });
+
+  it('ignores an entry message that names no dataset (nothing to resolve it against)', async () => {
+    clickRow({ type: 'open-entry', dataset: '', id: 'we_offer' });
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    expect(getEntry).not.toHaveBeenCalled();
   });
 });

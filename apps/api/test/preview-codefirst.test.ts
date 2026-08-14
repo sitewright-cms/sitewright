@@ -190,4 +190,54 @@ describe('code-first preview', () => {
     expect(html).not.toContain('IntersectionObserver'); // ANIMATION_JS NOT inlined
     expect(html).not.toContain('--tw-'); // and no utility sheet
   });
+
+  // ★ THE EDITOR CANVAS AND THE BUILT SITE MUST RESOLVE A CASCADE TIE THE SAME WAY.
+  //
+  // The canvas INLINES the compiled Tailwind sheet (it is served under an opaque-origin `sandbox` CSP,
+  // so it cannot link one); the build LINKS it. Both must sit AFTER the author's criticalCss, because
+  // a class on the element is the most local declaration and is expected to win — the contract the
+  // authoring guide states. The inlined sheet used to travel as a trailing `inlineStyles` entry, which
+  // renderDocument emits BEFORE criticalCss, so this ONE surface inverted the rule: a nav classed
+  // `hidden lg:flex` over an author `.tie-tabs{display:flex}` collapsed on mobile everywhere except in
+  // the page editor, where the author's rule — identical specificity (0,1,0), later in source order —
+  // silently won. Nothing reported it; the sheet was present and simply outranked.
+  describe('cascade parity — the compiled utilities vs the author’s criticalCss', () => {
+    // A tie BY CONSTRUCTION: `.tie-tabs` and `.hidden` are both (0,1,0) with opposite declarations,
+    // so ONLY source order decides — which is exactly what drifted between the two surfaces.
+    const AUTHOR_RULE = '.tie-tabs{display:flex}';
+    const homePage = {
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><ul class="tie-tabs hidden lg:flex"><li>Nav</li></ul></section>',
+    };
+
+    beforeEach(async () => {
+      const proj = client.project(projectId);
+      expect((await proj.putContent('settings', 'settings', {
+        brand: { name: 'Site' },
+        website: { criticalCss: AUTHOR_RULE },
+        settings: { defaultLocale: 'en', locales: ['en'] },
+      })).statusCode).toBe(200);
+      expect((await proj.putContent('page', 'home', homePage)).statusCode).toBe(200);
+    });
+
+    it('★ the EDITOR CANVAS emits the inlined utility sheet AFTER criticalCss', async () => {
+      const html = await previewHtml(homePage);
+      const author = html.indexOf(AUTHOR_RULE);
+      const utility = html.indexOf('.hidden{display:none}'); // the compiled sheet, Tailwind-minified
+      expect(author).toBeGreaterThan(-1); // the author's sheet is inlined…
+      expect(utility).toBeGreaterThan(-1); // …and so are the utilities the markup actually uses
+      expect(author).toBeLessThan(utility); // ← `hidden` wins the tie, as it does on the built site
+    });
+
+    it('★ the BUILT SITE agrees — its linked utility sheet also follows criticalCss', async () => {
+      expect((await client.post(`${client.project(projectId).base}/publish`)).statusCode).toBe(200);
+      const res = await client.get('/sites/site/index.html');
+      expect(res.statusCode).toBe(200);
+      const author = res.body.indexOf(AUTHOR_RULE);
+      const utility = res.body.indexOf('styles.css'); // the build LINKS the sheet instead of inlining it
+      expect(author).toBeGreaterThan(-1);
+      expect(utility).toBeGreaterThan(-1);
+      expect(author).toBeLessThan(utility);
+    });
+  });
 });

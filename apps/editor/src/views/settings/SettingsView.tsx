@@ -38,7 +38,7 @@ export const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'securityExpiryYears', 'securityPolicyUrl', 'securityAcknowledgmentsUrl',
   'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
-  'consent',
+  'consent', 'searchFoldDiacritics',
   'defaultLocale', 'locales', 'translations',
 ]);
 

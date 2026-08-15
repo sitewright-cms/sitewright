@@ -134,6 +134,26 @@ describe('PublishStore HTML serving', () => {
 });
 
 describe('PublishStore text-asset serving', () => {
+  it('serves the site-search index — but still NOT release.json', async () => {
+    // `.json` is deliberately absent from ASSET_CONTENT_TYPES so release.json stays unreachable, so
+    // the search index needs an EXACT-NAME exception. Without it every search box on a
+    // PLATFORM-served site (/sites/<slug>/* and the signed draft preview both read root files
+    // through readAsset) is silently inert, while a customer's own host serves the file happily.
+    const dir = store.dirFor('site');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'search-index.json'), '{"v":1,"lang":"en","pages":[],"terms":{}}');
+    await writeFile(join(dir, 'search-text.de.json'), '{"v":1,"text":[],"offsets":[]}');
+    await writeFile(join(dir, 'release.json'), '{"publishedAt":"x"}');
+
+    const index = await store.readAsset('site', '/search-index.json');
+    expect(index?.contentType).toBe('application/json; charset=utf-8');
+    expect(index?.body).toContain('"lang":"en"');
+    expect((await store.readAsset('site', '/search-text.de.json'))?.body).toContain('offsets');
+
+    // The reason `.json` was never opened up wholesale.
+    expect(await store.readAsset('site', '/release.json')).toBeNull();
+  });
+
   it('serves .well-known/security.txt — the ONE allowlisted nested asset (RFC 9116 fixes its path)', async () => {
     const dir = store.dirFor('site');
     await mkdir(join(dir, '.well-known'), { recursive: true });

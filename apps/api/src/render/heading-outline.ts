@@ -65,8 +65,12 @@ const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   ldquo: '“',
 };
 
-/** Decode the handful of HTML entities that appear in real heading text. */
-function decodeEntities(input: string): string {
+/**
+ * Decode the handful of HTML entities that appear in real heading text. Also used by the search
+ * index's text extraction (`publish/search-index.ts`) — one decoder, so heading text and body text
+ * can never disagree about what `&amp;` means.
+ */
+export function decodeEntities(input: string): string {
   return input.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g, (whole, code: string) => {
     if (code[0] === '#') {
       const cp = code[1] === 'x' || code[1] === 'X' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);

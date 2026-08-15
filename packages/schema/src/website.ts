@@ -921,6 +921,22 @@ export const WebsiteSecuritySchema = z
   });
 export type WebsiteSecurity = z.infer<typeof WebsiteSecuritySchema>;
 
+/**
+ * Site-search settings. Normalization must match on BOTH sides — the build indexes with it and the
+ * browser queries with it — so the resolved value is written INTO the emitted index rather than read
+ * separately by the runtime, which could not otherwise know it.
+ */
+export const SearchSettingsSchema = z.object({
+  /**
+   * Fold Latin diacritics so `Müller` matches `Muller` (default true). Turn OFF for a language where
+   * accented characters are distinct letters rather than decorated ones — Swedish `å`/`ä`/`ö` — where
+   * folding trades away precision an author may want to keep. Marks over NON-Latin bases (Thai tone
+   * marks, Devanagari matras, Hebrew niqqud) are never folded either way: there a mark is a letter.
+   */
+  foldDiacritics: z.boolean().optional(),
+});
+export type SearchSettings = z.infer<typeof SearchSettingsSchema>;
+
 const WebsiteSettingsObject = z.object({
   // --- RAW owner-only slots: injected UNESCAPED, NOT run through the no-JS template validator.
   // They hold the tenant's own trusted head/CSS/script content for their own exported site — same
@@ -1057,6 +1073,11 @@ const WebsiteSettingsObject = z.object({
    * first-party consent.js runtime. Copy is translatable (reserved `consent_*` keys). See {@link ConsentSchema}.
    */
   consent: ConsentSchema.optional(),
+  /**
+   * SITE SEARCH — how the `Search` component's index normalizes words (docs/site-search.md §4).
+   * The index itself is emitted by every build; this only tunes matching.
+   */
+  search: SearchSettingsSchema.optional(),
   /**
    * EXTRA CSP ORIGINS the published site may load from / talk to, beyond the strict `'self'` floor.
    *

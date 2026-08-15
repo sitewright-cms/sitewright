@@ -1,10 +1,11 @@
 import { timingSafeEqual, createHmac, createHash, randomUUID } from 'node:crypto';
 import { gzip as gzipCb } from 'node:zlib';
 import { promisify } from 'node:util';
-import { createReadStream } from 'node:fs';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdtemp, mkdir, open, rm, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { newId, isShortAssetId } from '../id.js';
 import { readTemplateConfig, readTemplateImage } from '../imagemap-assets.js';
 import { readTexture } from '../textures.js';
@@ -484,6 +485,9 @@ const CONTENT_PAGE_MAX = 500;
  */
 const SCREENSHOT_RESERVE_BYTES = 128 * 1024 * 1024;
 
+/** How long an admitted-or-refused decision may wait for memory to free up before shedding. */
+const ADMISSION_WAIT_MS = 3_000;
+
 async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
   if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
     activeOptimizations += 1;
@@ -551,7 +555,10 @@ export function _setMemoryBudgetForTest(limitBytes: number, usedBytes: number): 
  */
 async function admitMemory(bytes: number, label: string): Promise<Reservation> {
   if (!memoryBudgetReady) return memoryBudget.forceReserve(bytes, label);
-  const held = await memoryBudget.tryReserve(bytes, label);
+  // Wait BRIEFLY for headroom before refusing: a transient spike is the common case, and a slower
+  // success beats a 503. Bounded — the ledger caps both the wait and how many may queue, because a
+  // queue is memory as surely as the work is, and a hang is worse for a caller than a retryable 503.
+  const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS);
   if (held) return held;
   throw Object.assign(new Error(`not enough memory for ${label} right now — this is temporary, retry shortly`), {
     statusCode: 503,
@@ -1064,16 +1071,28 @@ async function styledSourceDocument(
   });
 }
 
+/** Why a requested screenshot is missing, so the caller can SAY so instead of silently omitting it. */
+export interface ScreenshotUnavailable {
+  /** `memory` is transient backpressure; `failed` is this document/environment (no Chromium, a render error). */
+  reason: 'memory' | 'failed';
+  retryable: boolean;
+  message: string;
+}
+
 /**
  * Best-effort server-side screenshots of a preview document, taken only when the caller passes
  * `?screenshot=1` (the MCP preview_page tool does). Renders against the API's OWN loopback origin so the
- * page's self-hosted media resolves; any failure (e.g. no Chromium in this image) → undefined and the
- * caller still returns the HTML.
+ * page's self-hosted media resolves.
+ *
+ * Returns undefined when NO screenshot was asked for. When one was asked for and could not be taken it
+ * returns a REASON rather than nothing: a shed request used to be indistinguishable from "this build has
+ * no Chromium", so an agent got HTML with no picture and no explanation and had no way to know that
+ * simply retrying would work. Same principle as `slotErrors` on this response.
  */
 async function previewScreenshots(
   req: FastifyRequest,
   html: string,
-): Promise<Partial<Record<ViewportName, Shot>> | undefined> {
+): Promise<{ shots?: Partial<Record<ViewportName, Shot>>; unavailable?: ScreenshotUnavailable } | undefined> {
   const q = req.query as { screenshot?: string; viewports?: string } | undefined;
   const want = String(q?.screenshot ?? '').toLowerCase();
   if (want !== '1' && want !== 'true') return undefined;
@@ -1089,19 +1108,30 @@ async function previewScreenshots(
   try {
     shotReservation = await admitMemory(SCREENSHOT_RESERVE_BYTES, 'preview screenshot');
   } catch {
-    return undefined; // best-effort by contract: the caller still returns the HTML
+    // Still best-effort — the caller returns the HTML — but SAY that this one is worth retrying.
+    return {
+      unavailable: {
+        reason: 'memory',
+        retryable: true,
+        message: 'the screenshot was skipped because the instance is temporarily out of memory — the HTML is complete; retry shortly for the image',
+      },
+    };
   }
   try {
-    return await clampShots(await captureScreenshots(html, {
+    const shots = await clampShots(await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,
       // Default a plain preview to desktop + mobile (2), and halve the raster (scale 0.5) — a big cut in
       // the vision-token cost of design iteration. The agent can still request more viewports explicitly.
       viewports: viewports.length ? viewports : [...PREVIEW_DEFAULT_VIEWPORTS],
       scale: 0.5,
     }));
+    return { shots };
   } catch (err) {
-    req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');
-    return undefined;
+    const message = err instanceof Error ? err.message : String(err);
+    req.log?.warn({ err: message }, 'preview screenshot failed');
+    // NOT retryable: a render error or a build with no Chromium will fail again immediately. Saying
+    // so keeps an agent from looping on something that cannot succeed.
+    return { unavailable: { reason: 'failed', retryable: false, message: `the screenshot could not be taken: ${message}` } };
   } finally {
     shotReservation.release();
   }
@@ -4336,7 +4366,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
         const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
-        const screenshots = await previewScreenshots(req, sourceHtml);
+        const shotResult = await previewScreenshots(req, sourceHtml);
+        const screenshots = shotResult?.shots;
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
         return reply.send({
           html: sourceHtml,
@@ -4346,6 +4377,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // missing instead of showing a page that is quietly wrong everywhere.
           ...(slotErrors.length ? { slotErrors } : {}),
           ...(screenshots ? { screenshots } : {}),
+          // Why the picture is missing, so the caller can say so rather than show a wordless gap.
+          ...(shotResult?.unavailable ? { screenshotsUnavailable: shotResult.unavailable } : {}),
         });
       } catch (err) {
         if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
@@ -4660,6 +4693,52 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    /**
+     * Store a LARGE upload straight from a staged temp file — video/audio, or any download-only file.
+     *
+     * Mirrors createVideoAsset/createFileAsset exactly, except the bytes never enter the heap. These
+     * are the only two kinds without a small cap (images 15MB, SVG 4MB, fonts 5MB), so they are the
+     * only ones where buffering actually costs anything: measured +107MB resident for a 120MB upload.
+     */
+    async function createLargeAssetFromPath(
+      ctx: ProjectContext,
+      projectSlug: string,
+      srcPath: string,
+      meta: { filename: string; mimetype: string; folder?: string },
+      kind: 'video' | 'file',
+    ): Promise<VideoAsset | FileAsset> {
+      const assetId = await mintAssetId(ctx);
+      const storedName = MediaStorage.safeStoredName(meta.filename || (kind === 'video' ? 'video' : 'file'));
+      const ext = storedName.split('.').pop()?.toLowerCase() ?? '';
+      try {
+        const bytes = await storage.storeFileFromPath(projectSlug, assetId, storedName, srcPath);
+        const common = {
+          id: assetId,
+          filename: meta.filename || storedName,
+          folder: meta.folder ?? '',
+          bytes,
+          storedName,
+          url: `/media/${projectSlug}/${assetId}-${storedName}`,
+        };
+        const asset =
+          kind === 'video'
+            ? VideoAssetSchema.parse({
+                ...common,
+                kind: 'video',
+                contentType: VIDEO_CONTENT_TYPES.get(ext) ?? (meta.mimetype || 'video/mp4'),
+              })
+            : FileAssetSchema.parse({
+                ...common,
+                kind: 'file',
+                contentType: meta.mimetype || 'application/octet-stream',
+              });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as VideoAsset | FileAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store an imported site's CSS as one inline-served `.css` file (kind 'stylesheet') so the importer
     // can `<link>` it instead of inlining the bulk CSS into each page's editable source.
     async function createStylesheetAsset(ctx: ProjectContext, projectSlug: string, css: string): Promise<StylesheetAsset> {
@@ -4727,6 +4806,75 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
      * conventions.
      */
     type StoredUpload = { ok: true; item: unknown } | { ok: false; status: number; error: string };
+    /**
+     * Write an incoming upload straight to a temp file next to the media root.
+     *
+     * `file.toBuffer()` held the whole upload in the heap — 120MB in, 107MB resident, measured. The
+     * temp file lives UNDER the media root on purpose: `storeFileFromPath` then renames it into the
+     * asset dir, which is atomic and free on the same filesystem.
+     *
+     * Named for the TEMP FILE deliberately — `MediaStorage.stageUpload` already means something else
+     * (it stages a BUFFER for the sharp pipeline), and two different "stage upload"s in one file
+     * would be a trap.
+     */
+    const stageUploadToTempFile = async (stream: NodeJS.ReadableStream): Promise<string> => {
+      const dir = join(opts.mediaRoot ?? '', '.uploads-tmp');
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- derived from configured mediaRoot
+      await mkdir(dir, { recursive: true, mode: 0o750 });
+      const path = join(dir, `up-${randomUUID()}`);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- generated name in our own dir
+      await pipeline(stream, createWriteStream(path));
+      return path;
+    };
+
+    /**
+     * Store an upload that has already been STREAMED to a temp file.
+     *
+     * Only two upload kinds have no small cap — video/audio and download-only files — and they are
+     * the only ones where holding the bytes costs anything (measured: +107MB resident for a 120MB
+     * upload). Those go straight from the temp file into the asset dir and never enter the heap.
+     * Everything else (SVG 4MB, image 15MB, font 5MB) is read in and handed to the existing
+     * buffer dispatcher, because sharp, the SVG sanitizer and the font detector all need bytes.
+     *
+     * The temp file is always cleaned up, including on every failure path.
+     */
+    const storeUploadFromPath = async (
+      ctx: ProjectContext,
+      projectSlug: string,
+      tmpPath: string,
+      meta: { filename: string; mimetype: string; folder: string },
+      font?: { family?: string; weight?: string; style?: string; fallback?: string },
+    ): Promise<StoredUpload> => {
+      try {
+        const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
+        const looksLikeImage = isSvg || meta.mimetype.startsWith('image/');
+        // A font is identified by MAGIC BYTES, not its mimetype, so peek the head rather than
+        // reading a possibly-huge file just to find out it is not a font.
+        let looksLikeFont = false;
+        if (!looksLikeImage) {
+          const fh = await open(tmpPath, 'r');
+          try {
+            const head = Buffer.alloc(8);
+            await fh.read(head, 0, 8, 0);
+            looksLikeFont = detectFontFormat(head) !== undefined;
+          } finally {
+            await fh.close();
+          }
+        }
+        if (looksLikeImage || looksLikeFont) {
+          // Bounded by their own caps, so reading these in is cheap and keeps ONE dispatcher.
+          const buffer = await readFile(tmpPath);
+          return await storeUploadBuffer(ctx, projectSlug, buffer, meta, font);
+        }
+        const isVideo = isVideoExt(meta.filename) || meta.mimetype.startsWith('video/') || meta.mimetype.startsWith('audio/');
+        const saved = await createLargeAssetFromPath(ctx, projectSlug, tmpPath, meta, isVideo ? 'video' : 'file');
+        return { ok: true, item: saved };
+      } finally {
+        // storeFileFromPath renames the temp file away on the large path, so this is a no-op there.
+        await rm(tmpPath, { force: true }).catch(() => {});
+      }
+    };
+
     const storeUploadBuffer = async (
       ctx: ProjectContext,
       projectSlug: string,
@@ -4811,19 +4959,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const file = await req.file();
         if (!file) return reply.code(400).send({ error: 'no file uploaded' });
 
-        let buffer: Buffer;
+        // STREAMED to disk, not buffered: a large upload never needs to be in the heap.
+        let tmpPath: string;
         try {
-          buffer = await file.toBuffer();
+          tmpPath = await stageUploadToTempFile(file.file);
         } catch {
-          // @fastify/multipart throws when the per-file size limit is exceeded.
+          // @fastify/multipart aborts the stream when the per-file size limit is exceeded.
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
         if (file.file.truncated) {
+          await rm(tmpPath, { force: true }).catch(() => {});
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
 
         const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
-        const stored = await storeUploadBuffer(ctx, project.slug, buffer, meta, {
+        const stored = await storeUploadFromPath(ctx, project.slug, tmpPath, meta, {
           family: req.query.family,
           weight: req.query.weight,
           style: req.query.style,
@@ -4894,7 +5044,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // A raw PUT arrives as octet-stream (or whatever curl guessed), and none of it is JSON — take the
       // bytes verbatim. The type claimed here is NOT trusted: the stored asset's type comes from the
       // filename, because on this route the header is chosen by whoever holds the ticket.
-      uploadScope.addContentTypeParser('*', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+      // STREAMS the body to a temp file instead of buffering it. `parseAs: 'buffer'` meant a 200MB
+      // ticket upload was 200MB of heap before the handler even ran — measured at +107MB for a 120MB
+      // file. Encapsulated to this scope, so no other route's parsing changes.
+      uploadScope.addContentTypeParser('*', (_req, payload, done) => {
+        stageUploadToTempFile(payload)
+          .then((tmpPath) => done(null, { tmpPath }))
+          .catch((err: Error) => done(err));
+      });
       uploadScope.put<{ Params: { token: string }; Querystring: { filename?: string } }>(
       '/media-upload/:token',
       {
@@ -4904,14 +5061,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         bodyLimit: MAX_UPLOAD_BYTES,
       },
       async (req, reply) => {
+        // The body is already on disk by the time this runs (see the parser above), so EVERY exit
+        // from here has to clean it up or a rejected ticket leaks a temp file per attempt.
+        const tmpPath = (req.body as { tmpPath?: string } | undefined)?.tmpPath;
+        const discard = async (): Promise<void> => {
+          if (tmpPath) await rm(tmpPath, { force: true }).catch(() => {});
+        };
+
         const scope = uploadTickets.take(req.params.token);
         // One message for unknown / expired / already-redeemed. Distinguishing them would tell a holder
         // which tokens ever existed.
-        if (!scope) return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
+        if (!scope) {
+          await discard();
+          return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
+        }
 
-        const body = req.body;
-        const buffer = Buffer.isBuffer(body) ? body : typeof body === 'string' ? Buffer.from(body) : null;
-        if (!buffer || buffer.length === 0) return reply.code(400).send({ error: 'empty upload' });
+        if (!tmpPath || (await stat(tmpPath)).size === 0) {
+          await discard();
+          return reply.code(400).send({ error: 'empty upload' });
+        }
 
         const rawName = typeof req.query.filename === 'string' ? req.query.filename : '';
         // Basename only: a ticket must not be able to write outside the media library by naming a path.
@@ -4922,11 +5090,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // to it, and pinning the role would have bought exactly that hole for the sake of one query.
         const role = await resolveProjectRole(db, scope.userId, scope.projectId);
         if (!role || !WRITE_ROLES.has(role)) {
+          await discard();
           return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
         }
         const ctx: ProjectContext = { userId: scope.userId, projectId: scope.projectId, role, actor: 'agent' };
 
-        const stored = await storeUploadBuffer(ctx, scope.projectSlug, buffer, {
+        const stored = await storeUploadFromPath(ctx, scope.projectSlug, tmpPath, {
           filename,
           mimetype: mimeTypeForFilename(filename),
           folder: scope.folder,
@@ -5759,8 +5928,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // it while WAITING would let a request backlog pin unbounded memory. readStored validates
           // `originalName`; a missing/invalid original throws → the route 404s.
           const buffer = await withOptimizeSlot(async () => {
-            const original = await storage.readStored(slug, id, originalName);
-            return (await generateThumbnail(original, { width: THUMB_SIZES[size], format })).buffer;
+            // Hand sharp the PATH, not the bytes: `readStored` is `readFile(resolveStoredPath(…))`,
+            // so resolving instead keeps the identical validation and confinement while leaving the
+            // original (up to 50MB) out of the heap entirely. Only the ENCODED output is resident.
+            const originalPath = storage.resolveStoredPath(slug, id, originalName);
+            return (await generateThumbnail(originalPath, { width: THUMB_SIZES[size], format })).buffer;
           });
           await storage.storeFile(slug, id, thumbName, buffer);
           return buffer;

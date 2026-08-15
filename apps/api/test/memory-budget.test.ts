@@ -81,3 +81,44 @@ describe('MemoryBudget', () => {
     expect(typeof derivedFromHost).toBe('boolean');
   });
 });
+
+describe('MemoryBudget — waits for headroom before refusing', () => {
+  it('SUCCEEDS after waiting when a reservation is released in time', async () => {
+    // The point of serializing: a transient shortage should become a slower success, not a 503.
+    const b = budget(1000, 100);
+    const hog = await b.tryReserve(600 * MB, 'hog');
+    expect(hog).not.toBeNull();
+
+    const pending = b.tryReserve(600 * MB, 'waiter', 2000);
+    setTimeout(() => hog!.release(), 50);
+    expect(await pending, 'the waiter proceeds once room appears').not.toBeNull();
+  });
+
+  it('still refuses once the wait budget is spent — a hang is worse than a 503', async () => {
+    const b = budget(1000, 100);
+    const hog = await b.tryReserve(600 * MB, 'hog');
+    const start = Date.now();
+    const refused = await b.tryReserve(600 * MB, 'waiter', 120);
+    expect(refused, 'nothing was released, so it must give up').toBeNull();
+    expect(Date.now() - start, 'and it must give up on time').toBeLessThan(2000);
+    hog!.release();
+  });
+
+  it('refuses IMMEDIATELY when asked not to wait', async () => {
+    const b = budget(1000, 100);
+    await b.tryReserve(600 * MB, 'hog');
+    const start = Date.now();
+    expect(await b.tryReserve(600 * MB, 'no-wait', 0)).toBeNull();
+    expect(Date.now() - start).toBeLessThan(60);
+  });
+
+  it('bounds the WAITING queue, because a queue is memory too', async () => {
+    // Unbounded queueing to guarantee "no 503" just moves the OOM into the queue.
+    const b = budget(1000, 100);
+    await b.tryReserve(700 * MB, 'hog');
+    const many = await Promise.all(
+      Array.from({ length: 40 }, () => b.tryReserve(600 * MB, 'crowd', 80)),
+    );
+    expect(many.every((r) => r === null), 'none fit; all refused rather than queued forever').toBe(true);
+  });
+})

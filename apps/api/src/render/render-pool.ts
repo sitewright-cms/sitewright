@@ -7,6 +7,7 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { TemplateContext, RenderOptions } from '@sitewright/blocks';
+import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
 
 export interface RenderPoolOptions {
   /** Number of warm workers. */
@@ -47,6 +48,8 @@ interface Slot {
   current?: { id: number; job: Job; timer: NodeJS.Timeout };
   /** Fires when this worker has been idle long enough to retire (absent while working). */
   idleTimer?: NodeJS.Timeout;
+  /** This worker's slice of the instance memory ledger, held for its whole life. */
+  reservation?: Reservation;
 }
 
 const DEFAULTS = {
@@ -147,6 +150,19 @@ export class RenderPool {
 
   // ---- internals ----------------------------------------------------------
   private spawn(): Slot {
+    // A forked worker is a long-lived allocation nothing else accounts for — the same shape as the
+    // headless browser, which already reserves. Without this the ledger admits other work against
+    // memory a just-spawned worker has taken but has not finished touching, so it under-counts
+    // exactly during the ramp-up window. Reserve the worker's DECLARED heap ceiling rather than its
+    // measured resting size (~81MB): the ceiling is what it may actually reach under a heavy render,
+    // and it scales automatically if an operator raises `memoryLimitMb`.
+    //
+    // forceReserve, not tryReserve: by the time this runs the fork is committed, so refusing would
+    // be a lie about what is allocated. Admission belongs at the REQUEST edge, not here.
+    const reservation = sharedMemoryBudget.forceReserve(
+      this.opts.memoryLimitMb * 1024 * 1024,
+      'render worker',
+    );
     const proc = fork(this.opts.workerPath, [], {
       execArgv: [`--max-old-space-size=${this.opts.memoryLimitMb}`],
       // stdout is IGNORED (a render must never write to the API's logs — closes the
@@ -154,7 +170,7 @@ export class RenderPool {
       stdio: ['ignore', 'ignore', 'inherit', 'ipc'],
       serialization: 'json',
     });
-    const slot: Slot = { proc, renders: 0 };
+    const slot: Slot = { proc, renders: 0, reservation };
     proc.on('message', (reply: { id: number; html?: string; error?: string }) => this.onReply(slot, reply));
     proc.on('exit', () => this.onExit(slot));
     // A child can emit 'error' (spawn failure, EPIPE on a closing channel). Swallow it —
@@ -208,6 +224,10 @@ export class RenderPool {
   }
 
   private onExit(slot: Slot): void {
+    // FIRST, before any early return: the process is gone, so its memory is too. A reservation that
+    // outlives its worker would shrink the budget permanently, one dead worker at a time.
+    slot.reservation?.release();
+    slot.reservation = undefined;
     if (slot.current) {
       clearTimeout(slot.current.timer);
       slot.current.job.reject(new RenderUnavailableError('render worker exited (crash or out-of-memory)'));

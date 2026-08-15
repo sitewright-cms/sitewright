@@ -132,6 +132,17 @@ export interface Reservation {
   release(): void;
 }
 
+/**
+ * How long a caller may WAIT for headroom before being refused, and how many may wait at once.
+ *
+ * Serializing beats shedding when the shortage is transient — most spikes clear in seconds, and a
+ * slightly slower success is far better than a 503. But a queue is memory too: every waiter holds its
+ * connection, its parsed body and its closure, so an unbounded queue OOMs with the queue. And some
+ * reservations (the browser, a worker) are held for a LIFETIME and never free while the instance is
+ * serving, so waiting forever really would be forever. Bounded wait, bounded depth, then refuse.
+ */
+const MAX_WAITERS = 32;
+
 export class MemoryBudget {
   private limitBytes = 0;
   private derivedFromHost = false;
@@ -139,6 +150,8 @@ export class MemoryBudget {
   private readonly held = new Set<symbol>();
   private cachedUsed = 0;
   private cachedAt = 0;
+  /** Woken when a reservation is released, so a waiter can re-try immediately instead of polling. */
+  private waiters: Array<() => void> = [];
 
   constructor(private readonly headroomFraction: number = DEFAULT_HEADROOM_FRACTION) {}
 
@@ -186,13 +199,53 @@ export class MemoryBudget {
    * The caller decides what a refusal means — a 503 for a request, "run one fewer worker" for a
    * pool. Returning null rather than throwing keeps the decision at the call site.
    */
-  async tryReserve(bytes: number, label: string): Promise<Reservation | null> {
+  /**
+   * `waitMs` defaults to 0 — REFUSE IMMEDIATELY. Waiting is opt-in at the call site rather than a
+   * default, because a default wait silently turns every existing caller into a blocking one: it
+   * makes them hold whatever else they already own (a concurrency slot, a connection) for the
+   * duration, which is a latency change nobody asked for.
+   */
+  async tryReserve(bytes: number, label: string, waitMs = 0): Promise<Reservation | null> {
     // Refresh the sample FIRST, then decide and commit with no await in between. An `await` between
     // reading headroom and taking it re-creates the exact check-then-act race this ledger exists to
     // close: two callers await the same snapshot, both see the same free space, and both proceed.
     // JS is single-threaded, so a synchronous check-and-commit is atomic.
     await this.used();
-    return this.tryReserveSync(bytes, label);
+    const immediate = this.tryReserveSync(bytes, label);
+    if (immediate || waitMs <= 0) return immediate;
+
+    // No room right now. WAIT for a release rather than refusing outright — a transient spike is the
+    // common case, and a slower success beats a 503. Bounded on both axes: at most `waitMs`, and at
+    // most MAX_WAITERS queued, because the queue is memory as surely as the work is.
+    if (this.waiters.length >= MAX_WAITERS) return null;
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+      const woke = await this.waitForRelease(deadline - Date.now());
+      // Re-sample: a release may have been accompanied by the kernel reclaiming more.
+      await this.used();
+      const retry = this.tryReserveSync(bytes, label);
+      if (retry) return retry;
+      if (!woke) break; // timed out rather than being woken
+    }
+    return null;
+  }
+
+  /** Resolves true when a reservation was released, false on timeout. */
+  private waitForRelease(ms: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const done = (woken: boolean): void => {
+        if (settled) return;
+        settled = true;
+        this.waiters = this.waiters.filter((w) => w !== wake);
+        clearTimeout(timer);
+        resolve(woken);
+      };
+      const wake = (): void => done(true);
+      const timer = setTimeout(() => done(false), Math.max(0, ms));
+      timer.unref?.();
+      this.waiters.push(wake);
+    });
   }
 
   /** The atomic half of {@link tryReserve}: no awaits, so nothing can interleave. */
@@ -221,6 +274,10 @@ export class MemoryBudget {
         released = true;
         this.held.delete(token);
         this.reserved = Math.max(0, this.reserved - bytes);
+        // Headroom just appeared — wake everyone waiting so the first that fits proceeds at once.
+        const woken = this.waiters;
+        this.waiters = [];
+        for (const wake of woken) wake();
       },
     };
   }

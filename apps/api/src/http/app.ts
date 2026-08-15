@@ -304,6 +304,7 @@ import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
+import { FairGate, TenantShareError } from '../runtime/fair-gate.js';
 import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -398,7 +399,7 @@ const IMPORT_TIMEOUT_MS = 10_000; // import-url: per-socket INACTIVITY timeout +
  *
  * 180s over the 200MB ceiling is a ~1.1MB/s floor. This does NOT reopen the slow-loris hole the
  * deadline exists for: `timeoutMs` above is still a per-socket inactivity timeout, so a server that
- * stops sending dies in 10s regardless, and `withLargeImportSlot` bounds how many of these can be
+ * stops sending dies in 10s regardless, and `largeImportGate` bounds how many of these can be
  * open at once.
  */
 const LARGE_IMPORT_DEADLINE_MS = 180_000;
@@ -451,17 +452,23 @@ const FONT_CONTENT_TYPES = new Map<string, string>([
   ['otf', 'font/otf'],
 ]);
 
-// Bound concurrent image optimization — each run spawns several sharp encoders,
-// so unbounded parallel uploads could saturate CPU/memory on the single
-// container. A slot is handed directly to the next waiter on release (never
-// over-admitting beyond MAX_CONCURRENT_OPTIMIZE).
+// Bound concurrent image optimization — each run spawns several sharp encoders, so unbounded
+// parallel uploads could saturate CPU/memory on the single container. The queue is bounded too: the
+// public on-demand thumbnail endpoint could otherwise pile up an unbounded backlog of pending
+// encodes (each allocating its source image once its slot is granted).
+//
+// Fairness here is about ORDER, not refusal. This gate serves PUBLIC visitors, where a first visit to
+// a gallery legitimately misses fifteen variants at once and a refusal is a broken image — so a busy
+// project waits behind a quieter neighbour rather than being turned away. `queuePerTenant` keeps four
+// places free so that neighbour can always get INTO the queue to be scheduled ahead.
 const MAX_CONCURRENT_OPTIMIZE = 3;
-// Bound the WAITER backlog too, not just concurrency: the public on-demand thumbnail endpoint could
-// otherwise pile up an unbounded queue of pending encodes (each of which allocates the source image
-// buffer once its slot is granted). Past this depth, reject with a retryable 503 instead of queueing.
 const MAX_OPTIMIZE_QUEUE = 24;
-let activeOptimizations = 0;
-const optimizeWaiters: Array<() => void> = [];
+const optimizeGate = new FairGate({
+  label: 'image encodes',
+  limit: MAX_CONCURRENT_OPTIMIZE,
+  queue: MAX_OPTIMIZE_QUEUE,
+  queuePerTenant: MAX_OPTIMIZE_QUEUE - 4,
+});
 /**
  * What one encode is assumed to cost while it runs.
  *
@@ -469,47 +476,6 @@ const optimizeWaiters: Array<() => void> = [];
  * buffer, the decode and the encoded output all live at once. Rounded up, because under-reserving
  * is what an OOM looks like and over-reserving only costs a little throughput.
  */
-/**
- * Per-tenant fair share of an instance-wide gate.
- *
- * Every concurrency gate here is whole-instance, so one project can occupy all of it: two large
- * imports at up to 180s each, plus a six-deep queue, denies that path to every other tenant on the
- * box for minutes — from one caller staying inside its own rate limit. Capping how many slots ONE
- * project may hold keeps a share available for everyone else.
- *
- * Deliberately generous: half the slots, at least one. A single tenant on a quiet instance is the
- * common case and must not be throttled for the sake of a neighbour that does not exist — so this
- * only ever bites when a tenant wants MORE than its half while holding some already.
- */
-function fairShare(limit: number): {
-  take(projectId: string): boolean;
-  release(projectId: string): void;
-} {
-  const active = new Map<string, number>();
-  const share = Math.max(1, Math.ceil(limit / 2));
-  return {
-    take(projectId: string): boolean {
-      const held = active.get(projectId) ?? 0;
-      if (held >= share) return false;
-      active.set(projectId, held + 1);
-      return true;
-    },
-    release(projectId: string): void {
-      const held = active.get(projectId) ?? 0;
-      if (held <= 1) active.delete(projectId);
-      else active.set(projectId, held - 1);
-    },
-  };
-}
-
-/** Thrown when a tenant is at its own share of a gate — distinct from the instance being full. */
-class TenantShareError extends Error {
-  readonly statusCode = 503;
-  constructor(readonly what: string) {
-    super(`this project already has its share of concurrent ${what} in flight — retry shortly`);
-  }
-}
-
 const OPTIMIZE_RESERVE_BYTES = 12 * 1024 * 1024;
 
 /**
@@ -541,34 +507,23 @@ const LIST_AMPLIFICATION = 3;
 /** Below this a list is not worth a ledger round-trip; the estimate costs more than the memory does. */
 const LIST_ADMIT_FLOOR_BYTES = 2 * 1024 * 1024;
 
-async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
-    activeOptimizations += 1;
-  } else {
-    if (optimizeWaiters.length >= MAX_OPTIMIZE_QUEUE) {
-      throw Object.assign(new Error('image processing queue is full'), { statusCode: 503 });
+/**
+ * Run an image encode under the optimize gate, then under the memory ledger.
+ *
+ * Two different limits, deliberately in this order. Counting slots bounds how MANY encodes run; it
+ * cannot see how much memory is left. Take the slot first (so the queue still shapes the load), then
+ * check we can actually afford the work — and if we cannot, the gate's `finally` gives the slot
+ * straight back to the next waiter.
+ */
+async function withOptimizeSlot<T>(tenant: string, fn: () => Promise<T>): Promise<T> {
+  return optimizeGate.run(tenant, async () => {
+    const reservation = await admitMemory(OPTIMIZE_RESERVE_BYTES, 'image processing');
+    try {
+      return await fn();
+    } finally {
+      reservation.release();
     }
-    await new Promise<void>((resolve) => optimizeWaiters.push(resolve));
-  }
-  // Counting slots bounds how MANY encodes run; it cannot see how much memory is left. Take the
-  // slot first (so the queue still shapes the load), then check we can actually afford the work.
-  let reservation: Reservation;
-  try {
-    reservation = await admitMemory(OPTIMIZE_RESERVE_BYTES, 'image processing');
-  } catch (err) {
-    const next = optimizeWaiters.shift();
-    if (next) next();
-    else activeOptimizations -= 1;
-    throw err;
-  }
-  try {
-    return await fn();
-  } finally {
-    reservation.release();
-    const next = optimizeWaiters.shift();
-    if (next) next();
-    else activeOptimizations -= 1;
-  }
+  });
 }
 
 /**
@@ -594,6 +549,17 @@ export async function initMemoryBudget(): Promise<void> {
  * unconditional-admit fallback and no test could reach a 503 — which is exactly how a shed request
  * surfacing as an opaque 500 went unnoticed on the upload paths.
  */
+/**
+ * Test seam: how many encodes the optimize gate has admitted since boot.
+ *
+ * Lets a test assert that work was kept OUT of the gate. Without it, "an unknown project slug 404s"
+ * proves nothing — a missing FILE also 404s, just after taking a slot and a queue place under an
+ * invented tenant, which is the whole vulnerability.
+ */
+export function _optimizeGateAdmittedForTest(): number {
+  return optimizeGate.admitted;
+}
+
 export function _setMemoryBudgetForTest(limitBytes: number, usedBytes: number): void {
   memoryBudget._setForTest(limitBytes, usedBytes);
   memoryBudgetReady = true;
@@ -630,30 +596,22 @@ const MAX_CONCURRENT_LARGE_IMPORT = 2;
 // A short queue, not an unbounded one — a waiter costs nothing yet, but admitting it eventually
 // allocates a full payload, so past this depth say "later" with a retryable 503 instead.
 const MAX_LARGE_IMPORT_QUEUE = 6;
-let activeLargeImports = 0;
-const largeImportWaiters: Array<() => void> = [];
-const largeImportShare = fairShare(MAX_CONCURRENT_LARGE_IMPORT);
-async function withLargeImportSlot<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
-  // Fairness FIRST: refuse a tenant already at its share before it can occupy a slot or the queue.
-  if (!largeImportShare.take(projectId)) throw new TenantShareError('large imports');
-  if (activeLargeImports < MAX_CONCURRENT_LARGE_IMPORT) {
-    activeLargeImports += 1;
-  } else {
-    if (largeImportWaiters.length >= MAX_LARGE_IMPORT_QUEUE) {
-      throw Object.assign(new Error('too many large imports in progress; retry shortly'), { statusCode: 503 });
-    }
-    await new Promise<void>((resolve) => largeImportWaiters.push(resolve));
-  }
-  try {
-    return await fn();
-  } finally {
-    largeImportShare.release(projectId);
-    // Hand the slot straight to the next waiter (never over-admitting), exactly as the optimize gate does.
-    const next = largeImportWaiters.shift();
-    if (next) next();
-    else activeLargeImports -= 1;
-  }
-}
+/**
+ * Unlike the optimize gate, this one REFUSES a project that already has one in flight rather than
+ * queueing it. The callers here are agents, and a slot is held for up to `LARGE_IMPORT_DEADLINE_MS`
+ * — so queueing behind two of them means a three-minute wait dressed up as success, where a prompt
+ * "retry shortly" lets the agent get on with other work.
+ *
+ * `queuePerTenant` is therefore unreachable while `maxInFlightPerTenant` is 1 (a project is refused
+ * before it can queue at all). Kept as the backstop that still applies if that ever rises.
+ */
+const largeImportGate = new FairGate({
+  label: 'large media imports',
+  limit: MAX_CONCURRENT_LARGE_IMPORT,
+  queue: MAX_LARGE_IMPORT_QUEUE,
+  queuePerTenant: MAX_LARGE_IMPORT_QUEUE - 2,
+  maxInFlightPerTenant: Math.max(1, Math.ceil(MAX_CONCURRENT_LARGE_IMPORT / 2)),
+});
 
 function isApiPath(url: string): boolean {
   const path = url.split('?')[0] ?? url;
@@ -4594,6 +4552,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return asset;
     };
 
+    /**
+     * Slug → project id for the PUBLIC media routes; null when no such project exists.
+     *
+     * The on-demand thumbnail path gates encodes per tenant, and a gate is only as trustworthy as the
+     * identity it counts. That identity arrives as a URL segment on an unauthenticated route, so it
+     * has to be resolved to something real before it is allowed to mean anything. Shares the record
+     * cache's TTL and bound, and — like it — caches the NEGATIVE answer too, so a flood of unknown
+     * slugs cannot turn into a flood of lookups.
+     */
+    const projectIdCache = new Map<string, { at: number; id: string | null }>();
+    const resolvePublicProjectId = async (projectSlug: string): Promise<string | null> => {
+      const hit = projectIdCache.get(projectSlug);
+      if (hit && Date.now() - hit.at < MEDIA_RECORD_TTL_MS) return hit.id;
+      let id: string | null = null;
+      try {
+        id = (await projects.getBySlug(projectSlug)).id;
+      } catch {
+        id = null;
+      }
+      if (projectIdCache.size >= MEDIA_RECORD_CACHE_MAX) projectIdCache.clear();
+      projectIdCache.set(projectSlug, { at: Date.now(), id });
+      return id;
+    };
+
     // Optimize a raw image buffer (AVIF/WebP/LQIP), store the binaries, and record
     // the tenant-scoped metadata. Shared by the upload route AND the stock import.
     async function createMediaAsset(
@@ -4625,7 +4607,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Prefix the stored file with `<id>-` so the optimized original lands FLAT as
         // `<slug>/<id>-<name>` in the shared project dir; `logicalStoredName` strips it back for the DB.
         const storedName = `${assetId}-${MediaStorage.safeStoredName(meta.filename || 'image')}`;
-        const stored = await withOptimizeSlot(() =>
+        // Key on the project ID, exactly as the thumbnail path does — the same project must be ONE
+        // tenant to the gate whether it is uploading or serving, or it quietly gets two shares.
+        const stored = await withOptimizeSlot(ctx.projectId, () =>
           storeOriginal(inputPath, assetDir, { storedName, ...(cap ? { cap } : {}) }),
         );
         await storage.clearUpload(inputPath);
@@ -5334,7 +5318,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       };
       if (maxImportBytes <= MAX_IMAGE_UPLOAD_BYTES) return runImport();
       try {
-        return await withLargeImportSlot(project.id, async () => {
+        return await largeImportGate.run(project.id, async () => {
           // The pinned fetcher buffers the whole body, so the CAP is the honest reservation. Held
           // for the fetch AND the store, because the buffer stays resident until the asset lands.
           const held = await admitMemory(maxImportBytes, 'large media import');
@@ -5995,6 +5979,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       } catch {
         /* miss → generate (coalesced) below */
       }
+      // ★ Resolve the slug to a REAL project BEFORE the gate, and key the gate on its id.
+      //
+      // `slug` is a raw path parameter on a public, unauthenticated route, and the storage layer only
+      // validates its CHARSET — never that it names anything. Keying a per-tenant gate on it would let
+      // a caller invent a tenant per request (a fresh identity is scheduled FIRST, since it has been
+      // served least) or, worse, spend another project's share: a slug is not a secret, it is in every
+      // `<img src>` on that project's own public site. Both are fixed by refusing to let an unknown
+      // slug reach the gate at all. `getBySlug` is cached, so this costs no round trip per request.
+      const projectId = await resolvePublicProjectId(slug);
+      if (!projectId) throw new NotFoundError('media');
       const key = `${slug}/${id}/${thumbName}`;
       let pending = inflightThumbs.get(key);
       if (!pending) {
@@ -6002,7 +5996,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Allocate the (up to 50 MB) original buffer ONLY once an optimize slot is granted — reading
           // it while WAITING would let a request backlog pin unbounded memory. readStored validates
           // `originalName`; a missing/invalid original throws → the route 404s.
-          const buffer = await withOptimizeSlot(async () => {
+          const buffer = await withOptimizeSlot(projectId, async () => {
             // Hand sharp the PATH, not the bytes: `readStored` is `readFile(resolveStoredPath(…))`,
             // so resolving instead keeps the identical validation and confinement while leaving the
             // original (up to 50MB) out of the heap entirely. Only the ENCODED output is resident.

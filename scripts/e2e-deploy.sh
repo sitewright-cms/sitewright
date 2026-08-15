@@ -29,6 +29,7 @@
 #   --image REF  redeploy an existing local image as-is (skips build + package + docker build)
 #
 # Env overrides: SW_E2E_PORT_MIN/MAX, SW_E2E_HOST (default dind.local),
+#   SW_E2E_MEMORY (cgroup cap for the slot, e.g. 1g — required to stress memory behaviour),
 #   SW_E2E_ADMIN_EMAILS (admin@e2e.test),
 #   SW_E2E_HEALTH_TIMEOUT (90s), SW_E2E_TMP (/tmp).
 set -euo pipefail
@@ -44,6 +45,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${SW_E2E_ADMIN_EMAILS:=admin@e2e.test}"
 : "${SW_E2E_ADMIN_PASSWORD:=Pw-secret-1}"
 : "${SW_E2E_HEALTH_TIMEOUT:=90}"
+# Optional cgroup memory cap for the slot (e.g. 1g, 768m). Empty = uncapped.
+# Memory work can only be stressed against a container that actually HAS a limit: the budget derives
+# its ceiling from the cgroup, so an uncapped slot silently exercises the "half the host RAM"
+# fallback and never sheds — a green run there proves nothing about behaviour under pressure.
+: "${SW_E2E_MEMORY:=}"
 # Subdomain routing for locally-hosted sites (`<slug>.<domain>` serves that site at root). The forms
 # specs exercise that origin — they drive it with a Host header, so this only needs to be CONFIGURED,
 # not resolvable. Left as the deploy host by default, which does have wildcard DNS here.
@@ -195,7 +201,10 @@ cmd_up() {
     log "Claiming slot $port → $container"
     # `2>&1 >/dev/null`: capture the daemon's stderr into run_err, discard the
     # container-id on stdout (order matters — stderr is dup'd to the pipe first).
+    local -a mem_args=()
+    [ -n "$SW_E2E_MEMORY" ] && mem_args=(--memory "$SW_E2E_MEMORY" --memory-swap "$SW_E2E_MEMORY")
     if run_err="$(docker run -d --name "$container" -p "${port}:80" \
+          "${mem_args[@]+"${mem_args[@]}"}" \
           -e COOKIE_SECRET="$(secret)" \
           -e SW_ENCRYPTION_KEY="$(secret)" \
           -e SW_ADMIN_EMAIL="$SW_E2E_ADMIN_EMAILS" \

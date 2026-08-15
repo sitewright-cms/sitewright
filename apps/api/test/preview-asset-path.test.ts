@@ -16,6 +16,12 @@ describe('isPreviewAssetPath', () => {
     'back-to-top.js',
     'robots.txt',
     'sitemap.xml',
+    // The SAME class of regression as site.webmanifest: the publish writes these, every search box
+    // fetches them, and a missing extension makes search silently inert in the preview alone.
+    'search-index.json',
+    'search-text.json',
+    'search-index.de.json',
+    'search-text.de.json',
   ])('serves the root platform file %s as an asset', (path) => {
     expect(isPreviewAssetPath(path)).toBe(true);
   });
@@ -45,7 +51,9 @@ describe('isPreviewAssetPath', () => {
   it('does not serve arbitrary root files by extension', () => {
     // The allowlist is deliberate: only what the publish itself writes to the root. A stray `.json`
     // or `.html` at the root must not become a static asset response.
-    for (const p of ['secrets.json', 'index.html', 'notes.md', 'archive.zip']) {
+    // `search-index.<locale>.json` IS served, and a locale is not distinguishable by shape from any
+    // other segment — so the guard is the search-index/search-text PREFIX, not the suffix.
+    for (const p of ['secrets.json', 'index.html', 'notes.md', 'archive.zip', 'search-other.json', 'searchindex.json']) {
       expect(isPreviewAssetPath(p)).toBe(false);
     }
   });

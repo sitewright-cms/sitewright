@@ -26,6 +26,16 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
 // security.txt's location under `.well-known/`, so it cannot live at the root like robots.txt.
 const NESTED_ASSET_PATHS: ReadonlySet<string> = new Set([SECURITY_TXT_PATH]);
 
+// The site-search index pair, optionally locale-suffixed (`search-index.de.json`). An EXACT-NAME
+// exception rather than adding `.json` to ASSET_CONTENT_TYPES, because that map omits `.json`
+// DELIBERATELY so `release.json` stays unreachable — see its comment above.
+//
+// Without this every search box on a PLATFORM-served site is silently inert: `/sites/<slug>/*` and
+// the signed draft preview both read root files through `readAsset`, so the index 404s on both, while
+// a customer's own host (FTP/SFTP/rsync) serves it happily because it has no allowlist. These two
+// names are platform-generated and hold only text already public in the rendered pages.
+const SEARCH_INDEX_FILE = /^search-(index|text)(\.[A-Za-z0-9-]+)?\.json$/;
+
 // A locked-down response CSP for inline-served SVG. SVG can carry <script>; even though our imported
 // SVGs are SANITIZED and referenced via <img> (browser "secure static mode" = no scripts/fetches), this
 // CSP is the HARD guarantee for the residual DIRECT-navigation vector: no script executes and no remote
@@ -242,10 +252,12 @@ export class PublishStore {
     slug: string,
     requestPath: string,
   ): Promise<{ body: string; contentType: string } | null> {
-    const contentType = ASSET_CONTENT_TYPES.get(extname(requestPath).toLowerCase());
-    if (!contentType) return null;
     const dir = resolve(this.dirFor(slug));
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
+    const contentType =
+      ASSET_CONTENT_TYPES.get(extname(rel).toLowerCase()) ??
+      (SEARCH_INDEX_FILE.test(rel) ? 'application/json; charset=utf-8' : undefined);
+    if (!contentType) return null;
     // The builder writes these assets ONLY at the site root (styles.css, the
     // per-type component chunks c-<type>.js, the effect runtimes). Restrict serving
     // to root-level files so no future write path into a subdirectory could become

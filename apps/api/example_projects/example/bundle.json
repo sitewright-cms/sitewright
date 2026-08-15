@@ -1395,6 +1395,62 @@
         "work.intro": {
           "de": "Eine Auswahl aktueller Websites aus Handel, Gesundheit, Finanzen und Kultur — jede handgebaut und schnell. Klicken Sie ein Bild für die Großansicht.",
           "es": "Una selección de webs recientes de comercio, salud, finanzas y cultura — todas artesanales y rápidas. Haga clic en cualquier imagen para verla a pantalla completa."
+        },
+        "comp_search.intro": {
+          "de": "Durchsuchen Sie jede Seite dieser Website. Der Index entsteht beim Veröffentlichen und passt damit immer zu dem, was Besucher tatsächlich lesen — ganz ohne Server.",
+          "es": "Busque en todas las páginas de este sitio. El índice se crea al publicar, así que siempre coincide con lo que el visitante está leyendo, y funciona sin servidor."
+        },
+        "comp_search.sec_basic_t": {
+          "de": "Eine Zeile, eine fertige Suchseite",
+          "es": "Una línea, una página de búsqueda lista"
+        },
+        "comp_search.sec_basic_d": {
+          "de": "Der Helper schreibt Eingabefeld, Trefferliste und Leerzustand für Sie. Probieren Sie „Design“, „statisch“ oder eine Phrase in Anführungszeichen.",
+          "es": "El helper escribe el campo, la lista de resultados y el estado vacío por usted. Pruebe «diseño», «estático» o una frase entre comillas."
+        },
+        "comp_search.sec_own_t": {
+          "de": "Oder das Layout selbst bestimmen",
+          "es": "O controle usted el diseño"
+        },
+        "comp_search.sec_own_d": {
+          "de": "Schreiben Sie die beiden Teile selbst, dann gehören alle Klassen Ihnen. Die Laufzeit füllt nur den Trefferbereich — eigenes Chrome fügt sie nie ein.",
+          "es": "Escriba usted las dos partes y todas las clases serán suyas. El runtime solo rellena el contenedor de resultados; nunca añade elementos propios."
+        },
+        "comp_search.ph_own": {
+          "de": "Tippen zum Suchen…",
+          "es": "Escriba para buscar…"
+        },
+        "comp_search.empty_own": {
+          "de": "Dazu wurde nichts gefunden — versuchen Sie es mit weniger Wörtern.",
+          "es": "No se encontró nada; pruebe con menos palabras."
+        },
+        "comp_search.sec_notes_t": {
+          "de": "Was durchsucht wird",
+          "es": "Qué se busca"
+        },
+        "comp_search.n1_t": {
+          "de": "Ganze Seiten, nicht nur Titel",
+          "es": "Páginas enteras, no solo títulos"
+        },
+        "comp_search.n1_d": {
+          "de": "Jedes Wort im Seiteninhalt wird indexiert, Titel und Überschriften zählen stärker. Navigation und Fußzeile bleiben bewusst außen vor — sonst würde jede Seite auf jedes Menüwort passen.",
+          "es": "Se indexa cada palabra del cuerpo, con más peso para el título y los encabezados. La navegación y el pie quedan fuera a propósito: si no, cada página coincidiría con cada palabra del menú."
+        },
+        "comp_search.n2_t": {
+          "de": "Jede Sprache für sich",
+          "es": "Cada idioma por separado"
+        },
+        "comp_search.n2_d": {
+          "de": "Diese Website erscheint in drei Sprachen, und jede bekommt einen eigenen Index — eine deutsche Seite taucht nie in englischen Treffern auf.",
+          "es": "Este sitio se publica en tres idiomas y cada uno tiene su propio índice, así que una página en alemán nunca aparece entre resultados en inglés."
+        },
+        "comp_search.n3_t": {
+          "de": "Treffer sind Seiten",
+          "es": "Los resultados son páginas"
+        },
+        "comp_search.n3_d": {
+          "de": "Jeder Treffer ist ein Link mit Seitentitel, Beschreibung und einem Ausschnitt der Fundstelle. Vor Suchmaschinen verborgene Seiten erscheinen nie.",
+          "es": "Cada resultado es un enlace con el título de la página, su descripción y un fragmento con la coincidencia. Las páginas ocultas a los buscadores nunca aparecen."
         }
       },
       "siteUrl": "https://example.com",
@@ -2595,6 +2651,16 @@
       }
     },
     {
+      "id": "comp-search-de",
+      "path": "suche",
+      "title": "Suche",
+      "description": "Volltextsuche über alle Seiten, erzeugt beim Veröffentlichen.",
+      "parent": "components-de",
+      "order": 13,
+      "locale": "de",
+      "translationGroup": "comp-search"
+    },
+    {
       "id": "home-es",
       "path": "es",
       "title": "Northwind Web Studio — Webs que traen negocio",
@@ -3118,6 +3184,16 @@
       }
     },
     {
+      "id": "comp-search-es",
+      "path": "busqueda",
+      "title": "Búsqueda",
+      "description": "Búsqueda de texto completo en todas las páginas, creada al publicar.",
+      "parent": "components-es",
+      "order": 13,
+      "locale": "es",
+      "translationGroup": "comp-search"
+    },
+    {
       "id": "comp-svg",
       "path": "svg-animation",
       "title": "SVG animation",
@@ -3143,6 +3219,16 @@
         "logos_d": "Stack several effects on one SVG and drive them from the root: a stroke draw, a staggered reveal and a spring-in pop assemble a logo on a shared timeline (data-sw-delay). The whole mark then LOOPS on a timer (data-sw-svg-loop), replays as it re-enters view (data-sw-svg-replay) and replays on click (data-sw-svg-click) — every trigger at once.",
         "logos_hint": "Click any mark to replay it — each one also loops on a timer and re-runs on scroll-in."
       }
+    },
+    {
+      "id": "comp-search",
+      "path": "search",
+      "title": "Search",
+      "description": "Full-text search over every page, built when the site publishes.",
+      "parent": "components",
+      "order": 13,
+      "translationGroup": "comp-search",
+      "source": "<section class=\"mx-auto max-w-6xl px-6 pb-8 pt-24\">\n  <a class=\"nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline\" href=\"{{sw-url page.parent.path}}\"><svg class=\"h-4 w-4\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"m12 19-7-7 7-7\" /><path d=\"M19 12H5\" /></svg> {{page.parent.title}}</a>\n  <h1 class=\"mt-6 text-4xl font-bold tracking-tight sm:text-6xl\">{{page.title}}</h1>\n  <p class=\"mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.intro\">Search every page of this site. The index is built when the site is published, so it always matches what a visitor is actually reading — and it works without a server.</p>\n</section>\n\n<section class=\"mx-auto max-w-6xl px-6 pb-20\">\n  <h2 class=\"text-3xl font-bold tracking-tight\" data-sw-translate=\"comp_search.sec_basic_t\">One line, a working search page</h2>\n  <p class=\"mt-2 max-w-2xl leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.sec_basic_d\">The helper writes the input, the result list and the empty state for you. Try “design”, “static” or a quoted phrase like “design systems”.</p>\n  <pre class=\"mt-3 inline-block max-w-full overflow-x-auto text-xs\"><code>&#123;&#123;sw-search placeholder=\"Search the site…\" limit=8&#125;&#125;</code></pre>\n  <div class=\"mt-8 rounded-3xl border border-base-200 bg-base-100 p-6 shadow-sm sm:p-8\">\n    {{sw-search placeholder=\"Search the site…\" limit=8 class=\"mx-auto max-w-xl\"}}\n  </div>\n</section>\n\n<section class=\"mx-auto max-w-6xl px-6 pb-20\">\n  <h2 class=\"text-3xl font-bold tracking-tight\" data-sw-translate=\"comp_search.sec_own_t\">Or own the layout</h2>\n  <p class=\"mt-2 max-w-2xl leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.sec_own_d\">Write the two parts yourself and every class stays yours. The runtime only fills the results container — it never injects chrome of its own.</p>\n  <pre class=\"mt-3 inline-block max-w-full overflow-x-auto text-xs\"><code>&lt;div data-sw-component=\"search\"&gt;\n  &lt;input data-sw-part=\"input\" type=\"search\" /&gt;\n  &lt;div data-sw-part=\"results\"&gt;&lt;/div&gt;\n  &lt;p data-sw-part=\"empty\" hidden&gt;Nothing matched.&lt;/p&gt;\n&lt;/div&gt;</code></pre>\n  <div class=\"mt-8 rounded-3xl border border-base-200 bg-base-100 p-6 shadow-sm sm:p-8\">\n    <div data-sw-component=\"search\" data-sw-limit=\"5\" class=\"mx-auto max-w-xl\">\n      <input data-sw-part=\"input\" type=\"search\" autocomplete=\"off\" class=\"input input-bordered w-full\" placeholder=\"{{sw-translate \"comp_search.ph_own\" default=\"Type to search…\"}}\" aria-label=\"{{sw-translate \"comp_search.ph_own\" default=\"Type to search…\"}}\" />\n      <div data-sw-part=\"results\" class=\"mt-3\"></div>\n      <p data-sw-part=\"empty\" hidden class=\"mt-3 text-sm text-base-content/60\" data-sw-translate=\"comp_search.empty_own\">Nothing matched that — try fewer words.</p>\n    </div>\n  </div>\n</section>\n\n<section class=\"mx-auto max-w-6xl px-6 pb-28\">\n  <h2 class=\"text-3xl font-bold tracking-tight\" data-sw-translate=\"comp_search.sec_notes_t\">What gets searched</h2>\n  <div class=\"mt-6 grid gap-6 sm:grid-cols-3\">\n    <div class=\"rounded-3xl border border-base-200 bg-base-100 p-6\">\n      <h3 class=\"text-lg font-bold\" data-sw-translate=\"comp_search.n1_t\">Whole pages, not just titles</h3>\n      <p class=\"mt-2 leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.n1_d\">Every word of a page body is indexed, with its title and headings weighted more heavily. Shared navigation and the footer are deliberately left out — otherwise every page would match every menu word.</p>\n    </div>\n    <div class=\"rounded-3xl border border-base-200 bg-base-100 p-6\">\n      <h3 class=\"text-lg font-bold\" data-sw-translate=\"comp_search.n2_t\">Each language on its own</h3>\n      <p class=\"mt-2 leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.n2_d\">This site is published in three languages and each one gets its own index, so a German page never turns up in an English result list.</p>\n    </div>\n    <div class=\"rounded-3xl border border-base-200 bg-base-100 p-6\">\n      <h3 class=\"text-lg font-bold\" data-sw-translate=\"comp_search.n3_t\">Results are pages</h3>\n      <p class=\"mt-2 leading-relaxed text-base-content/60\" data-sw-translate=\"comp_search.n3_d\">Each hit is a link with the page title, its description and a snippet showing the match. Pages hidden from search engines never appear.</p>\n    </div>\n  </div>\n</section>"
     }
   ],
   "templates": [],

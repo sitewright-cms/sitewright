@@ -7,6 +7,12 @@ import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp, _setMemoryBudgetForTest } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
+import { RenderPool } from '../src/render/render-pool.js';
+import { fileURLToPath } from 'node:url';
+
+// The preview route 503s with "rendering is not available" unless a pool is injected, so without one
+// the screenshot assertions below would be testing an unreachable path.
+const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
 /**
  * The memory ledger's DENIAL branch, over real HTTP.
@@ -30,7 +36,7 @@ let mediaRoot: string;
 beforeEach(async () => {
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-admission-'));
   db = await makeTestDb();
-  app = await createApp({ db, mediaRoot });
+  app = await createApp({ db, mediaRoot, renderPool: new RenderPool({ size: 1, workerPath }) });
   await app.ready();
 });
 afterEach(async () => {
@@ -97,5 +103,42 @@ describe('memory admission over HTTP', () => {
     // Same instance, headroom restored — a leaked reservation would keep refusing forever.
     _setMemoryBudgetForTest(1024 * MB, 100 * MB);
     expect((await imageUpload(projectId, t)).statusCode, 'refusals must not poison the ledger').toBe(201);
+  });
+});
+
+describe('a shed screenshot explains itself', () => {
+  // A refusal now WAITS for headroom first (bounded), so a shed request is deliberately slower than
+  // the 5s default allows. That latency is the price of turning most 503s into slow successes.
+  it('says the image was skipped for memory and that it is retryable — not silence', { timeout: 20_000 }, async () => {
+    // Before this, a refusal was indistinguishable from "this build has no Chromium": the caller got
+    // HTML with no picture and no reason, so an agent could not tell that retrying would work.
+    const { t, projectId } = await setup('shot@e2e.test');
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview?screenshot=1`,
+      cookies: { sw_session: t },
+      payload: { id: 'home' },
+    });
+    expect(res.statusCode, 'the HTML itself is still served').toBe(200);
+    const body = res.json() as { html?: string; screenshots?: unknown; screenshotsUnavailable?: { reason: string; retryable: boolean; message: string } };
+    expect(body.html, 'best-effort: the document is complete').toBeTruthy();
+    expect(body.screenshots).toBeUndefined();
+    expect(body.screenshotsUnavailable?.reason).toBe('memory');
+    expect(body.screenshotsUnavailable?.retryable, 'the caller must know a retry can succeed').toBe(true);
+    expect(body.screenshotsUnavailable?.message).toMatch(/retry/i);
+  });
+
+  it('omits the field entirely when no screenshot was asked for', { timeout: 20_000 }, async () => {
+    const { t, projectId } = await setup('noshot@e2e.test');
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as Record<string, unknown>).screenshotsUnavailable, 'no ask, no notice').toBeUndefined();
   });
 });

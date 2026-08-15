@@ -60,3 +60,39 @@ afterAll(() => {
   // the same process.
   sharp.cache({ memory: 50, files: 20, items: 100 });
 });
+
+describe('generateThumbnail from a PATH', () => {
+  it('produces the same image whether given bytes or a file path', async () => {
+    // The path form is what keeps a source image (up to 50MB) out of the heap while serving a
+    // variant — sharp reads it itself. It must be equivalent, not merely "also work".
+    const { generateThumbnail } = await import('../src/thumbnail.js');
+    const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    // A real 4x4 PNG, so sharp has something with actual dimensions to resize.
+    const png = await sharp({
+      create: { width: 4, height: 4, channels: 3, background: { r: 10, g: 120, b: 200 } },
+    })
+      .png()
+      .toBuffer();
+
+    const dir = await mkdtemp(join(tmpdir(), 'thumb-'));
+    const file = join(dir, 'src.png');
+    try {
+      await writeFile(file, png);
+      const fromBuffer = await generateThumbnail(png, { width: 2 });
+      const fromPath = await generateThumbnail(file, { width: 2 });
+      expect(fromPath.buffer.length).toBe(fromBuffer.buffer.length);
+      expect(fromPath.width).toBe(fromBuffer.width);
+      expect(fromPath.height).toBe(fromBuffer.height);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws on a missing path, the way a bad buffer would', async () => {
+    const { generateThumbnail } = await import('../src/thumbnail.js');
+    await expect(generateThumbnail('/nonexistent/nope.png', { width: 2 })).rejects.toThrow();
+  });
+});

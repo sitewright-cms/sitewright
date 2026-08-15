@@ -1,5 +1,5 @@
 import type { Dirent } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { isShortAssetId } from '../id.js';
 
@@ -131,6 +131,38 @@ export class MediaStorage {
     const target = this.resolveStoredPath(projectSlug, assetId, storedName);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
     await writeFile(target, data);
+  }
+
+  /**
+   * Store an already-on-disk file WITHOUT reading it into memory.
+   *
+   * `storeFile` takes a Buffer, so a 120MB upload was 120MB resident (measured: +107MB for exactly
+   * that). Large media never needs to be in the heap at all — it is written straight through to the
+   * asset dir. Same validation and confinement as `storeFile`; only the transport differs.
+   *
+   * A rename is atomic and free when the temp file is on the same filesystem, which it is by
+   * construction (callers stage under the media root). The EXDEV fallback copies instead, so a
+   * differently-mounted temp dir degrades to slow rather than broken.
+   */
+  async storeFileFromPath(projectSlug: string, assetId: string, storedName: string, srcPath: string): Promise<number> {
+    if (!STORED_FILE.test(storedName)) throw new Error('invalid stored file name');
+    const dir = isShortAssetId(assetId) ? this.projectDir(projectSlug) : this.assetDir(projectSlug, assetId);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
+    await mkdir(dir, { recursive: true, mode: 0o750 });
+    const target = this.resolveStoredPath(projectSlug, assetId, storedName);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caller-staged temp file
+    const { size } = await stat(srcPath);
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated paths
+      await rename(srcPath, target);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EXDEV') throw err;
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated paths
+      await cp(srcPath, target);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- caller-staged temp file
+      await unlink(srcPath).catch(() => {});
+    }
+    return size;
   }
 
   /** Resolves a stored raw-file path (broader charset than servable images), confined to its dir. */

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { RenderPool, RenderUnavailableError } from '../src/render/render-pool.js';
+import { sharedMemoryBudget } from '../src/runtime/memory-budget.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/test-render-worker.mjs', import.meta.url));
 
@@ -140,5 +141,37 @@ describe('RenderPool — a zero ceiling must not hang', () => {
   it('still renders with a negative ceiling', async () => {
     pool = new RenderPool({ size: -3, workerPath });
     expect(await pool.render('a', {})).toBe('R:a');
+  });
+});
+
+describe('RenderPool — workers are accounted for in the memory ledger', () => {
+  it('reserves while a worker lives and gives it back when the worker dies', async () => {
+    // The headless browser already reserves its footprint; a forked worker is the same shape of
+    // long-lived allocation. Without this the ledger admits other work against memory a just-spawned
+    // worker has taken, which is precisely the ramp-up window where it matters.
+    const before = (await sharedMemoryBudget.snapshot()).reservedBytes;
+    pool = new RenderPool({ size: 1, workerPath, memoryLimitMb: 64, idleMs: 60 });
+    await pool.render('a', {});
+    expect(pool.workerCount).toBe(1);
+
+    const held = (await sharedMemoryBudget.snapshot()).reservedBytes;
+    expect(held - before, 'the worker holds its declared ceiling').toBe(64 * 1024 * 1024);
+
+    // Let it retire on idle — the reservation must go with the process.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(pool.workerCount).toBe(0);
+    const after = (await sharedMemoryBudget.snapshot()).reservedBytes;
+    expect(after, 'a dead worker must not keep shrinking the budget').toBe(before);
+  });
+
+  it('releases on shutdown too, not only on idle retirement', async () => {
+    const before = (await sharedMemoryBudget.snapshot()).reservedBytes;
+    const p = new RenderPool({ size: 1, workerPath, memoryLimitMb: 64 });
+    await p.render('a', {});
+    expect((await sharedMemoryBudget.snapshot()).reservedBytes).toBeGreaterThan(before);
+    await p.shutdown(50);
+    // onExit fires per killed worker and releases there.
+    await new Promise((r) => setTimeout(r, 200));
+    expect((await sharedMemoryBudget.snapshot()).reservedBytes).toBe(before);
   });
 });

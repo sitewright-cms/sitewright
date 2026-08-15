@@ -142,3 +142,59 @@ describe('a shed screenshot explains itself', () => {
     expect((res.json() as Record<string, unknown>).screenshotsUnavailable, 'no ask, no notice').toBeUndefined();
   });
 });
+
+describe('the unpaginated content list is admitted like every other expensive path', () => {
+  /** Seed enough content that the list is worth pricing (the admit floor is 2MB). */
+  async function seedBulk(t: string, projectId: string) {
+    const source = `<section>${'<p>lorem ipsum dolor sit amet consectetur</p>'.repeat(1200)}</section>`;
+    for (let i = 0; i < 30; i++) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/projects/${projectId}/content/page/p${i}`,
+        cookies: { sw_session: t },
+        payload: { id: `p${i}`, path: `p${i}`, title: `P${i}`, source },
+      });
+      expect(res.statusCode).toBe(200);
+    }
+  }
+
+  it('serves the list when there is headroom', async () => {
+    const { t, projectId } = await setup('list-ok@e2e.test');
+    await seedBulk(t, projectId);
+    _setMemoryBudgetForTest(4096 * MB, 100 * MB);
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { items: unknown[] }).items.length).toBe(31); // 30 + the scaffolded home
+  });
+
+  it('sheds a big list with a retryable 503 instead of taking the instance down', async () => {
+    // Measured before this: one list on a 61-page project peaked 37MB and THREE concurrent peaked
+    // 206MB — on the everyday editing path, with no gate of any kind.
+    const { t, projectId } = await setup('list-shed@e2e.test');
+    await seedBulk(t, projectId);
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } });
+    expect(res.statusCode, 'shed, not served, not OOM').toBe(503);
+    expect(String(res.json().error)).toMatch(/transient|retry/i);
+  }, 20_000);
+
+  it('does NOT gate a small list — the estimate would cost more than the memory', async () => {
+    const { t, projectId } = await setup('list-small@e2e.test');
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB); // starved, but the payload is tiny
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } });
+    expect(res.statusCode, 'a one-page list is never worth refusing').toBe(200);
+  });
+
+  it('a PAGINATED caller is already bounded and skips admission entirely', async () => {
+    const { t, projectId } = await setup('list-paged@e2e.test');
+    await seedBulk(t, projectId);
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/content/page?limit=5`,
+      cookies: { sw_session: t },
+    });
+    expect(res.statusCode, 'paging is the way through a starved instance, not a wall').toBe(200);
+    expect((res.json() as { items: unknown[] }).items.length).toBe(5);
+  });
+});

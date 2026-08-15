@@ -371,3 +371,39 @@ describe('POST /projects/:projectId/media/import-url', () => {
     expect(res.statusCode).toBe(401);
   });
 });
+
+describe('per-tenant fair share of the large-import gate', () => {
+  it('refuses a project already holding its share, and says WHY', async () => {
+    // The gate is instance-wide: two large imports at up to 180s each, plus a six-deep queue, let
+    // ONE project deny that path to every other tenant for minutes while staying inside its own rate
+    // limit. Half the slots (at least one) stay available to everyone else.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const hanging = vi.fn(async () => {
+      await held;
+      return ok(PNG_1X1, 'video/mp4') as PinnedResult;
+    }) as unknown as Fetcher;
+    await makeApp(hanging);
+    const { t, projectId } = await setup();
+
+    // Two concurrent large imports from the SAME project: the second is over its share.
+    const first = post(projectId, t, 'https://cdn.example.com/a.mp4');
+    await new Promise((r) => setTimeout(r, 120));
+    const second = await post(projectId, t, 'https://cdn.example.com/b.mp4');
+
+    expect(second.statusCode, 'the tenant is at its share').toBe(503);
+    expect(String(second.json().error), 'and is told it is a PROJECT limit, not a broken server').toMatch(
+      /this project already has its share/i,
+    );
+    release();
+    await first;
+  });
+
+  it('leaves the share available again once the import finishes', async () => {
+    await makeApp(fetcherReturning(ok(PNG_1X1, 'video/mp4')));
+    const { t, projectId } = await setup();
+    // Sequential, so the first has released before the second asks.
+    expect((await post(projectId, t, 'https://cdn.example.com/a.mp4')).statusCode).toBe(201);
+    expect((await post(projectId, t, 'https://cdn.example.com/b.mp4')).statusCode).toBe(201);
+  });
+})

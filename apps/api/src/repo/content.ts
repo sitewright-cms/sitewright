@@ -227,6 +227,26 @@ export class ContentRepository {
   }
 
   /**
+   * Roughly how many bytes `list(kind)` is about to materialise — WITHOUT materialising it.
+   *
+   * `list` has no bound, and measured on a 61-page project one call peaked 37MB against a 13MB
+   * payload (~2.8x: the rows, the normalised copies and the serialised body are all live at once)
+   * while THREE concurrent peaked 206MB. To admit that against a memory budget the cost has to be
+   * known BEFORE the rows are read, and `sum(length(data))` answers that from the column itself.
+   *
+   * An estimate, deliberately: `length()` counts characters rather than bytes, so multi-byte content
+   * reads low. The caller multiplies by the measured amplification and the ledger has its own
+   * headroom, so erring slightly low here is absorbed rather than fatal.
+   */
+  async estimateListBytes(ctx: ProjectContext, kind: ContentKind): Promise<number> {
+    const rows = await this.db
+      .select({ total: sql<number>`coalesce(sum(length(${content.data})), 0)` })
+      .from(content)
+      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  /**
    * A PAGE of rows, plus the total, for callers that must not materialise a whole kind at once.
    *
    * `list` selects every row of a kind with no bound, and its callers include the File Manager,

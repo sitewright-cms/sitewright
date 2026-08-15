@@ -11,6 +11,20 @@
 # always wins.
 set -e
 
+# Bound glibc's per-thread malloc arenas.
+#
+# Measured with sharp: ONE thumbnail encode grows RSS ~31MB and the memory survives a forced V8 gc()
+# — heap +0.0MB, external +0.0MB — because it is native allocation the allocator keeps, not anything
+# V8 owns. Arenas are PER THREAD, so concurrency multiplies them: 20 concurrent encodes cost +170MB
+# by default and +94MB with this set (-45%). It does not remove the ~117MB sequential plateau, so
+# this is a mitigation, not a cure.
+#
+# Only set when the operator has not chosen a value.
+if [ -z "$MALLOC_ARENA_MAX" ]; then
+  MALLOC_ARENA_MAX=2
+  export MALLOC_ARENA_MAX
+fi
+
 if [ -z "$NODE_OPTIONS" ]; then
   limit=""
   if [ -r /sys/fs/cgroup/memory.max ]; then

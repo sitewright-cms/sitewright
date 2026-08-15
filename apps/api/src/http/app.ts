@@ -469,6 +469,47 @@ const optimizeWaiters: Array<() => void> = [];
  * buffer, the decode and the encoded output all live at once. Rounded up, because under-reserving
  * is what an OOM looks like and over-reserving only costs a little throughput.
  */
+/**
+ * Per-tenant fair share of an instance-wide gate.
+ *
+ * Every concurrency gate here is whole-instance, so one project can occupy all of it: two large
+ * imports at up to 180s each, plus a six-deep queue, denies that path to every other tenant on the
+ * box for minutes — from one caller staying inside its own rate limit. Capping how many slots ONE
+ * project may hold keeps a share available for everyone else.
+ *
+ * Deliberately generous: half the slots, at least one. A single tenant on a quiet instance is the
+ * common case and must not be throttled for the sake of a neighbour that does not exist — so this
+ * only ever bites when a tenant wants MORE than its half while holding some already.
+ */
+function fairShare(limit: number): {
+  take(projectId: string): boolean;
+  release(projectId: string): void;
+} {
+  const active = new Map<string, number>();
+  const share = Math.max(1, Math.ceil(limit / 2));
+  return {
+    take(projectId: string): boolean {
+      const held = active.get(projectId) ?? 0;
+      if (held >= share) return false;
+      active.set(projectId, held + 1);
+      return true;
+    },
+    release(projectId: string): void {
+      const held = active.get(projectId) ?? 0;
+      if (held <= 1) active.delete(projectId);
+      else active.set(projectId, held - 1);
+    },
+  };
+}
+
+/** Thrown when a tenant is at its own share of a gate — distinct from the instance being full. */
+class TenantShareError extends Error {
+  readonly statusCode = 503;
+  constructor(readonly what: string) {
+    super(`this project already has its share of concurrent ${what} in flight — retry shortly`);
+  }
+}
+
 const OPTIMIZE_RESERVE_BYTES = 12 * 1024 * 1024;
 
 /**
@@ -487,6 +528,18 @@ const SCREENSHOT_RESERVE_BYTES = 128 * 1024 * 1024;
 
 /** How long an admitted-or-refused decision may wait for memory to free up before shedding. */
 const ADMISSION_WAIT_MS = 3_000;
+
+/**
+ * What an unpaginated list actually costs, as a multiple of its stored bytes.
+ *
+ * Measured on a 61-page project: a 13MB payload peaked 37MB (~2.8x) because the rows, the normalised
+ * copies and the serialised response body are all live at once. Rounded UP — under-reserving on the
+ * everyday editing path is how three concurrent File Manager opens took a container to its cap.
+ */
+const LIST_AMPLIFICATION = 3;
+
+/** Below this a list is not worth a ledger round-trip; the estimate costs more than the memory does. */
+const LIST_ADMIT_FLOOR_BYTES = 2 * 1024 * 1024;
 
 async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
   if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
@@ -579,7 +632,10 @@ const MAX_CONCURRENT_LARGE_IMPORT = 2;
 const MAX_LARGE_IMPORT_QUEUE = 6;
 let activeLargeImports = 0;
 const largeImportWaiters: Array<() => void> = [];
-async function withLargeImportSlot<T>(fn: () => Promise<T>): Promise<T> {
+const largeImportShare = fairShare(MAX_CONCURRENT_LARGE_IMPORT);
+async function withLargeImportSlot<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+  // Fairness FIRST: refuse a tenant already at its share before it can occupy a slot or the queue.
+  if (!largeImportShare.take(projectId)) throw new TenantShareError('large imports');
   if (activeLargeImports < MAX_CONCURRENT_LARGE_IMPORT) {
     activeLargeImports += 1;
   } else {
@@ -591,6 +647,7 @@ async function withLargeImportSlot<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } finally {
+    largeImportShare.release(projectId);
     // Hand the slot straight to the next waiter (never over-admitting), exactly as the optimize gate does.
     const next = largeImportWaiters.shift();
     if (next) next();
@@ -3261,6 +3318,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // A paginated caller reads a bounded slice and gets `total` back to walk the rest.
       const rawLimit = Number(req.query.limit);
       const paginate = Number.isFinite(rawLimit) && rawLimit > 0;
+      // An UNPAGINATED list is the one path that can exhaust an instance through ordinary editing —
+      // no gate, no bound, and every caller (File Manager, render, exports, fonts) uses it. Price it
+      // from the stored bytes before reading any, and admit against the ledger like every other
+      // expensive path. A paginated caller is already bounded and skips this.
+      let listReservation: Reservation | undefined;
+      if (!paginate) {
+        const estimate = await contentRepo.estimateListBytes(ctx, kind) * LIST_AMPLIFICATION;
+        if (estimate > LIST_ADMIT_FLOOR_BYTES) listReservation = await admitMemory(estimate, `list ${kind}`);
+      }
+      try {
       const page = paginate
         ? await contentRepo.listPaged(ctx, kind, {
             limit: Math.min(rawLimit, CONTENT_PAGE_MAX),
@@ -3319,6 +3386,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? { items: project(items), total: page.total, limit: page.limit, offset: page.offset }
           : { items: project(items) },
       );
+      } finally {
+        listReservation?.release();
+      }
     },
   );
 
@@ -5264,7 +5334,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       };
       if (maxImportBytes <= MAX_IMAGE_UPLOAD_BYTES) return runImport();
       try {
-        return await withLargeImportSlot(async () => {
+        return await withLargeImportSlot(project.id, async () => {
           // The pinned fetcher buffers the whole body, so the CAP is the honest reservation. Held
           // for the fetch AND the store, because the buffer stays resident until the asset lands.
           const held = await admitMemory(maxImportBytes, 'large media import');
@@ -5279,6 +5349,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // passes through only 4xx statuses (`status >= 400 && status < 500`) plus an allowlisted
         // 429/413, so a thrown 503 falls into the opaque 500 branch. Measured: the shed caller got
         // a 500, which reads as "the server is broken" instead of "come back in a moment".
+        if (err instanceof TenantShareError) {
+          // Not "the server is full" — THIS project is at its own share. Saying which is the
+          // difference between a caller backing off usefully and a caller blaming the instance.
+          return reply.code(503).send({ error: err.message });
+        }
         if ((err as { statusCode?: number }).statusCode === 503) {
           return reply.code(503).send({ error: 'too many large imports in progress; retry shortly' });
         }

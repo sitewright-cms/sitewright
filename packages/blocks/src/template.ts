@@ -17,6 +17,7 @@
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
+import { renderSearchBox } from './search.js';
 import { renderIconSvg, FLAG_PREFIX } from './icon-render.js';
 import { resolveDirectives } from './directives.js';
 import { markEntry } from './entry-marker.js';
@@ -451,6 +452,22 @@ function createInstance(): typeof Handlebars {
   // the trusted build-time icon maps, never tenant markup; author DATA is just the name + class (both
   // attribute-escaped). viewBox is 256 for Phosphor, 24 for brand + the Lucide fallback, the flag
   // set's own for a flag.
+  // {{sw-search placeholder="Search the site" limit=8}} → the standard search box. The author may
+  // instead hand-write [data-sw-part="input"] + [data-sw-part="results"] to own the layout.
+  hb.registerHelper('sw-search', function swSearch(options?: Handlebars.HelperOptions) {
+    const hash = (options && options.hash) as Record<string, unknown> | undefined;
+    const str = (k: string): string | undefined => (typeof hash?.[k] === 'string' ? (hash[k] as string) : undefined);
+    const num = (k: string): number | undefined => (typeof hash?.[k] === 'number' ? (hash[k] as number) : undefined);
+    return new Handlebars.SafeString(
+      renderSearchBox({
+        placeholder: str('placeholder'),
+        label: str('label'),
+        empty: str('empty'),
+        class: str('class'),
+        limit: num('limit'),
+      }),
+    );
+  });
   hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) =>
     new Handlebars.SafeString(typeof name === 'string' ? renderIconSvg(name, typeof cls === 'string' ? cls : undefined) : ''),
   );

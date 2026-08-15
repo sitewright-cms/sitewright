@@ -101,6 +101,7 @@ import {
   SECURITY_TXT_PATH,
 } from './seo.js';
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
+import { buildSearchIndex, type SearchPageInput } from './search-index.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
   toPublicForm,
@@ -210,6 +211,18 @@ export interface ReleaseManifest {
    * page, because a broken page must never reach a live site. Empty/absent when everything rendered.
    */
   pageFailures?: PageBuildFailure[];
+  /**
+   * Pages left OUT of the site-search index because they are raw-fidelity imports, which are not
+   * indexed until nativized (docs/site-search.md §3.1). Absent when none were skipped. Reported
+   * rather than silent: a partially nativized site has a partially searchable corpus, and an author
+   * whose page is unfindable is owed the reason.
+   */
+  searchSkippedRawHtml?: number;
+  /**
+   * Locales whose search corpus passed {@link SEARCH_INDEX_WARN_PAGES}. A visitor downloads one
+   * locale's index on first search, so this is the number that matters — not the site total.
+   */
+  searchLargeLocales?: Array<{ locale: string; pages: number }>;
 }
 
 /**
@@ -257,6 +270,9 @@ const SAFE_OUT_SEGMENT = /^[A-Za-z0-9._~-]+$/;
 // fill the disk during the in-process build, before the 100 MiB archive cap that
 // only applies at export time. Matches that archive cap; operator-configurable.
 const DEFAULT_MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
+
+/** Pages in ONE locale past which the search index is worth sharding (docs/site-search.md §11.2). */
+const SEARCH_INDEX_WARN_PAGES = 250;
 
 function relPathForSlug(slug: string | undefined): string {
   if (!slug) return 'index.html';
@@ -918,6 +934,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // noindex pages are excluded.
     const siteUrl = website?.siteUrl;
     const sitemapUrls: Array<{ loc: string; lastmod?: string }> = [];
+    // Locales whose corpus passed the size ceiling — reported on the manifest, not silently grown.
+    const searchLargeLocales: Array<{ locale: string; pages: number }> = [];
+    // Site-search corpus, collected per rendered route and emitted per locale after the loop.
+    // Only pages that finish rendering are collected (see the push after the page write), so a
+    // draft preview's error documents never enter the index.
+    const searchPages = new Map<string, SearchPageInput[]>();
+    // Raw-fidelity imports are excluded until nativized (docs/site-search.md §3.1). Counted rather
+    // than dropped in silence: an author whose imported page is unfindable is owed the reason.
+    let searchSkippedRawHtml = 0;
     // Referenced-thumbnail accumulator — filled as each page's media URLs are rewritten, then
     // materialized (from originals) into `_assets/` after the loop. Only referenced sizes ship.
     const thumbRefs: ThumbRefs = new Map();
@@ -1392,6 +1417,37 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, finalHtml, 'utf8');
         bytes += Buffer.byteLength(finalHtml);
+
+        // ---- Site-search corpus -------------------------------------------------------------
+        // Collected HERE, after the page is written, so only fully rendered pages are indexed.
+        // `bodyHtml` is the page's OWN body — the chrome slots are separate variables and are
+        // deliberately not passed: shared nav/footer text in the index makes every page match
+        // every nav term (docs/site-search.md §2).
+        if (page.rawHtml) {
+          // Foreign markup with no separable chrome. Excluded until nativized, at which point the
+          // page has an ordinary body and flows through the branch below with no import-specific code.
+          searchSkippedRawHtml += 1;
+        } else if (!page.noindex && bodyHtml) {
+          const list = searchPages.get(pageLocale) ?? [];
+          list.push({
+            // The canonical route path, WITH a trailing slash — the same form `siteUrlFor` gives the
+            // sitemap (seo.ts). A page builds to `<slug>/index.html`, so a slash-less `/roofing` 404s
+            // on any host that does not silently redirect to the directory index. NOTE for the
+            // runtime: the published artifact is portable (links are relativized for sub-folder and
+            // `/sites/<slug>/` hosting), so a result link must be resolved against the index file's
+            // own URL rather than used as a root path.
+            url: outSlug ? `/${outSlug}/` : '/',
+            title: page.title,
+            description: page.description,
+            bodyHtml,
+            // Depth from the route itself. A locale variant carries its `/<locale>/` segment, which
+            // is a constant within that locale's index and so cannot reorder its results.
+            depth: outSlug ? outSlug.split('/').length : 0,
+            // The same predicate `buildNav` uses, so "in the main nav" means what the author sees.
+            inNav: page.nav?.slots.includes('header') ?? false,
+          });
+          searchPages.set(pageLocale, list);
+        }
       };
 
       let renderedRoutes = 0;
@@ -1536,6 +1592,37 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(sitemap);
     }
 
+    // Site-search index — ONE PAIR PER LOCALE, beside the sitemap. Emitted from the corpus collected
+    // during the route loop, so the index and the HTML come from the same render and cannot drift
+    // (docs/site-search.md §3.7). The default locale keeps the unsuffixed names; the runtime picks
+    // its pair from `<html lang>`.
+    // ONLY-USED-SHIPS. The index is a bulk full-text file; a site with no search box should not
+    // publish one at all. `componentTypes` is the site-wide union the runtime chunks are written
+    // from, so this gate cannot disagree with what actually ships.
+    const siteUsesSearch = componentTypes.includes('Search');
+    for (const [locale, pagesForLocale] of siteUsesSearch ? searchPages : []) {
+      if (pagesForLocale.length === 0) continue;
+      const { index, text } = buildSearchIndex(locale, pagesForLocale, {
+        fold: website?.search?.foldDiacritics,
+      });
+      // A visitor downloads ONE locale's pair on first search, so the ceiling is per locale, not
+      // site-wide. Measured at ~1.6 KB gzipped per page (docs/site-search.md §10), this threshold is
+      // roughly 400 KB gzipped — past which the pair wants sharding rather than growing.
+      if (pagesForLocale.length > SEARCH_INDEX_WARN_PAGES) {
+        searchLargeLocales.push({ locale, pages: pagesForLocale.length });
+      }
+      const suffix = locale === defaultLocale ? '' : `.${locale}`;
+      for (const [name, payload] of [
+        [`search-index${suffix}.json`, index],
+        [`search-text${suffix}.json`, text],
+      ] as const) {
+        const json = JSON.stringify(payload);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- locale-suffixed constant name under the validated tmp dir
+        await writeFile(join(tmp, name), json, 'utf8');
+        bytes += Buffer.byteLength(json);
+      }
+    }
+
     // security.txt (RFC 9116) — OPT-IN, at the normative `.well-known/` path only.
     //
     // The contact SELECTION is resolved against this publish rather than retyped by the author, so
@@ -1646,7 +1733,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     }
 
     // One emitted page per route (locale variants are their own routes/pages now).
-    const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };
+    const manifest: ReleaseManifest = {
+      publishedAt,
+      routes: routes.length,
+      bytes,
+      // Set BEFORE release.json is written, so the published manifest carries it (unlike
+      // `pageFailures`, which is deliberately attached afterwards and only for draft builds).
+      ...(searchSkippedRawHtml > 0 ? { searchSkippedRawHtml } : {}),
+      ...(searchLargeLocales.length > 0 ? { searchLargeLocales } : {}),
+    };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
     // AFTER release.json: a published manifest describes the release, and there are no failures in one

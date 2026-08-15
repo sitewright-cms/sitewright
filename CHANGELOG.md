@@ -9,6 +9,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Site search — full-text, over whole page bodies, with no service to sign up for.** Every publish
+  now indexes each page's rendered BODY and writes `search-index.json` + `search-text.json` beside
+  `sitemap.xml`; the new `Search` component fetches them on first use and renders a ranked list of
+  **pages** — title, description, and a snippet with the match highlighted. Write `{{sw-search}}` and
+  you have a working search page; hand-write `[data-sw-part="input"]` + `[data-sw-part="results"]`
+  instead when you want to own the layout. Quoted `"exact phrases"` are supported, typing matches by
+  prefix as you go, and results are ordered so a page matching **all** your words always beats one
+  matching fewer — then by relevance, with the page's title and headings weighted above its body.
+
+  The index is built in the same pass that renders the HTML, so it can never describe a version of
+  the site that is not the one being served — there is no separate indexing step to run or forget.
+  Shared chrome is deliberately **not** indexed: if the nav and footer were in there, every page
+  would match every menu word and the ranking would collapse. `noindex` pages never appear, each
+  locale gets its own index (so a German page never returns English results), and two URLs serving
+  identical content collapse to one result. Raw-fidelity imports stay out until they are nativized,
+  and the release manifest reports how many were skipped so a partly-nativized site never leaves you
+  guessing why a page is unfindable.
+
+  Language support is the platform's own `Intl.Segmenter` rather than a per-language word list, so
+  Chinese, Japanese, Thai and Khmer — none of which put spaces between words — segment correctly with
+  no configuration. Accented letters match loosely by default (`Muller` finds `Müller`); a new
+  **Settings → Website** toggle turns that off for languages where accented characters are separate
+  letters. Scripts where a mark carries meaning (Thai tone marks, Devanagari matras, Hebrew niqqud)
+  are never folded either way.
+
 ## [0.20.0] — 2026-08-13
 
 ### Added

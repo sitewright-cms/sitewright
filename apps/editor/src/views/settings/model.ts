@@ -190,6 +190,8 @@ export interface SettingsForm {
   // it. PR2 ships the engine; the dedicated config panel + enable toggle land in a later PR (set via API/MCP
   // until then). The reserved consent_* translation rows surface when `consent.enabled` is true.
   consent?: Consent;
+  /** website.search.foldDiacritics — default true when unset. */
+  searchFoldDiacritics: boolean;
   // localization
   defaultLocale: string;
   locales: KeyedStr[];
@@ -345,6 +347,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     preloaderBackdrop: w?.effects?.preloaderBackdrop ?? false,
     enableThemes: w?.enableThemes === true,
     consent: w?.consent,
+    searchFoldDiacritics: w?.search?.foldDiacritics !== false,
     defaultTheme: w?.defaultTheme ?? 'auto',
     containerWidth: w?.containerWidth ?? '',
     imageDelivery: w?.imageDelivery ?? '',
@@ -647,6 +650,9 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(security ? { security } : {}),
       ...(shop ? { shop } : {}),
       ...(form.consent ? { consent: cleanConsent(form.consent) } : {}),
+      // Only persisted when turned OFF: the default (fold) stays absent, so an untouched project
+      // writes nothing new into website.*.
+      ...(form.searchFoldDiacritics ? {} : { search: { foldDiacritics: false } }),
       ...(effects ? { effects } : {}),
       ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),

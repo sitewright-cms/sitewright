@@ -56,6 +56,13 @@ const ALLOWED: ReadonlyArray<readonly [RegExp, string]> = [
   [/data-position=/, 'a banner POSITION variant — the geometry is the variant'],
   [/data-sw-banner-shown|banner"\]:not\(\[data-sw-animation\]\)/, 'show/hide state'],
   [/\[data-sw-part="hp"\]/, 'the honeypot must stay invisible — an author "fixing" its size defeats the spam trap'],
+  [
+    /\[data-sw-part="status"\]/,
+    "search's visually-hidden live region — same case as the honeypot. It exists only to announce the " +
+      'result count to a screen reader; an author rule that restored its box would paint a stray ' +
+      '\"12 results\" onto the page. Everything an author actually styles (the hits, the list, the ' +
+      'empty state) is beatable.',
+  ],
   [/input\[type=checkbox\]|input\[type=radio\]/, 'the exception that must keep outranking the general field rule'],
 ];
 

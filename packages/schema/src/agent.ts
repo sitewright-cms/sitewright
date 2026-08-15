@@ -25,6 +25,7 @@ The writes you'll use most (argument names matter):
   this for pages (NOT put_content). It is a TOTAL replace: every field you omit is DELETED.
 - patch_page({ page: { id, …only the fields you're changing } }) — for any PARTIAL page edit (a nav
   label, one data key). put_page would DELETE everything you omit, including data.swImport.
+  A field sent as \`null\` is CLEARED — the only way to REMOVE one; omitting it changes nothing.
 - put_content({ kind, id, data }) — for the OTHER kinds (settings, dataset, entry, form, template,
   snippet, translation). \`kind\` is REQUIRED; for an ENTRY also pass \`dataset\` (its slug). \`data\`
   matches that kind's schema — you may omit \`data.id\` (and an entry's \`data.dataset\`); they're
@@ -432,6 +433,16 @@ media url in \`source\`:
   NOT travel through the conversation — as base64 a 1MB image is ~370k tokens. Always pass ?filename=.
   The ticket is single-use and expires in 10 minutes: mint one per file, right before sending it.
 - EXISTING: list_media to find assets already in the project and reuse their url.
+
+VIDEO / AUDIO / PDF FROM A URL — self-host it too, and expect TWO steps. import_image is the only
+URL-based import: it takes an image up to 15MB and a playable video/audio URL up to 200MB, and
+answers 413 for anything larger. A 413 is NOT a dead end and NOT a reason to hotlink — download the
+file yourself and push it through create_media_upload (one-shot ticket, 200MB), then reference the
+returned /media url. Store it as a REAL player (<video controls poster="…" data-src="/media/…">, per
+the lazy rules above), never as a link to the source site: a hotlinked asset dies the moment the
+original changes, and a clone that points at the site it copied is not self-contained. A real clone
+job hit exactly this — an 83MB source video 413'd, the agent left an <a href> to the original, and
+the same file uploaded through the ticket without complaint.
 
 ORGANIZE — keep the media library tidy with virtual folders (grouping labels only; the asset url
 never changes when you move it). list_media_folders to see what exists; create_media_folder to make
@@ -964,6 +975,17 @@ CHILD-PAGE DROPDOWN (desktop): a CSS hover dropdown whose PARENT STAYS A REAL LI
 dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul class="dropdown-content menu …">{{#each
 children}}<li><a href="{{sw-url path}}">{{sw-label}}</a></li>{{/each}}</ul></li>. Do NOT use
 <details>/<summary> for a desktop dropdown (it makes the parent a toggle, not navigable).
+★ THAT \`menu\` CLASS BRINGS daisyUI RULES YOU DID NOT ASK FOR — the one that bites is
+\`.menu :where(li ul,li menu){white-space:nowrap}\`, which hits the NESTED submenu. So a long child
+label cannot wrap: give the panel a fixed width and the text silently overflows — no error, and the
+computed-style gates do not catch it. Choose deliberately and write it. To WRAP like most originals:
+\`white-space:normal\`. To keep nowrap and have the panel grow to its longest item:
+\`width:max-content;min-width:<floor>\` — and then a second-level flyout MUST be offset
+\`left:100%\`, never a hardcoded px matching the old fixed width, or it detaches as soon as the panel
+grows. Overriding is cheap: \`:where()\` contributes ZERO specificity, so these rules are only (0,1,0)
+and any \`.your-menu .your-sub\` scoping (0,2,0) wins — never reach for \`!important\`. Measure the
+ORIGINAL's submenu before copying a width: a real clone matched 240px exactly and still broke,
+because the original wrapped its long items and the clone could not.
 
 MOBILE DRAWER: there is NO drawer runtime — build a pure-CSS slide-in drawer with a peer-checkbox (no JS).
 The hidden <input type="checkbox" id="sw-nav-drawer" class="peer sr-only"> MUST be the first sibling; a
@@ -1731,7 +1753,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
   { name: 'put_page', description: "Create or REPLACE a page (id taken from page.id) — a total replace; omitted fields are deleted. For partial edits use patch_page.", capability: 'content:write' },
-  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Use instead of put_page for partial edits. Returns a RECEIPT whose `changed` list is EMPTY when the patch was a no-op.", capability: 'content:write' },
+  { name: 'patch_page', description: "PATCH an existing page: send only the fields to change, everything else is kept (objects merge key-by-key; arrays/scalars replace). Send a field as `null` to CLEAR it — omitting it leaves it unchanged, so `null` is the only way to remove one (`{id, template:null}` un-templates, `{id, parent:null}` un-nests). Clear one data key with `data:{key:null}`; a bare `data:null` wipes the whole store INCLUDING data.swImport. Use instead of put_page for partial edits. Returns a RECEIPT whose `changed` list is EMPTY when the patch was a no-op.", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind (`merge:true` PATCHES settings). Returns a RECEIPT — { kind, id, bytes, created, changed } — not the entity.", capability: 'content:write' },
   { name: 'patch_critical_css', description: "Add or change site CSS WITHOUT re-sending the whole stylesheet. A named `block` UPSERTS (repeated edits replace, not duplicate); no block appends; empty css + block removes. Returns a receipt, never the sheet.", capability: 'content:write' },
@@ -1742,7 +1764,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
-  { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
+  { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted). The ONLY URL-based import: images up to 15MB, playable video/audio URLs up to 200MB. A 413 is not a dead end — download the file and use create_media_upload. Never leave an asset hotlinked because an import failed.", capability: 'content:write' },
   { name: 'create_media_upload', description: "Upload a LARGE local file (on YOUR disk): returns a one-shot uploadUrl to send the file to yourself (curl -T), so the bytes never enter the conversation. Use import_image when the file is already at a public URL; upload_media for something small.", capability: 'content:write' },
   { name: 'upload_media', description: "Upload a SMALL local file (<=256KB) by sending its bytes inline as base64 — one call, no shell. Anything bigger: create_media_upload.", capability: 'content:write' },
   { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },

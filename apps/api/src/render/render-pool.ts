@@ -21,6 +21,14 @@ export interface RenderPoolOptions {
   maxRendersPerWorker?: number;
   /** Max queued (waiting) renders before new requests are rejected (bounds parent memory). */
   maxQueueDepth?: number;
+  /**
+   * Workers kept alive even while idle. Default 0: an instance that never renders pays nothing.
+   * Measured cost of a resident worker: ~81 MB, which on a 1 GiB container is 8% of the budget
+   * spent on a process that may never be asked to do anything.
+   */
+  minSize?: number;
+  /** Retire a worker after this long without work, down to {@link minSize}. */
+  idleMs?: number;
 }
 
 interface Job {
@@ -37,9 +45,19 @@ interface Slot {
   /** True once we've signalled this worker to die (recycle/timeout) — never dispatch to it. */
   retiring?: boolean;
   current?: { id: number; job: Job; timer: NodeJS.Timeout };
+  /** Fires when this worker has been idle long enough to retire (absent while working). */
+  idleTimer?: NodeJS.Timeout;
 }
 
-const DEFAULTS = { size: 2, memoryLimitMb: 128, renderTimeoutMs: 5000, maxRendersPerWorker: 500, maxQueueDepth: 50 };
+const DEFAULTS = {
+  size: 2,
+  memoryLimitMb: 128,
+  renderTimeoutMs: 5000,
+  maxRendersPerWorker: 500,
+  maxQueueDepth: 50,
+  minSize: 0,
+  idleMs: 60_000,
+};
 
 /** Thrown when a render cannot be completed by the pool (timeout, worker crash, shutdown). */
 export class RenderUnavailableError extends Error {
@@ -58,14 +76,30 @@ export class RenderPool {
 
   constructor(options: RenderPoolOptions = {}) {
     this.opts = {
-      size: options.size ?? DEFAULTS.size,
+      // Floored at 1: `size` is the ceiling the lazy-spawn check tests against, so 0 would mean no
+      // worker is ever spawned AND queued jobs carry no timeout (timers are attached in assign()) —
+      // every render would hang forever rather than fail. Defence in depth: the caller also floors
+      // it, but no construction of this pool should be able to produce a silent hang.
+      size: Math.max(1, options.size ?? DEFAULTS.size),
       workerPath: options.workerPath ?? fileURLToPath(new URL('./render-worker.js', import.meta.url)),
       memoryLimitMb: options.memoryLimitMb ?? DEFAULTS.memoryLimitMb,
       renderTimeoutMs: options.renderTimeoutMs ?? DEFAULTS.renderTimeoutMs,
       maxRendersPerWorker: options.maxRendersPerWorker ?? DEFAULTS.maxRendersPerWorker,
       maxQueueDepth: options.maxQueueDepth ?? DEFAULTS.maxQueueDepth,
+      minSize: options.minSize ?? DEFAULTS.minSize,
+      idleMs: options.idleMs ?? DEFAULTS.idleMs,
     };
-    for (let n = 0; n < this.opts.size; n += 1) this.slots.push(this.spawn());
+    // `size` is now a CEILING, not a headcount: workers are spawned on demand and retired when idle.
+    // Only `minSize` (default 0) is pre-warmed, so an instance that never renders carries no worker.
+    for (let n = 0; n < Math.min(this.opts.minSize, this.opts.size); n += 1) this.slots.push(this.spawn());
+  }
+
+  /**
+   * How many worker processes exist right now. With lazy spawning this varies between `minSize` and
+   * `size`, so it is the honest input for memory accounting and for any "how big am I" report.
+   */
+  get workerCount(): number {
+    return this.slots.length;
   }
 
   /** Renders a template in an isolated worker. Rejects on timeout, crash/OOM, or shutdown. */
@@ -75,7 +109,13 @@ export class RenderPool {
       const job: Job = { source, context, opts, resolve, reject };
       const free = this.slots.find((s) => !s.current && !s.retiring);
       if (free) this.assign(free, job);
-      else if (this.queue.length >= this.opts.maxQueueDepth) {
+      // No free worker but room to grow: spawn one now. This is the lazy half of the pool — the
+      // first render pays a fork, and an idle instance pays nothing at all.
+      else if (this.slots.length < this.opts.size) {
+        const fresh = this.spawn();
+        this.slots.push(fresh);
+        this.assign(fresh, job);
+      } else if (this.queue.length >= this.opts.maxQueueDepth) {
         reject(new RenderUnavailableError('render pool is busy'));
       } else this.queue.push(job);
     });
@@ -88,6 +128,7 @@ export class RenderPool {
     const exits = this.slots.map(
       (slot) =>
         new Promise<void>((done) => {
+          if (slot.idleTimer) clearTimeout(slot.idleTimer);
           if (slot.current) {
             clearTimeout(slot.current.timer);
             slot.current.job.reject(new RenderUnavailableError('render pool is shutting down'));
@@ -124,6 +165,11 @@ export class RenderPool {
   }
 
   private assign(slot: Slot, job: Job): void {
+    // This worker is wanted again — cancel any pending retirement.
+    if (slot.idleTimer) {
+      clearTimeout(slot.idleTimer);
+      slot.idleTimer = undefined;
+    }
     const id = this.nextId++;
     const timer = setTimeout(() => this.onTimeout(slot), this.opts.renderTimeoutMs);
     timer.unref?.();
@@ -167,13 +213,31 @@ export class RenderPool {
       slot.current.job.reject(new RenderUnavailableError('render worker exited (crash or out-of-memory)'));
       slot.current = undefined;
     }
+    if (slot.idleTimer) clearTimeout(slot.idleTimer);
     const idx = this.slots.indexOf(slot);
     if (idx !== -1) this.slots.splice(idx, 1);
-    if (!this.shuttingDown) {
-      const replacement = this.spawn();
-      this.slots.push(replacement);
-      this.drain(replacement);
-    }
+    if (this.shuttingDown) return;
+    // Respawn only if a worker is actually WANTED: to serve queued work, or to hold the warm floor.
+    // Unconditional respawning would undo every idle retirement and pin the pool at its high-water
+    // mark forever — the memory this change exists to give back.
+    const wanted = this.queue.length > 0 || this.slots.length < this.opts.minSize;
+    if (!wanted) return;
+    const replacement = this.spawn();
+    this.slots.push(replacement);
+    this.drain(replacement);
+  }
+
+  /** Retire a worker that has sat unused, but never below the warm floor. */
+  private scheduleIdleRetire(slot: Slot): void {
+    if (slot.idleTimer) clearTimeout(slot.idleTimer);
+    if (this.opts.idleMs <= 0) return;
+    slot.idleTimer = setTimeout(() => {
+      if (this.shuttingDown || slot.current || slot.retiring) return;
+      if (this.slots.length <= this.opts.minSize) return;
+      slot.retiring = true;
+      slot.proc.kill('SIGTERM'); // onExit removes it and will NOT respawn (nothing queued)
+    }, this.opts.idleMs);
+    slot.idleTimer.unref?.();
   }
 
   /** After a worker frees up: recycle it if over its render budget, else pull the next job. */
@@ -191,5 +255,8 @@ export class RenderPool {
     if (this.shuttingDown || slot.current || slot.retiring) return;
     const job = this.queue.shift();
     if (job) this.assign(slot, job);
+    // Nothing waiting → start this worker's idle clock, so a burst does not leave the pool at its
+    // high-water mark for the life of the process.
+    else this.scheduleIdleRetire(slot);
   }
 }

@@ -60,6 +60,8 @@ COPY --chown=node:node example_projects ./example_projects
 COPY --chown=node:node assets ./assets
 COPY --chown=node:node editor ./editor
 COPY --chown=node:node package.json ./
+# Sizes V8's heap from the container limit before exec'ing the server (see the script).
+COPY --chown=node:node docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=80
@@ -94,4 +96,5 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||80)+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

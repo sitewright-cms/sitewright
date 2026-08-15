@@ -73,3 +73,72 @@ describe('RenderPool', () => {
     pool = undefined; // already shut down
   });
 });
+
+describe('RenderPool — lazy spawning and idle retirement', () => {
+  it('starts with NO workers: an instance that never renders pays nothing', () => {
+    pool = new RenderPool({ size: 2, workerPath });
+    expect(pool.workerCount).toBe(0);
+  });
+
+  it('spawns on the first render and REUSES that worker for later ones', async () => {
+    pool = new RenderPool({ size: 2, workerPath });
+    expect(await pool.render('a', {})).toBe('R:a');
+    expect(pool.workerCount).toBe(1);
+    expect(await pool.render('b', {})).toBe('R:b');
+    expect(pool.workerCount, 'a sequential render must not grow the pool').toBe(1);
+  });
+
+  it('grows up to `size` under concurrency, and no further', async () => {
+    pool = new RenderPool({ size: 2, workerPath });
+    const out = await Promise.all(['a', 'b', 'c', 'd'].map((s) => pool!.render(s, {})));
+    expect(out).toEqual(['R:a', 'R:b', 'R:c', 'R:d']);
+    expect(pool.workerCount, '`size` is a ceiling — the rest queue').toBe(2);
+  });
+
+  it('pre-warms `minSize` workers for instances that want the latency instead', () => {
+    pool = new RenderPool({ size: 3, minSize: 2, workerPath });
+    expect(pool.workerCount).toBe(2);
+  });
+
+  it('retires a worker that has gone idle', async () => {
+    pool = new RenderPool({ size: 2, workerPath, idleMs: 60 });
+    await pool.render('a', {});
+    expect(pool.workerCount).toBe(1);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(pool.workerCount, 'an idle worker must give its memory back').toBe(0);
+  });
+
+  it('never retires below `minSize`, and stays serviceable afterwards', async () => {
+    pool = new RenderPool({ size: 2, minSize: 1, workerPath, idleMs: 60 });
+    await pool.render('a', {});
+    await new Promise((r) => setTimeout(r, 400));
+    expect(pool.workerCount, 'the warm floor is held').toBe(1);
+    expect(await pool.render('b', {}), 'and the pool still renders').toBe('R:b');
+  });
+
+  it('re-spawns after retirement when work arrives again', async () => {
+    pool = new RenderPool({ size: 2, workerPath, idleMs: 60 });
+    await pool.render('a', {});
+    await new Promise((r) => setTimeout(r, 400));
+    expect(pool.workerCount).toBe(0);
+    expect(await pool.render('b', {})).toBe('R:b');
+    expect(pool.workerCount).toBe(1);
+  });
+});
+
+describe('RenderPool — a zero ceiling must not hang', () => {
+  it('still renders when constructed with size 0 instead of queueing forever', async () => {
+    // Found by security review: with size 0 the lazy-spawn guard (`slots.length < size`) is never
+    // true, so no worker is created — and a queued job has no timer, because timers are attached in
+    // assign(). Every render would hang indefinitely rather than fail. A hang is worse than the
+    // silent fallback this option was added to fix, so the ceiling is floored at 1.
+    pool = new RenderPool({ size: 0, workerPath });
+    expect(await pool.render('a', {})).toBe('R:a');
+    expect(pool.workerCount).toBe(1);
+  });
+
+  it('still renders with a negative ceiling', async () => {
+    pool = new RenderPool({ size: -3, workerPath });
+    expect(await pool.render('a', {})).toBe('R:a');
+  });
+});

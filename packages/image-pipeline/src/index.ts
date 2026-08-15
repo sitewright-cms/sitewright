@@ -5,3 +5,4 @@ export * from './rasterize.js';
 export * from './svg.js';
 export * from './favicon.js';
 export * from './model-image.js';
+export * from './configure.js';

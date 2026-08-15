@@ -429,6 +429,22 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         ],
         example: '{{#with (sw-pick-entry dataset.hero @root.page.data.hero_config)}}\n  <h1>{{headline}}</h1>\n{{/with}}',
       },
+      {
+        id: 'h-search',
+        syntax: '{{sw-search [placeholder=] [label=] [empty=] [class=] [limit=]}}',
+        name: 'sw-search',
+        keywords: 'search find full-text index query site lookup',
+        description:
+          'Drops a full-text site search box: an input, a results list and an empty state. The publish build indexes every page body and emits a static index; the box fetches it on first use and renders a ranked list of pages with the match highlighted. Quoted phrases are supported. Shared chrome (nav/footer) is never indexed, noindex pages never appear, and each locale gets its own index. Hand-write the data-sw-part markers instead when you need to own the layout.',
+        args: [
+          { name: 'placeholder', desc: 'Input placeholder text.' },
+          { name: 'label', desc: 'Accessible label for the input.' },
+          { name: 'empty', desc: 'Message shown when nothing matches.' },
+          { name: 'class', desc: 'Extra classes on the wrapper.' },
+          { name: 'limit', desc: 'Maximum results to show.' },
+        ],
+        example: '{{sw-search placeholder="Search this site" limit=8}}',
+      },
     ],
   },
   {

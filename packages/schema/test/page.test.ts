@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PageSchema } from '../src/page.js';
+import { PageSchema, PagePatchSchema } from '../src/page.js';
 
 describe('PageSchema', () => {
   it('parses a minimal page (home = empty slug)', () => {
@@ -113,5 +113,38 @@ describe('PageSchema — link placeholders (kind:"link")', () => {
     expect(() => link({ link: { target: 'javascript:alert(1)' }, nav: { slots: ['header'] } })).toThrow();
     expect(() => link({ link: { target: 'data:text/html,<script>' }, nav: { slots: ['header'] } })).toThrow();
     expect(() => link({ link: { target: '//evil.test' }, nav: { slots: ['header'] } })).toThrow();
+  });
+});
+
+describe('PagePatchSchema — null clears a field', () => {
+  it('accepts null for every optional field (deepMerge reads null as delete-this-key)', () => {
+    const patch = PagePatchSchema.parse({
+      id: 'about',
+      parent: null,
+      nav: null,
+      template: null,
+      status: null,
+      description: null,
+      order: null,
+    });
+    expect(patch.parent).toBeNull();
+    expect(patch.nav).toBeNull();
+    expect(patch.template).toBeNull();
+  });
+
+  it('still accepts a normal partial write, and omitted keys stay absent', () => {
+    const patch = PagePatchSchema.parse({ id: 'about', title: 'About us' });
+    expect(patch.title).toBe('About us');
+    expect('nav' in patch).toBe(false);
+  });
+
+  it('requires a non-null id — it addresses the row', () => {
+    expect(() => PagePatchSchema.parse({ id: null, title: 'x' })).toThrow();
+    expect(() => PagePatchSchema.parse({ title: 'x' })).toThrow();
+  });
+
+  it('still rejects a wrongly TYPED value (null is allowed, garbage is not)', () => {
+    expect(() => PagePatchSchema.parse({ id: 'about', nav: 'header' })).toThrow();
+    expect(() => PagePatchSchema.parse({ id: 'about', order: 'first' })).toThrow();
   });
 });

@@ -1,6 +1,7 @@
 // Server-side screenshots of a preview document, so an MCP agent can SEE its rendered page (not just
 // read the HTML). We render the exact HTML the preview endpoint already builds, in a headless Chromium
 // bundled into the API image. Best-effort: any failure leaves the caller to return HTML without images.
+import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
 import { chromium, type Browser, type Route, type Request as PwRequest, type Page } from 'playwright-core';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -161,11 +162,72 @@ export function injectBaseHref(html: string, originHostPort: string): string {
 /* v8 ignore start */
 
 let browserPromise: Promise<Browser> | null = null;
+let browserReservation: Reservation | null = null;
+let lastBrowserUseAt = 0;
+let idleSweep: NodeJS.Timeout | null = null;
+
+/**
+ * How long the browser may sit unused before it is closed.
+ *
+ * Measured: the first screenshot adds ~123 MB to the container and leaves FIVE Chrome processes
+ * holding ~334 MB RSS, and until now they lived until server shutdown — so any instance that ever
+ * took one screenshot carried ~147 MB for the rest of its life. On a 1 GiB container that is 14% of
+ * the budget rented permanently for a one-off preview. Relaunch costs ~8s, which is the right trade
+ * for an instance that screenshots rarely; a busy one never goes idle long enough to pay it.
+ */
+const BROWSER_IDLE_MS = (() => {
+  // A non-numeric env value yielded NaN, and `Date.now() - last < NaN` is always false — so the sweep
+  // would try to close the browser on EVERY tick regardless of idleness. Fall back rather than
+  // silently changing behaviour on a typo.
+  const raw = Number(process.env.SW_BROWSER_IDLE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 120_000;
+})();
+
+/**
+ * What a running headless browser is assumed to occupy. Measured on a container: the first capture
+ * added ~123MB and left five Chrome processes holding ~334MB RSS / ~147MB resident. Reserved at the
+ * higher end deliberately — under-reserving this is what let a preview burst OOM a 1GiB container
+ * even with per-capture admission in place.
+ */
+const BROWSER_RESERVE_BYTES = 256 * 1024 * 1024;
+const IDLE_SWEEP_MS = 15_000;
+
+/**
+ * Close the browser once it has been unused for long enough — but ONLY when it has no open
+ * contexts. A context is an in-flight capture; closing under one would fail a live request. Sweeping
+ * (rather than closing on the last context's close) also covers a caller that leaks a context and
+ * then stops using the browser entirely.
+ */
+function startIdleSweep(): void {
+  if (idleSweep || BROWSER_IDLE_MS <= 0) return;
+  idleSweep = setInterval(() => {
+    void (async () => {
+      const p = browserPromise;
+      if (!p) return;
+      if (Date.now() - lastBrowserUseAt < BROWSER_IDLE_MS) return;
+      let browser: Browser;
+      try {
+        browser = await p;
+      } catch {
+        return; // a failed launch already cleared the singleton
+      }
+      if (browser.contexts().length > 0) return; // busy — try again next sweep
+      if (browserPromise !== p) return; // replaced while we awaited
+      browserPromise = null;
+      browserReservation?.release();
+      browserReservation = null;
+      await browser.close().catch(() => {});
+    })();
+  }, IDLE_SWEEP_MS);
+  idleSweep.unref?.();
+}
 
 /** The shared headless Chromium singleton (reused by screenshots + the import SPA renderer). */
 export async function getBrowser(): Promise<Browser> {
+  lastBrowserUseAt = Date.now();
+  startIdleSweep();
   if (!browserPromise) {
-    browserPromise = chromium
+    const launch: Promise<Browser> = (browserPromise = chromium
       // `chromium-headless-shell`: the purpose-built headless Chromium (no headed/GUI code path) — the
       // right tool for server-side screenshots, and ~380MB smaller in the image than the full browser
       // (we install ONLY the shell; see apps/api/Dockerfile). It is inherently headless, so no `headless`.
@@ -175,25 +237,50 @@ export async function getBrowser(): Promise<Browser> {
       // Chrome services). --disable-dev-shm-usage avoids /dev/shm exhaustion in small containers.
       .launch({ channel: 'chromium-headless-shell', args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
       .then((b) => {
+        // The browser is a LONG-LIVED allocation nothing else accounts for: measured five Chrome
+        // processes at ~334MB RSS, ~147MB of container memory that stays until it is closed. Without
+        // this the ledger admits work against memory the browser has already taken, which is exactly
+        // how a 1GiB container was still OOM-killed by a burst of previews. forceReserve (not
+        // tryReserve): the browser is ALREADY running by this point, so the ledger must record it
+        // whether or not there was room — refusing here would be a lie about what is allocated.
+        const reservation = sharedMemoryBudget.forceReserve(BROWSER_RESERVE_BYTES, 'headless browser');
+        browserReservation = reservation;
         // If the browser crashes/disconnects post-launch, drop the singleton so the next call relaunches
         // (otherwise getBrowser() would keep handing back a dead Browser and every newContext() throws).
+        //
+        // GENERATION-GUARDED. This handler is bound to ONE browser instance, but it fires whenever
+        // that instance dies — including long after a newer browser replaced it (the idle sweep closes
+        // A, a caller launches B, then A's own 'disconnected' arrives). Without the guard it would null
+        // out B's promise — leaking B's five processes forever, the exact accumulation this work
+        // removes — and release B's live 256MB reservation, letting the ledger over-admit against
+        // memory that is still occupied. Only clear state that is still THIS launch's.
         b.on('disconnected', () => {
-          browserPromise = null;
+          if (browserReservation === reservation) {
+            browserReservation.release();
+            browserReservation = null;
+          }
+          if (browserPromise === launch) browserPromise = null;
         });
         return b;
       })
       .catch((err) => {
-        browserPromise = null; // let a later call retry a fresh launch
+        if (browserPromise === launch) browserPromise = null; // let a later call retry a fresh launch
         throw err;
-      });
+      }));
   }
   return browserPromise;
 }
 
 /** Close the shared browser (call on server shutdown). */
 export async function closeScreenshotBrowser(): Promise<void> {
+  if (idleSweep) {
+    clearInterval(idleSweep);
+    idleSweep = null;
+  }
   const p = browserPromise;
   browserPromise = null;
+  browserReservation?.release();
+  browserReservation = null;
   if (p) await (await p).close().catch(() => {});
 }
 

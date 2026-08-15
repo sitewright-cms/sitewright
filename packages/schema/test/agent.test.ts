@@ -39,7 +39,12 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // 19_200 -> 19_800 for the authorization line: an agent stopped a clone half-way and handed back 16
     // pages of raw scaffold because nothing told it that a connected project IS the authorization. That
     // is a directive shaping whether a session COMPLETES AT ALL, so it belongs in the core, not a guide.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(19_800);
+    // 19_800 -> 20_200 for the null-clears-a-field line: it is the same class of destructive-write rule
+    // that put patch_page in the core in the first place. A field can only be REMOVED by sending it as
+    // `null` (omitting means "leave unchanged", and `template:""` fails validation), and not knowing that
+    // is precisely what sent three clone agents to put_page — the total replace that wipes data.swImport
+    // and leaves the page un-auditable. The feature how-tos this unlocks room for stay in their guides.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(20_200);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

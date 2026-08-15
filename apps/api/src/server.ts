@@ -1,12 +1,14 @@
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { createApp } from './http/app.js';
+import { createApp, initMemoryBudget } from './http/app.js';
 import { seedInstance } from './seed.js';
 import { migrateDatasetSlugsToUnderscore } from './migrate-content.js';
 import { migrateMediaToFlatShortId } from './media/migrate-media.js';
 import { MediaStorage } from './media/storage.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
+import { detectMemoryLimit } from './runtime/memory-budget.js';
+import { configureImagePipeline, imagePipelineLimitsFor } from '@sitewright/image-pipeline';
 import { createDb, runMigrations } from './db/client.js';
 import { backupBeforeMigrations, snapshotDatabase } from './db/backup.js';
 import { checkUpgradePath, stampDataMigrationVersion } from './db/upgrade-guard.js';
@@ -125,15 +127,51 @@ const aiQuota = {
 
 // Isolated template render pool: warm child-process workers inside this container, each
 // with a hard V8 heap ceiling. Tunable for k8s resource limits.
-const renderEnvInt = (v: string | undefined, fallback: number): number => {
+/**
+ * `> 0` used to be the validity test, which meant `SW_RENDER_WORKERS=0` was treated as invalid and
+ * silently became the default 2 — the exact opposite of what an operator shrinking an instance
+ * asked for. Zero is a legitimate answer now that workers spawn on demand.
+ */
+const renderEnvInt = (v: string | undefined, fallback: number, allowZero = false): number => {
+  if (v === undefined || v.trim() === '') return fallback;
   const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return n > 0 || (allowZero && n === 0) ? n : fallback;
 };
+
+/**
+ * Size the pool from the memory this instance actually has, so one image serves a 512 MiB box and a
+ * 8 GiB one without hand-tuning. A worker costs ~81 MB resident (measured), so on a small container
+ * two of them are a large slice of the budget for something that may never be asked to render.
+ * `minSize` stays 0 everywhere except roomy instances: with lazy spawning the only cost of 0 is one
+ * fork on the first render.
+ */
+function renderPoolSizing(limitBytes: number): { size: number; minSize: number } {
+  const gib = limitBytes / 1024 ** 3;
+  if (gib < 1) return { size: 1, minSize: 0 };
+  if (gib < 4) return { size: 2, minSize: 0 };
+  return { size: 3, minSize: 1 };
+}
+
+const { limitBytes: detectedMemoryLimit, derivedFromHost } = await detectMemoryLimit();
+// The byte ledger every heavy path admits against. Must run before the first request.
+await initMemoryBudget();
+const sizing = renderPoolSizing(detectedMemoryLimit);
+// libvips keeps a 50MB operation cache by default and never gave it back; size it to the
+// container instead. The on-disk thumbnail cache already covers the real access pattern.
+configureImagePipeline(imagePipelineLimitsFor(detectedMemoryLimit));
 const renderPool = new RenderPool({
-  size: renderEnvInt(process.env.SW_RENDER_WORKERS, 2),
+  // The CEILING must never be 0. `size` is what the lazy-spawn check compares against, so 0 means
+  // `slots.length < 0` is never true: no worker is ever created, and a queued job has no timer
+  // attached (timers are set in assign()), so every render would hang forever instead of failing.
+  // Zero is only meaningful for the WARM FLOOR below, which is the knob an operator shrinking an
+  // instance actually wants.
+  size: Math.max(1, renderEnvInt(process.env.SW_RENDER_WORKERS, sizing.size)),
+  minSize: renderEnvInt(process.env.SW_RENDER_MIN_WORKERS, sizing.minSize, true),
   memoryLimitMb: renderEnvInt(process.env.SW_RENDER_MEMORY_MB, 128),
   renderTimeoutMs: renderEnvInt(process.env.SW_RENDER_TIMEOUT_MS, 5000),
   maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
+  idleMs: renderEnvInt(process.env.SW_RENDER_IDLE_MS, 60_000, true),
 });
 
 // Ensure the data directory + its sub-roots exist before opening the DB (the DB file lives directly in

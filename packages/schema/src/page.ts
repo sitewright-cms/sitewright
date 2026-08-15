@@ -232,8 +232,23 @@ export type Page = z.infer<typeof PageSchema>;
  * nav entry silently deleted `source`, `status`, `description`, `order`, `parent` and `data.swImport`.
  * The cross-field rules (link pages need a `link`, `[param]` paths need a `collection`) deliberately do NOT
  * run on the fragment — they are checked on the MERGED page, where they are actually meaningful.
+ *
+ * Every field is also NULLABLE, because `deepMerge` reads `null` as "delete this key" (see
+ * repo/merge.ts) — that is the ONLY way to clear a field, since omitting it means "leave unchanged"
+ * and some fields cannot be overwritten into absence (`template` is `.min(1)`, so `template:""`
+ * fails validation). A plain `.partial()` here accepts `undefined` but REJECTS `null`, which made
+ * the documented clear-a-field contract unreachable over MCP while it kept working over REST — the
+ * REST route deep-merges the raw body and never sees this schema. Three separate clone agents hit
+ * it, and their only recourse was `put_page`, the total replace that wipes `data.swImport` (the
+ * marker every fidelity tool requires). `id` stays non-null: it addresses the row.
  */
-export const PagePatchSchema = PageFields.partial().extend({ id: IdSchema });
+export const PagePatchSchema = z
+  .object(
+    Object.fromEntries(
+      Object.entries(PageFields.shape).map(([key, field]) => [key, field.nullable().optional()]),
+    ) as { [K in keyof typeof PageFields.shape]: z.ZodOptional<z.ZodNullable<(typeof PageFields.shape)[K]>> },
+  )
+  .extend({ id: IdSchema });
 export type PagePatch = z.infer<typeof PagePatchSchema>;
 
 /**

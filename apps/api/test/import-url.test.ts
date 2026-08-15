@@ -164,12 +164,137 @@ describe('POST /projects/:projectId/media/import-url', () => {
     expect(res.json().error).toMatch(/SVG/);
   });
 
-  it('rejects an over-cap download with 413 (the fetcher enforces the byte cap)', async () => {
+  it('rejects an over-cap download with 413, naming the cap AND the way through it', async () => {
     await makeApp(fetcherReturning({ ok: false, reason: 'oversize' }));
     const { t, projectId } = await setup();
     const res = await post(projectId, t, 'https://cdn.example.com/big.png');
     expect(res.statusCode).toBe(413);
-    expect(res.json().error).toMatch(/size limit/);
+    // A bare "exceeds size limit" told a clone agent nothing, so it hotlinked an 83MB video it had
+    // already downloaded. The message must name the escape hatch.
+    expect(res.json().error).toMatch(/15MB limit for URL import/);
+    expect(res.json().error).toMatch(/upload-ticket|create_media_upload/);
+  });
+
+  it('caps PLAYABLE media at the local-upload ceiling, not the image cap', async () => {
+    // The store, the `video` media kind and the createVideoAsset branch all accept a large video;
+    // only this route's image-sized cap did not, so a site's video was unreachable by URL while the
+    // identical file uploaded from disk was fine.
+    const calls: Array<{ url: string; maxBytes: number }> = [];
+    const capturing = vi.fn(async (url: string, opts: { maxBytes: number }) => {
+      calls.push({ url, maxBytes: opts.maxBytes });
+      return { ok: false, reason: 'oversize' } as PinnedResult;
+    }) as unknown as Fetcher;
+    await makeApp(capturing);
+    const { t, projectId } = await setup();
+
+    await post(projectId, t, 'https://cdn.example.com/clip.mp4');
+    await post(projectId, t, 'https://cdn.example.com/photo.png');
+    await post(projectId, t, 'https://cdn.example.com/track.m4a');
+
+    expect(calls.map((c) => c.maxBytes)).toEqual([
+      200 * 1024 * 1024, // clip.mp4  — playable, gets the local-upload ceiling
+      15 * 1024 * 1024, //  photo.png — image, unchanged
+      200 * 1024 * 1024, // track.m4a — playable audio, same as video
+    ]);
+  });
+
+  it('re-checks the fetched bytes against the REAL content type, so a .mp4 name cannot smuggle a big image', async () => {
+    // The pre-fetch cap can only guess from the extension. A URL path ending .mp4 that actually
+    // serves an image would otherwise keep the 200MB playable ceiling and go through the full
+    // raster decode at 13x the image limit — the byte count, not the pixel count, is what the
+    // image cap exists to bound.
+    const oversizeImage = Buffer.alloc(15 * 1024 * 1024 + 1);
+    await makeApp(fetcherReturning(ok(oversizeImage, 'image/png')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/decoy.mp4');
+    expect(res.statusCode).toBe(413);
+    expect(res.json().error).toMatch(/15MB limit/);
+  });
+
+  it('does NOT re-reject a genuine video that only the image cap would have refused', async () => {
+    // The mirror of the test above: the settled cap must still let real playable media through,
+    // otherwise the post-fetch guard would undo the fix it is protecting.
+    const bigVideo = Buffer.alloc(15 * 1024 * 1024 + 1);
+    await makeApp(fetcherReturning(ok(bigVideo, 'video/mp4')));
+    const { t, projectId } = await setup();
+    const res = await post(projectId, t, 'https://cdn.example.com/real.mp4');
+    expect(res.statusCode).toBe(201);
+    expect(res.json().item.kind).toBe('video');
+  });
+
+  it('sheds excess LARGE imports with a retryable 503 instead of queueing them unboundedly', async () => {
+    // This route is an amplifier: a tiny request makes the server fetch and fully buffer up to
+    // MAX_UPLOAD_BYTES. rl(20) alone would allow ~20 of those in flight, and the body is buffered
+    // several times over — so without a gate the raised cap turns a bounded load into an OOM.
+    // 2 concurrent + a 6-deep queue: the 9th caller must be told "later", not admitted.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    const hanging = vi.fn(async () => {
+      await held;
+      return ok(PNG_1X1, 'video/mp4') as PinnedResult;
+    }) as unknown as Fetcher;
+    await makeApp(hanging);
+    const { t, projectId } = await setup();
+
+    // Fire 9 without awaiting: 2 run, 6 queue, the 9th is refused.
+    const inflight = Array.from({ length: 9 }, () => post(projectId, t, 'https://cdn.example.com/big.mp4'));
+    // Let the gate admit and enqueue before asserting.
+    await new Promise((r) => setTimeout(r, 150));
+    release();
+    const results = await Promise.all(inflight);
+    const shed = results.filter((r) => r.statusCode === 503);
+    expect(shed.length, 'the overflow caller must be shed, not queued').toBeGreaterThanOrEqual(1);
+    expect(shed[0]!.json().error, 'and told it is worth retrying').toMatch(/retry shortly/i);
+  });
+
+  it('does not gate image-sized imports — they were never the amplification risk', async () => {
+    // The gate must not add latency or shedding to the common path.
+    await makeApp(fetcherReturning(ok(PNG_1X1, 'image/png')));
+    const { t, projectId } = await setup();
+    const results = await Promise.all(
+      Array.from({ length: 9 }, () => post(projectId, t, 'https://cdn.example.com/photo.png')),
+    );
+    expect(results.map((r) => r.statusCode), 'every image import succeeds').toEqual(Array(9).fill(201));
+  });
+
+  it('gives a LARGE import a deadline that matches its cap, while a normal one still aborts at 10s', { timeout: 40_000 }, async () => {
+    // Found by benchmarking, not by unit tests: raising the byte cap to 200MB achieved nothing while
+    // the whole-operation deadline stayed at 10s (that needs 20MB/s sustained). Measured against a
+    // deployed container, an 83MB import died at exactly 10.0s with "could not fetch the URL".
+    // An injected fetcher runs no clock, which is precisely why this needs a real one.
+    // Both directions share the same ~11s wall clock by running together.
+    const slow = (async (_url: string, opts: { signal?: AbortSignal }) => {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, 11_000);
+        opts.signal?.addEventListener('abort', () => {
+          clearTimeout(t);
+          reject(new Error('aborted'));
+        });
+      });
+      return ok(PNG_1X1, 'video/mp4');
+    }) as unknown as Fetcher;
+    await makeApp(slow);
+    const { t, projectId } = await setup();
+
+    const [video, image] = await Promise.all([
+      post(projectId, t, 'https://cdn.example.com/long.mp4'),
+      post(projectId, t, 'https://cdn.example.com/long.png'),
+    ]);
+    expect(video.statusCode, 'a playable import must outlive the 10s image deadline').toBe(201);
+    expect(image.statusCode, 'a normal import keeps the short deadline').toBe(400);
+  });
+
+  it('still holds a NON-media URL to the image cap (the raise is scoped to playable media)', async () => {
+    const calls: number[] = [];
+    const capturing = vi.fn(async (_url: string, opts: { maxBytes: number }) => {
+      calls.push(opts.maxBytes);
+      return { ok: false, reason: 'oversize' } as PinnedResult;
+    }) as unknown as Fetcher;
+    await makeApp(capturing);
+    const { t, projectId } = await setup();
+    await post(projectId, t, 'https://cdn.example.com/manual.pdf');
+    await post(projectId, t, 'https://cdn.example.com/no-extension');
+    expect(calls).toEqual([15 * 1024 * 1024, 15 * 1024 * 1024]);
   });
 
   it('is 403 for a cross-tenant request (importer not a member of the other project)', async () => {

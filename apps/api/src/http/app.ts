@@ -302,6 +302,7 @@ import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } fro
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
+import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
 import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -385,7 +386,21 @@ const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-pr
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
 const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
 const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
-const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
+const IMPORT_TIMEOUT_MS = 10_000; // import-url: per-socket INACTIVITY timeout + the deadline for a normal import
+/**
+ * Whole-operation deadline for a LARGE (playable-media) import.
+ *
+ * The deadline has to scale with the CAP or the cap is a lie: at 10s a 200MB allowance needs 20MB/s
+ * sustained, so a real video answered `400 could not fetch the URL` no matter how high the byte
+ * ceiling went. Measured against a deployed container: an 83MB import aborted at exactly 10.0s.
+ * (Unit tests could not see this — they inject a fetcher, so no clock runs.)
+ *
+ * 180s over the 200MB ceiling is a ~1.1MB/s floor. This does NOT reopen the slow-loris hole the
+ * deadline exists for: `timeoutMs` above is still a per-socket inactivity timeout, so a server that
+ * stops sending dies in 10s regardless, and `withLargeImportSlot` bounds how many of these can be
+ * open at once.
+ */
+const LARGE_IMPORT_DEADLINE_MS = 180_000;
 // Cap the time to RECEIVE a full request (headers + body) — a slow-loris mitigation. This bounds the
 // request side only; it does NOT limit how long a handler runs, so streaming responses (AI assistant,
 // import SSE) and large-but-steady uploads (project zips) are unaffected. Generous so a genuinely slow
@@ -446,6 +461,29 @@ const MAX_CONCURRENT_OPTIMIZE = 3;
 const MAX_OPTIMIZE_QUEUE = 24;
 let activeOptimizations = 0;
 const optimizeWaiters: Array<() => void> = [];
+/**
+ * What one encode is assumed to cost while it runs.
+ *
+ * Measured: twenty distinct images served cold cost ~184 MB — roughly 9 MB each with the source
+ * buffer, the decode and the encoded output all live at once. Rounded up, because under-reserving
+ * is what an OOM looks like and over-reserving only costs a little throughput.
+ */
+const OPTIMIZE_RESERVE_BYTES = 12 * 1024 * 1024;
+
+/**
+ * Hard ceiling on a paginated page size. A caller asking for `?limit=100000` would defeat the point
+ * of paginating, so the request is honoured up to this bound rather than refused.
+ */
+const CONTENT_PAGE_MAX = 500;
+
+/**
+ * Reserved per screenshot request. Measured: the first capture adds ~123MB (the browser launch plus
+ * five Chrome processes), later concurrent captures ~24MB each. Reserving the launch-sized figure for
+ * every capture is deliberately pessimistic — the alternative is admitting three, all of them
+ * launching, and being OOM-killed, which is the behaviour this replaces.
+ */
+const SCREENSHOT_RESERVE_BYTES = 128 * 1024 * 1024;
+
 async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
   if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
     activeOptimizations += 1;
@@ -455,12 +493,101 @@ async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
     }
     await new Promise<void>((resolve) => optimizeWaiters.push(resolve));
   }
+  // Counting slots bounds how MANY encodes run; it cannot see how much memory is left. Take the
+  // slot first (so the queue still shapes the load), then check we can actually afford the work.
+  let reservation: Reservation;
   try {
-    return await fn();
-  } finally {
+    reservation = await admitMemory(OPTIMIZE_RESERVE_BYTES, 'image processing');
+  } catch (err) {
     const next = optimizeWaiters.shift();
     if (next) next();
     else activeOptimizations -= 1;
+    throw err;
+  }
+  try {
+    return await fn();
+  } finally {
+    reservation.release();
+    const next = optimizeWaiters.shift();
+    if (next) next();
+    else activeOptimizations -= 1;
+  }
+}
+
+/**
+ * The instance memory ledger. Every gate below counts REQUESTS; this one counts BYTES, which is the
+ * thing that actually runs out. Measured on a 1 GiB container: ten concurrent list calls rode to the
+ * cap and survived, then three concurrent screenshots produced exit 137 — an OOM kill, so every
+ * in-flight request died. Admission against real headroom turns that into a 503 the caller can retry.
+ *
+ * Initialised at boot (`initMemoryBudget`); until then `tryReserve` sees a zero limit and admits
+ * nothing, so it is deliberately only consulted once init has run.
+ */
+const memoryBudget = sharedMemoryBudget;
+let memoryBudgetReady = false;
+export async function initMemoryBudget(): Promise<void> {
+  await memoryBudget.init();
+  memoryBudgetReady = true;
+}
+
+/**
+ * Test seam: pretend a limit/usage so the DENIAL branch can be exercised over real HTTP.
+ *
+ * Without this, integration tests never set `memoryBudgetReady`, so `admitMemory` always took the
+ * unconditional-admit fallback and no test could reach a 503 — which is exactly how a shed request
+ * surfacing as an opaque 500 went unnoticed on the upload paths.
+ */
+export function _setMemoryBudgetForTest(limitBytes: number, usedBytes: number): void {
+  memoryBudget._setForTest(limitBytes, usedBytes);
+  memoryBudgetReady = true;
+}
+
+/**
+ * Reserve `bytes` for a piece of work, or throw a RETRYABLE 503.
+ *
+ * The message matters as much as the status: an agent that reads a refusal as fatal abandons work
+ * (a 413 with no way forward is exactly why a clone hotlinked an 83 MB video instead of uploading
+ * it). Say plainly that this is transient and worth retrying.
+ */
+async function admitMemory(bytes: number, label: string): Promise<Reservation> {
+  if (!memoryBudgetReady) return memoryBudget.forceReserve(bytes, label);
+  const held = await memoryBudget.tryReserve(bytes, label);
+  if (held) return held;
+  throw Object.assign(new Error(`not enough memory for ${label} right now — this is temporary, retry shortly`), {
+    statusCode: 503,
+    retryable: true,
+  });
+}
+
+// Bound concurrent LARGE url-imports the same way, and for the same reason one level up: this route
+// is an AMPLIFIER. A few hundred bytes of request makes the server fetch, fully buffer and store up
+// to MAX_UPLOAD_BYTES from a third party — unlike the local-upload paths, which are self-limiting
+// because the caller must actually transmit the bytes. The body is buffered several times over
+// (chunks → Buffer.concat → Uint8Array → Buffer.from), so peak is a small multiple of the payload,
+// and `rl(20)` alone would allow ~20 of those in flight at once. Only the LARGE path is gated:
+// image-sized imports were never the problem and must not pay new latency for this.
+const MAX_CONCURRENT_LARGE_IMPORT = 2;
+// A short queue, not an unbounded one — a waiter costs nothing yet, but admitting it eventually
+// allocates a full payload, so past this depth say "later" with a retryable 503 instead.
+const MAX_LARGE_IMPORT_QUEUE = 6;
+let activeLargeImports = 0;
+const largeImportWaiters: Array<() => void> = [];
+async function withLargeImportSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeLargeImports < MAX_CONCURRENT_LARGE_IMPORT) {
+    activeLargeImports += 1;
+  } else {
+    if (largeImportWaiters.length >= MAX_LARGE_IMPORT_QUEUE) {
+      throw Object.assign(new Error('too many large imports in progress; retry shortly'), { statusCode: 503 });
+    }
+    await new Promise<void>((resolve) => largeImportWaiters.push(resolve));
+  }
+  try {
+    return await fn();
+  } finally {
+    // Hand the slot straight to the next waiter (never over-admitting), exactly as the optimize gate does.
+    const next = largeImportWaiters.shift();
+    if (next) next();
+    else activeLargeImports -= 1;
   }
 }
 
@@ -955,6 +1082,15 @@ async function previewScreenshots(
     .split(',')
     .map((v) => v.trim())
     .filter((v): v is ViewportName => isScreenshotViewportName(v));
+  // A capture costs a browser context, and the FIRST one also pays the browser launch (measured
+  // +123MB, five Chrome processes). Reserve for it so three concurrent previews shed with a 503
+  // instead of taking the container out — which is exactly what happened under a 1GiB cap.
+  let shotReservation: Reservation;
+  try {
+    shotReservation = await admitMemory(SCREENSHOT_RESERVE_BYTES, 'preview screenshot');
+  } catch {
+    return undefined; // best-effort by contract: the caller still returns the HTML
+  }
   try {
     return await clampShots(await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,
@@ -966,6 +1102,8 @@ async function previewScreenshots(
   } catch (err) {
     req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');
     return undefined;
+  } finally {
+    shotReservation.release();
   }
 }
 
@@ -1604,6 +1742,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // plugin's error message can't leak through.
     const status = (err as { statusCode?: number }).statusCode;
     if (status === 429) return reply.code(429).send({ error: 'rate limit exceeded — slow down' });
+    // A 503 here is BACKPRESSURE, not a fault: the memory ledger or a concurrency queue shed this
+    // request. Without this branch it fell past the 4xx passthrough into the opaque 500 below, so a
+    // shed caller was told "the server is broken" instead of "come back in a moment" — and an agent
+    // that reads a 500 as fatal abandons work. Fixed message, like 429/413, so a plugin's own error
+    // text can never leak through.
+    if (status === 503) {
+      return reply.code(503).send({ error: 'temporarily out of capacity — this is transient, retry shortly' });
+    }
     if (status === 413) return reply.code(413).send({ error: 'request body too large' });
     // A library/parse error that carries a 4xx status is a CLIENT fault (e.g. a malformed JSON body →
     // FST_ERR_CTP_INVALID_JSON, 400) — report it as such with a generic message rather than mislabeling
@@ -3069,13 +3215,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
   // to flood the site-wide settings (criticalCss/head/scripts) write.
-  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'>; Querystring: { dataset?: string; summary?: string } }>(
+  app.get<{
+    Params: Pick<ContentParams, 'projectId' | 'kind'>;
+    Querystring: { dataset?: string; summary?: string; limit?: string; offset?: string };
+  }>(
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project: proj } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
-      const items = await contentRepo.list(ctx, kind);
+      // `?limit=` PAGINATES. Opt-in, exactly like `?summary=1`: the unpaginated list is the shape
+      // every existing caller expects, and silently truncating it would turn a memory problem into a
+      // data problem. Measured on a 61-page project: one full list peaked 37 MB and three concurrent
+      // peaked 206 MB, so a large project can exhaust a small container through ordinary editing.
+      // A paginated caller reads a bounded slice and gets `total` back to walk the rest.
+      const rawLimit = Number(req.query.limit);
+      const paginate = Number.isFinite(rawLimit) && rawLimit > 0;
+      const page = paginate
+        ? await contentRepo.listPaged(ctx, kind, {
+            limit: Math.min(rawLimit, CONTENT_PAGE_MAX),
+            offset: Number(req.query.offset) || 0,
+          })
+        : null;
+      const items = page ? page.items : await contentRepo.list(ctx, kind);
       // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
       // an entry's `values`) and describes them instead. A full page list carries every page's Handlebars
       // source — 337 KB for a 22-page imported site, past the MCP tool-output ceiling — so listing the
@@ -3109,9 +3271,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'entry' && req.query.dataset !== undefined) {
         const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
         if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
+        // `listPaged` pages across every entry of the kind and the dataset filter is applied AFTER,
+        // in memory — so combining them yields a slice of "the first N rows of ALL datasets that
+        // happen to belong to X", with no total. That is wrong data wearing a plausible shape, which
+        // is worse than a refusal. Reject until listPaged can scope the filter in SQL.
+        if (paginate) {
+          return reply
+            .code(400)
+            .send({ error: '`dataset` and `limit` cannot be combined yet — omit `limit` to filter by dataset' });
+        }
         return reply.send({ items: project(items.filter((it) => (it as { dataset?: string }).dataset === parsed.data)) });
       }
-      return reply.send({ items: project(items) });
+      // `page` is only set when the caller asked to paginate, so an existing caller's response shape
+      // is byte-identical to before — the extra keys appear only for a caller that opted in.
+      return reply.send(
+        page
+          ? { items: project(items), total: page.total, limit: page.limit, offset: page.offset }
+          : { items: project(items) },
+      );
     },
   );
 
@@ -4792,71 +4969,150 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
         return reply.code(400).send({ error: 'only public https URLs can be imported' });
       }
-
-      // Redirects and the size cap (content-length pre-check AND a streaming backstop) live inside the
-      // pinned fetcher, so there is no path around the guard. `timeoutMs` there is a per-socket INACTIVITY
-      // timeout, so it alone would let a server trickle bytes and hold a worker open indefinitely — the
-      // AbortController adds the hard whole-operation deadline (spanning redirects + the body read) that
-      // this route had before. clearTimeout is in the finally so the timer never outlives the request.
-      // The pinned fetcher resolves rather than rejects on every failure it knows about; the catch is a
-      // backstop so an unexpected throw still answers 400 (never a 500 leaking a stack to the caller).
-      let fetched: PinnedResult;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), IMPORT_TIMEOUT_MS);
+      // The cap has to be chosen BEFORE the fetch (the pinned fetcher enforces it with a
+      // content-length pre-check AND a streaming backstop), so it keys off the URL's extension —
+      // the content type is not known until the bytes arrive.
+      //
+      // Playable media gets the same ceiling the LOCAL upload paths already allow. The store, the
+      // `video` media kind and the createVideoAsset branch below all accept it at that size; only
+      // this route's image-sized cap said otherwise, which made a site's video unreachable by URL
+      // while the identical file uploaded from disk was fine. Measured: an 83 MB source video
+      // 413'd here and imported cleanly through the upload ticket.
+      let importPath = '';
       try {
-        fetched = await importUrlFetch(url, {
-          timeoutMs: IMPORT_TIMEOUT_MS,
-          maxBytes: MAX_IMAGE_UPLOAD_BYTES,
-          maxRedirects: MAX_IMPORT_REDIRECTS,
-          signal: controller.signal,
-        });
+        importPath = new URL(url).pathname;
       } catch {
-        return reply.code(400).send({ error: 'could not fetch the URL' });
-      } finally {
-        clearTimeout(timer);
+        /* a malformed URL falls through to the image cap and fails in the fetcher */
       }
-      if (!fetched.ok) {
-        switch (fetched.reason) {
-          case 'blocked':
-            // The host, or a redirect target, is not a public https address. Deliberately does NOT say
-            // which hop or what it resolved to — that would be an internal-DNS oracle.
-            return reply.code(400).send({ error: 'a non-public URL was blocked (host or redirect target)' });
-          case 'redirects':
-            return reply.code(400).send({ error: 'too many redirects' });
-          case 'oversize':
-            return reply.code(413).send({ error: 'file exceeds size limit' });
-          case 'status':
-            return reply.code(400).send({ error: `download failed (${fetched.status})` });
-          default:
-            return reply.code(400).send({ error: 'could not fetch the URL' });
+      const maxImportBytes = isVideoExt(importPath) ? MAX_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+
+      // The slot must span the BUFFER'S WHOLE LIFETIME — fetch AND store — because the payload
+      // stays resident until the asset is written; gating only the fetch would leave the peak
+      // unchanged. Image-sized imports run UNGATED: they were never the amplification risk and
+      // must not pay new latency for one.
+      const runImport = async (): Promise<typeof reply> => {
+        // Redirects and the size cap (content-length pre-check AND a streaming backstop) live inside the
+        // pinned fetcher, so there is no path around the guard. `timeoutMs` there is a per-socket INACTIVITY
+        // timeout, so it alone would let a server trickle bytes and hold a worker open indefinitely — the
+        // AbortController adds the hard whole-operation deadline (spanning redirects + the body read) that
+        // this route had before. clearTimeout is in the finally so the timer never outlives the request.
+        // The pinned fetcher resolves rather than rejects on every failure it knows about; the catch is a
+        // backstop so an unexpected throw still answers 400 (never a 500 leaking a stack to the caller).
+        let fetched: PinnedResult;
+        const controller = new AbortController();
+        // Same size class that picked the byte cap picks the deadline — a 200MB allowance behind a
+        // 10s deadline is unreachable. The INACTIVITY timeout below stays at 10s either way.
+        const deadlineMs = maxImportBytes > MAX_IMAGE_UPLOAD_BYTES ? LARGE_IMPORT_DEADLINE_MS : IMPORT_TIMEOUT_MS;
+        const timer = setTimeout(() => controller.abort(), deadlineMs);
+        try {
+          fetched = await importUrlFetch(url, {
+            timeoutMs: IMPORT_TIMEOUT_MS,
+            maxBytes: maxImportBytes,
+            maxRedirects: MAX_IMPORT_REDIRECTS,
+            signal: controller.signal,
+          });
+        } catch {
+          return reply.code(400).send({ error: 'could not fetch the URL' });
+        } finally {
+          clearTimeout(timer);
         }
-      }
-      const contentType = fetched.contentType;
-      const buffer = Buffer.from(fetched.bytes);
+        if (!fetched.ok) {
+          switch (fetched.reason) {
+            case 'blocked':
+              // The host, or a redirect target, is not a public https address. Deliberately does NOT say
+              // which hop or what it resolved to — that would be an internal-DNS oracle.
+              return reply.code(400).send({ error: 'a non-public URL was blocked (host or redirect target)' });
+            case 'redirects':
+              return reply.code(400).send({ error: 'too many redirects' });
+            case 'oversize':
+              // Name the ceiling that applied AND the way through it. The bare "file exceeds size
+              // limit" told an agent nothing, so it hotlinked the asset instead of uploading it —
+              // even though it had already downloaded the file and the upload ticket would have
+              // taken it.
+              return reply.code(413).send({
+                error:
+                  `file exceeds the ${Math.round(maxImportBytes / (1024 * 1024))}MB limit for URL import` +
+                  ` — download it and use a one-shot upload ticket (POST /projects/:id/media/upload-ticket,` +
+                  ` MCP create_media_upload), which accepts up to ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`,
+              });
+            case 'status':
+              return reply.code(400).send({ error: `download failed (${fetched.status})` });
+            default:
+              return reply.code(400).send({ error: 'could not fetch the URL' });
+          }
+        }
+        const contentType = fetched.contentType;
+        const buffer = Buffer.from(fetched.bytes);
 
-      const isSvg = contentType === 'image/svg+xml' || contentType === 'image/svg';
-      if (isSvg && buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });
-      // A malformed %-sequence the URL parser accepts but decodeURIComponent rejects → a safe default.
-      let filename: string;
+        // The pre-fetch cap was a GUESS from the URL's extension — the only signal available before
+        // any bytes arrive. Now that the real Content-Type is known, re-hold the payload to the
+        // ceiling that actually matches it, because the two signals can disagree and nothing else
+        // reconciles them: `photo.mp4` answered as `image/png` would otherwise keep the 200MB
+        // playable cap and then go through the full raster decode at 13x the image limit (sharp's
+        // 50MP guard does not bound BYTES). The same in reverse — arbitrary bytes behind a video-like
+        // extension must not be stored and served as `video/*` at 200MB.
+        const isPlayablePayload =
+          contentType.startsWith('video/') ||
+          contentType.startsWith('audio/') ||
+          // A real .mp4 is sometimes served as generic binary; the storage dispatch below already
+          // treats that as video, so allow the large ceiling — but only when the extension agrees.
+          (isVideoExt(importPath) && (contentType === 'application/octet-stream' || contentType === ''));
+        const settledCap = isPlayablePayload ? MAX_UPLOAD_BYTES : MAX_IMAGE_UPLOAD_BYTES;
+        if (buffer.length > settledCap) {
+          return reply.code(413).send({
+            error:
+              `file exceeds the ${Math.round(settledCap / (1024 * 1024))}MB limit for a ${contentType || 'unknown'} URL import` +
+              ` — download it and use a one-shot upload ticket (POST /projects/:id/media/upload-ticket,` +
+              ` MCP create_media_upload), which accepts up to ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`,
+          });
+        }
+
+        const isSvg = contentType === 'image/svg+xml' || contentType === 'image/svg';
+        if (isSvg && buffer.length > MAX_SVG_BYTES) return reply.code(413).send({ error: 'SVG exceeds the 4MB limit' });
+        // A malformed %-sequence the URL parser accepts but decodeURIComponent rejects → a safe default.
+        let filename: string;
+        try {
+          filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'download') || 'download';
+        } catch {
+          filename = 'download';
+        }
+        try {
+          // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
+          const saved = isSvg
+            ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
+            : contentType.startsWith('image/')
+              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+              : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
+                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+          if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
+          return reply.code(201).send({ item: saved });
+        } catch (err) {
+          if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
+          if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid import' });
+          throw err;
+        }
+      };
+      if (maxImportBytes <= MAX_IMAGE_UPLOAD_BYTES) return runImport();
       try {
-        filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'download') || 'download';
-      } catch {
-        filename = 'download';
-      }
-      try {
-        // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
-        const saved = isSvg
-          ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
-          : contentType.startsWith('image/')
-            ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-            : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
-              ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-              : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
-        if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
-        return reply.code(201).send({ item: saved });
+        return await withLargeImportSlot(async () => {
+          // The pinned fetcher buffers the whole body, so the CAP is the honest reservation. Held
+          // for the fetch AND the store, because the buffer stays resident until the asset lands.
+          const held = await admitMemory(maxImportBytes, 'large media import');
+          try {
+            return await runImport();
+          } finally {
+            held.release();
+          }
+        });
       } catch (err) {
-        if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
-        if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid import' });
+        // Answer the shed HERE rather than throwing it at the global error handler: that handler
+        // passes through only 4xx statuses (`status >= 400 && status < 500`) plus an allowlisted
+        // 429/413, so a thrown 503 falls into the opaque 500 branch. Measured: the shed caller got
+        // a 500, which reads as "the server is broken" instead of "come back in a moment".
+        if ((err as { statusCode?: number }).statusCode === 503) {
+          return reply.code(503).send({ error: 'too many large imports in progress; retry shortly' });
+        }
         throw err;
       }
     });

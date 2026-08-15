@@ -1,6 +1,6 @@
 import { newId } from '../id.js';
 import { sanitizeImageMapConfig } from '@sitewright/blocks';
-import { and, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   CaptchaStoredSchema,
@@ -224,6 +224,46 @@ export class ContentRepository {
       // kinds, so this is a no-op for them.
       .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
     return rows.map((row) => this.normalizeOnRead(kind, row.data));
+  }
+
+  /**
+   * A PAGE of rows, plus the total, for callers that must not materialise a whole kind at once.
+   *
+   * `list` selects every row of a kind with no bound, and its callers include the File Manager,
+   * render, exports and fonts. Measured against a 61-page project: one list call peaked 37 MB (2.8x
+   * the 13 MB payload — the rows, the normalised copies and the serialised body all live at once),
+   * and THREE concurrent calls peaked 206 MB, which is worse than linear. On a large project that
+   * is an OOM from ordinary editing, with no upload or image work involved.
+   *
+   * `list` is deliberately left alone: it is the shape every existing caller expects, and silently
+   * truncating it would turn a memory bug into a data bug. This is the opt-in escape hatch.
+   */
+  async listPaged(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    opts: { limit: number; offset?: number },
+  ): Promise<{ items: unknown[]; total: number; limit: number; offset: number }> {
+    const where = and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt));
+    const limit = Math.max(1, Math.floor(opts.limit));
+    const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+    // Count first so a caller can page without guessing how far to go. `id` is indexed by the
+    // primary key, so this does not read the (potentially large) `data` column.
+    const counted = await this.db.select({ n: count() }).from(content).where(where);
+    const rows = await this.db
+      .select()
+      .from(content)
+      // A stable order is what makes paging correct: without it SQLite may return rows in a
+      // different order between pages and a caller would both miss and repeat rows.
+      .orderBy(content.id)
+      .limit(limit)
+      .offset(offset)
+      .where(where);
+    return {
+      items: rows.map((row) => this.normalizeOnRead(kind, row.data)),
+      total: Number(counted[0]?.n ?? 0),
+      limit,
+      offset,
+    };
   }
 
   /**

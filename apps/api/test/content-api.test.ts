@@ -706,3 +706,73 @@ describe('bulk delete', () => {
     expect(left).toEqual([]);
   });
 });
+
+describe('content list pagination', () => {
+  /** Seed `n` pages so a list is worth bounding. */
+  async function seedPages(t: string, projectId: string, n: number) {
+    for (let i = 0; i < n; i++) {
+      const res = await app.inject({
+        method: 'PUT',
+        url: `/projects/${projectId}/content/page/p${i}`,
+        cookies: { sw_session: t },
+        payload: { id: `p${i}`, path: `p${i}`, title: `P${i}`, source: '<section><p>x</p></section>' },
+      });
+      expect(res.statusCode, `seeding p${i}`).toBe(200);
+    }
+  }
+
+  it('is OPT-IN: without ?limit the response shape is unchanged', async () => {
+    // The unpaginated list is what every existing caller expects. Silently truncating it would turn
+    // a memory problem into a data problem, so the default must stay whole.
+    const { t, projectId } = await setup('pg-off@acme.test', 'pg-off');
+    await seedPages(t, projectId, 7);
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Record<string, unknown>;
+    expect((body.items as unknown[]).length).toBe(8); // 7 + the scaffolded home page
+    expect('total' in body, 'no pagination keys for a caller that did not ask').toBe(false);
+  });
+
+  it('returns a bounded slice plus the total when ?limit is given', async () => {
+    const { t, projectId } = await setup('pg-on@acme.test', 'pg-on');
+    await seedPages(t, projectId, 7);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/content/page?limit=3`,
+      cookies: { sw_session: t },
+    });
+    const body = res.json() as { items: unknown[]; total: number; limit: number; offset: number };
+    expect(body.items.length).toBe(3);
+    expect(body.total).toBe(8);
+    expect(body.limit).toBe(3);
+    expect(body.offset).toBe(0);
+  });
+
+  it('walks the whole set across pages without missing or repeating a row', async () => {
+    // The point of the stable ORDER BY: without it SQLite may reorder between pages and a caller
+    // paging through would both skip and duplicate rows.
+    const { t, projectId } = await setup('pg-walk@acme.test', 'pg-walk');
+    await seedPages(t, projectId, 7);
+    const seen: string[] = [];
+    for (let offset = 0; offset < 8; offset += 3) {
+      const res = await app.inject({
+        method: 'GET',
+        url: `/projects/${projectId}/content/page?limit=3&offset=${offset}`,
+        cookies: { sw_session: t },
+      });
+      for (const it of (res.json() as { items: { id: string }[] }).items) seen.push(it.id);
+    }
+    expect(seen.length).toBe(8);
+    expect(new Set(seen).size, 'every row seen exactly once').toBe(8);
+  });
+
+  it('clamps an absurd page size instead of honouring it', async () => {
+    const { t, projectId } = await setup('pg-clamp@acme.test', 'pg-clamp');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/content/page?limit=999999`,
+      cookies: { sw_session: t },
+    });
+    expect((res.json() as { limit: number }).limit).toBe(500);
+  });
+});

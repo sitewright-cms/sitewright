@@ -49,3 +49,5 @@ export * from './preview-css.js';
 export * from './typography-css.js';
 export * from './render.js';
 export * from './nav-runtime.js';
+export * from './search-tokenize.js';
+export * from './search-index-format.js';

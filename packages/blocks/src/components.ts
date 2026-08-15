@@ -37,6 +37,7 @@ import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/d
 // fork has no eval, no custom-JS/CSS injection and no window global, so it sits inside the
 // platform's `default-src 'self'` CSP and its "tenants supply data, never code" invariant.
 import { IMAGE_MAP_RUNTIME_JS, IMAGE_MAP_VENDOR_CSS } from './vendor/image-map-runtime.js';
+import { SEARCH_CSS, SEARCH_JS } from './search.js';
 // ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
 // shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
 import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
@@ -1206,6 +1207,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
   ['ShaderBg', { css: SHADER_BG_CSS, js: SHADER_BG_JS }],
   ['ImageMap', { css: IMAGE_MAP_CSS, js: IMAGE_MAP_JS }],
+  ['Search', { css: SEARCH_CSS, js: SEARCH_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */
@@ -1225,6 +1227,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['datetimepicker', 'DateTimePicker'],
   ['shader-bg', 'ShaderBg'],
   ['image-map', 'ImageMap'],
+  ['search', 'Search'],
 ]);
 
 const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;
@@ -1305,6 +1308,8 @@ export function formHasPickerField(form: { fields?: ReadonlyArray<{ type?: strin
 const REFERENCE_EMBEDS: ReadonlyArray<{ token: string; type: string }> = [
   { token: 'sw-form', type: 'Form' },
   { token: 'sw-imagemap', type: 'ImageMap' },
+  // `{{sw-search}}` emits data-sw-component at render time; the publish path scans SOURCES.
+  { token: 'sw-search', type: 'Search' },
 ];
 
 /**

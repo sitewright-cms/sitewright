@@ -594,4 +594,68 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
     ],
   },
+  {
+    type: 'Search',
+    marker: 'search',
+    summary:
+      'Full-text site search. The publish build indexes every page BODY and emits a static index next to sitemap.xml; this component fetches it on first use and renders a ranked list of matching PAGES — title, description and a snippet showing the match. Supports quoted "exact phrases". Use it for a search page or a header search box.',
+    authoring: 'markup',
+    attributes: [
+      {
+        name: 'data-sw-limit',
+        on: 'root',
+        description: 'Maximum results rendered (default 10, capped at 50). Set it low for a header dropdown, higher for a dedicated search page.',
+      },
+    ],
+    skeleton: `<div data-sw-component="search" data-sw-limit="10">
+  <input data-sw-part="input" type="search" aria-label="Search" placeholder="Search\u2026" />
+  <div data-sw-part="results"></div>
+  <p data-sw-part="empty" hidden>Nothing matched that.</p>
+</div>`,
+    parts: [
+      {
+        part: '(the marked element)',
+        element: 'div',
+        required: true,
+        description:
+          'A container carrying data-sw-component="search". Optional data-sw-limit="10" caps how many results render. Everything visible is YOUR markup — the runtime only fills the results container.',
+      },
+      {
+        part: 'input',
+        element: 'input',
+        required: true,
+        description:
+          'data-sw-part="input" — the query field. Give it type="search" and an aria-label (it has no visible <label>). Typing searches as you go; Enter never submits a wrapping form.',
+      },
+      {
+        part: 'results',
+        element: 'div',
+        required: true,
+        description:
+          'data-sw-part="results" — an EMPTY container the runtime fills with <a class="sw-search-hit"> links. Style .sw-search-hit / -title / -desc / -snippet with utilities.',
+      },
+      {
+        part: 'empty',
+        element: 'p',
+        required: false,
+        description:
+          'data-sw-part="empty" hidden — shown only when a query matches nothing. Write your own copy here (it is not translated for you).',
+      },
+    ],
+    noJs: 'The box renders as authored and simply does not search: it is a plain input with an empty results container. The same applies on a build that emitted no index (a site whose pages are all raw-fidelity imports), so search degrades to inert rather than to a broken state.',
+    notes:
+      'WRITE {{sw-search}} FOR THE COMMON CASE — the helper emits the whole contract for you and takes placeholder/label/empty/class/limit hash params, e.g. {{sw-search placeholder="Search the site" limit=8}}. Hand-write the parts only when you need to own the layout. WHAT IS SEARCHABLE: every published page BODY, plus its title, description and headings (weighted, so a title hit outranks a body hit). Shared chrome — the nav, sidebars and footer — is deliberately NOT indexed, or every page would match every menu word. noindex pages, nav-placeholder (kind:"link") pages and raw-fidelity imports are excluded; an imported page becomes searchable as soon as it is nativized. MULTILINGUAL: one index per locale, picked from <html lang>, so a German page never returns English results. RESULTS ARE PAGES, not content previews — there is no way to make it return sections or dataset rows. Ranking puts pages matching ALL your words above pages matching fewer, then scores by relevance; identical pages at two URLs collapse to one result.',
+    examples: [
+      {
+        label: 'A search page, the easy way',
+        code: '<section class="mx-auto max-w-2xl px-6 py-16">\n  <h1 class="text-3xl font-bold">Search</h1>\n  {{sw-search placeholder="Search the site…" limit=10 class="mt-6"}}\n</section>',
+        note: 'One helper call. It emits the input, the results container and the empty state with the right data-sw-part markers.',
+      },
+      {
+        label: 'Hand-written, to own the layout',
+        code: '<div data-sw-component="search" data-sw-limit="6" class="relative">\n  <input data-sw-part="input" type="search" aria-label="Search" placeholder="Search…" class="input input-bordered w-full" />\n  <div data-sw-part="results" class="mt-2 rounded-box border border-base-200 bg-base-100 p-2 shadow-lg"></div>\n  <p data-sw-part="empty" hidden class="mt-2 text-sm opacity-70">Nothing matched that.</p>\n</div>',
+        note: 'The runtime only fills [data-sw-part="results"] — the wrapper, input classes and empty copy stay entirely yours.',
+      },
+    ],
+  },
 ];

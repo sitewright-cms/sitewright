@@ -887,6 +887,24 @@ export function WebsiteSection({
             onChange={(e) => patch({ consent: { ...(form.consent ?? {}), enabled: e.target.checked } })}
           />
         </label>
+        <label className="mt-3 flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>Search: match accented letters loosely</span>
+            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+              On (default), a search for “Muller” also finds “Müller”. Turn OFF for a language where accented
+              characters are separate letters — Swedish å/ä/ö, for instance. Scripts where marks carry meaning
+              (Thai, Devanagari, Hebrew, Arabic) are never affected either way.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Search: match accented letters loosely"
+            className={toggleInput}
+            checked={form.searchFoldDiacritics}
+            onChange={(e) => patch({ searchFoldDiacritics: e.target.checked })}
+          />
+        </label>
         {form.consent?.enabled === true && (
           <div className="mt-3">
             <button

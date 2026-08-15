@@ -150,6 +150,15 @@ export class MemoryBudget {
   private readonly held = new Set<symbol>();
   private cachedUsed = 0;
   private cachedAt = 0;
+  /**
+   * Set by `_setForTest`: hold the pretended usage instead of resampling the real cgroup.
+   *
+   * Without this the seam expires after {@link SAMPLE_TTL_MS} and the budget silently reverts to
+   * whatever the host is really doing — so a test asserting "there is headroom" passes only while it
+   * finishes inside 250ms, and starts shedding as soon as it does enough work to matter. That is a
+   * test that reports the machine's load, not the code's behaviour.
+   */
+  private frozen = false;
   /** Woken when a reservation is released, so a waiter can re-try immediately instead of polling. */
   private waiters: Array<() => void> = [];
 
@@ -170,6 +179,7 @@ export class MemoryBudget {
 
   /** Usage, resampled at most every {@link SAMPLE_TTL_MS} so an admission burst is not a syscall storm. */
   private async used(now = Date.now()): Promise<number> {
+    if (this.frozen) return this.cachedUsed;
     if (now - this.cachedAt >= SAMPLE_TTL_MS) {
       this.cachedUsed = await readUsedBytes();
       this.cachedAt = now;
@@ -282,12 +292,18 @@ export class MemoryBudget {
     };
   }
 
-  /** Test seam: pretend a limit/usage without a cgroup. */
+  /**
+   * Test seam: pretend a limit/usage without a cgroup.
+   *
+   * The pretended usage is FROZEN — it must not decay back to the real cgroup mid-test, or an
+   * assertion about admission quietly becomes an assertion about how busy the host happened to be.
+   */
   _setForTest(limitBytes: number, usedBytes: number): void {
     this.limitBytes = limitBytes;
     this.derivedFromHost = false;
     this.cachedUsed = usedBytes;
     this.cachedAt = Date.now();
+    this.frozen = true;
   }
 }
 

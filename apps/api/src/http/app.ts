@@ -304,7 +304,7 @@ import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
-import { FairGate, TenantShareError } from '../runtime/fair-gate.js';
+import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.js';
 import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
@@ -403,6 +403,10 @@ const IMPORT_TIMEOUT_MS = 10_000; // import-url: per-socket INACTIVITY timeout +
  * open at once.
  */
 const LARGE_IMPORT_DEADLINE_MS = 180_000;
+/** Never attempt a gated import for less than this; below it the path is not worth its reservation. */
+const MIN_LARGE_IMPORT_BYTES = 8 * 1024 * 1024;
+/** Share of free headroom one import may claim, so it cannot take every last byte for itself. */
+const LARGE_IMPORT_HEADROOM = 0.75;
 // Cap the time to RECEIVE a full request (headers + body) — a slow-loris mitigation. This bounds the
 // request side only; it does NOT limit how long a handler runs, so streaming responses (AI assistant,
 // import SSE) and large-but-steady uploads (project zips) are unaffected. Generous so a genuinely slow
@@ -5213,7 +5217,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // stays resident until the asset is written; gating only the fetch would leave the peak
       // unchanged. Image-sized imports run UNGATED: they were never the amplification risk and
       // must not pay new latency for one.
-      const runImport = async (): Promise<typeof reply> => {
+      const runImport = async (allowedBytes: number): Promise<typeof reply> => {
         // Redirects and the size cap (content-length pre-check AND a streaming backstop) live inside the
         // pinned fetcher, so there is no path around the guard. `timeoutMs` there is a per-socket INACTIVITY
         // timeout, so it alone would let a server trickle bytes and hold a worker open indefinitely — the
@@ -5230,7 +5234,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         try {
           fetched = await importUrlFetch(url, {
             timeoutMs: IMPORT_TIMEOUT_MS,
-            maxBytes: maxImportBytes,
+            maxBytes: allowedBytes,
             maxRedirects: MAX_IMPORT_REDIRECTS,
             signal: controller.signal,
           });
@@ -5254,7 +5258,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               // taken it.
               return reply.code(413).send({
                 error:
-                  `file exceeds the ${Math.round(maxImportBytes / (1024 * 1024))}MB limit for URL import` +
+                  `file exceeds the ${Math.round(allowedBytes / (1024 * 1024))}MB limit for URL import` +
                   ` — download it and use a one-shot upload ticket (POST /projects/:id/media/upload-ticket,` +
                   ` MCP create_media_upload), which accepts up to ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))}MB`,
               });
@@ -5316,14 +5320,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           throw err;
         }
       };
-      if (maxImportBytes <= MAX_IMAGE_UPLOAD_BYTES) return runImport();
+      if (maxImportBytes <= MAX_IMAGE_UPLOAD_BYTES) return runImport(maxImportBytes);
       try {
         return await largeImportGate.run(project.id, async () => {
-          // The pinned fetcher buffers the whole body, so the CAP is the honest reservation. Held
-          // for the fetch AND the store, because the buffer stays resident until the asset lands.
-          const held = await admitMemory(maxImportBytes, 'large media import');
+          // Reserve what this instance can AFFORD, not the 200MB ceiling.
+          //
+          // The pinned fetcher buffers the whole body, so the reservation has to cover the payload —
+          // but reserving the CAP made large import impossible on a small instance. Measured on a
+          // 512MB container: ~180MB is spendable, a 200MB reservation never fits, and so EVERY video
+          // URL was refused — a 2MB one included — with a 503 promising that a retry would help.
+          //
+          // Grant the smaller of the cap and the real headroom, then hand that same number to the
+          // fetcher as its byte cap. A file too big for the instance is then refused as OVERSIZE,
+          // which is true and tells the caller what to do (use an upload ticket), instead of being
+          // reported as contention that does not exist.
+          //
+          // Only when the ledger actually KNOWS the limit. Before `initMemoryBudget` (and in unit
+          // tests) a snapshot reports zero headroom, which would silently shrink every import to the
+          // floor — the existing cap test caught exactly that. An uninitialised budget means "no
+          // information", not "no memory", so the cap stands, matching what `admitMemory` does.
+          let allowedBytes = maxImportBytes;
+          if (memoryBudgetReady) {
+            const snap = await memoryBudget.snapshot();
+            allowedBytes = Math.min(
+              maxImportBytes,
+              Math.max(MIN_LARGE_IMPORT_BYTES, Math.floor(snap.availableBytes * LARGE_IMPORT_HEADROOM)),
+            );
+          }
+          // Held for the fetch AND the store: the buffer stays resident until the asset lands.
+          const held = await admitMemory(allowedBytes, 'large media import');
           try {
-            return await runImport();
+            return await runImport(allowedBytes);
           } finally {
             held.release();
           }
@@ -5338,8 +5365,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // difference between a caller backing off usefully and a caller blaming the instance.
           return reply.code(503).send({ error: err.message });
         }
-        if ((err as { statusCode?: number }).statusCode === 503) {
+        if (err instanceof GateFullError) {
           return reply.code(503).send({ error: 'too many large imports in progress; retry shortly' });
+        }
+        // The memory ledger's own shed. It used to be reported as "too many large imports in
+        // progress" — which was false whenever nothing else was running, and sent the caller off to
+        // wait for contention that would never clear. Its own message names the real cause.
+        if ((err as { statusCode?: number }).statusCode === 503) {
+          return reply.code(503).send({ error: (err as Error).message });
         }
         throw err;
       }

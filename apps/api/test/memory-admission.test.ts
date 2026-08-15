@@ -198,3 +198,47 @@ describe('the unpaginated content list is admitted like every other expensive pa
     expect((res.json() as { items: unknown[] }).items.length).toBe(5);
   });
 });
+
+describe('a small instance can still import media', () => {
+  /**
+   * Reserving the 200MB CAP made large import impossible below roughly a 700MB container.
+   *
+   * Measured on a real 512MB slot: ~180MB spendable, so a 200MB reservation never fit and EVERY
+   * video URL import was refused — a 2MB one included — with `too many large imports in progress`,
+   * which was false (nothing was in progress) and told the caller to wait for contention that would
+   * never clear. The reservation is now the smaller of the cap and the instance's real headroom.
+   */
+  it('does not refuse a video import just because the CAP would not fit', async () => {
+    const { t, projectId } = await setup('smallimport@e2e.test');
+    // The numbers matter: spendable is 80% of the limit, so 512MB with 280MB used leaves ~130MB
+    // free — enough for a real video, but LESS than the 200MB cap the old code insisted on
+    // reserving. Pick used < 210MB here and the old reservation still fits, and the test proves
+    // nothing.
+    _setMemoryBudgetForTest(512 * MB, 280 * MB);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/import-url`,
+      cookies: { sw_session: t },
+      payload: { url: 'https://this-host-does-not-exist-e2e.invalid/clip.mp4' },
+    });
+    // It must get PAST admission and fail on the fetch (a 4xx), not be shed before trying.
+    expect(res.statusCode, 'admission must not block an import the instance could afford').toBeLessThan(500);
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it('still sheds when the instance cannot afford even the minimum', async () => {
+    const { t, projectId } = await setup('nomemimport@e2e.test');
+    _setMemoryBudgetForTest(512 * MB, 510 * MB);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/import-url`,
+      cookies: { sw_session: t },
+      payload: { url: 'https://this-host-does-not-exist-e2e.invalid/clip.mp4' },
+    });
+    expect(res.statusCode, 'genuinely out of memory is still a shed').toBe(503);
+    // And it names MEMORY, not phantom contention — the caller must not be sent to wait on a queue
+    // that is empty.
+    expect(String(res.json().error), 'the shed must not blame contention').not.toMatch(/too many large imports/i);
+    expect(String(res.json().error)).toMatch(/memory/i);
+  });
+});

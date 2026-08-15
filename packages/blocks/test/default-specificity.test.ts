@@ -60,7 +60,7 @@ const ALLOWED: ReadonlyArray<readonly [RegExp, string]> = [
     /\[data-sw-part="status"\]/,
     "search's visually-hidden live region — same case as the honeypot. It exists only to announce the " +
       'result count to a screen reader; an author rule that restored its box would paint a stray ' +
-      '\"12 results\" onto the page. Everything an author actually styles (the hits, the list, the ' +
+      '"12 results" onto the page. Everything an author actually styles (the hits, the list, the ' +
       'empty state) is beatable.',
   ],
   [/input\[type=checkbox\]|input\[type=radio\]/, 'the exception that must keep outranking the general field rule'],

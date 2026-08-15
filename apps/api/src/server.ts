@@ -157,6 +157,14 @@ const { limitBytes: detectedMemoryLimit, derivedFromHost } = await detectMemoryL
 // The byte ledger every heavy path admits against. Must run before the first request.
 await initMemoryBudget();
 const sizing = renderPoolSizing(detectedMemoryLimit);
+// Say which memory ceiling everything below was sized from, and whether it was actually ENFORCED.
+// `derivedFromHost` means no cgroup limit was set, so the figure is a conservative guess from host
+// RAM — an operator seeing an unexpected pool size or heap ceiling needs to know which it was.
+process.stdout.write(
+  `[sitewright/api] memory ceiling ${Math.round(detectedMemoryLimit / 1024 / 1024)}MB` +
+    `${derivedFromHost ? ' (no container limit set — derived from host RAM)' : ' (container limit)'}` +
+    ` → render workers max ${sizing.size}, warm ${sizing.minSize}\n`,
+);
 // libvips keeps a 50MB operation cache by default and never gave it back; size it to the
 // container instead. The on-disk thumbnail cache already covers the real access pattern.
 configureImagePipeline(imagePipelineLimitsFor(detectedMemoryLimit));

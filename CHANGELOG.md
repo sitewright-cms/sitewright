@@ -9,7 +9,10 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-08-15
+
 ### Added
+
 
 - **Site search — full-text, over whole page bodies, with no service to sign up for.** Every publish
   now indexes each page's rendered BODY and writes `search-index.json` + `search-text.json` beside
@@ -35,6 +38,89 @@ The running version of an instance is reported at `GET /version` (baked into the
   **Settings → Website** toggle turns that off for languages where accented characters are separate
   letters. Scripts where a mark carries meaning (Thai tone marks, Devanagari matras, Hebrew niqqud)
   are never folded either way.
+
+- **An MCP agent can hand over a file from its own disk.** `import_image` takes a public URL the
+  *server* fetches, and the authenticated upload route needs a bearer token the model never sees — so
+  a logo the user dropped next to the agent, or an SVG it had just generated, could not get in at
+  all. Two ways in now: `create_media_upload` mints a **one-shot upload ticket** the agent PUTs the
+  bytes to (up to the full 200 MB local-upload ceiling), and `upload_media` takes a small file
+  **inline as base64** in a single tool call, for an agent with no HTTP client. The inline cap is
+  256 KB because the limit is the *conversation*, not the server: the model has to emit that base64
+  itself.
+
+- **The dataset editor, five changes.** The entry key now reads as the binding you actually paste
+  rather than a sentence about it; adding a field starts collapsed instead of occupying the panel;
+  a field can be **renamed in place**; field types are sorted; and a filter box above the entry list
+  finds a row by name without scrolling. The filter sits inline with the Entries heading — it shipped
+  wrapping onto its own row in the narrow Data drawer, costing a line of the very list it filters.
+
+- **Enter copies the callback URL on the OAuth approval screen.** That screen exists for one reason —
+  you are mid-flow in a terminal somewhere else and need the URL back there — so the hand is already
+  on the keyboard, and reaching for the mouse to press the only button on the page is the wrong shape.
+
+### Changed
+
+- **Memory scales to the container, and overload sheds instead of being OOM-killed.** Measured on a
+  1 GiB container, a burst of concurrent screenshots produced `exit 137` — a kernel kill that takes
+  down *every* in-flight request, not just the greedy one. The instance now keeps a byte ledger of
+  what it has promised, priced from the cgroup limit rather than host RAM, and answers work it cannot
+  afford with a **retryable 503** instead of dying. Idle cost fell from **405 MB to 291 MB**: the
+  render pool spawns on demand and retires when idle (sized from the limit) rather than pre-warming
+  two workers, and the headless browser closes when nothing has used it, releasing the ~256 MB it
+  reserves while alive. The entrypoint derives V8's heap ceiling from the container limit — without
+  it V8 sizes its old space from *host* RAM and never GCs in time — and caps glibc's malloc arenas,
+  which measured **−45%** on twenty concurrent image encodes.
+
+  Large uploads stream to disk instead of through the heap (a 120 MB upload cost +107 MB resident
+  before), the unpaginated content list is priced and admitted before a row is read (one call on a
+  61-page project peaked 37 MB; three concurrent, 206 MB), and `?limit`/`?offset` give a caller a
+  bounded way through a starved instance. Under sustained mixed load on a 1 GiB container the peak is
+  now 695 MB with no kill; routine work — the whole E2E suite — peaks at 567 MB and never reaches the
+  ceiling at all.
+
+- **The concurrency gates are fair between projects.** They bound memory but said nothing about
+  *whose* work got the capacity, so one project's burst could hold every slot and fill the queue
+  behind it. Image encoding — which serves public visitors, where a refusal is a broken image — now
+  schedules by *order*: a busy project waits behind a quieter neighbour instead of being turned away.
+  Measured with a 20-image burst, a neighbour's single thumbnail went from waiting **276 ms to 76 ms**,
+  and the busy project's own burst cost nothing extra. Large media imports, whose callers are agents
+  that can retry, still refuse outright rather than queue behind a three-minute hold.
+
+- **One authoring ceiling: 256 KB.** `criticalCss`, `head`, `scripts` and JSON string leaves were
+  capped at 32–64 KB while page, template, snippet and every chrome slot already allowed 256 KB. The
+  low ones were not a considered limit, and a real site had reached **99.6%** of the critical-CSS cap
+  — a deadline, not a guardrail. Every field an author types into now shares the same ceiling.
+
+### Fixed
+
+- **The skeleton editor answers the whole preview bridge, not 8 of its 19 messages.** Eleven message
+  types rendered their affordance, highlighted on hover, swallowed the click — and did nothing, with
+  no error anywhere. Images, controls and regions were all dead inside a chrome slot.
+
+- **A dataset row inside a chrome slot is markable and opens its entry editor.** A footer converted
+  to datasets had working datasets, working rows and a source that already looped them — the editor
+  simply could not see any of it.
+
+- **The page editor collapses a responsive nav again.** The compiled utility sheet was emitted
+  *before* `criticalCss` in the page editor and *after* it everywhere else, so a `hidden lg:flex` nav
+  stayed expanded at 390 px in the page editor while collapsing correctly in the draft preview. Not a
+  viewport bug — stylesheet order.
+
+- **Editable-region markers track an animating element.** Measured on an element animated by
+  transform, a marker drifted **146.7 px** mid-animation and settled **120 px** off, permanently.
+
+- **`{{sw-flag}}` is first-class again.** The 0.20.0 consolidation went past its goal: making a
+  *picked* icon name able to be a flag was wanted, deprecating the working helper and rewriting every
+  first-party snippet was not.
+
+- **A lazy embed's stand-in is not shimmered into invisibility.** The preview copies an iframe's
+  class list onto its placeholder to keep the layout, but the platform's media rule adds `.skeleton`
+  and `loading` to lazy iframes — decoration on an iframe, breakage on a static stand-in.
+
+- **A small instance can import media again.** URL import reserved the 200 MB ceiling before
+  fetching, regardless of the file's real size, so on a container below roughly 700 MB *every* video
+  import was refused — a 2 MB one included — and the refusal blamed contention that did not exist.
+  The reservation is now the smaller of the cap and the instance's real headroom.
 
 ## [0.20.0] — 2026-08-13
 
@@ -2141,7 +2227,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/sitewright-cms/sitewright/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/sitewright-cms/sitewright/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/sitewright-cms/sitewright/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/sitewright-cms/sitewright/compare/v0.17.0...v0.18.0

@@ -31,7 +31,7 @@ import {
   pagesInLocale,
   pagePath,
   pagesById,
-  childrenOf,
+  childrenView,
   parentPageView,
   pagesContext,
   referencesChildren,
@@ -223,6 +223,16 @@ export interface ReleaseManifest {
    * locale's index on first search, so this is the number that matters — not the site total.
    */
   searchLargeLocales?: Array<{ locale: string; pages: number }>;
+  /**
+   * Pages whose `{{#each page.children}}` listing hit {@link MAX_PAGE_CHILDREN} and therefore rendered
+   * FEWER children than the page has. Absent when nothing was dropped.
+   *
+   * ★ This used to be a bare `.slice()` with no signal anywhere: a news index with 831 posts published
+   * 500 of them and looked complete. A partial listing the author cannot detect is worse than a loud
+   * one — same reasoning as `searchSkippedRawHtml` above. Only pages that actually LOOP their children
+   * are reported; a parent that never lists them lost nothing.
+   */
+  childrenTruncated?: Array<{ page: string; shown: number; total: number }>;
 }
 
 /**
@@ -943,6 +953,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Raw-fidelity imports are excluded until nativized (docs/site-search.md §3.1). Counted rather
     // than dropped in silence: an author whose imported page is unfindable is owed the reason.
     let searchSkippedRawHtml = 0;
+    // Pages whose child listing was cut short by MAX_PAGE_CHILDREN. Keyed by page id so a page that
+    // renders in several locales/routes is reported once.
+    const childrenTruncated = new Map<string, { page: string; shown: number; total: number }>();
     // Referenced-thumbnail accumulator — filled as each page's media URLs are rewritten, then
     // materialized (from originals) into `_assets/` after the loop. Only referenced sizes ship.
     const thumbRefs: ThumbRefs = new Map();
@@ -1104,14 +1117,22 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         if (pagesForRender && JSON.stringify(pagesForRender).length > 4 * 1024 * 1024) {
           throw new PublishError(`page "${page.id}" references too much cross-page data to render`);
         }
+        // `page.children` — this page's child pages — built only when the source loops them (keeps each
+        // child's `data` off the render unless used). Published subset → no drafts. When the cap cut the
+        // listing short, record it: the page renders fine and looks complete, so nothing else would say.
+        const childListing =
+          pageSource && referencesChildren(pageSource)
+            ? childrenView(pubBundle.pages, page, defaultLocale)
+            : { children: [], total: 0, truncated: false };
+        if (childListing.truncated) {
+          childrenTruncated.set(page.id, { page: page.id, shown: childListing.children.length, total: childListing.total });
+        }
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
-          // `page.children` — this page's child pages, flattened — built only when the source loops
-          // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
             title: page.title,
             // Flattened SEO/meta fields: bound as {{page.description}} / {{page.image}} and read by the
@@ -1130,7 +1151,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             defaultLocale,
             translations: pageTranslations,
             data: page.data,
-            children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
+            children: childListing.children,
+            // The parent's REAL child count, so a capped listing can say so on the page itself
+            // ({{page.children.length}} of {{page.childrenTotal}}) rather than quietly showing fewer.
+            childrenTotal: childListing.total,
             // `page.template` — the template ref id this page renders from ('' = own code). `page.code` —
             // the EFFECTIVE source rendering this page (resolved through its template, if any). Gated:
             // the (large) source ships only when `{{page.code}}` is referenced.
@@ -1741,6 +1765,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // `pageFailures`, which is deliberately attached afterwards and only for draft builds).
       ...(searchSkippedRawHtml > 0 ? { searchSkippedRawHtml } : {}),
       ...(searchLargeLocales.length > 0 ? { searchLargeLocales } : {}),
+      ...(childrenTruncated.size > 0 ? { childrenTruncated: [...childrenTruncated.values()] } : {}),
     };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

@@ -160,7 +160,7 @@ import {
   pagePath,
   pagesById,
   pathToSlug,
-  childrenOf,
+  childrenView,
   parentPageView,
   pagesContext,
   referencesChildren,
@@ -4223,7 +4223,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
         // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
         // `data`, so bound the serialized array against the same IPC ceiling as the data above.
-        const previewChildren = referencesChildren(pageSource) ? childrenOf(savedPages, page, defaultLocale) : [];
+        const previewChildListing = referencesChildren(pageSource)
+          ? childrenView(savedPages, page, defaultLocale)
+          : { children: [], total: 0, truncated: false };
+        const previewChildren = previewChildListing.children;
         if (JSON.stringify(previewChildren).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
@@ -4245,6 +4248,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           translations: translationsOf(savedPages, page, defaultLocale),
           data: page.data,
           children: previewChildren,
+          // Publish parity: the parent's REAL child count, so a capped listing reads the same in the
+          // editor as on the live site (a binding wired into only one renderer is the divergence class
+          // this codebase treats as a defect).
+          childrenTotal: previewChildListing.total,
           // `page.template` — the template ref id ('' = own code); `page.code` — the EFFECTIVE source
           // rendering this page (template-resolved). Source is gated to {{page.code}} uses (it's large).
           template: page.template ?? '',

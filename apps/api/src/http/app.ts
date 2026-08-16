@@ -76,6 +76,7 @@ import {
   PREVIEW_DEFAULT_VIEWPORTS,
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
+  OrderSchema,
   AiConfigSchema,
   PREVIEW_SANDBOX_CSP,
   SLOT_MAX,
@@ -3598,6 +3599,45 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // SEQUENTIALLY — `remove` writes a restore tombstone per entity, and serialising keeps that history
   // write ordered and the per-request DB work bounded.
   const BULK_DELETE_MAX = 200;
+  /** Kinds that carry a sibling `order`. Nothing else has a position to change. */
+  const REORDERABLE_KINDS: ReadonlySet<string> = new Set(['page', 'entry']);
+  /** Upper bound on one reorder batch — a whole re-spaced group, not a bulk-edit channel. */
+  const REORDER_MAX = 5000;
+  const ReorderBody = z.object({
+    items: z
+      .array(z.object({ id: z.string().min(1).max(200), order: OrderSchema }))
+      .min(1)
+      .max(REORDER_MAX),
+    /** Required when kind is `entry` — entry ids are unique only within their dataset. */
+    dataset: z.string().optional(),
+  });
+  /**
+   * Rewrite the sibling order of many entities at once.
+   *
+   * ★ Reordering was one PUT per moved sibling, and a dense 0..n reindex rewrites everything after the
+   * moved item — ~700 PUTs for one drag in an 831-page group, against this route family's own 60/min
+   * limit. It 429s partway and leaves the group in an order nobody chose. With midpoint insertion the
+   * ordinary move is a single PUT and never comes here; this endpoint serves the two cases that really
+   * do touch many rows: re-spacing a group whose gap ran out, and applying an explicit order.
+   */
+  app.post<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+    '/projects/:projectId/content/:kind/reorder',
+    { config: rlAgent(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const kind = parseGenericKind(req.params.kind);
+      if (!REORDERABLE_KINDS.has(kind)) {
+        return reply.code(400).send({ error: `${kind} has no sibling order` });
+      }
+      const parsed = ReorderBody.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid request', details: parsed.error.flatten() });
+      const scope = entryScope(kind, parsed.data.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent (entry requires a dataset)
+      const updated = await contentRepo.reorder(ctx, kind, scope, parsed.data.items);
+      return reply.send({ updated });
+    },
+  );
+
   const BulkDeleteBody = z.object({
     ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX),
     /** Required when kind is `entry` — entry ids are unique only within their dataset. */

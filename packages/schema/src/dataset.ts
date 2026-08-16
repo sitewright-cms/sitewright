@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema, KeyNameSchema, DatasetSlugSchema, EntryIdSchema, safeRecord } from './primitives.js';
+import { IdSchema, KeyNameSchema, DatasetSlugSchema, EntryIdSchema, OrderSchema, safeRecord } from './primitives.js';
 
 /** Supported CMS field types. `list` (an ordered, repeatable group of sub-fields) and `object`
  *  (a named sub-group) are the NESTED types: they carry their own child `fields`, so a single
@@ -144,7 +144,7 @@ export const EntrySchema = z.object({
    * entries list. Absent → sorts AFTER ordered entries (treated as +Infinity), so legacy entries
    * keep a deterministic id order until first reordered. Mirrors `page.order`.
    */
-  order: z.number().int().min(0).max(100_000).optional(),
+  order: OrderSchema.optional(),
   values: safeRecord(z.unknown()).default({}),
 });
 export type Entry = z.infer<typeof EntrySchema>;

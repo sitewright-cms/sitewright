@@ -324,7 +324,14 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     const tgtTitle = current.find((p) => p.id === targetId)?.title ?? '';
     setReorderMsg(`Moved ${srcTitle} ${pos} ${tgtTitle}`.trim());
     try {
-      await Promise.all(updated.map((p) => api.putPage(project.id, p)));
+      // ★ One changed page = a midpoint move = one PUT. More than one means the gap ran out and the
+      // group was RE-SPACED — that goes in a single transactional request, because N individual PUTs
+      // meet the content route's 60/min limit and leave the group in an order nobody chose.
+      if (updated.length === 1) {
+        await api.putPage(project.id, updated[0]!);
+      } else {
+        await api.reorderContent(project.id, 'page', updated.map((p) => ({ id: p.id, order: p.order ?? 0 })));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to reorder pages');
       await load(); // resync from the server on failure

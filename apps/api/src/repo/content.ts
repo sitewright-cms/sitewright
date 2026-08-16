@@ -1067,6 +1067,46 @@ export class ContentRepository {
       .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
   }
 
+  /**
+   * Rewrite the sibling `order` of many entities of one kind, in ONE transaction.
+   *
+   * ★ Why this exists: reordering assigned a DENSE 0..n rank, so moving one item rewrote every item
+   * after it — ~700 individual PUTs for one drag in an 831-page group, against a route capped at
+   * 60/min. Midpoint insertion makes the ordinary move a single write; this is for the two cases that
+   * genuinely touch many rows: re-spacing a group whose gap ran out, and importing an explicit order.
+   *
+   * ATOMIC. An unknown id (or one belonging to another project) aborts the whole batch — a half-applied
+   * reorder is a group in an order nobody chose, and the caller cannot tell which half landed.
+   *
+   * Records NO revisions, matching `importBundle` and `applyLocaleChange`: a reorder is structural, and
+   * a 700-row re-space would otherwise bury a project's real edit history under its own bookkeeping.
+   * The entity is otherwise untouched — only `order` is replaced on the stored object.
+   */
+  async reorder(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    scope: string,
+    items: ReadonlyArray<{ id: string; order: number }>,
+  ): Promise<number> {
+    const schema = schemaFor(kind);
+    let updated = 0;
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      for (const { id, order } of items) {
+        const existing = await this.row(exec, ctx, kind, id, scope);
+        if (!existing) throw new NotFoundError(`${kind} not found: ${id}`);
+        // Re-validate the WHOLE entity, not just the number: the stored object has to remain a valid
+        // page/entry after the patch, and this is the same gate `put` applies.
+        const next = schema.parse({ ...(existing.data as Record<string, unknown>), order });
+        await this.writeRow(exec, ctx, kind, id, next);
+        updated += 1;
+      }
+    });
+    // Emitted AFTER the transaction commits, so a subscriber never sees an order that was rolled back.
+    for (const { id } of items) this.events?.emit(ctx.projectId, { kind, entityId: id, op: 'put', actor: ctx.actor });
+    return updated;
+  }
+
   private async row(exec: Executor, ctx: ProjectContext, kind: ContentKind, entityId: string, scope = '') {
     const [row] = await exec
       .select()

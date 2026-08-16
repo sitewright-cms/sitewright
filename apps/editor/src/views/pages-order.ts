@@ -1,4 +1,5 @@
 import type { Page } from '@sitewright/schema';
+import { orderBetween, spacedOrders } from '@sitewright/core';
 
 /** A page with its depth in the page tree (0 = top-level), for indented display. */
 export interface TreeRow<T extends Page = Page> {
@@ -158,14 +159,25 @@ export function reorderWithinParent<T extends Page>(
   const ids = group.map((p) => p.id).filter((id) => id !== dragId);
   const targetIdx = ids.indexOf(targetId);
   if (targetIdx < 0) return [];
-  ids.splice(place === 'before' ? targetIdx : targetIdx + 1, 0, dragId);
+  const at = place === 'before' ? targetIdx : targetIdx + 1;
+  ids.splice(at, 0, dragId);
 
-  // Reassign sequential `order` by rank; emit only pages whose effective order actually
-  // changes (a page already sorting at its new rank needs no write).
+  // ★ MIDPOINT FIRST. The dragged page takes a value between its two new neighbours, so the ordinary
+  // move is ONE write. The dense 0..n reindex this replaced rewrote every later sibling — ~700 writes
+  // for one drag in an 831-page group, which does not fit inside the content route's rate limit.
+  const before = at > 0 ? orderValue(byId.get(ids[at - 1]!)!) : undefined;
+  const after = at + 1 < ids.length ? orderValue(byId.get(ids[at + 1]!)!) : undefined;
+  const mid = orderBetween(before, after);
+  if (mid !== null) return [{ ...byId.get(dragId)!, order: mid }];
+
+  // No integer left between the neighbours (or the group still carries a legacy dense-from-0 scale,
+  // where the top has nothing below it). RE-SPACE the whole group onto a fresh scale with room at both
+  // ends — the one case where rewriting siblings is warranted. The caller sends this in one request.
+  const spaced = spacedOrders(ids.length);
   const updated: T[] = [];
   ids.forEach((id, i) => {
     const p = byId.get(id)!;
-    if (orderValue(p) !== i) updated.push({ ...p, order: i });
+    if (orderValue(p) !== spaced[i]) updated.push({ ...p, order: spaced[i]! });
   });
   return updated;
 }

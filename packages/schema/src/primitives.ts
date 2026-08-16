@@ -18,6 +18,20 @@ export const IdSchema = z
   .max(MAX_IDENTIFIER_LENGTH)
   .regex(/^[A-Za-z0-9_-]+$/, 'must be alphanumeric with "-" or "_"');
 
+/**
+ * Upper bound of a sibling `order` (pages and dataset entries).
+ *
+ * ★ Was 100_000. Reordering places an item at the MIDPOINT of its neighbours so one move is one
+ * write, and each midpoint halves the remaining gap — at 100_000 an 831-item group starts ~120 apart
+ * and the same position runs out of integers after ~6 moves. At 2^31-1 it starts ~2.5M apart. Raising
+ * a maximum is a RELAXATION: every stored value is still valid, so there is nothing to migrate.
+ * `@sitewright/core` re-exports this as `ORDER_MAX` (core depends on schema, not the other way round).
+ */
+export const ORDER_MAX_SCHEMA = 2_147_483_647; // 2^31 - 1
+
+/** A sibling sort key: an integer in [0, {@link ORDER_MAX_SCHEMA}]. */
+export const OrderSchema = z.number().int().min(0).max(ORDER_MAX_SCHEMA);
+
 /** URL- and filesystem-safe slug. */
 export const SlugSchema = z
   .string()

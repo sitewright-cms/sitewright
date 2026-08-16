@@ -73,14 +73,16 @@ describe('canReorder', () => {
 });
 
 describe('reorderWithinParent', () => {
-  it('moves a page AFTER a later sibling and renumbers only what changed', () => {
-    // a,b,c (0,1,2) → move a after c → b,c,a (0,1,2)
+  it('moves a page AFTER a later sibling', () => {
+    // a,b,c → move a after c → b,c,a. The RESULTING SEQUENCE is the contract; the specific order
+    // values are not (midpoint insertion writes one page, a re-space rewrites the group).
     const updated = reorderWithinParent(tree(), 'a', 'c', 'after', DL);
-    const byId = new Map(updated.map((p) => [p.id, p.order]));
-    // New ranks: b→0, c→1, a→2. b changed 1→0, c changed 2→1, a changed 0→2.
-    expect(byId.get('b')).toBe(0);
-    expect(byId.get('c')).toBe(1);
-    expect(byId.get('a')).toBe(2);
+    const seq = tree()
+      .map((p) => updated.find((u) => u.id === p.id) ?? p)
+      .filter((p) => p.path !== '')
+      .sort((x, y) => bySiblingOrder(x, y, DL))
+      .map((p) => p.id);
+    expect(seq).toEqual(['b', 'c', 'a']);
   });
 
   it('moves a page BEFORE an earlier sibling', () => {
@@ -107,10 +109,8 @@ describe('reorderWithinParent', () => {
     const merged = pages.map((p) => updated.find((u) => u.id === p.id) ?? p);
     const order = merged.filter((p) => p.path !== '').sort((x, y) => bySiblingOrder(x, y, DL)).map((p) => p.id);
     expect(order).toEqual(['c', 'a', 'b']);
-    // Every moved sibling now carries a contiguous top-level order (no stale nav.order scale left ranking).
-    expect(updated.find((p) => p.id === 'c')?.order).toBe(0);
-    expect(updated.find((p) => p.id === 'a')?.order).toBe(1);
-    expect(updated.find((p) => p.id === 'b')?.order).toBe(2);
+    // Every moved sibling now carries a top-level `order` on one scale (no stale nav.order left ranking).
+    for (const u of updated) expect(typeof u.order).toBe('number');
   });
 
   it('returns [] for an invalid move (Home / cross-parent / no-op)', () => {
@@ -226,5 +226,74 @@ describe('link placeholders in the tree', () => {
     const rows = orderPagesByTree(pages, DL);
     expect(rows.find((r) => r.page.id === 'grp')!.depth).toBe(1);
     expect(rows.find((r) => r.page.id === 'child')!.depth).toBe(2);
+  });
+});
+
+describe('reorderWithinParent writes ONE page when there is room between neighbours', () => {
+  /** a,b,c spaced far apart — the shape a re-spaced or freshly created group has. */
+  const spaced = () => [
+    page('home', { path: '', title: 'Home' }),
+    page('a', { parent: 'home', title: 'A', order: 1000 }),
+    page('b', { parent: 'home', title: 'B', order: 2000 }),
+    page('c', { parent: 'home', title: 'C', order: 3000 }),
+  ];
+  const sequence = (pages: ReturnType<typeof spaced>, updated: ReturnType<typeof spaced>) =>
+    pages
+      .map((p) => updated.find((u) => u.id === p.id) ?? p)
+      .filter((p) => p.path !== '')
+      .sort((x, y) => bySiblingOrder(x, y, DL))
+      .map((p) => p.id);
+
+  it('★ moves a page with a SINGLE write instead of renumbering the group', () => {
+    // The dense 0..n reindex this replaced rewrote every later sibling — ~700 writes for one drag in
+    // an 831-page group, which does not fit inside the content route's rate limit.
+    const updated = reorderWithinParent(spaced(), 'a', 'b', 'after', DL);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]!.id).toBe('a');
+    expect(updated[0]!.order).toBeGreaterThan(2000);
+    expect(updated[0]!.order).toBeLessThan(3000);
+    expect(sequence(spaced(), updated)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('moves to the END with a single write', () => {
+    const updated = reorderWithinParent(spaced(), 'a', 'c', 'after', DL);
+    expect(updated).toHaveLength(1);
+    expect(sequence(spaced(), updated)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('moves to the TOP with a single write when the first item is not pinned to 0', () => {
+    const updated = reorderWithinParent(spaced(), 'c', 'a', 'before', DL);
+    expect(updated).toHaveLength(1);
+    expect(updated[0]!.order).toBeLessThan(1000);
+    expect(updated[0]!.order).toBeGreaterThanOrEqual(0);
+    expect(sequence(spaced(), updated)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('★ RE-SPACES the group when the destination gap has no integer left', () => {
+    const tight = [
+      page('home', { path: '', title: 'Home' }),
+      page('a', { parent: 'home', title: 'A', order: 1000 }),
+      page('b', { parent: 'home', title: 'B', order: 1001 }), // adjacent — nothing fits between
+      page('c', { parent: 'home', title: 'C', order: 5000 }),
+    ];
+    const updated = reorderWithinParent(tight, 'c', 'b', 'before', DL);
+    expect(updated.length).toBeGreaterThan(1); // the whole group, not a single write
+    const seq = tight
+      .map((p) => updated.find((u) => u.id === p.id) ?? p)
+      .filter((p) => p.path !== '')
+      .sort((x, y) => bySiblingOrder(x, y, DL))
+      .map((p) => p.id);
+    expect(seq).toEqual(['a', 'c', 'b']);
+    // A re-space must leave room at BOTH ends, or the next move to the top re-spaces again.
+    const orders = updated.map((u) => u.order!).sort((x, y) => x - y);
+    expect(orders[0]).toBeGreaterThan(0);
+    expect(new Set(orders).size).toBe(orders.length);
+  });
+
+  it('re-spaces a legacy group whose first item sits at 0, rather than emitting a negative order', () => {
+    // `order: 0` has nothing below it. The old dense scheme created exactly this shape.
+    const updated = reorderWithinParent(tree(), 'c', 'a', 'before', DL);
+    expect(updated.length).toBeGreaterThan(1);
+    for (const u of updated) expect(u.order).toBeGreaterThanOrEqual(0);
   });
 });

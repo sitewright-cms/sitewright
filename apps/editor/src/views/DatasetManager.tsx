@@ -1,7 +1,7 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
-import { compareEntryOrder } from '@sitewright/core';
+import { compareEntryOrder, reorderList } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
@@ -412,24 +412,32 @@ export function DatasetManager({ project }: { project: Project }) {
     }
   }
 
-  // Drag-reorder within the selected dataset: move `sourceId` before/after `targetId`, then persist a
-  // dense `order` (0,1,2,…) for every entry whose position changed.
+  /**
+   * Drag-reorder within the selected dataset: move `sourceId` before/after `targetId`.
+   *
+   * ★ The moved entry takes the MIDPOINT between its two new neighbours, so the ordinary move is one
+   * write. This used to reassign a dense 0,1,2… to the whole dataset, which meant an 831-entry
+   * collection sent ~700 PUTs for one drag — past the content route's 60/min limit, landing the
+   * collection in an order nobody chose. A re-space (the gap ran out) goes in ONE transactional request.
+   */
   async function persistEntryReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
     if (!selected || sourceId === targetId || reordering.current) return; // ignore a drag while one is in flight
-    const list = entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder);
-    const from = list.findIndex((e) => e.id === sourceId);
-    if (from === -1) return;
-    const [moved] = list.splice(from, 1);
-    const target = list.findIndex((e) => e.id === targetId);
-    if (target === -1) return;
-    list.splice(target + (pos === 'after' ? 1 : 0), 0, moved!);
+    const list = entries.filter((e) => e.dataset === selected.slug);
+    const changed = reorderList(list, sourceId, targetId, pos);
+    if (changed.length === 0) return;
     reordering.current = true;
     setError(null);
     try {
-      // Only PUT the entries whose order actually changed. (Dense reindex like the pages list; a
-      // single bulk-reorder endpoint is a future optimization if datasets ever grow past ~60 entries,
-      // where this many writes would meet the content-write rate limit.)
-      await Promise.all(list.flatMap((e, i) => (e.order === i ? [] : [api.putEntry(project.id, { ...e, order: i })])));
+      if (changed.length === 1) {
+        await api.putEntry(project.id, changed[0]!);
+      } else {
+        await api.reorderContent(
+          project.id,
+          'entry',
+          changed.map((e) => ({ id: e.id, order: e.order ?? 0 })),
+          selected.slug,
+        );
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to reorder entries');

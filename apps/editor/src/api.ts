@@ -1201,6 +1201,18 @@ export const api = {
       'GET',
       `/projects/${projectId}/content/entry${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
     ),
+  /**
+   * Rewrite the sibling order of many entities in ONE request.
+   *
+   * ★ Only for a RE-SPACE. The ordinary move takes the midpoint between its neighbours and is a single
+   * putPage/putEntry; this exists because a re-space touches the whole group, and doing that as N
+   * individual PUTs meets the content route's 60/min limit and leaves the group half-moved.
+   */
+  reorderContent: (projectId: string, kind: 'page' | 'entry', items: Array<{ id: string; order: number }>, dataset?: string) =>
+    request<{ updated: number }>('POST', `/projects/${projectId}/content/${kind}/reorder`, {
+      items,
+      ...(dataset ? { dataset } : {}),
+    }),
   /** How many entries a dataset holds, without materialising any of them (reads `total` off one row). */
   countEntries: async (projectId: string, dataset: string): Promise<number> => {
     const res = await request<{ items: Entry[]; total: number }>(

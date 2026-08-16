@@ -199,7 +199,63 @@ export function findSkeletonLandmark(source: string): { tag: string; hint: strin
   return { tag, hint: SKELETON_LANDMARKS.get(tag) ?? '' };
 }
 
+/**
+ * Verdict cache for {@link validateTemplate}: `null` = passed, a {@link TemplateError} = the rejection
+ * to re-throw. The scan is a pure function of the source string, so replaying its verdict is equivalent
+ * to re-running it — and a REJECTION is cached too, so a hit can never silently become a pass.
+ *
+ * ★ Why: the scan runs on every render, plus once per partial per render. A collection page renders the
+ * same source once per entry, so an 800-route build re-scanned identical strings until this was ~8% of
+ * total build time (CPU profile, after the clean-css memoization).
+ */
+const validateCache = new Map<string, TemplateError | null>();
+const VALIDATE_CACHE_LIMIT = 300;
+/**
+ * Byte ceiling for the cache. The KEY is the whole template source (up to 256 KB each), so an
+ * entry-count limit alone would let 300 large pages retain ~76 MB in a process whose whole memory
+ * budget is derived from a container limit. Evicting on bytes keeps the ceiling knowable.
+ */
+const VALIDATE_CACHE_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Cache counters for tests: `scans` = real validations run, `size` = live entries, `bytes` = retained. */
+export function validateTemplateStats(): { scans: number; size: number; bytes: number } {
+  return { scans: validateScans, size: validateCache.size, bytes: validateCacheBytes };
+}
+let validateScans = 0;
+let validateCacheBytes = 0;
+
 export function validateTemplate(source: string): void {
+  const cached = validateCache.get(source);
+  if (cached !== undefined) {
+    if (cached) throw cached;
+    return;
+  }
+  let verdict: TemplateError | null = null;
+  try {
+    validateTemplateUncached(source);
+  } catch (err) {
+    // Only OUR rejection is a cacheable verdict. Anything else (an unexpected runtime fault) is not a
+    // judgement about the source, so it propagates uncached rather than being pinned for every later call.
+    if (!(err instanceof TemplateError)) throw err;
+    verdict = err;
+  }
+  // FIFO eviction on BOTH bounds — entry count and retained bytes.
+  while (validateCache.size >= VALIDATE_CACHE_LIMIT || validateCacheBytes + source.length > VALIDATE_CACHE_MAX_BYTES) {
+    const oldest = validateCache.keys().next();
+    if (oldest.done) break; // nothing left to evict: this source alone exceeds the budget
+    validateCacheBytes -= oldest.value.length;
+    validateCache.delete(oldest.value);
+  }
+  // A source larger than the whole budget is validated every time rather than evicting everything for it.
+  if (source.length <= VALIDATE_CACHE_MAX_BYTES) {
+    validateCache.set(source, verdict);
+    validateCacheBytes += source.length;
+  }
+  if (verdict) throw verdict;
+}
+
+function validateTemplateUncached(source: string): void {
+  validateScans += 1;
   type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
   let mode: Mode = 'body';
   let rawCloser = '';

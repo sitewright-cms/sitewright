@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { minifyJs, minifyCss, MINIFIER_VERSION } from '../src/publish/minify.js';
+import { minifyJs, minifyCss, minifyCssStats, MINIFY_CSS_CACHE_MAX, MINIFIER_VERSION } from '../src/publish/minify.js';
 import { CART_CSS } from '@sitewright/blocks';
 
 describe('minifyJs (terser)', () => {
@@ -93,5 +93,49 @@ describe('minifyCss (clean-css)', () => {
 describe('MINIFIER_VERSION', () => {
   it('identifies both minifiers so a version bump re-busts the asset cache', () => {
     expect(MINIFIER_VERSION).toMatch(/^terser-.+\+cleancss-.+$/);
+  });
+});
+
+describe('minifyCss caching', () => {
+  // The platform's inline CSS (base + brand + theme + effects) is IDENTICAL on every page of a build,
+  // and renderDocument minifies it per page. A 1,126-route site therefore ran clean-css 1,126 times on
+  // the same input: measured at ~45% of total build time, all of it recomputing the same bytes.
+  it('minifies a repeated input only ONCE, and returns the identical result', () => {
+    const css = `${CART_CSS}\n.x { color: #ff0000; margin: 0px 0px 0px 0px; }`;
+    const before = minifyCssStats().misses;
+
+    const first = minifyCss(css);
+    const second = minifyCss(css);
+    const third = minifyCss(css);
+
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    // Three calls, one real minify — the other two are served from the cache.
+    expect(minifyCssStats().misses - before).toBe(1);
+  });
+
+  it('still minifies a DIFFERENT input (the cache keys on the css, not on "seen anything")', () => {
+    const before = minifyCssStats().misses;
+    const a = minifyCss('.a { color: #ff0000; }');
+    const b = minifyCss('.b { color: #00ff00; }');
+
+    expect(a).not.toBe(b);
+    expect(a).toContain('.a');
+    expect(b).toContain('.b');
+    expect(minifyCssStats().misses - before).toBe(2);
+  });
+
+  it('bounds the cache so a build with many distinct stylesheets cannot grow it without limit', () => {
+    for (let i = 0; i < MINIFY_CSS_CACHE_MAX * 2; i++) minifyCss(`.c${i} { color: #ff0000; }`);
+    expect(minifyCssStats().size).toBeLessThanOrEqual(MINIFY_CSS_CACHE_MAX);
+  });
+});
+
+describe('minifyCss cache memory bound', () => {
+  it('caps RETAINED bytes, not just entry count (the key is a whole stylesheet)', () => {
+    // 8 stylesheets of ~400 KB each would sit under the 16-entry cap while retaining ~3 MB.
+    const big = '.pad{content:"' + 'x'.repeat(400_000) + '";}';
+    for (let i = 0; i < 8; i++) minifyCss(`${big}\n.n${i}{color:#ff0000}`);
+    expect(minifyCssStats().bytes).toBeLessThanOrEqual(2 * 1024 * 1024);
   });
 });

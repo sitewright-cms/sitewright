@@ -66,6 +66,49 @@ function lightMinifyCss(css: string): string {
  */
 export function minifyCss(css: string): string {
   if (!css) return css;
+  const cached = cssCache.get(css);
+  if (cached !== undefined) return cached;
+  const out = minifyCssUncached(css);
+  // FIFO eviction on BOTH bounds: a build feeds a handful of distinct stylesheets, so the oldest entry
+  // is the one least likely to recur. The KEY is the whole stylesheet, so entry count alone would not
+  // bound memory in a long-lived process — hence the byte ceiling too.
+  while (cssCache.size >= MINIFY_CSS_CACHE_MAX || cssCacheBytes + css.length > MINIFY_CSS_CACHE_MAX_BYTES) {
+    const oldest = cssCache.keys().next();
+    if (oldest.done) break; // this stylesheet alone exceeds the budget
+    cssCacheBytes -= oldest.value.length;
+    cssCache.delete(oldest.value);
+  }
+  if (css.length <= MINIFY_CSS_CACHE_MAX_BYTES) {
+    cssCache.set(css, out);
+    cssCacheBytes += css.length;
+  }
+  return out;
+}
+
+/**
+ * Memoization for {@link minifyCss}.
+ *
+ * ★ The platform's inline CSS (base/normalize + brand + theme + component/effect styles) is assembled
+ * per PAGE but is IDENTICAL across a build, and `renderDocument` minifies it on every one. A CPU profile
+ * of an 800-route build put clean-css at ~45% of total time, every call after the first recomputing the
+ * exact same bytes. Keyed on the stylesheet itself, so the result is byte-identical to minifying afresh.
+ */
+const cssCache = new Map<string, string>();
+
+/** Upper bound on {@link cssCache} entries (keys are whole stylesheets — this cannot grow unbounded). */
+export const MINIFY_CSS_CACHE_MAX = 16;
+/** Byte ceiling alongside the entry cap — the key is a whole stylesheet, so count alone bounds nothing. */
+const MINIFY_CSS_CACHE_MAX_BYTES = 2 * 1024 * 1024;
+
+/** Cache counters for tests: `misses` = real clean-css runs, `size` = live entries, `bytes` = retained. */
+export function minifyCssStats(): { misses: number; size: number; bytes: number } {
+  return { misses: cssMisses, size: cssCache.size, bytes: cssCacheBytes };
+}
+let cssMisses = 0;
+let cssCacheBytes = 0;
+
+function minifyCssUncached(css: string): string {
+  cssMisses += 1;
   try {
     if (!css.includes('@starting-style')) return cleanCssMinify(css);
     // Match only a REAL at-rule: the literal followed by optional whitespace then `{`. This skips a

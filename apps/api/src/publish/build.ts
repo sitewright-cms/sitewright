@@ -1300,7 +1300,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           brand,
           bodyHtml,
           // Minify the inline platform CSS (base/normalize, brand, theme, component/effect styles,
-          // typography) — the published/deployed/audited build only; preview omits it.
+          // typography). Applied on EVERY build including the preview — the comment here used to claim
+          // preview skipped it, but the hook has always been passed unconditionally. `minifyCss` is
+          // memoized on its input, so this stylesheet (identical across the whole build) is minified
+          // once rather than once per route; see minify.ts for the measurement.
           minifyCss,
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },

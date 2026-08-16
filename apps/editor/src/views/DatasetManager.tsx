@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from
 import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder, reorderList } from '@sitewright/core';
+import { useVirtualRows } from '../lib/virtual-rows';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
@@ -482,6 +483,37 @@ export function DatasetManager({ project }: { project: Project }) {
     // `datasetEntries` is rebuilt each render; depending on the identity would defeat the memo, so key
     // it on what actually decides the result.
   }, [entryQuery, selected, entries]);
+  /**
+   * Only the rows on screen are rendered once the list is long.
+   *
+   * ★ The DATA is untouched — `datasetEntries` stays the source for reorder neighbours and key
+   * uniqueness, and `shownEntries` still holds every match. Only the `.map()` narrows. A collection
+   * with 831 rows otherwise pays the same cost the Pages tab did: thousands of DOM nodes for the ~18
+   * rows anyone can see.
+   */
+  const virt = useVirtualRows(shownEntries.length);
+  const windowEntries = shownEntries.slice(virt.start, virt.end);
+
+  /**
+   * ★ Drag cleanup lives on the DOCUMENT, not on the dragged row: virtualised, the source row
+   * unmounts when it scrolls out of the window, and React (which delegates at the root) never sees a
+   * `dragend` fired at a detached node — leaving a stuck insertion line and a held-open panel.
+   */
+  useEffect(() => {
+    if (!dragId) return;
+    const end = (): void => {
+      setDragId(null);
+      setDrop(null);
+      releasePanel();
+    };
+    document.addEventListener('dragend', end);
+    document.addEventListener('drop', end);
+    return () => {
+      document.removeEventListener('dragend', end);
+      document.removeEventListener('drop', end);
+    };
+  }, [dragId]);
+
   // The field that serves as the entry title in lists: the FIRST text field (see entryLabel). Drag
   // to reorder so a different field becomes the title.
   const titleFieldName = draftFields.find((f) => f.type === 'text')?.name;
@@ -885,10 +917,15 @@ export function DatasetManager({ project }: { project: Project }) {
                 </button>
               </div>
 
-              <ul className="mb-3 flex flex-col gap-1">
-                {shownEntries.map((e) => (
+              <ul className="mb-3 flex flex-col gap-1" ref={virt.listRef as (el: HTMLUListElement | null) => void}>
+                {virt.padTop > 0 && <li aria-hidden style={{ height: virt.padTop }} />}
+                {windowEntries.map((e, windowIndex) => (
                   <li
                     key={e.id}
+                    // Marks a real row (not a spacer) so the virtualiser can measure one.
+                    data-virtual-row=""
+                    aria-setsize={shownEntries.length}
+                    aria-posinset={virt.start + windowIndex + 1}
                     draggable
                     onDragStart={(ev) => {
                       setDragId(e.id);
@@ -974,6 +1011,7 @@ export function DatasetManager({ project }: { project: Project }) {
                 {datasetEntries.length > 0 && shownEntries.length === 0 && (
                   <li className="text-sm text-slate-500 dark:text-slate-400">No entry matches “{entryQuery.trim()}”.</li>
                 )}
+                {virt.padBottom > 0 && <li aria-hidden style={{ height: virt.padBottom }} />}
               </ul>
 
               {editingEntry && (

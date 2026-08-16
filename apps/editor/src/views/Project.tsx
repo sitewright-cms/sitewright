@@ -4,6 +4,7 @@ import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { hasOwnSource } from '../page-summary';
+import { useVirtualRows } from '../lib/virtual-rows';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -228,6 +229,16 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
       [p.title, p.path, p.id].some((v) => (v ?? '').toLowerCase().includes(needle)),
     );
   }, [orderedPages, search]);
+  /**
+   * Only the rows on screen are rendered once the list is long.
+   *
+   * ★ The DATA is untouched: `visiblePages` still holds every match and `pages` every page, so
+   * reorder, search and the tree all operate on the whole set — only the `.map()` below narrows.
+   * Measured on an 865-page project: 905 rows was 42,000 DOM nodes, ~2.9s to open the tab and ~200ms
+   * per keystroke in the search box.
+   */
+  const virt = useVirtualRows(visiblePages.length);
+  const windowRows = visiblePages.slice(virt.start, virt.end);
   // The HOME page (empty slug = the tree root) is the default parent for every other
   // page; "no parent" isn't offered for non-home pages.
   const homeId = pages.find((p) => p.path === '' && !isLinkPage(p))?.id ?? 'home';
@@ -309,6 +320,28 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     // (initial load, or a locale was removed). Terminates: resetting to a valid default no-ops.
     if (!locales.includes(currentLocale)) setCurrentLocale(defaultLocale);
   }, [locales, currentLocale, defaultLocale]);
+
+  /**
+   * ★ Drag cleanup lives on the DOCUMENT, not on the dragged row.
+   *
+   * Once the list is virtualised the source row unmounts as soon as it scrolls out of the window, and
+   * React delegates events at the root container — so a `dragend` fired at a detached node never
+   * reaches an `onDragEnd` prop. The drag state would stay set: a stuck insertion line and a row
+   * frozen at 40% opacity until the next click. Bound while a drag is in flight only.
+   */
+  useEffect(() => {
+    if (!dragId) return;
+    const end = (): void => {
+      setDragId(null);
+      setDrop(null);
+    };
+    document.addEventListener('dragend', end);
+    document.addEventListener('drop', end);
+    return () => {
+      document.removeEventListener('dragend', end);
+      document.removeEventListener('drop', end);
+    };
+  }, [dragId]);
 
   /** Commits a drag: reorder the sibling group, apply optimistically, persist moved pages. */
   async function persistReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
@@ -799,13 +832,15 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               )}
             </div>
           )}
-          <ul className="mb-8 flex flex-col gap-2">
+          <ul className="mb-8 flex flex-col gap-2" ref={virt.listRef as (el: HTMLUListElement | null) => void}>
             {search.trim() !== '' && visiblePages.length === 0 && (
               <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
                 No page matches “{search.trim()}”.
               </li>
             )}
-            {visiblePages.map(({ page: p, depth }, i) => {
+            {virt.padTop > 0 && <li aria-hidden style={{ height: virt.padTop }} />}
+            {windowRows.map(({ page: p, depth }, windowIndex) => {
+              const i = virt.start + windowIndex;
               // A locale home (the root of a language's subtree) is treated like the root home:
               // home icon, not draggable, not deletable (remove the language in Website Settings).
               const isHome = isHomeLike(p);
@@ -822,7 +857,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               return (
                   <li
                     key={p.id}
-                    style={{ ...indent, animationDelay: `${Math.min(i, 24) * 35}ms` }}
+                    // Marks a real row (not a spacer) so the virtualiser can measure one.
+                    data-virtual-row=""
+                    // A screen reader must hear "item 412 of 905", not "item 3 of 25".
+                    aria-setsize={visiblePages.length}
+                    aria-posinset={i + 1}
+                    style={{ ...indent, animationDelay: `${Math.min(windowIndex, 24) * 35}ms` }}
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
                     draggable={!isHome}
@@ -993,6 +1033,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               );
             })}
             {pages.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No pages yet.</li>}
+            {virt.padBottom > 0 && <li aria-hidden style={{ height: virt.padBottom }} />}
           </ul>
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">

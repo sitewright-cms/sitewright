@@ -151,14 +151,19 @@ export function DatasetManager({ project }: { project: Project }) {
    * screen reads another dataset's rows: the two operations that legitimately need them (duplicate,
    * delete-count) fetch what they need at the moment they run.
    */
-  async function load(isActive: () => boolean = () => true, datasetSlug: string | null = selIdRef.current) {
+  async function load(isActive: () => boolean = () => true, selectId: string | null = selIdRef.current) {
     try {
-      const [ds, en] = await Promise.all([
-        api.listDatasets(project.id),
-        datasetSlug ? api.listEntries(project.id, datasetSlug) : Promise.resolve({ items: [] as Entry[] }),
-      ]);
+      const ds = await api.listDatasets(project.id);
       if (!isActive()) return;
       setDatasets(ds.items);
+      // ★ Resolve the SLUG from the freshly loaded list, never from the selection id. A dataset RENAME
+      // keeps the id and changes the slug, so an id-as-slug fetch (or a slug captured before the
+      // reload) asks for a collection that no longer exists and quietly returns an empty list — the
+      // rename appears to have eaten every entry. Sequential for that reason: the dataset list is what
+      // tells us which collection to read.
+      const slug = ds.items.find((d) => d.id === selectId)?.slug ?? null;
+      const en = slug ? await api.listEntries(project.id, slug) : { items: [] as Entry[] };
+      if (!isActive()) return;
       setEntries(en.items);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load data');

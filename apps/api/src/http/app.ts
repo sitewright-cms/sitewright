@@ -317,6 +317,7 @@ import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
   CONTENT_KINDS,
+  MAX_SEARCH_QUERY,
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
@@ -3266,13 +3267,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // to flood the site-wide settings (criticalCss/head/scripts) write.
   app.get<{
     Params: Pick<ContentParams, 'projectId' | 'kind'>;
-    Querystring: { dataset?: string; summary?: string; limit?: string; offset?: string };
+    Querystring: { dataset?: string; summary?: string; limit?: string; offset?: string; q?: string };
   }>(
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project: proj } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
+      // `?q=` SEARCHES (case-insensitive substring over the id + the human-facing fields). Bounded:
+      // a search term, not a document — an unbounded string is just a more expensive scan.
+      const rawQ = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      if (rawQ.length > MAX_SEARCH_QUERY) return reply.code(400).send({ error: 'invalid `q` query parameter' });
+      // An ENTRY id is unique only PER-dataset, so `?dataset=<slug>` scopes the list to one dataset's
+      // rows. Validated against the slug charset; ignored for every other (project-global) kind.
+      let scope: string | undefined;
+      if (kind === 'entry' && req.query.dataset !== undefined) {
+        const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
+        if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
+        scope = parsed.data;
+      }
+      const filter = { ...(scope === undefined ? {} : { scope }), ...(rawQ ? { q: rawQ } : {}) };
       // `?limit=` PAGINATES. Opt-in, exactly like `?summary=1`: the unpaginated list is the shape
       // every existing caller expects, and silently truncating it would turn a memory problem into a
       // data problem. Measured on a 61-page project: one full list peaked 37 MB and three concurrent
@@ -3286,7 +3300,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // expensive path. A paginated caller is already bounded and skips this.
       let listReservation: Reservation | undefined;
       if (!paginate) {
-        const estimate = await contentRepo.estimateListBytes(ctx, kind) * LIST_AMPLIFICATION;
+        const estimate = await contentRepo.estimateListBytes(ctx, kind, filter) * LIST_AMPLIFICATION;
         if (estimate > LIST_ADMIT_FLOOR_BYTES) listReservation = await admitMemory(estimate, `list ${kind}`);
       }
       try {
@@ -3294,9 +3308,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ? await contentRepo.listPaged(ctx, kind, {
             limit: Math.min(rawLimit, CONTENT_PAGE_MAX),
             offset: Number(req.query.offset) || 0,
+            ...filter,
           })
         : null;
-      const items = page ? page.items : await contentRepo.list(ctx, kind);
+      const items = page ? page.items : await contentRepo.list(ctx, kind, filter);
       // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
       // an entry's `values`) and describes them instead. A full page list carries every page's Handlebars
       // source — 337 KB for a 22-page imported site, past the MCP tool-output ceiling — so listing the
@@ -3324,23 +3339,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           : list;
       const project = (list: unknown[]): unknown[] =>
         withPreview(wantSummary ? summarizeContentList(kind, list) : list);
-      // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
-      // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
-      // Validated against the slug charset; ignored for every other (project-global) kind.
-      if (kind === 'entry' && req.query.dataset !== undefined) {
-        const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
-        if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
-        // `listPaged` pages across every entry of the kind and the dataset filter is applied AFTER,
-        // in memory — so combining them yields a slice of "the first N rows of ALL datasets that
-        // happen to belong to X", with no total. That is wrong data wearing a plausible shape, which
-        // is worse than a refusal. Reject until listPaged can scope the filter in SQL.
-        if (paginate) {
-          return reply
-            .code(400)
-            .send({ error: '`dataset` and `limit` cannot be combined yet — omit `limit` to filter by dataset' });
-        }
-        return reply.send({ items: project(items.filter((it) => (it as { dataset?: string }).dataset === parsed.data)) });
-      }
       // `page` is only set when the caller asked to paginate, so an existing caller's response shape
       // is byte-identical to before — the extra keys appear only for a caller that opted in.
       return reply.send(

@@ -1,8 +1,8 @@
 import type { Page } from '@sitewright/schema';
 
 /** A page with its depth in the page tree (0 = top-level), for indented display. */
-export interface TreeRow {
-  page: Page;
+export interface TreeRow<T extends Page = Page> {
+  page: T;
   depth: number;
 }
 
@@ -41,14 +41,14 @@ export function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number 
  * `parent` isn't in the set is treated as a root; parent cycles are broken (each
  * page appears once), recursion is depth-capped, and any unreached page is appended flat.
  */
-export function orderPagesByTree(pages: readonly Page[], defaultLocale: string): TreeRow[] {
+export function orderPagesByTree<T extends Page>(pages: readonly T[], defaultLocale: string): TreeRow<T>[] {
   const present = new Set(pages.map((p) => p.id));
-  const childrenOf = new Map<string | undefined, Page[]>();
+  const childrenOf = new Map<string | undefined, T[]>();
   for (const p of pages) {
     const key = p.parent && present.has(p.parent) ? p.parent : undefined;
     childrenOf.set(key, [...(childrenOf.get(key) ?? []), p]);
   }
-  const rows: TreeRow[] = [];
+  const rows: TreeRow<T>[] = [];
   const seen = new Set<string>();
   const visit = (parentId: string | undefined, depth: number): void => {
     if (depth > MAX_TREE_DEPTH) return; // guard a pathologically deep chain (stack safety)
@@ -109,7 +109,7 @@ export function nextSiblingOrder(
  * display order, EXCLUDING Home (which is pinned and never reordered). Empty if `pageId` is
  * Home or absent. Used for keyboard reordering (Arrow Up/Down moves within this group).
  */
-export function orderedSiblings(pages: readonly Page[], pageId: string, defaultLocale: string): Page[] {
+export function orderedSiblings<T extends Page>(pages: readonly T[], pageId: string, defaultLocale: string): T[] {
   const byId = new Map(pages.map((p) => [p.id, p] as const));
   const page = byId.get(pageId);
   if (!page || isHome(page)) return [];
@@ -138,13 +138,13 @@ export function canReorder(pages: readonly Page[], dragId: string, targetId: str
  * within the group). Returns `[]` for an invalid or no-op move. Home (empty slug) is pinned
  * and is never part of a group, so its order is left untouched.
  */
-export function reorderWithinParent(
-  pages: readonly Page[],
+export function reorderWithinParent<T extends Page>(
+  pages: readonly T[],
   dragId: string,
   targetId: string,
   place: 'before' | 'after',
   defaultLocale: string,
-): Page[] {
+): T[] {
   if (!canReorder(pages, dragId, targetId, defaultLocale)) return [];
   const byId = new Map(pages.map((p) => [p.id, p] as const));
   const present = new Set(pages.map((p) => p.id));
@@ -162,7 +162,7 @@ export function reorderWithinParent(
 
   // Reassign sequential `order` by rank; emit only pages whose effective order actually
   // changes (a page already sorting at its new rank needs no write).
-  const updated: Page[] = [];
+  const updated: T[] = [];
   ids.forEach((id, i) => {
     const p = byId.get(id)!;
     if (orderValue(p) !== i) updated.push({ ...p, order: i });

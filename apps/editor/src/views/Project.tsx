@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
+import { hasOwnSource, type PageSummary } from '../page-summary';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -146,8 +147,14 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   // Held in a ref so passing a fresh arrow from App can never re-trigger the mount load below.
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
-  const [pages, setPages] = useState<Page[]>([]);
+  // SUMMARISED rows: every page's `source` + `data` are omitted (a real site's full list runs to
+  // hundreds of KB and every row carries a body nothing on this screen renders). `hasOwnSource` answers
+  // "does this page have its own code?" from the summary descriptor; anything that needs a BODY calls
+  // getPage first — see openEditor / saveAsTemplate.
+  const [pages, setPages] = useState<PageSummary[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
+  /** Free-text filter over the list (title / path / id). Purely local to this screen. */
+  const [search, setSearch] = useState('');
   // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
   // the list; its fields live inside that modal (no separate slug/title state here).
   const [addOpen, setAddOpen] = useState(false);
@@ -191,7 +198,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const [reorderMsg, setReorderMsg] = useState('');
   // Always-current `pages` for the reorder handlers: they must compute against the latest
   // committed list, never a stale render closure (rapid keyboard moves / in-flight saves).
-  const pagesRef = useRef<Page[]>(pages);
+  const pagesRef = useRef<PageSummary[]>(pages);
   pagesRef.current = pages;
   // Pages of the CURRENTLY-SELECTED language, in page-tree order (parents followed by their
   // children) with a depth for indenting sub-pages. The list shows one language at a time;
@@ -201,6 +208,20 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     () => orderPagesByTree(pagesInLocale(pages, currentLocale, defaultLocale), defaultLocale),
     [pages, currentLocale, defaultLocale],
   );
+  /**
+   * The rows actually rendered: the tree, narrowed by the search box.
+   *
+   * A match keeps its row in TREE ORDER rather than flattening — the depth indent stays meaningful and
+   * a matched child still reads as a child. Matching is over the fields visible on the row (title, own
+   * slug, id), so what you searched for is what you can see.
+   */
+  const visiblePages = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return orderedPages;
+    return orderedPages.filter(({ page: p }) =>
+      [p.title, p.path, p.id].some((v) => (v ?? '').toLowerCase().includes(needle)),
+    );
+  }, [orderedPages, search]);
   // The HOME page (empty slug = the tree root) is the default parent for every other
   // page; "no parent" isn't offered for non-home pages.
   const homeId = pages.find((p) => p.path === '' && !isLinkPage(p))?.id ?? 'home';
@@ -225,7 +246,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
 
   async function load() {
     try {
-      const res = await api.listPages(project.id);
+      const res = await api.listPageSummaries(project.id);
       setPages(res.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to load pages');
@@ -561,13 +582,32 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
    * reference it. Its inherit-mode locale variants follow automatically (they resolve the
    * owner's template), so only the page itself is converted. No-op once templated.
    */
-  async function saveAsTemplate(p: Page) {
-    if (!p.source || p.template) return;
+  /**
+   * Opens the code editor on the FULL page.
+   *
+   * ★ The row in the list is a SUMMARY — its `source` and `data` are omitted. Handing that to the
+   * editor would seed the code buffer from an absent body and the first save would persist the empty
+   * page, so the body is fetched here rather than inherited from the list.
+   */
+  async function openEditor(p: PageSummary) {
+    setError(null);
+    try {
+      setEditing((await api.getPage(project.id, p.id)).item);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to open the page');
+    }
+  }
+
+  async function saveAsTemplate(p: PageSummary) {
+    if (!hasOwnSource(p) || p.template) return;
     setError(null);
     const tplId = `${p.id}-template`;
     try {
-      await api.putTemplate(project.id, { id: tplId, name: `${p.title} layout`, source: p.source });
-      await api.putPage(project.id, { ...p, template: tplId, source: undefined });
+      // The list row has no body — read the page whose code is about to become the template.
+      const full = (await api.getPage(project.id, p.id)).item;
+      if (!full.source) return;
+      await api.putTemplate(project.id, { id: tplId, name: `${full.title} layout`, source: full.source });
+      await api.putPage(project.id, { ...full, template: tplId, source: undefined });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save as template');
@@ -593,8 +633,11 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     const inGroup = group ? pages.filter((x) => x.translationGroup === group) : [];
     const isOwner = localeOf(p, defaultLocale) === defaultLocale && inGroup.length > 1;
     if (isOwner) {
-      const followers = inGroup.filter((x) => x.id !== p.id && !x.source && !x.template);
-      const kept = inGroup.filter((x) => x.id !== p.id && (x.source || x.template));
+      // ★ `hasOwnSource`, never `!x.source`: these two lists decide which locale variants are DELETED
+      // with the page and which survive. Read against a summarised row, a raw `source` check reports
+      // every variant as an inherit-mode follower — including forked ones, which would then be deleted.
+      const followers = inGroup.filter((x) => x.id !== p.id && !hasOwnSource(x) && !x.template);
+      const kept = inGroup.filter((x) => x.id !== p.id && (hasOwnSource(x) || x.template));
       const labels = (xs: Page[]) => xs.map((x) => localeLabel(x.locale ?? defaultLocale)).join(', ');
       const parts = [`"${p.title}" is the main-language page.`];
       parts.push(
@@ -724,8 +767,32 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               </button>
             </div>
           </div>
+          {/* Search — a project can carry hundreds of pages, where scrolling the tree is not a way to
+              find one. Filters the rows already loaded, so it is instant and needs no round trip. */}
+          {orderedPages.length > 8 && (
+            <div className="mb-3 flex items-center gap-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search pages by title, slug or id…"
+                aria-label="Search pages"
+                className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              />
+              {search.trim() !== '' && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {visiblePages.length} of {orderedPages.length}
+                </span>
+              )}
+            </div>
+          )}
           <ul className="mb-8 flex flex-col gap-2">
-            {orderedPages.map(({ page: p, depth }, i) => {
+            {search.trim() !== '' && visiblePages.length === 0 && (
+              <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                No page matches “{search.trim()}”.
+              </li>
+            )}
+            {visiblePages.map(({ page: p, depth }, i) => {
               // A locale home (the root of a language's subtree) is treated like the root home:
               // home icon, not draggable, not deletable (remove the language in Website Settings).
               const isHome = isHomeLike(p);
@@ -786,7 +853,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       }`}
                     />
                   )}
-                  {!isHome && (
+                  {/* Reordering is hidden while a search is active: the visible rows are a FILTERED
+                      subset, so "drop below the row above" would move the page next to a sibling the
+                      author cannot see. Clear the search to reorder. */}
+                  {!isHome && search.trim() === '' && (
                     <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right">
                     <button
                       type="button"
@@ -808,7 +878,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   )}
                   <button
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
-                    onClick={() => (isLink ? void openSettings(p) : setEditing(p))}
+                    onClick={() => (isLink ? void openSettings(p) : void openEditor(p))}
                   >
                     <span
                       aria-hidden
@@ -835,12 +905,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     {/* Code-mode badge for a translated page: it follows the main language's
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
-                    {multilingual && p.locale && !isLink && !p.source && !p.template && (
+                    {multilingual && p.locale && !isLink && !hasOwnSource(p) && !p.template && (
                       <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white">
                         inherited
                       </span>
                     )}
-                    {multilingual && p.locale && !isLink && p.source && (
+                    {multilingual && p.locale && !isLink && hasOwnSource(p) && (
                       <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white">
                         custom code
                       </span>
@@ -856,7 +926,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                           </button>
                         </Tooltip>
                         <Tooltip tip="Open page editor" side="top">
-                          <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => setEditing(p)}>
+                          <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => void openEditor(p)}>
                             {EDIT_ICON}
                           </button>
                         </Tooltip>
@@ -880,7 +950,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     )}
                     {/* "Save as template" — promote a page's own code into a reusable
                         template shared by its locale siblings. Hidden once templated. */}
-                    {p.source && !p.template && (
+                    {hasOwnSource(p) && !p.template && (
                       <Tooltip tip="Promote this page's code to a reusable template" side="top">
                         <button aria-label={`Save ${p.title} as template`} className={ROW_ACTION} onClick={() => void saveAsTemplate(p)}>
                           {TEMPLATE_ICON}

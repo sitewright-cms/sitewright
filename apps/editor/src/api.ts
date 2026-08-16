@@ -570,6 +570,10 @@ export interface AgentConnection {
   expiresAt: string | null;
   lastUsedAt: string | null;
 }
+import type { PageSummary } from './page-summary';
+export type { PageSummary } from './page-summary';
+export { hasOwnSource } from './page-summary';
+
 export interface Release {
   publishedAt: string;
   routes: number;
@@ -896,6 +900,16 @@ export const api = {
   reapAllDeletedProjects: () => request<{ reaped: number }>('DELETE', '/admin/deleted-projects'),
   listPages: (projectId: string) =>
     request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
+  /**
+   * The pages list WITHOUT every page's Handlebars source and data store — the fields that make a real
+   * site's list hundreds of KB. Each omitted field is described under `_summary` instead.
+   *
+   * ★ A summarised page is NOT a page: writing one back would delete the very fields it omits, and any
+   * predicate that reads `source` to mean "has own code" silently flips. Use {@link hasOwnSource} for
+   * that question, and `getPage` before editing or copying a body.
+   */
+  listPageSummaries: (projectId: string) =>
+    request<{ items: PageSummary[] }>('GET', `/projects/${projectId}/content/page?summary=1`),
   /** Run a Lighthouse page-speed + SEO audit of one page (deploy-equivalent build). Defaults to mobile. */
   pagespeedAudit: (projectId: string, pageId: string, formFactor?: 'mobile' | 'desktop') =>
     request<PagespeedAuditResult>(
@@ -1188,8 +1202,24 @@ export const api = {
     ),
 
   // --- entries ---
-  listEntries: (projectId: string) =>
-    request<{ items: Entry[] }>('GET', `/projects/${projectId}/content/entry`),
+  /**
+   * Entries — SCOPE THIS. Unscoped it returns every dataset's rows with their full values: measured at
+   * 1.85 MB on a project with 886 entries, fetched again on every reload of the screen. Pass the dataset
+   * slug whenever the caller only cares about one collection (the usual case).
+   */
+  listEntries: (projectId: string, dataset?: string) =>
+    request<{ items: Entry[] }>(
+      'GET',
+      `/projects/${projectId}/content/entry${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
+    ),
+  /** How many entries a dataset holds, without materialising any of them (reads `total` off one row). */
+  countEntries: async (projectId: string, dataset: string): Promise<number> => {
+    const res = await request<{ items: Entry[]; total: number }>(
+      'GET',
+      `/projects/${projectId}/content/entry?dataset=${encodeURIComponent(dataset)}&limit=1&summary=1`,
+    );
+    return res.total;
+  },
   // An entry id is only unique WITHIN its dataset, so read/delete carry the owning dataset slug as
   // `?dataset=`; put derives it from the entry body (entry.dataset).
   getEntry: (projectId: string, id: string, dataset: string) =>

@@ -65,6 +65,11 @@ export function DatasetManager({ project }: { project: Project }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
+  // Always-current selection for `load()`, which is also called from event handlers and callbacks that
+  // captured an older render's `selId`. Entries are fetched per DATASET, so loading the wrong one is
+  // not a stale-render curiosity — it would show another collection's rows.
+  const selIdRef = useRef<string | null>(null);
+  selIdRef.current = selId;
   const [datasetQuery, setDatasetQuery] = useState(''); // search filter for the dataset list
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -138,11 +143,19 @@ export function DatasetManager({ project }: { project: Project }) {
     if (dragHeld.current) panelHold?.release();
   }, [panelHold]);
 
-  async function load(isActive: () => boolean = () => true) {
+  /**
+   * Loads the dataset list, plus the entries of the SELECTED dataset only.
+   *
+   * ★ This used to fetch every entry of every dataset with full values — measured at 1.85 MB on a
+   * project with 886 rows, re-fetched on every reload and on every agent edit event. Nothing on this
+   * screen reads another dataset's rows: the two operations that legitimately need them (duplicate,
+   * delete-count) fetch what they need at the moment they run.
+   */
+  async function load(isActive: () => boolean = () => true, datasetSlug: string | null = selIdRef.current) {
     try {
       const [ds, en] = await Promise.all([
         api.listDatasets(project.id),
-        api.listEntries(project.id),
+        datasetSlug ? api.listEntries(project.id, datasetSlug) : Promise.resolve({ items: [] as Entry[] }),
       ]);
       if (!isActive()) return;
       setDatasets(ds.items);
@@ -163,7 +176,9 @@ export function DatasetManager({ project }: { project: Project }) {
     return () => {
       active = false;
     };
-  }, [project.id]);
+    // Re-runs on SELECTION too: entries are fetched per dataset, so picking another one must fetch its
+    // rows. (`load` reads the current selection from the ref, so it is not a dependency.)
+  }, [project.id, selId]);
 
   // Reset the schema draft ONLY when the selection actually changes — never on a
   // background data reload (which would discard the user's unsaved schema edits).
@@ -291,8 +306,10 @@ export function DatasetManager({ project }: { project: Project }) {
     duplicatingDataset.current = true;
     setError(null);
     const newSlug = uniqueSlug(`${src.slug}_copy`, new Set(datasets.map((d) => d.id)), '_');
-    const srcEntries = entries.filter((e) => e.dataset === src.slug).slice().sort(compareEntryOrder);
     try {
+      // The loaded `entries` hold the SELECTED dataset only, and the row being duplicated may be a
+      // different one — read the source's rows rather than silently cloning an empty collection.
+      const srcEntries = (await api.listEntries(project.id, src.slug)).items.slice().sort(compareEntryOrder);
       await api.putDataset(project.id, { id: newSlug, name: `${src.name} copy`, slug: newSlug, fields: src.fields.map((f) => ({ ...f })) });
       // Fresh, collision-free keys for the cloned entries (the set grows as each id is minted).
       const usedIds = new Set<string>();
@@ -315,7 +332,9 @@ export function DatasetManager({ project }: { project: Project }) {
   async function removeDataset(id: string) {
     const ds = datasets.find((d) => d.id === id);
     const name = ds?.name ?? id;
-    const count = entries.filter((e) => e.dataset === (ds?.slug ?? '')).length;
+    // Counted server-side: the rows of a dataset that isn't selected are not loaded, and a confirm
+    // prompt does not need them — `?limit=1` returns the total without the bodies.
+    const count = ds ? await api.countEntries(project.id, ds.slug) : 0;
     const ok = await confirm({
       title: 'Delete dataset',
       message: `Delete the "${name}" dataset and all ${count} of its ${count === 1 ? 'entry' : 'entries'}? This cannot be undone.`,

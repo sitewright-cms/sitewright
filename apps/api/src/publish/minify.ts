@@ -70,18 +70,22 @@ export function minifyCss(css: string): string {
   if (cached !== undefined) return cached;
   const out = minifyCssUncached(css);
   // FIFO eviction on BOTH bounds: a build feeds a handful of distinct stylesheets, so the oldest entry
-  // is the one least likely to recur. The KEY is the whole stylesheet, so entry count alone would not
-  // bound memory in a long-lived process — hence the byte ceiling too.
-  while (cssCache.size >= MINIFY_CSS_CACHE_MAX || cssCacheBytes + css.length > MINIFY_CSS_CACHE_MAX_BYTES) {
+  // is the one least likely to recur. Entry count alone would not bound memory in a long-lived process,
+  // hence the byte ceiling — and it counts the KEY (the source stylesheet) AND the VALUE (the minified
+  // result), because minification saves maybe 10-30%, so pricing only the key would put the real
+  // ceiling at roughly double the documented one.
+  const entryBytes = css.length + out.length;
+  // A single stylesheet larger than the whole budget is never cached — return BEFORE evicting, or the
+  // loop empties the cache to make room for something the guard below then declines to store.
+  if (entryBytes > MINIFY_CSS_CACHE_MAX_BYTES) return out;
+  while (cssCache.size >= MINIFY_CSS_CACHE_MAX || cssCacheBytes + entryBytes > MINIFY_CSS_CACHE_MAX_BYTES) {
     const oldest = cssCache.keys().next();
     if (oldest.done) break; // this stylesheet alone exceeds the budget
-    cssCacheBytes -= oldest.value.length;
+    cssCacheBytes -= oldest.value.length + (cssCache.get(oldest.value)?.length ?? 0);
     cssCache.delete(oldest.value);
   }
-  if (css.length <= MINIFY_CSS_CACHE_MAX_BYTES) {
-    cssCache.set(css, out);
-    cssCacheBytes += css.length;
-  }
+  cssCache.set(css, out);
+  cssCacheBytes += entryBytes;
   return out;
 }
 

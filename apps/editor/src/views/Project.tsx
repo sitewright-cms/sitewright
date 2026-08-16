@@ -3,7 +3,7 @@ import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
-import { hasOwnSource, type PageSummary } from '../page-summary';
+import { hasOwnSource } from '../page-summary';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -147,11 +147,17 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   // Held in a ref so passing a fresh arrow from App can never re-trigger the mount load below.
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
-  // SUMMARISED rows: every page's `source` + `data` are omitted (a real site's full list runs to
-  // hundreds of KB and every row carries a body nothing on this screen renders). `hasOwnSource` answers
-  // "does this page have its own code?" from the summary descriptor; anything that needs a BODY calls
-  // getPage first — see openEditor / saveAsTemplate.
-  const [pages, setPages] = useState<PageSummary[]>([]);
+  /**
+   * FULL pages, deliberately.
+   *
+   * ★ The list was briefly switched to `?summary=1` rows and it was not safe: a summarised row has no
+   * `source`/`data`, `Page.source` is optional so TypeScript cannot tell the two apart, and FOUR write
+   * paths here spread a row straight back into `putPage` — reorder, the settings modal, duplicate, and
+   * in-preview navigation. Each would have deleted the page's code and data on the next save. Adopting
+   * summaries needs a summary type that is NOT assignable to Page (so the compiler enumerates the
+   * sites), not a swap of the fetch. The endpoint supports `?summary=1` today and MCP uses it.
+   */
+  const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
   /** Free-text filter over the list (title / path / id). Purely local to this screen. */
   const [search, setSearch] = useState('');
@@ -198,7 +204,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const [reorderMsg, setReorderMsg] = useState('');
   // Always-current `pages` for the reorder handlers: they must compute against the latest
   // committed list, never a stale render closure (rapid keyboard moves / in-flight saves).
-  const pagesRef = useRef<PageSummary[]>(pages);
+  const pagesRef = useRef<Page[]>(pages);
   pagesRef.current = pages;
   // Pages of the CURRENTLY-SELECTED language, in page-tree order (parents followed by their
   // children) with a depth for indenting sub-pages. The list shows one language at a time;
@@ -246,7 +252,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
 
   async function load() {
     try {
-      const res = await api.listPageSummaries(project.id);
+      const res = await api.listPages(project.id);
       setPages(res.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to load pages');
@@ -589,7 +595,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
    * editor would seed the code buffer from an absent body and the first save would persist the empty
    * page, so the body is fetched here rather than inherited from the list.
    */
-  async function openEditor(p: PageSummary) {
+  async function openEditor(p: Page) {
     setError(null);
     try {
       setEditing((await api.getPage(project.id, p.id)).item);
@@ -598,7 +604,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     }
   }
 
-  async function saveAsTemplate(p: PageSummary) {
+  async function saveAsTemplate(p: Page) {
     if (!hasOwnSource(p) || p.template) return;
     setError(null);
     const tplId = `${p.id}-template`;

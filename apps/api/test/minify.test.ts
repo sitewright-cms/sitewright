@@ -133,9 +133,12 @@ describe('minifyCss caching', () => {
 
 describe('minifyCss cache memory bound', () => {
   it('caps RETAINED bytes, not just entry count (the key is a whole stylesheet)', () => {
-    // 8 stylesheets of ~400 KB each would sit under the 16-entry cap while retaining ~3 MB.
+    // 8 stylesheets of ~400 KB each would sit under the 16-entry cap while retaining ~3 MB. The budget
+    // must price the minified VALUE too, not just the source key it is stored under.
     const big = '.pad{content:"' + 'x'.repeat(400_000) + '";}';
     for (let i = 0; i < 8; i++) minifyCss(`${big}\n.n${i}{color:#ff0000}`);
     expect(minifyCssStats().bytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+    // Independently confirm the accounting matches what is actually held.
+    expect(minifyCssStats().size).toBeGreaterThan(0);
   });
 });

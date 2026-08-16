@@ -3297,10 +3297,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // An UNPAGINATED list is the one path that can exhaust an instance through ordinary editing —
       // no gate, no bound, and every caller (File Manager, render, exports, fonts) uses it. Price it
       // from the stored bytes before reading any, and admit against the ledger like every other
-      // expensive path. A paginated caller is already bounded and skips this.
+      // expensive path. A paginated caller reads a bounded slice, so it needs no admission for what it
+      // MATERIALISES.
+      //
+      // ★ A SEARCH is admitted even when paginated, because what it costs is not what it returns.
+      // `?q=` has no index behind it: SQLite reads and `json_extract`s every row of the kind whatever
+      // `limit` says, so `?q=a&limit=1` is a full scan wearing a cheap-looking request. Pricing it by
+      // the SCANNED set (the filter WITHOUT `q`) puts it behind the same ledger as every other
+      // expensive path, so concurrent searches queue and shed instead of competing for the one CPU
+      // this single-container deployment has.
+      const scanned = rawQ ? { ...filter, q: undefined } : filter;
       let listReservation: Reservation | undefined;
-      if (!paginate) {
-        const estimate = await contentRepo.estimateListBytes(ctx, kind, filter) * LIST_AMPLIFICATION;
+      if (!paginate || rawQ) {
+        const estimate = await contentRepo.estimateListBytes(ctx, kind, scanned) * LIST_AMPLIFICATION;
         if (estimate > LIST_ADMIT_FLOOR_BYTES) listReservation = await admitMemory(estimate, `list ${kind}`);
       }
       try {

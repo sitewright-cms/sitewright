@@ -239,6 +239,12 @@ export function validateTemplate(source: string): void {
     if (!(err instanceof TemplateError)) throw err;
     verdict = err;
   }
+  // A source larger than the whole budget is never cached — decide that BEFORE evicting, or the loop
+  // empties the cache to make room for something it then declines to store.
+  if (source.length > VALIDATE_CACHE_MAX_BYTES) {
+    if (verdict) throw verdict;
+    return;
+  }
   // FIFO eviction on BOTH bounds — entry count and retained bytes.
   while (validateCache.size >= VALIDATE_CACHE_LIMIT || validateCacheBytes + source.length > VALIDATE_CACHE_MAX_BYTES) {
     const oldest = validateCache.keys().next();
@@ -246,11 +252,8 @@ export function validateTemplate(source: string): void {
     validateCacheBytes -= oldest.value.length;
     validateCache.delete(oldest.value);
   }
-  // A source larger than the whole budget is validated every time rather than evicting everything for it.
-  if (source.length <= VALIDATE_CACHE_MAX_BYTES) {
-    validateCache.set(source, verdict);
-    validateCacheBytes += source.length;
-  }
+  validateCache.set(source, verdict);
+  validateCacheBytes += source.length;
   if (verdict) throw verdict;
 }
 

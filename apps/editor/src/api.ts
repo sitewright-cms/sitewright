@@ -570,7 +570,6 @@ export interface AgentConnection {
   expiresAt: string | null;
   lastUsedAt: string | null;
 }
-import type { PageSummary } from './page-summary';
 export type { PageSummary } from './page-summary';
 export { hasOwnSource } from './page-summary';
 
@@ -900,16 +899,6 @@ export const api = {
   reapAllDeletedProjects: () => request<{ reaped: number }>('DELETE', '/admin/deleted-projects'),
   listPages: (projectId: string) =>
     request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
-  /**
-   * The pages list WITHOUT every page's Handlebars source and data store — the fields that make a real
-   * site's list hundreds of KB. Each omitted field is described under `_summary` instead.
-   *
-   * ★ A summarised page is NOT a page: writing one back would delete the very fields it omits, and any
-   * predicate that reads `source` to mean "has own code" silently flips. Use {@link hasOwnSource} for
-   * that question, and `getPage` before editing or copying a body.
-   */
-  listPageSummaries: (projectId: string) =>
-    request<{ items: PageSummary[] }>('GET', `/projects/${projectId}/content/page?summary=1`),
   /** Run a Lighthouse page-speed + SEO audit of one page (deploy-equivalent build). Defaults to mobile. */
   pagespeedAudit: (projectId: string, pageId: string, formFactor?: 'mobile' | 'desktop') =>
     request<PagespeedAuditResult>(

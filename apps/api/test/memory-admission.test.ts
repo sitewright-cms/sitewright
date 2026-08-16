@@ -197,6 +197,36 @@ describe('the unpaginated content list is admitted like every other expensive pa
     expect(res.statusCode, 'paging is the way through a starved instance, not a wall').toBe(200);
     expect((res.json() as { items: unknown[] }).items.length).toBe(5);
   });
+
+  // Waits out ADMISSION_WAIT_MS by design before shedding, so it needs more than the default 5s
+  // budget once the whole suite is running under coverage.
+  it('★ a paginated SEARCH is still admitted — what it costs is not what it returns', { timeout: 20_000 }, async () => {
+    // `?q=` has no index behind it: every row of the kind is read and json_extract-ed whatever `limit`
+    // says, so `?q=a&limit=1` is a full scan wearing a cheap-looking request. If pagination exempted it
+    // the way it exempts an ordinary page, a starved instance would keep serving unbounded scans.
+    const { t, projectId } = await setup('list-paged-q@e2e.test');
+    await seedBulk(t, projectId);
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/content/page?limit=1&q=p1`,
+      cookies: { sw_session: t },
+    });
+    expect(res.statusCode, 'shed, and retryable — the scan is what is being priced').toBe(503);
+  });
+
+  it('serves that same paginated search once there is headroom', { timeout: 20_000 }, async () => {
+    const { t, projectId } = await setup('list-paged-q-ok@e2e.test');
+    await seedBulk(t, projectId);
+    _setMemoryBudgetForTest(8192 * MB, 0);
+    const res = await app.inject({
+      method: 'GET',
+      url: `/projects/${projectId}/content/page?limit=1&q=p1`,
+      cookies: { sw_session: t },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { items: unknown[] }).items.length).toBe(1);
+  });
 });
 
 describe('a small instance can still import media', () => {

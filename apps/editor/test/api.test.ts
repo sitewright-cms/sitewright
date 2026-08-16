@@ -1390,3 +1390,28 @@ describe('api client — image maps', () => {
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
   });
 });
+
+describe('entry list scoping', () => {
+  it('scopes listEntries to one dataset when a slug is given, and to the project when not', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listEntries('p1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry');
+
+    fetchMock.mockClear();
+    await api.listEntries('p1', 'news_de');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=news_de');
+  });
+
+  it('percent-encodes the dataset slug rather than splicing it into the query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listEntries('p1', 'a&b=c');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=a%26b%3Dc');
+  });
+
+  it('countEntries reads the total without materialising any rows', async () => {
+    // `limit=1&summary=1` is the point: a delete confirmation needs the COUNT, not 800 bodies.
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'e1' }], total: 831 }));
+    expect(await api.countEntries('p1', 'posts')).toBe(831);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=posts&limit=1&summary=1');
+  });
+});

@@ -4,7 +4,7 @@ import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
-import { datasetSlugify, defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
+import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
@@ -91,6 +91,14 @@ export function DatasetManager({ project }: { project: Project }) {
   // Free-text filter over the selected dataset's entries.
   const [entryQuery, setEntryQuery] = useState('');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  /**
+   * Entries of the datasets this one REFERENCES — the options a `reference` field's picker offers.
+   *
+   * ★ `entries` holds the SELECTED dataset only, and a reference almost always points at a DIFFERENT
+   * dataset, so passing `entries` straight to the picker would offer zero options and read as "that
+   * collection is empty". Loaded when the entry editor opens, for exactly the datasets referenced.
+   */
+  const [refEntries, setRefEntries] = useState<Entry[]>([]);
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
   const [renaming, setRenaming] = useState(false); // the rename-dataset modal is open
@@ -184,6 +192,30 @@ export function DatasetManager({ project }: { project: Project }) {
     // Re-runs on SELECTION too: entries are fetched per dataset, so picking another one must fetch its
     // rows. (`load` reads the current selection from the ref, so it is not a dependency.)
   }, [project.id, selId]);
+
+  // Referenced datasets' rows, loaded only while the entry editor is open (nothing else offers a picker).
+  useEffect(() => {
+    if (!editingEntry || !selected) {
+      setRefEntries([]);
+      return;
+    }
+    const targets = [...new Set(selected.fields.map(fieldReferenceDataset).filter((t) => t && t !== selected.slug))];
+    if (targets.length === 0) {
+      setRefEntries([]);
+      return;
+    }
+    let active = true;
+    void Promise.all(targets.map((t) => api.listEntries(project.id, t)))
+      .then((res) => {
+        if (active) setRefEntries(res.flatMap((r) => r.items));
+      })
+      .catch(() => {
+        if (active) setRefEntries([]); // a picker with no options beats a broken modal
+      });
+    return () => {
+      active = false;
+    };
+  }, [editingEntry, selected, project.id]);
 
   // Reset the schema draft ONLY when the selection actually changes — never on a
   // background data reload (which would discard the user's unsaved schema edits).
@@ -945,7 +977,8 @@ export function DatasetManager({ project }: { project: Project }) {
                   keyEditable={newEntry}
                   existingIds={new Set(datasetEntries.map((e) => e.id))}
                   allDatasets={datasets}
-                  allEntries={entries}
+                  // The selected dataset's rows PLUS the referenced datasets' rows the picker needs.
+                  allEntries={[...entries, ...refEntries]}
                   // Reload the list/preview but KEEP the modal open (it resets its own dirty baseline);
                   // closing is an explicit user action (× / Esc / backdrop).
                   onSaved={() => void load()}

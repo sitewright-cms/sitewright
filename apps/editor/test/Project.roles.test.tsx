@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { listPageSummaries, getPage, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
-  listPageSummaries: vi.fn(),
+const { listPages, getPage, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
+  listPages: vi.fn(),
   getPage: vi.fn(),
   putPage: vi.fn(),
   getSettings: vi.fn(),
@@ -11,7 +11,7 @@ const { listPageSummaries, getPage, putPage, getSettings, listTemplates } = vi.h
 }));
 vi.mock('../src/api', () => ({
   api: {
-    listPageSummaries: (p: string) => listPageSummaries(p),
+    listPages: (p: string) => listPages(p),
     getPage: (p: string, id: string) => getPage(p, id),
     putPage: (p: string, page: Page) => putPage(p, page),
     getSettings: (p: string) => getSettings(p),
@@ -33,22 +33,14 @@ import { ProjectView } from '../src/views/Project';
 const ownerProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const memberProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'member' as const };
 const pages: Page[] = [{ id: 'home', path: '', title: 'Home' }];
-/** Projects a page the way the LIST route does with `?summary=1`: no body, a descriptor instead. */
-const summaryOf = (p: Page) => {
-  const rest: Record<string, unknown> = { ...p };
-  const source = p.source;
-  delete rest.source;
-  delete rest.data;
-  return { ...rest, ...(source === undefined ? {} : { _summary: { omitted: { source: { bytes: source.length } } } }) };
-};
 
 beforeEach(() => {
-  listPageSummaries.mockReset();
+  listPages.mockReset();
   getPage.mockReset();
   putPage.mockReset();
   getSettings.mockReset();
   listTemplates.mockReset();
-  listPageSummaries.mockResolvedValue({ items: pages.map(summaryOf) });
+  listPages.mockResolvedValue({ items: pages });
   getPage.mockResolvedValue({ item: pages[0] });
   putPage.mockResolvedValue({ item: pages[0] });
   // Single-locale project by default → i18n actions stay hidden.
@@ -59,7 +51,7 @@ beforeEach(() => {
 describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('owner on the Pages tab sees the add-page button + the page list', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    // Wait for the page LIST to actually render (listPageSummaries resolving AND re-rendering), not merely for
+    // Wait for the page LIST to actually render (listPages resolving AND re-rendering), not merely for
     // the mock to fire — a synchronous getByRole here raced the async re-render and flaked in CI.
     expect(await screen.findByRole('button', { name: 'Home /' })).toBeInTheDocument();
     // The add-page form now lives in a modal opened from this button.
@@ -97,7 +89,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('"Add page" creates a code-first page carrying a Handlebars source', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    await waitFor(() => expect(listPageSummaries).toHaveBeenCalled());
+    await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'landing' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
@@ -112,7 +104,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('"Add page" slugifies input and refuses the reserved "home" slug (no clobbering the root)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    await waitFor(() => expect(listPageSummaries).toHaveBeenCalled());
+    await waitFor(() => expect(listPages).toHaveBeenCalled());
     // A leading slash / spaces are slugified away…
     fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: '/Web Design' } });

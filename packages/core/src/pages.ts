@@ -1,7 +1,7 @@
 import type { JsonValue, Page } from '@sitewright/schema';
 import { pagesById, pagePath } from './routes.js';
 import { localeOf, localeHomeFor } from './i18n.js';
-import { childrenOf as childViewsOf } from './children.js';
+import { childrenView } from './children.js';
 
 // The `pages` namespace: cross-page DIRECT access by slug path, rooted at the CURRENT page's locale
 // HOME and walked by slug — `{{ pages.services.seo._attributes.data.header_title }}` reads the
@@ -35,6 +35,20 @@ type PageNode = Record<string, unknown>;
 
 /** Upper bound on total nodes built for one page's `pages` context (payload / DoS guard). */
 export const MAX_PAGES_NODES = 500;
+
+/**
+ * Aggregate byte budget for the CHILD LISTINGS across the whole `pages` context.
+ *
+ * ★ A node cap is not a payload cap. Every node may carry a `children` listing, each independently
+ * bounded, so N nodes multiply: 50 referenced nodes measured at 68 MB, and at 500 the callers' own
+ * `JSON.stringify(pagesForRender).length > 4MB` payload check threw `RangeError: Invalid string length`
+ * — the guard could not even MEASURE what it was there to reject, because the structure was already
+ * built and handed to it. Budgeting DURING the walk is what makes that guard reachable.
+ *
+ * Deliberately set ABOVE the callers' 4 MiB payload ceiling: anything that would have breached it still
+ * reaches it and fails LOUDLY with a real error, rather than being silently trimmed to fit here.
+ */
+export const MAX_PAGES_CONTEXT_BYTES = 6 * 1024 * 1024;
 /** Upper bound on slug-walk depth (the page tree is shallow; this just caps a pathological source). */
 const MAX_PAGES_DEPTH = 24;
 
@@ -91,7 +105,20 @@ export function pagesContext(
   const childrenOf = (parentId: string): Page[] =>
     pages.filter((p) => p.parent === parentId && !p.collection && localeOf(p, defaultLocale) === locale);
 
-  const budget = { n: 0 };
+  // Two budgets: how many NODES may be built, and how many BYTES their child listings may weigh in
+  // total. The second is the one that bounds the payload — see MAX_PAGES_CONTEXT_BYTES.
+  const budget = { n: 0, childBytes: 0 };
+
+  /** This node's child listing, spending from the shared byte budget (empty once it is gone). */
+  const listChildren = (node: Page) => {
+    const remaining = MAX_PAGES_CONTEXT_BYTES - budget.childBytes;
+    if (remaining <= 0) return [];
+    // `atLeastOne: false` — the "never leave a listing empty" rule is right for the ONE listing a page
+    // shows its reader, and wrong here: applied per node it is precisely how N nodes each overshoot.
+    const view = childrenView(pages, node, defaultLocale, { maxBytes: remaining, atLeastOne: false });
+    budget.childBytes += view.bytes;
+    return view.children;
+  };
   const build = (node: Page, chains: string[][], depth: number): PageNode => {
     const out: PageNode = {};
     const childChains = new Map<string, string[][]>(); // child slug → remaining chains
@@ -145,7 +172,7 @@ export function pagesContext(
       description: node.description ?? '',
       template: node.template ?? '',
       data: needData ? ((node.data as JsonValue | undefined) ?? {}) : {},
-      children: needChildren ? childViewsOf(pages, node, defaultLocale) : [],
+      children: needChildren ? listChildren(node) : [],
       code: needCode ? (node.source ?? '') : '',
     };
     return out;

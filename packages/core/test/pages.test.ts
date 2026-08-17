@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { referencesPages, referencedPagePaths, pagesContext, MAX_PAGES_NODES } from '../src/index.js';
+import { referencesPages, referencedPagePaths, pagesContext, MAX_PAGES_NODES, MAX_PAGES_CONTEXT_BYTES, MAX_PAGE_CHILDREN_BYTES } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page => ({ id: 'p', path: '', title: 'T', ...over }) as Page;
 
@@ -156,5 +156,50 @@ describe('pagesContext', () => {
     const ctx = pagesContext(many, home, 'en', src) as Record<string, unknown>;
     const built = Object.keys(ctx).filter((k) => k.startsWith('n')).length;
     expect(built).toBeLessThanOrEqual(MAX_PAGES_NODES);
+  });
+
+  describe('★ the whole context is bounded by BYTES, not just by node count', () => {
+    // A node cap is not a payload cap. Each node may carry a `children` listing, and each listing is
+    // independently bounded — so N nodes multiply. Measured before this guard existed: 50 referenced
+    // nodes built a 68 MB context, and at 500 the caller's own `JSON.stringify(...).length > 4MB`
+    // payload check threw `RangeError: Invalid string length` — the guard could not even MEASURE what
+    // it was supposed to reject, having already been handed the finished structure.
+    //
+    // ★ Note what actually triggers the work: `referencedPagePaths` scans the RAW SOURCE TEXT, so the
+    // chains do not have to be reachable Handlebars. Naming them is enough.
+    const fanOut = (parents: number, kids: number, dataBytes: number) => {
+      const blob = 'x'.repeat(dataBytes);
+      const pages: Page[] = [home];
+      let src = '';
+      for (let p = 0; p < parents; p += 1) {
+        pages.push(page({ id: `p${p}`, path: `p${p}`, parent: 'home', title: `P${p}` }));
+        for (let k = 0; k < kids; k += 1) {
+          pages.push(page({ id: `p${p}k${k}`, path: `k${k}`, parent: `p${p}`, title: `K${k}`, order: k, data: { blob } }));
+        }
+        src += `{{#each pages.p${p}._attributes.children}}{{title}}{{/each}}`;
+      }
+      return { pages, src };
+    };
+
+    it('stays measurable and small when ONE source names hundreds of pages’ children', () => {
+      const { pages, src } = fanOut(200, 3, 200 * 1024); // ~120 MB of child data, all referenced
+      const ctx = pagesContext(pages, home, 'en', src);
+      // The point of the assertion is that this DOES NOT THROW — a context big enough to break
+      // JSON.stringify is a context the payload guard downstream can never report on.
+      const bytes = JSON.stringify(ctx).length;
+      expect(bytes).toBeLessThanOrEqual(MAX_PAGES_CONTEXT_BYTES + MAX_PAGE_CHILDREN_BYTES);
+    });
+
+    it('spends the budget on the FIRST nodes rather than starving every one of them', () => {
+      const { pages, src } = fanOut(200, 3, 200 * 1024);
+      const ctx = pagesContext(pages, home, 'en', src) as Record<string, Record<string, Record<string, unknown[]>>>;
+      expect(ctx.p0!._attributes!.children!.length, 'the first listing must be complete').toBe(3);
+    });
+
+    it('leaves a single legitimate archive listing untouched', () => {
+      const { pages, src } = fanOut(1, 3, 200 * 1024);
+      const ctx = pagesContext(pages, home, 'en', src) as Record<string, Record<string, Record<string, unknown[]>>>;
+      expect(ctx.p0!._attributes!.children!.length).toBe(3);
+    });
   });
 });

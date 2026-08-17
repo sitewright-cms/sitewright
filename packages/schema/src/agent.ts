@@ -116,11 +116,17 @@ In \`source\`:
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}. A dataset field
   may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
   {{<field>.<key>}}), so an entry can hold structured/nested data.
-- CONDITIONALS / COMPARISON: {{#if x}}/{{#unless x}} are built in; for value comparison use {{#if (eq a b)}}
-  / {{#if (ne a b)}} (=== / !==), and {{sw-json value}} pretty-prints any value as JSON (a debug <pre>; escaped).
-  Handlebars has NO other built-in comparison, and calling a helper that is NOT registered HARD-FAILS the whole
-  render (HTTP 400) — so DON'T invent gt/lt/and/or/contains; stick to eq/ne (+ the {{sw-*}} helpers, incl. {{sw-json}}, in
-  get_reference). For "is this the current page?" use {{#if (sw-active path)}} (route-aware), not eq.
+- CONDITIONALS / COMPARISON / ARITHMETIC: {{#if x}}/{{#unless x}} are built in; compare with (eq a b)/(ne a b)
+  (===/!==) and the NUMERIC (sw-lt a b)/(sw-gt a b)/(sw-lte a b)/(sw-gte a b) — a non-numeric side is false,
+  never string order. Math: (sw-add a b)/(sw-sub)/(sw-mul)/(sw-div)/(sw-mod), (sw-round x [decimals]),
+  (sw-ceil x)/(sw-floor x), (sw-min a b …)/(sw-max a b …) — numeric strings count, anything else is 0, and the
+  result is always FINITE (÷0 and overflow give 0, never a NaN you'd never spot inside an attribute).
+  {{sw-json value}} debug-prints a value (escaped). No and/or/contains, and an UNREGISTERED helper hard-fails
+  the render (400) — don't invent one; get_reference has the full list. Current page → {{#if (sw-active path)}}.
+- LIST WINDOWS — render PART of a long list: (sw-limit list 6), (sw-offset list 6), (sw-slice list start [end])
+  (a NEGATIVE start counts from the end: (sw-slice posts -3) = the latest three), (sw-paginate list pageNo
+  perPage) 1-based paging; {{sw-length list}} counts. ★ A MISSING count leaves the list INTACT, never empty.
+  Paginated archive → get_guide("templates").
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -476,8 +482,8 @@ animation library, CDN links, or scripts (they'd be rejected anyway). Content st
 without JS and motion respects prefers-reduced-motion. data-sw-duration/-delay/-easing/-once are
 SHARED with the SVG animation engine (data-sw-svg); data-sw-threshold/-offset are entrance-only. Stagger lists
 by increasing data-sw-delay per item (e.g. 0/100/200). Inside a LOOP, compute it with {{sw-stagger}} —
-templates have no arithmetic, so {{multiply @index 90}} is NOT a thing (an unknown helper renders as a
-visible comment marker and, in an attribute, one you would never see):
+it applies the CAP a long list needs, which plain {{sw-mul @index 90}} would not. (Note {{multiply}} is
+still NOT a helper; an unregistered name renders as a comment marker you would never see in an attribute.)
   {{#each dataset.services}}
     <div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}">…</div>
   {{/each}}
@@ -821,13 +827,41 @@ The whole thing is also configurable no-code in Settings → Website → Consent
   },
   templates: {
     title: "Templates, snippets & reuse",
-    summary: "render a page from a template; reusable {{> snippets}} & widgets; ready-made global partials",
+    summary: "render a page from a template; PAGINATED ARCHIVES over long lists; reusable {{> snippets}} & widgets; ready-made global partials",
     body: `
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset. Use it when
 MANY pages share one layout (e.g. a blog-post template; the pages supply only their content via
 page.data).
+
+LONG LISTS & PAGINATED ARCHIVES — a news/blog section with hundreds of posts.
+Model the posts as real PAGES (each gets its own URL, SEO/OG fields, revisions and a search-index entry)
+under one parent, all rendering a shared post template. Then render the archive in WINDOWS:
+  (sw-limit list N) first N · (sw-offset list N) the rest · (sw-slice list start [end]) an exact window
+  (negative start = from the end) · (sw-paginate list pageNo perPage) page N, 1-BASED · {{sw-length list}}
+Where the list comes from:
+  • the archive ROOT lists its own posts with {{#each page.children}} — each child exposes
+    .title/.path/.description/.image/.slug/.locale/.order/.data (bind the link as {{sw-url path}});
+  • ANY OTHER page reaches them by name: {{#each pages.news._attributes.children}} — this is what lets
+    archive page 2 list the ROOT's posts, since they are not page 2's own children;
+  • a dataset works the same way ({{#each dataset.news}}) and needs no cross-page hop.
+Give every archive page the SAME source (or one template) and only a different page.data.page_no:
+  <ul>
+  {{#each (sw-paginate pages.news._attributes.children page.data.page_no 10)}}
+    <li><a href="{{sw-url path}}">{{title}}</a> — {{sw-truncate description 120}}</li>
+  {{/each}}
+  </ul>
+  <p>Page {{page.data.page_no}} of {{sw-ceil (sw-div (sw-length pages.news._attributes.children) 10)}}</p>
+  {{#if (sw-gt page.data.page_no 1)}}<a href="/news-{{sw-sub page.data.page_no 1}}">Previous</a>{{/if}}
+  {{#if (sw-lt page.data.page_no 84)}}<a href="/news-{{sw-add page.data.page_no 1}}">Next</a>{{/if}}
+A computed page number is fine inside an href because the literal prefix ("/news-") already fixes the
+scheme; a WHOLE href that is one binding still needs {{sw-url …}}. @index restarts at 0 in every window,
+so a running item number is (sw-add (sw-mul (sw-sub page.data.page_no 1) 10) (sw-add @index 1)).
+LIMIT: one page.children listing is bounded by its SERIALIZED SIZE (~2 MB, and 2000 children) because each
+child carries its own page.data. It is never silently short — {{page.childrenTotal}} always binds the true
+count and the publish release reports childrenTruncated. If a listing does hit the bound, either stop
+binding heavy page.data on the posts or model the collection as a dataset.
 
 SNIPPETS — reusable source fragments INCLUDED with the Handlebars partial syntax {{> name}}.
 Create one with put_content("snippet", "<name>", { id:"<name>", name:"<name>", source:"<…>" }),
@@ -1638,6 +1672,9 @@ page.data.swImport.rewritten:true (or remove the marker) and flip its status to 
 A DATASET is a reusable COLLECTION (team members, FAQs, menu items, testimonials, slides). It has TWO parts:
 its SCHEMA (the field definitions) and its ENTRIES (the rows). You render it by looping in a page source with
 {{#each dataset.<slug>}}…{{/each}}. Writing one is TWO steps — the dataset, then its entries.
+To render only PART of a long dataset, window the loop: {{#each (sw-limit dataset.x 6)}} (first six),
+(sw-slice dataset.x -3) (latest three), (sw-paginate dataset.x page.data.page_no 10) (page N). Entries stay
+click-to-edit through a window. Full recipe incl. page counts + prev/next: get_guide("templates").
 
 STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "faq_passengers", data })
   data = { name: "Passenger FAQ", slug: "faq_passengers", fields: [ {name, type, required?}, … ] }

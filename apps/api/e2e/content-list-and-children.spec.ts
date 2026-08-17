@@ -16,8 +16,13 @@ type PwFixture = PlaywrightWorkerArgs['playwright'];
  *     the minify/validate memoization must not break.
  */
 
-const MAX_PAGE_CHILDREN = 500; // mirrors packages/core (the E2E build has no import of the constant)
-const OVER = 3;
+// Mirrors packages/core (the E2E build has no import of the constants). The bound that decides in
+// practice is the SERIALIZED SIZE of a listing, not the 2000-child backstop — each child carries its own
+// `page.data`, so weight per child varies by orders of magnitude.
+const MAX_PAGE_CHILDREN_BYTES = 2 * 1024 * 1024;
+/** Each child's own data. 64 KiB x 40 children exceeds the budget while staying under the 4 MiB import. */
+const FAT_DATA_BYTES = 64 * 1024;
+const FAT_CHILDREN = Math.ceil(MAX_PAGE_CHILDREN_BYTES / FAT_DATA_BYTES) + 8;
 
 async function newProject(playwright: PwFixture, baseURL: string, tag: string) {
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
@@ -38,7 +43,57 @@ test.describe('page.children truncation is visible', () => {
       data: {
         pages: [
           { id: 'blog', path: 'blog', title: 'Blog', source },
-          ...Array.from({ length: MAX_PAGE_CHILDREN + OVER }, (_, i) => ({
+          ...Array.from({ length: FAT_CHILDREN }, (_, i) => ({
+            id: `post-${i}`,
+            path: `post-${i}`,
+            parent: 'blog',
+            order: i,
+            title: `Post ${i}`,
+            source: '<p>post</p>',
+            data: { blob: 'x'.repeat(FAT_DATA_BYTES) },
+          })),
+        ],
+      },
+    });
+    expect(imported.status(), await imported.text()).toBe(200);
+
+    const published = await ctx.post(`${base}/publish`, { data: {} });
+    expect(published.status()).toBe(200);
+    const release = (await published.json()).release as { childrenTruncated?: Array<{ page: string; shown: number; total: number }> };
+
+    const cut = release.childrenTruncated;
+    expect(cut, 'the build must name the page whose listing was cut').toHaveLength(1);
+    expect(cut![0]!.page).toBe('blog');
+    expect(cut![0]!.total).toBe(FAT_CHILDREN);
+    // How many fit depends on each child's weight; what must hold is that some were dropped and some
+    // listed — a report of 0 shown would mean the budget emptied the page instead of trimming it.
+    expect(cut![0]!.shown).toBeGreaterThan(0);
+    expect(cut![0]!.shown).toBeLessThan(FAT_CHILDREN);
+
+    // The EDITOR's live preview is a separate render path; a binding wired into only one of the two
+    // renders empty in the editor and populated on the live site.
+    const preview = await ctx.post(`${base}/preview`, { data: { id: 'blog', path: 'blog', title: 'Blog', source } });
+    expect(preview.status(), await preview.text()).toBe(200);
+    const previewHtml = await preview.text();
+    expect(previewHtml).toMatch(new RegExp(`showing \\d+ of ${FAT_CHILDREN}`));
+    expect(previewHtml, 'the preview must agree with the published build').toContain(`showing ${cut![0]!.shown} of ${FAT_CHILDREN}`);
+
+    await ctx.dispose();
+  });
+
+  test('★ a 600-post archive lists in FULL — the 500-cap that used to halve it silently', async ({ playwright, baseURL }) => {
+    // The old count cap was a ceiling on a whole feature: a real news section (DHPS: 831 posts) listed
+    // 500 and every archive page past the 50th rendered empty, because a window can only slice what the
+    // listing contains. Lean children now list in full, bounded by SIZE rather than an arbitrary count.
+    test.setTimeout(180_000);
+    const { ctx, base } = await newProject(playwright, baseURL!, 'kidsfull');
+    const POSTS = 600;
+
+    const imported = await ctx.post(`${base}/import`, {
+      data: {
+        pages: [
+          { id: 'blog', path: 'blog', title: 'Blog', source: '<p id="count">listed {{sw-length page.children}} of {{page.childrenTotal}}</p>' },
+          ...Array.from({ length: POSTS }, (_, i) => ({
             id: `post-${i}`,
             path: `post-${i}`,
             parent: 'blog',
@@ -53,17 +108,14 @@ test.describe('page.children truncation is visible', () => {
 
     const published = await ctx.post(`${base}/publish`, { data: {} });
     expect(published.status()).toBe(200);
-    const release = (await published.json()).release as { childrenTruncated?: Array<{ page: string; shown: number; total: number }> };
+    const release = (await published.json()).release as { childrenTruncated?: unknown };
+    expect(release.childrenTruncated, 'nothing was dropped, so nothing should be reported').toBeUndefined();
 
-    expect(release.childrenTruncated, 'the build must name the page whose listing was cut').toEqual([
-      { page: 'blog', shown: MAX_PAGE_CHILDREN, total: MAX_PAGE_CHILDREN + OVER },
-    ]);
-
-    // The EDITOR's live preview is a separate render path; a binding wired into only one of the two
-    // renders empty in the editor and populated on the live site.
-    const preview = await ctx.post(`${base}/preview`, { data: { id: 'blog', path: 'blog', title: 'Blog', source } });
+    const preview = await ctx.post(`${base}/preview`, {
+      data: { id: 'blog', path: 'blog', title: 'Blog', source: '<p id="count">listed {{sw-length page.children}} of {{page.childrenTotal}}</p>' },
+    });
     expect(preview.status(), await preview.text()).toBe(200);
-    expect(await preview.text()).toContain(`showing ${MAX_PAGE_CHILDREN} of ${MAX_PAGE_CHILDREN + OVER}`);
+    expect(await preview.text()).toContain(`listed ${POSTS} of ${POSTS}`);
 
     await ctx.dispose();
   });

@@ -175,7 +175,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-stagger',
         keywords: 'stagger delay animation reveal index loop each sequence cascade arithmetic multiply',
         description:
-          'The reveal DELAY in milliseconds for item @index of a loop — index x step, capped at max — so a grid animates in one item after another instead of all at once. Drop it straight into data-sw-delay inside an {{#each}}. The cap matters: without it a 40-item grid would delay its last card by several seconds and the animation reads as a stuck page; everything past the cap lands together. Templates have NO general arithmetic (there is no multiply/add helper, and an unknown helper renders as a comment marker), so this is the supported way to compute a per-item value.',
+          'The reveal DELAY in milliseconds for item @index of a loop — index x step, capped at max — so a grid animates in one item after another instead of all at once. Drop it straight into data-sw-delay inside an {{#each}}. The cap matters: without it a 40-item grid would delay its last card by several seconds and the animation reads as a stuck page; everything past the cap lands together.',
         args: [
           { name: '@index', desc: 'The loop index — pass @index inside any {{#each}}.' },
           { name: 'step', desc: 'Milliseconds between consecutive items (default 100).' },
@@ -185,7 +185,77 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{#each dataset.services}}\n' +
           '  <div data-sw-animation="fade-up" data-sw-delay="{{sw-stagger @index 90}}" class="card">{{title}}</div>\n' +
           '{{/each}}',
-        note: 'Pair it with data-sw-animation — see the “scroll animations” entry. For a long list, lower the step (60-80ms) rather than raising the cap.',
+        note: 'Pair it with data-sw-animation — see the “scroll animations” entry. For a long list, lower the step (60-80ms) rather than raising the cap. General arithmetic exists too (see “arithmetic”), but this one already applies the cap a long list needs.',
+      },
+      {
+        id: 'h-list-window',
+        syntax: '{{#each (sw-paginate list pageNo perPage)}}…{{/each}}',
+        name: 'sw-paginate — page a long list',
+        keywords:
+          'sw-paginate sw-slice sw-limit sw-offset sw-length paginate pagination page pages archive blog news window slice limit offset first latest last count length recent take skip',
+        description:
+          'Renders one WINDOW of a list instead of all of it. {{sw-paginate}} takes page N of perPage-sized pages (1-based, like the number a visitor reads), so a run of archive pages can share ONE template and differ only by a page.data.page_no. The others are the plain cases: (sw-limit list 6) is the first six, (sw-offset list 6) is everything after them, and (sw-slice list start end) is an exact window with Array-slice semantics — a NEGATIVE start counts from the end, so (sw-slice posts -3) is the latest three. {{sw-length list}} counts, for a "showing 10 of 831" line. All four return a list, so they go in subexpression position inside {{#each}} and compose with each other.',
+        args: [
+          { name: 'list', desc: 'Any array binding: dataset.<slug>, page.children, or pages.<slug>._attributes.children.' },
+          { name: 'pageNo', desc: 'Which page, 1-based. Page 0/negative/missing is page 1; past the end renders nothing.' },
+          { name: 'perPage', desc: 'Items per page.' },
+        ],
+        example:
+          '{{! Every archive page renders this same template; only page.data.page_no differs. }}\n' +
+          '<ul>\n' +
+          '{{#each (sw-paginate pages.news._attributes.children page.data.page_no 10)}}\n' +
+          '  <li><a href="{{sw-url path}}">{{title}}</a></li>\n' +
+          '{{/each}}\n' +
+          '</ul>\n' +
+          '<p>Page {{page.data.page_no}} of {{sw-ceil (sw-div (sw-length pages.news._attributes.children) 10)}}</p>\n' +
+          '{{#if (sw-lt page.data.page_no 84)}}<a href="/news-{{sw-add page.data.page_no 1}}">Next</a>{{/if}}\n' +
+          '\n' +
+          '{{! The simple cases }}\n' +
+          '{{#each (sw-limit dataset.news 3)}}…{{/each}}      {{! the first three }}\n' +
+          '{{#each (sw-slice dataset.news -3)}}…{{/each}}      {{! the latest three }}\n' +
+          '{{#each (sw-offset dataset.news 3)}}…{{/each}}      {{! everything after the first three }}',
+        note: 'A MISSING count leaves the list intact rather than emptying it — an over-long list is visibly wrong, while an empty one reads as “nothing here”. Posts as child PAGES: a page reads its own via page.children, and any OTHER page reads them by name via pages.<slug>._attributes.children — that is what lets archive page 2 list the archive root’s posts. A listing is bounded by its serialized size (~2 MB) with the true count always available as {{page.childrenTotal}}; past that, model the content as a dataset.',
+      },
+      {
+        id: 'h-math',
+        syntax: '{{sw-add a b}} · {{sw-sub a b}} · {{sw-mul a b}} · {{sw-div a b}} · {{sw-mod a b}}',
+        name: 'arithmetic',
+        keywords:
+          'sw-add sw-sub sw-mul sw-div sw-mod sw-round sw-ceil sw-floor sw-min sw-max math arithmetic add subtract multiply divide modulo remainder round ceiling floor min max sum count number calculate offset index',
+        description:
+          'Arithmetic on bound values. {{sw-add}} / {{sw-sub}} / {{sw-mul}} / {{sw-div}} / {{sw-mod}} are the five operations; {{sw-ceil}}, {{sw-floor}} and {{sw-round}} round (sw-round takes an optional number of decimals), and {{sw-min}} / {{sw-max}} take the smallest/largest of any number of arguments. Numeric STRINGS count, because a page.data value or a control-bound number usually arrives as text. Everything else counts as 0. The result is ALWAYS a finite number: dividing by zero is 0, and an overflow is 0 — never NaN or Infinity, which inside an attribute would be invisible garbage that nothing reports.',
+        args: [
+          { name: 'a, b', desc: 'Numbers, or numeric strings. A non-numeric value counts as 0.' },
+          { name: 'decimals', desc: 'sw-round only: how many decimal places to keep (default 0, max 10).' },
+        ],
+        example:
+          '{{! how many pages an archive needs }}\n' +
+          '{{sw-ceil (sw-div (sw-length dataset.news) 10)}}\n' +
+          '\n' +
+          '{{! the running item number inside a windowed loop — @index restarts at 0 per page }}\n' +
+          '{{#each (sw-paginate dataset.news page.data.page_no 10)}}\n' +
+          '  <li>#{{sw-add (sw-mul (sw-sub page.data.page_no 1) 10) (sw-add @index 1)}} — {{title}}</li>\n' +
+          '{{/each}}\n' +
+          '\n' +
+          '{{! every third card starts a new row }}\n' +
+          '{{#if (eq (sw-mod @index 3) 0)}}<div class="row">{{/if}}\n' +
+          '{{sw-round price 2}} · {{sw-min stock 10}} · {{sw-max rating 1}} · {{sw-floor score}}',
+        note: 'For a per-item animation delay use {{sw-stagger}} instead — it applies the cap a long list needs.',
+      },
+      {
+        id: 'h-compare',
+        syntax: '{{#if (sw-lt a b)}}…{{/if}}',
+        name: 'sw-lt / sw-gt / sw-lte / sw-gte',
+        keywords: 'sw-lt sw-gt sw-lte sw-gte compare comparison less greater than smaller bigger between range if conditional next prev',
+        description:
+          'Numeric comparison, for conditional rendering: {{sw-lt}} (<), {{sw-gt}} (>), {{sw-lte}} (<=) and {{sw-gte}} (>=). Each returns a boolean, so it goes inside {{#if}} / {{#unless}} or an attribute. Deliberately NUMBER-only: if either side is not a number the answer is false, rather than silently falling back to text order where "10" < "9" is true. For equality use (eq a b) / (ne a b).',
+        args: [
+          { name: 'a, b', desc: 'Numbers, or numeric strings. Anything else makes the comparison false.' },
+        ],
+        example:
+          '{{#if (sw-gt page.data.page_no 1)}}<a href="/news-{{sw-sub page.data.page_no 1}}">Previous</a>{{/if}}\n' +
+          '{{#if (sw-lte stock 3)}}<span class="badge">Only {{stock}} left</span>{{/if}}\n' +
+          '{{#if (sw-gte rating 4)}}★ Top rated{{/if}}',
       },
       {
         id: 'h-json',

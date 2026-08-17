@@ -350,9 +350,10 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
 
-  // The engine has NO arithmetic, so the effects guide's own stagger recipe ("increase data-sw-delay per
+  // The engine had NO arithmetic, so the effects guide's own stagger recipe ("increase data-sw-delay per
   // item") was unwritable inside {{#each}} — `{{multiply @index 90}}` emitted the literal text
-  // `<!-- sw:unknown-helper multiply -->` into the attribute. sw-stagger is that one computation.
+  // `<!-- sw:unknown-helper multiply -->` into the attribute. sw-stagger is that computation WITH the cap;
+  // general arithmetic now lives alongside it (see template-list-math.test.ts).
   describe('{{sw-stagger}}', () => {
     const each = (tpl: string, n: number): string =>
       renderTemplate(`{{#each page.items}}${tpl}{{/each}}`, { page: { items: Array.from({ length: n }, (_, i) => i) } });

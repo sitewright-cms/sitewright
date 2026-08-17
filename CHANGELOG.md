@@ -9,6 +9,50 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **List windowing helpers — `{{sw-slice}}`, `{{sw-limit}}`, `{{sw-offset}}`, `{{sw-paginate}}`,
+  `{{sw-length}}`.** `{{#each}}` was all-or-nothing, which made a paginated archive inexpressible: a news
+  section with hundreds of posts had no way to render "posts 26–50" on page 2. Each returns a windowed
+  list, so they compose in subexpression position and keep everything `{{#each}}` already does, including
+  the dataset-entry flattening. `(sw-paginate list pageNo perPage)` is 1-based paging — one template
+  serves every page of an archive, differing only by a `page.data.page_no`. A **missing** count leaves
+  the list intact rather than emptying it: an over-long list is visibly wrong, an empty one reads as
+  "nothing here".
+- **Arithmetic — `{{sw-add}}`, `{{sw-sub}}`, `{{sw-mul}}`, `{{sw-div}}`, `{{sw-mod}}`, `{{sw-round}}`,
+  `{{sw-ceil}}`, `{{sw-floor}}`, `{{sw-min}}`, `{{sw-max}}`.** The engine had none, and said so in its own
+  docs; `{{sw-stagger}}` shipped because one multiplication was needed badly enough to become a
+  purpose-built helper. Numeric strings count (a `page.data` value is usually text), anything else counts
+  as 0, and the result is always a **finite** number — dividing by zero and overflow both give 0, never a
+  `NaN` that would sit invisibly inside an attribute.
+- **Numeric comparison — `{{sw-lt}}`, `{{sw-gt}}`, `{{sw-lte}}`, `{{sw-gte}}`.** Deliberately number-only:
+  a non-numeric operand is false rather than falling back to string order, where `"10" < "9"` is true.
+  These are what make a conditional prev/next link possible; `eq`/`ne` remain the equality pair.
+
+### Changed
+
+- **`page.children` is now bounded by SIZE, not by a count.** The 500-child cap was a ceiling on a whole
+  feature — a real news section listed 500 of its 831 posts, so every archive page past the 50th rendered
+  empty. The listing is now bounded by its serialized size (2 MiB, with a 2000-child backstop), which is
+  the thing that actually protects the render payload: each child carries its own `page.data`, so 500 lean
+  children were ~180 KB and truncated for no reason while 500 heavy ones were ~25 MB and waved through.
+  A truncated listing is still never silent (`release.childrenTruncated`, `{{page.childrenTotal}}`), and a
+  child larger than the whole budget is still listed rather than leaving the page empty.
+- The save-time unknown-helper error now names the real arithmetic helpers instead of stating that none
+  exist, and the agent instructions, the MCP `templates` guide and the editor's Template reference carry
+  the paginated-archive recipe — including the `pages.<slug>._attributes.children` hop an archive page
+  needs to list a *different* page's posts.
+
+### Fixed
+
+- **The cross-page `pages` context is now bounded while it is BUILT, not after.** A node cap is not a
+  payload cap: every referenced node may carry a child listing, so they multiply. One page naming 50
+  other pages' children built a 68 MB render context, and at 500 the payload guard that exists to reject
+  exactly this (`JSON.stringify(...).length > 4 MiB`) threw `RangeError: Invalid string length` — it
+  could not even measure what it was there to refuse, having already been handed the finished structure.
+  The listings now share one budget across the walk, so the same fan-out builds 5.5 MB; that is still
+  over the 4 MiB ceiling, so an oversized context keeps failing loudly instead of being trimmed to fit.
+
 ## [0.22.0] — 2026-08-17
 
 ### Added

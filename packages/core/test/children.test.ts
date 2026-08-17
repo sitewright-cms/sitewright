@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { childrenOf, childrenView, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN, extractRegions, extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '../src/index.js';
+import { childrenOf, childrenView, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN, MAX_PAGE_CHILDREN_BYTES, extractRegions, extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page =>
   ({ id: 'p', path: '', title: 'T', ...over }) as Page;
@@ -76,6 +76,72 @@ describe('childrenOf', () => {
     expect(view.truncated).toBe(true);
     // The listed subset is identical to what childrenOf yields — the view only ADDS the count.
     expect(view.children.map((k) => k.id)).toEqual(childrenOf([parent, ...kids], parent, 'en').map((k) => k.id));
+  });
+
+  it(`fits a real archive: ${MAX_PAGE_CHILDREN} lean children list in full`, () => {
+    // The cap used to be 500, which made a paginated archive over a ~831-post news section impossible
+    // past page 50 — the window helpers can only slice what the listing actually contains.
+    expect(MAX_PAGE_CHILDREN).toBeGreaterThanOrEqual(1000);
+    const parent = page({ id: 'p', path: 'p', title: 'P' });
+    const kids = Array.from({ length: 831 }, (_, i) => page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}` }));
+    const view = childrenView([parent, ...kids], parent, 'en');
+    expect(view.children).toHaveLength(831);
+    expect(view.truncated).toBe(false);
+  });
+
+  describe('★ the real bound is BYTES, not a count', () => {
+    // A count cap is a proxy for the thing that actually hurts — the render payload — and it is wrong in
+    // both directions: it truncates 900 lean children for no reason while happily admitting 2000 fat
+    // ones. Each child carries its own `page.data`, so the weight per child varies by orders of
+    // magnitude. The count stays as a backstop; the budget is what decides in practice.
+    const fatKids = (n: number, dataBytes: number) =>
+      Array.from({ length: n }, (_, i) =>
+        page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}`, data: { blob: 'x'.repeat(dataBytes) } }),
+      );
+
+    it('stops well short of the count cap when the children are data-heavy', () => {
+      const parent = page({ id: 'p', path: 'p', title: 'P' });
+      const kids = fatKids(400, 64 * 1024); // 400 x 64 KB = ~25 MB uncapped
+      const view = childrenView([parent, ...kids], parent, 'en');
+      expect(view.children.length).toBeLessThan(400);
+      expect(view.children.length).toBeGreaterThan(0);
+      expect(view.total).toBe(400);
+      expect(view.truncated).toBe(true);
+      expect(JSON.stringify(view.children).length).toBeLessThanOrEqual(MAX_PAGE_CHILDREN_BYTES * 1.1);
+    });
+
+    it('★ always lists at least ONE child, even one bigger than the whole budget', () => {
+      // Otherwise a single oversized post empties the archive, which reads as "no posts" — the exact
+      // silent-wrong-answer this whole area is built to avoid.
+      const parent = page({ id: 'p', path: 'p', title: 'P' });
+      const view = childrenView([parent, ...fatKids(3, MAX_PAGE_CHILDREN_BYTES + 1024)], parent, 'en');
+      expect(view.children).toHaveLength(1);
+      expect(view.truncated).toBe(true);
+      expect(view.total).toBe(3);
+    });
+
+    it('★ measures UTF-8 BYTES, so a non-Latin site is bounded like every other', () => {
+      // `.length` counts UTF-16 code units, which undercounts CJK by 3x and astral emoji by 2x. A
+      // budget that exists to protect the render payload has to measure the bytes that actually cross
+      // it, or a Japanese or Chinese site quietly ships a listing several times over the ceiling.
+      const parent = page({ id: 'p', path: 'p', title: 'P' });
+      const cjk = (n: number) =>
+        Array.from({ length: n }, (_, i) =>
+          page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}`, data: { body: '教育の理念について'.repeat(3000) } }),
+        );
+      const view = childrenView([parent, ...cjk(200)], parent, 'en');
+      const realBytes = new TextEncoder().encode(JSON.stringify(view.children)).length;
+      expect(realBytes).toBeLessThanOrEqual(MAX_PAGE_CHILDREN_BYTES * 1.1);
+      // The control: the SAME listing measured the old way would have been let through ~3x over.
+      expect(JSON.stringify(view.children).length).toBeLessThan(realBytes);
+    });
+
+    it('keeps the LOWEST-ordered children when the budget truncates', () => {
+      const parent = page({ id: 'p', path: 'p', title: 'P' });
+      const view = childrenView([parent, ...fatKids(200, 32 * 1024)], parent, 'en');
+      expect(view.children[0]!.id).toBe('c0');
+      expect(view.children.map((c) => c.id)).toEqual(view.children.map((_, i) => `c${i}`));
+    });
   });
 
   it('reports truncated:false and the real count when under the cap', () => {

@@ -44,7 +44,12 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // `null` (omitting means "leave unchanged", and `template:""` fails validation), and not knowing that
     // is precisely what sent three clone agents to put_page — the total replace that wipes data.swImport
     // and leaves the page un-auditable. The feature how-tos this unlocks room for stay in their guides.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(20_200);
+    // 20_200 -> 20_600 for arithmetic + list windows. Not a how-to (the archive recipe stayed in the
+    // templates guide) but a CAPABILITY BOUNDARY: the core previously stated outright that the engine has
+    // no arithmetic and that gt/lt do not exist. An agent that believes a helper is absent never calls it
+    // and never checks — so this is the one line that has to be in the always-loaded core, correcting a
+    // claim the core itself made.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(20_600);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

@@ -421,6 +421,56 @@ function pad(n: number): string {
 }
 
 /**
+ * A bound value read as a NUMBER, or `undefined` when it is not one — the shared coercion behind every
+ * arithmetic / windowing helper.
+ *
+ * Numeric STRINGS count, because that is how numbers actually arrive: a `page.data` key, a
+ * `{{sw-control … as="number"}}` binding and a dataset field are all JSON text as often as they are
+ * numbers, and `{{sw-limit posts page.data.per_page}}` has to work either way.
+ *
+ * Everything else — including `true`, `null`, an object, and the EMPTY string — is `undefined`, i.e.
+ * "absent". That distinction is the point: absent lets each helper choose its own safe fallback (0 for a
+ * sum, "leave the list alone" for a count) instead of every missing value silently becoming 0.
+ *
+ * ★ A Handlebars helper is always handed its options object as the last argument, so an omitted
+ * optional parameter arrives here as that object → `undefined` → the default. That is why no helper
+ * below needs to count its arguments.
+ */
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') return undefined;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The result of any arithmetic helper: a finite number, or 0.
+ *
+ * ★ NEVER NaN or Infinity. These values are written into attributes (`data-sw-delay`, a page number in
+ * an href), where the literal text `NaN` is invisible garbage that nothing reports — the same failure
+ * mode that made `{{multiply @index 90}}` so expensive to find. 0 is wrong too, but it is wrong
+ * VISIBLY, and it can't corrupt a URL.
+ */
+function finiteNumber(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** A windowing helper's input: the array itself, or an empty list for anything that is not one. */
+function asList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/** An integer COUNT/INDEX argument, or `undefined` when absent — `Math.trunc` so "2.5" can't half-slice. */
+function asCount(value: unknown): number | undefined {
+  const n = asNumber(value);
+  return n === undefined ? undefined : Math.trunc(n);
+}
+
+/**
  * A non-empty translated string for a RESERVED catalog key, read from the pre-resolved per-locale map
  * `website.t` (own-property + proto-guarded). Empty/missing → '' so the caller's fallback chain applies.
  * The mini-shop cart helpers use this to localize their built-in labels from `website.translations`
@@ -613,10 +663,10 @@ function createInstance(): typeof Handlebars {
   });
   // {{sw-stagger @index 90 [max]}} → the reveal DELAY in ms for item `@index` of a loop: `index * step`,
   // capped at `max` (default 600ms). The effects guide has always recommended staggering a list by an
-  // increasing `data-sw-delay`, but inside `{{#each}}` there was no way to DERIVE one — the engine has no
-  // arithmetic, so `{{multiply @index 90}}` emitted the literal text `<!-- sw:unknown-helper multiply -->`
-  // into the attribute. This is the one arithmetic the recipe needs, so it ships as a purpose-built helper
-  // rather than a general `multiply` (which would invite expression-building in templates).
+  // increasing `data-sw-delay`, but inside `{{#each}}` there was no way to DERIVE one — the engine had no
+  // arithmetic at all, so `{{multiply @index 90}}` emitted the literal text `<!-- sw:unknown-helper multiply -->`
+  // into the attribute. General arithmetic exists now (below), but this stays the helper to reach for: the
+  // CAP is the part authors get wrong, and `{{sw-min (sw-mul @index 90) 600}}` is the same thing spelled worse.
   //
   // The CAP is the point of the third argument: without it a 40-item grid delays its last card by 3.6s, so
   // the "animation" reads as a broken page. Everything past the cap simply lands together.
@@ -634,6 +684,129 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+
+  // ── LIST WINDOWING. `{{#each}}` is all-or-nothing, which made a PAGINATED ARCHIVE inexpressible: a
+  // news section with 800+ posts as child pages had no way to render "posts 10-19" on page 2. These
+  // return a windowed ARRAY, so they are written in subexpression position and compose with each other
+  // and with everything `{{#each}}` already does — including the dataset-entry flattening, because a
+  // window of entries is still an array of entries.
+  //
+  // ★ Shared rule: a MISSING count leaves the list intact instead of emptying it. `{{sw-limit posts
+  // page.data.per_page}}` with `per_page` unset renders an obviously-too-long list — visibly wrong, and
+  // fixable. Had it rendered nothing, the page would read as "no posts yet" and the author would have no
+  // way to tell a configuration slip from an empty section. An EXPLICIT 0 still means 0.
+
+  // {{#each (sw-slice list 10 20)}} → the [start, end) window, exactly Array.prototype.slice: the one
+  // meaning the name already has for every author and every agent. A NEGATIVE index counts from the end,
+  // so "the latest three" is {{#each (sw-slice posts -3)}}. Omit `end` to run to the end of the list.
+  hb.registerHelper('sw-slice', (value: unknown, start: unknown, end: unknown) => {
+    const list = asList(value);
+    const from = asCount(start) ?? 0;
+    const to = asCount(end);
+    return to === undefined ? list.slice(from) : list.slice(from, to);
+  });
+  // {{#each (sw-limit list 6)}} → the first N. {{#each (sw-offset list 6)}} → everything AFTER the first
+  // N. Compose them for an arbitrary window — `(sw-limit (sw-offset posts 20) 10)` is items 21-30 — or
+  // reach for {{sw-paginate}}, which is that same window written as a page number.
+  //
+  // ★ Unlike {{sw-slice}}, a NEGATIVE count here is 0, not an index from the end: these two take a
+  // COUNT ("how many"), where slice takes a POSITION. `(sw-offset list -3)` is therefore the whole list,
+  // not "all but the last three" — write that as `(sw-slice list 0 -3)`.
+  hb.registerHelper('sw-limit', (value: unknown, count: unknown) => {
+    const list = asList(value);
+    const n = asCount(count);
+    if (n === undefined) return list; // ★ absent count → intact, never empty
+    return list.slice(0, Math.max(0, n));
+  });
+  hb.registerHelper('sw-offset', (value: unknown, count: unknown) => {
+    const list = asList(value);
+    const n = asCount(count);
+    if (n === undefined) return list; // ★ absent count → intact, never empty
+    return list.slice(Math.max(0, n));
+  });
+  // {{#each (sw-paginate list page.data.page_no 10)}} → page N of `per`-sized pages, 1-BASED, matching
+  // the page number an author writes and a visitor reads. Page 0/negative/missing is page 1; a page past
+  // the end is empty (which is what lets an archive template be shared by every page of the archive).
+  //
+  // Named `sw-paginate`, not `sw-page`, because `page` is a top-level BINDING namespace — `{{sw-page …}}`
+  // next to `{{page.title}}` reads like a typo for one of them.
+  hb.registerHelper('sw-paginate', (value: unknown, pageNo: unknown, per: unknown) => {
+    const list = asList(value);
+    const size = asCount(per);
+    if (size === undefined || size <= 0) return list; // ★ absent/nonsense size → intact, never empty
+    const n = Math.max(1, asCount(pageNo) ?? 1);
+    const from = (n - 1) * size;
+    return list.slice(from, from + size);
+  });
+  // {{sw-length list}} → how many. An array's/string's length, an object's own-key count, else 0 — so
+  // "{{sw-length posts}} articles" and a page COUNT (below) never render NaN or an empty gap. Pair it
+  // with {{page.childrenTotal}}, which reports the true child count even when the listing was capped.
+  hb.registerHelper('sw-length', function swLength(this: unknown, ...args: unknown[]) {
+    // Handlebars always appends its options object, so a bare {{sw-length}} has length 1 (no value).
+    const value = args.length > 1 ? args[0] : undefined;
+    if (Array.isArray(value) || typeof value === 'string') return value.length;
+    if (typeof value === 'object' && value !== null) return Object.keys(value).length;
+    return 0;
+  });
+
+  // ── ARITHMETIC. The engine had none, and said so in its own docs; {{sw-stagger}} exists because one
+  // multiplication was needed badly enough to ship as a purpose-built helper. Pagination needs several
+  // more (an offset from a page number, a page COUNT from a total), so the general operations now exist.
+  // Every one of them returns a finite number or 0 — see finiteNumber() for why that matters.
+  //
+  // Two-argument operations, table-driven so they cannot drift apart in their coercion or guards.
+  // Division and remainder by zero are 0, not Infinity/NaN.
+  const BINARY_MATH: Readonly<Record<string, (a: number, b: number) => number>> = {
+    'sw-add': (a, b) => a + b,
+    'sw-sub': (a, b) => a - b,
+    'sw-mul': (a, b) => a * b,
+    'sw-div': (a, b) => (b === 0 ? 0 : a / b),
+    'sw-mod': (a, b) => (b === 0 ? 0 : a % b),
+  };
+  for (const [name, op] of Object.entries(BINARY_MATH)) {
+    hb.registerHelper(name, (a: unknown, b: unknown) => finiteNumber(op(asNumber(a) ?? 0, asNumber(b) ?? 0)));
+  }
+  // Numeric COMPARISON — `{{#if (sw-lt page.data.page_no total_pages)}}` is what makes a "next page" link
+  // conditional, and there was no `<` of any kind (only the strict eq/ne). Deliberately NUMBER-only: a
+  // non-numeric operand is FALSE rather than falling back to string order, where "10" < "9" is true and
+  // the answer would depend on how the value happened to be typed.
+  const COMPARISONS: Readonly<Record<string, (a: number, b: number) => boolean>> = {
+    'sw-lt': (a, b) => a < b,
+    'sw-gt': (a, b) => a > b,
+    'sw-lte': (a, b) => a <= b,
+    'sw-gte': (a, b) => a >= b,
+  };
+  for (const [name, op] of Object.entries(COMPARISONS)) {
+    hb.registerHelper(name, (a: unknown, b: unknown) => {
+      const x = asNumber(a);
+      const y = asNumber(b);
+      return x !== undefined && y !== undefined && op(x, y);
+    });
+  }
+  // {{sw-ceil (sw-div total 10)}} → the number of pages. Rounding is three helpers rather than a hash
+  // option because "round up" is what an author searches the reference for.
+  hb.registerHelper('sw-ceil', (value: unknown) => finiteNumber(Math.ceil(asNumber(value) ?? 0)));
+  hb.registerHelper('sw-floor', (value: unknown) => finiteNumber(Math.floor(asNumber(value) ?? 0)));
+  // {{sw-round x [decimals]}} → nearest integer, or to N decimals (capped at 10 — past that the scaling
+  // factor stops being exact and the extra digits are noise).
+  hb.registerHelper('sw-round', (value: unknown, decimals: unknown) => {
+    const n = asNumber(value) ?? 0;
+    const places = Math.min(Math.max(asCount(decimals) ?? 0, 0), 10);
+    const factor = 10 ** places;
+    return finiteNumber(Math.round(n * factor) / factor);
+  });
+  // {{sw-min a b …}} / {{sw-max a b …}} → across any number of arguments; non-numeric ones are ignored,
+  // and no numeric argument at all is 0 (Math.min() alone would be Infinity).
+  for (const [name, pick] of [
+    ['sw-min', Math.min],
+    ['sw-max', Math.max],
+  ] as const) {
+    hb.registerHelper(name, function swMinMax(this: unknown, ...args: unknown[]) {
+      // Drop the trailing options object; whatever remains are the operands.
+      const nums = args.slice(0, -1).map(asNumber).filter((n): n is number => n !== undefined);
+      return nums.length === 0 ? 0 : finiteNumber(pick(...nums));
+    });
+  }
   // {{#unless (sw-blank value)}} → does `value` have NO visible content? Returns a BOOLEAN. True when the
   // value is missing/non-string, OR when stripping its HTML tags (and decoding &nbsp;) leaves no
   // non-whitespace text AND it embeds no media element (img/svg/iframe/video/picture/audio/hr) that would
@@ -1178,8 +1351,9 @@ export interface UnknownHelperUse {
  * It exists because the render-time fallback is only *discoverable* in body text. Inside an attribute
  * (`data-sw-delay="{{multiply @index 90}}"`) the emitted `<!-- … -->` marker is not a comment at all —
  * it is attribute garbage, invisible in the page and reported by nothing. That is a real bug that
- * shipped: the effects guide recommends staggering a loop, templates have no arithmetic, and the
- * resulting `{{multiply}}` was only ever found by grepping the built artifact.
+ * shipped: the effects guide recommends staggering a loop, templates had no arithmetic at the time, and
+ * the resulting `{{multiply}}` was only ever found by grepping the built artifact. Arithmetic exists now
+ * — as `sw-mul`, not `multiply` — so the near-miss NAME is if anything a likelier mistake than before.
  *
  * A mustache counts as a CALL only when it has arguments — a bare `{{name}}` is a data path (missing →
  * empty, unchanged), and `{{#block}}` / `{{>partial}}` / `{{^inverse}}` / `{{!comment}}` are skipped.

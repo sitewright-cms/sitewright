@@ -771,7 +771,8 @@ function rejectUnknownHelpers(source: string, label?: string): void {
   throw new TemplateError(
     `${label ? `the "${label}" ` : ''}template calls {{${first.name} …}}, which is not a helper${where}. ` +
       'Check the spelling against get_reference (or the Template reference in the editor). ' +
-      'There is no arithmetic helper — to stagger a loop use {{sw-stagger @index 90}}.',
+      'Arithmetic is {{sw-add}}/{{sw-sub}}/{{sw-mul}}/{{sw-div}}/{{sw-mod}} (not add/multiply), ' +
+      'comparison is (sw-lt)/(sw-gt)/(eq); to stagger a loop use {{sw-stagger @index 90}}.',
     { line: first.line, column: first.column },
   );
 }

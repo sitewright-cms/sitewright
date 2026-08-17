@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Dra
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { api } from '../../api';
 import { useProjectEvents } from '../../lib/use-project-events';
+import { useVirtualRows } from '../../lib/virtual-rows';
 import { StockPicker } from '../media/StockPicker';
 import { RecycleBinModal } from './RecycleBinModal';
 import { UnusedFilesModal } from './UnusedFilesModal';
@@ -50,6 +51,21 @@ function childSegment(path: string, base: string): string {
 /** Only `[A-Za-z0-9 _-]` is a valid folder segment (matches MediaFolderSchema). */
 function cleanSegment(name: string): string {
   return name.trim().replace(/[^A-Za-z0-9 _-]+/g, '').trim();
+}
+
+/**
+ * The URL for a THUMBNAIL of `asset` — the smallest generated rung.
+ *
+ * ★ A bare media URL serves the `xl` variant, which is **2400px wide**. This browser paints those into
+ * a 32px list icon and a 96px grid tile, so every thumbnail was the largest file the platform makes:
+ * measured on a photo-like source, `sm` is 36KB against `xl`'s 2,120KB — roughly 59x. Each first hit is
+ * also an on-demand encode on the server, so the cost lands twice.
+ *
+ * SVG is served inline as-is and is never rasterized, so a size hint on one is only a wasted cache key.
+ */
+function thumbnailUrl(asset: MediaAsset): string {
+  if (asset.kind === 'image' && asset.format === 'svg') return asset.url;
+  return `${asset.url}?size=sm`;
 }
 
 /** A type filter for PICK mode: returns true for assets a field accepts. */
@@ -231,6 +247,23 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     });
     return sortFolders(entries, sort);
   }, [assets, folderRecords, folder, query, sort]);
+
+  /**
+   * Render only the rows on screen.
+   *
+   * Measured on a deployed instance with 3,000 assets in one folder: 75,686 DOM nodes, 3,000 `<img>`
+   * elements, a 78MB JS heap and ~334ms per search keystroke. Foldering hides it (30 folders of 100
+   * render 1,236 nodes) but does not fix it — SEARCH spans every folder, so one broad query puts the
+   * whole library back on screen regardless of how it is filed.
+   *
+   * ★ Folders and files are ONE sequence here, because that is the order they render in. Windowing only
+   * the files would leave every folder permanently mounted and shift the arithmetic by however many
+   * there are.
+   */
+  const rowCount = subfolders.length + here.length;
+  const virt = useVirtualRows(rowCount, true, { grid: view === 'grid' });
+  const visibleFolders = subfolders.slice(virt.start, virt.end);
+  const visibleAssets = here.slice(Math.max(0, virt.start - subfolders.length), Math.max(0, virt.end - subfolders.length));
 
   /** Navigate into a folder, clearing any active search so the new folder isn't silently filtered. */
   const goTo = (path: string) => {
@@ -548,10 +581,18 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               <th className="w-36 py-1 text-right font-medium">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {subfolders.map(({ seg, path, bytes }) => (
+          <tbody ref={virt.listRef as (el: HTMLTableSectionElement | null) => void}>
+            {virt.padTop > 0 && (
+              // A <tr> and not a <div>: anything else inside <tbody> is invalid HTML and browsers
+              // hoist it out of the table, which loses the reserved height entirely.
+              <tr data-virtual-spacer aria-hidden>
+                <td colSpan={4} style={{ height: virt.padTop, padding: 0 }} />
+              </tr>
+            )}
+            {visibleFolders.map(({ seg, path, bytes }) => (
               <tr
                 key={`d:${seg}`}
+                data-virtual-row
                 draggable={!pick}
                 onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path })}
                 onDragEnd={() => (dragItem.current = null)}
@@ -576,9 +617,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 </td>
               </tr>
             ))}
-            {here.map((m) => (
+            {visibleAssets.map((m) => (
               <tr
                 key={m.id}
+                data-virtual-row
                 draggable={!pick}
                 onDragStart={pick ? undefined : () => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
                 onDragEnd={() => (dragItem.current = null)}
@@ -592,7 +634,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     title={m.filename}
                   >
                     {m.kind === 'image' ? (
-                      <SkeletonImage src={m.url} alt="" className="h-8 w-8 shrink-0 rounded" />
+                      <SkeletonImage src={thumbnailUrl(m)} alt="" className="h-8 w-8 shrink-0 rounded" />
                     ) : (
                       <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
                     )}
@@ -620,7 +662,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 </td>
               </tr>
             ))}
-            {subfolders.length === 0 && here.length === 0 && (
+            {virt.padBottom > 0 && (
+              <tr data-virtual-spacer aria-hidden>
+                <td colSpan={4} style={{ height: virt.padBottom, padding: 0 }} />
+              </tr>
+            )}
+            {rowCount === 0 && (
               <tr>
                 <td colSpan={4} className="py-3 text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</td>
               </tr>
@@ -629,10 +676,15 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         </table>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-          {subfolders.map(({ seg, path, bytes }) => (
+        <div ref={virt.listRef as (el: HTMLDivElement | null) => void} className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
+          {virt.padTop > 0 && (
+            // Spans the full row so the reserved height is whole rows, never a gap in one.
+            <div data-virtual-spacer aria-hidden style={{ gridColumn: '1 / -1', height: virt.padTop }} />
+          )}
+          {visibleFolders.map(({ seg, path, bytes }) => (
             <div
               key={`d:${seg}`}
+              data-virtual-row
               draggable={!pick}
               onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path })}
                 onDragEnd={() => (dragItem.current = null)}
@@ -653,9 +705,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               )}
             </div>
           ))}
-          {here.map((m) => (
+          {visibleAssets.map((m) => (
             <figure
               key={m.id}
+              data-virtual-row
               draggable={!pick}
               onDragStart={pick ? undefined : () => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
                 onDragEnd={() => (dragItem.current = null)}
@@ -663,7 +716,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             >
               <button type="button" onClick={() => activate(m)} className="block">
                 {m.kind === 'image' ? (
-                  <SkeletonImage src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
+                  <SkeletonImage src={thumbnailUrl(m)} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
                 ) : (
                   <div className="flex h-24 w-full items-center justify-center rounded bg-white/40 dark:bg-white/5">
                     <FileTypeIcon asset={m} className="h-10 w-10" />
@@ -689,7 +742,8 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
               </div>
             </figure>
           ))}
-          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</p>}
+          {virt.padBottom > 0 && <div data-virtual-spacer aria-hidden style={{ gridColumn: '1 / -1', height: virt.padBottom }} />}
+          {rowCount === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</p>}
         </div>
       )}
 

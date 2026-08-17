@@ -64,3 +64,64 @@ describe('visibleRange', () => {
     expect(VIRTUAL_ROW_THRESHOLD).toBeGreaterThan(20);
   });
 });
+
+// ── The two things the FILE MANAGER needed that the pages list did not ────────────────────────────
+//   1. It scrolls an INNER container (the side panel), not the window. A window-scrolled virtualiser
+//      is a silent no-op there — the exact failure this feature already shipped once.
+//   2. Its grid view lays items out N-per-row, so the window has to move in ROWS, not items.
+import { columnsIn, gridRowsFor, itemRangeFor, rowHeightFrom } from '../src/lib/virtual-rows';
+
+describe('columnsIn — how many items share a row', () => {
+  it('counts the items that sit at the same offsetTop', () => {
+    expect(columnsIn([0, 0, 0, 0, 120, 120, 120, 120])).toBe(4);
+    expect(columnsIn([0, 58, 116, 174])).toBe(1); // a plain list: one per row
+  });
+
+  it('never returns 0 — an unmeasurable layout must not divide by it', () => {
+    expect(columnsIn([])).toBe(1);
+    expect(columnsIn([0])).toBe(1);
+  });
+
+  it('is not fooled by a LATER row repeating the first row’s top', () => {
+    // Only the leading run counts; anything else would over-count on a sub-pixel coincidence.
+    expect(columnsIn([0, 0, 90, 90, 0])).toBe(2);
+  });
+});
+
+describe('rowHeightFrom — the distance between ROWS, not between items', () => {
+  it('measures a grid from its distinct rows', () => {
+    // 3 columns, rows at 0 / 140 / 280 → 140, NOT the 0 gap between neighbours in a row.
+    expect(rowHeightFrom([0, 0, 0, 140, 140, 140, 280, 280, 280], 96)).toBe(140);
+  });
+
+  it('measures a plain list the same way', () => {
+    expect(rowHeightFrom([0, 58, 116, 174], 40)).toBe(58);
+  });
+
+  it('falls back to the given element height when there is only one row', () => {
+    expect(rowHeightFrom([0, 0, 0], 96)).toBe(96);
+    expect(rowHeightFrom([], 96)).toBe(96);
+  });
+});
+
+describe('gridRowsFor / itemRangeFor — windowing a grid in whole rows', () => {
+  it('converts an item count into a row count', () => {
+    expect(gridRowsFor(100, 6)).toBe(17);
+    expect(gridRowsFor(96, 6)).toBe(16);
+    expect(gridRowsFor(0, 6)).toBe(0);
+  });
+
+  it('expands a ROW range back into item indices, clamped to the count', () => {
+    expect(itemRangeFor({ start: 2, end: 5 }, 4, 100)).toEqual({ start: 8, end: 20 });
+    // The last row is short: the end clamps to the real item count rather than running past it.
+    expect(itemRangeFor({ start: 4, end: 5 }, 4, 18)).toEqual({ start: 16, end: 18 });
+  });
+
+  it('★ always starts on a row boundary, so the grid stays aligned', () => {
+    // If `start` were not a multiple of the column count, every item after the spacer would shift
+    // into the wrong column and the layout would visibly jump as you scroll.
+    for (const rowStart of [0, 1, 7, 33]) {
+      expect(itemRangeFor({ start: rowStart, end: rowStart + 2 }, 6, 10_000).start % 6).toBe(0);
+    }
+  });
+});

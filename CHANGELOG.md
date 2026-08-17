@@ -25,6 +25,42 @@ The running version of an instance is reported at `GET /version` (baked into the
   Filing assets into folders hid the problem (30 folders of 100 rendered ~1,200 nodes) but never fixed
   it: search spans every folder, so one broad query put the whole library back on screen regardless.
 
+- **Media ingress rides the AGENT LANE.** `rlAgent` exists so an API key — the agent-fleet lane — gets
+  600/min on the hot-loop routes, because a lower cap there "would just move the wall inward and surface
+  as a TOOL failure instead of a clean, retry-able 429". Every authoring route opted in; the three routes
+  by which media ENTERS a project did not. Their caps (30, 20, 30) came from the blanket Phase-F
+  rate-limit sweep, where they are shared tiers — 28 other routes carry the same number and nothing about
+  images went into choosing them. So an agent could write 600 pages a minute and import 20 images.
+
+  ★ MEASURED on a 768 MB container, 120 concurrent 1600×1067 uploads: **30 stored, 90 refused with 429,
+  in 0.6 s**, at a 327 MB peak with ZERO memory-reclaim events — the per-minute counter was the only
+  thing that stopped it, and the resource it stands in for was a third spent. After: **120/120 in 2.2 s**,
+  and 600/600 at concurrency 16 in 11.4 s, still zero refusals. With realistic 7.6 MB photos the gates
+  hold too — all stored, no 503s, no OOM kill, ~330 MB of anonymous heap (the rest of the cgroup peak is
+  reclaimable page cache from writing the files). A site clone importing 2,000–3,400 images goes from
+  ~100–170 minutes of pure rate-limit floor to ~5–8 minutes of real work.
+
+  Browser sessions are unchanged at 30/20/30, and the unauthenticated ticket-redemption route keeps its
+  own 60. What actually bounds this work is untouched: the optimize gate (3 concurrent, per-tenant fair),
+  the memory ledger (refusing with a retryable 503), the 15 MB image cap, and the large-import gate.
+
+  ★ Note a key's FIRST call still rides the base cap: the ceiling is picked in an `onRequest` hook,
+  before authentication, so it can only lift for a key some earlier request already verified.
+
+- **A multi-file drop no longer loses the batch to one refusal.** The File Manager uploaded a drop with a
+  bare loop and no per-file catch, so the FIRST failure ended it and every remaining file was never
+  attempted. Measured against a real instance: dropping 60 files stored 30, aborted at #31 with HTTP 429,
+  and reported one banner reading "rate limit exceeded — slow down" — no count, no names, and a library
+  holding half the photos with nothing to say which half. Now each file gets its own attempt, a transient
+  refusal (429 with the server's `retry-after`, or the memory ledger's retryable 503) is waited out and
+  re-sent, a long drop shows its progress ("uploading 42 of 200…", and says so when it is waiting), and
+  anything that did not land is named. The Unused Files bulk delete already worked this way.
+
+  The BROWSER cap on uploads rises to **500/min** to match: the editor uploads a drop sequentially, so a
+  session never has more than one upload in flight — a per-minute counter caps throughput without capping
+  the concurrency that is the only thing costing the server anything. Measured after: a 200-file drop
+  lands in 3.3 s with no refusal at all.
+
 ### Fixed
 
 - **★ A virtualised list inside a side panel could not be scrolled past its first window.** Scroll events

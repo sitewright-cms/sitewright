@@ -565,10 +565,19 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_pages',
     {
       description:
-        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large). Each page carries a `previewUrl` — a signed DRAFT preview of that page that needs no login. That is how you (or the user) LOOK at a page: it works with no deploy target, which most projects have none of.',
-      inputSchema: { includeSource: z.boolean().optional() },
+        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large). On a large site narrow with `q` (searches title/path/description) or page with `limit`/`offset` instead of listing everything. Each page carries a `previewUrl` — a signed DRAFT preview of that page that needs no login. That is how you (or the user) LOOK at a page: it works with no deploy target, which most projects have none of.',
+      inputSchema: {
+        includeSource: z.boolean().optional(),
+        q: z.string().max(200).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
     },
-    gate(null, ({ includeSource }: { includeSource?: boolean }) => client.listContent('page', undefined, { summary: !includeSource })),
+    gate(
+      null,
+      ({ includeSource, q, limit, offset }: { includeSource?: boolean; q?: string; limit?: number; offset?: number }) =>
+        client.listContent('page', undefined, { summary: !includeSource, q, limit, offset }),
+    ),
   );
 
   server.registerTool(
@@ -585,10 +594,21 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_content',
     {
       description:
-        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit.",
-      inputSchema: { kind: GENERIC_KIND, dataset: z.string().optional(), summary: z.boolean().optional() },
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit. `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's values) and `limit`/`offset` page through the result with a `total`; all of these compose with `dataset`, so a collection of thousands of rows is reachable without ever pulling the whole kind.",
+      inputSchema: {
+        kind: GENERIC_KIND,
+        dataset: z.string().optional(),
+        summary: z.boolean().optional(),
+        q: z.string().max(200).optional(),
+        limit: z.number().int().min(1).max(500).optional(),
+        offset: z.number().int().min(0).optional(),
+      },
     },
-    gate(null, ({ kind, dataset, summary }: { kind: string; dataset?: string; summary?: boolean }) => client.listContent(kind, dataset, { summary })),
+    gate(
+      null,
+      ({ kind, dataset, summary, q, limit, offset }: { kind: string; dataset?: string; summary?: boolean; q?: string; limit?: number; offset?: number }) =>
+        client.listContent(kind, dataset, { summary, q, limit, offset }),
+    ),
   );
 
   server.registerTool(

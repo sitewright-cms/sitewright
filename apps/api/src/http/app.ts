@@ -76,6 +76,7 @@ import {
   PREVIEW_DEFAULT_VIEWPORTS,
   siteCspHeaderFromHtml,
   DatasetSlugSchema,
+  OrderSchema,
   AiConfigSchema,
   PREVIEW_SANDBOX_CSP,
   SLOT_MAX,
@@ -160,7 +161,7 @@ import {
   pagePath,
   pagesById,
   pathToSlug,
-  childrenOf,
+  childrenView,
   parentPageView,
   pagesContext,
   referencesChildren,
@@ -168,6 +169,8 @@ import {
   widgetDatasetsForSources,
   WIDGET_PARTIALS,
   GLOBAL_WIDGETS,
+  nextOrderAfter,
+  spacedOrders,
   GLOBAL_SNIPPET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
@@ -317,6 +320,7 @@ import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
   CONTENT_KINDS,
+  MAX_SEARCH_QUERY,
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
@@ -3266,13 +3270,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // to flood the site-wide settings (criticalCss/head/scripts) write.
   app.get<{
     Params: Pick<ContentParams, 'projectId' | 'kind'>;
-    Querystring: { dataset?: string; summary?: string; limit?: string; offset?: string };
+    Querystring: { dataset?: string; summary?: string; limit?: string; offset?: string; q?: string };
   }>(
     '/projects/:projectId/content/:kind',
     { config: rlAgent(120) },
     async (req, reply) => {
       const { ctx, project: proj } = await resolveProject(req, 'content:read');
       const kind = parseGenericKind(req.params.kind);
+      // `?q=` SEARCHES (case-insensitive substring over the id + the human-facing fields). Bounded:
+      // a search term, not a document — an unbounded string is just a more expensive scan.
+      const rawQ = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+      if (rawQ.length > MAX_SEARCH_QUERY) return reply.code(400).send({ error: 'invalid `q` query parameter' });
+      // An ENTRY id is unique only PER-dataset, so `?dataset=<slug>` scopes the list to one dataset's
+      // rows. Validated against the slug charset; ignored for every other (project-global) kind.
+      let scope: string | undefined;
+      if (kind === 'entry' && req.query.dataset !== undefined) {
+        const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
+        if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
+        scope = parsed.data;
+      }
+      const filter = { ...(scope === undefined ? {} : { scope }), ...(rawQ ? { q: rawQ } : {}) };
       // `?limit=` PAGINATES. Opt-in, exactly like `?summary=1`: the unpaginated list is the shape
       // every existing caller expects, and silently truncating it would turn a memory problem into a
       // data problem. Measured on a 61-page project: one full list peaked 37 MB and three concurrent
@@ -3283,10 +3300,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // An UNPAGINATED list is the one path that can exhaust an instance through ordinary editing —
       // no gate, no bound, and every caller (File Manager, render, exports, fonts) uses it. Price it
       // from the stored bytes before reading any, and admit against the ledger like every other
-      // expensive path. A paginated caller is already bounded and skips this.
+      // expensive path. A paginated caller reads a bounded slice, so it needs no admission for what it
+      // MATERIALISES.
+      //
+      // ★ A SEARCH is admitted even when paginated, because what it costs is not what it returns.
+      // `?q=` has no index behind it: SQLite reads and `json_extract`s every row of the kind whatever
+      // `limit` says, so `?q=a&limit=1` is a full scan wearing a cheap-looking request. Pricing it by
+      // the SCANNED set (the filter WITHOUT `q`) puts it behind the same ledger as every other
+      // expensive path, so concurrent searches queue and shed instead of competing for the one CPU
+      // this single-container deployment has.
+      const scanned = rawQ ? { ...filter, q: undefined } : filter;
       let listReservation: Reservation | undefined;
-      if (!paginate) {
-        const estimate = await contentRepo.estimateListBytes(ctx, kind) * LIST_AMPLIFICATION;
+      if (!paginate || rawQ) {
+        const estimate = await contentRepo.estimateListBytes(ctx, kind, scanned) * LIST_AMPLIFICATION;
         if (estimate > LIST_ADMIT_FLOOR_BYTES) listReservation = await admitMemory(estimate, `list ${kind}`);
       }
       try {
@@ -3294,9 +3320,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ? await contentRepo.listPaged(ctx, kind, {
             limit: Math.min(rawLimit, CONTENT_PAGE_MAX),
             offset: Number(req.query.offset) || 0,
+            ...filter,
           })
         : null;
-      const items = page ? page.items : await contentRepo.list(ctx, kind);
+      const items = page ? page.items : await contentRepo.list(ctx, kind, filter);
       // `?summary=1` drops the heavy BODY fields (a page's `source` + `data`, a template/snippet `source`,
       // an entry's `values`) and describes them instead. A full page list carries every page's Handlebars
       // source — 337 KB for a 22-page imported site, past the MCP tool-output ceiling — so listing the
@@ -3324,23 +3351,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           : list;
       const project = (list: unknown[]): unknown[] =>
         withPreview(wantSummary ? summarizeContentList(kind, list) : list);
-      // Optional dataset scope for ENTRIES: an entry id is unique only PER-dataset, so a caller reading
-      // one dataset's rows passes `?dataset=<slug>` (an unscoped list returns every dataset's entries).
-      // Validated against the slug charset; ignored for every other (project-global) kind.
-      if (kind === 'entry' && req.query.dataset !== undefined) {
-        const parsed = DatasetSlugSchema.safeParse(req.query.dataset);
-        if (!parsed.success) return reply.code(400).send({ error: 'invalid `dataset` query parameter' });
-        // `listPaged` pages across every entry of the kind and the dataset filter is applied AFTER,
-        // in memory — so combining them yields a slice of "the first N rows of ALL datasets that
-        // happen to belong to X", with no total. That is wrong data wearing a plausible shape, which
-        // is worse than a refusal. Reject until listPaged can scope the filter in SQL.
-        if (paginate) {
-          return reply
-            .code(400)
-            .send({ error: '`dataset` and `limit` cannot be combined yet — omit `limit` to filter by dataset' });
-        }
-        return reply.send({ items: project(items.filter((it) => (it as { dataset?: string }).dataset === parsed.data)) });
-      }
       // `page` is only set when the caller asked to paginate, so an existing caller's response shape
       // is byte-identical to before — the extra keys appear only for a caller that opted in.
       return reply.send(
@@ -3413,19 +3423,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const existing = siblings.find((e) => e.id === entityId);
     if (existing) return typeof existing.order === 'number' ? { ...body, order: existing.order } : body;
     const ordered = siblings.filter((e) => typeof e.order === 'number');
-    // Clamped to the schema's ceiling so a pathological dataset can't push a write into a validation error.
-    const next = (n: number): number => Math.min(n, 100_000);
-    if (siblings.length === 0) return { ...body, order: 0 };
+    if (siblings.length === 0) return { ...body, order: nextOrderAfter([]) };
     if (ordered.length === 0) {
+      // The dataset predates ordering entirely: give the existing rows a spaced scale first, so the
+      // new entry has somewhere ABOVE them to land (and so the next drag has room between them).
       const sorted = [...siblings].sort(compareEntryOrder);
-      let i = 0;
-      for (const row of sorted) {
-        await contentRepo.put(ctx, 'entry', row.id, { ...row, order: next(i) });
-        i += 1;
+      const spaced = spacedOrders(sorted.length);
+      for (const [i, row] of sorted.entries()) {
+        await contentRepo.put(ctx, 'entry', row.id, { ...row, order: spaced[i] });
       }
-      return { ...body, order: next(sorted.length) };
+      return { ...body, order: nextOrderAfter(spaced) };
     }
-    return { ...body, order: next(Math.max(...ordered.map((e) => e.order as number)) + 1) };
+    // ★ `nextOrderAfter`, never `min(100_000, max + 1)`: `spacedOrders` starts at 65_536, so one
+    // re-space puts every sibling past the old ceiling and a clamped append lands the new entry in the
+    // MIDDLE of the dataset — silently, because 100_000 is still a valid order.
+    return { ...body, order: nextOrderAfter(ordered.map((e) => e.order as number)) };
   }
 
   // ---- criticalCss PARTIAL write -------------------------------------------------------------
@@ -3591,6 +3603,49 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // SEQUENTIALLY — `remove` writes a restore tombstone per entity, and serialising keeps that history
   // write ordered and the per-request DB work bounded.
   const BULK_DELETE_MAX = 200;
+  /** Kinds that carry a sibling `order`. Nothing else has a position to change. */
+  const REORDERABLE_KINDS: ReadonlySet<string> = new Set(['page', 'entry']);
+  /** Upper bound on one reorder batch — a whole re-spaced group, not a bulk-edit channel. */
+  const REORDER_MAX = 5000;
+  const ReorderBody = z.object({
+    items: z
+      .array(z.object({ id: z.string().min(1).max(200), order: OrderSchema }))
+      .min(1)
+      .max(REORDER_MAX),
+    /** Required when kind is `entry` — entry ids are unique only within their dataset. */
+    dataset: z.string().optional(),
+  });
+  /**
+   * Rewrite the sibling order of many entities at once.
+   *
+   * ★ Reordering was one PUT per moved sibling, and a dense 0..n reindex rewrites everything after the
+   * moved item — ~700 PUTs for one drag in an 831-page group, against this route family's own 60/min
+   * limit. It 429s partway and leaves the group in an order nobody chose. With midpoint insertion the
+   * ordinary move is a single PUT and never comes here; this endpoint serves the two cases that really
+   * do touch many rows: re-spacing a group whose gap ran out, and applying an explicit order.
+   */
+  app.post<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+    '/projects/:projectId/content/:kind/reorder',
+    // ★ `rl(20)`, NOT `rlAgent(…)`. rlAgent LIFTS the ceiling to 600/min for an API key, and this is a
+    // batch write on the ONE shared SQLite writer — the same reasoning that puts the bundle import and
+    // the locale fan-out on the flat limit. A tight agent loop of full-group re-spaces would stall
+    // writes for every other tenant on the instance.
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const kind = parseGenericKind(req.params.kind);
+      if (!REORDERABLE_KINDS.has(kind)) {
+        return reply.code(400).send({ error: `${kind} has no sibling order` });
+      }
+      const parsed = ReorderBody.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid request', details: parsed.error.flatten() });
+      const scope = entryScope(kind, parsed.data.dataset, reply);
+      if (scope === undefined) return reply; // 400 already sent (entry requires a dataset)
+      const updated = await contentRepo.reorder(ctx, kind, scope, parsed.data.items);
+      return reply.send({ updated });
+    },
+  );
+
   const BulkDeleteBody = z.object({
     ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX),
     /** Required when kind is `entry` — entry ids are unique only within their dataset. */
@@ -4223,7 +4278,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
         // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
         // `data`, so bound the serialized array against the same IPC ceiling as the data above.
-        const previewChildren = referencesChildren(pageSource) ? childrenOf(savedPages, page, defaultLocale) : [];
+        const previewChildListing = referencesChildren(pageSource)
+          ? childrenView(savedPages, page, defaultLocale)
+          : { children: [], total: 0, truncated: false };
+        const previewChildren = previewChildListing.children;
         if (JSON.stringify(previewChildren).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
@@ -4245,6 +4303,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           translations: translationsOf(savedPages, page, defaultLocale),
           data: page.data,
           children: previewChildren,
+          // Publish parity: the parent's REAL child count, so a capped listing reads the same in the
+          // editor as on the live site (a binding wired into only one renderer is the divergence class
+          // this codebase treats as a defect).
+          childrenTotal: previewChildListing.total,
           // `page.template` — the template ref id ('' = own code); `page.code` — the EFFECTIVE source
           // rendering this page (template-resolved). Source is gated to {{page.code}} uses (it's large).
           template: page.template ?? '',

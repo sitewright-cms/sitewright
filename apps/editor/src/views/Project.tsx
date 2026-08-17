@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
-import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
+import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
+import { hasOwnSource } from '../page-summary';
+import { useVirtualRows } from '../lib/virtual-rows';
+import { useLongPress } from '../lib/use-long-press';
+import { ContextMenu, type ContextMenuRow } from './ui/ContextMenu';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -146,8 +150,50 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   // Held in a ref so passing a fresh arrow from App can never re-trigger the mount load below.
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
+  /**
+   * FULL pages, deliberately.
+   *
+   * ★ The list was briefly switched to `?summary=1` rows and it was not safe: a summarised row has no
+   * `source`/`data`, `Page.source` is optional so TypeScript cannot tell the two apart, and FOUR write
+   * paths here spread a row straight back into `putPage` — reorder, the settings modal, duplicate, and
+   * in-preview navigation. Each would have deleted the page's code and data on the next save. Adopting
+   * summaries needs a summary type that is NOT assignable to Page (so the compiler enumerates the
+   * sites), not a swap of the fetch. The endpoint supports `?summary=1` today and MCP uses it.
+   */
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
+  /** Free-text filter over the list (title / path / id). Purely local to this screen. */
+  const [search, setSearch] = useState('');
+  /** The page a KEYBOARD reorder just moved — focus returns to its grip once it re-renders. */
+  const [keyboardMovedId, setKeyboardMovedId] = useState<string | null>(null);
+  /** The open context menu: which page, and where to draw it. */
+  const [menu, setMenu] = useState<{ page: Page; at: { x: number; y: number } } | null>(null);
+  /**
+   * The page picked up by "Move to → Select sibling…" — cut & paste for long moves.
+   *
+   * ★ Drag is a WITHIN-VIEWPORT gesture: measured, a browser auto-scrolls a drag at ~200px/s, so
+   * moving a page 700 rows would mean holding the button for three and a half minutes. Nothing is held
+   * here, so the author can scroll and SEARCH their way to the destination — which is why the search
+   * box stays usable while a page is picked up, unlike drag (where a filtered list makes "drop below
+   * the row above" meaningless).
+   */
+  const [movingId, setMovingId] = useState<string | null>(null);
+  /** The list element, for finding a row's grip after a keyboard move (it may have re-mounted). */
+  const listElRef = useRef<HTMLUListElement | null>(null);
+  /** The row a touch went down on — the long-press hook is one instance, shared by every row. */
+  const pressedPage = useRef<Page | null>(null);
+  const longPress = useLongPress((x, y) => {
+    const p = pressedPage.current;
+    if (p) setMenu({ page: p, at: { x, y } });
+  });
+  /** Long-press handlers for one row: remember which row, then defer to the single hook instance. */
+  const longPressFor = (p: Page) => ({
+    ...longPress,
+    onTouchStart: (e: React.TouchEvent) => {
+      pressedPage.current = p;
+      longPress.onTouchStart(e);
+    },
+  });
   // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
   // the list; its fields live inside that modal (no separate slug/title state here).
   const [addOpen, setAddOpen] = useState(false);
@@ -201,6 +247,30 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     () => orderPagesByTree(pagesInLocale(pages, currentLocale, defaultLocale), defaultLocale),
     [pages, currentLocale, defaultLocale],
   );
+  /**
+   * The rows actually rendered: the tree, narrowed by the search box.
+   *
+   * A match keeps its row in TREE ORDER rather than flattening — the depth indent stays meaningful and
+   * a matched child still reads as a child. Matching is over the fields visible on the row (title, own
+   * slug, id), so what you searched for is what you can see.
+   */
+  const visiblePages = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!needle) return orderedPages;
+    return orderedPages.filter(({ page: p }) =>
+      [p.title, p.path, p.id].some((v) => (v ?? '').toLowerCase().includes(needle)),
+    );
+  }, [orderedPages, search]);
+  /**
+   * Only the rows on screen are rendered once the list is long.
+   *
+   * ★ The DATA is untouched: `visiblePages` still holds every match and `pages` every page, so
+   * reorder, search and the tree all operate on the whole set — only the `.map()` below narrows.
+   * Measured on an 865-page project: 905 rows was 42,000 DOM nodes, ~2.9s to open the tab and ~200ms
+   * per keystroke in the search box.
+   */
+  const virt = useVirtualRows(visiblePages.length);
+  const windowRows = visiblePages.slice(virt.start, virt.end);
   // The HOME page (empty slug = the tree root) is the default parent for every other
   // page; "no parent" isn't offered for non-home pages.
   const homeId = pages.find((p) => p.path === '' && !isLinkPage(p))?.id ?? 'home';
@@ -283,6 +353,38 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     if (!locales.includes(currentLocale)) setCurrentLocale(defaultLocale);
   }, [locales, currentLocale, defaultLocale]);
 
+  // Escape abandons a pick-up. (The context menu handles its own Escape via the overlay stack.)
+  useEffect(() => {
+    if (!movingId) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMovingId(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [movingId]);
+
+  /**
+   * ★ Drag cleanup lives on the DOCUMENT, not on the dragged row.
+   *
+   * Once the list is virtualised the source row unmounts as soon as it scrolls out of the window, and
+   * React delegates events at the root container — so a `dragend` fired at a detached node never
+   * reaches an `onDragEnd` prop. The drag state would stay set: a stuck insertion line and a row
+   * frozen at 40% opacity until the next click. Bound while a drag is in flight only.
+   */
+  useEffect(() => {
+    if (!dragId) return;
+    const end = (): void => {
+      setDragId(null);
+      setDrop(null);
+    };
+    document.addEventListener('dragend', end);
+    document.addEventListener('drop', end);
+    return () => {
+      document.removeEventListener('dragend', end);
+      document.removeEventListener('drop', end);
+    };
+  }, [dragId]);
+
   /** Commits a drag: reorder the sibling group, apply optimistically, persist moved pages. */
   async function persistReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
     const current = pagesRef.current; // latest committed list, not a stale closure
@@ -297,23 +399,69 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     const tgtTitle = current.find((p) => p.id === targetId)?.title ?? '';
     setReorderMsg(`Moved ${srcTitle} ${pos} ${tgtTitle}`.trim());
     try {
-      await Promise.all(updated.map((p) => api.putPage(project.id, p)));
+      // ★ One changed page = a midpoint move = one PUT. More than one means the gap ran out and the
+      // group was RE-SPACED — that goes in a single transactional request, because N individual PUTs
+      // meet the content route's 60/min limit and leave the group in an order nobody chose.
+      if (updated.length === 1) {
+        await api.putPage(project.id, updated[0]!);
+      } else {
+        await api.reorderContent(project.id, 'page', updated.map((p) => ({ id: p.id, order: p.order ?? 0 })));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to reorder pages');
       await load(); // resync from the server on failure
     }
   }
 
-  /** Keyboard reordering parity for the drag handle: Arrow Up/Down move within the sibling group. */
+  /**
+   * Keyboard reordering parity for the drag handle: Arrow Up/Down move within the sibling group.
+   *
+   * ★ Virtualised, the moved row can leave the rendered window — its grip button (the element holding
+   * FOCUS) then unmounts, focus falls to `<body>`, and the next Arrow press does nothing. Before
+   * virtualisation every row stayed mounted, so this could not happen. `keyboardMovedId` re-focuses
+   * and scrolls the row back into view once it re-renders at its new position.
+   */
   function moveByKey(p: Page, dir: 'up' | 'down') {
     const group = orderedSiblings(pagesRef.current, p.id, defaultLocale);
     const i = group.findIndex((g) => g.id === p.id);
     if (i < 0) return;
     const prev = group[i - 1];
     const next = group[i + 1];
-    if (dir === 'up' && prev) void persistReorder(p.id, prev.id, 'before');
-    if (dir === 'down' && next) void persistReorder(p.id, next.id, 'after');
+    if (dir === 'up' && prev) {
+      setKeyboardMovedId(p.id);
+      void persistReorder(p.id, prev.id, 'before');
+    }
+    if (dir === 'down' && next) {
+      setKeyboardMovedId(p.id);
+      void persistReorder(p.id, next.id, 'after');
+    }
   }
+
+  /**
+   * After a KEYBOARD move, bring the row back into view and return focus to its grip.
+   *
+   * Runs on every render while a keyboard move is pending: the row may need one render to reach its
+   * new position and another for the virtual window to catch up with it, and the element only exists
+   * once both have happened.
+   */
+  useEffect(() => {
+    if (!keyboardMovedId) return;
+    const grip = listElRef.current?.querySelector<HTMLElement>(`[data-grip-for="${CSS.escape(keyboardMovedId)}"]`);
+    if (!grip) {
+      // Not rendered yet: the row is outside the virtual window, so it has no element to focus or
+      // scroll to. Scroll by the number of rows it sits beyond the window, which mounts it, and this
+      // effect runs again on the resulting render.
+      const idx = visiblePages.findIndex(({ page: q }) => q.id === keyboardMovedId);
+      if (idx >= 0 && virt.active && virt.rowHeight > 0) {
+        const rowsAway = idx < virt.start ? idx - virt.start : idx - virt.end + 1;
+        window.scrollBy({ top: rowsAway * virt.rowHeight });
+      }
+      return;
+    }
+    grip.scrollIntoView({ block: 'nearest' });
+    grip.focus();
+    setKeyboardMovedId(null);
+  });
 
   /**
    * Create a page from the full New-page settings form. The modal supplies the whole field set
@@ -491,12 +639,22 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     }
   }
 
-  /** Duplicates a page under a fresh path/id (short random suffix). */
-  async function copyPage(p: Page) {
+  /**
+   * Duplicates a page under a fresh path/id (short random suffix), placed IMMEDIATELY AFTER its source.
+   *
+   * ★ The copy used to inherit the source's exact `order` and tie with it — it only appeared adjacent
+   * because "About (Copy)" happens to sort after "About" on the title tie-break. A nav label that
+   * sorted earlier put the copy somewhere else entirely. `orderAfterSibling` places it deterministically
+   * (one write), re-spacing the group first on the rare occasion the pair has no gap between them.
+   */
+  async function duplicatePage(p: Page) {
     setError(null);
     const rand = Math.random().toString(36).slice(2, 6);
+    const siblings = orderedSiblings(pagesRef.current, p.id, defaultLocale);
+    const at = orderAfterSibling(siblings.length > 0 ? siblings : [p], p.id);
     const copy: Page = {
       ...p,
+      order: at.order,
       id: `${p.id}-${rand}`,
       // Slug-only suffix (the home copy gets a real slug — it can't be the empty root).
       path: p.path === '' ? `home-${rand}` : `${p.path}-${rand}`,
@@ -512,11 +670,70 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
       parent: p.parent ?? homeId,
     };
     try {
+      // A re-space (no gap between the source and its neighbour) goes first, in one request, so the
+      // copy has somewhere to land.
+      if (at.respace.length > 0) {
+        await api.reorderContent(project.id, 'page', at.respace.map((r: Page) => ({ id: r.id, order: r.order ?? 0 })));
+      }
       await api.putPage(project.id, copy);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to copy page');
+      setError(err instanceof Error ? err.message : 'failed to duplicate page');
     }
+  }
+
+  /** Move a page to the very top or bottom of its sibling group — one write via the same reorder path. */
+  async function moveToEdge(p: Page, edge: 'top' | 'bottom') {
+    const group = orderedSiblings(pagesRef.current, p.id, defaultLocale).filter((g) => g.id !== p.id);
+    const target = edge === 'top' ? group[0] : group.at(-1);
+    if (!target) return; // a lone page in its group is already at both ends
+    await persistReorder(p.id, target.id, edge === 'top' ? 'before' : 'after');
+  }
+
+  /**
+   * The context-menu rows for a page — the SAME handlers the row buttons call, so there is one
+   * behaviour with two entry points rather than two implementations.
+   *
+   * Conditional items mirror the row exactly: a link placeholder has no editor or preview, Home is not
+   * deletable, and translate/template only apply where the row shows them.
+   */
+  function menuRowsFor(p: Page): ContextMenuRow[] {
+    const isLink = isLinkPage(p);
+    const isHome = isHomeLike(p);
+    const group = orderedSiblings(pagesRef.current, p.id, defaultLocale).filter((g) => g.id !== p.id);
+    const rows: ContextMenuRow[] = [];
+    if (!isLink) {
+      rows.push({ kind: 'item', label: 'Open page editor', onSelect: () => void openEditor(p) });
+    }
+    rows.push({ kind: 'item', label: isLink ? 'Edit placeholder settings' : 'Edit page settings', onSelect: () => void openSettings(p) });
+    if (!isLink) {
+      rows.push({ kind: 'item', label: 'Preview in new tab', onSelect: () => void previewInTab(p) });
+    }
+    rows.push({ kind: 'divider' });
+    rows.push({ kind: 'item', label: 'Duplicate page', onSelect: () => void duplicatePage(p) });
+    if (hasOwnSource(p) && !p.template) {
+      rows.push({ kind: 'item', label: 'Save as template', onSelect: () => void saveAsTemplate(p) });
+    }
+    if (currentLocale === defaultLocale && !p.locale && !isLink && missingLocalesFor(p).length > 0) {
+      rows.push({ kind: 'item', label: 'Translate into all languages', onSelect: () => void translatePage(p) });
+    }
+    // Home is pinned first and never joins a sibling group, so it has nothing to move within.
+    if (!isHome) {
+      rows.push({
+        kind: 'submenu',
+        label: 'Move to',
+        items: [
+          { kind: 'item', label: 'Top of group', disabled: group.length === 0, onSelect: () => void moveToEdge(p, 'top') },
+          { kind: 'item', label: 'Select sibling…', disabled: group.length === 0, onSelect: () => setMovingId(p.id) },
+          { kind: 'item', label: 'Bottom of group', disabled: group.length === 0, onSelect: () => void moveToEdge(p, 'bottom') },
+        ],
+      });
+    }
+    if (!isHome) {
+      rows.push({ kind: 'divider' });
+      rows.push({ kind: 'item', label: 'Delete page', danger: true, onSelect: () => void removePage(p) });
+    }
+    return rows;
   }
 
   /** The non-default locales a default-language page is still missing a variant for (gates the action). */
@@ -561,13 +778,32 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
    * reference it. Its inherit-mode locale variants follow automatically (they resolve the
    * owner's template), so only the page itself is converted. No-op once templated.
    */
+  /**
+   * Opens the code editor on the FULL page.
+   *
+   * ★ The row in the list is a SUMMARY — its `source` and `data` are omitted. Handing that to the
+   * editor would seed the code buffer from an absent body and the first save would persist the empty
+   * page, so the body is fetched here rather than inherited from the list.
+   */
+  async function openEditor(p: Page) {
+    setError(null);
+    try {
+      setEditing((await api.getPage(project.id, p.id)).item);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to open the page');
+    }
+  }
+
   async function saveAsTemplate(p: Page) {
-    if (!p.source || p.template) return;
+    if (!hasOwnSource(p) || p.template) return;
     setError(null);
     const tplId = `${p.id}-template`;
     try {
-      await api.putTemplate(project.id, { id: tplId, name: `${p.title} layout`, source: p.source });
-      await api.putPage(project.id, { ...p, template: tplId, source: undefined });
+      // The list row has no body — read the page whose code is about to become the template.
+      const full = (await api.getPage(project.id, p.id)).item;
+      if (!full.source) return;
+      await api.putTemplate(project.id, { id: tplId, name: `${full.title} layout`, source: full.source });
+      await api.putPage(project.id, { ...full, template: tplId, source: undefined });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save as template');
@@ -593,8 +829,11 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     const inGroup = group ? pages.filter((x) => x.translationGroup === group) : [];
     const isOwner = localeOf(p, defaultLocale) === defaultLocale && inGroup.length > 1;
     if (isOwner) {
-      const followers = inGroup.filter((x) => x.id !== p.id && !x.source && !x.template);
-      const kept = inGroup.filter((x) => x.id !== p.id && (x.source || x.template));
+      // ★ `hasOwnSource`, never `!x.source`: these two lists decide which locale variants are DELETED
+      // with the page and which survive. Read against a summarised row, a raw `source` check reports
+      // every variant as an inherit-mode follower — including forked ones, which would then be deleted.
+      const followers = inGroup.filter((x) => x.id !== p.id && !hasOwnSource(x) && !x.template);
+      const kept = inGroup.filter((x) => x.id !== p.id && (hasOwnSource(x) || x.template));
       const labels = (xs: Page[]) => xs.map((x) => localeLabel(x.locale ?? defaultLocale)).join(', ');
       const parts = [`"${p.title}" is the main-language page.`];
       parts.push(
@@ -724,8 +963,40 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               </button>
             </div>
           </div>
-          <ul className="mb-8 flex flex-col gap-2">
-            {orderedPages.map(({ page: p, depth }, i) => {
+          {/* Search — a project can carry hundreds of pages, where scrolling the tree is not a way to
+              find one. Filters the rows already loaded, so it is instant and needs no round trip. */}
+          {orderedPages.length > 8 && (
+            <div className="mb-3 flex items-center gap-2">
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search pages by title, slug or id…"
+                aria-label="Search pages"
+                className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+              />
+              {search.trim() !== '' && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {visiblePages.length} of {orderedPages.length}
+                </span>
+              )}
+            </div>
+          )}
+          <ul
+            className="mb-8 flex flex-col gap-2"
+            ref={(el) => {
+              listElRef.current = el;
+              virt.listRef(el);
+            }}
+          >
+            {search.trim() !== '' && visiblePages.length === 0 && (
+              <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                No page matches “{search.trim()}”.
+              </li>
+            )}
+            {virt.padTop > 0 && <li aria-hidden style={{ height: virt.padTop }} />}
+            {windowRows.map(({ page: p, depth }, windowIndex) => {
+              const i = virt.start + windowIndex;
               // A locale home (the root of a language's subtree) is treated like the root home:
               // home icon, not draggable, not deletable (remove the language in Website Settings).
               const isHome = isHomeLike(p);
@@ -742,7 +1013,31 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               return (
                   <li
                     key={p.id}
-                    style={{ ...indent, animationDelay: `${Math.min(i, 24) * 35}ms` }}
+                    // Marks a real row (not a spacer) so the virtualiser can measure one.
+                    data-virtual-row=""
+                    // Right-click anywhere on the row. Suppressed only here — a link inside the row
+                    // keeps the browser's own menu, so "open in new tab" is never taken away.
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenu({ page: p, at: { x: e.clientX, y: e.clientY } });
+                    }}
+                    // Keyboard parity: the ContextMenu key (and Shift+F10, its universal alias) opens
+                    // the same menu, anchored to the row rather than to a pointer that does not exist.
+                    onKeyDown={(e) => {
+                      if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setMenu({ page: p, at: { x: r.left + 24, y: r.bottom } });
+                    }}
+                    {...longPressFor(p)}
+                    // A screen reader must hear "item 412 of 905", not "item 3 of 25".
+                    aria-setsize={visiblePages.length}
+                    aria-posinset={i + 1}
+                    // ★ The stagger is a ONE-TIME reveal. Virtualised, rows mount and unmount as the
+                    // window slides, so a per-position delay replays the entrance animation on every
+                    // scroll — continuous flicker instead of a single reveal. Only stagger when the
+                    // whole list mounts at once.
+                    style={{ ...indent, ...(virt.active ? {} : { animationDelay: `${Math.min(windowIndex, 24) * 35}ms` }) }}
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
                     draggable={!isHome}
@@ -776,7 +1071,14 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       setDragId(null);
                       setDrop(null);
                     }}
-                    className={`sw-stack-in group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${dragId === p.id ? 'opacity-40' : ''}`}
+                    className={`sw-stack-in group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${
+                      dragId === p.id ? 'opacity-40' : ''
+                    } ${movingId === p.id ? 'opacity-60 ring-2 ring-indigo-400' : ''} ${
+                      // Every OTHER row in the same group becomes a destination while a page is held.
+                      movingId && movingId !== p.id && canReorder(pages, movingId, p.id, defaultLocale)
+                        ? 'cursor-copy ring-1 ring-indigo-300 dark:ring-indigo-500/50'
+                        : ''
+                    }`}
                   >
                   {dropping && (
                     <span
@@ -786,11 +1088,15 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       }`}
                     />
                   )}
-                  {!isHome && (
+                  {/* Reordering is hidden while a search is active: the visible rows are a FILTERED
+                      subset, so "drop below the row above" would move the page next to a sibling the
+                      author cannot see. Clear the search to reorder. */}
+                  {!isHome && search.trim() === '' && (
                     <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right">
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}
+                      data-grip-for={p.id}
                       className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {
@@ -808,7 +1114,21 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   )}
                   <button
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
-                    onClick={() => (isLink ? void openSettings(p) : setEditing(p))}
+                    onClick={() => {
+                      // While a page is picked up, clicking a row places it AFTER that row. The whole
+                      // row is the target (not a hairline gap), which is what makes this usable on touch.
+                      if (movingId && movingId !== p.id) {
+                        const src = movingId;
+                        setMovingId(null);
+                        void persistReorder(src, p.id, 'after');
+                        return;
+                      }
+                      if (movingId === p.id) {
+                        setMovingId(null); // clicking the picked-up row puts it back down
+                        return;
+                      }
+                      void (isLink ? openSettings(p) : openEditor(p));
+                    }}
                   >
                     <span
                       aria-hidden
@@ -835,12 +1155,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     {/* Code-mode badge for a translated page: it follows the main language's
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
-                    {multilingual && p.locale && !isLink && !p.source && !p.template && (
+                    {multilingual && p.locale && !isLink && !hasOwnSource(p) && !p.template && (
                       <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white">
                         inherited
                       </span>
                     )}
-                    {multilingual && p.locale && !isLink && p.source && (
+                    {multilingual && p.locale && !isLink && hasOwnSource(p) && (
                       <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white">
                         custom code
                       </span>
@@ -856,7 +1176,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                           </button>
                         </Tooltip>
                         <Tooltip tip="Open page editor" side="top">
-                          <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => setEditing(p)}>
+                          <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => void openEditor(p)}>
                             {EDIT_ICON}
                           </button>
                         </Tooltip>
@@ -880,7 +1200,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     )}
                     {/* "Save as template" — promote a page's own code into a reusable
                         template shared by its locale siblings. Hidden once templated. */}
-                    {p.source && !p.template && (
+                    {hasOwnSource(p) && !p.template && (
                       <Tooltip tip="Promote this page's code to a reusable template" side="top">
                         <button aria-label={`Save ${p.title} as template`} className={ROW_ACTION} onClick={() => void saveAsTemplate(p)}>
                           {TEMPLATE_ICON}
@@ -889,7 +1209,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     )}
                     {!isLink && (
                       <Tooltip tip="Copy page" side="top">
-                        <button aria-label={`Copy ${p.title}`} className={ROW_ACTION} onClick={() => void copyPage(p)}>
+                        <button aria-label={`Duplicate ${p.title}`} className={ROW_ACTION} onClick={() => void duplicatePage(p)}>
                           {COPY_ICON}
                         </button>
                       </Tooltip>
@@ -910,7 +1230,28 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               );
             })}
             {pages.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No pages yet.</li>}
+            {virt.padBottom > 0 && <li aria-hidden style={{ height: virt.padBottom }} />}
           </ul>
+          {movingId && (
+            // Says what is happening and how to get out of it — a mode with no visible exit is a trap.
+            <div
+              role="status"
+              // Named: the list already has an sr-only status region for reorder announcements, and an
+              // unnamed second one is ambiguous to both a screen reader and a test.
+              aria-label="Move in progress"
+              className="sticky bottom-3 z-30 mx-auto flex w-fit items-center gap-3 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-800 shadow-lg dark:border-indigo-400/30 dark:bg-indigo-500/15 dark:text-indigo-200"
+            >
+              <span>
+                Moving “{pages.find((x) => x.id === movingId)?.title ?? 'page'}” — pick a sibling to place it after.
+              </span>
+              <button type="button" className="rounded-md px-2 py-0.5 font-medium underline-offset-2 hover:underline" onClick={() => setMovingId(null)}>
+                Cancel
+              </button>
+            </div>
+          )}
+          {menu && (
+            <ContextMenu at={menu.at} label={`Actions for ${menu.page.title}`} rows={menuRowsFor(menu.page)} onClose={() => setMenu(null)} />
+          )}
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">
             {reorderMsg}

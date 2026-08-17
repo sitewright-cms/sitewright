@@ -1,8 +1,9 @@
 import type { Page } from '@sitewright/schema';
+import { nextOrderAfter, orderBetween, spacedOrders } from '@sitewright/core';
 
 /** A page with its depth in the page tree (0 = top-level), for indented display. */
-export interface TreeRow {
-  page: Page;
+export interface TreeRow<T extends Page = Page> {
+  page: T;
   depth: number;
 }
 
@@ -41,14 +42,14 @@ export function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number 
  * `parent` isn't in the set is treated as a root; parent cycles are broken (each
  * page appears once), recursion is depth-capped, and any unreached page is appended flat.
  */
-export function orderPagesByTree(pages: readonly Page[], defaultLocale: string): TreeRow[] {
+export function orderPagesByTree<T extends Page>(pages: readonly T[], defaultLocale: string): TreeRow<T>[] {
   const present = new Set(pages.map((p) => p.id));
-  const childrenOf = new Map<string | undefined, Page[]>();
+  const childrenOf = new Map<string | undefined, T[]>();
   for (const p of pages) {
     const key = p.parent && present.has(p.parent) ? p.parent : undefined;
     childrenOf.set(key, [...(childrenOf.get(key) ?? []), p]);
   }
-  const rows: TreeRow[] = [];
+  const rows: TreeRow<T>[] = [];
   const seen = new Set<string>();
   const visit = (parentId: string | undefined, depth: number): void => {
     if (depth > MAX_TREE_DEPTH) return; // guard a pathologically deep chain (stack safety)
@@ -100,8 +101,7 @@ export function nextSiblingOrder(
   const present = new Set(pages.map((p) => p.id));
   const key = groupKey(parentId, locale, present, defaultLocale);
   const siblings = pages.filter((p) => !isHome(p) && siblingKey(p, present, defaultLocale) === key);
-  if (siblings.length === 0) return 0;
-  return Math.min(100_000, Math.max(...siblings.map(orderValue)) + 1);
+  return nextOrderAfter(siblings.map(orderValue));
 }
 
 /**
@@ -109,7 +109,7 @@ export function nextSiblingOrder(
  * display order, EXCLUDING Home (which is pinned and never reordered). Empty if `pageId` is
  * Home or absent. Used for keyboard reordering (Arrow Up/Down moves within this group).
  */
-export function orderedSiblings(pages: readonly Page[], pageId: string, defaultLocale: string): Page[] {
+export function orderedSiblings<T extends Page>(pages: readonly T[], pageId: string, defaultLocale: string): T[] {
   const byId = new Map(pages.map((p) => [p.id, p] as const));
   const page = byId.get(pageId);
   if (!page || isHome(page)) return [];
@@ -138,13 +138,13 @@ export function canReorder(pages: readonly Page[], dragId: string, targetId: str
  * within the group). Returns `[]` for an invalid or no-op move. Home (empty slug) is pinned
  * and is never part of a group, so its order is left untouched.
  */
-export function reorderWithinParent(
-  pages: readonly Page[],
+export function reorderWithinParent<T extends Page>(
+  pages: readonly T[],
   dragId: string,
   targetId: string,
   place: 'before' | 'after',
   defaultLocale: string,
-): Page[] {
+): T[] {
   if (!canReorder(pages, dragId, targetId, defaultLocale)) return [];
   const byId = new Map(pages.map((p) => [p.id, p] as const));
   const present = new Set(pages.map((p) => p.id));
@@ -158,14 +158,25 @@ export function reorderWithinParent(
   const ids = group.map((p) => p.id).filter((id) => id !== dragId);
   const targetIdx = ids.indexOf(targetId);
   if (targetIdx < 0) return [];
-  ids.splice(place === 'before' ? targetIdx : targetIdx + 1, 0, dragId);
+  const at = place === 'before' ? targetIdx : targetIdx + 1;
+  ids.splice(at, 0, dragId);
 
-  // Reassign sequential `order` by rank; emit only pages whose effective order actually
-  // changes (a page already sorting at its new rank needs no write).
-  const updated: Page[] = [];
+  // ★ MIDPOINT FIRST. The dragged page takes a value between its two new neighbours, so the ordinary
+  // move is ONE write. The dense 0..n reindex this replaced rewrote every later sibling — ~700 writes
+  // for one drag in an 831-page group, which does not fit inside the content route's rate limit.
+  const before = at > 0 ? orderValue(byId.get(ids[at - 1]!)!) : undefined;
+  const after = at + 1 < ids.length ? orderValue(byId.get(ids[at + 1]!)!) : undefined;
+  const mid = orderBetween(before, after);
+  if (mid !== null) return [{ ...byId.get(dragId)!, order: mid }];
+
+  // No integer left between the neighbours (or the group still carries a legacy dense-from-0 scale,
+  // where the top has nothing below it). RE-SPACE the whole group onto a fresh scale with room at both
+  // ends — the one case where rewriting siblings is warranted. The caller sends this in one request.
+  const spaced = spacedOrders(ids.length);
+  const updated: T[] = [];
   ids.forEach((id, i) => {
     const p = byId.get(id)!;
-    if (orderValue(p) !== i) updated.push({ ...p, order: i });
+    if (orderValue(p) !== spaced[i]) updated.push({ ...p, order: spaced[i]! });
   });
   return updated;
 }

@@ -112,7 +112,7 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
   // Sibling order comes from the PAGE TREE (`order`, set by dragging the pages list) — the legacy
   // `nav.order` is no longer written or edited here. A page still carrying only the legacy value has
   // it PROMOTED to `order`: the same number, so the page keeps its exact position, and one fewer
-  // page reading through the fallback. Both fields share the schema's 0..100_000 int bounds.
+  // page reading through the fallback. Both fields share the schema's 0..2^31-1 int bounds.
   const order = page.order ?? page.nav?.order;
   // A link placeholder: keep it routing-transparent (path:'', no code/SEO); persist only the
   // name (title), the link target + new-tab, the parent, nav placement, locale, and status.

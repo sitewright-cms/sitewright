@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
-import { AssetRefSchema, IdSchema, KeyNameSchema, NavTargetSchema, PageSlugSchema, SlugSchema } from './primitives.js';
+import { AssetRefSchema, IdSchema, KeyNameSchema, NavTargetSchema, OrderSchema, PageSlugSchema, SlugSchema } from './primitives.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
@@ -80,7 +80,7 @@ const PageFields = z
      * auto-nav menu. Set by drag-reordering the pages list (or Arrow Up/Down); a writer that wants
      * an explicit position sets this. Absent → 0, so untouched pages fall back to title order.
      */
-    order: z.number().int().min(0).max(100_000).optional(),
+    order: OrderSchema.optional(),
     /**
      * The page's language. Absent → the project's default locale. A LOCALE VARIANT
      * of a page is itself a Page with its own `path`/`title`/`description`/`data`; it
@@ -115,7 +115,7 @@ const PageFields = z
          * effective order is `order ?? nav.order ?? 0`. Since `order` always wins, setting BOTH
          * silently does nothing; the editor promotes a legacy value to `order` on the next save.
          */
-        order: z.number().int().min(0).max(100_000).optional(),
+        order: OrderSchema.optional(),
         /** Show this page's CHILD pages (pages whose `parent` is this page) in a dropdown under its nav item. */
         dropdown: z.boolean().optional(),
       })

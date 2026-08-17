@@ -159,6 +159,45 @@ export interface ExportBundle {
 /** A db handle or a transaction handle — both expose the query builder used here. */
 type Executor = Database;
 
+/** Optional narrowing shared by every list path. */
+export interface ListFilter {
+  /** Uniqueness SCOPE — the owning dataset slug for `entry`, `''` for project-global kinds. */
+  scope?: string;
+  /** Case-insensitive substring search over the entity id and its human-facing fields. */
+  q?: string;
+}
+
+/** Longest accepted `?q=` — a search term, not a document. Bounds the scan a caller can ask for. */
+export const MAX_SEARCH_QUERY = 200;
+
+/**
+ * `%` and `_` are LIKE wildcards. A query containing them must match them LITERALLY, or searching for
+ * "100%" silently matches every row (trailing wildcard) and "cotton_shirt" matches "cottonXshirt".
+ * Backslash is escaped first so it cannot escape the escape character.
+ */
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * The `?q=` predicate: a case-insensitive substring match over the entity id plus the fields a human
+ * would search by. `title`/`name`/`path`/`description` cover pages, datasets, templates, snippets and
+ * forms; `values` is the whole stored object of a dataset ENTRY, whose searchable text lives inside it
+ * rather than at the top level. Kinds without those fields simply never match on them.
+ */
+function searchClause(q: string) {
+  const needle = `%${escapeLike(q.toLowerCase())}%`;
+  const field = (path: string) => sql`lower(coalesce(json_extract(${content.data}, ${path}), '')) LIKE ${needle} ESCAPE '\\'`;
+  return sql`(
+    lower(${content.entityId}) LIKE ${needle} ESCAPE '\\'
+    OR ${field('$.title')}
+    OR ${field('$.name')}
+    OR ${field('$.path')}
+    OR ${field('$.description')}
+    OR ${field('$.values')}
+  )`;
+}
+
 /**
  * Project-scoped content access. Every query filters by `ctx.projectId` (which
  * the caller verified belongs to `ctx.orgId`); writes require owner/admin and
@@ -215,15 +254,33 @@ export class ContentRepository {
     return kind === 'settings' ? mergeLegacyTranslations(data) : data;
   }
 
-  async list(ctx: ProjectContext, kind: ContentKind): Promise<unknown[]> {
-    const rows = await this.db
-      .select()
-      .from(content)
+  async list(ctx: ProjectContext, kind: ContentKind, filter: ListFilter = {}): Promise<unknown[]> {
+    const rows = await this.db.select().from(content).where(this.listWhere(ctx, kind, filter));
+    return rows.map((row) => this.normalizeOnRead(kind, row.data));
+  }
+
+  /**
+   * The WHERE every list path shares: the project + kind, minus soft-deleted rows, plus the optional
+   * dataset scope and text search.
+   *
+   * ★ Both filters belong in SQL, not after the fact. The dataset filter used to run in memory on the
+   * caller's side, which is why it could not be combined with a page: a slice taken BEFORE the filter
+   * yields "the first N rows of ALL datasets that happen to be X", with a total that means nothing —
+   * wrong data wearing a plausible shape. Scoping here makes `?dataset=` + `?limit=` simply correct.
+   */
+  private listWhere(ctx: ProjectContext, kind: ContentKind, filter: ListFilter) {
+    return and(
+      eq(content.projectId, ctx.projectId),
+      eq(content.kind, kind),
       // Exclude soft-deleted rows (currently only media) so every list caller — File Manager, render,
       // exports, fonts — transparently skips items in the Recycle Bin. `deletedAt` is NULL for all other
       // kinds, so this is a no-op for them.
-      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
-    return rows.map((row) => this.normalizeOnRead(kind, row.data));
+      isNull(content.deletedAt),
+      // `scope` is the OWNING DATASET SLUG for entries and '' for every project-global kind, so this is
+      // the indexed column the dataset filter was always looking for.
+      filter.scope === undefined ? undefined : eq(content.scope, filter.scope),
+      filter.q ? searchClause(filter.q) : undefined,
+    );
   }
 
   /**
@@ -238,11 +295,13 @@ export class ContentRepository {
    * reads low. The caller multiplies by the measured amplification and the ledger has its own
    * headroom, so erring slightly low here is absorbed rather than fatal.
    */
-  async estimateListBytes(ctx: ProjectContext, kind: ContentKind): Promise<number> {
+  async estimateListBytes(ctx: ProjectContext, kind: ContentKind, filter: ListFilter = {}): Promise<number> {
     const rows = await this.db
       .select({ total: sql<number>`coalesce(sum(length(${content.data})), 0)` })
       .from(content)
-      .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt)));
+      // The SAME filter the list will use — a search that returns three rows must not be admitted (or
+      // shed) as though it were about to materialise the whole kind.
+      .where(this.listWhere(ctx, kind, filter));
     return Number(rows[0]?.total ?? 0);
   }
 
@@ -261,9 +320,9 @@ export class ContentRepository {
   async listPaged(
     ctx: ProjectContext,
     kind: ContentKind,
-    opts: { limit: number; offset?: number },
+    opts: { limit: number; offset?: number } & ListFilter,
   ): Promise<{ items: unknown[]; total: number; limit: number; offset: number }> {
-    const where = and(eq(content.projectId, ctx.projectId), eq(content.kind, kind), isNull(content.deletedAt));
+    const where = this.listWhere(ctx, kind, { scope: opts.scope, q: opts.q });
     const limit = Math.max(1, Math.floor(opts.limit));
     const offset = Math.max(0, Math.floor(opts.offset ?? 0));
     // Count first so a caller can page without guessing how far to go. `id` is indexed by the
@@ -959,6 +1018,8 @@ export class ContentRepository {
     kind: ContentKind,
     entityId: string,
     data: unknown,
+    /** The row, when the caller has ALREADY read it — saves a redundant SELECT in a batch. */
+    knownRow?: Awaited<ReturnType<ContentRepository['row']>>,
   ): Promise<void> {
     const now = new Date();
     // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
@@ -970,7 +1031,7 @@ export class ContentRepository {
     // bundle import and a revision restore all funnel through here — so no path can skip it.
     const clean = kind === 'imagemap' ? sanitizeImageMapConfig(data) : data;
     const scope = this.scopeForData(kind, clean);
-    const existing = await this.row(exec, ctx, kind, entityId, scope);
+    const existing = knownRow ?? (await this.row(exec, ctx, kind, entityId, scope));
     if (existing) {
       await exec
         .update(content)
@@ -1006,6 +1067,50 @@ export class ContentRepository {
       .update(content)
       .set({ data, scope: this.scopeForData('entry', data), updatedAt: new Date() })
       .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
+  }
+
+  /**
+   * Rewrite the sibling `order` of many entities of one kind, in ONE transaction.
+   *
+   * ★ Why this exists: reordering assigned a DENSE 0..n rank, so moving one item rewrote every item
+   * after it — ~700 individual PUTs for one drag in an 831-page group, against a route capped at
+   * 60/min. Midpoint insertion makes the ordinary move a single write; this is for the two cases that
+   * genuinely touch many rows: re-spacing a group whose gap ran out, and importing an explicit order.
+   *
+   * ATOMIC. An unknown id (or one belonging to another project) aborts the whole batch — a half-applied
+   * reorder is a group in an order nobody chose, and the caller cannot tell which half landed.
+   *
+   * Records NO revisions, matching `importBundle` and `applyLocaleChange`: a reorder is structural, and
+   * a 700-row re-space would otherwise bury a project's real edit history under its own bookkeeping.
+   * The entity is otherwise untouched — only `order` is replaced on the stored object.
+   */
+  async reorder(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    scope: string,
+    items: ReadonlyArray<{ id: string; order: number }>,
+  ): Promise<number> {
+    const schema = schemaFor(kind);
+    let updated = 0;
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      for (const { id, order } of items) {
+        const existing = await this.row(exec, ctx, kind, id, scope);
+        if (!existing) throw new NotFoundError(`${kind} not found: ${id}`);
+        // Re-validate the WHOLE entity, not just the number: the stored object has to remain a valid
+        // page/entry after the patch, and this is the same gate `put` applies.
+        const next = schema.parse({ ...(existing.data as Record<string, unknown>), order });
+        // ★ Hand `writeRow` the row we just read. Without it, it looks the same row up AGAIN — two
+        // SELECTs plus an UPDATE per item, all sequential inside one transaction. This runs on ONE
+        // shared SQLite writer for every tenant (busy_timeout 5s), so a long re-space is not just slow
+        // for the caller: it is a write stall for every OTHER project on the instance.
+        await this.writeRow(exec, ctx, kind, id, next, existing);
+        updated += 1;
+      }
+    });
+    // Emitted AFTER the transaction commits, so a subscriber never sees an order that was rolled back.
+    for (const { id } of items) this.events?.emit(ctx.projectId, { kind, entityId: id, op: 'put', actor: ctx.actor });
+    return updated;
   }
 
   private async row(exec: Executor, ctx: ProjectContext, kind: ContentKind, entityId: string, scope = '') {

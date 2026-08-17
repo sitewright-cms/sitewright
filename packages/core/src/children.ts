@@ -42,6 +42,16 @@ export interface PageChild {
  */
 export const MAX_PAGE_CHILDREN = 500;
 
+/** {@link childrenOf}'s result plus the count it would have returned uncapped — see {@link childrenView}. */
+export interface ChildrenView {
+  /** The listed children, capped at {@link MAX_PAGE_CHILDREN}. */
+  children: PageChild[];
+  /** How many children the parent really has (same filter, no cap) — bound as `{{page.childrenTotal}}`. */
+  total: number;
+  /** `total > children.length` — the cap dropped some. */
+  truncated: boolean;
+}
+
 /**
  * A lean read-only view of a page's PARENT, exposed to templates as the `page.parent` binding —
  * `{{page.parent.path}}`, `{{page.parent.data.x}}`. `undefined` when the page is a tree root / home or
@@ -91,15 +101,29 @@ export function parentPageView(pages: readonly Page[], page: Page, defaultLocale
  * the already-published subset (drafts excluded — the preview mirrors publish, like nav/translations).
  */
 export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: string): PageChild[] {
+  return childrenView(pages, page, defaultLocale).children;
+}
+
+/**
+ * `page.children` PLUS the true child count — so a caller can tell that {@link MAX_PAGE_CHILDREN}
+ * dropped some, and say so.
+ *
+ * ★ The cap used to be a bare `.slice()`: a parent with 831 children listed 500 and reported nothing,
+ * anywhere. That is the silent-wrong-answer class — the author sees a plausible page and has no way to
+ * learn a third of it is missing. `total` counts exactly the children that WOULD be listed (same
+ * filter), so the number is honest rather than a raw sibling count that would over-report.
+ */
+export function childrenView(pages: readonly Page[], page: Page, defaultLocale: string): ChildrenView {
   const byId = pagesById(pages);
   const pageLocale = localeOf(page, defaultLocale);
-  return pages
+  const listable = pages
     // `page.children` is a CONTENT listing (title/description/image/data) — exclude nav PLACEHOLDERS
     // (kind:'link', path:''). A placeholder is grouping/menu chrome, not a content child; leaving it in
     // leaked a degenerate entry (empty slug + rich nav label). Nav DROPDOWNS gather children separately
     // (buildNav), so they're unaffected. Collections ([param] pages) are excluded too — not real children.
     .filter((c) => c.parent === page.id && !c.collection && !isLinkPage(c) && localeOf(c, defaultLocale) === pageLocale)
-    .sort(byNavOrder)
+    .sort(byNavOrder);
+  const children = listable
     .slice(0, MAX_PAGE_CHILDREN)
     .map((c) => ({
       id: c.id,
@@ -115,4 +139,5 @@ export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: st
       order: c.order ?? c.nav?.order ?? 0,
       data: (c.data as JsonValue | undefined) ?? {},
     }));
+  return { children, total: listable.length, truncated: listable.length > children.length };
 }

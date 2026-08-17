@@ -1390,3 +1390,62 @@ describe('api client — image maps', () => {
     expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
   });
 });
+
+describe('entry list scoping', () => {
+  it('scopes listEntries to one dataset when a slug is given, and to the project when not', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listEntries('p1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry');
+
+    fetchMock.mockClear();
+    await api.listEntries('p1', 'news_de');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=news_de');
+  });
+
+  it('percent-encodes the dataset slug rather than splicing it into the query', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listEntries('p1', 'a&b=c');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=a%26b%3Dc');
+  });
+
+  it('countEntries reads the total without materialising any rows', async () => {
+    // `limit=1&summary=1` is the point: a delete confirmation needs the COUNT, not 800 bodies.
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'e1' }], total: 831 }));
+    expect(await api.countEntries('p1', 'posts')).toBe(831);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/entry?dataset=posts&limit=1&summary=1');
+  });
+});
+
+describe('bulk reorder client', () => {
+  it('posts the whole batch to the reorder endpoint for pages', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { updated: 2 }));
+    const res = await api.reorderContent('p1', 'page', [
+      { id: 'a', order: 100 },
+      { id: 'b', order: 200 },
+    ]);
+    expect(res).toEqual({ updated: 2 });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/content/page/reorder');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ items: [{ id: 'a', order: 100 }, { id: 'b', order: 200 }] });
+  });
+
+  it('carries the dataset for entries, and omits the key entirely for pages', async () => {
+    // An entry id is unique only within its dataset, so the server REQUIRES the scope for entries.
+    fetchMock.mockResolvedValue(jsonResponse(200, { updated: 1 }));
+    await api.reorderContent('p1', 'entry', [{ id: 'n_1', order: 5 }], 'news');
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ items: [{ id: 'n_1', order: 5 }], dataset: 'news' });
+
+    fetchMock.mockClear();
+    await api.reorderContent('p1', 'page', [{ id: 'a', order: 5 }]);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).not.toHaveProperty('dataset');
+  });
+
+  it('surfaces a server rejection rather than reporting a silent success', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(404, { error: 'page not found: nope' }));
+    await expect(api.reorderContent('p1', 'page', [{ id: 'nope', order: 1 }])).rejects.toMatchObject({
+      status: 404,
+      message: 'page not found: nope',
+    });
+  });
+});

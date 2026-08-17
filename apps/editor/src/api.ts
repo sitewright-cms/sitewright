@@ -570,6 +570,9 @@ export interface AgentConnection {
   expiresAt: string | null;
   lastUsedAt: string | null;
 }
+export type { PageSummary } from './page-summary';
+export { hasOwnSource } from './page-summary';
+
 export interface Release {
   publishedAt: string;
   routes: number;
@@ -1188,8 +1191,36 @@ export const api = {
     ),
 
   // --- entries ---
-  listEntries: (projectId: string) =>
-    request<{ items: Entry[] }>('GET', `/projects/${projectId}/content/entry`),
+  /**
+   * Entries — SCOPE THIS. Unscoped it returns every dataset's rows with their full values: measured at
+   * 1.85 MB on a project with 886 entries, fetched again on every reload of the screen. Pass the dataset
+   * slug whenever the caller only cares about one collection (the usual case).
+   */
+  listEntries: (projectId: string, dataset?: string) =>
+    request<{ items: Entry[] }>(
+      'GET',
+      `/projects/${projectId}/content/entry${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
+    ),
+  /**
+   * Rewrite the sibling order of many entities in ONE request.
+   *
+   * ★ Only for a RE-SPACE. The ordinary move takes the midpoint between its neighbours and is a single
+   * putPage/putEntry; this exists because a re-space touches the whole group, and doing that as N
+   * individual PUTs meets the content route's 60/min limit and leaves the group half-moved.
+   */
+  reorderContent: (projectId: string, kind: 'page' | 'entry', items: Array<{ id: string; order: number }>, dataset?: string) =>
+    request<{ updated: number }>('POST', `/projects/${projectId}/content/${kind}/reorder`, {
+      items,
+      ...(dataset ? { dataset } : {}),
+    }),
+  /** How many entries a dataset holds, without materialising any of them (reads `total` off one row). */
+  countEntries: async (projectId: string, dataset: string): Promise<number> => {
+    const res = await request<{ items: Entry[]; total: number }>(
+      'GET',
+      `/projects/${projectId}/content/entry?dataset=${encodeURIComponent(dataset)}&limit=1&summary=1`,
+    );
+    return res.total;
+  },
   // An entry id is only unique WITHIN its dataset, so read/delete carry the owning dataset slug as
   // `?dataset=`; put derives it from the entry body (entry.dataset).
   getEntry: (projectId: string, id: string, dataset: string) =>

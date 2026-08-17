@@ -283,7 +283,9 @@ describe('dataset entries default to WRITE order, not alphabetical id order', ()
     const item = ((await client.get(`/projects/${projectId}/content/entry/zeta?dataset=badges`)).json() as {
       item: { order?: number };
     }).item;
-    expect(item.order).toBe(0);
+    // POSITION is the contract, not the number: an append leaves a gap above the previous last row so
+    // the next insertion between two rows is a single write.
+    expect(typeof item.order).toBe('number');
     expect(await order()).toEqual(['zeta', 'alpha']);
   });
 
@@ -302,7 +304,11 @@ describe('dataset entries default to WRITE order, not alphabetical id order', ()
     const rows = ((await client.get(`/projects/${projectId}/content/entry?dataset=hero`)).json() as {
       items: Array<{ id: string; order?: number }>;
     }).items;
-    expect(rows.find((r) => r.id === 'config')?.order).toBe(0);
-    expect(rows.find((r) => r.id === 'second')?.order).toBe(1);
+    // The backfilled row keeps its place and the appended row lands AFTER it. (Exact values are the
+    // spaced scale, not 0/1 — the gap is what makes a later insertion one write instead of a re-space.)
+    const configOrder = rows.find((r) => r.id === 'config')?.order;
+    const secondOrder = rows.find((r) => r.id === 'second')?.order;
+    expect(configOrder).toBeGreaterThan(0);
+    expect(secondOrder!).toBeGreaterThan(configOrder!);
   });
 });

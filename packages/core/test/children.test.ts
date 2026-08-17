@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { childrenOf, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN, extractRegions, extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '../src/index.js';
+import { childrenOf, childrenView, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN, extractRegions, extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page =>
   ({ id: 'p', path: '', title: 'T', ...over }) as Page;
@@ -63,6 +63,44 @@ describe('childrenOf', () => {
     expect(out).toHaveLength(MAX_PAGE_CHILDREN);
     expect(out[0]!.id).toBe('c0'); // lowest order kept
     expect(out.at(-1)!.id).toBe(`c${MAX_PAGE_CHILDREN - 1}`);
+  });
+
+  it('reports the TRUE total when the cap truncates, so the omission is never silent', () => {
+    const parent = page({ id: 'p', path: 'p', title: 'P' });
+    const kids = Array.from({ length: MAX_PAGE_CHILDREN + 331 }, (_, i) =>
+      page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}` }),
+    );
+    const view = childrenView([parent, ...kids], parent, 'en');
+    expect(view.children).toHaveLength(MAX_PAGE_CHILDREN);
+    expect(view.total).toBe(MAX_PAGE_CHILDREN + 331);
+    expect(view.truncated).toBe(true);
+    // The listed subset is identical to what childrenOf yields — the view only ADDS the count.
+    expect(view.children.map((k) => k.id)).toEqual(childrenOf([parent, ...kids], parent, 'en').map((k) => k.id));
+  });
+
+  it('reports truncated:false and the real count when under the cap', () => {
+    const parent = page({ id: 'p', path: 'p', title: 'P' });
+    const kids = Array.from({ length: 3 }, (_, i) => page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}` }));
+    const view = childrenView([parent, ...kids], parent, 'en');
+    expect(view).toMatchObject({ total: 3, truncated: false });
+    expect(view.children).toHaveLength(3);
+  });
+
+  it('counts only the children that would be LISTED (same-locale, non-collection, non-placeholder)', () => {
+    const parent = page({ id: 'blog', path: 'blog', title: 'Blog' });
+    const view = childrenView(
+      [
+        parent,
+        page({ id: 'en1', path: 'en1', parent: 'blog', title: 'EN' }),
+        page({ id: 'de1', path: 'de1', parent: 'blog', title: 'DE', locale: 'de' }),
+        page({ id: 'coll', path: '[slug]', parent: 'blog', title: 'C', collection: { dataset: 'products', param: 'slug' } }),
+      ],
+      parent,
+      'en',
+    );
+    // A total that counted the excluded pages would report 3 and make the diagnostic lie.
+    expect(view.total).toBe(1);
+    expect(view.truncated).toBe(false);
   });
 
   it('lists only same-locale children (an overview lists its own language)', () => {

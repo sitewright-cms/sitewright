@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { Page, Template } from '@sitewright/schema';
 
-const { listPages, putPage, getSettings, listTemplates, putTemplate, addLocale, translatePage, deletePage, deletePageGroup, removeLocale } =
+const { listPages, getPage, putPage, getSettings, listTemplates, putTemplate, addLocale, translatePage, deletePage, deletePageGroup, removeLocale } =
   vi.hoisted(() => ({
     listPages: vi.fn(),
+  getPage: vi.fn(),
     putPage: vi.fn(),
     getSettings: vi.fn(),
     listTemplates: vi.fn(),
@@ -18,6 +19,7 @@ const { listPages, putPage, getSettings, listTemplates, putTemplate, addLocale, 
 vi.mock('../src/api', () => ({
   api: {
     listPages: (p: string) => listPages(p),
+    getPage: (p: string, id: string) => getPage(p, id),
     putPage: (p: string, page: Page) => putPage(p, page),
     getSettings: (p: string) => getSettings(p),
     listTemplates: (p: string) => listTemplates(p),
@@ -44,8 +46,12 @@ const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const home: Page = { id: 'home', path: '', title: 'Home', source: '<h1 data-sw-text="h">Hi</h1>' };
 const about: Page = { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<h1>About</h1>' };
 
+/** The full page, as `getPage` serves it — the only place a body comes from once the list is summarised. */
+const fullById = (_p: string, id: string) => Promise.resolve({ item: [home, about].find((x) => x.id === id) });
+
 beforeEach(() => {
   listPages.mockReset().mockResolvedValue({ items: [home, about] });
+  getPage.mockReset().mockImplementation(fullById);
   putPage.mockReset().mockResolvedValue({ item: home });
   putTemplate.mockReset().mockResolvedValue({ item: { id: 't' } });
   listTemplates.mockReset().mockResolvedValue({ items: [] });

@@ -8,6 +8,7 @@
 // `<slug>_<locale>` addressing still available (underscore — a dataset slug is a Handlebars path).
 import { isLinkPage, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
+import { nextOrderAfter } from './ordering.js';
 
 /** The site/locale HOME is the slugless page in that locale — NEVER a slugless link placeholder. */
 const isHomePage = (p: Page): boolean => p.path === '' && !isLinkPage(p);
@@ -354,9 +355,7 @@ export function nextChildOrder(
   const siblings = pages.filter(
     (p) => p.parent === parentId && localeOf(p, defaultLocale) === locale && !(p.path === '' && !isLinkPage(p)),
   );
-  if (siblings.length === 0) return 0;
-  const max = Math.max(...siblings.map((p) => p.order ?? p.nav?.order ?? 0));
-  return Math.min(100_000, max + 1);
+  return nextOrderAfter(siblings.map((p) => p.order ?? p.nav?.order ?? 0));
 }
 
 export function propagatePageToLocales(

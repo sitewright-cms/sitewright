@@ -477,9 +477,21 @@ export class SitewrightClient {
    * `source`, an entry's `values`) and describes them under `_summary` instead — a full page list carries
    * every page's Handlebars source, which on a real imported site exceeds the tool-output ceiling.
    */
-  async listContent(kind: string, dataset?: string, opts: { summary?: boolean } = {}): Promise<unknown[]> {
-    const q = datasetQuery(dataset);
-    const suffix = opts.summary ? `${q ? `${q}&` : '?'}summary=1` : q;
+  async listContent(
+    kind: string,
+    dataset?: string,
+    opts: { summary?: boolean; q?: string; limit?: number; offset?: number } = {},
+  ): Promise<unknown[]> {
+    const params = new URLSearchParams();
+    if (dataset) params.set('dataset', dataset);
+    if (opts.summary) params.set('summary', '1');
+    // `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's
+    // values); `limit`/`offset` page. All three compose, so a large project is reachable without ever
+    // materialising the whole kind.
+    if (opts.q) params.set('q', opts.q);
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    const suffix = params.size > 0 ? `?${params.toString()}` : '';
     const res = await this.request<{ items: unknown[] }>('GET', this.projectPath(`/content/${encodeURIComponent(kind)}${suffix}`));
     return res.items;
   }

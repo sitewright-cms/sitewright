@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { listPages, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
+const { listPages, getPage, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
   listPages: vi.fn(),
+  getPage: vi.fn(),
   putPage: vi.fn(),
   getSettings: vi.fn(),
   listTemplates: vi.fn(),
@@ -11,6 +12,7 @@ const { listPages, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
 vi.mock('../src/api', () => ({
   api: {
     listPages: (p: string) => listPages(p),
+    getPage: (p: string, id: string) => getPage(p, id),
     putPage: (p: string, page: Page) => putPage(p, page),
     getSettings: (p: string) => getSettings(p),
     listTemplates: (p: string) => listTemplates(p),
@@ -34,10 +36,12 @@ const pages: Page[] = [{ id: 'home', path: '', title: 'Home' }];
 
 beforeEach(() => {
   listPages.mockReset();
+  getPage.mockReset();
   putPage.mockReset();
   getSettings.mockReset();
   listTemplates.mockReset();
   listPages.mockResolvedValue({ items: pages });
+  getPage.mockResolvedValue({ item: pages[0] });
   putPage.mockResolvedValue({ item: pages[0] });
   // Single-locale project by default → i18n actions stay hidden.
   getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en'] } } });
@@ -72,7 +76,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('opens an owner on a page in CONTENT mode (the default for everyone)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
-    expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
+    expect(await screen.findByText('PAGE EDITOR mode=content')).toBeInTheDocument();
     // The list (and its add-page button) stays mounted behind the modal.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
@@ -80,7 +84,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('opens a member on a page in CONTENT mode (the same default; the in-modal toggle reaches Code)', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
-    expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
+    expect(await screen.findByText('PAGE EDITOR mode=content')).toBeInTheDocument();
   });
 
   it('"Add page" creates a code-first page carrying a Handlebars source', async () => {

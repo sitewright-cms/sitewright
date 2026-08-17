@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
-import { compareEntryOrder } from '@sitewright/core';
+import { compareEntryOrder, reorderList } from '@sitewright/core';
+import { useVirtualRows } from '../lib/virtual-rows';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
-import { datasetSlugify, defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
+import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
@@ -65,6 +66,11 @@ export function DatasetManager({ project }: { project: Project }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
+  // Always-current selection for `load()`, which is also called from event handlers and callbacks that
+  // captured an older render's `selId`. Entries are fetched per DATASET, so loading the wrong one is
+  // not a stale-render curiosity — it would show another collection's rows.
+  const selIdRef = useRef<string | null>(null);
+  selIdRef.current = selId;
   const [datasetQuery, setDatasetQuery] = useState(''); // search filter for the dataset list
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -86,6 +92,14 @@ export function DatasetManager({ project }: { project: Project }) {
   // Free-text filter over the selected dataset's entries.
   const [entryQuery, setEntryQuery] = useState('');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  /**
+   * Entries of the datasets this one REFERENCES — the options a `reference` field's picker offers.
+   *
+   * ★ `entries` holds the SELECTED dataset only, and a reference almost always points at a DIFFERENT
+   * dataset, so passing `entries` straight to the picker would offer zero options and read as "that
+   * collection is empty". Loaded when the entry editor opens, for exactly the datasets referenced.
+   */
+  const [refEntries, setRefEntries] = useState<Entry[]>([]);
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
   const [renaming, setRenaming] = useState(false); // the rename-dataset modal is open
@@ -138,14 +152,27 @@ export function DatasetManager({ project }: { project: Project }) {
     if (dragHeld.current) panelHold?.release();
   }, [panelHold]);
 
-  async function load(isActive: () => boolean = () => true) {
+  /**
+   * Loads the dataset list, plus the entries of the SELECTED dataset only.
+   *
+   * ★ This used to fetch every entry of every dataset with full values — measured at 1.85 MB on a
+   * project with 886 rows, re-fetched on every reload and on every agent edit event. Nothing on this
+   * screen reads another dataset's rows: the two operations that legitimately need them (duplicate,
+   * delete-count) fetch what they need at the moment they run.
+   */
+  async function load(isActive: () => boolean = () => true, selectId: string | null = selIdRef.current) {
     try {
-      const [ds, en] = await Promise.all([
-        api.listDatasets(project.id),
-        api.listEntries(project.id),
-      ]);
+      const ds = await api.listDatasets(project.id);
       if (!isActive()) return;
       setDatasets(ds.items);
+      // ★ Resolve the SLUG from the freshly loaded list, never from the selection id. A dataset RENAME
+      // keeps the id and changes the slug, so an id-as-slug fetch (or a slug captured before the
+      // reload) asks for a collection that no longer exists and quietly returns an empty list — the
+      // rename appears to have eaten every entry. Sequential for that reason: the dataset list is what
+      // tells us which collection to read.
+      const slug = ds.items.find((d) => d.id === selectId)?.slug ?? null;
+      const en = slug ? await api.listEntries(project.id, slug) : { items: [] as Entry[] };
+      if (!isActive()) return;
       setEntries(en.items);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load data');
@@ -163,7 +190,33 @@ export function DatasetManager({ project }: { project: Project }) {
     return () => {
       active = false;
     };
-  }, [project.id]);
+    // Re-runs on SELECTION too: entries are fetched per dataset, so picking another one must fetch its
+    // rows. (`load` reads the current selection from the ref, so it is not a dependency.)
+  }, [project.id, selId]);
+
+  // Referenced datasets' rows, loaded only while the entry editor is open (nothing else offers a picker).
+  useEffect(() => {
+    if (!editingEntry || !selected) {
+      setRefEntries([]);
+      return;
+    }
+    const targets = [...new Set(selected.fields.map(fieldReferenceDataset).filter((t) => t && t !== selected.slug))];
+    if (targets.length === 0) {
+      setRefEntries([]);
+      return;
+    }
+    let active = true;
+    void Promise.all(targets.map((t) => api.listEntries(project.id, t)))
+      .then((res) => {
+        if (active) setRefEntries(res.flatMap((r) => r.items));
+      })
+      .catch(() => {
+        if (active) setRefEntries([]); // a picker with no options beats a broken modal
+      });
+    return () => {
+      active = false;
+    };
+  }, [editingEntry, selected, project.id]);
 
   // Reset the schema draft ONLY when the selection actually changes — never on a
   // background data reload (which would discard the user's unsaved schema edits).
@@ -291,8 +344,10 @@ export function DatasetManager({ project }: { project: Project }) {
     duplicatingDataset.current = true;
     setError(null);
     const newSlug = uniqueSlug(`${src.slug}_copy`, new Set(datasets.map((d) => d.id)), '_');
-    const srcEntries = entries.filter((e) => e.dataset === src.slug).slice().sort(compareEntryOrder);
     try {
+      // The loaded `entries` hold the SELECTED dataset only, and the row being duplicated may be a
+      // different one — read the source's rows rather than silently cloning an empty collection.
+      const srcEntries = (await api.listEntries(project.id, src.slug)).items.slice().sort(compareEntryOrder);
       await api.putDataset(project.id, { id: newSlug, name: `${src.name} copy`, slug: newSlug, fields: src.fields.map((f) => ({ ...f })) });
       // Fresh, collision-free keys for the cloned entries (the set grows as each id is minted).
       const usedIds = new Set<string>();
@@ -315,7 +370,9 @@ export function DatasetManager({ project }: { project: Project }) {
   async function removeDataset(id: string) {
     const ds = datasets.find((d) => d.id === id);
     const name = ds?.name ?? id;
-    const count = entries.filter((e) => e.dataset === (ds?.slug ?? '')).length;
+    // Counted server-side: the rows of a dataset that isn't selected are not loaded, and a confirm
+    // prompt does not need them — `?limit=1` returns the total without the bodies.
+    const count = ds ? await api.countEntries(project.id, ds.slug) : 0;
     const ok = await confirm({
       title: 'Delete dataset',
       message: `Delete the "${name}" dataset and all ${count} of its ${count === 1 ? 'entry' : 'entries'}? This cannot be undone.`,
@@ -356,24 +413,32 @@ export function DatasetManager({ project }: { project: Project }) {
     }
   }
 
-  // Drag-reorder within the selected dataset: move `sourceId` before/after `targetId`, then persist a
-  // dense `order` (0,1,2,…) for every entry whose position changed.
+  /**
+   * Drag-reorder within the selected dataset: move `sourceId` before/after `targetId`.
+   *
+   * ★ The moved entry takes the MIDPOINT between its two new neighbours, so the ordinary move is one
+   * write. This used to reassign a dense 0,1,2… to the whole dataset, which meant an 831-entry
+   * collection sent ~700 PUTs for one drag — past the content route's 60/min limit, landing the
+   * collection in an order nobody chose. A re-space (the gap ran out) goes in ONE transactional request.
+   */
   async function persistEntryReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
     if (!selected || sourceId === targetId || reordering.current) return; // ignore a drag while one is in flight
-    const list = entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder);
-    const from = list.findIndex((e) => e.id === sourceId);
-    if (from === -1) return;
-    const [moved] = list.splice(from, 1);
-    const target = list.findIndex((e) => e.id === targetId);
-    if (target === -1) return;
-    list.splice(target + (pos === 'after' ? 1 : 0), 0, moved!);
+    const list = entries.filter((e) => e.dataset === selected.slug);
+    const changed = reorderList(list, sourceId, targetId, pos);
+    if (changed.length === 0) return;
     reordering.current = true;
     setError(null);
     try {
-      // Only PUT the entries whose order actually changed. (Dense reindex like the pages list; a
-      // single bulk-reorder endpoint is a future optimization if datasets ever grow past ~60 entries,
-      // where this many writes would meet the content-write rate limit.)
-      await Promise.all(list.flatMap((e, i) => (e.order === i ? [] : [api.putEntry(project.id, { ...e, order: i })])));
+      if (changed.length === 1) {
+        await api.putEntry(project.id, changed[0]!);
+      } else {
+        await api.reorderContent(
+          project.id,
+          'entry',
+          changed.map((e) => ({ id: e.id, order: e.order ?? 0 })),
+          selected.slug,
+        );
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to reorder entries');
@@ -418,6 +483,37 @@ export function DatasetManager({ project }: { project: Project }) {
     // `datasetEntries` is rebuilt each render; depending on the identity would defeat the memo, so key
     // it on what actually decides the result.
   }, [entryQuery, selected, entries]);
+  /**
+   * Only the rows on screen are rendered once the list is long.
+   *
+   * ★ The DATA is untouched — `datasetEntries` stays the source for reorder neighbours and key
+   * uniqueness, and `shownEntries` still holds every match. Only the `.map()` narrows. A collection
+   * with 831 rows otherwise pays the same cost the Pages tab did: thousands of DOM nodes for the ~18
+   * rows anyone can see.
+   */
+  const virt = useVirtualRows(shownEntries.length);
+  const windowEntries = shownEntries.slice(virt.start, virt.end);
+
+  /**
+   * ★ Drag cleanup lives on the DOCUMENT, not on the dragged row: virtualised, the source row
+   * unmounts when it scrolls out of the window, and React (which delegates at the root) never sees a
+   * `dragend` fired at a detached node — leaving a stuck insertion line and a held-open panel.
+   */
+  useEffect(() => {
+    if (!dragId) return;
+    const end = (): void => {
+      setDragId(null);
+      setDrop(null);
+      releasePanel();
+    };
+    document.addEventListener('dragend', end);
+    document.addEventListener('drop', end);
+    return () => {
+      document.removeEventListener('dragend', end);
+      document.removeEventListener('drop', end);
+    };
+  }, [dragId]);
+
   // The field that serves as the entry title in lists: the FIRST text field (see entryLabel). Drag
   // to reorder so a different field becomes the title.
   const titleFieldName = draftFields.find((f) => f.type === 'text')?.name;
@@ -821,10 +917,15 @@ export function DatasetManager({ project }: { project: Project }) {
                 </button>
               </div>
 
-              <ul className="mb-3 flex flex-col gap-1">
-                {shownEntries.map((e) => (
+              <ul className="mb-3 flex flex-col gap-1" ref={virt.listRef as (el: HTMLUListElement | null) => void}>
+                {virt.padTop > 0 && <li aria-hidden style={{ height: virt.padTop }} />}
+                {windowEntries.map((e, windowIndex) => (
                   <li
                     key={e.id}
+                    // Marks a real row (not a spacer) so the virtualiser can measure one.
+                    data-virtual-row=""
+                    aria-setsize={shownEntries.length}
+                    aria-posinset={virt.start + windowIndex + 1}
                     draggable
                     onDragStart={(ev) => {
                       setDragId(e.id);
@@ -910,6 +1011,7 @@ export function DatasetManager({ project }: { project: Project }) {
                 {datasetEntries.length > 0 && shownEntries.length === 0 && (
                   <li className="text-sm text-slate-500 dark:text-slate-400">No entry matches “{entryQuery.trim()}”.</li>
                 )}
+                {virt.padBottom > 0 && <li aria-hidden style={{ height: virt.padBottom }} />}
               </ul>
 
               {editingEntry && (
@@ -921,7 +1023,8 @@ export function DatasetManager({ project }: { project: Project }) {
                   keyEditable={newEntry}
                   existingIds={new Set(datasetEntries.map((e) => e.id))}
                   allDatasets={datasets}
-                  allEntries={entries}
+                  // The selected dataset's rows PLUS the referenced datasets' rows the picker needs.
+                  allEntries={[...entries, ...refEntries]}
                   // Reload the list/preview but KEEP the modal open (it resets its own dirty baseline);
                   // closing is an explicit user action (× / Esc / backdrop).
                   onSaved={() => void load()}

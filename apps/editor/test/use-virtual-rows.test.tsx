@@ -33,10 +33,16 @@ function List({ count }: { count: number }) {
 /** jsdom does no layout, so the geometry the hook reads is stubbed to a realistic list. */
 function stubGeometry(): void {
   vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(VIEWPORT);
+  // ★ O(1) per read. jsdom's own `offsetTop` is a no-op, so the STUB's cost is the whole cost — and the
+  // hook samples up to 60 rows per measurement. Materialising an 865-child array on each of those reads
+  // made a 20s test take longer than that under CI's CPU contention, while passing on an idle machine.
   vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
-    const rows = [...(this.parentElement?.children ?? [])].filter((c) => c.hasAttribute('data-virtual-row'));
-    const idx = rows.indexOf(this);
-    return idx < 0 ? 0 : idx * ROW_H;
+    if (!this.hasAttribute('data-virtual-row')) return 0;
+    let idx = 0;
+    for (let prev = this.previousElementSibling; prev; prev = prev.previousElementSibling) {
+      if (prev.hasAttribute('data-virtual-row')) idx += 1;
+    }
+    return idx * ROW_H;
   });
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(ROW_H);
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -153,9 +159,12 @@ describe('useVirtualRows — grid layout', () => {
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(VIEWPORT);
     // `columns` cells share each row top.
     vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
-      const cells = [...(this.parentElement?.children ?? [])].filter((c) => c.hasAttribute('data-virtual-row'));
-      const idx = cells.indexOf(this);
-      return idx < 0 ? 0 : Math.floor(idx / columns) * GRID_ROW_H;
+      if (!this.hasAttribute('data-virtual-row')) return 0;
+      let idx = 0; // O(1) per read — see the note on the list stub above
+      for (let prev = this.previousElementSibling; prev; prev = prev.previousElementSibling) {
+        if (prev.hasAttribute('data-virtual-row')) idx += 1;
+      }
+      return Math.floor(idx / columns) * GRID_ROW_H;
     });
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(GRID_ROW_H);
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
@@ -245,9 +254,12 @@ describe('useVirtualRows — an inner scroll container', () => {
     // A viewport TALLER than the host: if the hook read the window it would render far more rows.
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(4000);
     vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
-      const rows = [...(this.parentElement?.children ?? [])].filter((c) => c.hasAttribute('data-virtual-row'));
-      const idx = rows.indexOf(this);
-      return idx < 0 ? 0 : idx * ROW_H;
+      if (!this.hasAttribute('data-virtual-row')) return 0;
+      let idx = 0; // O(1) per read — see the note on the list stub above
+      for (let prev = this.previousElementSibling; prev; prev = prev.previousElementSibling) {
+        if (prev.hasAttribute('data-virtual-row')) idx += 1;
+      }
+      return idx * ROW_H;
     });
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(ROW_H);
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {

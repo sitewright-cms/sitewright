@@ -3,6 +3,7 @@ import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { api } from '../../api';
 import { useProjectEvents } from '../../lib/use-project-events';
 import { useVirtualRows } from '../../lib/virtual-rows';
+import { uploadBatch } from '../../lib/upload-batch';
 import { StockPicker } from '../media/StockPicker';
 import { RecycleBinModal } from './RecycleBinModal';
 import { UnusedFilesModal } from './UnusedFilesModal';
@@ -160,6 +161,8 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const [folderRecords, setFolderRecords] = useState<MediaFolderRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  /** Where a multi-file drop has got to, and whether it is currently waiting out a rate limit. */
+  const [progress, setProgress] = useState<{ done: number; total: number; waitingFor: number } | null>(null);
   const [cleanSvg, setCleanSvg] = useState(true);
   const [stockOpen, setStockOpen] = useState(false);
   const [recycleOpen, setRecycleOpen] = useState(false);
@@ -292,21 +295,47 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   }
 
   // ---- uploads -------------------------------------------------------------
+  /**
+   * Upload a drop, one file at a time.
+   *
+   * ★ This used to be a bare `for` loop with no per-file catch, so the FIRST refusal ended the batch and
+   * every remaining file was never attempted. Measured against a real instance: dropping 60 files stored
+   * 30, aborted at #31 with HTTP 429, and reported one banner with no count and no names. Now each file
+   * gets its own attempt, a transient refusal is waited out (see uploadBatch), and what did not land is
+   * named — the same shape the Unused Files bulk delete already had.
+   */
   async function uploadFiles(files: FileList | File[], target = folder) {
+    const list = Array.from(files);
+    if (list.length === 0) return;
     setUploading(true);
+    setProgress(null);
     setError(null);
     try {
-      for (const file of Array.from(files)) {
-        // Tidy an uploaded SVG (strip editor cruft + pretty-print) before it's stored, when enabled.
-        // Best-effort: a non-SVG or unparseable file is passed through untouched; the server sanitizes regardless.
-        const toSend = cleanSvg ? await cleanSvgFile(file) : file;
-        await api.uploadMedia(projectId, toSend, target);
-      }
+      const { stored, failed } = await uploadBatch(list, {
+        upload: async (file) => {
+          // Tidy an uploaded SVG (strip editor cruft + pretty-print) before it's stored, when enabled.
+          // Best-effort: a non-SVG or unparseable file is passed through untouched; the server sanitizes regardless.
+          const toSend = cleanSvg ? await cleanSvgFile(file) : file;
+          await api.uploadMedia(projectId, toSend, target);
+        },
+        // Only worth showing for a real batch — a single file is done before the label could be read.
+        onProgress: (done, total) => setProgress(total > 1 ? { done, total, waitingFor: 0 } : null),
+        onPause: (seconds) => setProgress((p) => (p ? { ...p, waitingFor: seconds } : p)),
+      });
       await load();
+      if (failed.length > 0) {
+        // Say how many landed AND name the first few that did not: "12 failed" sends an author hunting
+        // through a library of hundreds to work out which.
+        const names = failed.slice(0, 3).join(', ');
+        const rest = failed.length > 3 ? ` and ${failed.length - 3} more` : '';
+        setError(`${stored} of ${list.length} uploaded — ${failed.length} failed (${names}${rest}).`);
+      }
     } catch (err) {
+      // uploadBatch does not throw; this covers a failure of the reload itself.
       setError(err instanceof Error ? err.message : 'upload failed');
     } finally {
       setUploading(false);
+      setProgress(null);
       if (fileInput.current) fileInput.current.value = '';
     }
   }
@@ -463,7 +492,16 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
             Any file type. Images become AVIF/WebP; other files are stored as downloads.
             {folder && <> Filing into <strong>{folder}</strong>.</>}
-            {uploading && <span className="ml-1 text-indigo-500 dark:text-indigo-300">uploading…</span>}
+            {uploading && (
+              <span className="ml-1 text-indigo-500 dark:text-indigo-300" role="status">
+                {progress === null
+                  ? 'uploading…'
+                  : progress.waitingFor > 0
+                    ? // Say WHY it paused. Silence here is indistinguishable from a hang.
+                      `uploaded ${progress.done} of ${progress.total} — busy, resuming in ${progress.waitingFor}s`
+                    : `uploading ${progress.done} of ${progress.total}…`}
+              </span>
+            )}
           </p>
           <label className="mt-0.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
             <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />

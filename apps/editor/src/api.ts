@@ -152,6 +152,11 @@ export class ApiError extends Error {
     message: string,
     /** Present for 400 validation failures — the per-field messages the server returned. */
     public readonly details?: ApiErrorDetails,
+    /**
+     * The server's `retry-after`, in seconds, when it sent one. A 429 always does; it is what turns a
+     * refused bulk upload from a lost batch into a slower one.
+     */
+    public readonly retryAfterSeconds?: number,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -200,7 +205,9 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
     // non-JSON error body — keep statusText
   }
   notifyIfUnauthorized(res.status);
-  return new ApiError(res.status, message, details);
+  // `retry-after` is seconds here (the limiter never sends the HTTP-date form).
+  const after = Number(res.headers.get('retry-after'));
+  return new ApiError(res.status, message, details, Number.isFinite(after) && after > 0 ? after : undefined);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {

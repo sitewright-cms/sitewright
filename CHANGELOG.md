@@ -47,6 +47,20 @@ The running version of an instance is reported at `GET /version` (baked into the
   ★ Note a key's FIRST call still rides the base cap: the ceiling is picked in an `onRequest` hook,
   before authentication, so it can only lift for a key some earlier request already verified.
 
+- **A multi-file drop no longer loses the batch to one refusal.** The File Manager uploaded a drop with a
+  bare loop and no per-file catch, so the FIRST failure ended it and every remaining file was never
+  attempted. Measured against a real instance: dropping 60 files stored 30, aborted at #31 with HTTP 429,
+  and reported one banner reading "rate limit exceeded — slow down" — no count, no names, and a library
+  holding half the photos with nothing to say which half. Now each file gets its own attempt, a transient
+  refusal (429 with the server's `retry-after`, or the memory ledger's retryable 503) is waited out and
+  re-sent, a long drop shows its progress ("uploading 42 of 200…", and says so when it is waiting), and
+  anything that did not land is named. The Unused Files bulk delete already worked this way.
+
+  The BROWSER cap on uploads rises to **500/min** to match: the editor uploads a drop sequentially, so a
+  session never has more than one upload in flight — a per-minute counter caps throughput without capping
+  the concurrency that is the only thing costing the server anything. Measured after: a 200-file drop
+  lands in 3.3 s with no refusal at all.
+
 ### Fixed
 
 - **★ A virtualised list inside a side panel could not be scrolled past its first window.** Scroll events

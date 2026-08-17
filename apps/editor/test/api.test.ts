@@ -11,11 +11,19 @@ afterEach(() => {
   setUnauthorizedHandler(undefined);
 });
 
-function jsonResponse(status: number, body: unknown) {
+/**
+ * A stand-in Response.
+ *
+ * ★ It carries `headers`. A real Response always does, and the client reads `retry-after` off an error
+ * to decide how long to wait before re-sending — a double without headers throws a TypeError there and
+ * the failure reads as "the error path is broken" rather than "the double is incomplete".
+ */
+function jsonResponse(status: number, body: unknown, headers: Record<string, string> = {}) {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: 'x',
+    headers: new Headers(headers),
     json: async () => body,
   } as Response;
 }
@@ -43,8 +51,20 @@ describe('api client', () => {
     expect(await api.logout()).toBeUndefined();
   });
 
+  it('★ carries the server’s retry-after, so a refused bulk upload can be resumed', async () => {
+    // Without this the batch uploader has nothing to wait on and a 429 becomes a lost file.
+    fetchMock.mockResolvedValue(jsonResponse(429, { error: 'rate limit exceeded — slow down' }, { 'retry-after': '17' }));
+    await expect(api.listMedia('p')).rejects.toMatchObject({ status: 429, retryAfterSeconds: 17 });
+  });
+
+  it('leaves retryAfterSeconds undefined when the server sent none', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(500, { error: 'internal error' }));
+    await expect(api.listMedia('p')).rejects.toMatchObject({ status: 500, retryAfterSeconds: undefined });
+  });
+
   it('falls back to statusText when the error body is not JSON', async () => {
     fetchMock.mockResolvedValue({
+      headers: new Headers(),
       ok: false,
       status: 500,
       statusText: 'Server Error',

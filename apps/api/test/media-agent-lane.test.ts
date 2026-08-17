@@ -76,7 +76,10 @@ const capFor = (res: LightMyRequestResponse): number => Number(res.headers['x-ra
 
 /** Every route by which media ENTERS a project. */
 const INGRESS = [
-  { what: 'multipart upload', method: 'POST' as const, path: '/media', browser: 30 },
+  // ★ 500 for a BROWSER too: the editor uploads a drop sequentially, so a session never has more than
+  // one upload in flight and the per-minute counter caps throughput without capping concurrency. A human
+  // dropping 60 files used to store 30 and never attempt the other 29.
+  { what: 'multipart upload', method: 'POST' as const, path: '/media', browser: 500 },
   { what: 'import_image (import-url)', method: 'POST' as const, path: '/media/import-url', browser: 20 },
   { what: 'upload ticket', method: 'POST' as const, path: '/media/upload-ticket', browser: 30 },
 ];
@@ -98,7 +101,7 @@ describe('media ingress rides the agent lane', () => {
     const token = (key.json() as { token: string }).token;
 
     const first = await app.inject({ method: 'POST', url: `${base}/media`, headers: { authorization: `Bearer ${token}` }, payload: {} });
-    expect(capFor(first)).toBe(30);
+    expect(capFor(first)).toBe(500);
     const second = await app.inject({ method: 'POST', url: `${base}/media`, headers: { authorization: `Bearer ${token}` }, payload: {} });
     expect(capFor(second), 'the same key lifts once it has been seen').toBe(600);
   });

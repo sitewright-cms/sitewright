@@ -5071,9 +5071,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // memory ledger (12MB reserved per encode, refusing with a retryable 503) and the 15MB image cap.
       // MEASURED on a 768MB container: 120 concurrent 1600x1067 uploads stored 30 and refused 90 with
       // 429 — in 0.6s, at a 327MB peak with ZERO reclaim events. The counter was the only thing that
-      // stopped it. A site clone importing 2,000-3,400 images paid ~100 minutes to it. Browser sessions
-      // keep 30: a human drops files one at a time, and the editor uploads them SEQUENTIALLY.
-      { config: rlAgent(30) },
+      // stopped it. A site clone importing 2,000-3,400 images paid ~100 minutes to it.
+      //
+      // ★ The BROWSER cap rises too, to 500/min, because on this route it protects nobody. The editor
+      // uploads a drop SEQUENTIALLY, so one session never has more than a single upload in flight — a
+      // per-minute counter caps throughput without capping concurrency, which is the only thing that
+      // costs the server anything. MEASURED: a human dropping 60 files stored 30 and had 29 never
+      // attempted. What bounds the work is the optimize gate + the memory ledger, which held 600
+      // uploads at concurrency 16 with zero refusals and ~330MB of heap.
+      { config: rlAgent(500) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
         // Reject before reading the (potentially large) upload for non-writers.

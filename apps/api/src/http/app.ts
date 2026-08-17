@@ -5065,7 +5065,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
     app.post<{ Params: { projectId: string }; Querystring: { folder?: string; family?: string; weight?: string; style?: string; fallback?: string } }>(
       '/projects/:projectId/media',
-      { config: rl(30) },
+      // ★ On the AGENT LANE. 30/min came from the blanket Phase-F sweep, where it is a shared tier — 28
+      // other routes carry the same number and nothing about images went into choosing it. What bounds
+      // this work is purpose-built and untouched: the optimize gate (3 concurrent, per-tenant fair), the
+      // memory ledger (12MB reserved per encode, refusing with a retryable 503) and the 15MB image cap.
+      // MEASURED on a 768MB container: 120 concurrent 1600x1067 uploads stored 30 and refused 90 with
+      // 429 — in 0.6s, at a 327MB peak with ZERO reclaim events. The counter was the only thing that
+      // stopped it. A site clone importing 2,000-3,400 images paid ~100 minutes to it. Browser sessions
+      // keep 30: a human drops files one at a time, and the editor uploads them SEQUENTIALLY.
+      { config: rlAgent(30) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
         // Reject before reading the (potentially large) upload for non-writers.
@@ -5121,7 +5129,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
      */
     app.post<{ Params: { projectId: string }; Body: unknown }>(
       '/projects/:projectId/media/upload-ticket',
-      { config: rl(30) },
+      // ★ On the AGENT LANE with the other ingress routes. NOTE the REDEMPTION route (PUT
+      // /media-upload/:token) stays at 60/min: it is unauthenticated — it carries only a ticket — so it
+      // is keyed by IP and lifting it is a different decision from lifting a verified key's.
+      { config: rlAgent(30) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
         if (!WRITE_ROLES.has(ctx.role)) {
@@ -5249,7 +5260,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       /** Display name; the template's own name when omitted. */
       name: z.string().min(1).max(200).optional(),
     });
-    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rl(20) }, async (req, reply) => {
+    // ★ On the AGENT LANE — this is the route `import_image` calls, i.e. the one a clone runs thousands
+    // of times. The AMPLIFIER concern that shaped `rl(20)` is real (a few hundred bytes of request makes
+    // the server fetch and buffer up to MAX_UPLOAD_BYTES from a third party) — and it is answered by the
+    // largeImportGate below, which bounds CONCURRENCY rather than a per-minute count. The comment on
+    // that gate says as much: "rl(20) alone would allow ~20 of those in flight at once".
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rlAgent(20) }, async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const parsed = ImportUrlBody.safeParse(req.body);

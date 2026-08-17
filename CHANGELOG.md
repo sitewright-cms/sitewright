@@ -9,8 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-08-17
+
 ### Added
 
+- **A context menu on every page row** — right-click, long-press (touch) or Shift+F10 / the ContextMenu
+  key. It carries every action the row already offers plus **Move to ▸ Top of group / Select sibling… /
+  Bottom of group**. The row buttons are unchanged; the menu is additive. *Move to* exists because drag
+  is a within-viewport gesture: a browser auto-scrolls a held drag at ~200px/s, so moving a page 700
+  rows would mean holding the button for about three and a half minutes. Picking a page up holds
+  nothing, so the list — including its search box — stays usable while you find the destination.
 - **`POST /projects/:projectId/content/:kind/reorder`** — rewrite the sibling `order` of many pages or
   dataset entries in ONE transaction. Reordering used to be one PUT per moved sibling, and a dense
   0..n reindex rewrites everything after the moved item: ~700 PUTs for a single drag in an 831-item
@@ -30,9 +38,17 @@ The running version of an instance is reported at `GET /version` (baked into the
   `release.childrenTruncated` names the page and both counts, and `{{page.childrenTotal}}` binds the
   real number on both render surfaces.
 - **The content list endpoint gained `?q=` search**, and `?dataset=` now composes with `?limit`/`?offset`.
+- **"Copy page" is now "Duplicate page"**, and the duplicate is placed immediately after its source.
+  It used to inherit the source's exact `order` and tie with it, landing adjacent only because
+  "About (Copy)" happens to sort after "About" on the title tie-break.
+- **The pages list gained a search box**, and the Dataset panel now loads only the SELECTED dataset's
+  entries (measured: 1.85 MB fetched on every load of a project with 886 entries).
 
 ### Fixed
 
+- **A dataset RENAME no longer appears to empty the collection.** The scoped entry fetch was keyed on
+  the dataset's id, but a rename keeps the id and changes the slug — so it asked for a collection that
+  no longer existed and returned nothing.
 - **Publishing no longer re-minifies the same stylesheet once per page.** A CPU profile put clean-css
   at ~45% of an 800-route build; memoizing it (and the template validator) took that build from
   3,152ms to 275ms with byte-identical output. On a deployed 1,126-route project, publish went from
@@ -2256,7 +2272,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/sitewright-cms/sitewright/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/sitewright-cms/sitewright/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/sitewright-cms/sitewright/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/sitewright-cms/sitewright/compare/v0.18.0...v0.19.0

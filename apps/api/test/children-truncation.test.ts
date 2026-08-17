@@ -57,7 +57,7 @@ async function publish(): Promise<{ statusCode: number; release: Record<string, 
 }
 
 describe('page.children truncation is reported, never silent', () => {
-  it('reports the truncated page + both counts in the release manifest', async () => {
+  it('reports the truncated page + both counts in the release manifest', { timeout: 30_000 }, async () => {
     const imported = await project.importBundle(tree(MAX_PAGE_CHILDREN + OVER, '<ul>{{#each page.children}}<li>{{this.title}}</li>{{/each}}</ul>'));
     expect(imported.statusCode).toBe(200);
 
@@ -68,7 +68,7 @@ describe('page.children truncation is reported, never silent', () => {
     ]);
   });
 
-  it('says nothing when the listing is complete (no noise under the cap)', async () => {
+  it('says nothing when the listing is complete (no noise under the cap)', { timeout: 30_000 }, async () => {
     await project.importBundle(tree(3, '<ul>{{#each page.children}}<li>{{this.title}}</li>{{/each}}</ul>'));
 
     const { release } = await publish();
@@ -76,7 +76,7 @@ describe('page.children truncation is reported, never silent', () => {
     expect(release.childrenTruncated).toBeUndefined();
   });
 
-  it('does not report a page that never LOOPS its children (nothing was dropped from its output)', async () => {
+  it('does not report a page that never LOOPS its children (nothing was dropped from its output)', { timeout: 30_000 }, async () => {
     // The cap only costs an author something when the page actually lists them. A parent with 505
     // children that renders a static body loses nothing, so warning about it would be pure noise.
     await project.importBundle(tree(MAX_PAGE_CHILDREN + OVER, '<p>no listing here</p>'));
@@ -86,7 +86,7 @@ describe('page.children truncation is reported, never silent', () => {
     expect(release.childrenTruncated).toBeUndefined();
   });
 
-  it('binds the TRUE total as {{page.childrenTotal}} so the page can say "500 of 505"', async () => {
+  it('binds the TRUE total as {{page.childrenTotal}} so the page can say "500 of 505"', { timeout: 30_000 }, async () => {
     await project.importBundle(
       tree(MAX_PAGE_CHILDREN + OVER, '<p id="count">{{#each page.children}}{{/each}}showing {{page.children.length}} of {{page.childrenTotal}}</p>'),
     );

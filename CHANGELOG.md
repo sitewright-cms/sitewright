@@ -9,6 +9,35 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **`POST /projects/:projectId/content/:kind/reorder`** — rewrite the sibling `order` of many pages or
+  dataset entries in ONE transaction. Reordering used to be one PUT per moved sibling, and a dense
+  0..n reindex rewrites everything after the moved item: ~700 PUTs for a single drag in an 831-item
+  group, past the content route's own rate limit. Atomic across the batch; records no revisions (a
+  reorder is structural, like a bundle import).
+
+### Changed
+
+- **Sibling `order` now spans 0…2^31-1** (was 0…100_000) for pages, nav entries and dataset entries.
+  Raising a maximum is a relaxation — every stored value stays valid and nothing needs migrating. A
+  move now takes the MIDPOINT between its neighbours, so the ordinary reorder is a single write; the
+  group is only re-spaced (via the new endpoint) when a gap genuinely runs out of integers.
+- **The pages and dataset-entry lists render only the rows on screen.** An 865-page project rendered
+  905 rows / 42,354 DOM nodes; it now renders ~69 / ~2,179, with search dropping from ~194ms to ~26ms
+  per keystroke. Lists under 80 rows are unchanged.
+- **`{{#each page.children}}` reports truncation** instead of silently dropping past the 500-child cap:
+  `release.childrenTruncated` names the page and both counts, and `{{page.childrenTotal}}` binds the
+  real number on both render surfaces.
+- **The content list endpoint gained `?q=` search**, and `?dataset=` now composes with `?limit`/`?offset`.
+
+### Fixed
+
+- **Publishing no longer re-minifies the same stylesheet once per page.** A CPU profile put clean-css
+  at ~45% of an 800-route build; memoizing it (and the template validator) took that build from
+  3,152ms to 275ms with byte-identical output. On a deployed 1,126-route project, publish went from
+  6.3s to 1.1s and a preview rebuild after one edit from 6.7s to 1.1s.
+
 ## [0.21.0] — 2026-08-15
 
 ### Added

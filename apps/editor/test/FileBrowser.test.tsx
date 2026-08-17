@@ -250,3 +250,89 @@ describe('FileBrowser (Assets)', () => {
     await waitFor(() => expect(stockProviders).toHaveBeenCalled());
   });
 });
+
+// ── Scale: a DHPS-sized media library ────────────────────────────────────────────────────────────
+// Measured on a deployed instance with 3,000 assets in one folder: 75,686 DOM nodes and 3,000 <img>
+// elements, a 78MB JS heap, ~334ms per search keystroke. The API side was never the problem
+// (0.84MB in 42ms) — the browser was.
+
+const many = (n: number): MediaAsset[] =>
+  Array.from({ length: n }, (_, i) => ({
+    ...image,
+    id: `m${i}`,
+    filename: `photo-${String(i).padStart(4, '0')}.png`,
+    url: `/media/p/m${i}/photo-${String(i).padStart(4, '0')}.png`,
+  }));
+
+/**
+ * jsdom does no layout, so every measured height is 0 and the virtualiser takes its deliberate
+ * render-everything fallback. Stub a realistic list geometry, or a test that claims to prove windowing
+ * proves only that the fallback works — the exact silent-no-op this feature shipped once already.
+ */
+const ROW_H = 44;
+function stubListGeometry(): void {
+  vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(900);
+  // O(1): walk backwards over previous siblings rather than materialising the whole child list for
+  // every read. jsdom's own getter is a no-op, so the cost of the STUB is what would dominate.
+  vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
+    if (!this.hasAttribute('data-virtual-row')) return 0;
+    let idx = 0;
+    for (let prev = this.previousElementSibling; prev; prev = prev.previousElementSibling) {
+      if (prev.hasAttribute('data-virtual-row')) idx += 1;
+    }
+    return idx * ROW_H;
+  });
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(ROW_H);
+}
+
+describe('FileBrowser at media-library scale', () => {
+  it('★ asks for the SMALL thumbnail rung, not the 2400px original', async () => {
+    // A bare media URL serves the `xl` (2400px) variant by default — the file manager was painting a
+    // 32px list icon from it. Measured on a photo-like source: sm 36KB vs xl 2,120KB.
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    const img = await screen.findByRole('img', { name: '' }).catch(() => null);
+    const el = img ?? document.querySelector('img');
+    expect(el, 'the list row renders a thumbnail').toBeTruthy();
+    expect((el as HTMLImageElement).getAttribute('src')).toBe(`${image.url}?size=sm`);
+  });
+
+  it('★ renders only a WINDOW of a long list, not every row', async () => {
+    stubListGeometry();
+    listMedia.mockResolvedValue({ items: many(300) });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByText('photo-0000.png');
+    const rows = document.querySelectorAll('tr[data-virtual-row]');
+    expect(rows.length, 'a windowed list must not mount all 300 rows').toBeLessThan(300);
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('keeps a SHORT list on exactly the code path it had before', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByText('hero.png');
+    // 3 assets: no spacers, nothing skipped.
+    expect(document.querySelectorAll('[data-virtual-spacer]').length).toBe(0);
+    expect(screen.getByText('brochure.pdf')).toBeInTheDocument();
+  });
+
+  it('★ reserves the skipped height, so the scrollbar still spans the whole library', async () => {
+    stubListGeometry();
+    listMedia.mockResolvedValue({ items: many(300) });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByText('photo-0000.png');
+    const spacers = [...document.querySelectorAll('[data-virtual-spacer]')];
+    expect(spacers.length, 'the skipped rows must still occupy their height').toBeGreaterThan(0);
+    // ★ A <tr>, never a <div>: anything else inside <tbody> is invalid HTML and the browser hoists it
+    // out of the table, silently losing the reserved height.
+    for (const el of spacers) expect(el.tagName).toBe('TR');
+    // The list spacer carries its height on the <td> (a <tr> cannot be sized directly); the grid one
+    // carries it on the element itself. Read whichever actually has it.
+    const heightOf = (el: Element): number => {
+      const own = Number.parseInt((el as HTMLElement).style.height || '0', 10);
+      if (own > 0) return own;
+      const cell = el.firstElementChild as HTMLElement | null;
+      return Number.parseInt(cell?.style.height || '0', 10);
+    };
+    const reserved = spacers.reduce((n, el) => n + heightOf(el), 0);
+    expect(reserved, '300 rows at 44px is ~13,200px of list').toBeGreaterThan(8_000);
+  });
+});

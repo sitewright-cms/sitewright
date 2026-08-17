@@ -9,6 +9,38 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The file manager renders only the rows on screen, and its thumbnails ask for the SMALL size.**
+  Measured on a deployed instance with 3,000 assets in one folder: it mounted 75,686 DOM nodes and 3,000
+  `<img>` elements, with ~334ms per search keystroke — 1.8× worse than the pages list was before it was
+  virtualised. The same library now mounts **1,435 nodes / 26 rows**, and a search keystroke lands in
+  **14ms**. The API side was never the problem (0.84 MB in 42ms) and is unchanged.
+
+  ★ Every thumbnail was the largest file the platform makes. A bare media URL serves the `xl` rung —
+  **2400px wide** — and the browser painted those into a 32px list icon and a 96px grid tile. Measured on
+  a photo-like source, `sm` is 36 KB against `xl`'s 2,120 KB, and each first request is also an on-demand
+  encode on the server, so the cost landed twice.
+
+  Filing assets into folders hid the problem (30 folders of 100 rendered ~1,200 nodes) but never fixed
+  it: search spans every folder, so one broad query put the whole library back on screen regardless.
+
+### Fixed
+
+- **★ A virtualised list inside a side panel could not be scrolled past its first window.** Scroll events
+  do not bubble, so the virtualiser's window-level `scroll` listener never fired for a scroll inside a
+  container: the window froze at its initial range and scrolling the panel revealed the reserved blank
+  space where the later rows should have been. This hit the **dataset entries list**, which has lived in
+  the Data panel since virtualisation shipped — measured, its first rendered row never changed however
+  far the panel scrolled. The listener now captures, and both panel-scrolled lists have an E2E case that
+  scrolls the panel and asserts the window moved. (The pages list is page-scrolled and was unaffected.)
+- **The grid re-measures its column count on resize.** It is responsive (2 / 4 / 6 across) and a width
+  change alters how many tiles share a row — but a resize that leaves the row height and scroll offset
+  alone produces the same range, so the state that owns the measurement never re-ran. The column count
+  would stay at the old value and every tile after a spacer would land in the wrong column.
+- Row virtualisation also sizes its window from the element that actually scrolls rather than always the
+  viewport, so a panel shorter than the display no longer renders more rows than it can show.
+
 ## [0.23.0] — 2026-08-17
 
 ### Added

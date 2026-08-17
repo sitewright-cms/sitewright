@@ -93,3 +93,76 @@ test('a long pages list virtualises, scrolls, and still reorders', async ({ page
   const unchanged = all.filter((p) => p.id.startsWith('p-') && p.id !== 'p-000' && p.order === (Number(p.id.slice(2)) + 1) * 65_536);
   expect(unchanged.length, 'every other sibling should keep its original order').toBe(PAGES - 1);
 });
+
+/**
+ * The DATASET ENTRIES list, which lives in the Data side panel.
+ *
+ * ★ A window-level `scroll` listener never fires for a scroll inside a container — scroll events do not
+ * bubble. So this list's virtualised window FROZE at its initial range: scrolling the panel revealed
+ * the reserved blank space where the later rows should have been. Measured, with the capturing listener
+ * removed, the first rendered row never changes however far the panel scrolls. Nothing covered this
+ * path, in either direction, which is why it went unnoticed.
+ */
+const ENTRIES = 140;
+
+test('a long dataset-entry list virtualises and follows the PANEL’s scroll', async ({ page, baseURL }) => {
+  test.setTimeout(180_000);
+  const stamp = Date.now().toString(36);
+  await signUp(page, `longentries-${stamp}@e2e.test`);
+
+  const created = await page.request.post('/projects', { data: { name: 'Entries', slug: `entries${stamp}` } });
+  expect(created.status()).toBe(201);
+  const projectId = (await created.json()).project.id as string;
+  const imported = await page.request.post(`/projects/${projectId}/import`, {
+    data: {
+      pages: [{ id: 'home', path: '', title: 'Home', source: '<p>home</p>' }],
+      datasets: [{ id: 'news', name: 'News', slug: 'news', fields: [{ name: 'title', type: 'text' }] }],
+      entries: Array.from({ length: ENTRIES }, (_, i) => ({
+        id: `e${String(i).padStart(3, '0')}`,
+        dataset: 'news',
+        status: 'published' as const,
+        order: (i + 1) * 65_536,
+        values: { title: `Entry ${String(i).padStart(3, '0')}` },
+      })),
+    },
+  });
+  expect(imported.status(), await imported.text()).toBe(200);
+
+  await page.goto(baseURL!);
+  await page.getByText('Entries', { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByText('News', { exact: true }).first().click();
+  await expect(page.getByText('Entry 000')).toBeVisible({ timeout: 60_000 });
+
+  // ★ Scoped by CONTENT, not by the marker alone: the pages list on the same screen uses the same
+  // `data-virtual-row` attribute, and a bare selector silently measures that list instead — which is
+  // exactly what this test did on its first run, passing vacuously against a 1-page project.
+  const rowSel = 'li[data-virtual-row]';
+  const before = await page.evaluate((sel) => {
+    const rows = [...document.querySelectorAll(sel)].filter((r) => /Entry \d{3}/.test(r.textContent ?? ''));
+    return { count: rows.length, first: rows[0]?.textContent?.trim() ?? '' };
+  }, rowSel);
+  expect(before.count, 'the entries list must render a window, not all 140').toBeLessThan(ENTRIES);
+  expect(before.count).toBeGreaterThan(0);
+
+  // Scroll the PANEL — the window never moves here, which is exactly the case that was broken.
+  const scrolled = await page.evaluate((sel) => {
+    const row = [...document.querySelectorAll(sel)].find((r) => /Entry \d{3}/.test(r.textContent ?? ''));
+    for (let el = row?.parentElement ?? null; el; el = el.parentElement) {
+      if (el.scrollHeight > el.clientHeight && getComputedStyle(el).overflowY !== 'visible') {
+        el.scrollTop = Math.floor(el.scrollHeight * 0.6);
+        return true;
+      }
+    }
+    return false;
+  }, rowSel);
+  expect(scrolled, 'the entries list must sit inside a scrolling panel body').toBe(true);
+  await page.waitForTimeout(600);
+
+  const after = await page.evaluate((sel) => {
+    const rows = [...document.querySelectorAll(sel)].filter((r) => /Entry \d{3}/.test(r.textContent ?? ''));
+    return { count: rows.length, first: rows[0]?.textContent?.trim() ?? '' };
+  }, rowSel);
+  expect(after.first, 'the window must follow the panel’s scroll').not.toBe(before.first);
+  expect(after.count, 'and stay a window afterwards').toBeLessThan(ENTRIES);
+});

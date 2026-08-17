@@ -144,3 +144,42 @@ export function nextOrderAfter(siblingOrders: readonly number[]): number {
   if (max >= ORDER_MAX) return ORDER_MAX; // genuinely at the ceiling: tie rather than overflow the schema
   return Math.min(ORDER_MAX, max + ORDER_STEP);
 }
+
+/** Where a newly inserted item goes, plus any re-spacing its neighbours needed to make room. */
+export interface InsertAt<T extends Orderable> {
+  /** The `order` to give the new item. */
+  order: number;
+  /** Siblings whose `order` had to change first — empty in the ordinary case. */
+  respace: T[];
+}
+
+/**
+ * The `order` for an item inserted immediately AFTER `sourceId` — a duplicate placed next to what it
+ * was copied from.
+ *
+ * ★ Duplicating used to spread the source verbatim, so the copy inherited its EXACT order and tied
+ * with it. It only appeared next to its source because "About (Copy)" happens to sort after "About"
+ * on the title tie-break; a nav label that sorts earlier put the copy somewhere else entirely. This
+ * places it deterministically, and re-spaces first on the rare occasion the pair has no gap between them.
+ */
+export function orderAfterSibling<T extends Orderable>(list: readonly T[], sourceId: string): InsertAt<T> {
+  const sorted = [...list].sort(
+    (a, b) => (a.order ?? Number.POSITIVE_INFINITY) - (b.order ?? Number.POSITIVE_INFINITY) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  const at = sorted.findIndex((x) => x.id === sourceId);
+  // An unknown source appends to the end — the caller asked for "after X" and X is not here.
+  if (at < 0) return { order: nextOrderAfter(sorted.map((x) => x.order ?? 0)), respace: [] };
+
+  const mid = orderBetween(sorted[at]!.order, sorted[at + 1]?.order);
+  if (mid !== null) return { order: mid, respace: [] };
+
+  // No gap between the source and its neighbour: re-space the group, then take the (now real) gap.
+  const spaced = spacedOrders(sorted.length);
+  const respace: T[] = [];
+  sorted.forEach((item, i) => {
+    if (item.order !== spaced[i]) respace.push({ ...item, order: spaced[i]! });
+  });
+  const after = orderBetween(spaced[at], spaced[at + 1]);
+  // `spacedOrders` guarantees a gap between neighbours, so `after` is non-null; fall back defensively.
+  return { order: after ?? spaced[at]! + 1, respace };
+}

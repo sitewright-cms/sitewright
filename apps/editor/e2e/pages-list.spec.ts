@@ -18,7 +18,9 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   // is permanent: every page gets a Delete action EXCEPT home.
   await expect(page.getByRole('button', { name: /^Home \// })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Delete Home' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Copy Home' })).toBeVisible();
+  // Renamed from "Copy": the action inserts the duplicate immediately after its source, which "copy"
+  // does not convey (and it used to land there only by accident of the title tie-break).
+  await expect(page.getByRole('button', { name: 'Duplicate Home' })).toBeVisible();
 
   // Create a sub-page by PATH.
   await page.getByRole('button', { name: 'New page' }).click();
@@ -28,7 +30,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await expect(page.getByRole('button', { name: /^Services/ })).toBeVisible();
 
   // COPY → a "(Copy)" row appears under a suffixed path; DELETE it (confirm) → gone.
-  await page.getByRole('button', { name: 'Copy Services' }).click();
+  await page.getByRole('button', { name: 'Duplicate Services' }).click();
   const copyRow = page.getByRole('button', { name: /^Services \(Copy\)/ });
   await expect(copyRow).toBeVisible();
   await expect(copyRow).toContainText(/\/services-[a-z0-9]+/); // short random path suffix

@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
-import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
+import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { hasOwnSource } from '../page-summary';
 import { useVirtualRows } from '../lib/virtual-rows';
+import { useLongPress } from '../lib/use-long-press';
+import { ContextMenu, type ContextMenuRow } from './ui/ContextMenu';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -164,8 +166,34 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const [search, setSearch] = useState('');
   /** The page a KEYBOARD reorder just moved — focus returns to its grip once it re-renders. */
   const [keyboardMovedId, setKeyboardMovedId] = useState<string | null>(null);
+  /** The open context menu: which page, and where to draw it. */
+  const [menu, setMenu] = useState<{ page: Page; at: { x: number; y: number } } | null>(null);
+  /**
+   * The page picked up by "Move to → Select sibling…" — cut & paste for long moves.
+   *
+   * ★ Drag is a WITHIN-VIEWPORT gesture: measured, a browser auto-scrolls a drag at ~200px/s, so
+   * moving a page 700 rows would mean holding the button for three and a half minutes. Nothing is held
+   * here, so the author can scroll and SEARCH their way to the destination — which is why the search
+   * box stays usable while a page is picked up, unlike drag (where a filtered list makes "drop below
+   * the row above" meaningless).
+   */
+  const [movingId, setMovingId] = useState<string | null>(null);
   /** The list element, for finding a row's grip after a keyboard move (it may have re-mounted). */
   const listElRef = useRef<HTMLUListElement | null>(null);
+  /** The row a touch went down on — the long-press hook is one instance, shared by every row. */
+  const pressedPage = useRef<Page | null>(null);
+  const longPress = useLongPress((x, y) => {
+    const p = pressedPage.current;
+    if (p) setMenu({ page: p, at: { x, y } });
+  });
+  /** Long-press handlers for one row: remember which row, then defer to the single hook instance. */
+  const longPressFor = (p: Page) => ({
+    ...longPress,
+    onTouchStart: (e: React.TouchEvent) => {
+      pressedPage.current = p;
+      longPress.onTouchStart(e);
+    },
+  });
   // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
   // the list; its fields live inside that modal (no separate slug/title state here).
   const [addOpen, setAddOpen] = useState(false);
@@ -324,6 +352,16 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     // (initial load, or a locale was removed). Terminates: resetting to a valid default no-ops.
     if (!locales.includes(currentLocale)) setCurrentLocale(defaultLocale);
   }, [locales, currentLocale, defaultLocale]);
+
+  // Escape abandons a pick-up. (The context menu handles its own Escape via the overlay stack.)
+  useEffect(() => {
+    if (!movingId) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setMovingId(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [movingId]);
 
   /**
    * ★ Drag cleanup lives on the DOCUMENT, not on the dragged row.
@@ -601,12 +639,22 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     }
   }
 
-  /** Duplicates a page under a fresh path/id (short random suffix). */
-  async function copyPage(p: Page) {
+  /**
+   * Duplicates a page under a fresh path/id (short random suffix), placed IMMEDIATELY AFTER its source.
+   *
+   * ★ The copy used to inherit the source's exact `order` and tie with it — it only appeared adjacent
+   * because "About (Copy)" happens to sort after "About" on the title tie-break. A nav label that
+   * sorted earlier put the copy somewhere else entirely. `orderAfterSibling` places it deterministically
+   * (one write), re-spacing the group first on the rare occasion the pair has no gap between them.
+   */
+  async function duplicatePage(p: Page) {
     setError(null);
     const rand = Math.random().toString(36).slice(2, 6);
+    const siblings = orderedSiblings(pagesRef.current, p.id, defaultLocale);
+    const at = orderAfterSibling(siblings.length > 0 ? siblings : [p], p.id);
     const copy: Page = {
       ...p,
+      order: at.order,
       id: `${p.id}-${rand}`,
       // Slug-only suffix (the home copy gets a real slug — it can't be the empty root).
       path: p.path === '' ? `home-${rand}` : `${p.path}-${rand}`,
@@ -622,11 +670,70 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
       parent: p.parent ?? homeId,
     };
     try {
+      // A re-space (no gap between the source and its neighbour) goes first, in one request, so the
+      // copy has somewhere to land.
+      if (at.respace.length > 0) {
+        await api.reorderContent(project.id, 'page', at.respace.map((r: Page) => ({ id: r.id, order: r.order ?? 0 })));
+      }
       await api.putPage(project.id, copy);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to copy page');
+      setError(err instanceof Error ? err.message : 'failed to duplicate page');
     }
+  }
+
+  /** Move a page to the very top or bottom of its sibling group — one write via the same reorder path. */
+  async function moveToEdge(p: Page, edge: 'top' | 'bottom') {
+    const group = orderedSiblings(pagesRef.current, p.id, defaultLocale).filter((g) => g.id !== p.id);
+    const target = edge === 'top' ? group[0] : group.at(-1);
+    if (!target) return; // a lone page in its group is already at both ends
+    await persistReorder(p.id, target.id, edge === 'top' ? 'before' : 'after');
+  }
+
+  /**
+   * The context-menu rows for a page — the SAME handlers the row buttons call, so there is one
+   * behaviour with two entry points rather than two implementations.
+   *
+   * Conditional items mirror the row exactly: a link placeholder has no editor or preview, Home is not
+   * deletable, and translate/template only apply where the row shows them.
+   */
+  function menuRowsFor(p: Page): ContextMenuRow[] {
+    const isLink = isLinkPage(p);
+    const isHome = isHomeLike(p);
+    const group = orderedSiblings(pagesRef.current, p.id, defaultLocale).filter((g) => g.id !== p.id);
+    const rows: ContextMenuRow[] = [];
+    if (!isLink) {
+      rows.push({ kind: 'item', label: 'Open page editor', onSelect: () => void openEditor(p) });
+    }
+    rows.push({ kind: 'item', label: isLink ? 'Edit placeholder settings' : 'Edit page settings', onSelect: () => void openSettings(p) });
+    if (!isLink) {
+      rows.push({ kind: 'item', label: 'Preview in new tab', onSelect: () => void previewInTab(p) });
+    }
+    rows.push({ kind: 'divider' });
+    rows.push({ kind: 'item', label: 'Duplicate page', onSelect: () => void duplicatePage(p) });
+    if (hasOwnSource(p) && !p.template) {
+      rows.push({ kind: 'item', label: 'Save as template', onSelect: () => void saveAsTemplate(p) });
+    }
+    if (currentLocale === defaultLocale && !p.locale && !isLink && missingLocalesFor(p).length > 0) {
+      rows.push({ kind: 'item', label: 'Translate into all languages', onSelect: () => void translatePage(p) });
+    }
+    // Home is pinned first and never joins a sibling group, so it has nothing to move within.
+    if (!isHome) {
+      rows.push({
+        kind: 'submenu',
+        label: 'Move to',
+        items: [
+          { kind: 'item', label: 'Top of group', disabled: group.length === 0, onSelect: () => void moveToEdge(p, 'top') },
+          { kind: 'item', label: 'Select sibling…', disabled: group.length === 0, onSelect: () => setMovingId(p.id) },
+          { kind: 'item', label: 'Bottom of group', disabled: group.length === 0, onSelect: () => void moveToEdge(p, 'bottom') },
+        ],
+      });
+    }
+    if (!isHome) {
+      rows.push({ kind: 'divider' });
+      rows.push({ kind: 'item', label: 'Delete page', danger: true, onSelect: () => void removePage(p) });
+    }
+    return rows;
   }
 
   /** The non-default locales a default-language page is still missing a variant for (gates the action). */
@@ -908,6 +1015,21 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     key={p.id}
                     // Marks a real row (not a spacer) so the virtualiser can measure one.
                     data-virtual-row=""
+                    // Right-click anywhere on the row. Suppressed only here — a link inside the row
+                    // keeps the browser's own menu, so "open in new tab" is never taken away.
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setMenu({ page: p, at: { x: e.clientX, y: e.clientY } });
+                    }}
+                    // Keyboard parity: the ContextMenu key (and Shift+F10, its universal alias) opens
+                    // the same menu, anchored to the row rather than to a pointer that does not exist.
+                    onKeyDown={(e) => {
+                      if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+                      e.preventDefault();
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setMenu({ page: p, at: { x: r.left + 24, y: r.bottom } });
+                    }}
+                    {...longPressFor(p)}
                     // A screen reader must hear "item 412 of 905", not "item 3 of 25".
                     aria-setsize={visiblePages.length}
                     aria-posinset={i + 1}
@@ -949,7 +1071,14 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       setDragId(null);
                       setDrop(null);
                     }}
-                    className={`sw-stack-in group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${dragId === p.id ? 'opacity-40' : ''}`}
+                    className={`sw-stack-in group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${
+                      dragId === p.id ? 'opacity-40' : ''
+                    } ${movingId === p.id ? 'opacity-60 ring-2 ring-indigo-400' : ''} ${
+                      // Every OTHER row in the same group becomes a destination while a page is held.
+                      movingId && movingId !== p.id && canReorder(pages, movingId, p.id, defaultLocale)
+                        ? 'cursor-copy ring-1 ring-indigo-300 dark:ring-indigo-500/50'
+                        : ''
+                    }`}
                   >
                   {dropping && (
                     <span
@@ -985,7 +1114,21 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   )}
                   <button
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
-                    onClick={() => (isLink ? void openSettings(p) : void openEditor(p))}
+                    onClick={() => {
+                      // While a page is picked up, clicking a row places it AFTER that row. The whole
+                      // row is the target (not a hairline gap), which is what makes this usable on touch.
+                      if (movingId && movingId !== p.id) {
+                        const src = movingId;
+                        setMovingId(null);
+                        void persistReorder(src, p.id, 'after');
+                        return;
+                      }
+                      if (movingId === p.id) {
+                        setMovingId(null); // clicking the picked-up row puts it back down
+                        return;
+                      }
+                      void (isLink ? openSettings(p) : openEditor(p));
+                    }}
                   >
                     <span
                       aria-hidden
@@ -1066,7 +1209,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     )}
                     {!isLink && (
                       <Tooltip tip="Copy page" side="top">
-                        <button aria-label={`Copy ${p.title}`} className={ROW_ACTION} onClick={() => void copyPage(p)}>
+                        <button aria-label={`Duplicate ${p.title}`} className={ROW_ACTION} onClick={() => void duplicatePage(p)}>
                           {COPY_ICON}
                         </button>
                       </Tooltip>
@@ -1089,6 +1232,26 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
             {pages.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No pages yet.</li>}
             {virt.padBottom > 0 && <li aria-hidden style={{ height: virt.padBottom }} />}
           </ul>
+          {movingId && (
+            // Says what is happening and how to get out of it — a mode with no visible exit is a trap.
+            <div
+              role="status"
+              // Named: the list already has an sr-only status region for reorder announcements, and an
+              // unnamed second one is ambiguous to both a screen reader and a test.
+              aria-label="Move in progress"
+              className="sticky bottom-3 z-30 mx-auto flex w-fit items-center gap-3 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-800 shadow-lg dark:border-indigo-400/30 dark:bg-indigo-500/15 dark:text-indigo-200"
+            >
+              <span>
+                Moving “{pages.find((x) => x.id === movingId)?.title ?? 'page'}” — pick a sibling to place it after.
+              </span>
+              <button type="button" className="rounded-md px-2 py-0.5 font-medium underline-offset-2 hover:underline" onClick={() => setMovingId(null)}>
+                Cancel
+              </button>
+            </div>
+          )}
+          {menu && (
+            <ContextMenu at={menu.at} label={`Actions for ${menu.page.title}`} rows={menuRowsFor(menu.page)} onClose={() => setMenu(null)} />
+          )}
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">
             {reorderMsg}

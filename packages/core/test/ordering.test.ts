@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORDER_MAX, ORDER_STEP, nextOrderAfter, orderBetween, reorderList, spacedOrders } from '../src/index.js';
+import { ORDER_MAX, ORDER_STEP, nextOrderAfter, orderAfterSibling, orderBetween, reorderList, spacedOrders } from '../src/index.js';
 
 // Sibling order used to be a DENSE 0..n reindex: moving one page rewrote every page after it —
 // ~700 writes for one drag in an 831-page group, past the route's own rate limit. Midpoint insertion
@@ -199,5 +199,50 @@ describe('appending a new sibling after the ceiling was raised', () => {
   it('returns the ceiling rather than overflowing when a group really is at the top', () => {
     expect(nextOrderAfter([ORDER_MAX])).toBe(ORDER_MAX);
     expect(nextOrderAfter([ORDER_MAX - 1])).toBe(ORDER_MAX);
+  });
+});
+
+describe('orderAfterSibling (place a duplicate immediately after its source)', () => {
+  const item = (id: string, order?: number) => ({ id, order });
+
+  it('★ lands strictly BETWEEN the source and the next sibling', () => {
+    const list = [item('a', 1000), item('b', 2000), item('c', 3000)];
+    const at = orderAfterSibling(list, 'b');
+    expect(at.order).toBeGreaterThan(2000);
+    expect(at.order).toBeLessThan(3000);
+    expect(at.respace).toEqual([]); // one write: the duplicate itself
+  });
+
+  it('lands after the LAST sibling when duplicating the last one', () => {
+    const list = [item('a', 1000), item('b', 2000)];
+    const at = orderAfterSibling(list, 'b');
+    expect(at.order).toBeGreaterThan(2000);
+    expect(at.respace).toEqual([]);
+  });
+
+  it('★ re-spaces when the source and its neighbour are ADJACENT, and still lands between them', () => {
+    // The duplicate must not tie its source — a tie leaves the pair ordered by the id/title
+    // tie-break, which is exactly the accidental placement this replaces.
+    const list = [item('a', 1000), item('b', 1001), item('c', 5000)];
+    const at = orderAfterSibling(list, 'a');
+    expect(at.respace.length).toBeGreaterThan(0);
+    const after = new Map(at.respace.map((r) => [r.id, r.order]));
+    const srcOrder = after.get('a') ?? 1000;
+    const nextOrder = after.get('b') ?? 1001;
+    expect(at.order).toBeGreaterThan(srcOrder);
+    expect(at.order).toBeLessThan(nextOrder);
+  });
+
+  it('handles a lone sibling and an unknown id', () => {
+    expect(orderAfterSibling([item('a', 1000)], 'a').order).toBeGreaterThan(1000);
+    expect(orderAfterSibling([item('a', 1000)], 'nope').order).toBeGreaterThan(1000); // appends
+  });
+
+  it('never returns an order equal to any sibling', () => {
+    const list = [item('a', 1000), item('b', 2000), item('c', 3000)];
+    const at = orderAfterSibling(list, 'a');
+    const orders = new Map(list.map((x) => [x.id, x.order] as const));
+    for (const r of at.respace) orders.set(r.id, r.order);
+    expect([...orders.values()]).not.toContain(at.order);
   });
 });

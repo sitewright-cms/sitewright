@@ -37,17 +37,25 @@ export const ORDER_STEP = 65_536;
 export function orderBetween(before: number | undefined, after: number | undefined): number | null {
   if (before === undefined && after === undefined) return ORDER_STEP;
   if (before === undefined) {
-    // Going to the TOP: step below the current first item, or split the space beneath it when the
+    // Going to the TOP: step below the current first item, or split the space beneath it when a whole
     // step does not fit (an item already sitting close to 0).
     const first = after as number;
     if (first <= 0) return null;
-    return first > ORDER_STEP ? first - ORDER_STEP : Math.floor(first / 2) || null;
+    // ★ NOT `… || null`: 0 is a perfectly good order, and treating it as falsy re-spaced the entire
+    // group for nothing every time an item was dropped above a sibling sitting at 1.
+    return first > ORDER_STEP ? first - ORDER_STEP : Math.floor(first / 2);
   }
   if (after === undefined) {
-    // Going to the END: step above the current last item, or split the space above it near the top.
+    // Going to the END: step above the current last item, or split the space above it near the ceiling.
     const last = before;
-    if (last >= ORDER_MAX) return null;
-    return ORDER_MAX - last > ORDER_STEP ? last + ORDER_STEP : last + Math.floor((ORDER_MAX - last) / 2) || null;
+    // ★ `>= ORDER_MAX - 1`, and no `… || null`: the guard used to be `>= ORDER_MAX` with a trailing
+    // `|| null` that parses as `(last + half) || null`. With one unit of room, `half` is 0 and the
+    // expression returned `last` — a huge positive number, never falsy — so the null guard never fired
+    // and the moved item was written with its predecessor's exact order. It then sorted by the id
+    // tie-break rather than where it was dropped: the silent mis-order this null exists to prevent.
+    if (last >= ORDER_MAX - 1) return null;
+    const half = Math.floor((ORDER_MAX - last) / 2);
+    return ORDER_MAX - last > ORDER_STEP ? last + ORDER_STEP : last + Math.max(1, half);
   }
   if (after - before < 2) return null; // adjacent, equal, or inverted — no integer fits between them
   return before + Math.floor((after - before) / 2);
@@ -81,8 +89,9 @@ export interface Orderable {
  * The list may be in any order; it is sorted by effective order (absent sorts last, ties by id) the
  * same way the renderers do, so the caller can hand over its raw array.
  *
- * ★ This is the shared half of page and dataset-entry reordering. Both used to reassign a dense 0..n
- * rank, and both therefore rewrote the tail of their group on every move.
+ * ★ Used by dataset ENTRIES. The pages list keeps its own `reorderWithinParent` because a page group
+ * sorts differently (absent order counts as 0, ties break by title, Home is pinned, and the group is
+ * scoped by parent AND locale) — the two share `orderBetween`/`spacedOrders`, not this splice.
  */
 export function reorderList<T extends Orderable>(
   list: readonly T[],
@@ -116,4 +125,22 @@ export function reorderList<T extends Orderable>(
     if (item.order !== spaced[i]) changed.push({ ...item, order: spaced[i]! });
   });
   return changed;
+}
+
+/**
+ * The `order` for a NEW sibling appended to the end of a group.
+ *
+ * ★ Every call site that appends used to compute `Math.min(100_000, max + 1)` against the OLD ceiling.
+ * Once `order` was raised to 2^31-1 that clamp became a silent mis-order: `spacedOrders` starts at
+ * 65_536, so a single re-space puts every sibling above 100_000, and the next page or entry created in
+ * that group was pinned to 100_000 — landing it in the MIDDLE of the list rather than at the end, with
+ * no error, because 100_000 is still a perfectly valid order. Create a page, drag it once, create
+ * another: that was enough. One helper now, so raising the ceiling again cannot leave a clamp behind.
+ */
+export function nextOrderAfter(siblingOrders: readonly number[]): number {
+  const known = siblingOrders.filter((o) => Number.isFinite(o));
+  if (known.length === 0) return ORDER_STEP; // a fresh group starts a step in, leaving room above AND below
+  const max = Math.max(...known);
+  if (max >= ORDER_MAX) return ORDER_MAX; // genuinely at the ceiling: tie rather than overflow the schema
+  return Math.min(ORDER_MAX, max + ORDER_STEP);
 }

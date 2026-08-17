@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ORDER_MAX, ORDER_STEP, orderBetween, reorderList, spacedOrders } from '../src/index.js';
+import { ORDER_MAX, ORDER_STEP, nextOrderAfter, orderBetween, reorderList, spacedOrders } from '../src/index.js';
 
 // Sibling order used to be a DENSE 0..n reindex: moving one page rewrote every page after it —
 // ~700 writes for one drag in an 831-page group, past the route's own rate limit. Midpoint insertion
@@ -49,6 +49,26 @@ describe('orderBetween', () => {
   it('returns null at the very bottom and the very top (no room outside the range)', () => {
     expect(orderBetween(undefined, 0)).toBeNull();
     expect(orderBetween(ORDER_MAX, undefined)).toBeNull();
+  });
+
+  it('★ never returns a value EQUAL to a neighbour at the edges of the range', () => {
+    // `last + Math.floor(x / 2) || null` parses as `(last + …) || null`, so a zero-width gap returned
+    // `last` itself — a huge positive number, never falsy, so the null guard never fired. The moved item
+    // then tied its predecessor and sorted by the id tie-break instead of where it was dropped: exactly
+    // the silent mis-order the null exists to prevent.
+    expect(orderBetween(ORDER_MAX - 1, undefined)).toBeNull();
+    expect(orderBetween(ORDER_MAX - 2, undefined)).toBe(ORDER_MAX - 1);
+    for (const last of [ORDER_MAX, ORDER_MAX - 1, ORDER_MAX - 2, ORDER_MAX - 3]) {
+      const v = orderBetween(last, undefined);
+      if (v !== null) expect(v, `appending after ${last}`).toBeGreaterThan(last);
+    }
+  });
+
+  it('uses a valid 0 at the top of the range instead of forcing a needless re-space', () => {
+    // The mirror branch had the opposite bug: `Math.floor(first / 2) || null` treats a perfectly good
+    // 0 as falsy, so inserting above an item at 1 re-spaced the whole group for no reason.
+    expect(orderBetween(undefined, 1)).toBe(0);
+    expect(orderBetween(undefined, 2)).toBe(1);
   });
 
   it('survives repeated insertion at the SAME spot far longer than the old 100k ceiling allowed', () => {
@@ -146,5 +166,38 @@ describe('reorderList', () => {
     expect(reorderList(spaced(), 'a', 'a', 'after')).toEqual([]);
     expect(reorderList(spaced(), 'nope', 'a', 'after')).toEqual([]);
     expect(reorderList(spaced(), 'a', 'nope', 'after')).toEqual([]);
+  });
+});
+
+describe('appending a new sibling after the ceiling was raised', () => {
+  // ★ The regression both reviews ranked highest. `spacedOrders` starts at 65_536, so ONE re-space puts
+  // every sibling above the old 100_000 clamp. A new page/entry appended with `min(100_000, max + 1)`
+  // then lands in the MIDDLE of the group — silently, because 100_000 is still a valid order.
+  it('appends ABOVE every existing sibling, including ones re-spaced past the old ceiling', () => {
+    const respaced = spacedOrders(4); // [65536, 131072, 196608, 262144]
+    const next = nextOrderAfter(respaced);
+    expect(next).toBeGreaterThan(Math.max(...respaced));
+    expect(next).toBeLessThanOrEqual(ORDER_MAX);
+  });
+
+  it('leaves room to keep appending, rather than pinning every later item to the ceiling', () => {
+    let orders = spacedOrders(3);
+    for (let i = 0; i < 20; i++) {
+      const next = nextOrderAfter(orders);
+      expect(next, `append #${i}`).toBeGreaterThan(Math.max(...orders));
+      orders = [...orders, next];
+    }
+    expect(new Set(orders).size).toBe(orders.length);
+  });
+
+  it('starts a fresh group away from 0, so the first "move to top" does not re-space', () => {
+    const first = nextOrderAfter([]);
+    expect(first).toBeGreaterThan(0);
+    expect(orderBetween(undefined, first)).not.toBeNull();
+  });
+
+  it('returns the ceiling rather than overflowing when a group really is at the top', () => {
+    expect(nextOrderAfter([ORDER_MAX])).toBe(ORDER_MAX);
+    expect(nextOrderAfter([ORDER_MAX - 1])).toBe(ORDER_MAX);
   });
 });

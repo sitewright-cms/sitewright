@@ -19,6 +19,7 @@ import {
   scaffoldLocale,
   propagatePageToLocales,
   nextChildOrder,
+  ORDER_MAX,
 } from '../src/index.js';
 
 // `path` is a SLUG SEGMENT (empty for home); full routes are computed from the parent chain.
@@ -290,8 +291,9 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     ];
     const { created } = propagatePageToLocales({ ...owner, order: 0 }, pages, ['en', 'de'], 'en');
     const variant = created.find((p) => p.id === 'pricing-de')!;
-    // Inheriting owner.order (0) would tie/undershoot promo-de@5; instead it lands last in de → 6.
-    expect(variant.order).toBe(6);
+    // Inheriting owner.order (0) would tie/undershoot promo-de@5; instead it lands LAST in de.
+    // The position is the contract, not the number (appends leave a gap for later insertions).
+    expect(variant.order!).toBeGreaterThan(5);
   });
 
   it('leaves an orderless owner’s variants orderless (no forced ordinal, preserves title sort)', () => {
@@ -309,8 +311,10 @@ describe('nextChildOrder', () => {
       page({ id: 'b', path: 'b', parent: 'home', title: 'B', order: 3 }),
       page({ id: 'x-de', path: 'x', parent: 'home', title: 'X', locale: 'de', order: 9 }), // other locale, ignored
     ];
-    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(4); // past b@3, ignores x-de@9
-    expect(nextChildOrder(pages, 'home', 'de', 'en')).toBe(10); // de group: past x-de@9
+    // Position, not a specific number: an append leaves a gap so the next insertion between two
+    // siblings is a single write. Asserting `max + 1` is what hid the stale 100_000 clamp.
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBeGreaterThan(3); // past b@3, ignores x-de@9
+    expect(nextChildOrder(pages, 'home', 'de', 'en')).toBeGreaterThan(9); // de group: past x-de@9
   });
 
   it('is 0 for a parent with no children in that locale, and counts legacy nav.order', () => {
@@ -318,16 +322,27 @@ describe('nextChildOrder', () => {
       page({ id: 'home', path: '', title: 'Home' }),
       page({ id: 'a', path: 'a', parent: 'home', title: 'A', nav: { slots: ['header'], order: 7 } }),
     ];
-    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(8); // nav.order fallback
-    expect(nextChildOrder(pages, 'nonexistent', 'en', 'en')).toBe(0);
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBeGreaterThan(7); // nav.order fallback
+    // A parent with no children starts a fresh group — above 0, so "move to top" has room.
+    expect(nextChildOrder(pages, 'nonexistent', 'en', 'en')).toBeGreaterThan(0);
   });
 
   it('caps the result at the schema max when a sibling already sits there', () => {
     const pages: Page[] = [
       page({ id: 'home', path: '', title: 'Home' }),
-      page({ id: 'a', path: 'a', parent: 'home', title: 'A', order: 100_000 }),
+      page({ id: 'a', path: 'a', parent: 'home', title: 'A', order: ORDER_MAX }),
     ];
-    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(100_000);
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBe(ORDER_MAX);
+  });
+
+  it('★ appends past a sibling that was re-spaced BEYOND the old 100_000 ceiling', () => {
+    // spacedOrders starts at 65_536, so one re-space puts every sibling above the old clamp. A
+    // clamped append would pin the new page to 100_000 — mid-list, silently.
+    const pages: Page[] = [
+      page({ id: 'home', path: '', title: 'Home' }),
+      page({ id: 'a', path: 'a', parent: 'home', title: 'A', order: 131_072 }),
+    ];
+    expect(nextChildOrder(pages, 'home', 'en', 'en')).toBeGreaterThan(131_072);
   });
 });
 

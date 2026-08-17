@@ -169,6 +169,8 @@ import {
   widgetDatasetsForSources,
   WIDGET_PARTIALS,
   GLOBAL_WIDGETS,
+  nextOrderAfter,
+  spacedOrders,
   GLOBAL_SNIPPET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
@@ -3421,19 +3423,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const existing = siblings.find((e) => e.id === entityId);
     if (existing) return typeof existing.order === 'number' ? { ...body, order: existing.order } : body;
     const ordered = siblings.filter((e) => typeof e.order === 'number');
-    // Clamped to the schema's ceiling so a pathological dataset can't push a write into a validation error.
-    const next = (n: number): number => Math.min(n, 100_000);
-    if (siblings.length === 0) return { ...body, order: 0 };
+    if (siblings.length === 0) return { ...body, order: nextOrderAfter([]) };
     if (ordered.length === 0) {
+      // The dataset predates ordering entirely: give the existing rows a spaced scale first, so the
+      // new entry has somewhere ABOVE them to land (and so the next drag has room between them).
       const sorted = [...siblings].sort(compareEntryOrder);
-      let i = 0;
-      for (const row of sorted) {
-        await contentRepo.put(ctx, 'entry', row.id, { ...row, order: next(i) });
-        i += 1;
+      const spaced = spacedOrders(sorted.length);
+      for (const [i, row] of sorted.entries()) {
+        await contentRepo.put(ctx, 'entry', row.id, { ...row, order: spaced[i] });
       }
-      return { ...body, order: next(sorted.length) };
+      return { ...body, order: nextOrderAfter(spaced) };
     }
-    return { ...body, order: next(Math.max(...ordered.map((e) => e.order as number)) + 1) };
+    // ★ `nextOrderAfter`, never `min(100_000, max + 1)`: `spacedOrders` starts at 65_536, so one
+    // re-space puts every sibling past the old ceiling and a clamped append lands the new entry in the
+    // MIDDLE of the dataset — silently, because 100_000 is still a valid order.
+    return { ...body, order: nextOrderAfter(ordered.map((e) => e.order as number)) };
   }
 
   // ---- criticalCss PARTIAL write -------------------------------------------------------------
@@ -3622,7 +3626,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    */
   app.post<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
     '/projects/:projectId/content/:kind/reorder',
-    { config: rlAgent(30) },
+    // ★ `rl(20)`, NOT `rlAgent(…)`. rlAgent LIFTS the ceiling to 600/min for an API key, and this is a
+    // batch write on the ONE shared SQLite writer — the same reasoning that puts the bundle import and
+    // the locale fan-out on the flat limit. A tight agent loop of full-group re-spaces would stall
+    // writes for every other tenant on the instance.
+    { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const kind = parseGenericKind(req.params.kind);

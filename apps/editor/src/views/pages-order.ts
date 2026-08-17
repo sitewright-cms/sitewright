@@ -1,5 +1,5 @@
 import type { Page } from '@sitewright/schema';
-import { orderBetween, spacedOrders } from '@sitewright/core';
+import { nextOrderAfter, orderBetween, spacedOrders } from '@sitewright/core';
 
 /** A page with its depth in the page tree (0 = top-level), for indented display. */
 export interface TreeRow<T extends Page = Page> {
@@ -101,8 +101,7 @@ export function nextSiblingOrder(
   const present = new Set(pages.map((p) => p.id));
   const key = groupKey(parentId, locale, present, defaultLocale);
   const siblings = pages.filter((p) => !isHome(p) && siblingKey(p, present, defaultLocale) === key);
-  if (siblings.length === 0) return 0;
-  return Math.min(100_000, Math.max(...siblings.map(orderValue)) + 1);
+  return nextOrderAfter(siblings.map(orderValue));
 }
 
 /**

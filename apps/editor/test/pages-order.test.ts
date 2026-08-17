@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
+import { ORDER_MAX } from '@sitewright/core';
 import {
   bySiblingOrder,
   orderPagesByTree,
@@ -127,14 +128,25 @@ describe('reorderWithinParent', () => {
 });
 
 describe('nextSiblingOrder (append a new page last under its parent)', () => {
-  it('returns one past the current max order among siblings', () => {
-    // home has children a,b,c at 0,1,2 → a new child appends at 3.
-    expect(nextSiblingOrder(tree(), 'home', 'en', DL)).toBe(3);
+  // The contract is POSITION — the new page sorts after every existing sibling — not a specific
+  // number. Asserting `max + 1` is what let the old 100_000 clamp survive the raised ceiling: once a
+  // group had been re-spaced past it, a new page was pinned to 100_000 and landed mid-list.
+  it('sorts AFTER every existing sibling', () => {
+    expect(nextSiblingOrder(tree(), 'home', 'en', DL)).toBeGreaterThan(2);
   });
 
-  it('is 0 when the parent has no siblings yet', () => {
+  it('leaves room BELOW it, so the first "move to top" does not have to re-space', () => {
     const pages = [page('home', { path: '', title: 'Home' })];
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(0);
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBeGreaterThan(0);
+  });
+
+  it('★ appends after siblings that were re-spaced PAST the old 100_000 ceiling', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('a', { parent: 'home', title: 'A', order: 65_536 }),
+      page('b', { parent: 'home', title: 'B', order: 131_072 }),
+    ];
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBeGreaterThan(131_072);
   });
 
   it('counts the effective order (legacy nav.order) when top-level order is absent', () => {
@@ -142,13 +154,13 @@ describe('nextSiblingOrder (append a new page last under its parent)', () => {
       page('home', { path: '', title: 'Home' }),
       page('a', { parent: 'home', title: 'A', nav: { slots: ['header'], order: 5 } }),
     ];
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(6);
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBeGreaterThan(5);
   });
 
   it('scopes to the target parent — a deep child does not affect a home append', () => {
     const pages = [...tree(), page('deep', { parent: 'a', title: 'Deep', order: 9 })];
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(3); // unaffected by deep@9 under 'a'
-    expect(nextSiblingOrder(pages, 'a', 'en', DL)).toBe(10); // last under 'a'
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBeLessThan(nextSiblingOrder(pages, 'a', 'en', DL));
+    expect(nextSiblingOrder(pages, 'a', 'en', DL)).toBeGreaterThan(9); // last under 'a'
   });
 
   it('scopes to the locale — a locale-only page appends within its own language group', () => {
@@ -158,23 +170,27 @@ describe('nextSiblingOrder (append a new page last under its parent)', () => {
       page('b', { parent: 'home', title: 'B', order: 1 }),
       page('x-de', { parent: 'home', title: 'X', locale: 'de', order: 0 }),
     ];
-    // Appending an en page sees a,b (→2); appending a de page sees only x-de (→1).
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(2);
-    expect(nextSiblingOrder(pages, 'home', 'de', DL)).toBe(1);
+    // Appending an en page sees a,b (so it lands past b); a de page sees only x-de (past x-de).
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBeGreaterThan(1);
+    expect(nextSiblingOrder(pages, 'home', 'de', DL)).toBeGreaterThan(0);
+    expect(nextSiblingOrder(pages, 'home', 'de', DL)).toBeLessThan(nextSiblingOrder(pages, 'home', 'en', DL));
   });
 
   it('never counts Home itself as a sibling', () => {
-    // Home carries no order; a first real child still appends at 0, not after a phantom home.
+    // Home carries an order of its own but is pinned first; a first real child must not be pushed
+    // past it — it starts a fresh group.
     const pages = [page('home', { path: '', title: 'Home', order: 7 })];
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(0);
+    const first = nextSiblingOrder(pages, 'home', 'en', DL);
+    expect(first).toBeGreaterThan(0);
+    expect(first).toBeLessThan(65_537); // a fresh group, not "after home@7"
   });
 
   it('caps at the schema max even if a sibling already sits there (tie is expected, then title order)', () => {
     const pages = [
       page('home', { path: '', title: 'Home' }),
-      page('a', { parent: 'home', title: 'A', order: 100_000 }),
+      page('a', { parent: 'home', title: 'A', order: ORDER_MAX }),
     ];
-    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(100_000);
+    expect(nextSiblingOrder(pages, 'home', 'en', DL)).toBe(ORDER_MAX);
   });
 
   it('does not mutate the input pages', () => {

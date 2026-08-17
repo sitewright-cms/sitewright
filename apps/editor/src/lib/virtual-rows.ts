@@ -67,6 +67,8 @@ export interface VirtualRows {
   padBottom: number;
   /** False when the list is short enough to render whole (start/end then span everything). */
   active: boolean;
+  /** The measured height of one row INCLUDING the gap, or 0 before the first measurement. */
+  rowHeight: number;
 }
 
 /**
@@ -97,12 +99,20 @@ export function useVirtualRows(count: number, enabled = true): VirtualRows {
    * the work. (It did exactly that — 905 rows, `hasRow: false`.) The DOM query has no such failure mode.
    */
   const measure = useCallback(() => {
-    const row = listEl.current?.querySelector<HTMLElement>('li[data-virtual-row]');
-    if (!row) return;
-    // `offsetHeight` misses the flex gap between rows; the distance to the next sibling includes it.
-    const next = row.nextElementSibling as HTMLElement | null;
-    const gap = next && next.offsetTop > row.offsetTop ? next.offsetTop - row.offsetTop : row.offsetHeight;
-    if (gap > 0 && gap !== rowHeight) setRowHeight(gap);
+    const rows = listEl.current?.querySelectorAll<HTMLElement>('li[data-virtual-row]');
+    if (!rows || rows.length === 0) return;
+    const first = rows[0]!;
+    const last = rows[rows.length - 1]!;
+    // ★ AVERAGE across the whole rendered window, not one row. These rows carry optional badges
+    // (draft / template / inherited / custom code), so heights genuinely differ; sizing the spacers
+    // from a single sample makes the error accumulate with scroll distance instead of cancelling out.
+    // Re-measured as the window moves, so the estimate tracks whatever region is on screen.
+    // `offsetHeight` misses the flex gap between rows; the distance between rows includes it.
+    const span = last.offsetTop - first.offsetTop;
+    const measured = rows.length > 1 && span > 0 ? span / (rows.length - 1) : first.offsetHeight;
+    const next = Math.round(measured);
+    // Ignore sub-pixel churn, which would otherwise re-render the list on every scroll frame.
+    if (next > 0 && Math.abs(next - rowHeight) >= 1) setRowHeight(next);
   }, [rowHeight]);
 
   const update = useCallback(() => {
@@ -158,6 +168,7 @@ export function useVirtualRows(count: number, enabled = true): VirtualRows {
     end,
     padTop: active ? start * rowHeight : 0,
     padBottom: active ? Math.max(0, count - end) * rowHeight : 0,
+    rowHeight,
     active: active && rowHeight > 0,
   };
 }

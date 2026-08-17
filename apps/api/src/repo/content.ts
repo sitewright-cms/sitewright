@@ -1018,6 +1018,8 @@ export class ContentRepository {
     kind: ContentKind,
     entityId: string,
     data: unknown,
+    /** The row, when the caller has ALREADY read it — saves a redundant SELECT in a batch. */
+    knownRow?: Awaited<ReturnType<ContentRepository['row']>>,
   ): Promise<void> {
     const now = new Date();
     // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
@@ -1029,7 +1031,7 @@ export class ContentRepository {
     // bundle import and a revision restore all funnel through here — so no path can skip it.
     const clean = kind === 'imagemap' ? sanitizeImageMapConfig(data) : data;
     const scope = this.scopeForData(kind, clean);
-    const existing = await this.row(exec, ctx, kind, entityId, scope);
+    const existing = knownRow ?? (await this.row(exec, ctx, kind, entityId, scope));
     if (existing) {
       await exec
         .update(content)
@@ -1098,7 +1100,11 @@ export class ContentRepository {
         // Re-validate the WHOLE entity, not just the number: the stored object has to remain a valid
         // page/entry after the patch, and this is the same gate `put` applies.
         const next = schema.parse({ ...(existing.data as Record<string, unknown>), order });
-        await this.writeRow(exec, ctx, kind, id, next);
+        // ★ Hand `writeRow` the row we just read. Without it, it looks the same row up AGAIN — two
+        // SELECTs plus an UPDATE per item, all sequential inside one transaction. This runs on ONE
+        // shared SQLite writer for every tenant (busy_timeout 5s), so a long re-space is not just slow
+        // for the caller: it is a write stall for every OTHER project on the instance.
+        await this.writeRow(exec, ctx, kind, id, next, existing);
         updated += 1;
       }
     });

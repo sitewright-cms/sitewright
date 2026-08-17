@@ -162,6 +162,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const [editing, setEditing] = useState<Page | null>(null);
   /** Free-text filter over the list (title / path / id). Purely local to this screen. */
   const [search, setSearch] = useState('');
+  /** The page a KEYBOARD reorder just moved — focus returns to its grip once it re-renders. */
+  const [keyboardMovedId, setKeyboardMovedId] = useState<string | null>(null);
+  /** The list element, for finding a row's grip after a keyboard move (it may have re-mounted). */
+  const listElRef = useRef<HTMLUListElement | null>(null);
   // The "Add page" form is the full Page Settings modal in create mode, opened from a button atop
   // the list; its fields live inside that modal (no separate slug/title state here).
   const [addOpen, setAddOpen] = useState(false);
@@ -371,16 +375,55 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     }
   }
 
-  /** Keyboard reordering parity for the drag handle: Arrow Up/Down move within the sibling group. */
+  /**
+   * Keyboard reordering parity for the drag handle: Arrow Up/Down move within the sibling group.
+   *
+   * ★ Virtualised, the moved row can leave the rendered window — its grip button (the element holding
+   * FOCUS) then unmounts, focus falls to `<body>`, and the next Arrow press does nothing. Before
+   * virtualisation every row stayed mounted, so this could not happen. `keyboardMovedId` re-focuses
+   * and scrolls the row back into view once it re-renders at its new position.
+   */
   function moveByKey(p: Page, dir: 'up' | 'down') {
     const group = orderedSiblings(pagesRef.current, p.id, defaultLocale);
     const i = group.findIndex((g) => g.id === p.id);
     if (i < 0) return;
     const prev = group[i - 1];
     const next = group[i + 1];
-    if (dir === 'up' && prev) void persistReorder(p.id, prev.id, 'before');
-    if (dir === 'down' && next) void persistReorder(p.id, next.id, 'after');
+    if (dir === 'up' && prev) {
+      setKeyboardMovedId(p.id);
+      void persistReorder(p.id, prev.id, 'before');
+    }
+    if (dir === 'down' && next) {
+      setKeyboardMovedId(p.id);
+      void persistReorder(p.id, next.id, 'after');
+    }
   }
+
+  /**
+   * After a KEYBOARD move, bring the row back into view and return focus to its grip.
+   *
+   * Runs on every render while a keyboard move is pending: the row may need one render to reach its
+   * new position and another for the virtual window to catch up with it, and the element only exists
+   * once both have happened.
+   */
+  useEffect(() => {
+    if (!keyboardMovedId) return;
+    const grip = listElRef.current?.querySelector<HTMLElement>(`[data-grip-for="${CSS.escape(keyboardMovedId)}"]`);
+    if (!grip) {
+      // Not rendered yet: the row is outside the virtual window, so it has no element to focus or
+      // scroll to. Scroll by the number of rows it sits beyond the window, which mounts it, and this
+      // effect runs again on the resulting render.
+      const idx = visiblePages.findIndex(({ page: q }) => q.id === keyboardMovedId);
+      if (idx >= 0 && virt.active && virt.rowHeight > 0) {
+        const rowsAway = idx < virt.start ? idx - virt.start : idx - virt.end + 1;
+        window.scrollBy({ top: rowsAway * virt.rowHeight });
+      }
+      return;
+    }
+    grip.scrollIntoView({ block: 'nearest' });
+    grip.focus();
+    setKeyboardMovedId(null);
+  });
 
   /**
    * Create a page from the full New-page settings form. The modal supplies the whole field set
@@ -832,7 +875,13 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               )}
             </div>
           )}
-          <ul className="mb-8 flex flex-col gap-2" ref={virt.listRef as (el: HTMLUListElement | null) => void}>
+          <ul
+            className="mb-8 flex flex-col gap-2"
+            ref={(el) => {
+              listElRef.current = el;
+              virt.listRef(el);
+            }}
+          >
             {search.trim() !== '' && visiblePages.length === 0 && (
               <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
                 No page matches “{search.trim()}”.
@@ -862,7 +911,11 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     // A screen reader must hear "item 412 of 905", not "item 3 of 25".
                     aria-setsize={visiblePages.length}
                     aria-posinset={i + 1}
-                    style={{ ...indent, animationDelay: `${Math.min(windowIndex, 24) * 35}ms` }}
+                    // ★ The stagger is a ONE-TIME reveal. Virtualised, rows mount and unmount as the
+                    // window slides, so a per-position delay replays the entrance animation on every
+                    // scroll — continuous flicker instead of a single reveal. Only stagger when the
+                    // whole list mounts at once.
+                    style={{ ...indent, ...(virt.active ? {} : { animationDelay: `${Math.min(windowIndex, 24) * 35}ms` }) }}
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
                     draggable={!isHome}
@@ -914,6 +967,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}
+                      data-grip-for={p.id}
                       className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {

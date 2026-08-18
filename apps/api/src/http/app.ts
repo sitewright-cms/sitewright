@@ -573,12 +573,49 @@ export function _setMemoryBudgetForTest(limitBytes: number, usedBytes: number): 
   memoryBudgetReady = true;
 }
 
+/** How long admission must have been failing before we stop calling the condition transient. */
+const ADMISSION_SUSTAINED_MS = 60_000;
+/** Advertised in `Retry-After`. Short while it still looks like a spike, longer once it plainly isn't. */
+const ADMISSION_RETRY_AFTER_S = 5;
+const ADMISSION_RETRY_AFTER_SUSTAINED_S = 60;
+
+/** When the current unbroken run of refusals began; null whenever admission last succeeded. */
+let admissionFailingSince: number | null = null;
+
+/**
+ * The instance logger, published for the module-scope gates.
+ *
+ * `admitMemory` and its neighbours run outside the `buildApp` closure, so they cannot reach
+ * `app.log`. Before this they logged NOTHING — an instance could refuse every image write for hours
+ * with no trace but generic `{"statusCode":503}` completion lines. Assigned once in buildApp.
+ */
+let appLogger: FastifyBaseLogger | undefined;
+
+/** Test seam + a place for /health to read the current state without a second ledger sample. */
+export function _admissionFailingForMs(now = Date.now()): number {
+  return admissionFailingSince === null ? 0 : now - admissionFailingSince;
+}
+
+/**
+ * Test seam: the "this is no longer transient" branch is decided purely by elapsed time, so a test
+ * needs to move the clock rather than sleep for a minute. Pass null to reset.
+ */
+export function _setAdmissionFailingSinceForTest(at: number | null): void {
+  admissionFailingSince = at;
+}
+
 /**
  * Reserve `bytes` for a piece of work, or throw a RETRYABLE 503.
  *
  * The message matters as much as the status: an agent that reads a refusal as fatal abandons work
  * (a 413 with no way forward is exactly why a clone hotlinked an 83 MB video instead of uploading
  * it). Say plainly that this is transient and worth retrying.
+ *
+ * ...but only while that is TRUE. Measured: a bulk image import drove one instance to 98% of its
+ * cgroup and every encode then 503'd for as long as the process lived, each response still promising
+ * "retry shortly", carrying no `Retry-After`, and logging nothing above `info`. A well-behaved client
+ * retries such a refusal forever. So: carry a retry interval, log the headroom at `warn`, and once
+ * the refusals have run unbroken past ADMISSION_SUSTAINED_MS stop describing them as temporary.
  */
 async function admitMemory(bytes: number, label: string): Promise<Reservation> {
   if (!memoryBudgetReady) return memoryBudget.forceReserve(bytes, label);
@@ -586,11 +623,45 @@ async function admitMemory(bytes: number, label: string): Promise<Reservation> {
   // success beats a 503. Bounded — the ledger caps both the wait and how many may queue, because a
   // queue is memory as surely as the work is, and a hang is worse for a caller than a retryable 503.
   const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS);
-  if (held) return held;
-  throw Object.assign(new Error(`not enough memory for ${label} right now — this is temporary, retry shortly`), {
-    statusCode: 503,
-    retryable: true,
-  });
+  if (held) {
+    admissionFailingSince = null;
+    return held;
+  }
+
+  const now = Date.now();
+  admissionFailingSince ??= now;
+  const failingMs = now - admissionFailingSince;
+  const sustained = failingMs >= ADMISSION_SUSTAINED_MS;
+
+  const snap = await memoryBudget.snapshot();
+  const mb = (n: number): number => Math.round(n / 1024 / 1024);
+  appLogger?.[sustained ? 'error' : 'warn'](
+    {
+      label,
+      wantedMB: mb(bytes),
+      availableMB: mb(snap.availableBytes),
+      usedMB: mb(snap.usedBytes),
+      limitMB: mb(snap.limitBytes),
+      reservedMB: mb(snap.reservedBytes),
+      failingForMs: failingMs,
+    },
+    sustained
+      ? 'memory admission has been failing continuously — this instance is not shedding a spike, it is out of memory'
+      : 'memory admission refused',
+  );
+
+  throw Object.assign(
+    new Error(
+      sustained
+        ? `not enough memory for ${label}, and this instance has been refusing for ${Math.round(failingMs / 1000)}s — retrying will not help until it recovers`
+        : `not enough memory for ${label} right now — this is temporary, retry shortly`,
+    ),
+    {
+      statusCode: 503,
+      retryable: !sustained,
+      retryAfterSeconds: sustained ? ADMISSION_RETRY_AFTER_SUSTAINED_S : ADMISSION_RETRY_AFTER_S,
+    },
+  );
 }
 
 // Bound concurrent LARGE url-imports the same way, and for the same reason one level up: this route
@@ -1621,6 +1692,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     requestTimeout: REQUEST_TIMEOUT_MS,
   });
 
+  // Publish the logger to the module-scope gates (admitMemory and friends), which run outside this
+  // closure and until now could not report a refusal anywhere.
+  appLogger = app.log;
+
   // Introspection seam for the COMMITTED route contract (`contract/http-routes.json`). Fastify's only
   // post-`ready()` introspection is `printRoutes`, and that pretty-printer is LOSSY: it collapses every
   // wildcard route — including `/sites/:slug/*` and `/preview-site/:projectId/:sig/*`, two of the routes
@@ -1802,7 +1877,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // that reads a 500 as fatal abandons work. Fixed message, like 429/413, so a plugin's own error
     // text can never leak through.
     if (status === 503) {
-      return reply.code(503).send({ error: 'temporarily out of capacity — this is transient, retry shortly' });
+      // Carry the interval. Without it the only headers on this response were `x-ratelimit-*`, which
+      // describe a DIFFERENT limiter that was not the one refusing — so a client was told to retry,
+      // given no delay, and pointed at the wrong subsystem. `retryable:false` means the condition has
+      // been unbroken long enough that a tight retry loop is pointless; say so rather than repeat
+      // "transient" until the caller gives up or spins forever.
+      const after = (err as { retryAfterSeconds?: number }).retryAfterSeconds;
+      if (typeof after === 'number' && after > 0) reply.header('retry-after', String(Math.ceil(after)));
+      const transient = (err as { retryable?: boolean }).retryable !== false;
+      return reply.code(503).send({
+        error: transient
+          ? 'temporarily out of capacity — this is transient, retry shortly'
+          : 'out of capacity — this instance has been refusing for a while; retrying immediately will not help',
+      });
     }
     if (status === 413) return reply.code(413).send({ error: 'request body too large' });
     // A library/parse error that carries a 4xx status is a CLIENT fault (e.g. a malformed JSON body →
@@ -8215,7 +8302,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // never restarts a healthy pod just because the DB is briefly busy. FULLY rate-limit-exempt: it's a
   // zero-cost literal, and probes from the LB/orchestrator (often a shared source IP) must never be
   // throttled into a false "down".
-  app.get('/health', { config: { rateLimit: false } }, async () => ({ ok: true }));
+  // `ok` is unchanged so existing probes keep working; `memory` is added because the ledger's headroom
+  // was previously invisible from outside the container. An instance can refuse every image write
+  // while `/health` cheerfully returns `{ok:true}` — `admissionFailingForMs` is the number that tells
+  // an operator the difference between a spike and a stuck instance.
+  app.get('/health', { config: { rateLimit: false } }, async () => {
+    const mb = (n: number): number => Math.round(n / 1024 / 1024);
+    if (!memoryBudgetReady) return { ok: true };
+    const snap = await memoryBudget.snapshot();
+    return {
+      ok: true,
+      memory: {
+        limitMB: mb(snap.limitBytes),
+        usedMB: mb(snap.usedBytes),
+        reservedMB: mb(snap.reservedBytes),
+        availableMB: mb(snap.availableBytes),
+        derivedFromHost: snap.derivedFromHost,
+        admissionFailingForMs: _admissionFailingForMs(),
+      },
+    };
+  });
 
   // Readiness: the instance can actually serve requests — the DB is reachable + migrated. A load balancer
   // / orchestrator holds traffic until this returns 200; a briefly-unreachable DB yields 503 (drain, not

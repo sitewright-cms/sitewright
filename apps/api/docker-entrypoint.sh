@@ -25,6 +25,29 @@ if [ -z "$MALLOC_ARENA_MAX" ]; then
   export MALLOC_ARENA_MAX
 fi
 
+# Use jemalloc instead of glibc's allocator, because capping the arenas was only ever a mitigation.
+#
+# MEASURED on a 768MB container: six concurrent 4-6 megapixel encodes retained ~23MB per wave
+# (249 -> 272 -> 294 -> 320MB anon), monotonically, and 90 SECONDS OF IDLE RETURNED EXACTLY 0MB.
+# Ordinary web-sized images are cheaper but equally one-way (~200KB retained each). glibc frees those
+# blocks into per-thread arenas and keeps them; nothing in Node ever calls malloc_trim. Past a few
+# thousand encodes the memory ledger can no longer admit ANY image work, and the only cure is a
+# restart — which is how a bulk import locked an instance out of media uploads entirely.
+#
+# jemalloc hands the pages back. Preloaded for the whole container so it covers the render workers
+# too. Resolved by glob rather than hardcoded, so this works on arm64 as well as amd64, and skipped
+# silently if the package is absent (a slim/derived image must still boot).
+if [ -z "$LD_PRELOAD" ]; then
+  for candidate in /usr/lib/*/libjemalloc.so.2 /usr/lib/libjemalloc.so.2; do
+    if [ -r "$candidate" ]; then
+      LD_PRELOAD="$candidate"
+      export LD_PRELOAD
+      echo "[sitewright/api] allocator: jemalloc ($candidate)"
+      break
+    fi
+  done
+fi
+
 if [ -z "$NODE_OPTIONS" ]; then
   limit=""
   if [ -r /sys/fs/cgroup/memory.max ]; then

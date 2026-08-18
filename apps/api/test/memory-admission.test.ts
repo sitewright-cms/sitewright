@@ -272,3 +272,53 @@ describe('a small instance can still import media', () => {
     expect(String(res.json().error)).toMatch(/memory/i);
   });
 });
+
+/**
+ * What a shed caller is TOLD.
+ *
+ * Measured on a live 768MB instance: a bulk import drove it to 98% of its cgroup, every encode then
+ * 503'd for the life of the process, and each response promised "retry shortly" while carrying no
+ * `Retry-After` at all — the only headers were `x-ratelimit-*`, describing a limiter that was not the
+ * one refusing and still had 19 requests available. A correct client retries that forever.
+ */
+describe('a shed request carries a usable retry signal', () => {
+  it('sets Retry-After on the ledger 503', async () => {
+    const { t, projectId } = await setup();
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+    const res = await imageUpload(projectId, t);
+    expect(res.statusCode).toBe(503);
+    const after = Number(res.headers['retry-after']);
+    expect(Number.isFinite(after), 'a 503 with no Retry-After is an invitation to hot-loop').toBe(true);
+    expect(after).toBeGreaterThan(0);
+  }, 20_000);
+
+  it('stops calling the condition transient once it has been unbroken for a minute', async () => {
+    const { t, projectId } = await setup();
+    _setMemoryBudgetForTest(1024 * MB, 1020 * MB);
+
+    const first = await imageUpload(projectId, t);
+    expect(first.statusCode).toBe(503);
+    expect(String(first.json().error), 'the first refusal really may be a spike').toMatch(/transient/i);
+
+    // Pretend the run of refusals started over a minute ago. Time is the only input that decides
+    // this, so moving it is the whole test — no sleeping.
+    const { _setAdmissionFailingSinceForTest } = await import('../src/http/app.js');
+    _setAdmissionFailingSinceForTest(Date.now() - 61_000);
+
+    const later = await imageUpload(projectId, t);
+    expect(later.statusCode).toBe(503);
+    expect(String(later.json().error), 'sustained refusal must not keep promising transience').not.toMatch(/transient/i);
+    expect(Number(later.headers['retry-after'])).toBeGreaterThan(Number(first.headers['retry-after']));
+  }, 30_000);
+
+  it('reports headroom on /health so a stuck instance is visible from outside', async () => {
+    _setMemoryBudgetForTest(1024 * MB, 100 * MB);
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; memory?: { limitMB: number; availableMB: number; admissionFailingForMs: number } };
+    expect(body.ok, 'existing probes must keep working').toBe(true);
+    expect(body.memory?.limitMB).toBe(1024);
+    expect(body.memory?.availableMB).toBeGreaterThan(0);
+    expect(typeof body.memory?.admissionFailingForMs).toBe('number');
+  });
+});

@@ -9,6 +9,40 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-08-18
+
+### Fixed
+
+- **Image encoding no longer leaks the instance, and the 503 that follows tells the truth.** A bulk
+  media import locked a 768MB instance out of *every* image write: each encode returned
+  `503 temporarily out of capacity` for the rest of the process's life, and only a restart cleared it.
+
+  Measured — three waves of six concurrent 4–6 megapixel encodes: **249 → 272 → 294 → 320 MB anon, and
+  90 seconds of idle returned exactly 0 MB.** Ordinary web-sized images are cheaper but equally one-way
+  (~200 KB retained each). It is not the V8 heap: the ceiling is applied correctly and libvips' own
+  cache is already disabled below 1 GiB. It is glibc arena memory that libvips frees and the allocator
+  never hands back — which `docker-entrypoint.sh` already documented from an earlier pass ("the memory
+  survives a forced V8 gc()"). `MALLOC_ARENA_MAX=2` halved the multiplier without stopping the climb.
+
+  The runtime image now preloads **jemalloc**, which returns the pages. Re-measured on a 768MB slot:
+  the same burst peaks at 297 MB and falls back to **261 MB** after idle, and **240 real images at
+  concurrency 3 move 262 → 270 MB and stay flat** from the 60th image on, with zero refusals. The
+  workload plateaus instead of climbing, which is what decides whether a multi-thousand-image
+  migration can finish.
+
+  ★ The refusal itself carried **no `Retry-After`** — its only headers were `x-ratelimit-*`, describing
+  a *different* limiter that was not the one refusing and still had 19 requests available. A correct
+  client retries that forever. The 503 now carries an interval, and once refusals have run unbroken for
+  a minute it stops describing itself as transient.
+
+  ★ And nothing was ever **logged**: `admitMemory` runs outside the `buildApp` closure and had no
+  logger, so an instance could refuse every image write for hours leaving only generic
+  `{"statusCode":503}` completion lines. Refusals now log at `warn` with the headroom figures, at
+  `error` once sustained, and `GET /health` reports
+  `memory.{limitMB,usedMB,reservedMB,availableMB,admissionFailingForMs}` so this is diagnosable
+  without `docker exec`. `ok` is unchanged, so existing probes keep working.
+
+
 ### Changed
 
 - **The file manager renders only the rows on screen, and its thumbnails ask for the SMALL size.**

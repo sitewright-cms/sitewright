@@ -7974,6 +7974,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // popup that inherits this sandbox lands on the target site at an OPAQUE origin and breaks
           // there instead. Neither token grants the framed document same-origin access to the editor.
           .header('content-security-policy', PREVIEW_SANDBOX_CSP)
+          // ★ …and the page's REAL policy, report-only, so it is visible where the author is working.
+          // Publish derives a per-page CSP and ships it as an INERT `<meta name="sw-csp">`; the hosted
+          // routes promote that to a header, but preview did not — so the one policy directive the
+          // preview carried was its own `sandbox`, and an author checking "is my video allowed?" saw
+          // nothing at all in devtools. It CANNOT be enforcing here: this document also runs the
+          // preview bridge and the shell's runtime, which the published policy has no reason to allow,
+          // so enforcing it would break the surface it is meant to explain. Report-only shows the exact
+          // policy and reports violations without blocking.
+          .header(
+            'content-security-policy-report-only',
+            siteCspHeaderFromHtml(html) ?? "default-src 'self'; img-src 'self' data: https:; object-src 'none'",
+          )
           .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);

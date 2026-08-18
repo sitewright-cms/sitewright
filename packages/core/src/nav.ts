@@ -35,6 +35,18 @@ export interface NavItem {
    * helper (a SafeString) — `{{label}}` stays the plain-text fallback for older templates.
    */
   labelHtml?: string;
+  /**
+   * The page's SEO description, when it has one. Carried so a mega menu can print a one-line gloss
+   * under each link instead of a bare list of titles — the single thing that turns a dropdown of 8
+   * identical-looking links into something a parent can actually navigate. Absent for a placeholder
+   * (which has no page) and for a page with no description.
+   */
+  description?: string;
+  /**
+   * The page's image, when it has one. Lets a dropdown render a FEATURE card for the section it
+   * belongs to. Same URL the page's own hero uses, so the two can never drift.
+   */
+  image?: string;
   /** Child-page items, present when the page's `nav.dropdown` is on (render as a dropdown). */
   children?: NavItem[];
 }
@@ -67,7 +79,16 @@ function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
   const label = page.nav?.title || page.title;
   // A link placeholder resolves its href from `link.target` and its label is rich (HTML + icon
   // helpers); a page from its tree route with a plain (escaped) label.
-  return isLinkPage(page) ? { label, rich: true, placeholder: true, ...linkHref(page) } : { label, path: pagePath(page, byId) };
+  if (isLinkPage(page)) return { label, rich: true, placeholder: true, ...linkHref(page) };
+  // `description`/`image` come along so a dropdown can be a MENU rather than a list of titles. Both
+  // are omitted when absent rather than emitted empty — they land in every page's render context, so
+  // an empty string per item is pure weight on a large site.
+  return {
+    label,
+    path: pagePath(page, byId),
+    ...(page.description ? { description: page.description } : {}),
+    ...(page.image ? { image: page.image } : {}),
+  };
 }
 
 /**
@@ -99,7 +120,8 @@ export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
     .filter(
       (page) =>
         !page.collection &&
-        (page.nav?.slots.includes(slot) ?? false) &&
+        page.nav?.hidden !== true &&
+        (page.nav?.slots?.includes(slot) ?? false) &&
         // Nested under a dropdown parent → rendered as that parent's child, never flat.
         !(page.parent && dropdownParents.has(page.parent)),
     )
@@ -108,7 +130,9 @@ export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
       const item = toItem(page, byId);
       if (page.nav?.dropdown !== true) return item;
       const children = pages
-        .filter((child) => child.parent === page.id && !child.collection)
+        // `hidden` is the ONLY way a child opts out: a dropdown folds in every child by design, since
+        // children are not required to declare slots of their own.
+        .filter((child) => child.parent === page.id && !child.collection && child.nav?.hidden !== true)
         .sort(byNavOrder)
         .map((child) => toItem(child, byId));
       return children.length > 0 ? { ...item, children } : item;

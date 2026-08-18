@@ -1482,7 +1482,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             // is a constant within that locale's index and so cannot reorder its results.
             depth: outSlug ? outSlug.split('/').length : 0,
             // The same predicate `buildNav` uses, so "in the main nav" means what the author sees.
-            inNav: page.nav?.slots.includes('header') ?? false,
+            inNav: page.nav?.slots?.includes('header') ?? false,
           });
           searchPages.set(pageLocale, list);
         }

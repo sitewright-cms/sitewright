@@ -229,3 +229,69 @@ describe('repairMediaOrientation (one-time repair of media stored before the fix
     expect(still.height).toBe(456);
   });
 });
+
+describe('POST /media/:id/rotate — straightening a photo whose EXIF tag was stripped', () => {
+  it('turns the stored ORIGINAL, keeps the URL, and regenerates the thumbnail', async () => {
+    const { t, projectId } = await setup('rot-route@orient.test');
+    // No tag at all — the case nothing can fix automatically.
+    const { item } = await upload(projectId, t, 'sideways.jpg', JPEG_64X32);
+    expect(item.width).toBe(64);
+    expect(item.height).toBe(32);
+    // Materialise a thumbnail so there is a stale one to drop.
+    expect((await app.inject({ method: 'GET', url: `${item.url}?size=sm` })).statusCode).toBe(200);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/${item.id}/rotate`,
+      cookies: { sw_session: t },
+      payload: { degrees: 90 },
+    });
+    expect(res.statusCode).toBe(200);
+    const after = (res.json() as { item: { url: string; width: number; height: number } }).item;
+    expect(after.width).toBe(32);
+    expect(after.height).toBe(64);
+    // ★ The URL is unchanged — that is the point: every existing reference keeps working.
+    expect(after.url).toBe(item.url);
+
+    const original = await app.inject({ method: 'GET', url: `${item.url}?size=original` });
+    const meta = await readUprightSize(original.rawPayload);
+    expect(meta).toMatchObject({ width: 32, height: 64 });
+    const thumb = await readUprightSize((await app.inject({ method: 'GET', url: `${item.url}?size=sm` })).rawPayload);
+    expect(thumb!.height).toBeGreaterThan(thumb!.width);
+  });
+
+  it('is cumulative — four quarter-turns come back to where it started', async () => {
+    const { t, projectId } = await setup('rot4@orient.test');
+    const { item } = await upload(projectId, t, 'spin.jpg', JPEG_64X32);
+    for (let i = 0; i < 4; i += 1) {
+      const r = await app.inject({
+        method: 'POST',
+        url: `/projects/${projectId}/media/${item.id}/rotate`,
+        cookies: { sw_session: t },
+        payload: { degrees: 90 },
+      });
+      expect(r.statusCode).toBe(200);
+    }
+    const meta = await readUprightSize((await app.inject({ method: 'GET', url: `${item.url}?size=original` })).rawPayload);
+    expect(meta).toMatchObject({ width: 64, height: 32 });
+  });
+
+  it('rejects a non-quarter turn and a non-image asset', async () => {
+    const { t, projectId } = await setup('rotbad@orient.test');
+    const { item } = await upload(projectId, t, 'x.jpg', JPEG_64X32);
+    const bad = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/${item.id}/rotate`,
+      cookies: { sw_session: t },
+      payload: { degrees: 45 },
+    });
+    expect(bad.statusCode).toBe(400);
+    const missing = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media/does-not-exist/rotate`,
+      cookies: { sw_session: t },
+      payload: { degrees: 90 },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+});

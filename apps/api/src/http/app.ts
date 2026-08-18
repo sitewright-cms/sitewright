@@ -132,6 +132,8 @@ import {
   generateThumbnail,
   isThumbnailable,
   isSvgFile,
+  rotateImage,
+  renderPlaceholder,
   isSizeToken,
   isThumbFormat,
   sanitizeSvg,
@@ -6171,6 +6173,57 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       await storage.storeFile(project.slug, asset.id, storedName, buffer);
       const dims = svgIntrinsicSize(clean) ?? { width: img.width, height: img.height };
       const next = { ...img, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
+      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    });
+
+    // Turn a photograph a quarter at a time, IN PLACE.
+    //
+    // ★ EXIF orientation only helps when the tag is there. A library will hold photographs whose pixels
+    // are sideways and whose tag was stripped by whatever produced them — a CMS, an export, a phone
+    // messaging app. Nothing in the metadata says so, so nothing can fix them automatically and the
+    // author is left with a wall of sideways photographs and no control. (Measured on one real site:
+    // 455 images carried a tag and were corrected automatically; a third of some galleries were
+    // sideways WITHOUT one.)
+    //
+    // In place is the whole point: the asset id and the stored file name do not change, so every
+    // existing reference — an <img src> in a body, a {{sw-image}} binding, a gallery folder listing —
+    // keeps working. Rewriting the stored original also means the correction is permanent and travels
+    // with an export, rather than living in a display rule some other renderer would ignore.
+    const RotateAssetBody = z.object({ degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]) });
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/rotate', { config: rl(120) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = RotateAssetBody.safeParse(req.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: 'rotation must be 90, 180 or 270 degrees' });
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+      if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
+      const image = asset as ImageAsset;
+      // SVG is a vector — a rotation belongs in its markup, and it never goes through sharp here.
+      if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
+        return reply.code(400).send({ error: 'an SVG cannot be rotated here' });
+      }
+      let rotated;
+      try {
+        rotated = await rotateImage(storage.resolveStoredPath(project.slug, asset.id, image.original), body.data.degrees);
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not rotate this image' });
+      }
+      // A format we cannot re-encode in kind would change the file's extension, and the stored name is
+      // referenced by every URL — refuse rather than break them.
+      if (rotated.format !== image.format) {
+        return reply.code(400).send({ error: `cannot rotate a ${image.format} without changing its format` });
+      }
+      await storage.storeFile(project.slug, asset.id, image.original, rotated.buffer);
+      // Every cached variant was derived from the OLD pixels. Dropping them is what makes the turn
+      // visible everywhere at once; they regenerate on the next request.
+      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
+      const next = {
+        ...image,
+        bytes: rotated.buffer.length,
+        width: rotated.width,
+        height: rotated.height,
+        placeholder: await renderPlaceholder(rotated.buffer),
+      };
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 

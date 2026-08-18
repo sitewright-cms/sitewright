@@ -39,8 +39,13 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # path handles HTTPS-token targets; SSH needs the real binaries). `rsync` is the opt-in delta+compress
 # transfer for SFTP targets that permit it (rsync-over-SSH). Installed in the same cached heavy layer
 # as Chromium so code-only deploys don't re-fetch them.
+# `libjemalloc2` replaces glibc's allocator for the whole container (see docker-entrypoint.sh).
+# MEASURED on a 768MB instance: six concurrent 4-6 megapixel encodes retained ~23MB per wave,
+# monotonically, and 90s of idle returned exactly 0 of it — because libvips' allocations are freed
+# into glibc arenas that are never handed back to the OS. That is what eventually parks the memory
+# ledger in a permanently-refusing state. jemalloc returns them.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git openssh-client rsync \
+    && apt-get install -y --no-install-recommends git openssh-client rsync libjemalloc2 \
     && node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell \
     && apt-get purge -y --auto-remove libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*

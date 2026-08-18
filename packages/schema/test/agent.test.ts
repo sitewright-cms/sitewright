@@ -49,7 +49,11 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // no arithmetic and that gt/lt do not exist. An agent that believes a helper is absent never calls it
     // and never checks — so this is the one line that has to be in the always-loaded core, correcting a
     // claim the core itself made.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(20_600);
+    // 20_600 -> 21_000 for string BUILDING + list FILTERING, on exactly that rule. The core (and the
+    // sw-flag reference entry) said outright that "a template cannot concatenate strings", and nothing
+    // anywhere hinted a list could be filtered by value — so agents hard-coded hrefs and rendered
+    // whatever happened to be first. Both are one line; the how-tos stayed in the templates guide.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_000);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {

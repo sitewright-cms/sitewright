@@ -412,6 +412,13 @@ export const InstanceSettingsStoredSchema = z.object({
   backupRetention: z.number().int().min(1).max(100).optional(),
   /** Server log verbosity (pino level). Unset → the LOG_LEVEL env, else 'info'. Applied live on save. */
   logLevel: LogLevelSchema.optional(),
+  /**
+   * RUN-ONCE MARKER for the media EXIF-orientation repair (see `repairMediaOrientation`). Set to the
+   * completion time on the boot that ran it. A marker rather than a re-derivable check because the
+   * repair drops the derived thumbnails of every orientation-tagged image — cheap once, wasteful on
+   * every boot. INTERNAL: never accepted from the public Input schema, never in the masked view.
+   */
+  mediaOrientationRepairedAt: z.number().int().nonnegative().optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 

@@ -98,4 +98,56 @@ describe('storeOriginal', () => {
     const src = await writePng('c.png', 100, 100);
     await expect(storeOriginal(src, join(workDir, 'out-c'), { storedName: 'c.png', cap: 0 })).rejects.toThrow(/cap/);
   });
+
+  // The recorded width/height are what every consumer trusts: `sw-image` writes them as the intrinsic
+  // size and derives its `sizes`/aspect box from them. For an EXIF-rotated phone photo the RAW pixel
+  // dimensions are the transposed ones, so recording them lands a portrait photo in a landscape box.
+  describe('EXIF orientation', () => {
+    async function writeRotatedJpeg(name: string, w: number, h: number, orientation: number): Promise<string> {
+      const p = join(workDir, name);
+      await sharp({ create: { width: w, height: h, channels: 3, background: { r: 10, g: 90, b: 180 } } })
+        .jpeg()
+        .withMetadata({ orientation })
+        .toFile(p);
+      return p;
+    }
+
+    it('records the UPRIGHT dimensions for a verbatim-stored rotated original', async () => {
+      const src = await writeRotatedJpeg('rot.jpg', 1600, 900, 6);
+      const r = await storeOriginal(src, join(workDir, 'out-rot'), { storedName: 'rot.jpg' });
+      expect(r.width).toBe(900);
+      expect(r.height).toBe(1600);
+      // The bytes are still stored verbatim — the EXIF tag stays with them, so the browser (which
+      // honours it) and our own thumbnails now agree.
+      expect(r.storedName).toBe('rot.jpg');
+    });
+
+    it('bakes the rotation in when the cap forces a re-encode', async () => {
+      const src = await writeRotatedJpeg('rot-cap.jpg', 3000, 2000, 6);
+      const out = join(workDir, 'out-rot-cap');
+      // The cap is a MAX WIDTH, and the upright width here is 2000 — so a cap of 1000 bites.
+      const r = await storeOriginal(src, out, { storedName: 'rot-cap.jpg', cap: 1000 });
+      expect(r.storedName).toBe('rot-cap.webp');
+      expect(r.width).toBe(1000);
+      expect(r.height).toBe(1500); // upright 2000x3000 scaled to width 1000
+      const meta = await sharp(await readFile(join(out, 'rot-cap.webp'))).metadata();
+      expect(meta.width).toBe(1000);
+      expect(meta.height).toBe(1500); // the re-encoded file is upright on disk, tag or no tag
+    });
+
+    it('orients the LQIP too (a sideways blur behind an upright photo is visible)', async () => {
+      const src = await writeRotatedJpeg('rot-lqip.jpg', 1600, 900, 6);
+      const r = await storeOriginal(src, join(workDir, 'out-rot-lqip'), { storedName: 'rot-lqip.jpg' });
+      const b64 = r.placeholder.slice('data:image/webp;base64,'.length);
+      const meta = await sharp(Buffer.from(b64, 'base64')).metadata();
+      expect(meta.height).toBeGreaterThan(meta.width!);
+    });
+
+    it('leaves an upright original alone', async () => {
+      const src = await writeRotatedJpeg('up.jpg', 1600, 900, 1);
+      const r = await storeOriginal(src, join(workDir, 'out-up'), { storedName: 'up.jpg' });
+      expect(r.width).toBe(1600);
+      expect(r.height).toBe(900);
+    });
+  });
 });

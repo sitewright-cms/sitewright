@@ -249,6 +249,7 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnect
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
 import { migrateInstanceHcaptchaToProjects } from '../repo/captcha-migration.js';
+import { repairMediaOrientation } from '../repo/media-orientation.js';
 import { ReleaseRepository } from '../repo/releases.js';
 import { sweepDerivedStorage, projectStorage } from '../repo/storage-reaper.js';
 import { findUnusedMedia } from '../repo/media-usage.js';
@@ -1695,6 +1696,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Publish the logger to the module-scope gates (admitMemory and friends), which run outside this
   // closure and until now could not report a refusal anywhere.
   appLogger = app.log;
+
+  // ONE-TIME: repair media stored before the pipeline honoured EXIF orientation — a phone photo taken
+  // in portrait had its raw (sideways) dimensions recorded and every thumbnail encoded on its side.
+  // Detached: it is one header read per image across the whole library, and nothing about serving the
+  // instance waits on it. Marked complete either way, so a library with nothing to fix costs one
+  // query, once, forever.
+  if (mediaStorage) {
+    const storageForRepair = mediaStorage;
+    void (async () => {
+      if (await instanceSettingsRepo.isMediaOrientationRepaired()) return;
+      const report = await repairMediaOrientation(db, storageForRepair, {
+        log: (message) => app.log.info({ migration: 'media-orientation' }, message),
+      });
+      await instanceSettingsRepo.markMediaOrientationRepaired(Date.now());
+      app.log.info({ ...report }, 'media EXIF-orientation repair complete');
+    })().catch((err: unknown) =>
+      // Left unmarked on failure, so the next boot retries. Every write it makes is independent, so a
+      // partial pass simply leaves less to do.
+      app.log.error({ err }, 'media EXIF-orientation repair failed; it will be retried on next boot'),
+    );
+  }
 
   // Introspection seam for the COMMITTED route contract (`contract/http-routes.json`). Fastify's only
   // post-`ready()` introspection is `printRoutes`, and that pretty-printer is LOSSY: it collapses every

@@ -59,7 +59,13 @@ export async function generateThumbnail(
   // Read all frames only for the animated WebP path; AVIF (and static sources) stay single-frame.
   const readAnimated = animated && format === 'webp';
 
-  const pipe = sharp(input, { ...SHARP_OPTIONS, animated: readAnimated }).resize({
+  // ★ `autoOrient` applies the source's EXIF Orientation tag before anything else.
+  //
+  // A phone photographed in portrait writes LANDSCAPE pixels plus `Orientation: 6`. Browsers honour
+  // that tag, so the stored original looks upright — but sharp ignores it unless asked AND strips
+  // metadata on encode, so an unrotated thumbnail is sideways *and* has lost the tag that would have
+  // let the browser correct it. Every derived size then contradicts the original it came from.
+  const pipe = sharp(input, { ...SHARP_OPTIONS, animated: readAnimated, autoOrient: true }).resize({
     width,
     withoutEnlargement: true,
   });
@@ -67,9 +73,14 @@ export async function generateThumbnail(
   const { data, info } = await encoded.toBuffer({ resolveWithObject: true });
 
   // `info.height` on an animated buffer is the stacked page height; derive the true single-frame
-  // height from the source aspect ratio so it is always correct regardless of animation.
-  const srcW = meta.width ?? info.width;
-  const srcFrameH = meta.pageHeight ?? meta.height ?? info.height;
+  // height from the source aspect ratio so it is always correct regardless of animation. The aspect
+  // must come from the ORIENTED dimensions (`meta.autoOrient`), which is where the transposition
+  // lands for a rotated source — `meta.width`/`meta.height` are still the raw, sideways ones.
+  const srcW = meta.autoOrient?.width ?? meta.width ?? info.width;
+  const rawFrameH = meta.pageHeight ?? meta.height ?? info.height;
+  // For an animated source `pageHeight` is the true frame height and EXIF orientation never applies
+  // (GIF/animated WebP carry no orientation tag), so prefer it whenever the source is multi-frame.
+  const srcFrameH = animated ? rawFrameH : (meta.autoOrient?.height ?? rawFrameH);
   const height = srcW > 0 ? Math.max(1, Math.round(info.width * (srcFrameH / srcW))) : info.height;
 
   return { buffer: data, width: info.width, height, format };

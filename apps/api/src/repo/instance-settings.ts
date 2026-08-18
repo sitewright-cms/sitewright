@@ -460,6 +460,22 @@ export class InstanceSettingsRepository {
     return { siteKey: stored.hcaptcha.siteKey, secret };
   }
 
+  /** Has the one-time media EXIF-orientation repair already run on this instance? */
+  async isMediaOrientationRepaired(): Promise<boolean> {
+    return (await this.getStored()).mediaOrientationRepairedAt !== undefined;
+  }
+
+  /** Records that the media EXIF-orientation repair completed, so it never runs again. */
+  async markMediaOrientationRepaired(atMs: number): Promise<void> {
+    const stored = await this.getStored();
+    const validated = InstanceSettingsStoredSchema.parse({ ...stored, mediaOrientationRepairedAt: atMs });
+    const now = new Date();
+    await this.db
+      .insert(instanceSettings)
+      .values({ id: INSTANCE_SETTINGS_ID, data: validated, updatedAt: now })
+      .onConflictDoUpdate({ target: instanceSettings.id, set: { data: validated, updatedAt: now } });
+  }
+
   /** Drops the legacy instance hCaptcha once the migration has handed it to the projects. */
   async clearLegacyHcaptcha(): Promise<void> {
     const stored = await this.getStored();

@@ -1530,7 +1530,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // every request). Defined unconditionally + cleared on project delete so they can't leak.
   const previewBuiltVersion = new Map<string, string>();
   const previewBuilds = new Map<string, Promise<void>>();
-  const previewBuildFail = new Map<string, { version: string; at: number }>();
+  const previewBuildFail = new Map<string, { version: string; at: number; message?: string }>();
   // What the IN-FLIGHT draft build is doing right now, so the preview shell can say so instead of
   // showing an unexplained wait. Present only while a build is running (the entry is deleted when it
   // settles), which is also how the shell knows to stop asking.
@@ -7218,7 +7218,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           inflight = buildPreviewSite(ctx, project, version)
             .then(() => void previewBuildFail.delete(project.id))
             .catch((err: unknown) => {
-              previewBuildFail.set(project.id, { version, at: Date.now() });
+              previewBuildFail.set(project.id, {
+                version,
+                at: Date.now(),
+                message: err instanceof Error ? err.message : String(err),
+              });
               app.log.warn(
                 { projectId: project.id, errMsg: err instanceof Error ? err.message : String(err) },
                 'preview build failed',
@@ -7276,7 +7280,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // shell "nothing is happening" through the entire wait it exists to explain.
         const building = previewBuilds.has(project.id);
         const p = previewProgress.get(project.id);
-        return reply.send({ building, ...(building && p ? p : {}) });
+        // ★ Report the LAST FAILURE too. A failing build is invisible otherwise: `ensurePreviewBuild`
+        // logs a warning, arms a cooldown and returns, and the route then serves the last SUCCESSFUL
+        // build — so the preview silently shows stale content and the author reads it as "my changes
+        // did not save" or "content is missing". The shell can now say what actually happened.
+        const failed = previewBuildFail.get(project.id);
+        return reply.send({
+          building,
+          ...(building && p ? p : {}),
+          ...(failed ? { failed: { message: failed.message, at: new Date(failed.at).toISOString(), stale: true } } : {}),
+        });
       },
     );
 

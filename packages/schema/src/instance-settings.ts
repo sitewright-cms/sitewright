@@ -96,6 +96,9 @@ export const FormModesSchema = z.object({
   contactPhp: z.boolean(),
   contactPhpSmtp: z.boolean().default(false),
   thirdParty: z.boolean(),
+  /** WhatsApp hand-off. `.default(false)` like contactPhpSmtp, so a settings row written before this
+   *  mode existed still parses instead of failing the whole instance-settings read. */
+  whatsapp: z.boolean().default(false),
 });
 export type FormModes = z.infer<typeof FormModesSchema>;
 
@@ -115,6 +118,7 @@ export const DEFAULT_FORM_MODES: Readonly<FormModes> = Object.freeze({
   contactPhp: false,
   contactPhpSmtp: false,
   thirdParty: false,
+  whatsapp: false,
 });
 
 /**

@@ -47,7 +47,7 @@ describe('instance-settings stock keys', () => {
   it('masks stored stock keys to presence flags (never the ciphertext)', () => {
     const enc = { iv: 'aXY=', ct: 'Y3Q=', tag: 'dGFn' };
     const stored: InstanceSettingsStored = {
-      formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false },
+      formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false },
       stock: { unsplash: enc },
     };
     const masked = maskInstanceSettings(stored);

@@ -36,7 +36,7 @@ import { findAll, appendChild } from 'domutils';
 import render from 'dom-serializer';
 import {
   RECAPTCHA_RESPONSE_FIELD,
-  type CaptchaRenderConfig, HONEYPOT_FIELD, FORM_ID_FIELD, isContactPhpMode, isPlatformRoutedMode, type FormPublic } from '@sitewright/schema';
+  type CaptchaRenderConfig, HONEYPOT_FIELD, FORM_ID_FIELD, isContactPhpMode, isPlatformRoutedMode, isWhatsappMode, type FormPublic } from '@sitewright/schema';
 import { escapeAttr, escapeHtml } from './escape.js';
 
 /** Form-id keys that must never index the forms map (prototype-pollution guard). */
@@ -290,6 +290,18 @@ export function resolveFormEmbeds(html: string, ctx: FormEmbedContext): string {
       // form actually asks for one, so an unprotected form costs its visitors nothing.
       if (form.pow) el.attribs['data-sw-pow'] = '';
       else delete el.attribs['data-sw-pow'];
+    }
+    // WHATSAPP hand-off: no endpoint at all — the runtime composes a wa.me link from the filled
+    // fields and opens it. The number is necessarily IN THE MARKUP (the link is built client-side),
+    // like the mini-shop's whatsapp channel and like any published phone number.
+    if (isWhatsappMode(form.mode)) {
+      delete el.attribs['data-sw-endpoint'];
+      el.attribs['data-sw-whatsapp'] = form.whatsappNumber ?? '';
+      if (form.whatsappIntro) el.attribs['data-sw-wa-intro'] = form.whatsappIntro;
+      else delete el.attribs['data-sw-wa-intro'];
+    } else {
+      delete el.attribs['data-sw-whatsapp'];
+      delete el.attribs['data-sw-wa-intro'];
     }
     if (form.redirectUrl) el.attribs['data-sw-redirect'] = form.redirectUrl;
     else delete el.attribs['data-sw-redirect'];

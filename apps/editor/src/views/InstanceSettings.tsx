@@ -60,6 +60,11 @@ const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; 
     hint: 'Same exported handler, but sending via the project’s own SMTP. ⚠ Writes that password onto the destination host in plaintext — SFTP/FTP only, never Git.',
   },
   { key: 'thirdParty', label: 'Third-party', hint: 'Forms post directly to an external endpoint URL.' },
+  {
+    key: 'whatsapp',
+    label: 'WhatsApp',
+    hint: 'The filled form opens in the visitor’s WhatsApp, pre-addressed to a number. Nothing is posted, stored or emailed — and the number is visible in the page source.',
+  },
 ];
 
 // The schema's own all-off default — imported rather than re-typed so adding a delivery mode

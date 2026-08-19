@@ -58,6 +58,7 @@ const portsUsable = (await Promise.all(Object.values(PORTS).map(canBind))).every
 
 const modes: InstanceSettingsStored['formModes'] = {
   globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false,
+  whatsapp: false,
 };
 
 const mail: SubmissionMail = {

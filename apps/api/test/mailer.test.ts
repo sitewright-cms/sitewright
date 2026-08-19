@@ -10,7 +10,7 @@ function settings(stored: InstanceSettingsStored, password: string | null = null
 }
 
 const withSmtp: InstanceSettingsStored = {
-  formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false },
+  formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false },
   smtp: { host: 'smtp.acme.com', port: 587, secure: false, user: 'mailer', fromEmail: 'no-reply@acme.com', fromName: 'Acme' },
 };
 
@@ -51,7 +51,7 @@ describe('GlobalSmtpMailer', () => {
 
   it('returns false when no SMTP is configured', async () => {
     const { factory } = recordingTransport();
-    const noSmtp: InstanceSettingsStored = { formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false } };
+    const noSmtp: InstanceSettingsStored = { formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false } };
     const mailer = new GlobalSmtpMailer(settings(noSmtp), factory);
     expect(await mailer.send({ recipient: 'x@y.z', subject: 's', formName: 'f', fields: {} })).toBe(false);
   });

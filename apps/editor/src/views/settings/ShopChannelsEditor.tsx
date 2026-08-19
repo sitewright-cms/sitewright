@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, type ShopFieldType } from '@sitewright/schema';
+import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, type Form, type ShopFieldType } from '@sitewright/schema';
+import { api } from '../../api';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
 import { useReorder } from './use-reorder';
@@ -12,9 +14,15 @@ const glassSelectAuto =
 
 const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'mailto', label: 'Email (mailto)' },
+  // The two email routes are named for WHERE the mail is composed, because that is the whole
+  // difference and picking the wrong one is a silent downgrade: `mailto` hands the order to the
+  // BUYER's mail client (nothing is stored, nothing is guarded, and it fails outright on a device
+  // with no mail app configured), while the form channel POSTs it to the SERVER through the
+  // ordinary form pipeline — stored in the inbox, emailed to the form's recipient, and behind the
+  // same honeypot, interaction gate, proof-of-work and rate limits as a contact form.
+  { value: 'mailto', label: 'Email — opens buyer’s mail app (mailto)' },
   { value: 'payment', label: 'Payment link' },
-  { value: 'form', label: 'Order form' },
+  { value: 'form', label: 'Email the order — sent by the server (recommended)' },
 ];
 
 /** Order-field input types + their labels (mirrors the schema SHOP_FIELD_TYPES enum; `satisfies` keeps each value valid). */
@@ -136,9 +144,36 @@ function OrderFieldsEditor({
  * Translations & Labels under `shop.<key>`), and that kind's config fields. whatsapp/mailto rows also gain
  * an Order-fields sub-editor. Rows are keyed on a stable id so add/remove animate cleanly.
  */
-export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[]; onChange: (rows: KeyedShopChannel[]) => void }) {
+export function ShopChannelsEditor({
+  rows,
+  projectId,
+  onChange,
+}: {
+  rows: KeyedShopChannel[];
+  projectId: string;
+  onChange: (rows: KeyedShopChannel[]) => void;
+}) {
   const set = (id: string, patch: Partial<KeyedShopChannel>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const { dragId, dragProps, move } = useReorder(rows, onChange);
+  // The project's forms, so the server-side channel is CHOSEN rather than typed. It asked for a raw
+  // "Form id" before — an opaque string the operator had to go and look up, and a typo in it produced
+  // a channel that 404s at checkout with nothing in the editor to say so.
+  const [forms, setForms] = useState<Form[]>([]);
+  const [formsLoaded, setFormsLoaded] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api
+      .listForms(projectId)
+      .then((r) => {
+        if (!active) return;
+        setForms(r.items);
+        setFormsLoaded(true);
+      })
+      .catch(() => active && setFormsLoaded(true)); // fall back to the free-text id below
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
   return (
     <div className="flex flex-col gap-3">
       <AnimatePresence initial={false}>
@@ -216,7 +251,38 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                 </>
               )}
               {r.kind === 'form' && (
-                <input aria-label={`Channel ${i + 1} form id`} className={glassInput} value={r.formId} placeholder="Form id (an existing Form)" onChange={(e) => set(r.id, { formId: e.target.value })} />
+                <div className="sm:col-span-2 flex flex-col gap-1">
+                  {formsLoaded && forms.length > 0 ? (
+                    <select
+                      aria-label={`Channel ${i + 1} order form`}
+                      className={glassInput}
+                      value={r.formId}
+                      onChange={(e) => set(r.id, { formId: e.target.value })}
+                    >
+                      <option value="">Choose a form…</option>
+                      {forms.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} → {f.recipient}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    // No forms yet (or the list failed to load): keep the field usable rather than
+                    // presenting an empty dropdown with no way forward.
+                    <input
+                      aria-label={`Channel ${i + 1} form id`}
+                      className={glassInput}
+                      value={r.formId}
+                      placeholder="Form id (an existing Form)"
+                      onChange={(e) => set(r.id, { formId: e.target.value })}
+                    />
+                  )}
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {formsLoaded && forms.length === 0
+                      ? 'No forms yet — create one under the Forms tab; its recipient is where orders are emailed.'
+                      : 'Orders are POSTed to this form: stored in the inbox, emailed to its recipient, and guarded like any contact form.'}
+                  </p>
+                </div>
               )}
             </div>
             {(r.kind === 'whatsapp' || r.kind === 'mailto') && (

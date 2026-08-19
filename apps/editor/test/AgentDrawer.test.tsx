@@ -5,10 +5,12 @@ import type { AgentChatHandlers } from '../src/api';
 const getAgentGrant = vi.fn();
 const putAgentGrant = vi.fn();
 const streamAgentMessage = vi.fn();
+const agentStatus = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getAgentGrant: (id: string) => getAgentGrant(id),
     putAgentGrant: (id: string, body: unknown) => putAgentGrant(id, body),
+    agentStatus: (id: string) => agentStatus(id),
     streamAgentMessage: (id: string, body: unknown, handlers: AgentChatHandlers, signal?: AbortSignal) => streamAgentMessage(id, body, handlers, signal),
   },
 }));
@@ -19,6 +21,10 @@ beforeEach(() => {
   getAgentGrant.mockReset();
   putAgentGrant.mockReset();
   streamAgentMessage.mockReset();
+  // The drawer asks which agent configurations exist (to decide whether to offer the switcher).
+  // Default: only one, so no switcher — the shape every test below assumes.
+  agentStatus.mockReset();
+  agentStatus.mockResolvedValue({ enabled: true, source: 'instance', sources: { project: false, instance: true, canChoose: false } });
   localStorage.clear(); // the drawer persists the transcript per project — isolate tests
 });
 
@@ -175,5 +181,37 @@ describe('AgentDrawer', () => {
     fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'hi' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     expect(await screen.findByText(/quota exhausted/)).toBeInTheDocument();
+  });
+
+  it('offers NO agent switcher when there is only one configuration to use', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
+    render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    await screen.findByPlaceholderText(/Ask the assistant/);
+    expect(screen.queryByRole('group', { name: 'Which agent answers' })).toBeNull();
+  });
+
+  it('★ staff with BOTH configured can switch, and the choice rides on the next turn', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
+    agentStatus.mockResolvedValue({ enabled: true, source: 'project', sources: { project: true, instance: true, canChoose: true } });
+    streamAgentMessage.mockImplementation(async (_id: string, _body: unknown, handlers: AgentChatHandlers) => {
+      handlers.onStart?.({ conversationId: 'c1', model: 'm' });
+      handlers.onDone?.('ok');
+    });
+    render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    const group = await screen.findByRole('group', { name: 'Which agent answers' });
+    expect(group).toBeInTheDocument();
+
+    // Default = Project: no override is sent, so the server's own precedence decides.
+    fireEvent.change(await screen.findByPlaceholderText(/Ask the assistant/), { target: { value: 'one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(streamAgentMessage).toHaveBeenCalledTimes(1));
+    expect((streamAgentMessage.mock.calls[0]![1] as { agentSource?: string }).agentSource).toBeUndefined();
+
+    // Picking System sends the explicit override.
+    fireEvent.click(screen.getByRole('button', { name: 'System' }));
+    fireEvent.change(screen.getByPlaceholderText(/Ask the assistant/), { target: { value: 'two' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(streamAgentMessage).toHaveBeenCalledTimes(2));
+    expect((streamAgentMessage.mock.calls[1]![1] as { agentSource?: string }).agentSource).toBe('instance');
   });
 });

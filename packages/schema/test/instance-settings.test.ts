@@ -174,7 +174,7 @@ describe('maskInstanceSettings', () => {
   it('collapses secrets to presence flags and never leaks ciphertext', () => {
     const stored: InstanceSettingsStored = {
       smtp: { host: 'smtp.acme.com', port: 465, secure: true, user: 'mailer', fromEmail: 'no-reply@acme.com', password: enc },
-      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false },
+      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false },
     };
     const masked = maskInstanceSettings(stored);
     expect(masked.smtp).toEqual({

@@ -28,7 +28,7 @@ const form: Form = {
 beforeEach(() => {
   putForm.mockReset(); formModes.mockReset(); getProjectCaptcha.mockReset(); confirm.mockReset();
   putForm.mockResolvedValue(undefined);
-  formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false } });
+  formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false } });
   getProjectCaptcha.mockResolvedValue({ captcha: { hasSecret: true } });
   confirm.mockResolvedValue(true);
 });
@@ -51,7 +51,7 @@ describe('FormEditorModal', () => {
       <FormEditorModal
         project={project}
         form={form}
-        enabledModes={{ globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false }}
+        enabledModes={{ globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false }}
         captchaReady
         onClose={vi.fn()}
       />,

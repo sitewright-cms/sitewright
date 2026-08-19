@@ -68,7 +68,7 @@ export type FormField = z.infer<typeof FormFieldSchema>;
  * `=== 'contactPhp'` anywhere the question is "does this form post to
  * contact.php?" — the two answers diverge only inside the generated PHP.
  */
-export const FormModeSchema = z.enum(['globalSmtp', 'userSmtp', 'contactPhp', 'contactPhpSmtp', 'thirdParty']);
+export const FormModeSchema = z.enum(['globalSmtp', 'userSmtp', 'contactPhp', 'contactPhpSmtp', 'thirdParty', 'whatsapp']);
 export type FormMode = z.infer<typeof FormModeSchema>;
 
 /** True for a mode whose form posts to the exported `contact.php` (either delivery flavour). */
@@ -79,6 +79,21 @@ export function isContactPhpMode(mode: FormMode): boolean {
 /** True for a mode the PLATFORM routes + stores (`/f/<projectId>/<formId>`): inbox + hCaptcha apply. */
 export function isPlatformRoutedMode(mode: FormMode): boolean {
   return mode === 'globalSmtp' || mode === 'userSmtp';
+}
+
+/**
+ * True for the WhatsApp hand-off mode: the browser compiles the filled form into a `wa.me` deep link
+ * and opens it, exactly as the mini-shop's whatsapp channel does with a cart.
+ *
+ * ★ NOTHING is submitted anywhere. There is no request, so there is no inbox row, no notification
+ * mail, and no server-side guard — captcha, proof-of-work and the rate limiter all have nothing to
+ * act on, because there is no endpoint to protect. The visitor's own WhatsApp client is the transport
+ * and their number is the identity, which is why this mode needs no spam machinery rather than
+ * lacking it. It also means delivery is NOT confirmable: the message is composed, and the visitor
+ * still has to press send.
+ */
+export function isWhatsappMode(mode: FormMode): boolean {
+  return mode === 'whatsapp';
 }
 
 /** A form definition (content kind `form`). */
@@ -201,9 +216,29 @@ export const FormSchema = z.preprocess(carryLegacyCaptchaFlag, z.object({
     // Must be a public host (not localhost / link-local / private) — it's an external endpoint.
     .refine((u) => !targetsPrivateHost(u), 'thirdPartyUrl must be a public host')
     .optional(),
+  /**
+   * Recipient for the `whatsapp` mode, E.164 (`+` then 7–15 digits, no leading 0). Same shape and
+   * same reasoning as the mini-shop's whatsapp channel — the runtime strips the `+` for `wa.me`.
+   *
+   * PUBLIC by necessity: the deep link is built in the browser, so the number is in the page. That is
+   * the trade this mode makes, and it is the same one a `tel:` link or a footer phone number makes.
+   */
+  whatsappNumber: z
+    .string()
+    .regex(/^\+[1-9]\d{6,14}$/, 'whatsappNumber must be E.164, e.g. +14155550123')
+    .optional(),
+  /** Optional line prepended to the compiled message (URL-encoded with the rest). */
+  whatsappIntro: z
+    .string()
+    .max(280)
+    .refine((v) => !hasControlChars(v), 'whatsappIntro must not contain control characters')
+    .optional(),
 }).refine((f) => f.mode !== 'thirdParty' || !!f.thirdPartyUrl, {
   message: 'thirdPartyUrl is required when mode is "thirdParty"',
   path: ['thirdPartyUrl'],
+}).refine((f) => f.mode !== 'whatsapp' || !!f.whatsappNumber, {
+  message: 'whatsappNumber is required when mode is "whatsapp"',
+  path: ['whatsappNumber'],
 }));
 export type Form = z.infer<typeof FormSchema>;
 
@@ -226,6 +261,10 @@ export interface FormPublic {
   mode: FormMode;
   /** Third-party endpoint (Mode C) — the exported form posts here directly. */
   thirdPartyUrl?: string;
+  /** WhatsApp recipient (whatsapp mode) — the browser builds the `wa.me` link, so this IS public. */
+  whatsappNumber?: string;
+  /** Optional intro line prepended to the compiled WhatsApp message. */
+  whatsappIntro?: string;
 }
 
 /** Strips the server-side delivery fields, leaving only what may be rendered. */
@@ -242,6 +281,8 @@ export function toPublicForm(form: Form): FormPublic {
   };
   if (form.redirectUrl !== undefined) pub.redirectUrl = form.redirectUrl;
   if (form.thirdPartyUrl !== undefined) pub.thirdPartyUrl = form.thirdPartyUrl;
+  if (form.whatsappNumber !== undefined) pub.whatsappNumber = form.whatsappNumber;
+  if (form.whatsappIntro !== undefined) pub.whatsappIntro = form.whatsappIntro;
   return pub;
 }
 

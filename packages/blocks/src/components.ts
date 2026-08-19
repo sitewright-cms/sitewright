@@ -983,11 +983,71 @@ const FORM_JS = `(function(){
       return step();
     });
   }
+  // The visible LABEL for a control, so the message reads as prose rather than as input names. Tries
+  // the associated label element, then an aria-label, then the name — the same order a screen reader
+  // would resolve it, so the message says what the visitor saw.
+  function labelFor(form,el){
+    function clean(t){return t.replace(/\\s+/g,' ').trim().replace(/\\s*\\*$/,'');}
+    // A checkbox/radio GROUP is labelled by its fieldset's LEGEND, not by the per-option label —
+    // the option text is the VALUE, which is already written on the line. Without this the message
+    // says "features: SEO, Hosting", naming the input rather than the question.
+    if(el.type==='checkbox'||el.type==='radio'){
+      var fs=el.closest?el.closest('fieldset'):null;
+      var lg=fs?fs.querySelector('legend'):null;
+      if(lg&&lg.textContent)return clean(lg.textContent);
+    }
+    var id=el.id;
+    if(id){
+      var l=form.querySelector('label[for="'+(window.CSS&&window.CSS.escape?window.CSS.escape(id):id)+'"]');
+      if(l&&l.textContent)return clean(l.textContent);
+    }
+    var wrap=el.closest?el.closest('label'):null;
+    if(wrap&&wrap.textContent)return clean(wrap.textContent);
+    return el.getAttribute('aria-label')||el.name||'';
+  }
+  // Compile the filled form into "Label: value" lines and hand them to WhatsApp. Nothing is posted, so
+  // there is no success/failure to report from a server: the visitor's own client takes over, and the
+  // inline success panel is shown because the hand-off is all this mode can promise.
+  function wireWhatsapp(form,number){
+    var success=form.querySelector('[data-sw-part="success"]');
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      var lines=[],intro=form.getAttribute('data-sw-wa-intro');
+      if(intro)lines.push(intro,'');
+      var seen={};
+      Array.prototype.forEach.call(form.querySelectorAll('input,textarea,select'),function(el){
+        if(!el.name||el.type==='submit'||el.type==='button'||el.type==='hidden')return;
+        if((el.type==='checkbox'||el.type==='radio')&&!el.checked)return;
+        if(!el.value)return;
+        var label=labelFor(form,el);
+        // A checkbox GROUP shares one name: join its checked values onto the line already written.
+        if(Object.prototype.hasOwnProperty.call(seen,el.name)){
+          lines[seen[el.name]]=lines[seen[el.name]]+', '+el.value;
+          return;
+        }
+        seen[el.name]=lines.length;
+        lines.push(label?label+': '+el.value:el.value);
+      });
+      // wa.me wants the number as DIGITS ONLY — a leading '+' makes it 404 rather than open a chat.
+      var url='https://wa.me/'+number.replace(/[^0-9]/g,'')+'?text='+encodeURIComponent(lines.join('\\n'));
+      window.open(url,'_blank','noopener');
+      var redirect=form.getAttribute('data-sw-redirect');
+      if(redirect){window.location.assign(redirect);return;}
+      form.reset();
+      if(success)success.hidden=false;
+      form.setAttribute('data-sw-submitted','true');
+    });
+  }
   function enhance(form){
     // contactPhp keeps a same-origin relative endpoint; a platform-routed form carries only its id and
     // the URL is assembled by the blob renderDocument emits, so it never sits in the markup.
     var endpoint=form.getAttribute('data-sw-endpoint');
     if(!endpoint){var fid=form.getAttribute('data-sw-routed');if(fid&&window.__swf)endpoint=window.__swf(fid);}
+    // WHATSAPP hand-off: there is no endpoint by design. Compile the filled fields into a message and
+    // open wa.me, the same shape the mini-shop's whatsapp channel uses for a cart. Wired BEFORE the
+    // endpoint bail-out below, which would otherwise leave this form inert.
+    var waNumber=form.getAttribute('data-sw-whatsapp');
+    if(waNumber){wireWhatsapp(form,waNumber);return;}
     if(!endpoint)return;
     var started=Date.now();
     // INTERACTION EVIDENCE — see INTERACTION_FIELD. Counts TRUSTED events only (isTrusted is false for

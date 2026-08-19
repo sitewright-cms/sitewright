@@ -861,7 +861,7 @@ export function WebsiteSection({
             </button>
           </div>
         )}
-        {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} />}
+        {shopOpen && <ShopSettingsModal form={form} patch={patch} projectId={projectId} onClose={() => setShopOpen(false)} />}
       </GlassCard>
 
       <GlassCard

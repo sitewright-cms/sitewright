@@ -336,3 +336,42 @@ describe('FileBrowser at media-library scale', () => {
     expect(reserved, '300 rows at 44px is ~13,200px of list').toBeGreaterThan(8_000);
   });
 });
+
+// ── REGRESSION: the SPA went blank on the way back out of a folder ───────────────────────────────
+//
+// Reported from a real project: open the File Manager, enter a folder, click the "Assets" crumb to go
+// back — blank page, React error #185 ("Maximum update depth exceeded"). The folder held enough assets
+// to virtualise (>80 rows) and the root holds only a handful, so the click flips the virtualiser from
+// active to inactive in the same commit that changes the row count. This drives exactly those steps.
+describe('navigating back to the Assets root', () => {
+  /** One folder with enough rows to virtualise, and almost nothing at the root. */
+  function bigLibrary(): MediaAsset[] {
+    const many = Array.from({ length: 400 }, (_, i) => ({
+      ...image,
+      id: `deep${i}`,
+      filename: `photo-${String(i).padStart(3, '0')}.png`,
+      folder: 'gallery',
+      url: `/media/p/deep${i}/photo-${i}.png`,
+    }));
+    return [{ ...image, id: 'root1', filename: 'crest.png', folder: '' }, ...many];
+  }
+
+  beforeEach(() => {
+    listMedia.mockResolvedValue({ items: bigLibrary() });
+    listMediaFolders.mockResolvedValue({ items: [] as MediaFolderRecord[] });
+    stockProviders.mockResolvedValue({ providers: [] as StockProviderName[] });
+  });
+
+  it('goes in and back out again without crashing', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByText('gallery');
+
+    fireEvent.click(screen.getByText('gallery'));
+    await waitFor(() => expect(screen.getByText(/photo-000/)).toBeTruthy());
+
+    // Back to the root via the crumb — the step that went blank.
+    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
+    await waitFor(() => expect(screen.getByText('gallery')).toBeTruthy());
+    expect(screen.getByText('crest.png')).toBeTruthy();
+  });
+});

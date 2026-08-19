@@ -293,3 +293,73 @@ describe('useVirtualRows — an inner scroll container', () => {
     expect(screen.getAllByTestId('row')[0]!.textContent).not.toBe(before);
   });
 });
+
+// ── MIXED ROW HEIGHTS, SCROLLED ─────────────────────────────────────────────────────────────────
+//
+// ★ React error #185 ("Maximum update depth exceeded") — a blank SPA. Reported from a real project:
+// open the File Manager, go into a folder, click back to "Assets".
+//
+// The hook measures the row height by AVERAGING the rendered window, and derives the window from the
+// row height. That is a closed loop, and it is stable only while every row is the same height. The
+// File Manager's list is not: folder rows are an icon and a name, file rows carry a thumbnail over a
+// two-line name/meta stack. Scrolled, the window's POSITION also depends on the height — so a new
+// height slides the window onto a different mix of the two kinds, which measures a different height,
+// which slides it back. Two values, for ever.
+//
+// (Unscrolled the head of the list is always in view, so the mix never changes and it converges — which
+// is why this survived every existing test and only ever bit after a scroll.)
+describe('mixed row heights, scrolled', () => {
+  const TALL = 96;
+  const SHORT = 40;
+  const FOLDERS = 80; // the boundary sits INSIDE the scrolled window — that is what closes the loop
+  const SCROLLED = 3000;
+
+  function stubMixedGeometry(): void {
+    vi.restoreAllMocks();
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(VIEWPORT);
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
+      if (!this.hasAttribute('data-virtual-row')) return 0;
+      const first = Number(this.closest('[data-testid="list"]')?.getAttribute('data-first') ?? 0);
+      let idx = 0;
+      for (let prev = this.previousElementSibling; prev; prev = prev.previousElementSibling) {
+        if (prev.hasAttribute('data-virtual-row')) idx += 1;
+      }
+      let top = 0;
+      for (let n = 0; n < idx; n += 1) top += first + n < FOLDERS ? SHORT : TALL;
+      return top;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(SHORT);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const top = this.getAttribute('data-testid') === 'list' ? LIST_TOP - SCROLLED : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+  }
+
+  function MixedList({ count }: { count: number }) {
+    const virt = useVirtualRows(count);
+    const rows = Array.from({ length: count }, (_, i) => i).slice(virt.start, virt.end);
+    return (
+      <ul ref={virt.listRef as (el: HTMLUListElement | null) => void} data-testid="list" data-first={virt.start}>
+        {rows.map((i) => (
+          <li key={i} data-virtual-row="" data-testid="row">
+            row {i}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  it('settles instead of looping for ever', () => {
+    stubMixedGeometry();
+    // Without the guard this throws from the layout effect with React's #185, exactly as the deployed
+    // editor did — the measured height alternates 40 / 68 and never settles.
+    expect(() => render(<MixedList count={800} />)).not.toThrow();
+    expect(screen.getAllByTestId('row').length).toBeGreaterThan(0);
+  });
+
+  it('still narrows the list — the fix must not turn virtualisation off', () => {
+    stubMixedGeometry();
+    render(<MixedList count={800} />);
+    expect(screen.getAllByTestId('row').length).toBeLessThan(120);
+  });
+});

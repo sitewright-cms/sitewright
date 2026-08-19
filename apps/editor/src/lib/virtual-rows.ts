@@ -32,6 +32,16 @@ export const VIRTUAL_ROW_THRESHOLD = 80;
 const OVERSCAN = 6;
 
 /**
+ * How many times the measured row height may change before the hook stops adapting for this layout.
+ *
+ * A uniform list settles on its first or second measurement. A list that keeps producing new heights is
+ * one whose rows genuinely differ, and chasing it is what produced an infinite render loop — so after a
+ * few revisions the estimate is kept and only a real layout change (a resize, a different list) starts
+ * the adaptation again.
+ */
+const MAX_HEIGHT_REVISIONS = 4;
+
+/**
  * How many rendered items to read geometry from per measurement.
  *
  * ★ Bounded on purpose. The very first paint renders the WHOLE list (the window has not narrowed yet),
@@ -185,6 +195,23 @@ export function useVirtualRows(count: number, enabled = true, opts?: VirtualRows
   const host = useRef<HTMLElement | null>(null);
   const [rowHeight, setRowHeight] = useState(0);
   const [perRow, setPerRow] = useState(1);
+  /**
+   * Every row height already APPLIED since the last real layout change.
+   *
+   * ★ This is what stops the hook looping for ever. The height is averaged over the RENDERED window
+   * and the window is derived from the height, which is a closed loop — stable only while the rows are
+   * all the same height. The File Manager's are not: a folder row is an icon and a name, a file row a
+   * thumbnail over a two-line stack. Scrolled, the window's POSITION depends on the height too, so a
+   * new height slides the window onto a different mix of the two kinds, measures a different height,
+   * and slides it back. Two values, alternating, until React gives up with "Maximum update depth
+   * exceeded" and the editor goes blank (reported: enter a folder, click back to Assets).
+   *
+   * Refusing a height we have already used breaks the cycle at its second step and leaves the list on
+   * a real measurement — an average of one of the two mixes, which is the right order of magnitude for
+   * spacers either way. A count cap ends the adaptation entirely once a list has proved itself
+   * variable, so no pathological sequence can keep it churning.
+   */
+  const appliedHeights = useRef<Set<number>>(new Set());
   /** ROW indices (not item indices) — a grid row holds `perRow` of them. */
   const [range, setRange] = useState({ start: 0, end: count });
   // Stable identity: an inline ref callback is detached and re-attached on every render, which is
@@ -214,12 +241,28 @@ export function useVirtualRows(count: number, enabled = true, opts?: VirtualRows
     // Re-measured as the window moves, so the estimate tracks whatever region is on screen.
     // `offsetHeight` misses the gap between rows; the distance between rows includes it.
     const nextHeight = rowHeightFrom(tops, rows[0]!.offsetHeight);
-    // Ignore sub-pixel churn, which would otherwise re-render the list on every scroll frame.
-    if (nextHeight > 0 && Math.abs(nextHeight - rowHeight) >= 1) setRowHeight(nextHeight);
+    // Ignore sub-pixel churn, which would otherwise re-render the list on every scroll frame — and any
+    // height this list has already settled on once (see appliedHeights: that is the cycle).
+    const settled = appliedHeights.current;
+    if (
+      nextHeight > 0
+      && Math.abs(nextHeight - rowHeight) >= 1
+      && !settled.has(nextHeight)
+      && settled.size <= MAX_HEIGHT_REVISIONS
+    ) {
+      settled.add(nextHeight);
+      setRowHeight(nextHeight);
+    }
     const nextPerRow = isGrid ? columnsIn(tops) : 1;
     if (nextPerRow !== perRow) setPerRow(nextPerRow);
     host.current = scrollHostOf(listEl.current);
   }, [rowHeight, perRow, isGrid]);
+
+  // A different list (or a different column count) is a new layout: forget what the old one measured,
+  // or its heights would block the new one's first measurement.
+  useEffect(() => {
+    appliedHeights.current.clear();
+  }, [count, isGrid]);
 
   const update = useCallback(() => {
     if (!active) {
@@ -273,6 +316,9 @@ export function useVirtualRows(count: number, enabled = true, opts?: VirtualRows
     // never changes and the layout effect that owns `measure()` never re-fires. `perRow` would stay at
     // the old column count and every tile after a spacer would land in the wrong column.
     const onResize = (): void => {
+      // A resize IS a real layout change — the rows may genuinely be a different height now, so the
+      // adaptation gets to start over rather than being blocked by what the old width measured.
+      appliedHeights.current.clear();
       measure();
       update();
     };

@@ -134,33 +134,38 @@ describe('nav items carry enough to build a MENU, not just a list of titles', ()
 
   it('carries a page description so a dropdown can gloss each link', () => {
     const [item] = buildNav([nav({ description: 'Who runs the school.' })], 'header');
-    expect(item.description).toBe('Who runs the school.');
+    expect(item).toBeDefined();
+    expect(item!.description).toBe('Who runs the school.');
   });
 
   it('carries the page image so a dropdown can show a feature card', () => {
     const [item] = buildNav([nav({ image: '/media/x/hero.jpg' })], 'header');
-    expect(item.image).toBe('/media/x/hero.jpg');
+    expect(item).toBeDefined();
+    expect(item!.image).toBe('/media/x/hero.jpg');
   });
 
   it('OMITS both when absent — every item lands in every page context, so empties are pure weight', () => {
     const [item] = buildNav([nav()], 'header');
-    expect('description' in item).toBe(false);
-    expect('image' in item).toBe(false);
+    expect(item).toBeDefined();
+    expect('description' in item!).toBe(false);
+    expect('image' in item!).toBe(false);
   });
 
   it('gives dropdown CHILDREN the same fields — a mega menu renders children, not parents', () => {
     const parent = nav({ id: 'learning', path: 'learning', title: 'Learning', nav: { slots: ['header'], dropdown: true } });
     const child = nav({ id: 'dia', path: 'dia', title: 'DIA', parent: 'learning', description: 'The Abitur route.', image: '/media/x/dia.jpg', nav: { slots: [] } });
     const [item] = buildNav([parent, child], 'header');
-    expect(item.children?.[0]?.description).toBe('The Abitur route.');
-    expect(item.children?.[0]?.image).toBe('/media/x/dia.jpg');
+    expect(item).toBeDefined();
+    expect(item!.children?.[0]?.description).toBe('The Abitur route.');
+    expect(item!.children?.[0]?.image).toBe('/media/x/dia.jpg');
   });
 
   it('a link PLACEHOLDER gains neither — it has no page to take them from', () => {
     const ph = ({ id: 'grp', path: 'grp', title: 'Group', kind: 'link', link: { target: '/x' }, nav: { slots: ['header'] } }) as unknown as Page;
     const [item] = buildNav([ph], 'header');
-    expect('description' in item).toBe(false);
-    expect('image' in item).toBe(false);
+    expect(item).toBeDefined();
+    expect('description' in item!).toBe(false);
+    expect('image' in item!).toBe(false);
   });
 });
 
@@ -173,7 +178,8 @@ describe('nav.hidden — a child that is not a menu entry', () => {
     // A dropdown folds in every child by design; a paginated archive therefore put 40 "page N" entries
     // into the mega menu. `hidden` is the opt-out that did not exist.
     const [item] = buildNav([parent, child('news'), child('news-2', { nav: { hidden: true } })], 'header');
-    expect(item.children?.map((c) => c.label)).toEqual(['news']);
+    expect(item).toBeDefined();
+    expect(item!.children?.map((c) => c.label)).toEqual(['news']);
   });
 
   it('keeps a hidden page out of a FLAT slot too, even when it claims one', () => {
@@ -183,6 +189,7 @@ describe('nav.hidden — a child that is not a menu entry', () => {
 
   it('a nav object may carry hidden with NO slots — that combination used to be invalid', () => {
     const [item] = buildNav([parent, child('news-2', { nav: { hidden: true } }), child('calendar')], 'header');
-    expect(item.children?.map((c) => c.label)).toEqual(['calendar']);
+    expect(item).toBeDefined();
+    expect(item!.children?.map((c) => c.label)).toEqual(['calendar']);
   });
 });

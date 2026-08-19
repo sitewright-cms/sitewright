@@ -905,6 +905,21 @@ function createInstance(): typeof Handlebars {
     return out;
   });
 
+  // {{#each (sw-split product.sizes ',')}} → a delimited FIELD as a list.
+  //
+  // A dataset holds a size run, a tag list or a set of options as one text field, because that is what
+  // an author can type and edit in a cell. Without this there is no way to loop it: the template can
+  // print the whole string or nothing, so a shop that wanted one "add to cart" button PER SIZE had to
+  // choose between a single button that orders an unknown size and 180 rows in the dataset. The
+  // separator defaults to a comma; each piece is trimmed and empties are dropped, so trailing
+  // separators and "a, b,, c" behave.
+  hb.registerHelper('sw-split', (value: unknown, separator?: unknown) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    const sep = typeof separator === 'string' && separator !== '' ? separator : ',';
+    return value.split(sep).map((part) => part.trim()).filter((part) => part !== '');
+  });
+
   // {{sw-includes page.data.tags 'sport'}} → membership in a list, or substring in a string. Returns a
   // BOOLEAN for {{#if}}. Anything else is false.
   hb.registerHelper('sw-includes', (haystack: unknown, needle: unknown) => {

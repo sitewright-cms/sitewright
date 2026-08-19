@@ -217,6 +217,62 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'A MISSING count leaves the list intact rather than emptying it — an over-long list is visibly wrong, while an empty one reads as “nothing here”. Posts as child PAGES: a page reads its own via page.children, and any OTHER page reads them by name via pages.<slug>._attributes.children — that is what lets archive page 2 list the archive root’s posts. A listing is bounded by its serialized size (~2 MB) with the true count always available as {{page.childrenTotal}}; past that, model the content as a dataset.',
       },
       {
+        id: 'h-list-shape',
+        syntax: "{{#each (sw-where list 'field' value)}}…{{/each}}",
+        name: 'sw-where / sw-sort / sw-group — shape a list',
+        keywords:
+          'sw-where sw-sort sw-group sw-includes filter where select query sort order by ascending descending group by bucket category month upcoming past dataset list',
+        description:
+          'Query a list in the template instead of storing a second copy of it. (sw-where list \'field\' value) keeps the rows whose field equals value; a four-argument form takes an OPERATOR — \'gte\', \'lte\', \'gt\', \'lt\', \'ne\' — and the literal \'now\' as a value compares against the current time, so "upcoming events" is a live query rather than a field someone has to maintain. (sw-sort list \'field\') orders by a field, dir=\'desc\' reverses it, and ISO dates compare correctly as strings. (sw-group list \'field\') buckets the rows into {key, items} pairs — one loop for the headings, an inner loop for each bucket. {{sw-includes haystack needle}} is membership in a list or a substring in a string, returning a boolean for {{#if}}.',
+        args: [
+          { name: 'list', desc: 'Any array binding: dataset.<slug>, page.children, page.data.<key>.' },
+          { name: 'field', desc: 'The field to test, sort or group by. A dotted path reaches into a nested value.' },
+          { name: 'op', desc: 'sw-where, 4-argument form: gte · lte · gt · lt · ne. Omitted means equality.' },
+          { name: 'value', desc: "The value to compare against. The literal 'now' compares against the current time." },
+        ],
+        example:
+          '{{! the next four events, soonest first — no "upcoming" flag to keep up to date }}\n' +
+          "{{#each (sw-limit (sw-sort (sw-where dataset.events 'starts' 'gte' 'now') 'starts') 4)}}\n" +
+          '  <li>{{sw-date starts \'medium\'}} — {{title}}</li>\n' +
+          '{{/each}}\n' +
+          '\n' +
+          '{{! a downloads page grouped by its own category field }}\n' +
+          "{{#each (sw-group dataset.documents 'category')}}\n" +
+          '  <h3>{{key}}</h3>\n' +
+          '  {{#each items}}<a href="{{sw-url file}}">{{title}}</a>{{/each}}\n' +
+          '{{/each}}',
+        note: 'All three return a LIST, so they nest in subexpression position and compose with sw-limit / sw-paginate. A row missing the field is dropped by sw-group and sorts last in sw-sort, so a half-filled dataset degrades quietly rather than throwing.',
+      },
+      {
+        id: 'h-strings',
+        syntax: "{{sw-concat a b …}} · {{sw-default value fallback}} · {{sw-join list ', '}} · {{#each (sw-split value ',')}}",
+        name: 'sw-concat / sw-default / sw-join / sw-split — build strings',
+        keywords:
+          'sw-concat sw-default sw-join sw-split concat concatenate join split string text fallback default empty href class id csv comma separated list sizes tags',
+        description:
+          'Handlebars has no "+", so without these an author hard-codes a value that should be built. {{sw-concat a b …}} joins its arguments into one string — this is how a dynamic href, id or class gets built. {{sw-default value fallback}} takes the first argument that is not empty, which is how a page falls back to a shared value without an {{#if}} wrapper. {{sw-join list \', \'}} turns a list into a sentence (field=\'name\' picks one field off each row). (sw-split value \',\') is the inverse: a delimited FIELD as a list, so a size run or a tag list stored in one cell — which is what an author can type — can be looped.',
+        args: [
+          { name: 'a b …', desc: 'sw-concat: any number of values. null/undefined contribute nothing, never the text "undefined".' },
+          { name: 'fallback', desc: 'sw-default: used when the value is null, undefined or an empty string. 0 and false are kept.' },
+          { name: 'separator', desc: "sw-join / sw-split: the separator. Defaults to ', ' for join and ',' for split." },
+          { name: 'field', desc: 'sw-join only, NAMED: field=\'name\' joins that field off each row instead of the rows themselves.' },
+        ],
+        example:
+          '{{! a next-page link built from a number }}\n' +
+          '<a href="{{sw-url (sw-concat \'/news-\' (sw-add page.data.page_no 1))}}">Older</a>\n' +
+          '\n' +
+          '{{! a per-page heading that falls back to a site-wide one }}\n' +
+          '<h2>{{sw-default page.data.heading website.data.default_heading}}</h2>\n' +
+          '\n' +
+          '{{! one add-to-cart button per size, from a single "32, 34, 36" cell }}\n' +
+          "{{#each (sw-split sizes ',')}}\n" +
+          "  {{sw-add-to-cart sku=(sw-concat ../name ' — ' this) name=../name price=../price label=this}}\n" +
+          '{{/each}}\n' +
+          '\n' +
+          "{{sw-join (sw-limit dataset.staff 3) ', ' field='name'}}",
+        note: 'sw-concat escapes its result, so it is safe in text and in an attribute. sw-split trims each piece and drops empties, so a trailing separator and "a, b,, c" both behave; an array passes straight through.',
+      },
+      {
         id: 'h-math',
         syntax: '{{sw-add a b}} · {{sw-sub a b}} · {{sw-mul a b}} · {{sw-div a b}} · {{sw-mod a b}}',
         name: 'arithmetic',

@@ -188,6 +188,7 @@
   "POST /projects/:projectId/media",
   "POST /projects/:projectId/media/:id/copy",
   "POST /projects/:projectId/media/:id/restore",
+  "POST /projects/:projectId/media/:id/rotate",
   "POST /projects/:projectId/media/bulk-move",
   "POST /projects/:projectId/media/folders",
   "POST /projects/:projectId/media/folders/copy",

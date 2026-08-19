@@ -7,6 +7,95 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.26.0] — 2026-08-19
+
+### Added
+
+- **An image editor.** A new Library studio: drop a photo in, pick one from the library, or open
+  straight onto one from the File Manager's new **Edit image** button. Quarter-turn rotation and a
+  draggable, resizable crop rectangle; exports as WebP by download or into the library. Opened from
+  the File Manager it can **Save** (replace the stored original — the id, stored name and URL do not
+  change, so every reference keeps working and the correction travels with an export), **Save as** a
+  new asset, or **Download**. An overwrite refreshes the preview underneath, because an in-place save
+  changes no URL and the author would otherwise be looking at a cached copy of the old picture.
+
+  Underneath it, `POST /projects/:id/media/:id/transform` generalises the rotate-only route into
+  rotate *and* crop, in place or into a new asset. Agents get the same thing as `transform_image`.
+  **Rotation applies before the crop**, because a crop box is drawn in the coordinates of the image
+  the author is looking at — cropping first would cut a different region for every turn.
+
+- **The mini-shop's order channel takes an EMAIL ADDRESS and collects the fields you define.** It used
+  to point at a hand-picked Form while the cart rendered a fixed name/email/phone/note and ignored
+  that form's own fields — so it could not ask for a delivery address or a PO number, and any
+  required field the cart did not send rejected every order with the buyer seeing only "Sorry,
+  something went wrong". Now the fields are declared on the channel and the platform provisions the
+  Form behind it from that same config, so the two cannot disagree. A channel can also require a
+  **captcha**, exactly as a contact form can. The provisioned form is listed read-only in the Forms
+  tab so orders stay findable in the inbox.
+
+- **A WhatsApp target for contact forms.** The filled form compiles into a `wa.me` message, labelled
+  with what the visitor actually saw (the field's label, or a checkbox group's legend). Nothing is
+  posted, stored or emailed and delivery is not confirmable — the editor says so next to the field
+  rather than leaving an author to discover it from an empty inbox. Off by default, behind the
+  instance-level delivery-mode allowlist.
+
+- **The platform AI assistant can be restricted to staff.** The instance config spends the operator's
+  own API key, and an agency handing a client a login was handing them that budget. `audience` is
+  `all` (unchanged, the default) or `staff` — users holding a platform role. A project that wants its
+  clients to have an assistant configures its own key, which is billed to that project and is never
+  gated. Staff working on a project with both configured get a **Project / System switch** in the
+  chat.
+
+- **An `xs` (150px) thumbnail rung.** The smallest was 500px — over three times what a list icon, an
+  avatar or a picker tile actually paints, on every one of them.
+
+### Changed
+
+- **The pages tab**: search moved inline with the actions at 160px, lost its focus ring, and shows a
+  per-language page count in the placeholder instead of an "x of y" readout. The empty-result tile is
+  filled rather than bare text.
+- **The page editor** can edit a page's template in place (stacked over the editor) instead of only
+  offering to fork it, and its preview now follows changes to the shared code it renders through —
+  critical CSS, the skeleton, templates, snippets, datasets — driven off the project change-stream,
+  so it also holds for a write from another tab or an agent. Its preview also lost the frosted card
+  frame that read as a grey ring drawn around the site.
+- **At-rest editing affordances paint at 0.2 opacity**, with full strength following the pointer. On a
+  densely-authored page every paragraph and link is a region, so at full strength they were a
+  wireframe over the design.
+- **Thumbnails enlarge on hover** across the admin, and Corporate Identity logo/icon fields get a
+  white plate and `contain` — that artwork is usually transparent with dark ink.
+- **Back-to-top stays visible at the bottom of the page.** It used to slide away within 80px of the
+  end, taking it out from under the pointer exactly where a visitor who has finished reading reaches
+  for it.
+- **Preview share-link rows are clickable**, with an explicit open-in-new-tab action.
+- **The connect-an-agent guide stops telling people to install `@sitewright/cli`** — that package was
+  never published. `/mcp` is the whole integration surface and authenticates a local agent exactly
+  like a hosted one.
+
+### Fixed
+
+- **The staff-only AI restriction was bypassable.** The gate sat inside the instance-config branch
+  with the env-configured agent tried after it — and a refusal is also a `null`, so a blocked client
+  fell through to an ungated `SW_AI_API_KEY`. Both sources now resolve behind one gate.
+- **Drag-and-drop image import was blocked by the editor's own CSP** (`img-src` had no `blob:`), so a
+  dropped file could never be read. Every unit test passed against it: jsdom enforces no CSP.
+- **A refused screenshot now says why.** When the memory ledger declined a capture, the tool answered
+  "unavailable on this server" and appended the whole page HTML — a wrong diagnosis for a transient
+  refusal, buried under ~300 KB that overran the output limit, so the caller saw a size error instead
+  of "out of memory, retry".
+- The image editor's **Download** did nothing in Firefox (the anchor was never in the document), and
+  **Save as** with no edits silently re-encoded a lossless original as lossy WebP.
+- The right-click **Move to** flyout could be painted over by the sidebar rails and could run off the
+  right edge of the viewport; it now flips and clamps, and opens on hover on a desktop pointer.
+- The File Manager title bar shows the library total, and the pages-search placeholder no longer
+  clips its own page count.
+
+### Removed
+
+- **The shop order channel's `formId`.** A stored channel that still carries one is dropped on read
+  rather than failing the whole settings document — the cost is one checkout button, which the
+  operator re-adds with an address; every order already taken is still in the inbox.
+
 ## [0.25.0] — 2026-08-19
 
 ### Added
@@ -2479,7 +2568,10 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/sitewright-cms/sitewright/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/sitewright-cms/sitewright/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/sitewright-cms/sitewright/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/sitewright-cms/sitewright/compare/v0.22.0...v0.23.0
 [0.22.0]: https://github.com/sitewright-cms/sitewright/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/sitewright-cms/sitewright/compare/v0.20.0...v0.21.0

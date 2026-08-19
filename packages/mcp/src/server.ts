@@ -678,9 +678,45 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           });
           for (const [, s] of shots) content.push({ type: 'image', data: s!.base64, mimeType: s!.mimeType });
         } else {
-          content.push({ type: 'text', text: 'Rendered. Screenshots are unavailable on this server — returning the HTML source so you can check the structure.' });
+          // ★ SAY WHY, and do not bury it under the page source.
+          //
+          // Every no-screenshot case used to produce one sentence — "unavailable on this server" —
+          // followed by the ENTIRE rendered HTML. Two things went wrong with that. The sentence was
+          // a wrong diagnosis for the common case (a transient memory refusal reads as a permanent
+          // server limitation, so the caller stops asking instead of retrying). And the HTML is
+          // ~300 KB, which overruns the tool-output token limit — so the caller sees a size error
+          // and never reads the sentence at all. A clear, actionable "out of memory, retry" was
+          // being hidden behind a token-limit failure, which is exactly why this looked for a long
+          // time like a mysterious per-page problem.
+          //
+          // The server already distinguishes the cases (`screenshotsUnavailable.reason` +
+          // `retryable`); this just stops throwing that away. The HTML now rides along only when it
+          // was actually ASKED for.
+          const u = res.screenshotsUnavailable;
+          if (u) {
+            content.push({
+              type: 'text',
+              text:
+                `NO SCREENSHOT — ${u.message}\n` +
+                (u.retryable
+                  ? 'This is TRANSIENT: the page rendered fine, only the capture was skipped. Retry this same call in ~10s, or ask for fewer viewports (each one costs a browser context).'
+                  : 'This is NOT retryable — retrying will fail the same way. Fix the underlying error, or continue without the image.') +
+                (includeHtml ? '' : '\nThe page HTML is not included (it is large); pass includeHtml:true if you want to inspect the structure instead.'),
+            });
+          } else {
+            content.push({
+              type: 'text',
+              text:
+                'NO SCREENSHOT — this server returned no capture and no reason, which usually means no headless browser is installed. ' +
+                'Not retryable. Returning the HTML source so you can at least check the structure.',
+            });
+          }
         }
-        if (includeHtml || shots.length === 0) content.push({ type: 'text', text: res.html });
+        // Only when asked for — or when there is genuinely nothing else to offer (no browser, and no
+        // reason given). A transient refusal must NOT drag 300 KB of markup along with it.
+        if (includeHtml || (shots.length === 0 && !res.screenshotsUnavailable)) {
+          content.push({ type: 'text', text: res.html });
+        }
         return { content };
       } catch (err) {
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
@@ -1413,6 +1449,39 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       return client.updateMedia(id, {
         ...(folder !== undefined ? { folder } : {}),
         ...(filename !== undefined ? { filename } : {}),
+      });
+    }),
+  );
+
+  server.registerTool(
+    'transform_image',
+    {
+      description:
+        "Rotate (90/180/270 clockwise) and/or crop an image asset. Rotation is applied FIRST, so `crop` is measured against the image AS TURNED — the same order an editor shows you. By default it edits IN PLACE: the asset id, stored name and URL do not change, so every page/dataset reference keeps working and the change travels with an export — use that to CORRECT a photograph (one stored sideways with no EXIF tag, a scan with a border). It is destructive; the original pixels are gone. Pass `saveAs` to write a NEW asset instead and leave the source untouched — use that when the crop is one USE of a picture rather than a fix to it. SVG is rejected (a vector edit belongs in its markup), as is an animated image.",
+      inputSchema: {
+        id: z.string(),
+        rotate: z.union([z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        crop: z
+          .object({
+            left: z.number().int().min(0),
+            top: z.number().int().min(0),
+            width: z.number().int().positive(),
+            height: z.number().int().positive(),
+          })
+          .optional(),
+        format: z.enum(['webp', 'jpeg', 'png']).optional(),
+        saveAs: z.object({ filename: z.string().min(1).max(255), folder: MediaFolderSchema.optional() }).optional(),
+      },
+    },
+    gate('content:write', ({ id, rotate, crop, format, saveAs }) => {
+      if (rotate === undefined && crop === undefined) {
+        throw new Error('transform_image needs at least one of `rotate` or `crop`.');
+      }
+      return client.transformMedia(id, {
+        ...(rotate !== undefined ? { rotate } : {}),
+        ...(crop ? { crop } : {}),
+        ...(format ? { format } : {}),
+        ...(saveAs ? { saveAs } : {}),
       });
     }),
   );

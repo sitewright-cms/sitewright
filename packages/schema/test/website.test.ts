@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WebsiteSettingsSchema,
+  SHOP_MAX_ORDER_FIELDS,
   SLOT_MAX,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
@@ -297,16 +298,17 @@ describe('WebsiteSettingsSchema', () => {
       expect(WebsiteSettingsSchema.parse({}).shop).toBeUndefined();
     });
 
-    it('accepts a form channel referencing a Form id', () => {
+    it('accepts a form channel carrying an ADDRESS (it no longer names a Form)', () => {
+      // The channel used to point at a hand-picked Form. It now carries the address, and the platform
+      // provisions the Form from it — see apps/api shop-order-forms.
       const parsed = WebsiteSettingsSchema.parse({
-        shop: { channels: [{ kind: 'form', key: 'order_form', formId: 'order-form' }] },
+        shop: { channels: [{ kind: 'form', key: 'order_form', email: 'orders@acme.test' }] },
       });
-      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'form', key: 'order_form', formId: 'order-form' });
+      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'form', key: 'order_form', email: 'orders@acme.test' });
     });
 
-    it('rejects a form channel without a valid formId', () => {
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', key: 'f' }] } })).toThrow();
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', key: 'f', formId: 'Bad Id!' }] } })).toThrow();
+    it('rejects a form channel whose address is not an address', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', key: 'f', email: 'not-an-email' }] } })).toThrow();
     });
 
     it('accepts per-channel order fields on whatsapp + mailto (keyed) and defaults the field type to text', () => {
@@ -679,5 +681,53 @@ describe('preloaderBackdrop (opt-in custom backdrop)', () => {
       preloader: undefined,
       preloaderBackdrop: false,
     });
+  });
+});
+
+describe('the shop order channel after the formId removal', () => {
+  const shop = (channels: unknown[]) => WebsiteSettingsSchema.parse({ shop: { enabled: true, channels } });
+
+  it('an address is what makes the channel dispatchable; one without is DROPPED', () => {
+    // Dropped rather than rejected, and the same rule covers a legacy row and a malformed new one:
+    // the schema cannot tell them apart, and the consequence of getting it wrong is asymmetric — a
+    // throw fails the WHOLE settings document, while a drop loses one checkout button. The editor
+    // never produces one (formChannelToShop returns null for a blank address), so in practice this
+    // only ever fires for a stored legacy row.
+    expect(shop([{ kind: 'form', key: 'order' }]).shop?.channels).toEqual([]);
+    const out = shop([{ kind: 'form', key: 'order', email: 'orders@acme.test' }]);
+    expect(out.shop?.channels?.[0]).toMatchObject({ kind: 'form', key: 'order', email: 'orders@acme.test', captcha: false });
+  });
+
+  it('★ a LEGACY formId channel is DROPPED, not allowed to fail the whole document', async () => {
+    // `formId` is gone, so the old shape no longer validates. Letting it throw would fail
+    // WebsiteSettingsSchema — and that takes every OTHER setting down with it, on a project whose
+    // only sin is not having been re-saved. Dropping the one dead channel costs a checkout button.
+    const out = WebsiteSettingsSchema.parse({
+      siteUrl: 'https://acme.test',
+      shop: {
+        enabled: true,
+        channels: [
+          { kind: 'form', key: 'legacy', formId: 'contact' },
+          { kind: 'whatsapp', key: 'wa', number: '+14155550123' },
+        ],
+      },
+    });
+    expect(out.siteUrl).toBe('https://acme.test'); // the document survived
+    expect(out.shop?.channels?.map((c) => c.kind)).toEqual(['whatsapp']);
+  });
+
+  it('keeps a form channel that HAS an address alongside a legacy one', () => {
+    const out = shop([
+      { kind: 'form', key: 'legacy', formId: 'contact' },
+      { kind: 'form', key: 'order', email: 'orders@acme.test' },
+    ]);
+    expect(out.shop?.channels).toHaveLength(1);
+    expect(out.shop?.channels?.[0]).toMatchObject({ key: 'order' });
+  });
+
+  it('accepts freely defined buyer fields up to the order cap', () => {
+    const fields = Array.from({ length: SHOP_MAX_ORDER_FIELDS }, (_, i) => ({ key: `f${i}`, type: 'text' as const }));
+    expect(() => shop([{ kind: 'form', key: 'order', email: 'a@b.test', fields }])).not.toThrow();
+    expect(() => shop([{ kind: 'form', key: 'order', email: 'a@b.test', fields: [...fields, { key: 'over', type: 'text' }] }])).toThrow();
   });
 });

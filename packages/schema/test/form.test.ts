@@ -5,6 +5,8 @@ import { formWantsCaptcha,
   FormSubmissionSchema,
   toPublicForm,
   validateFormSubmission,
+  cartIncompatibleFields,
+  CART_ORDER_FIELDS,
   HONEYPOT_FIELD,
   TIMETRAP_FIELD,
   type Form,
@@ -297,5 +299,42 @@ describe('validateFormSubmission', () => {
     const fields = [field({ name: 'toString', label: 'To String', type: 'text', required: true })];
     // `toString` exists on the prototype but not as an own property → treated as missing → flagged.
     expect(validateFormSubmission(fields, {})).toEqual(['toString']);
+  });
+});
+
+describe('cartIncompatibleFields — which Forms the mini-shop cart can actually submit to', () => {
+  const form = (fields: Array<{ name: string; required?: boolean }>) =>
+    FormSchema.parse({
+      id: 'f',
+      name: 'F',
+      recipient: 'a@b.test',
+      fields: fields.map((f) => ({ name: f.name, label: f.name, type: 'text', ...(f.required ? { required: true } : {}) })),
+    });
+
+  it('a form whose required fields the cart sends is compatible', () => {
+    expect(cartIncompatibleFields(form([{ name: 'name', required: true }, { name: 'email', required: true }]))).toEqual([]);
+  });
+
+  it('OPTIONAL extras are fine — an empty optional field skips validation', () => {
+    expect(cartIncompatibleFields(form([{ name: 'name', required: true }, { name: 'company' }]))).toEqual([]);
+  });
+
+  it('★ a REQUIRED field the cart never sends makes every order 400 — report it by name', () => {
+    // This is the whole point: the form is valid, the shop is valid, and the PAIRING rejects every
+    // order with the buyer seeing only "something went wrong". Submission validation iterates the
+    // FORM's fields, so an unsent required field is empty → invalid.
+    expect(cartIncompatibleFields(form([{ name: 'name', required: true }, { name: 'message', required: true }]))).toEqual(['message']);
+  });
+
+  it('agrees with the validator it is predicting', () => {
+    // The predicate must not drift from the rule it exists to anticipate: run the cart's ACTUAL
+    // payload through the real validator and check the two answers match.
+    const f = form([{ name: 'name', required: true }, { name: 'message', required: true }]);
+    const cartPayload = { name: 'Ada', email: 'a@b.test', phone: '', note: '', cart_text: '1x Widget', cart_json: '[]' };
+    expect(validateFormSubmission(f.fields, cartPayload)).toEqual(cartIncompatibleFields(f));
+  });
+
+  it('the fixed cart field set is the one the runtime sends', () => {
+    expect([...CART_ORDER_FIELDS]).toEqual(['name', 'email', 'phone', 'note']);
   });
 });

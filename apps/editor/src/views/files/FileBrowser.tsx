@@ -16,6 +16,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
 import { cleanSvgFile } from '../library/svg-studio-helpers';
+import { ImageEditorStudio } from '../library/ImageEditorStudio';
 import { assetEmbedUrls } from './media-embed';
 import {
   sortAssets,
@@ -64,9 +65,9 @@ function cleanSegment(name: string): string {
  *
  * SVG is served inline as-is and is never rasterized, so a size hint on one is only a wasted cache key.
  */
-function thumbnailUrl(asset: MediaAsset): string {
+function thumbnailUrl(asset: MediaAsset, size: 'xs' | 'sm' = 'sm'): string {
   if (asset.kind === 'image' && asset.format === 'svg') return asset.url;
-  return `${asset.url}?size=sm`;
+  return `${asset.url}?size=${size}`;
 }
 
 /** A type filter for PICK mode: returns true for assets a field accepts. */
@@ -175,6 +176,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' });
   const [query, setQuery] = useState('');
   const [preview, setPreview] = useState<MediaAsset | null>(null);
+  /** The asset open in the Image Editor, stacked over the preview modal. */
+  const [editing, setEditing] = useState<(MediaAsset & { kind: 'image' }) | null>(null);
+  /** Cache-buster for the preview <img> after an IN-PLACE save, which leaves the URL unchanged. */
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
   const fileInput = useRef<HTMLInputElement>(null);
   const dragItem = useRef<DragItem | null>(null);
@@ -684,8 +689,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                     className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
                     title={m.filename}
                   >
+                    {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
+                        fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
+                        below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
                     {m.kind === 'image' ? (
-                      <SkeletonImage src={thumbnailUrl(m)} alt="" className="h-8 w-8 shrink-0 rounded" />
+                      <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
                     ) : (
                       <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
                     )}
@@ -812,8 +820,29 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       {/* In-app image preview (replaces opening images in a new tab) + copyable embed URLs. */}
       {preview && preview.kind === 'image' && (
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
-          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} />
+          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} onEdit={() => setEditing(preview)} nonce={previewNonce} />
         </Modal>
+      )}
+
+      {/* The Image Editor, stacked over the preview. On save the preview underneath is rebuilt from
+          the returned asset: an in-place edit does NOT change the URL, so without this the modal would
+          keep showing the pre-edit dimensions and a cached picture, and the author would be looking at
+          the old image while believing the save had failed. `previewNonce` busts the image cache for
+          the same reason. */}
+      {editing && (
+        <ImageEditorStudio
+          projectId={projectId}
+          asset={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(item) => {
+            void load();
+            if (item.kind === 'image' && item.id === editing.id) {
+              setPreview(item);
+              setEditing(item);
+              setPreviewNonce((n) => n + 1);
+            }
+          }}
+        />
       )}
     </div>
   );
@@ -828,23 +857,41 @@ function ImagePreview({
   asset,
   copiedId,
   onCopy,
+  onEdit,
+  nonce,
 }: {
   asset: MediaAsset & { kind: 'image' };
   copiedId: string | null;
   onCopy: (text: string, id: string) => void;
+  /** Open the Image Editor on this asset. Absent for a format that has no pixels to edit. */
+  onEdit?: () => void;
+  /** Bumped after an in-place save; appended to the <img> src so the browser refetches. */
+  nonce?: number;
 }) {
   const urls = assetEmbedUrls(asset);
   const original = urls.find((u) => u.label === 'Original')?.url ?? asset.url;
   return (
     <div className="flex flex-col items-center gap-3 p-4">
-      <img src={asset.url} alt={asset.alt ?? asset.filename} className="max-h-[40vh] w-auto rounded-lg shadow-lg" />
+      <img
+        src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
+        alt={asset.alt ?? asset.filename}
+        className="max-h-[40vh] w-auto rounded-lg shadow-lg"
+      />
       <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>
           {asset.format} · {asset.width}×{asset.height} · {formatBytes(asset.bytes)}
         </span>
-        <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
-          Open original
-        </a>
+        <span className="flex items-center gap-2">
+          {/* An SVG is a vector: there are no pixels to turn or cut, so the editor is not offered. */}
+          {onEdit && asset.format !== 'svg' && (
+            <button type="button" onClick={onEdit} className={`${ghostButton} px-3 py-1`}>
+              Edit image
+            </button>
+          )}
+          <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
+            Open original
+          </a>
+        </span>
       </div>
 
       <div className="w-full">

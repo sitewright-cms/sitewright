@@ -99,29 +99,34 @@ function SubmenuPanel({
   onPointerEnter: () => void;
   onPointerLeave: () => void;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [height, setHeight] = useState(0);
-  useLayoutEffect(() => {
-    setHeight(ref.current?.offsetHeight ?? 0);
-  }, [items.length]);
-
   // Right of the parent by preference; flip left when that would overflow. If NEITHER side fits
-  // (a very narrow window), the clamp below still keeps it fully on screen.
+  // (a very narrow window), the clamp still keeps it fully on screen.
   const rightLeft = menuRect.right + SUB_GAP;
   const flip = rightLeft + SUB_W > window.innerWidth - EDGE_PAD;
   const left = Math.max(EDGE_PAD, Math.min(flip ? menuRect.left - SUB_W - SUB_GAP : rightLeft, window.innerWidth - SUB_W - EDGE_PAD));
-  const top = Math.max(EDGE_PAD, Math.min(anchor.top, window.innerHeight - (height || SUB_MIN_H) - EDGE_PAD));
+  // ★ Positioned in ONE pass, with no post-mount measurement.
+  //
+  // This used to render at a provisional spot, measure its own height in a layout effect, then move —
+  // and a flyout that MOVES after it appears is not just ugly. Its geometry is unstable for a frame,
+  // so a click aimed at an item waits for it to settle, and the leave-grace timer expires in that
+  // window and unmounts the thing being clicked. It failed as "element is not stable … element was
+  // detached from the DOM", which reads like a race and is really this.
+  //
+  // Instead: anchor the top to the row, clamp it to leave SUB_MIN_H of room, and bound the height with
+  // max-height + scrolling. A list too tall for the space scrolls rather than being repositioned, so
+  // the box never changes shape after it is painted.
+  const top = Math.max(EDGE_PAD, Math.min(anchor.top, window.innerHeight - SUB_MIN_H - EDGE_PAD));
+  const maxHeight = Math.max(SUB_MIN_H, window.innerHeight - top - EDGE_PAD);
 
   return (
     <div
-      ref={ref}
       role="menu"
       aria-label={label}
       onKeyDown={onKeyDown}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
-      style={{ left, top, width: SUB_W }}
-      className="fixed z-[62] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-2xl dark:border-white/10 dark:bg-slate-800"
+      style={{ left, top, width: SUB_W, maxHeight }}
+      className="fixed z-[62] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white py-1 shadow-2xl dark:border-white/10 dark:bg-slate-800"
     >
       {items.map((sub) => (
         <button
@@ -237,6 +242,17 @@ export function ContextMenu({ at, label, rows, onClose }: Props) {
   // HOVER-TO-OPEN (desktop only). `closeTimer` is the grace period that makes the flyout reachable:
   // leaving the row starts it, entering the row again — or the flyout itself — cancels it.
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Whether the open flyout was opened by HOVER. Only a hover-opened one closes when the pointer
+   * wanders off it.
+   *
+   * ★ A CLICK is a commitment, and treating it like a hover made the flyout unreachable in a way that
+   * looked like a race: travelling to an item crosses the rows between, which arms the close timer,
+   * and anything that delays the click past the grace period — a slow frame, a driver waiting for the
+   * box to settle — unmounts the item mid-click. "Element was detached from the DOM" is what that
+   * reads as from the outside.
+   */
+  const openedByHover = useRef(false);
   const cancelClose = useCallback(() => {
     if (closeTimer.current !== null) {
       clearTimeout(closeTimer.current);
@@ -244,6 +260,7 @@ export function ContextMenu({ at, label, rows, onClose }: Props) {
     }
   }, []);
   const scheduleSubClose = useCallback(() => {
+    if (!openedByHover.current) return; // click-opened: it stays until dismissed deliberately
     cancelClose();
     closeTimer.current = setTimeout(() => setOpenSub(null), SUB_CLOSE_MS);
   }, [cancelClose]);
@@ -257,6 +274,7 @@ export function ContextMenu({ at, label, rows, onClose }: Props) {
       if (openSub !== null) scheduleSubClose();
       return;
     }
+    openedByHover.current = true;
     setOpenSub(rowLabel);
   };
 
@@ -311,7 +329,19 @@ export function ContextMenu({ at, label, rows, onClose }: Props) {
                 }}
                 onPointerEnter={onRowHover(row.label)}
                 onPointerLeave={scheduleSubClose}
-                onClick={() => setOpenSub((s) => (s === row.label ? null : row.label))}
+                onClick={() => {
+                  // ★ A click PINS the flyout; it does not toggle one that hover just opened.
+                  //
+                  // Hover-to-open made the obvious gesture — move to the row, click it — close the
+                  // thing it had just opened, because the pointer arriving had already opened it and
+                  // the click then toggled. From the outside that looks like the flyout flickering
+                  // and vanishing; to a test driver it is an element that appears and is then
+                  // detached mid-click. Only a click on an ALREADY-PINNED flyout closes it.
+                  cancelClose();
+                  const pinnedOpen = openSub === row.label && !openedByHover.current;
+                  openedByHover.current = false;
+                  setOpenSub(pinnedOpen ? null : row.label);
+                }}
                 className={itemClass()}
               >
                 <span>{row.label}</span>

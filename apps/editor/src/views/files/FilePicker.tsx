@@ -1,3 +1,4 @@
+import type { MediaAsset } from '@sitewright/schema';
 import { useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { FileBrowser, type AcceptFilter } from './FileBrowser';
@@ -20,7 +21,12 @@ export function FilePicker({
   projectId: string;
   accept?: AcceptFilter;
   title?: string;
-  onPick: (url: string) => void;
+  /**
+   * The chosen file. `asset` is present when the pick came from the LIBRARY and absent when a URL was
+   * imported — a caller that only needs somewhere to point (the common case) ignores it, while one
+   * that must act ON the asset (the image editor needs its id and true dimensions) can require it.
+   */
+  onPick: (url: string, asset?: MediaAsset) => void;
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<'library' | 'url'>('library');
@@ -28,8 +34,8 @@ export function FilePicker({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function choose(url: string) {
-    onPick(url);
+  function choose(url: string, asset?: MediaAsset) {
+    onPick(url, asset);
     onClose();
   }
   async function importUrl() {
@@ -77,7 +83,7 @@ export function FilePicker({
             projectId={projectId}
             mode="pick"
             accept={accept}
-            onPick={(asset) => choose(asset.url)}
+            onPick={(asset) => choose(asset.url, asset)}
             intro="Pick a file (or upload one), or switch to the URL tab to paste/import a link."
           />
         </div>

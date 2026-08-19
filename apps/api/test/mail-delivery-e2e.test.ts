@@ -40,7 +40,7 @@ const KEY = randomBytes(32);
 const PASSWORD = 's3cr3t-mailbox-pw';
 
 const modes = (over: Partial<InstanceSettingsStored['formModes']> = {}): InstanceSettingsStored['formModes'] => ({
-  globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, ...over,
+  globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false, ...over,
 });
 
 const mail: SubmissionMail = {

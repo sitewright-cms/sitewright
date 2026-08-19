@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
-import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
+import { targetsPrivateHost, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
 // Bounded to limit build-output amplification: these fields are injected into every page of a publish
 // (up to MAX_BUNDLE.pages). That is a real concern, but it applies EQUALLY to the chrome slots below —
@@ -242,17 +242,52 @@ const PaymentChannelSchema = z.object({
     .refine((u) => !targetsPrivateHost(u.replace(/\{[^}]*\}/g, '0')), 'urlTemplate must be a public host'),
 });
 
+/** Max buyer-input fields on an ORDER form. Higher than the deep-link cap: a whatsapp/mailto message
+ *  is a URL and must stay short, whereas this is a real posted form (address, PO number, delivery
+ *  notes) and its only cost is the length of the page. */
+export const SHOP_MAX_ORDER_FIELDS = 12;
+
 /**
- * Submit the order through a project Form. The cart drawer collects contact fields + the order, then
- * POSTs to the existing `/f/:projectId/:formId` pipeline (stored + emailed, honeypot/time-trap/rate-limit
- * guarded) — so the order lands in the merchant's inbox with the recipient configured on that Form.
- * `formId` must reference a real Form (the endpoint 404s otherwise). Unlike the deep-link channels this
- * one captures the buyer's contact details; it does NOT make the cart authoritative (still an inquiry).
+ * The id of the Form the platform provisions for a `form` channel. DERIVED from the channel key, not
+ * stored: one source of truth (the shop config) and no id to keep in sync. Prefixed so the Forms tab
+ * and the inbox can recognise a shop-owned form on sight.
+ */
+export function shopOrderFormId(channelKey: string): string {
+  return `shop-${channelKey}`;
+}
+
+/**
+ * SEND THE ORDER TO AN EMAIL ADDRESS, server-side.
+ *
+ * The buyer fills a form in the cart and it is POSTed to the ordinary `/f/:projectId/:formId`
+ * pipeline: stored in the Submissions inbox, emailed to `email`, and guarded by the same honeypot,
+ * time-trap, interaction gate, rate limit and (optionally) captcha as any contact form.
+ *
+ * ★ It still says "form", and that is deliberate: orders land in the Submissions inbox, so calling it
+ * anything else would hide where to look for them.
+ *
+ * ★ The operator gives an ADDRESS, not a Form. It used to take a hand-picked `formId`, which was the
+ * wrong shape twice over: the cart rendered a FIXED set of buyer fields and ignored the chosen form's
+ * own, so a form with any required field the cart did not send rejected every order with the buyer
+ * seeing only "something went wrong" — and it made the operator build and maintain an entity that is
+ * really an implementation detail. Now the fields are declared HERE and the platform provisions a
+ * managed Form ({@link shopOrderFormId}) from this config on save, so the two cannot disagree.
  */
 const FormChannelSchema = z.object({
   kind: z.literal('form'),
   key: ShopItemKeySchema,
-  formId: IdSchema,
+  /** Where orders are emailed. SERVER-SIDE ONLY — it reaches the managed Form, never the markup. */
+  email: z.string().email().max(320),
+  /** Optional subject; lands in a mail Subject header → reject control chars. */
+  subject: z
+    .string()
+    .max(200)
+    .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
+    .optional(),
+  /** The buyer fields the cart collects. Freely definable; labels live in the catalog as `shop.<key>`. */
+  fields: z.array(ShopChannelFieldSchema).max(SHOP_MAX_ORDER_FIELDS).optional(),
+  /** Require a captcha solve, exactly as a contact form can. WHICH captcha is a project setting. */
+  captcha: z.boolean().default(false),
 });
 
 /** A submission channel the cart hands its contents to. */
@@ -274,7 +309,22 @@ export const ShopSchema = z.object({
    */
   enabled: z.boolean().optional(),
   currency: ShopCurrencySchema.optional(),
-  channels: z.array(ShopChannelSchema).max(8).optional(),
+  /**
+   * ★ A legacy `form` channel — one that named a hand-picked `formId` instead of carrying an address —
+   * is DROPPED here, not rejected.
+   *
+   * The field is gone, so such a channel no longer validates. Letting it fail would fail
+   * `SettingsSchema`, and that takes the WHOLE settings document down with it: every other setting,
+   * on a project whose only sin is not having been re-saved since the shape changed. Dropping the one
+   * dead channel loses a checkout button and nothing else — the operator re-adds it with an address,
+   * and every order already taken is still in the inbox.
+   */
+  channels: z
+    .preprocess(
+      (v) => (Array.isArray(v) ? v.filter((c) => !(c && typeof c === 'object' && (c as { kind?: unknown }).kind === 'form' && typeof (c as { email?: unknown }).email !== 'string')) : v),
+      z.array(ShopChannelSchema).max(8),
+    )
+    .optional(),
   // NOTE: the cart's display TEXT (add-to-cart button, drawer title/note/etc., currency symbol/code, and
   // each channel/field label) is all TRANSLATABLE — it lives in the translation catalog (reserved cart_*
   // keys + per-channel/field `shop.<key>` keys), NOT here. Settings holds only non-text STRUCTURE.

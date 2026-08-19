@@ -132,7 +132,7 @@ import {
   generateThumbnail,
   isThumbnailable,
   isSvgFile,
-  rotateImage,
+  transformImage,
   renderPlaceholder,
   isSizeToken,
   isThumbFormat,
@@ -213,7 +213,7 @@ import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
-import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
+import { registerAiAgentRoutes, type ResolvedAgent, type AgentSource } from './ai-agent-routes.js';
 import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
 import { buildAgentProvider } from '../ai/build-provider.js';
 import { isActiveAgentToken } from '../ai/agent-token.js';
@@ -327,6 +327,7 @@ import {
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
+import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
 import { normalizeEntryValues } from '../repo/entry-values.js';
@@ -1809,9 +1810,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // thumbnails (Unsplash/Pexels/Openverse sources). Their terms require
       // hotlinking previews (no proxy/cache); imported images are still downloaded
       // + self-hosted under 'self'. Published exports reference 'self' images only.
+      //
+      // ★ `blob:` is what lets the Image Editor open a file the author DROPPED IN. A dropped file has
+      // no URL, so it is shown via `URL.createObjectURL` — and without this the browser refuses to
+      // load it, the editor reports "That image could not be read", and drag-and-drop import is dead.
+      // It grants nothing new: a blob URL can only address bytes this same page just created, which
+      // is strictly narrower than the `data:` already permitted here. Found by driving a real
+      // browser — jsdom enforces no CSP, so every unit test passed against a broken feature.
       reply.header(
         'content-security-policy',
-        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; " +
+        "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; " +
           `frame-ancestors ${allowFraming ? frameAncestors : "'none'"}`,
       );
     }
@@ -3686,6 +3694,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
+      // Saving SETTINGS provisions the mini-shop's order Forms — same pattern, same reason: the config
+      // implies an entity, and deriving it on save is what keeps the two from disagreeing.
+      if (kind === 'settings') {
+        await ensureShopOrderForms(contentRepo, ctx, item as Settings, await instanceSettingsRepo.getFormModes(), app.log);
+      }
       if (wantReceipt) return reply.send(writeReceipt(kind, req.params.entityId, prior, item));
       return reply.send({ item });
     },
@@ -6201,40 +6214,137 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // with an export, rather than living in a display rule some other renderer would ignore.
     const RotateAssetBody = z.object({ degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]) });
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/rotate', { config: rl(120) }, async (req, reply) => {
+      // KEPT, and now a thin alias for the `/transform` route below. It is a published route that
+      // external callers and the bulk correction script speak, so removing it would be a breaking
+      // change to the HTTP contract — but its 35 lines of asset checks, in-place write, thumbnail
+      // purge and placeholder regeneration were an exact copy of the general path, i.e. a second
+      // place every future fix would have to be remembered.
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = RotateAssetBody.safeParse(req.body ?? {});
       if (!body.success) return reply.code(400).send({ error: 'rotation must be 90, 180 or 270 degrees' });
-      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+      return editImageAsset(reply, ctx, project.slug, req.params.id, { rotate: body.data.degrees }, undefined, 'rotate');
+    });
+
+    // --- Generic image EDIT: rotate and/or crop, in place or into a new asset -----------------------
+    //
+    // The general form of the rotate route above, which came first for one specific defect. The image
+    // editor needs crop as well, and an agent asked to "straighten and trim this photo" should not
+    // have to make two calls with a temporary file in between.
+    //
+    // TWO destinations, and the difference is the whole reason both exist:
+    //   · IN PLACE (no `saveAs`) — the asset id and stored name do not change, so every existing
+    //     reference keeps working and the correction travels with an export. This is right for fixing
+    //     a photograph. It is destructive: the original pixels are gone.
+    //   · SAVE AS — a NEW asset, the source untouched. Right for a crop that is one use of a picture
+    //     rather than a correction to it.
+    const CropBody = z.object({
+      left: z.number().int().min(0),
+      top: z.number().int().min(0),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    });
+    const TransformAssetBody = z
+      .object({
+        rotate: z.union([z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        crop: CropBody.optional(),
+        /** Re-encode the result. Only meaningful with `saveAs` — see the in-place guard below. */
+        format: z.enum(['webp', 'jpeg', 'png']).optional(),
+        saveAs: z
+          .object({
+            filename: z.string().min(1).max(255),
+            folder: MediaFolderSchema.optional(),
+          })
+          .optional(),
+      })
+      .refine((b) => b.rotate !== undefined || b.crop !== undefined, {
+        message: 'specify a rotate and/or a crop',
+      });
+
+    /**
+     * Apply an edit to a stored image — the single implementation behind BOTH `/rotate` and
+     * `/transform`, so the asset checks, the in-place write and the save-as ingest exist once.
+     *
+     * `verb` only shapes the error prose ("cannot rotate a png…" vs "cannot edit a png…"), so the
+     * older route keeps saying what it always said.
+     */
+    async function editImageAsset(
+      reply: FastifyReply,
+      ctx: ProjectContext,
+      projectSlug: string,
+      assetId: string,
+      ops: { rotate?: 90 | 180 | 270; crop?: { left: number; top: number; width: number; height: number }; format?: 'webp' | 'jpeg' | 'png' },
+      saveAs: { filename: string; folder?: string } | undefined,
+      verb: 'rotate' | 'edit',
+    ) {
+      const asset = await contentRepo.getLiveMedia(ctx, assetId);
       if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
       const image = asset as ImageAsset;
-      // SVG is a vector — a rotation belongs in its markup, and it never goes through sharp here.
+      // SVG is a vector — an edit belongs in its markup, and it never goes through sharp here.
       if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
-        return reply.code(400).send({ error: 'an SVG cannot be rotated here' });
+        return reply.code(400).send({ error: `an SVG cannot be ${verb === 'rotate' ? 'rotated' : 'edited'} here` });
       }
-      let rotated;
+
+      let edited;
       try {
-        rotated = await rotateImage(storage.resolveStoredPath(project.slug, asset.id, image.original), body.data.degrees);
+        edited = await transformImage(storage.resolveStoredPath(projectSlug, asset.id, image.original), ops);
       } catch (err) {
-        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not rotate this image' });
+        return reply.code(400).send({ error: err instanceof Error ? err.message : `could not ${verb} this image` });
       }
-      // A format we cannot re-encode in kind would change the file's extension, and the stored name is
-      // referenced by every URL — refuse rather than break them.
-      if (rotated.format !== image.format) {
-        return reply.code(400).send({ error: `cannot rotate a ${image.format} without changing its format` });
+
+      if (saveAs) {
+        // A new asset carries the EDITED bytes through the ordinary ingest path, so it gets the same
+        // optimization, project upload cap, LQIP placeholder and metadata as any upload.
+        const created = await createMediaAsset(ctx, projectSlug, edited.buffer, {
+          filename: saveAs.filename,
+          mimetype: `image/${edited.format}`,
+          folder: saveAs.folder ?? image.folder,
+          ...(image.alt ? { alt: image.alt } : {}),
+        });
+        return reply.code(201).send({ item: created });
       }
-      await storage.storeFile(project.slug, asset.id, image.original, rotated.buffer);
-      // Every cached variant was derived from the OLD pixels. Dropping them is what makes the turn
-      // visible everywhere at once; they regenerate on the next request.
-      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
+
+      // IN PLACE. A format change would change the file's EXTENSION, and the stored name is baked
+      // into every URL that references it — refuse rather than break them. (Save-as has no such
+      // constraint, which is why `format` is only really useful there.)
+      if (edited.format !== image.format) {
+        return reply.code(400).send({ error: `cannot ${verb} a ${image.format} without changing its format` });
+      }
+      await storage.storeFile(projectSlug, asset.id, image.original, edited.buffer);
+      // Every cached variant came from the OLD pixels. Dropping them is what makes the edit visible
+      // everywhere at once; they regenerate on the next request.
+      await storage.pruneAssetThumbnails(projectSlug, asset.id, image.original);
       const next = {
         ...image,
-        bytes: rotated.buffer.length,
-        width: rotated.width,
-        height: rotated.height,
-        placeholder: await renderPlaceholder(rotated.buffer),
+        bytes: edited.buffer.length,
+        width: edited.width,
+        height: edited.height,
+        placeholder: await renderPlaceholder(edited.buffer),
       };
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    }
+
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = TransformAssetBody.safeParse(req.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid image edit' });
+      }
+      const { rotate, crop, format, saveAs } = body.data;
+      return editImageAsset(
+        reply,
+        ctx,
+        project.slug,
+        req.params.id,
+        {
+          ...(rotate !== undefined ? { rotate } : {}),
+          ...(crop ? { crop } : {}),
+          ...(format ? { format } : {}),
+        },
+        saveAs,
+        'edit',
+      );
     });
 
     // Duplicate a single asset (optionally into another folder).
@@ -8328,40 +8438,110 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
   // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
   // env-configured fallback. Returns null when the assistant is not configured anywhere.
-  async function resolveAiProvider(ctx: ProjectContext): Promise<ResolvedAgent | null> {
-    if (opts.encryptionKey) {
-      const [row] = await contentRepo.list(ctx, 'ai_config');
-      const parsed = row ? AiConfigSchema.safeParse(row) : null;
-      if (parsed?.success && parsed.data.enabled && parsed.data.secret) {
-        const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
-        return {
-          provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
-          projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
-          maxOutputTokens: parsed.data.maxOutputTokens || undefined,
-          adminsUnlimited: false, // a project's own budget applies to everyone on it
-          platformFunded: false,
-        };
-      }
-    }
+  /**
+   * Is this user AGENCY STAFF — someone holding a platform role (admin or developer) — as opposed to
+   * a client invited onto a single project? The platform-funded assistant can be restricted to staff,
+   * and only staff may choose which configuration answers them.
+   */
+  async function isStaff(userId: string): Promise<boolean> {
+    return (await getPlatformRole(db, userId)) !== null;
+  }
+
+  /** The project's OWN configured assistant (BYO key), or null. */
+  async function projectAgent(ctx: ProjectContext): Promise<ResolvedAgent | null> {
+    if (!opts.encryptionKey) return null;
+    const [row] = await contentRepo.list(ctx, 'ai_config');
+    const parsed = row ? AiConfigSchema.safeParse(row) : null;
+    if (!parsed?.success || !parsed.data.enabled || !parsed.data.secret) return null;
+    const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
+    return {
+      provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
+      source: 'project',
+      projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
+      maxOutputTokens: parsed.data.maxOutputTokens || undefined,
+      adminsUnlimited: false, // a project's own budget applies to everyone on it
+      platformFunded: false,
+    };
+  }
+
+  /**
+   * The platform-wide assistant, if configured AND offered to this user.
+   *
+   * ★ The audience gate lives HERE, on the resolver, not on the UI that hides the button. The chat
+   * route resolves through this same function, so a client who calls the endpoint directly gets the
+   * same 501 as a client who never sees the button — the setting is an access rule, not a hint.
+   */
+  async function platformFundedAgent(userId: string): Promise<ResolvedAgent | null> {
     const inst = await instanceSettingsRepo.getAiConfig();
+
+    // ★ THE AUDIENCE GATE IS EVALUATED ONCE, BEFORE EITHER SOURCE — deliberately, and this is the
+    // whole reason the two are resolved in one function rather than chained.
+    //
+    // It used to sit inside the instance branch alone, with the env fallback tried after it. That
+    // reads as "prefer the configured one", but it means a REFUSAL falls through to the next source:
+    // an operator running with `SW_AI_API_KEY` set who then restricted the platform assistant to
+    // staff still served every client an assistant, on the operator's key, with caps waived — the
+    // exact spend the setting exists to prevent, and silently, because the UI reflected the setting.
+    //
+    // Both of these spend the OPERATOR's money, so "who may use the platform-funded assistant" is one
+    // question with one answer. A project's own BYO key is never gated here: it is billed to that
+    // project, and an agency that wants its clients to have an assistant configures one.
+    if (inst?.audience === 'staff' && !(await isStaff(userId))) return null;
+
     if (inst?.enabled && inst.apiKey) {
       return {
         provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
+        source: 'instance',
         projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
         maxOutputTokens: inst.maxOutputTokens || undefined,
         adminsUnlimited: inst.adminsUnlimited,
         platformFunded: true,
       };
     }
-    if (agentProvider) {
-      return { provider: agentProvider, projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined, adminsUnlimited: true, platformFunded: true };
-    }
-    return null;
+    // The deploy-time env fallback. Subject to the gate above for the same reason.
+    if (!agentProvider) return null;
+    return {
+      provider: agentProvider,
+      source: 'env',
+      projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined,
+      adminsUnlimited: true,
+      platformFunded: true,
+    };
+  }
+
+  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
+  // (dedicated ai_config kind), then whatever platform-funded agent this user is allowed (the
+  // admin-set instance config, else the env fallback). Null when nothing is available to them.
+  //
+  // `prefer` lets STAFF pick which one answers — an agency debugging a client's own key, or checking
+  // how the house agent behaves on that project. It is honoured only for staff: for anyone else the
+  // ordinary precedence stands, so a client cannot opt themselves onto the operator's budget.
+  async function resolveAiProvider(ctx: ProjectContext, prefer?: AgentSource): Promise<ResolvedAgent | null> {
+    const mayChoose = prefer !== undefined && (await isStaff(ctx.userId));
+    // Explicitly the house agent: skip the project's own key.
+    if (mayChoose && prefer === 'instance') return platformFundedAgent(ctx.userId);
+    const own = await projectAgent(ctx);
+    if (own) return own;
+    // Asked for the project's agent and it has none — say so rather than quietly billing the
+    // operator, which is the opposite of what "use the project agent" meant.
+    if (mayChoose && prefer === 'project') return null;
+    return platformFundedAgent(ctx.userId);
+  }
+
+  /** Which configurations exist for this project + whether this caller may switch between them. */
+  async function agentSourcesFor(ctx: ProjectContext): Promise<{ project: boolean; instance: boolean; canChoose: boolean }> {
+    // `house` is what THIS user can actually reach, so a client refused by the audience gate is told
+    // there is no platform agent rather than being offered a switch to one that will not answer.
+    const [own, house, staff] = await Promise.all([projectAgent(ctx), platformFundedAgent(ctx.userId), isStaff(ctx.userId)]);
+    const instance = house !== null;
+    // Only worth offering a switch when there are genuinely two to switch between.
+    return { project: own !== null, instance, canChoose: staff && own !== null && instance };
   }
 
   registerAiAgentRoutes(app, {
     db,
     resolveAgent: resolveAiProvider,
+    agentSources: agentSourcesFor,
     agentGrants: agentGrantsRepo,
     aiUsageRepo,
     aiQuota,
@@ -8749,8 +8929,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Computed PER RESPONSE, not once at registration: `frameAncestors` is live-updated when an admin
     // saves the embedding setting, and this is the document an embedder actually frames — baking the
     // policy in at boot would mean the setting only took effect after a restart.
+    // ★ `img-src … blob:` is what lets the Image Editor open a DROPPED file: it has no URL, so it is
+    // shown via `URL.createObjectURL`, and without this the browser blocks the load, the editor says
+    // "That image could not be read", and drag-and-drop import is simply dead. It grants nothing new
+    // — a blob URL only addresses bytes this page just created, strictly narrower than the `data:`
+    // already allowed. NOTE there are TWO editor-surface policies: this SPA shell one and the API
+    // response one above; the shell is what the app actually runs under, so fixing only the other one
+    // changes nothing (verified by driving a real browser — jsdom enforces no CSP at all).
     const editorCsp = (): string =>
-      "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: https:; " +
+      "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: blob: https:; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
       `object-src 'none'; base-uri 'self'; frame-ancestors ${frameAncestors ?? "'none'"}`;
     /** Stamps the SPA shell's framing headers: XFO is omitted once an allowlist is active (it cannot

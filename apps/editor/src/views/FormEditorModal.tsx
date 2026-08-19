@@ -19,6 +19,7 @@ const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
   { value: 'contactPhp', label: 'contact.php (host mail)' },
   { value: 'contactPhpSmtp', label: 'contact.php (SMTP)' },
   { value: 'thirdParty', label: 'Third-party endpoint' },
+  { value: 'whatsapp', label: 'WhatsApp (opens the visitor’s WhatsApp)' },
 ];
 
 type EnabledModes = Record<FormMode, boolean>;
@@ -314,9 +315,13 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
           value={draft.mode}
           onChange={(e) => {
             const mode = e.target.value as FormMode;
-            // Drop the third-party URL when leaving thirdParty so it never lingers
-            // (and never reaches the published HTML) for another mode.
-            patch(mode === 'thirdParty' ? { mode } : { mode, thirdPartyUrl: undefined });
+            // Drop each mode's own delivery field when leaving it, so a stale value never lingers
+            // (and, for whatsapp, never reaches the published HTML) under a mode that ignores it.
+            patch({
+              mode,
+              ...(mode === 'thirdParty' ? {} : { thirdPartyUrl: undefined }),
+              ...(mode === 'whatsapp' ? {} : { whatsappNumber: undefined, whatsappIntro: undefined }),
+            });
           }}
         >
           {MODE_LABELS.filter((m) => enabledModes[m.value] || m.value === draft.mode).map((m) => (
@@ -343,6 +348,37 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
             required
           />
         </label>
+      )}
+
+      {draft.mode === 'whatsapp' && (
+        <div className="flex max-w-lg flex-col gap-2">
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+            WhatsApp number (E.164 — country code, no spaces)
+            <input
+              aria-label="WhatsApp number"
+              className={`${glassInput} mt-1`}
+              value={draft.whatsappNumber ?? ''}
+              onChange={(e) => patch({ whatsappNumber: e.target.value || undefined })}
+              placeholder="+14155550123"
+              required
+            />
+          </label>
+          <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+            Intro line (optional) — prepended to the compiled message
+            <input
+              aria-label="WhatsApp intro line"
+              className={`${glassInput} mt-1`}
+              value={draft.whatsappIntro ?? ''}
+              onChange={(e) => patch({ whatsappIntro: e.target.value || undefined })}
+              placeholder="New enquiry from the website"
+            />
+          </label>
+          <p className="rounded-lg border border-amber-200/70 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/10 p-2 text-[11px] text-slate-600 dark:text-slate-300">
+            The visitor's own WhatsApp opens with the message pre-filled — <strong>they still have to press
+            send</strong>, and nothing is stored in the inbox or emailed. The number is visible in the page
+            source, as any published phone number is.
+          </p>
+        </div>
       )}
 
       <label className="flex items-center gap-2 text-sm">

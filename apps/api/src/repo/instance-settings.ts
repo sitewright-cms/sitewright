@@ -27,6 +27,7 @@ import {
   type StockKeysStored,
   type AiStored,
   type AiProviderKind,
+  type AiAudience,
   type OidcProviderStored,
   type PlatformLogo,
 } from '@sitewright/schema';
@@ -299,6 +300,7 @@ export class InstanceSettingsRepository {
         enabled: input.ai.enabled,
         provider: input.ai.provider,
         adminsUnlimited: input.ai.adminsUnlimited,
+        audience: input.ai.audience,
         ...(input.ai.model !== undefined ? { model: input.ai.model } : {}),
         ...(input.ai.baseUrl !== undefined ? { baseUrl: input.ai.baseUrl } : {}),
         ...(apiKey !== undefined ? { apiKey } : {}),
@@ -507,11 +509,16 @@ export class InstanceSettingsRepository {
     defaultProjectMonthlyTokens?: number;
     maxOutputTokens?: number;
     adminsUnlimited: boolean;
+    audience: AiAudience;
   } | null> {
     const stored = await this.getStored();
     if (!stored.ai) return null;
     const { apiKey, ...rest } = stored.ai;
-    return { ...rest, apiKey: apiKey ? this.decrypt(apiKey) : null };
+    // `audience` is filled in by AiStoredSchema's `.default('all')` when getStored() parses the row,
+    // so a pre-upgrade row already reads as `all` — the behaviour it had — by the time it gets here.
+    // The `??` is belt-and-braces for a caller that ever hands us an unparsed row; it is NOT what
+    // makes the upgrade safe, the schema default is.
+    return { ...rest, audience: rest.audience ?? 'all', apiKey: apiKey ? this.decrypt(apiKey) : null };
   }
 
   /** Enabled OIDC providers for the unauthenticated login screen (id + label only, no secrets). */

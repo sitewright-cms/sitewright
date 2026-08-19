@@ -319,11 +319,27 @@ describe('cart channel order fields (whatsapp/mailto)', () => {
 
 describe('resolveShopChannels', () => {
   const ep = (id: string): string => `/f/p1/${id}`;
-  it('fills the endpoint for a form channel and leaves others untouched', () => {
-    const shop = { currency: { decimals: 2 }, channels: [{ kind: 'form', key: 'order_form', formId: 'order' }, { kind: 'mailto', key: 'email', email: 'a@b.test' }] };
+  it('DERIVES the form id from the channel key and fills the endpoint, leaving others untouched', () => {
+    // The channel carries an address, not an id: the platform provisions `shop-<key>` on save, so the
+    // endpoint follows from the key and there is no id for the two to disagree about.
+    const shop = {
+      currency: { decimals: 2 },
+      channels: [
+        { kind: 'form', key: 'order_form', email: 'orders@acme.test' },
+        { kind: 'mailto', key: 'email', email: 'a@b.test' },
+      ],
+    };
     const out = resolveShopChannels(shop, ep) as { channels: Array<Record<string, unknown>> };
-    expect(out.channels[0]).toMatchObject({ kind: 'form', key: 'order_form', formId: 'order', endpoint: '/f/p1/order' });
+    expect(out.channels[0]).toMatchObject({ kind: 'form', key: 'order_form', formId: 'shop-order_form', endpoint: '/f/p1/shop-order_form' });
     expect(out.channels[1]).toEqual({ kind: 'mailto', key: 'email', email: 'a@b.test' });
+  });
+
+  it('carries the project captcha onto the shop ONLY when a channel asks for one', () => {
+    const captcha = { provider: 'hcaptcha', siteKey: 'site-key' };
+    const without = resolveShopChannels({ channels: [{ kind: 'form', key: 'o', email: 'a@b.test' }] }, ep, captcha) as Record<string, unknown>;
+    expect(without.captcha).toBeUndefined();
+    const with_ = resolveShopChannels({ channels: [{ kind: 'form', key: 'o', email: 'a@b.test', captcha: true }] }, ep, captcha) as Record<string, unknown>;
+    expect(with_.captcha).toEqual(captcha);
   });
   it('is a no-op for an absent shop or one without channels', () => {
     expect(resolveShopChannels(undefined, ep)).toBeUndefined();

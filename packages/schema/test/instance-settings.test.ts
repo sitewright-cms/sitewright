@@ -14,18 +14,25 @@ import {
 } from '../src/instance-settings.js';
 
 describe('FormModesSchema', () => {
-  it('requires every mode boolean except the back-compat one', () => {
+  it('requires every mode boolean except the back-compat ones', () => {
     expect(() => FormModesSchema.parse({ globalSmtp: true })).toThrow();
-    const all = { globalSmtp: true, userSmtp: false, contactPhp: true, contactPhpSmtp: false, thirdParty: false };
+    const all = { globalSmtp: true, userSmtp: false, contactPhp: true, contactPhpSmtp: false, thirdParty: false, whatsapp: false };
     expect(FormModesSchema.parse(all)).toEqual(all);
   });
 
-  // `contactPhpSmtp` was added AFTER instances were storing a four-key formModes object. Without a
-  // default, every pre-existing settings row would fail InstanceSettingsStoredSchema.parse and take
-  // the WHOLE document (SMTP, hCaptcha, branding, …) down with it — not just the new field.
-  it('parses a pre-existing four-key object, defaulting the newer mode to OFF', () => {
+  // `contactPhpSmtp` — and later `whatsapp` — were each added AFTER instances were already storing a
+  // formModes object. Without a default, every pre-existing settings row would fail
+  // InstanceSettingsStoredSchema.parse and take the WHOLE document (SMTP, hCaptcha, branding, …) down
+  // with it, not just the new field. So each new mode carries `.default(false)` and this test grows
+  // by one case per addition rather than being rewritten.
+  it('parses a pre-existing four-key object, defaulting the newer modes to OFF', () => {
     const legacy = { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false };
-    expect(FormModesSchema.parse(legacy)).toEqual({ ...legacy, contactPhpSmtp: false });
+    expect(FormModesSchema.parse(legacy)).toEqual({ ...legacy, contactPhpSmtp: false, whatsapp: false });
+  });
+
+  it('parses a FIVE-key object written before the whatsapp mode existed', () => {
+    const legacy = { globalSmtp: true, userSmtp: false, contactPhp: true, contactPhpSmtp: false, thirdParty: false };
+    expect(FormModesSchema.parse(legacy)).toEqual({ ...legacy, whatsapp: false });
   });
 
   it('DEFAULT_FORM_MODES disables every mode', () => {
@@ -35,6 +42,7 @@ describe('FormModesSchema', () => {
       contactPhp: false,
       contactPhpSmtp: false,
       thirdParty: false,
+      whatsapp: false,
     });
   });
 });
@@ -174,7 +182,7 @@ describe('maskInstanceSettings', () => {
   it('collapses secrets to presence flags and never leaks ciphertext', () => {
     const stored: InstanceSettingsStored = {
       smtp: { host: 'smtp.acme.com', port: 465, secure: true, user: 'mailer', fromEmail: 'no-reply@acme.com', password: enc },
-      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false },
+      formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false },
     };
     const masked = maskInstanceSettings(stored);
     expect(masked.smtp).toEqual({

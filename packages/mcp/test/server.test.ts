@@ -1296,7 +1296,10 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page } });
     expect(calls(client).preview).toHaveBeenCalledWith(page, { screenshot: true });
     const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
-    expect(texts).toContain('Screenshots are unavailable'); // graceful fallback note
+    // No screenshots AND no reason from the server → the fallback is unchanged: say so, and hand
+    // back the HTML, because there is nothing better to offer. (When the server DOES give a reason,
+    // the payload is withheld instead — see the "must SAY SO" suite below.)
+    expect(texts).toContain('NO SCREENSHOT'); // graceful fallback note
     expect(texts).toContain('<html></html>'); // the HTML source is still returned
   });
 
@@ -1628,5 +1631,132 @@ describe('list_pages summary', () => {
     const b = fakeClient();
     await (await connect(b, readScope)).callTool({ name: 'list_content', arguments: { kind: 'entry', dataset: 'team', summary: true } });
     expect(callsOf(b).listContent).toHaveBeenCalledWith('entry', 'team', { summary: true });
+  });
+});
+
+describe('preview_page — a refused screenshot must SAY SO, not hide behind the page source', () => {
+  /** A page big enough that dumping it would be the thing the caller notices. */
+  const BIG_HTML = `<html><body>${'<p>filler</p>'.repeat(20_000)}</body></html>`;
+
+  const textOf = (res: unknown): string =>
+    ((res as { content: Array<{ type: string; text?: string }> }).content ?? [])
+      .filter((c) => c.type === 'text')
+      .map((c) => c.text ?? '')
+      .join('\n');
+
+  it('★ a TRANSIENT memory refusal reports the reason + a retry, and withholds the HTML', async () => {
+    // THE BUG. Every no-screenshot case produced one sentence — "unavailable on this server" — plus
+    // the ENTIRE rendered HTML. The sentence misdiagnosed a temporary refusal as a permanent server
+    // limitation, and the ~300 KB of markup overran the tool-output token limit, so the caller saw a
+    // size error and never read the sentence. An actionable "out of memory, retry" was hidden behind
+    // a token-limit failure.
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: BIG_HTML,
+        token: 'tok',
+        screenshotsUnavailable: {
+          reason: 'memory' as const,
+          retryable: true,
+          message: 'the screenshot was skipped because the instance is temporarily out of memory — the HTML is complete; retry shortly for the image',
+        },
+      })),
+    });
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const text = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page } }));
+
+    expect(text).toMatch(/out of memory/i);
+    expect(text).toMatch(/TRANSIENT/);
+    expect(text).toMatch(/retry/i);
+    // ★ and the payload stays small — the whole point.
+    expect(text).not.toContain('<p>filler</p>');
+    expect(text.length).toBeLessThan(2000);
+    // The old, wrong diagnosis must not come back.
+    expect(text).not.toMatch(/unavailable on this server/i);
+  });
+
+  it('a PERMANENT failure says not to retry, and still withholds the bulk payload', async () => {
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: BIG_HTML,
+        token: 'tok',
+        screenshotsUnavailable: { reason: 'failed' as const, retryable: false, message: 'the screenshot could not be taken: no browser' },
+      })),
+    });
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const text = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page } }));
+    expect(text).toMatch(/NOT retryable/);
+    expect(text).not.toContain('<p>filler</p>');
+  });
+
+  it('includeHtml:true still returns the HTML alongside the refusal — it was asked for', async () => {
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: '<html><body><p>filler</p></body></html>',
+        token: 'tok',
+        screenshotsUnavailable: { reason: 'memory' as const, retryable: true, message: 'out of memory' },
+      })),
+    });
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const text = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } }));
+    expect(text).toMatch(/out of memory/);
+    expect(text).toContain('<p>filler</p>');
+  });
+
+  it('a server that gives NO reason keeps the old HTML fallback — there is nothing else to offer', async () => {
+    const client = fakeClient({ preview: vi.fn(async () => ({ html: '<html><body><p>filler</p></body></html>', token: 'tok' })) });
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const text = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page } }));
+    expect(text).toMatch(/no headless browser/i);
+    expect(text).toContain('<p>filler</p>');
+  });
+});
+
+describe('transform_image', () => {
+  const okClient = () => fakeClient({ transformMedia: vi.fn(async (_id: string, body: unknown) => ({ id: 'a1', body })) });
+
+  it('needs at least one operation — a call with neither rotate nor crop is refused', async () => {
+    // The schema cannot express "one of these two", so the tool says it plainly rather than sending an
+    // empty edit the server would 400.
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const res = (await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1' } })) as { isError?: boolean; content: Array<{ text?: string }> };
+    expect(res.isError).toBe(true);
+    expect(res.content.map((c) => c.text).join('')).toMatch(/at least one of/);
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).not.toHaveBeenCalled();
+  });
+
+  it('passes only the operations actually given (in place by default)', async () => {
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1', rotate: 90 } });
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).toHaveBeenCalledWith('a1', { rotate: 90 });
+  });
+
+  it('carries a crop, an explicit format and saveAs when supplied', async () => {
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    await mcp.callTool({
+      name: 'transform_image',
+      arguments: { id: 'a1', crop: { left: 1, top: 2, width: 3, height: 4 }, format: 'webp', saveAs: { filename: 'cut.webp' } },
+    });
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).toHaveBeenCalledWith('a1', {
+      crop: { left: 1, top: 2, width: 3, height: 4 },
+      format: 'webp',
+      saveAs: { filename: 'cut.webp' },
+    });
+  });
+
+  it('is gated on content:write — a read-only connection cannot edit pixels', async () => {
+    // The gate refuses at CALL time (the tool stays listed, as every other write tool does), so the
+    // assertion is on the refusal and on the client never being reached.
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, readScope);
+    const res = (await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1', rotate: 90 } })) as {
+      isError?: boolean;
+      content: Array<{ text?: string }>;
+    };
+    expect(res.isError).toBe(true);
+    expect(res.content.map((c) => c.text).join('')).toMatch(/content:write/);
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).not.toHaveBeenCalled();
   });
 });

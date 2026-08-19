@@ -115,6 +115,14 @@ export function AgentDrawer({
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [sessionTokens, setSessionTokens] = useState(0);
+  /** Which configurations exist + whether this user may pick one (staff, and both configured). */
+  const [agentSources, setAgentSources] = useState<{ project: boolean; instance: boolean; canChoose: boolean }>({
+    project: false,
+    instance: false,
+    canChoose: false,
+  });
+  /** The picked configuration, or undefined = let the server apply the normal precedence. */
+  const [agentSource, setAgentSource] = useState<'project' | 'instance' | undefined>(undefined);
   const conversationId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -179,6 +187,21 @@ export function AgentDrawer({
       active = false;
     };
   }, [open, grant, projectId]);
+
+  // Which assistant configurations this project has, and whether this user may pick one. Best-effort:
+  // if it fails the switcher simply doesn't appear and the server's precedence applies, which is the
+  // behaviour for everyone who cannot choose anyway.
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api
+      .agentStatus(projectId)
+      .then((s) => active && setAgentSources(s.sources))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [open, projectId]);
 
   // Esc closes when this is the top overlay.
   useEffect(() => {
@@ -267,6 +290,8 @@ export function AgentDrawer({
           message: text,
           ...(sent.length ? { attachments: sent.map(({ kind, mimeType, data, name }) => ({ kind, mimeType, data, name })) } : {}),
           context: { path: getPath() },
+          // Only sent when the user actually chose; otherwise the server's precedence stands.
+          ...(agentSource ? { agentSource } : {}),
         },
         {
           onStart: (e) => (conversationId.current = e.conversationId),
@@ -364,6 +389,50 @@ export function AgentDrawer({
             <X className="h-4 w-4" />
           </button>
         </header>
+
+        {/* WHICH AGENT ANSWERS. Only for staff on a project that has BOTH its own key and a platform
+            one — for everyone else there is nothing to choose and the row does not render. A project
+            member gets the project's agent by the server's ordinary precedence; this exists so the
+            agency can deliberately reach past it, e.g. to check the house agent against a client's
+            own configuration. The choice applies to the NEXT turn, not retroactively to the
+            transcript, so it is not part of the conversation state. */}
+        {agentSources.canChoose && (
+          <div className="flex items-center gap-2 border-b border-slate-200/70 dark:border-slate-700/70 px-4 py-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent</span>
+            <div role="group" aria-label="Which agent answers" className="flex gap-0.5 rounded-lg bg-slate-100 dark:bg-white/10 p-0.5">
+              {([
+                // 'project' is sent EXPLICITLY rather than left undefined. The two are not the same
+                // to the server: undefined means "apply the usual precedence", which would quietly
+                // fall through to the platform agent if the project's own key were removed while the
+                // chat was open — the opposite of what a button labelled "Project" promises.
+                { key: 'project' as const, label: 'Project', tip: "This project's own configured agent, billed to the project" },
+                { key: 'instance' as const, label: 'System', tip: "The platform-wide agent, billed to the operator's key" },
+              ]).map((opt) => {
+                // "Project" is the resting state, so it reads active while NOTHING has been picked
+                // — the default sends no preference at all and the server's precedence lands there
+                // anyway. Defaulting the STATE to 'project' instead would start sending an explicit
+                // "project only", which refuses rather than falls back.
+                const active = opt.key === 'project' ? agentSource !== 'instance' : agentSource === opt.key;
+                return (
+                  <button
+                    key={opt.label}
+                    type="button"
+                    title={opt.tip}
+                    aria-pressed={active}
+                    onClick={() => setAgentSource(opt.key)}
+                    className={`rounded-md px-2 py-0.5 text-xs font-medium transition ${
+                      active
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {needConsent ? (
           <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">

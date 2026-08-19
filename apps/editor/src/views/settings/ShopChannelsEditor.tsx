@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, type ShopFieldType } from '@sitewright/schema';
+import { SHOP_MAX_CHANNEL_FIELDS, SHOP_MAX_ORDER_FIELDS, SHOP_CHOICE_FIELD_TYPES, type ShopFieldType } from '@sitewright/schema';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
 import { useReorder } from './use-reorder';
@@ -12,9 +12,17 @@ const glassSelectAuto =
 
 const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'mailto', label: 'Email (mailto)' },
+  // The two email routes are named for WHERE the mail is composed, because that is the whole
+  // difference and picking the wrong one is a silent downgrade: `mailto` hands the order to the
+  // BUYER's mail client (nothing is stored, nothing is guarded, and it fails outright on a device
+  // with no mail app configured), while the form channel POSTs it to the SERVER through the
+  // ordinary form pipeline — stored in the inbox, emailed to the form's recipient, and behind the
+  // same honeypot, interaction gate, proof-of-work and rate limits as a contact form.
+  { value: 'mailto', label: 'Email — opens buyer’s mail app (mailto)' },
   { value: 'payment', label: 'Payment link' },
-  { value: 'form', label: 'Order form' },
+  // Still called a FORM, on purpose: orders land in the Submissions inbox, and naming it anything
+  // else would hide where to look for them.
+  { value: 'form', label: 'Order form — emailed by the server (recommended)' },
 ];
 
 /** Order-field input types + their labels (mirrors the schema SHOP_FIELD_TYPES enum; `satisfies` keeps each value valid). */
@@ -44,10 +52,13 @@ function OrderFieldsEditor({
   fields,
   onChange,
   channelIndex,
+  max = SHOP_MAX_CHANNEL_FIELDS,
 }: {
   fields: KeyedShopField[];
   onChange: (fields: KeyedShopField[]) => void;
   channelIndex: number;
+  /** Field cap for this channel kind. */
+  max?: number;
 }) {
   const setField = (id: string, patch: Partial<KeyedShopField>) =>
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -120,7 +131,7 @@ function OrderFieldsEditor({
       </div>
       <button
         type="button"
-        disabled={fields.length >= SHOP_MAX_CHANNEL_FIELDS}
+        disabled={fields.length >= max}
         onClick={() => onChange([...fields, newShopField()])}
         className={`${ghostButton} mt-2 self-start text-xs disabled:cursor-not-allowed disabled:opacity-40`}
       >
@@ -216,11 +227,48 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                 </>
               )}
               {r.kind === 'form' && (
-                <input aria-label={`Channel ${i + 1} form id`} className={glassInput} value={r.formId} placeholder="Form id (an existing Form)" onChange={(e) => set(r.id, { formId: e.target.value })} />
+                <>
+                  <input
+                    aria-label={`Channel ${i + 1} order email`}
+                    className={glassInput}
+                    type="email"
+                    value={r.email}
+                    placeholder="orders@acme.com"
+                    onChange={(e) => set(r.id, { email: e.target.value })}
+                  />
+                  <input
+                    aria-label={`Channel ${i + 1} order subject`}
+                    className={glassInput}
+                    value={r.subject}
+                    placeholder="Subject (optional)"
+                    onChange={(e) => set(r.id, { subject: e.target.value })}
+                  />
+                  <label className="sm:col-span-2 flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className={toggleInput}
+                      aria-label={`Channel ${i + 1} require captcha`}
+                      checked={r.captcha}
+                      onChange={(e) => set(r.id, { captcha: e.target.checked })}
+                    />
+                    Require a captcha before an order is sent
+                  </label>
+                  <p className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    Orders are sent BY THE SERVER: stored in the Submissions inbox, emailed here, and guarded
+                    like a contact form. A read-only form is kept in the Forms tab so you can find them.
+                  </p>
+                </>
               )}
             </div>
-            {(r.kind === 'whatsapp' || r.kind === 'mailto') && (
-              <OrderFieldsEditor fields={r.fields} onChange={(fields) => set(r.id, { fields })} channelIndex={i} />
+            {(r.kind === 'whatsapp' || r.kind === 'mailto' || r.kind === 'form') && (
+              <OrderFieldsEditor
+                fields={r.fields}
+                onChange={(fields) => set(r.id, { fields })}
+                channelIndex={i}
+                // A deep-link channel packs its answers into a URL, which must stay short; a posted
+                // order form has no such limit, so it may ask for more.
+                max={r.kind === 'form' ? SHOP_MAX_ORDER_FIELDS : SHOP_MAX_CHANNEL_FIELDS}
+              />
             )}
             </div>
           </motion.div>

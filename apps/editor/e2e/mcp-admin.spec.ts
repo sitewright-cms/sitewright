@@ -39,12 +39,14 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   await expect(modal.getByText('Saved.')).toBeVisible();
   await expect(instr).toHaveValue(/CODE-FIRST/);
 
-  // The endpoint list shows registered MCP tools; the connect guide shows the CLI bridge command.
+  // The endpoint list shows registered MCP tools; the connect guide shows how to reach /mcp.
   await modal.getByRole('tab', { name: 'Agents' }).click();
   await expect(modal.getByText('MCP endpoints')).toBeVisible();
   await expect(modal.getByText('put_page', { exact: true })).toBeVisible();
   await expect(modal.getByText('Connect an agent')).toBeVisible();
-  await expect(modal.getByText(/sitewright mcp --url/)).toBeVisible();
+  // There is no CLI to install — `@sitewright/cli` was never published — so the guide names the remote
+  // endpoint and the one-liner that registers it.
+  await expect(modal.getByText(/claude mcp add --transport http/)).toBeVisible();
   // Back to the AI Assistant tab to edit + save the instructions (the Save row is hidden on Agents).
   await modal.getByRole('tab', { name: 'AI Assistant' }).click();
 

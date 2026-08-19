@@ -1143,7 +1143,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint, opts.captcha), consent: website?.consent, t: pageT, enableThemes: website?.enableThemes },
           page: {
             title: page.title,
             // Flattened SEO/meta fields: bound as {{page.description}} / {{page.image}} and read by the

@@ -10,9 +10,11 @@ import {
 } from '../src/sizes.js';
 
 describe('sizes', () => {
-  it('exposes the named responsive width set (sm/md/lg/xl)', () => {
-    expect(THUMB_SIZES).toEqual({ sm: 500, md: 1000, lg: 1600, xl: 2400 });
-    expect(SIZE_TOKENS).toEqual(['sm', 'md', 'lg', 'xl']);
+  it('exposes the named responsive width set (xs/sm/md/lg/xl)', () => {
+    // `xs` is the small-surface rung: a list icon, an avatar or a picker tile paints ~40-150px, and
+    // the smallest option used to be 500px — more than 3x what any of them needed.
+    expect(THUMB_SIZES).toEqual({ xs: 150, sm: 500, md: 1000, lg: 1600, xl: 2400 });
+    expect(SIZE_TOKENS).toEqual(['xs', 'sm', 'md', 'lg', 'xl']);
   });
 
   it('defaults the delivery route to xl (compressed, never the uncapped original)', () => {

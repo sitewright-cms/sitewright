@@ -58,6 +58,8 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await agent.getByRole('tab', { name: 'Le Chat' }).click();
   await expect(agent.getByText(/Free plan/)).toBeVisible();
   await agent.getByRole('tab', { name: 'Local CLI Agents' }).click();
-  await expect(agent.getByText(/npm install -g @sitewright\/cli/)).toBeVisible();
+  // `@sitewright/cli` was never published; `/mcp` is the whole integration surface, so the CLI tab
+  // shows the remote-HTTP config rather than an install step nobody could follow.
+  await expect(agent.getByText(/claude mcp add --transport http/).first()).toBeVisible();
   await expect(agent.getByText('"mcpServers"')).toBeVisible();
 });

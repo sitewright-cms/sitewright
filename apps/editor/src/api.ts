@@ -1256,6 +1256,22 @@ export const api = {
   /** Download a remote URL into the library (self-host) — returns the new asset. */
   importMediaUrl: (projectId: string, url: string, folder = '') =>
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
+  /**
+   * Rotate and/or crop an image asset. Rotation applies FIRST, so `crop` is in the coordinates of the
+   * image AS TURNED. Without `saveAs` the stored original is replaced IN PLACE (id, stored name and
+   * URL unchanged, every reference keeps working); with it a NEW asset is written and the source is
+   * left alone.
+   */
+  transformMedia: (
+    projectId: string,
+    id: string,
+    body: {
+      rotate?: 90 | 180 | 270;
+      crop?: { left: number; top: number; width: number; height: number };
+      format?: 'webp' | 'jpeg' | 'png';
+      saveAs?: { filename: string; folder?: string };
+    },
+  ) => request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/${encodeURIComponent(id)}/transform`, body),
   /** Overwrite an existing SVG asset's content in place (Studio "save to the same file"); id-stable. */
   overwriteSvgMedia: (projectId: string, id: string, svg: string) =>
     request<{ item: MediaAsset }>('PUT', `/projects/${projectId}/media/${id}/svg`, { svg }),
@@ -1520,7 +1536,15 @@ export const api = {
   // --- on-page AI assistant (chat + consent grant + availability) ---
   /** Whether the assistant is available for this project (configured + the user can write). */
   agentStatus: (projectId: string) =>
-    request<{ enabled: boolean }>('GET', `/projects/${projectId}/agent/status`),
+    request<{
+      enabled: boolean;
+      /** Which configuration currently answers: the project's own key, the platform's, or the env
+       *  fallback. Null when none is configured. */
+      source: 'project' | 'instance' | 'env' | null;
+      /** What exists, and whether THIS user may switch between them (staff only, and only when a
+       *  project key and a platform key both exist). */
+      sources: { project: boolean; instance: boolean; canChoose: boolean };
+    }>('GET', `/projects/${projectId}/agent/status`),
   /** The user's consent grant (capabilities + autonomy); `configured:false` → show the consent panel. */
   getAgentGrant: (projectId: string) =>
     request<AgentGrantView>('GET', `/projects/${projectId}/agent/grant`),
@@ -1534,6 +1558,8 @@ export const api = {
       message: string;
       attachments?: AgentAttachment[];
       context?: { pageId?: string; path?: string; selection?: string };
+      /** Answer with a specific configuration. Honoured only for staff (the server re-checks). */
+      agentSource?: 'project' | 'instance';
     },
     handlers: AgentChatHandlers,
     signal?: AbortSignal,

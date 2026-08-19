@@ -70,12 +70,25 @@ export interface PreviewShot {
   width: number;
   height: number;
 }
+/**
+ * Why a requested screenshot is missing. The server distinguishes a TRANSIENT refusal (the memory
+ * ledger declined the browser's reservation) from a permanent failure, and says which — so a caller
+ * can retry the one and stop retrying the other.
+ */
+export interface ScreenshotUnavailable {
+  reason: 'memory' | 'failed';
+  retryable: boolean;
+  message: string;
+}
+
 /** The /preview response: the rendered HTML + (when requested) per-viewport screenshots. */
 export interface PreviewResult {
   html: string;
   token: string;
   slug?: string;
   screenshots?: Partial<Record<ScreenshotViewportName, PreviewShot>>;
+  /** Present INSTEAD of `screenshots` when the capture was refused or failed. */
+  screenshotsUnavailable?: ScreenshotUnavailable;
 }
 
 /** Build-vs-source screenshots for an imported page (the `compare_to_source` payload). */
@@ -791,6 +804,24 @@ export class SitewrightClient {
       'PATCH',
       this.projectPath(`/media/${encodeURIComponent(id)}`),
       changes,
+    );
+    return res.item;
+  }
+
+  /** Rotate and/or crop an image — in place, or into a new asset when `saveAs` is given. */
+  async transformMedia(
+    id: string,
+    body: {
+      rotate?: 90 | 180 | 270;
+      crop?: { left: number; top: number; width: number; height: number };
+      format?: 'webp' | 'jpeg' | 'png';
+      saveAs?: { filename: string; folder?: string };
+    },
+  ): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'POST',
+      this.projectPath(`/media/${encodeURIComponent(id)}/transform`),
+      body,
     );
     return res.item;
   }

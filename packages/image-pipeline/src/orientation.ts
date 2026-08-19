@@ -10,7 +10,8 @@ import sharp from 'sharp';
  * did needs the repair this module's probe drives.
  */
 
-const MAX_INPUT_PIXELS = 100_000_000;
+/** ~100 MP decoded (per frame). Exported so the edit pipeline shares one ceiling, not a third copy. */
+export const MAX_INPUT_PIXELS = 100_000_000;
 
 /** Orientation values 5–8 swap the axes; 1–4 (upright / mirrored) leave them alone. */
 export interface UprightSize {
@@ -73,15 +74,6 @@ export interface RotatedImage {
   format: string;
 }
 
-/** Formats we can re-encode a rotation into without changing what the file IS. */
-const REENCODE: Record<string, 'jpeg' | 'png' | 'webp' | 'tiff'> = {
-  jpeg: 'jpeg',
-  jpg: 'jpeg',
-  png: 'png',
-  webp: 'webp',
-  tiff: 'tiff',
-};
-
 /**
  * Turn an image a quarter at a time and re-encode it in place.
  *
@@ -97,19 +89,10 @@ const REENCODE: Record<string, 'jpeg' | 'png' | 'webp' | 'tiff'> = {
  * over: keeping a now-wrong Orientation tag would make every future reader rotate it a second time.
  */
 export async function rotateImage(input: Buffer | string, turn: QuarterTurn): Promise<RotatedImage> {
-  if (turn !== 90 && turn !== 180 && turn !== 270) {
-    throw new Error('invalid rotation: must be 90, 180 or 270');
-  }
-  const meta = await sharp(input, { limitInputPixels: MAX_INPUT_PIXELS }).metadata();
-  const animated = (meta.pages ?? 1) > 1;
-  if (animated) throw new Error('cannot rotate an animated image');
-  const target = REENCODE[meta.format ?? ''] ?? 'webp';
-  const pipeline = sharp(input, { limitInputPixels: MAX_INPUT_PIXELS, autoOrient: true }).rotate(turn);
-  const encoded =
-    target === 'jpeg' ? pipeline.jpeg({ quality: 90 })
-      : target === 'png' ? pipeline.png({ compressionLevel: 9 })
-        : target === 'tiff' ? pipeline.tiff()
-          : pipeline.webp({ quality: 90 });
-  const { data, info } = await encoded.toBuffer({ resolveWithObject: true });
-  return { buffer: data, width: info.width, height: info.height, format: target };
+  // Delegates to the general edit pipeline — one place decides what can be decoded, what must be
+  // refused, and which format a result is written in. Kept as its own named function because the
+  // rotate-in-place ROUTE and the bulk correction script both speak in quarter-turns, and because
+  // "turn this photograph upright" is a different intent from "edit this image".
+  const { transformImage } = await import('./transform.js');
+  return transformImage(input, { rotate: turn });
 }

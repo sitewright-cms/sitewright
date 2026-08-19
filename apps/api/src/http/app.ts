@@ -133,6 +133,7 @@ import {
   isThumbnailable,
   isSvgFile,
   rotateImage,
+  transformImage,
   renderPlaceholder,
   isSizeToken,
   isThumbFormat,
@@ -6233,6 +6234,100 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         width: rotated.width,
         height: rotated.height,
         placeholder: await renderPlaceholder(rotated.buffer),
+      };
+      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    });
+
+    // --- Generic image EDIT: rotate and/or crop, in place or into a new asset -----------------------
+    //
+    // The general form of the rotate route above, which came first for one specific defect. The image
+    // editor needs crop as well, and an agent asked to "straighten and trim this photo" should not
+    // have to make two calls with a temporary file in between.
+    //
+    // TWO destinations, and the difference is the whole reason both exist:
+    //   · IN PLACE (no `saveAs`) — the asset id and stored name do not change, so every existing
+    //     reference keeps working and the correction travels with an export. This is right for fixing
+    //     a photograph. It is destructive: the original pixels are gone.
+    //   · SAVE AS — a NEW asset, the source untouched. Right for a crop that is one use of a picture
+    //     rather than a correction to it.
+    const CropBody = z.object({
+      left: z.number().int().min(0),
+      top: z.number().int().min(0),
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+    });
+    const TransformAssetBody = z
+      .object({
+        rotate: z.union([z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        crop: CropBody.optional(),
+        /** Re-encode the result. Only meaningful with `saveAs` — see the in-place guard below. */
+        format: z.enum(['webp', 'jpeg', 'png']).optional(),
+        saveAs: z
+          .object({
+            filename: z.string().min(1).max(255),
+            folder: MediaFolderSchema.optional(),
+          })
+          .optional(),
+      })
+      .refine((b) => b.rotate !== undefined || b.crop !== undefined, {
+        message: 'specify a rotate and/or a crop',
+      });
+
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = TransformAssetBody.safeParse(req.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid image edit' });
+      }
+      const { rotate, crop, format, saveAs } = body.data;
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+      if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
+      const image = asset as ImageAsset;
+      // SVG is a vector — an edit belongs in its markup, and it never goes through sharp here.
+      if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
+        return reply.code(400).send({ error: 'an SVG cannot be edited here' });
+      }
+
+      let edited;
+      try {
+        edited = await transformImage(storage.resolveStoredPath(project.slug, asset.id, image.original), {
+          ...(rotate !== undefined ? { rotate } : {}),
+          ...(crop ? { crop } : {}),
+          ...(format ? { format } : {}),
+        });
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not edit this image' });
+      }
+
+      if (saveAs) {
+        // A new asset carries the EDITED bytes through the ordinary ingest path, so it gets the same
+        // optimization, project upload cap, LQIP placeholder and metadata as any upload.
+        const created = await createMediaAsset(ctx, project.slug, edited.buffer, {
+          filename: saveAs.filename,
+          mimetype: `image/${edited.format}`,
+          folder: saveAs.folder ?? image.folder,
+          ...(image.alt ? { alt: image.alt } : {}),
+        });
+        return reply.code(201).send({ item: created });
+      }
+
+      // IN PLACE. A format change would change the file's EXTENSION, and the stored name is baked into
+      // every URL that references it — refuse rather than break them. (Save-as has no such constraint,
+      // which is why `format` is only really useful there.)
+      if (edited.format !== image.format) {
+        return reply.code(400).send({ error: `cannot edit a ${image.format} in place without changing its format` });
+      }
+      await storage.storeFile(project.slug, asset.id, image.original, edited.buffer);
+      // Every cached variant came from the OLD pixels. Dropping them is what makes the edit visible
+      // everywhere at once; they regenerate on the next request.
+      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
+      const next = {
+        ...image,
+        bytes: edited.buffer.length,
+        width: edited.width,
+        height: edited.height,
+        placeholder: await renderPlaceholder(edited.buffer),
       };
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });

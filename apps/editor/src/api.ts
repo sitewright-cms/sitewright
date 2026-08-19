@@ -1256,6 +1256,22 @@ export const api = {
   /** Download a remote URL into the library (self-host) — returns the new asset. */
   importMediaUrl: (projectId: string, url: string, folder = '') =>
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
+  /**
+   * Rotate and/or crop an image asset. Rotation applies FIRST, so `crop` is in the coordinates of the
+   * image AS TURNED. Without `saveAs` the stored original is replaced IN PLACE (id, stored name and
+   * URL unchanged, every reference keeps working); with it a NEW asset is written and the source is
+   * left alone.
+   */
+  transformMedia: (
+    projectId: string,
+    id: string,
+    body: {
+      rotate?: 90 | 180 | 270;
+      crop?: { left: number; top: number; width: number; height: number };
+      format?: 'webp' | 'jpeg' | 'png';
+      saveAs?: { filename: string; folder?: string };
+    },
+  ) => request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/${encodeURIComponent(id)}/transform`, body),
   /** Overwrite an existing SVG asset's content in place (Studio "save to the same file"); id-stable. */
   overwriteSvgMedia: (projectId: string, id: string, svg: string) =>
     request<{ item: MediaAsset }>('PUT', `/projects/${projectId}/media/${id}/svg`, { svg }),

@@ -16,6 +16,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
 import { cleanSvgFile } from '../library/svg-studio-helpers';
+import { ImageEditorStudio } from '../library/ImageEditorStudio';
 import { assetEmbedUrls } from './media-embed';
 import {
   sortAssets,
@@ -175,6 +176,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' });
   const [query, setQuery] = useState('');
   const [preview, setPreview] = useState<MediaAsset | null>(null);
+  /** The asset open in the Image Editor, stacked over the preview modal. */
+  const [editing, setEditing] = useState<(MediaAsset & { kind: 'image' }) | null>(null);
+  /** Cache-buster for the preview <img> after an IN-PLACE save, which leaves the URL unchanged. */
+  const [previewNonce, setPreviewNonce] = useState(0);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
   const fileInput = useRef<HTMLInputElement>(null);
   const dragItem = useRef<DragItem | null>(null);
@@ -812,8 +817,29 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       {/* In-app image preview (replaces opening images in a new tab) + copyable embed URLs. */}
       {preview && preview.kind === 'image' && (
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
-          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} />
+          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} onEdit={() => setEditing(preview)} nonce={previewNonce} />
         </Modal>
+      )}
+
+      {/* The Image Editor, stacked over the preview. On save the preview underneath is rebuilt from
+          the returned asset: an in-place edit does NOT change the URL, so without this the modal would
+          keep showing the pre-edit dimensions and a cached picture, and the author would be looking at
+          the old image while believing the save had failed. `previewNonce` busts the image cache for
+          the same reason. */}
+      {editing && (
+        <ImageEditorStudio
+          projectId={projectId}
+          asset={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(item) => {
+            void load();
+            if (item.kind === 'image' && item.id === editing.id) {
+              setPreview(item);
+              setEditing(item);
+              setPreviewNonce((n) => n + 1);
+            }
+          }}
+        />
       )}
     </div>
   );
@@ -828,23 +854,41 @@ function ImagePreview({
   asset,
   copiedId,
   onCopy,
+  onEdit,
+  nonce,
 }: {
   asset: MediaAsset & { kind: 'image' };
   copiedId: string | null;
   onCopy: (text: string, id: string) => void;
+  /** Open the Image Editor on this asset. Absent for a format that has no pixels to edit. */
+  onEdit?: () => void;
+  /** Bumped after an in-place save; appended to the <img> src so the browser refetches. */
+  nonce?: number;
 }) {
   const urls = assetEmbedUrls(asset);
   const original = urls.find((u) => u.label === 'Original')?.url ?? asset.url;
   return (
     <div className="flex flex-col items-center gap-3 p-4">
-      <img src={asset.url} alt={asset.alt ?? asset.filename} className="max-h-[40vh] w-auto rounded-lg shadow-lg" />
+      <img
+        src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
+        alt={asset.alt ?? asset.filename}
+        className="max-h-[40vh] w-auto rounded-lg shadow-lg"
+      />
       <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>
           {asset.format} · {asset.width}×{asset.height} · {formatBytes(asset.bytes)}
         </span>
-        <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
-          Open original
-        </a>
+        <span className="flex items-center gap-2">
+          {/* An SVG is a vector: there are no pixels to turn or cut, so the editor is not offered. */}
+          {onEdit && asset.format !== 'svg' && (
+            <button type="button" onClick={onEdit} className={`${ghostButton} px-3 py-1`}>
+              Edit image
+            </button>
+          )}
+          <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
+            Open original
+          </a>
+        </span>
       </div>
 
       <div className="w-full">

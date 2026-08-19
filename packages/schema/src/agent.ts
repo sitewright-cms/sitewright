@@ -1842,6 +1842,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
   { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
+  { name: 'transform_image', description: "Rotate (90/180/270) and/or crop an image. IN PLACE by default — the id and URL are unchanged, so every reference keeps working; use it to CORRECT a photograph. Pass saveAs to write a new asset instead. Rotation applies before the crop.", capability: 'content:write' },
   { name: 'move_media_bulk', description: "Re-file MANY assets into one folder in a single call (partial success reported per id). Use instead of looping move_media.", capability: 'content:write' },
   { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },

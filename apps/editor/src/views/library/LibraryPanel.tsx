@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Boxes, FileCode2, Grid2x2, Layers, MapPin, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type, Wind } from 'lucide-react';
+import { Boxes, Crop, FileCode2, Grid2x2, Layers, MapPin, MousePointerClick, Palette, Shapes, Sparkles, Spline, Type, Wind } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { Tabs, type TabDef } from '../ui/Tabs';
@@ -16,6 +16,7 @@ import { TexturePicker } from './TexturePicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { ParallaxBuilder } from './ParallaxBuilder';
 import { SvgAnimStudio } from './SvgAnimStudio';
+import { ImageEditorStudio } from './ImageEditorStudio';
 import { ImageMapStudio } from './imagemap/ImageMapStudio';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
@@ -114,6 +115,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
   const [pxOpen, setPxOpen] = useState(false);
   const [svgOpen, setSvgOpen] = useState(false);
   const [imapOpen, setImapOpen] = useState(false);
+  const [imgEditOpen, setImgEditOpen] = useState(false);
   const [twOpen, setTwOpen] = useState(false);
 
   // `overOverlays` because the reference is a REFERENCE: the moment you most want it is while you are
@@ -216,6 +218,13 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
           onOpen: () => setSvgOpen(true),
         },
         {
+          key: 'imageeditor',
+          icon: <Crop className="h-5 w-5" />,
+          title: 'Image editor',
+          blurb: 'Drop in or pick a photo → turn it in quarter-turns and crop it → save to the library or download as WebP.',
+          onOpen: () => setImgEditOpen(true),
+        },
+        {
           key: 'imagemap',
           icon: <MapPin className="h-5 w-5" />,
           title: 'Image map studio',
@@ -257,6 +266,7 @@ export function LibraryPanel({ projectId, isInstanceAdmin = false }: { projectId
       {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
       {svgOpen && <SvgAnimStudio onClose={() => setSvgOpen(false)} projectId={projectId} />}
       {imapOpen && <ImageMapStudio onClose={() => setImapOpen(false)} projectId={projectId} />}
+      {imgEditOpen && <ImageEditorStudio onClose={() => setImgEditOpen(false)} projectId={projectId} />}
       {/* Unlike its neighbours this one does NOT pin the drawer open — it has a keyboard shortcut, and
           opening the whole System Library as a side effect of Ctrl+Alt+T is not what was asked for.
           It stays INSIDE the panel so it still elevates above the drawer's backdrop (z-70 over z-60);

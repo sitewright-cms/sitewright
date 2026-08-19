@@ -282,6 +282,12 @@
     "required": []
   },
   {
+    "name": "transform_image",
+    "required": [
+      "id"
+    ]
+  },
+  {
     "name": "upload_media",
     "required": [
       "content_base64",

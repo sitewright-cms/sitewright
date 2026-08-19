@@ -1418,6 +1418,39 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'transform_image',
+    {
+      description:
+        "Rotate (90/180/270 clockwise) and/or crop an image asset. Rotation is applied FIRST, so `crop` is measured against the image AS TURNED — the same order an editor shows you. By default it edits IN PLACE: the asset id, stored name and URL do not change, so every page/dataset reference keeps working and the change travels with an export — use that to CORRECT a photograph (one stored sideways with no EXIF tag, a scan with a border). It is destructive; the original pixels are gone. Pass `saveAs` to write a NEW asset instead and leave the source untouched — use that when the crop is one USE of a picture rather than a fix to it. SVG is rejected (a vector edit belongs in its markup), as is an animated image.",
+      inputSchema: {
+        id: z.string(),
+        rotate: z.union([z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        crop: z
+          .object({
+            left: z.number().int().min(0),
+            top: z.number().int().min(0),
+            width: z.number().int().positive(),
+            height: z.number().int().positive(),
+          })
+          .optional(),
+        format: z.enum(['webp', 'jpeg', 'png']).optional(),
+        saveAs: z.object({ filename: z.string().min(1).max(255), folder: MediaFolderSchema.optional() }).optional(),
+      },
+    },
+    gate('content:write', ({ id, rotate, crop, format, saveAs }) => {
+      if (rotate === undefined && crop === undefined) {
+        throw new Error('transform_image needs at least one of `rotate` or `crop`.');
+      }
+      return client.transformMedia(id, {
+        ...(rotate !== undefined ? { rotate } : {}),
+        ...(crop ? { crop } : {}),
+        ...(format ? { format } : {}),
+        ...(saveAs ? { saveAs } : {}),
+      });
+    }),
+  );
+
+  server.registerTool(
     'delete_media',
     {
       description:

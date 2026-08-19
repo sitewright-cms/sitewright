@@ -795,6 +795,24 @@ export class SitewrightClient {
     return res.item;
   }
 
+  /** Rotate and/or crop an image — in place, or into a new asset when `saveAs` is given. */
+  async transformMedia(
+    id: string,
+    body: {
+      rotate?: 90 | 180 | 270;
+      crop?: { left: number; top: number; width: number; height: number };
+      format?: 'webp' | 'jpeg' | 'png';
+      saveAs?: { filename: string; folder?: string };
+    },
+  ): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'POST',
+      this.projectPath(`/media/${encodeURIComponent(id)}/transform`),
+      body,
+    );
+    return res.item;
+  }
+
   /** Permanently delete a media asset (DB row + binary). Needs the content:delete capability. */
   async deleteMedia(id: string): Promise<{ ok: true }> {
     await this.request('DELETE', this.projectPath(`/media/${encodeURIComponent(id)}`));

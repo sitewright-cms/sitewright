@@ -514,9 +514,10 @@ export class InstanceSettingsRepository {
     const stored = await this.getStored();
     if (!stored.ai) return null;
     const { apiKey, ...rest } = stored.ai;
-    // A row written before the setting existed has no `audience` — read it as `all`, which is the
-    // behaviour it had. Defaulting to `staff` here would silently switch the assistant off for every
-    // client on every existing instance the moment this ships.
+    // `audience` is filled in by AiStoredSchema's `.default('all')` when getStored() parses the row,
+    // so a pre-upgrade row already reads as `all` — the behaviour it had — by the time it gets here.
+    // The `??` is belt-and-braces for a caller that ever hands us an unparsed row; it is NOT what
+    // makes the upgrade safe, the schema default is.
     return { ...rest, audience: rest.audience ?? 'all', apiKey: apiKey ? this.decrypt(apiKey) : null };
   }
 

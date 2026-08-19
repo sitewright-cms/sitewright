@@ -94,6 +94,20 @@ describe('frameAncestorsFor', () => {
   });
 });
 
+describe('the SPA shell CSP', () => {
+  it('★ allows blob: images — the Image Editor cannot open a dropped file without it', async () => {
+    // REGRESSION. A dropped file has no URL, so the editor shows it via URL.createObjectURL. With
+    // `img-src 'self' data: https:` the browser blocked that load and drag-and-drop import was dead,
+    // reported to the author only as "That image could not be read". Nothing caught it: jsdom
+    // enforces no CSP, so every unit test passed against a broken feature, and there are TWO
+    // editor-surface policies — fixing the other one changed nothing, because THIS is the document
+    // the SPA actually runs under.
+    harness = await makeHarness();
+    const { csp } = await framingHeaders(harness);
+    expect(csp).toMatch(/img-src [^;]*\bblob:/);
+  });
+});
+
 describe('framing headers on the app origin', () => {
   it('denies framing by default (frame-ancestors none + XFO DENY)', async () => {
     harness = await makeHarness();

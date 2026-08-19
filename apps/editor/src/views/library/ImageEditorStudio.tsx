@@ -262,6 +262,9 @@ export function ImageEditorStudio({ projectId, onClose, asset, onSaved }: ImageE
   const renderBlob = useCallback(async (): Promise<Blob> => {
     const img = imgRef.current;
     if (!img || !loaded) throw new Error('nothing loaded');
+    // A library original is fetched over the network; drawing it before it has decoded yields a blank
+    // or partial canvas rather than an error, so refuse with something the author can act on.
+    if (!img.complete || img.naturalWidth === 0) throw new Error('the image is still loading — try again in a moment');
     const rounded = crop ? clampRect(roundRect(crop), shown) : { x: 0, y: 0, w: shown.width, h: shown.height };
     const canvas = document.createElement('canvas');
     canvas.width = rounded.w;
@@ -311,8 +314,14 @@ export function ImageEditorStudio({ projectId, onClose, asset, onSaved }: ImageE
       const a = document.createElement('a');
       a.href = url;
       a.download = webpName(loaded!.filename);
+      // Firefox will not act on a programmatic click unless the anchor is IN the document, and it
+      // reads the blob asynchronously — so revoking straight after the click races the download. Both
+      // are silent failures (a.click() never throws), which is why the sibling SVG studio carries the
+      // same two lines with the same comment.
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
 
   /** In-place: replace the stored original. Destructive, so it asks first. */
@@ -338,20 +347,30 @@ export function ImageEditorStudio({ projectId, onClose, asset, onSaved }: ImageE
   const saveAsNew = () =>
     run('Save as', async () => {
       if (!loaded) return;
-      const suggested = webpName(loaded.filename, loaded.assetId ? '-edited' : '');
+      const suggested = ops ? webpName(loaded.filename, '-edited') : loaded.filename;
       const name = await prompt({ title: 'Save as a new file', label: 'File name', initial: suggested });
       if (!name) return;
+      // Only the paths that ENCODE a new image force the .webp extension; a straight duplicate keeps
+      // whatever the author typed, because its bytes are still the original format.
       const filename = webpName(name);
       if (!projectId) throw new Error('open a project to save to its library');
       if (loaded.assetId && ops) {
         const { item } = await api.transformMedia(projectId, loaded.assetId, { ...ops, format: 'webp', saveAs: { filename } });
         onSaved?.(item);
+      } else if (loaded.assetId) {
+        // ★ A library asset with NOTHING changed. Falling into the canvas branch here would decode
+        // the original and re-encode it at WebP q90 — silently turning a lossless PNG or a
+        // high-quality JPEG into a lossy copy, for a request that asked for no edit at all. Copy the
+        // stored bytes instead, which is what "save this again under another name" means.
+        const { item } = await api.copyMedia(projectId, loaded.assetId);
+        const renamed = await api.patchMedia(projectId, item.id, { filename: name });
+        onSaved?.(renamed.item);
       } else {
         const blob = await renderBlob();
         const { item } = await api.uploadMedia(projectId, new File([blob], filename, { type: 'image/webp' }));
         onSaved?.(item);
       }
-      toast.show(`Saved to the library as ${filename}`);
+      toast.show(`Saved to the library as ${loaded.assetId && !ops ? name : filename}`);
     });
 
   const canSaveInPlace = Boolean(loaded?.assetId) && ops !== null && Boolean(projectId);
@@ -512,7 +531,9 @@ export function ImageEditorStudio({ projectId, onClose, asset, onSaved }: ImageE
             ) : (
               <span>no crop — the whole image</span>
             )}
-            <span className="ml-auto">Exports as WebP</span>
+            {/* Only the paths that ENCODE say WebP — an unedited "Save as" duplicates the stored
+                bytes and keeps the original format. */}
+            <span className="ml-auto">{ops ? 'Exports as WebP' : 'No edits — Save as duplicates the original'}</span>
           </p>
         )}
       </div>

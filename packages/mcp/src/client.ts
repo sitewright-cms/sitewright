@@ -70,12 +70,25 @@ export interface PreviewShot {
   width: number;
   height: number;
 }
+/**
+ * Why a requested screenshot is missing. The server distinguishes a TRANSIENT refusal (the memory
+ * ledger declined the browser's reservation) from a permanent failure, and says which — so a caller
+ * can retry the one and stop retrying the other.
+ */
+export interface ScreenshotUnavailable {
+  reason: 'memory' | 'failed';
+  retryable: boolean;
+  message: string;
+}
+
 /** The /preview response: the rendered HTML + (when requested) per-viewport screenshots. */
 export interface PreviewResult {
   html: string;
   token: string;
   slug?: string;
   screenshots?: Partial<Record<ScreenshotViewportName, PreviewShot>>;
+  /** Present INSTEAD of `screenshots` when the capture was refused or failed. */
+  screenshotsUnavailable?: ScreenshotUnavailable;
 }
 
 /** Build-vs-source screenshots for an imported page (the `compare_to_source` payload). */

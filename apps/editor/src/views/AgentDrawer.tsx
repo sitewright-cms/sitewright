@@ -401,10 +401,18 @@ export function AgentDrawer({
             <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Agent</span>
             <div role="group" aria-label="Which agent answers" className="flex gap-0.5 rounded-lg bg-slate-100 dark:bg-white/10 p-0.5">
               {([
-                { key: undefined, label: 'Project', tip: "This project's own configured agent, billed to the project" },
+                // 'project' is sent EXPLICITLY rather than left undefined. The two are not the same
+                // to the server: undefined means "apply the usual precedence", which would quietly
+                // fall through to the platform agent if the project's own key were removed while the
+                // chat was open — the opposite of what a button labelled "Project" promises.
+                { key: 'project' as const, label: 'Project', tip: "This project's own configured agent, billed to the project" },
                 { key: 'instance' as const, label: 'System', tip: "The platform-wide agent, billed to the operator's key" },
               ]).map((opt) => {
-                const active = agentSource === opt.key;
+                // "Project" is the resting state, so it reads active while NOTHING has been picked
+                // — the default sends no preference at all and the server's precedence lands there
+                // anyway. Defaulting the STATE to 'project' instead would start sending an explicit
+                // "project only", which refuses rather than falls back.
+                const active = opt.key === 'project' ? agentSource !== 'instance' : agentSource === opt.key;
                 return (
                   <button
                     key={opt.label}

@@ -132,7 +132,6 @@ import {
   generateThumbnail,
   isThumbnailable,
   isSvgFile,
-  rotateImage,
   transformImage,
   renderPlaceholder,
   isSizeToken,
@@ -1810,9 +1809,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // thumbnails (Unsplash/Pexels/Openverse sources). Their terms require
       // hotlinking previews (no proxy/cache); imported images are still downloaded
       // + self-hosted under 'self'. Published exports reference 'self' images only.
+      //
+      // ★ `blob:` is what lets the Image Editor open a file the author DROPPED IN. A dropped file has
+      // no URL, so it is shown via `URL.createObjectURL` — and without this the browser refuses to
+      // load it, the editor reports "That image could not be read", and drag-and-drop import is dead.
+      // It grants nothing new: a blob URL can only address bytes this same page just created, which
+      // is strictly narrower than the `data:` already permitted here. Found by driving a real
+      // browser — jsdom enforces no CSP, so every unit test passed against a broken feature.
       reply.header(
         'content-security-policy',
-        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; " +
+        "default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; " +
           `frame-ancestors ${allowFraming ? frameAncestors : "'none'"}`,
       );
     }
@@ -6202,40 +6208,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // with an export, rather than living in a display rule some other renderer would ignore.
     const RotateAssetBody = z.object({ degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]) });
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/rotate', { config: rl(120) }, async (req, reply) => {
+      // KEPT, and now a thin alias for the `/transform` route below. It is a published route that
+      // external callers and the bulk correction script speak, so removing it would be a breaking
+      // change to the HTTP contract — but its 35 lines of asset checks, in-place write, thumbnail
+      // purge and placeholder regeneration were an exact copy of the general path, i.e. a second
+      // place every future fix would have to be remembered.
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = RotateAssetBody.safeParse(req.body ?? {});
       if (!body.success) return reply.code(400).send({ error: 'rotation must be 90, 180 or 270 degrees' });
-      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
-      if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
-      const image = asset as ImageAsset;
-      // SVG is a vector — a rotation belongs in its markup, and it never goes through sharp here.
-      if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
-        return reply.code(400).send({ error: 'an SVG cannot be rotated here' });
-      }
-      let rotated;
-      try {
-        rotated = await rotateImage(storage.resolveStoredPath(project.slug, asset.id, image.original), body.data.degrees);
-      } catch (err) {
-        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not rotate this image' });
-      }
-      // A format we cannot re-encode in kind would change the file's extension, and the stored name is
-      // referenced by every URL — refuse rather than break them.
-      if (rotated.format !== image.format) {
-        return reply.code(400).send({ error: `cannot rotate a ${image.format} without changing its format` });
-      }
-      await storage.storeFile(project.slug, asset.id, image.original, rotated.buffer);
-      // Every cached variant was derived from the OLD pixels. Dropping them is what makes the turn
-      // visible everywhere at once; they regenerate on the next request.
-      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
-      const next = {
-        ...image,
-        bytes: rotated.buffer.length,
-        width: rotated.width,
-        height: rotated.height,
-        placeholder: await renderPlaceholder(rotated.buffer),
-      };
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+      return editImageAsset(reply, ctx, project.slug, req.params.id, { rotate: body.data.degrees }, undefined, 'rotate');
     });
 
     // --- Generic image EDIT: rotate and/or crop, in place or into a new asset -----------------------
@@ -6273,37 +6255,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         message: 'specify a rotate and/or a crop',
       });
 
-    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:write');
-      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-      const body = TransformAssetBody.safeParse(req.body ?? {});
-      if (!body.success) {
-        return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid image edit' });
-      }
-      const { rotate, crop, format, saveAs } = body.data;
-      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+    /**
+     * Apply an edit to a stored image — the single implementation behind BOTH `/rotate` and
+     * `/transform`, so the asset checks, the in-place write and the save-as ingest exist once.
+     *
+     * `verb` only shapes the error prose ("cannot rotate a png…" vs "cannot edit a png…"), so the
+     * older route keeps saying what it always said.
+     */
+    async function editImageAsset(
+      reply: FastifyReply,
+      ctx: ProjectContext,
+      projectSlug: string,
+      assetId: string,
+      ops: { rotate?: 90 | 180 | 270; crop?: { left: number; top: number; width: number; height: number }; format?: 'webp' | 'jpeg' | 'png' },
+      saveAs: { filename: string; folder?: string } | undefined,
+      verb: 'rotate' | 'edit',
+    ) {
+      const asset = await contentRepo.getLiveMedia(ctx, assetId);
       if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
       const image = asset as ImageAsset;
       // SVG is a vector — an edit belongs in its markup, and it never goes through sharp here.
       if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
-        return reply.code(400).send({ error: 'an SVG cannot be edited here' });
+        return reply.code(400).send({ error: `an SVG cannot be ${verb === 'rotate' ? 'rotated' : 'edited'} here` });
       }
 
       let edited;
       try {
-        edited = await transformImage(storage.resolveStoredPath(project.slug, asset.id, image.original), {
-          ...(rotate !== undefined ? { rotate } : {}),
-          ...(crop ? { crop } : {}),
-          ...(format ? { format } : {}),
-        });
+        edited = await transformImage(storage.resolveStoredPath(projectSlug, asset.id, image.original), ops);
       } catch (err) {
-        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not edit this image' });
+        return reply.code(400).send({ error: err instanceof Error ? err.message : `could not ${verb} this image` });
       }
 
       if (saveAs) {
         // A new asset carries the EDITED bytes through the ordinary ingest path, so it gets the same
         // optimization, project upload cap, LQIP placeholder and metadata as any upload.
-        const created = await createMediaAsset(ctx, project.slug, edited.buffer, {
+        const created = await createMediaAsset(ctx, projectSlug, edited.buffer, {
           filename: saveAs.filename,
           mimetype: `image/${edited.format}`,
           folder: saveAs.folder ?? image.folder,
@@ -6312,16 +6298,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.code(201).send({ item: created });
       }
 
-      // IN PLACE. A format change would change the file's EXTENSION, and the stored name is baked into
-      // every URL that references it — refuse rather than break them. (Save-as has no such constraint,
-      // which is why `format` is only really useful there.)
+      // IN PLACE. A format change would change the file's EXTENSION, and the stored name is baked
+      // into every URL that references it — refuse rather than break them. (Save-as has no such
+      // constraint, which is why `format` is only really useful there.)
       if (edited.format !== image.format) {
-        return reply.code(400).send({ error: `cannot edit a ${image.format} in place without changing its format` });
+        return reply.code(400).send({ error: `cannot ${verb} a ${image.format} without changing its format` });
       }
-      await storage.storeFile(project.slug, asset.id, image.original, edited.buffer);
+      await storage.storeFile(projectSlug, asset.id, image.original, edited.buffer);
       // Every cached variant came from the OLD pixels. Dropping them is what makes the edit visible
       // everywhere at once; they regenerate on the next request.
-      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
+      await storage.pruneAssetThumbnails(projectSlug, asset.id, image.original);
       const next = {
         ...image,
         bytes: edited.buffer.length,
@@ -6330,6 +6316,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         placeholder: await renderPlaceholder(edited.buffer),
       };
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    }
+
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = TransformAssetBody.safeParse(req.body ?? {});
+      if (!body.success) {
+        return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid image edit' });
+      }
+      const { rotate, crop, format, saveAs } = body.data;
+      return editImageAsset(
+        reply,
+        ctx,
+        project.slug,
+        req.params.id,
+        {
+          ...(rotate !== undefined ? { rotate } : {}),
+          ...(crop ? { crop } : {}),
+          ...(format ? { format } : {}),
+        },
+        saveAs,
+        'edit',
+      );
     });
 
     // Duplicate a single asset (optionally into another folder).
@@ -8914,8 +8923,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Computed PER RESPONSE, not once at registration: `frameAncestors` is live-updated when an admin
     // saves the embedding setting, and this is the document an embedder actually frames — baking the
     // policy in at boot would mean the setting only took effect after a restart.
+    // ★ `img-src … blob:` is what lets the Image Editor open a DROPPED file: it has no URL, so it is
+    // shown via `URL.createObjectURL`, and without this the browser blocks the load, the editor says
+    // "That image could not be read", and drag-and-drop import is simply dead. It grants nothing new
+    // — a blob URL only addresses bytes this page just created, strictly narrower than the `data:`
+    // already allowed. NOTE there are TWO editor-surface policies: this SPA shell one and the API
+    // response one above; the shell is what the app actually runs under, so fixing only the other one
+    // changes nothing (verified by driving a real browser — jsdom enforces no CSP at all).
     const editorCsp = (): string =>
-      "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: https:; " +
+      "default-src 'self'; script-src 'self' 'sha256-tlhaSBLKS1jokEVelo26MbNXtbB3d+qnWj1D95nCkH4='; img-src 'self' data: blob: https:; " +
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
       `object-src 'none'; base-uri 'self'; frame-ancestors ${frameAncestors ?? "'none'"}`;
     /** Stamps the SPA shell's framing headers: XFO is omitted once an allowlist is active (it cannot

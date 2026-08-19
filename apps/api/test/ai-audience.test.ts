@@ -250,6 +250,39 @@ describe('which agent answers', () => {
     expect(s.sources).toEqual({ project: true, instance: true, canChoose: true });
   });
 
+  it('★ a NON-STAFF caller asking for the platform agent is IGNORED, not obeyed', async () => {
+    // `agentSource` is a request, not a grant. A client who sends it must still get the ordinary
+    // precedence — otherwise the switcher's wire format is itself the bypass.
+    const { c, projectId } = await adminWithProject();
+    await setInstanceAi(c, 'all');
+    await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/ai-config`,
+      cookies: { sw_session: c },
+      payload: { enabled: true, provider: 'anthropic', apiKey: 'sk-project-key' },
+    });
+    const client = await clientOn(projectId);
+    // The chat is the only place `agentSource` is accepted; a 501 would mean "refused", a 5xx from
+    // the provider means it got as far as USING one. The scripted key is bogus, so assert on the
+    // resolution rather than the turn: status still reports the project agent for this user.
+    expect((await status(projectId, client)).source).toBe('project');
+    // And the switcher is not offered, so nothing in the UI invites them to try.
+    expect((await status(projectId, client)).sources.canChoose).toBe(false);
+  });
+
+  it('★ staff asking for the PROJECT agent when there is none is refused, not silently upgraded', async () => {
+    // "Use the project's agent" must not quietly bill the operator when the project has no key.
+    const { c, projectId } = await adminWithProject();
+    await setInstanceAi(c, 'all');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/agent/messages`,
+      cookies: { sw_session: c },
+      payload: { message: 'hello', agentSource: 'project' },
+    });
+    expect(res.statusCode).toBe(501);
+  });
+
   it('a CLIENT is never offered the choice, even with both configured', async () => {
     const { c, projectId } = await adminWithProject();
     await setInstanceAi(c, 'all');

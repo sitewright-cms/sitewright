@@ -4463,6 +4463,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           parentPage: previewParent,
           pages: previewPages,
           dataset: localeData,
+          // ★ The auto-nav belongs to the PAGE context too, not only to the slots.
+          //
+          // Publish gives every page `nav` (build.ts), and a page template is perfectly entitled to
+          // read it — a leaf page listing its siblings from `nav.header` is exactly the case that
+          // exposed this. Here it was only ever passed to `slotCtx`, so on that page `{{#each
+          // nav.header}}` iterated undefined, the whole section rendered as nothing, and the editor
+          // preview showed LESS than the draft site with no error anywhere. A preview that silently
+          // drops a section is worse than one that fails: the author concludes the content is missing
+          // and goes looking for it in the data.
+          nav: slotNav as unknown as Record<string, unknown>,
           item,
           partials,
           // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make

@@ -125,17 +125,27 @@ test('published cart: the form channel submits the order to the /f submissions i
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
-  // A real Form (recipient) so /f resolves (it 404s on an unknown form).
-  expect(
-    (
-      await ctx.put(`${base}/content/form/order`, {
-        data: { id: 'order', name: 'Order form', fields: [{ name: 'name', label: 'Name', type: 'text', required: true }], recipient: 'orders@acme.test' },
-      })
-    ).status(),
-  ).toBe(200);
+  // ★ NO Form is created here, deliberately. The channel carries the ADDRESS and the buyer fields, and
+  // saving the settings is what provisions the Form behind it — so this test proves the provisioning
+  // end to end: if it did not run, /f would 404 and the order would never reach the inbox.
   const settings = {
     identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
-    website: { shop: { enabled: true, channels: [{ kind: 'form', key: 'order_form', formId: 'order' }] } },
+    website: {
+      shop: {
+        enabled: true,
+        channels: [
+          {
+            kind: 'form',
+            key: 'order_form',
+            email: 'orders@acme.test',
+            fields: [
+              { key: 'name', type: 'text', required: true },
+              { key: 'email', type: 'email', required: true },
+            ],
+          },
+        ],
+      },
+    },
     settings: {},
   };
   expect((await ctx.put(`${base}/content/settings/settings`, { data: settings })).status()).toBe(200);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Settings, RotateCcw, History, ExternalLink } from 'lucide-react';
 import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
@@ -126,6 +126,13 @@ const PREVIEW_DEBOUNCE_MS = 800;
  */
 const PREVIEW_AFFECTING_KINDS = new Set(['settings', 'template', 'snippet', 'translation', 'dataset', 'entry']);
 
+/**
+ * How long after an inline edit the preview is left alone before a shared-code refresh is applied.
+ * Long enough to cover the bridge's own debounce back to the editor, so a refresh cannot land between
+ * a keystroke and the edit reaching the draft.
+ */
+const INLINE_EDIT_QUIET_MS = 2000;
+
 export function CodePageEditor({ project, page, pages = [], locales = [], onClose, onNavigate, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
@@ -164,6 +171,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Bumped to force a preview reload after a dataset entry is saved (the preview renders from saved
   // entries server-side, so the draft is unchanged — only a re-POST picks up the new values).
   const [previewNonce, setPreviewNonce] = useState(0);
+  /** When the author last typed into the preview — the guard against reloading over live keystrokes. */
+  const lastInlineEditRef = useRef(0);
   // ALL page settings (title/path/status/nav/parent/template/seo) — edited via the
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
@@ -435,9 +444,16 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     [],
   );
   useEffect(() => {
+    /** Message types that mean the author is EDITING in the preview right now. */
+    const EDIT_TYPES = new Set(['edit', 'rich-edit', 'translate-edit', 'link-edit', 'src-edit', 'bg-edit', 'control-edit']);
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
       if (e.source !== iframeRef.current?.contentWindow) return;
+      // Note when an edit came in, so a shared-code refresh can wait for a pause rather than reloading
+      // the document out from under the keystrokes (see armPreviewRefresh).
+      if (typeof (e.data as { type?: string })?.type === 'string' && EDIT_TYPES.has((e.data as { type: string }).type)) {
+        lastInlineEditRef.current = Date.now();
+      }
       const d = e.data as {
         source?: string;
         type?: string;
@@ -741,9 +757,42 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // write from ANY source — another tab, an agent, a surface added later — and no future editor has
   // to remember to notify this one. `page` is excluded: this editor owns the page's own draft, and
   // its own save would otherwise bounce straight back as a reload.
+  //
+  // ★ IT MUST NOT RELOAD UNDER A LIVE EDIT. The preview is not a read-only view: in content mode the
+  // author types straight into it, and an inline edit lives in the iframe's DOM until the bridge
+  // posts it back. Re-fetching the document in that window throws the keystrokes away — and the
+  // editor's OWN auto-saves (translations, website.data) emit events, so it could do that to itself
+  // while someone was mid-sentence. It cost a bolded paragraph that saved as unbolded, with nothing
+  // on screen to say why.
+  //
+  // So a refresh is DEFERRED while editing is recent, and re-armed until it is safe. It is never
+  // dropped: the change still lands, just at a moment that costs nothing.
+  const refreshPendingRef = useRef(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armPreviewRefresh = useCallback(() => {
+    refreshPendingRef.current = true;
+    if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(function settle() {
+      const sinceEdit = Date.now() - lastInlineEditRef.current;
+      if (sinceEdit < INLINE_EDIT_QUIET_MS) {
+        refreshTimerRef.current = setTimeout(settle, INLINE_EDIT_QUIET_MS - sinceEdit);
+        return;
+      }
+      refreshTimerRef.current = null;
+      refreshPendingRef.current = false;
+      setPreviewNonce((n) => n + 1);
+    }, INLINE_EDIT_QUIET_MS);
+  }, []);
+  useEffect(
+    () => () => {
+      if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current);
+    },
+    [],
+  );
+
   useProjectEvents(project.id, (c) => {
     if (c.kind === 'page') return;
-    if (PREVIEW_AFFECTING_KINDS.has(c.kind)) setPreviewNonce((n) => n + 1);
+    if (PREVIEW_AFFECTING_KINDS.has(c.kind)) armPreviewRefresh();
   });
 
   /** Copies the referenced template's source AND its declared default data INTO the page, then drops

@@ -103,7 +103,9 @@ test('★ thumbnails ask for the SMALL rung, not the 2400px default', async ({ p
   // A bare media URL serves `xl` — 2400px wide — into a 32px icon. Every request must name a size.
   const bare = requested.filter((u) => !u.includes('size='));
   expect(bare, `these fetched the 2400px rung: ${bare.slice(0, 3).join(', ')}`).toHaveLength(0);
-  expect(requested.every((u) => u.includes('size=sm'))).toBe(true);
+  // The LIST asks for `xs` (150px) — a 32px icon with room for the 4x hover zoom. `sm` (500px) was
+  // itself 15x the painted size; the grid tile still uses it, but this view is the list.
+  expect(requested.every((u) => u.includes('size=xs'))).toBe(true);
 });
 
 test('★ scrolling the PANEL moves the window (the panel scrolls, not the page)', async ({ page, baseURL }) => {

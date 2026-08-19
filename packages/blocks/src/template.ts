@@ -1257,6 +1257,11 @@ function createInstance(): typeof Handlebars {
               : [];
           // `required` only when truthy (mirrors the model.ts projection) — keeps the JSON minimal/explicit.
           return {
+            // The KEY travels as `name`: a deep-link channel only needs the label (it writes
+            // "Label: value" into a URL), but the ORDER form posts these as real inputs, and an
+            // input with no name submits nothing at all — the field would render and silently not
+            // arrive.
+            name: key,
             label: shopLabel(key),
             type,
             ...(fx.required ? { required: true } : {}),

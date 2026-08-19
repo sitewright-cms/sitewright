@@ -46,9 +46,17 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
   const showSkeleton = !everLoaded && !error;
   return (
     <div
+      // ★ Frameless drops the BORDER and the frosted tint, but keeps the 1-unit gutter and paints it
+      // WHITE — the iframe is white too, so the gutter is invisible and the ring is gone.
+      //
+      // Removing the padding as well was the obvious version and it was wrong: it changes the iframe's
+      // geometry, and with it where a click into the frame lands. It cost an in-place rich edit — a
+      // click aimed at an editable region hit the document body instead, so the region never took
+      // focus and the toolbar's execCommand silently did nothing. Cosmetics are not worth moving the
+      // hit targets of the surface people type into.
       className={
         frameless
-          ? 'relative h-full overflow-hidden rounded-2xl bg-white shadow-xl shadow-slate-900/5'
+          ? 'relative h-full overflow-hidden rounded-2xl bg-white p-1 shadow-xl shadow-slate-900/5'
           : 'relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl'
       }
     >
@@ -66,10 +74,10 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
         onLoad={() => {
           if (src) setEverLoaded(true);
         }}
-        className={frameless ? 'h-full w-full bg-white' : 'h-full w-full rounded-xl border border-white/60 bg-white'}
+        className={frameless ? 'h-full w-full rounded-xl bg-white' : 'h-full w-full rounded-xl border border-white/60 bg-white'}
       />
       {showSkeleton && (
-        <div role="status" className={frameless ? 'absolute inset-0' : 'absolute inset-1'}>
+        <div role="status" className="absolute inset-1">
           <PreviewSkeleton />
           <span className="sr-only">Loading preview…</span>
         </div>

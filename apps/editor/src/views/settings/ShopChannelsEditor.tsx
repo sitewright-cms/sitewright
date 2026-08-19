@@ -256,7 +256,6 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                   <p className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400">
                     Orders are sent BY THE SERVER: stored in the Submissions inbox, emailed here, and guarded
                     like a contact form. A read-only form is kept in the Forms tab so you can find them.
-                    {r.formId && !r.email.trim() ? ' This channel still points at an older hand-made form — enter an address to move it over.' : ''}
                   </p>
                 </>
               )}

@@ -767,11 +767,11 @@ export function resolveShopChannels(
   if (!Array.isArray(s.channels)) return shop;
   const channels = (s.channels as Array<Record<string, unknown>>).map((c) => {
     if (!c || typeof c !== 'object' || c.kind !== 'form') return c;
-    // The Form is DERIVED from the channel key (the platform provisions `shop-<key>` on save), so the
-    // config carries an address and not an id. A stored channel from before that still names a
-    // `formId` keeps posting there — the site must not break on an upgrade.
-    const formId = typeof c.email === 'string' && c.email ? shopOrderFormId(String(c.key ?? '')) : typeof c.formId === 'string' ? c.formId : null;
-    return formId ? { ...c, formId, endpoint: formEndpoint(formId) } : c;
+    // The Form is DERIVED from the channel key: the platform provisions `shop-<key>` on save, so the
+    // config carries an address and never an id to keep in sync.
+    if (typeof c.email !== 'string' || !c.email) return c;
+    const formId = shopOrderFormId(String(c.key ?? ''));
+    return { ...c, formId, endpoint: formEndpoint(formId) };
   });
   // Only when a channel actually asks for one — an unused key on every shop would be noise in the
   // markup of every page that has a cart.

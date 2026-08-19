@@ -65,7 +65,7 @@ describe('settings model', () => {
             { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', intro: 'Hi' },
             { kind: 'mailto', key: 'email', email: 'orders@acme.test', subject: 'Order' },
             { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
-            { kind: 'form', captcha: false, key: 'order_form', formId: 'order' },
+            { kind: 'form', captcha: false, key: 'order_form', email: 'orders@acme.test' },
           ],
         },
       },
@@ -320,7 +320,7 @@ describe('settings model', () => {
     form.shopChannels = [
       { ...newShopChannel(), kind: 'whatsapp', key: 'whatsapp', number: '' }, // no number → dropped
       { ...newShopChannel(), kind: 'payment', key: 'pay', urlTemplate: '' }, // no urlTemplate → dropped
-      { ...newShopChannel(), kind: 'form', key: 'order_form', formId: '' }, // no formId → dropped
+      { ...newShopChannel(), kind: 'form', key: 'order_form', email: '' }, // no address → dropped
       { ...newShopChannel(), kind: 'mailto', key: '', email: 'a@b.test' }, // no KEY → dropped
       { ...newShopChannel(), kind: 'mailto', key: 'email', email: 'b@c.test' }, // kept
     ];

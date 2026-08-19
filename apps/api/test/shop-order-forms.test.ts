@@ -155,12 +155,6 @@ describe('orderFormFor / orderFormMode (unit)', () => {
     expect(orderFormMode({})).toBe('globalSmtp');
   });
 
-  it('returns null for a LEGACY channel that still names a hand-made form', () => {
-    // Such a channel keeps posting to the form it names; provisioning over it would hijack an entity
-    // the operator authored.
-    expect(orderFormFor({ kind: 'form', key: 'order', formId: 'contact', captcha: false }, 'globalSmtp')).toBeNull();
-  });
-
   it('returns null for a channel that is not a form at all', () => {
     expect(orderFormFor({ kind: 'whatsapp', key: 'wa', number: '+14155550123' }, 'globalSmtp')).toBeNull();
   });

@@ -57,9 +57,9 @@ export function orderFormMode(allowed: Partial<Record<FormMode, boolean>>): Form
   return 'globalSmtp';
 }
 
-/** Build the Form a `form` channel implies. Returns null for a legacy channel that still names one. */
+/** Build the Form a `form` channel implies. Null for any other channel kind. */
 export function orderFormFor(channel: ShopChannel, mode: FormMode): Form | null {
-  if (channel.kind !== 'form' || !channel.email) return null;
+  if (channel.kind !== 'form') return null;
   const fields = (channel.fields ?? []).map(toFormField);
   return FormSchema.parse({
     id: shopOrderFormId(channel.key),

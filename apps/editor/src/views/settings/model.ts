@@ -57,9 +57,6 @@ export interface KeyedShopChannel {
   provider: string; // payment ('' | paypal | stripe | custom)
   /** form: require a captcha solve, exactly as a contact form can. */
   captcha: boolean;
-  /** form: a hand-picked form id from before this channel took an address. Never written; carried so
-   *  an unsaved legacy row keeps working until the operator supplies an address. */
-  formId: string;
   /** Buyer-input fields collected in the cart. whatsapp/mailto append them to the deep link; the
    *  `form` channel POSTs them, and the managed order Form is provisioned from this same list. */
   fields: KeyedShopField[];
@@ -380,7 +377,6 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
       urlTemplate: c.kind === 'payment' ? c.urlTemplate : '',
       provider: c.kind === 'payment' ? c.provider ?? '' : '',
       captcha: c.kind === 'form' ? c.captcha === true : false,
-      formId: c.kind === 'form' ? c.formId ?? '' : '',
       fields: c.kind === 'whatsapp' || c.kind === 'mailto' || c.kind === 'form' ? (c.fields ?? []).map(shopFieldToForm) : [],
     })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
@@ -450,7 +446,7 @@ function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
       ...(formFieldsToShop(c.fields).length ? { fields: formFieldsToShop(c.fields) } : {}),
     };
   }
-  return c.formId.trim() ? { kind: 'form', key, formId: c.formId.trim(), captcha: c.captcha } : null;
+  return null; // a form channel with no address is not dispatchable
 }
 
 const trimmed = (s: string): string | undefined => (s.trim() ? s.trim() : undefined);
@@ -720,7 +716,6 @@ export const newShopChannel = (): KeyedShopChannel => ({
   urlTemplate: '',
   provider: '',
   captcha: false,
-  formId: '',
   fields: [],
 });
 

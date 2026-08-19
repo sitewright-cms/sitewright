@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
-import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
+import { targetsPrivateHost, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
 // Bounded to limit build-output amplification: these fields are injected into every page of a publish
 // (up to MAX_BUNDLE.pages). That is a real concern, but it applies EQUALLY to the chrome slots below —
@@ -273,36 +273,22 @@ export function shopOrderFormId(channelKey: string): string {
  * really an implementation detail. Now the fields are declared HERE and the platform provisions a
  * managed Form ({@link shopOrderFormId}) from this config on save, so the two cannot disagree.
  */
-const FormChannelSchema = z
-  .object({
-    kind: z.literal('form'),
-    key: ShopItemKeySchema,
-    /** Where orders are emailed. SERVER-SIDE ONLY — it reaches the managed Form, never the markup. */
-    email: z.string().email().max(320).optional(),
-    /** Optional subject; lands in a mail Subject header → reject control chars. */
-    subject: z
-      .string()
-      .max(200)
-      .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
-      .optional(),
-    /** The buyer fields the cart collects. Freely definable; labels live in the catalog as `shop.<key>`. */
-    fields: z.array(ShopChannelFieldSchema).max(SHOP_MAX_ORDER_FIELDS).optional(),
-    /** Require a captcha solve, exactly as a contact form can. WHICH captcha is a project setting. */
-    captcha: z.boolean().default(false),
-    /**
-     * @deprecated A hand-picked Form id, from before this channel took an address.
-     *
-     * Read-only back-compat, never written by the editor. It is kept ONLY so an existing stored
-     * settings document still parses — dropping it would fail `SettingsSchema` and take the WHOLE
-     * document (every other setting) down with it, not just this channel. A save through the editor
-     * replaces it with `email`.
-     */
-    formId: IdSchema.optional(),
-  })
-  .refine((c) => c.email !== undefined || c.formId !== undefined, {
-    message: 'a form channel needs an email address',
-    path: ['email'],
-  });
+const FormChannelSchema = z.object({
+  kind: z.literal('form'),
+  key: ShopItemKeySchema,
+  /** Where orders are emailed. SERVER-SIDE ONLY — it reaches the managed Form, never the markup. */
+  email: z.string().email().max(320),
+  /** Optional subject; lands in a mail Subject header → reject control chars. */
+  subject: z
+    .string()
+    .max(200)
+    .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
+    .optional(),
+  /** The buyer fields the cart collects. Freely definable; labels live in the catalog as `shop.<key>`. */
+  fields: z.array(ShopChannelFieldSchema).max(SHOP_MAX_ORDER_FIELDS).optional(),
+  /** Require a captcha solve, exactly as a contact form can. WHICH captcha is a project setting. */
+  captcha: z.boolean().default(false),
+});
 
 /** A submission channel the cart hands its contents to. */
 export const ShopChannelSchema = z.discriminatedUnion('kind', [
@@ -323,7 +309,22 @@ export const ShopSchema = z.object({
    */
   enabled: z.boolean().optional(),
   currency: ShopCurrencySchema.optional(),
-  channels: z.array(ShopChannelSchema).max(8).optional(),
+  /**
+   * ★ A legacy `form` channel — one that named a hand-picked `formId` instead of carrying an address —
+   * is DROPPED here, not rejected.
+   *
+   * The field is gone, so such a channel no longer validates. Letting it fail would fail
+   * `SettingsSchema`, and that takes the WHOLE settings document down with it: every other setting,
+   * on a project whose only sin is not having been re-saved since the shape changed. Dropping the one
+   * dead channel loses a checkout button and nothing else — the operator re-adds it with an address,
+   * and every order already taken is still in the inbox.
+   */
+  channels: z
+    .preprocess(
+      (v) => (Array.isArray(v) ? v.filter((c) => !(c && typeof c === 'object' && (c as { kind?: unknown }).kind === 'form' && typeof (c as { email?: unknown }).email !== 'string')) : v),
+      z.array(ShopChannelSchema).max(8),
+    )
+    .optional(),
   // NOTE: the cart's display TEXT (add-to-cart button, drawer title/note/etc., currency symbol/code, and
   // each channel/field label) is all TRANSLATABLE — it lives in the translation catalog (reserved cart_*
   // keys + per-channel/field `shop.<key>` keys), NOT here. Settings holds only non-text STRUCTURE.

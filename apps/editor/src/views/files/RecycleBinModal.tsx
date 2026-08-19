@@ -93,7 +93,7 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
             {items.map((m) => (
               <li key={m.id} className="flex items-center gap-3 py-2">
                 {m.kind === 'image' ? (
-                  <img src={m.url} alt="" className="h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200 dark:ring-white/10" />
+                  <img src={m.url} alt="" className="sw-zoom-thumb h-10 w-10 shrink-0 rounded object-cover ring-1 ring-slate-200 dark:ring-white/10" />
                 ) : (
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400">
                     <FileTypeIcon asset={m} className="h-5 w-5" />

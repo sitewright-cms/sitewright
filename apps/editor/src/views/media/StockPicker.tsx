@@ -236,7 +236,7 @@ export function StockPicker({
               aria-label={`Preview stock photo by ${r.author}`}
               className="group relative block cursor-zoom-in overflow-hidden rounded"
             >
-              <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="h-24 w-full rounded object-cover" loading="lazy" />
+              <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="sw-zoom-thumb h-24 w-full rounded object-cover" loading="lazy" />
               <span className="pointer-events-none absolute inset-0 rounded bg-slate-900/0 transition group-hover:bg-slate-900/20" />
             </button>
             <figcaption className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400" title={`${r.author} · ${r.license} · ${PROVIDER_LABELS[r.provider]}`}>

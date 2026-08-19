@@ -658,7 +658,7 @@ export function InstanceSettings() {
         </div>
         <div className="flex items-center gap-3">
           {logoPreview ? (
-            <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200 dark:ring-white/10" />
+            <img src={logoPreview} alt="Current logo" className="sw-zoom-thumb h-9 w-9 rounded-md bg-white object-contain ring-1 ring-slate-200 dark:ring-white/10" />
           ) : (
             <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-white/10">none</span>
           )}

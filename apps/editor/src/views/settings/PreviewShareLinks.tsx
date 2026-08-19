@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Trash2, Plus, Check } from 'lucide-react';
+import { Copy, Trash2, Plus, Check, ExternalLink } from 'lucide-react';
 import { api } from '../../api';
 import { ghostButton, glassInput } from '../../theme';
 
@@ -82,14 +82,38 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
       ) : (
         <ul className="flex flex-col gap-2">
           {items.map((s) => (
-            <li key={s.id} className="flex items-center gap-2 rounded-lg border border-base-300/40 px-3 py-2 text-sm">
-              <span className="min-w-0 flex-1 truncate">
+            // The WHOLE ROW opens the preview. A share link exists to be looked at, so that is the
+            // row's primary action and it should not need aiming at a 16px glyph. It is a real
+            // stretched <a> (`after:inset-0`), not a click handler on the <li>: middle-click, ⌘-click
+            // and "copy link address" all keep working, and it stays keyboard-reachable. The action
+            // buttons sit `relative` and later in DOM order, so they take their own clicks.
+            <li
+              key={s.id}
+              className="waves-effect group relative flex items-center gap-2 rounded-lg border border-base-300/40 px-3 py-2 text-sm transition hover:border-base-300 hover:bg-slate-50 dark:hover:bg-white/5"
+            >
+              <a
+                href={fullUrl(s.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open this preview in a new tab"
+                className="min-w-0 flex-1 truncate after:absolute after:inset-0 after:content-['']"
+              >
                 {s.label || 'Untitled'} <span className="opacity-50">· {new Date(s.createdAt).toLocaleDateString()}</span>
-              </span>
-              <button className={ghostButton} title="Copy link" onClick={() => flashCopied(s.id, s.url)}>
+              </a>
+              <a
+                href={fullUrl(s.url)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`${ghostButton} relative`}
+                aria-label={`Open ${s.label || 'Untitled'} in a new tab`}
+                title="Open in new tab"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+              <button className={`${ghostButton} relative`} title="Copy link" onClick={() => flashCopied(s.id, s.url)}>
                 {copied === s.id ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
               </button>
-              <button className={ghostButton} title="Revoke" onClick={() => void revoke(s.id)}>
+              <button className={`${ghostButton} relative`} title="Revoke" onClick={() => void revoke(s.id)}>
                 <Trash2 className="h-4 w-4 text-error" />
               </button>
             </li>

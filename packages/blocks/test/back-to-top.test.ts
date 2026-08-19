@@ -39,23 +39,24 @@ describe('back-to-top', () => {
     expect(BACK_TO_TOP_CSS).toContain('visibility 0s!important');
   });
 
-  it('runtime: passive scroll-to-top, shows after a screen, HIDES at the page bottom — no breakout', () => {
+  it('runtime: passive scroll-to-top, shows after a screen, STAYS SHOWN at the bottom — no breakout', () => {
     expect(BACK_TO_TOP_JS.startsWith('(function(){')).toBe(true);
     expect(BACK_TO_TOP_JS).toContain('scrollTo');
     expect(BACK_TO_TOP_JS).toContain('{passive:true');
-    // hides near the very bottom so it never covers the footer
-    expect(BACK_TO_TOP_JS).toContain('atBottom');
+    // Visibility is a function of scroll DEPTH alone. The button used to slide away within 80px of
+    // the end to stay off the footer, which took it out from under the pointer exactly where a
+    // visitor who has finished reading reaches for it.
+    expect(BACK_TO_TOP_JS).toContain('var want=y>vh;');
+    expect(BACK_TO_TOP_JS).not.toContain('atBottom');
     expect(BACK_TO_TOP_JS).not.toContain('`');
     expect(BACK_TO_TOP_JS).not.toContain('${');
     expect(BACK_TO_TOP_JS).not.toContain('</script');
   });
 
   it('runtime works on the editor preview BODY scroller, not just the viewport', () => {
-    // The preview scrolls on <body> (html{overflow:hidden}): there documentElement.scrollHeight is only
-    // the VIEWPORT height, so a doc-only bottom check made atBottom permanently true → button never
-    // shown. The runtime must take the max of both scrollHeights, read body.scrollTop as a position
-    // fallback, and listen with capture:true (a body scroll never reaches a bubbling window listener).
-    expect(BACK_TO_TOP_JS).toContain('Math.max(doc.scrollHeight||0,document.body.scrollHeight||0)');
+    // The preview scrolls on <body> (html{overflow:hidden}), where documentElement.scrollTop stays 0.
+    // The runtime must read body.scrollTop as a position fallback and listen with capture:true (a body
+    // scroll never reaches a bubbling window listener).
     expect(BACK_TO_TOP_JS).toContain('document.body.scrollTop');
     expect(BACK_TO_TOP_JS).toContain('{passive:true,capture:true}');
   });

@@ -30,10 +30,27 @@ function open(at = { x: 120, y: 240 }) {
   return render(<ContextMenu at={at} label="Page actions" rows={rows()} onClose={onClose} />);
 }
 
+/**
+ * Declare a DESKTOP pointer for hover-to-open. jsdom's `matchMedia` answers `false` to every query,
+ * including `(hover: hover)`, so without this the component correctly reads the environment as
+ * touch-like and hover does nothing — the test would fail for a reason that never reaches a user.
+ */
+function withHoveringPointer() {
+  vi.stubGlobal('matchMedia', (q: string) => ({
+    matches: q.includes('hover: hover'),
+    media: q,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+}
+
 beforeEach(() => {
   picked.length = 0;
   onClose.mockReset();
   OVERLAY_STACK.length = 0;
+  vi.unstubAllGlobals();
 });
 
 describe('ContextMenu', () => {
@@ -141,5 +158,78 @@ describe('ContextMenu', () => {
     const menu = screen.getByRole('menu', { name: 'Page actions' });
     expect(Number.parseInt(menu.style.left, 10)).toBeLessThanOrEqual(window.innerWidth);
     expect(Number.parseInt(menu.style.top, 10)).toBeLessThanOrEqual(window.innerHeight);
+  });
+
+  it('★ opens the submenu on HOVER, and keeps it open while the pointer travels to it', () => {
+    withHoveringPointer();
+    vi.useFakeTimers();
+    try {
+      // The flyout is a sibling overlay, not a child of its row, so the pointer crosses the rows in
+      // between on its way there. Closing the instant the row is left would make it unreachable.
+      open();
+      const move = screen.getByRole('menuitem', { name: 'Move to' });
+      fireEvent.pointerEnter(move);
+      expect(screen.getByRole('menu', { name: 'Move to' })).toBeInTheDocument();
+
+      fireEvent.pointerLeave(move);
+      fireEvent.pointerEnter(screen.getByRole('menu', { name: 'Move to' }));
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.queryByRole('menu', { name: 'Move to' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hovering another row dismisses an open submenu', () => {
+    withHoveringPointer();
+    vi.useFakeTimers();
+    try {
+      open();
+      fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Move to' }));
+      expect(screen.getByRole('menu', { name: 'Move to' })).toBeInTheDocument();
+      fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Delete page' }));
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.queryByRole('menu', { name: 'Move to' })).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does NOT hover-open without a fine pointer — on touch that gesture is a tap', () => {
+    // jsdom's matchMedia answers false to everything, which is exactly the touch case.
+    open();
+    fireEvent.pointerEnter(screen.getByRole('menuitem', { name: 'Move to' }));
+    expect(screen.queryByRole('menu', { name: 'Move to' })).toBeNull();
+    // Click still opens it, so the submenu is reachable by tap.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move to' }));
+    expect(screen.getByRole('menu', { name: 'Move to' })).toBeInTheDocument();
+  });
+
+  it('★ the submenu is a viewport-positioned overlay, clamped on screen — not `absolute left-full`', () => {
+    // It used to be absolutely positioned against its row, so it always opened to the RIGHT: on a
+    // menu raised near the right edge it ran straight off the viewport. Now it is `fixed` with its
+    // own clamp, like the parent menu.
+    open({ x: 10_000, y: 10_000 });
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move to' }));
+    const sub = screen.getByRole('menu', { name: 'Move to' });
+    expect(sub.className).toContain('fixed');
+    expect(sub.className).not.toContain('left-full');
+    expect(Number.parseInt(sub.style.left, 10)).toBeLessThanOrEqual(window.innerWidth);
+    expect(Number.parseInt(sub.style.left, 10)).toBeGreaterThanOrEqual(0);
+    expect(Number.parseInt(sub.style.top, 10)).toBeLessThanOrEqual(window.innerHeight);
+  });
+
+  it('★ menu and submenu sit ABOVE the side-panel rails (z-55) that used to cover them', () => {
+    open();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Move to' }));
+    // z-50 put the menu UNDER the collapsed side-panel tabs — the reported "half-covered by the
+    // sidebar buttons". Both layers must clear 55 and stay under the elevated modal layer (70).
+    expect(screen.getByRole('menu', { name: 'Page actions' }).className).toContain('z-[62]');
+    expect(screen.getByRole('menu', { name: 'Move to' }).className).toContain('z-[62]');
   });
 });

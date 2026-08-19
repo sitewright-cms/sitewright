@@ -40,6 +40,9 @@ interface SidePanelProps {
   label: string;
   /** Small glyph shown in the tab (decorative; `aria-hidden` it at the call site). */
   icon?: ReactNode;
+  /** Extra content for the OPEN panel's title bar, right of the label and left of the close button
+   *  (e.g. the File Manager's library total). Not shown on the collapsed tab. */
+  headerExtra?: ReactNode;
   /**
    * Fixed panel size — left/right ⇒ a width class (e.g. `w-[26rem]`), bottom ⇒ a height class
    * (e.g. `h-[60vh]`). FIXED on purpose: the panel slides in/out at a constant size so nothing
@@ -136,7 +139,7 @@ const TAB_HOVER_PAD: Record<SidePanelSide, string> = {
  * the tabs are always reachable when nothing's open) and exposes {@link InSidePanel} to its children
  * so their own dialogs elevate above it.
  */
-export function SidePanel({ side, label, icon, size, width, align = 'center', compact, openSignal, openOnFileDrag, children }: SidePanelProps) {
+export function SidePanel({ side, label, icon, headerExtra, size, width, align = 'center', compact, openSignal, openOnFileDrag, children }: SidePanelProps) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
@@ -285,7 +288,8 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', co
         }`}
       >
         <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 dark:border-white/10 ${edgeInset}`}>
-          <span className="flex-1 text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">{label}</span>
+          <span className="text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">{label}</span>
+          <span className="flex-1">{headerExtra}</span>
           <button
             type="button"
             aria-label={`Close ${label}`}

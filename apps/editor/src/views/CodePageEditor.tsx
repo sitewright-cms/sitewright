@@ -1067,7 +1067,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           onMouseLeave={() => setContentHover(false)}
         >
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
-            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
+            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} frameless />
           </DevicePreview>
           <div
             role="group"

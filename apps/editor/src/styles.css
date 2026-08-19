@@ -335,6 +335,40 @@ button:disabled,
     }
   }
 
+  /* THUMBNAIL HOVER ZOOM. A 32px list icon or a 96px grid tile is too small to recognise a photo
+     by, and opening the preview modal to answer "is this the right one?" is a round trip. Hovering
+     one scales it up in place.
+
+     `transform` is the whole mechanism ON PURPOSE: it is a paint-time effect, so nothing around the
+     thumbnail moves — no reflow, no row-height change, no scrollbar jump. `position:relative` +
+     z-index lift it over its neighbours rather than under them, and the shadow separates it from
+     whatever it now covers.
+
+     Applied to the element that OWNS THE BOX (the SkeletonImage wrapper, the field's <img>), not to
+     an inner image inside an `overflow-hidden` frame — scaling the child of a clipping parent just
+     crops it. Scale is `--sw-zoom` so a caller with less room can dial it down.
+
+     Behind `(hover: hover)`: on a touch screen the hover state sticks after a tap, which would leave
+     a thumbnail stuck at 4x. Behind `prefers-reduced-motion` for the transition only — a reduced
+     motion user still gets the zoom, just without the tween. */
+  @media (hover: hover) and (pointer: fine) {
+    .sw-zoom-thumb {
+      transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+    }
+    .sw-zoom-thumb:hover,
+    .sw-zoom-thumb:focus-visible {
+      position: relative;
+      z-index: 50;
+      transform: scale(var(--sw-zoom, 4));
+      box-shadow: 0 12px 32px rgb(15 23 42 / 0.35);
+    }
+  }
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
+    .sw-zoom-thumb {
+      transition: none;
+    }
+  }
+
   /* Stacked list entrance: each row fades + lifts in, cascaded via a per-item inline
      `animation-delay` (set where the list is rendered — pages, forms). Gated on no-preference, so
      reduced-motion users simply see the rows immediately (no delayed/hidden state). */

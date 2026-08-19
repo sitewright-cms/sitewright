@@ -47,10 +47,12 @@ function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; setti
 function ConnectGuide({ emphasized }: { emphasized: boolean }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-instance';
   const mcpUrl = `${origin}/mcp`;
-  // The block Cursor / Cline / Windsurf / Gemini CLI accept verbatim (mirrors `sitewright config`).
+  // A REMOTE (Streamable HTTP) MCP server entry — the shape Cursor / Cline / Windsurf / Gemini CLI
+  // accept. There is no npm package and no stdio launcher: `/mcp` is the whole integration surface,
+  // and it authenticates a local agent exactly like a hosted one (OAuth 2.1 + PKCE, or a bearer PAT).
   const cliConfig = useMemo(
-    () => JSON.stringify({ mcpServers: { sitewright: { command: 'sitewright', args: ['mcp', '--url', origin] } } }, null, 2),
-    [origin],
+    () => JSON.stringify({ mcpServers: { sitewright: { type: 'http', url: mcpUrl } } }, null, 2),
+    [mcpUrl],
   );
   const [tab, setTab] = useState<ConnectTab>('chatgpt');
   const tabRefs = useRef(new Map<ConnectTab, HTMLButtonElement | null>());
@@ -127,34 +129,35 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
         )}
         {tab === 'cli' && (
           <div className="space-y-2.5 text-sm text-slate-600 dark:text-slate-300">
+            <p>
+              A local agent connects to the <strong>same remote MCP endpoint</strong> as the hosted clients — there is
+              nothing to install.
+            </p>
             <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-500 dark:marker:text-slate-400">
               <li>
-                Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
-                <code className={CODE}>npx @sitewright/cli</code>).
+                Claude Code, in one line:
+                <pre className={PRE}><code>claude mcp add --transport http sitewright {mcpUrl}</code></pre>
               </li>
               <li>
-                Add this MCP server to your agent — the same block works for Cursor, Cline, Windsurf, Gemini CLI and most
-                MCP-aware tools:
+                For other MCP-aware tools (Cursor, Cline, Windsurf, Gemini CLI, VS Code), add an <em>HTTP</em> — not
+                stdio — server. Most accept this shape; check your client’s docs for its exact key, as a few name the
+                file or the field differently:
                 <pre className={PRE}><code>{cliConfig}</code></pre>
               </li>
               <li>
-                Or let the CLI print the exact snippet (and file path) for your agent:{' '}
-                <code className={CODE}>sitewright config &lt;agent&gt; --url {origin}</code> — e.g.{' '}
-                <code className={CODE}>cursor</code>, <code className={CODE}>windsurf</code>,{' '}
-                <code className={CODE}>gemini</code>, <code className={CODE}>vscode</code>. Claude Code one-liner:{' '}
-                <code className={CODE}>claude mcp add sitewright -- sitewright mcp --url '{origin}'</code>.
+                First call → the server answers <code className={CODE}>401</code> and your agent opens the browser to
+                sign in (OAuth 2.1 + PKCE). Pick <strong>this</strong> project, approve, and keep the editor open to
+                watch the changes appear live.
               </li>
               <li>
-                On first run the agent’s <code className={CODE}>login</code> tool shows a link + code (device flow) — open
-                it, pick this project, approve, and keep the editor open to watch changes appear live. Prefer to sign in
-                ahead? <code className={CODE}>sitewright login --url {origin}</code> (add <code className={CODE}>--device</code>{' '}
-                for headless/SSH).
+                Headless or no browser? Create a project API key under <strong>Settings → API Keys</strong> and send it
+                as a bearer token instead — no OAuth round trip:
+                <pre className={PRE}><code>claude mcp add --transport http sitewright {mcpUrl} -H &quot;Authorization: Bearer swk_…&quot;</code></pre>
               </li>
             </ol>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Where the block goes: Cursor <code className={CODE}>~/.cursor/mcp.json</code> · Windsurf{' '}
-              <code className={CODE}>~/.codeium/windsurf/mcp_config.json</code> · Gemini CLI{' '}
-              <code className={CODE}>~/.gemini/settings.json</code> · VS Code <code className={CODE}>.vscode/mcp.json</code>.
+              Browser sign-in needs the instance to be reachable over HTTPS (or on localhost). An API key works over
+              plain HTTP too.
             </p>
           </div>
         )}

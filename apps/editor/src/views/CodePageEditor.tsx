@@ -17,6 +17,7 @@ import { api, previewDocUrl, type Project } from '../api';
 import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { registerCodeInsertSink } from '../lib/code-insert-sink';
+import { useProjectEvents } from '../lib/use-project-events';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
@@ -24,6 +25,7 @@ import { buildPreviewUrl, fullRouteFor } from '../lib/preview-target';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
 import { SlotEditor, type ChromeSlotKey } from './SlotEditor';
 import { HtmlSourceModal } from './editor/HtmlSourceModal';
+import { CodeEditorModal } from './ui/CodeEditorModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -46,7 +48,7 @@ import {
   pageDataSet,
   websiteDataPathOf,
 } from '../lib/page-data';
-import { primaryButton, gradientSurface } from '../theme';
+import { primaryButton, ghostButton, gradientSurface } from '../theme';
 import { PageAuditPanel } from './pagespeed/PageAuditPanel';
 import { FormEditorModal } from './FormEditorModal';
 
@@ -112,6 +114,18 @@ const PREVIEW_DEBOUNCE_MS = 800;
  * in a sandboxed iframe (`src` from the token endpoint under `CSP: sandbox`;
  * never srcDoc) that can't reach the editor's window/cookies/session.
  */
+
+/**
+ * Content kinds whose change makes THIS page render differently, so the preview has to be re-fetched
+ * when one lands from anywhere else in the app.
+ *
+ * `settings` is the big one — it carries the critical CSS, the skeleton slots, the brand tokens and
+ * the site head, i.e. everything wrapped around the page. `template` is the page's own source when it
+ * is in template mode; `snippet` any partial it pulls in; `translation`, `dataset` and `entry` the
+ * text and rows it renders. `page` is deliberately ABSENT: this editor is the writer for that.
+ */
+const PREVIEW_AFFECTING_KINDS = new Set(['settings', 'template', 'snippet', 'translation', 'dataset', 'entry']);
+
 export function CodePageEditor({ project, page, pages = [], locales = [], onClose, onNavigate, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
@@ -154,6 +168,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The referenced template's code editor, stacked over this one. */
+  const [templateEditOpen, setTemplateEditOpen] = useState(false);
   // Project templates: feed the settings selector, the lock-panel name, and fork.
   const [templates, setTemplates] = useState<Template[]>([]);
   // The sandboxed preview is loaded by URL (token endpoint), not inlined as srcDoc.
@@ -713,6 +729,23 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSaveError(null);
   }, [stateKey]);
 
+  // --- The page preview follows changes made to the SHARED code it renders through -----------------
+  //
+  // A page in template mode renders a template; every page renders inside the skeleton and under the
+  // project's critical CSS. All three are edited elsewhere — the template modal below, the Critical
+  // CSS chord (Ctrl/⌘+Alt+C), the skeleton slot editors — and every one of those can be opened OVER
+  // this modal. Before this, none of it reached the preview: the author saved, looked at an unchanged
+  // page, and had to close and reopen the editor to see their own edit.
+  //
+  // Driven off the project change-stream rather than off the individual modals, so it holds for a
+  // write from ANY source — another tab, an agent, a surface added later — and no future editor has
+  // to remember to notify this one. `page` is excluded: this editor owns the page's own draft, and
+  // its own save would otherwise bounce straight back as a reload.
+  useProjectEvents(project.id, (c) => {
+    if (c.kind === 'page') return;
+    if (PREVIEW_AFFECTING_KINDS.has(c.kind)) setPreviewNonce((n) => n + 1);
+  });
+
   /** Copies the referenced template's source AND its declared default data INTO the page, then drops
    *  the reference — so the page can customize both the code and its page.data per-page. */
   function forkTemplate() {
@@ -1019,12 +1052,23 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 template, and this page contributes only its editable content (see the{' '}
                 <em>Content Editor</em>).
               </p>
-              <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
-                Fork template into page
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                {/* EDIT the template where it lives — the common case, and until now the only route
+                    to it was to leave the page editor entirely. Offered for a PROJECT template only:
+                    a built-in global is platform data, and the answer for one of those is to fork. */}
+                {activeTemplate && !isGlobalTemplate(activeTemplate.id) && (
+                  <button className={ghostButton} onClick={() => setTemplateEditOpen(true)}>
+                    Edit template
+                  </button>
+                )}
+                <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
+                  Fork template into page
+                </button>
+              </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Forking copies the template’s code into this page and removes the reference, so you
-                can customize it freely.
+                Editing changes it for <strong>every</strong> page using it. Forking copies the
+                template’s code into this page and removes the reference, so you can customize it
+                here alone.
               </p>
             </div>
           ) : inheritsCode ? (
@@ -1067,7 +1111,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           onMouseLeave={() => setContentHover(false)}
         >
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
-            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
+            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} frameless />
           </DevicePreview>
           <div
             role="group"
@@ -1298,6 +1342,24 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           onSubmit={(values) => {
             applySettings(values);
             setSettingsOpen(false);
+          }}
+        />
+      )}
+      {/* The referenced TEMPLATE's own code, stacked over this editor (`elevate`). Saving writes the
+          template through the ordinary content endpoint, which emits a `template` change — the
+          subscription above picks that up and re-renders the preview underneath, so the effect of an
+          edit is visible on the actual page without closing anything. */}
+      {templateEditOpen && activeTemplate && (
+        <CodeEditorModal
+          title={`Template — ${activeTemplate.name}`}
+          hint="Shared code: every page that references this template renders it. The page below re-renders when you save."
+          value={activeTemplate.source}
+          elevate
+          onClose={() => setTemplateEditOpen(false)}
+          onSave={async (value) => {
+            // Must REJECT on failure — the modal reports "Saved" purely on this resolving.
+            const { item } = await api.putTemplate(project.id, { ...activeTemplate, source: value });
+            setTemplates((prev) => prev.map((t) => (t.id === item.id ? item : t)));
           }}
         />
       )}

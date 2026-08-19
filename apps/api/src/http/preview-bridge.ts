@@ -436,8 +436,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // The REST layer: one dashed box per editable region, in the overlay. Indigo = page content,
       // green = a shared translation, teal = something a click opens its own editor for (a dataset row,
       // an image map, a form). Below the HUD's z so a badge always wins.
+      //
+      // ★ AT 0.2 OPACITY. On a densely-authored page every paragraph, image and link is a region, so at
+      // full strength the markers read as the dominant graphic — a wireframe over the design, which is
+      // the one thing the author is trying to look at. Dimmed, they still say "this page is editable and
+      // here is roughly where", and the region under the pointer comes back to FULL strength on its own:
+      // hovering draws '.sw-ov-box' (below) over the same rect at full opacity. So the emphasis follows
+      // the pointer instead of being applied everywhere at once. The layer opacity does not fight the
+      // per-kind border colours, which stay exactly as they were.
+      // (NB: this whole runtime is a template literal — no backticks in these comments.)
       '.sw-ov-rest{position:fixed;inset:0;pointer-events:none;z-index:2147483645}' +
-      '.sw-ov-r{position:fixed;box-sizing:border-box;border:2px dashed #6366f1;border-radius:3px;pointer-events:none}' +
+      '.sw-ov-r{position:fixed;box-sizing:border-box;border:2px dashed #6366f1;border-radius:3px;pointer-events:none;opacity:.2}' +
       '.sw-ov-r.sw-k-tr{border-color:#059669}' +
       '.sw-ov-r.sw-k-entry{border-color:#14b8a6}' +
       // The HOVER/FOCUS tint: a translucent FILL drawn over the element. Composites onto whatever the

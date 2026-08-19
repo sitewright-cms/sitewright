@@ -23,6 +23,7 @@ export function AssetField({
   placeholder,
   hideLabel = false,
   inputId,
+  artwork = false,
 }: {
   label: string;
   value: string;
@@ -34,6 +35,14 @@ export function AssetField({
   hideLabel?: boolean;
   /** Optional id for the input, so an external `<label htmlFor>` can target it. */
   inputId?: string;
+  /**
+   * This field holds LOGO/ICON artwork rather than a photograph. Two consequences for the
+   * thumbnail: it is backed by WHITE, because such artwork is usually transparent with dark ink
+   * and disappears against a dark panel (and against the light one it is unclear whether the
+   * white is the image or the page); and it is CONTAINED rather than cropped, since a wide
+   * wordmark squared off by `object-cover` shows a couple of letters.
+   */
+  artwork?: boolean;
 }) {
   const [picking, setPicking] = useState(false);
   return (
@@ -41,7 +50,13 @@ export function AssetField({
       {!hideLabel && <span className={fieldLabel}>{label}</span>}
       <div className="flex items-center gap-2">
         {value && looksLikeImage(value) && (
-          <img src={value} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 dark:border-slate-700 object-cover" />
+          <img
+            src={value}
+            alt=""
+            className={`sw-zoom-thumb h-9 w-9 shrink-0 rounded border border-slate-200 dark:border-slate-700 ${
+              artwork ? 'bg-white object-contain p-0.5' : 'object-cover'
+            }`}
+          />
         )}
         <input
           id={inputId}

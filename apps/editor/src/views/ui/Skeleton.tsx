@@ -38,11 +38,16 @@ export function SkeletonList({
  * A lazy `<img>` that shows a DaisyUI skeleton until it loads (or errors), so thumbnail
  * grids fill with pulsing boxes instead of blank frames. The wrapper owns the box size +
  * radius (pass via `className`); the image covers it and fades in on load.
+ *
+ * Hovering it enlarges it in place (`sw-zoom-thumb`) so a small tile can be recognised without
+ * opening the preview. Pass `zoom={false}` where the image is already shown at size.
  */
-export function SkeletonImage({ src, alt, className = '' }: { src: string; alt: string; className?: string }) {
+export function SkeletonImage({ src, alt, className = '', zoom = true }: { src: string; alt: string; className?: string; zoom?: boolean }) {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading');
   return (
-    <span className={`relative block overflow-hidden ${className}`}>
+    // `sw-zoom-thumb` sits on the WRAPPER, which owns the box — scaling the inner <img> instead
+    // would just crop it against this element's own `overflow-hidden`.
+    <span className={`relative block overflow-hidden ${zoom ? 'sw-zoom-thumb' : ''} ${className}`}>
       {status === 'loading' && <span aria-hidden className="skeleton absolute inset-0" />}
       {status === 'error' ? (
         // A broken/removed asset: a neutral muted box (with the alt text for AT) instead of

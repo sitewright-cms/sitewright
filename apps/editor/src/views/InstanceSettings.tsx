@@ -658,7 +658,7 @@ export function InstanceSettings() {
         </div>
         <div className="flex items-center gap-3">
           {logoPreview ? (
-            <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200 dark:ring-white/10" />
+            <img src={logoPreview} alt="Current logo" className="sw-zoom-thumb h-9 w-9 rounded-md bg-white object-contain ring-1 ring-slate-200 dark:ring-white/10" />
           ) : (
             <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-500 dark:text-slate-400 ring-1 ring-slate-200 dark:ring-white/10">none</span>
           )}
@@ -1491,26 +1491,24 @@ export function InstanceSettings() {
       <section className={`${glassCard} p-4`}>
         <h2 className="flex items-center gap-1.5 text-sm font-bold">
           Connect an agent
-          <SectionHelp tip="Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login — the agent connects on demand and shows you a link to approve." />
+          <SectionHelp tip="Point any MCP-capable agent at this instance's remote MCP endpoint. Nothing to install — the agent connects over HTTP and signs in through the browser on its first call." />
         </h2>
         <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600 dark:text-slate-300">
           <li>
-            Install the CLI: <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>
+            Register <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">{origin}/mcp</code> as a
+            remote (Streamable HTTP) MCP server in your agent. Claude Code:{' '}
+            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">claude mcp add --transport http sitewright {origin}/mcp</code>
           </li>
           <li>
-            Register this as a stdio MCP server in your agent — no login step needed first:{' '}
-            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>
-          </li>
-          <li>
-            When the agent calls its <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">login</code> tool it gets a
-            link + code (device flow, OAuth 2.1 + PKCE). Open it, pick the project, approve — and keep that tab open to
+            On the first call the endpoint answers <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">401</code> and the
+            agent opens the browser to sign in (OAuth 2.1 + PKCE). Pick the project, approve — and keep that tab open to
             watch the agent’s changes live. Use <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">switch_project</code> to
             move it to another project.
           </li>
           <li>
-            Prefer to sign in ahead of time? Run{' '}
-            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code> (add{' '}
-            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">--device</code> for headless/SSH).
+            Headless, or no browser available? Mint a project API key under Settings → API Keys and send it as a bearer
+            token instead:{' '}
+            <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-xs">-H &quot;Authorization: Bearer swk_…&quot;</code>
           </li>
         </ol>
       </section>

@@ -46,9 +46,13 @@ export const BACK_TO_TOP_CSS = [
 ].join('');
 
 // --- runtime ----------------------------------------------------------------
-// Toggles `.sw-visible` once the page is scrolled past the first viewport AND hides again at the very
-// bottom (so the fixed FAB never sits on top of the footer / sub-footer text); clicking scrolls to top
+// Toggles `.sw-visible` once the page is scrolled past the first viewport; clicking scrolls to top
 // (smooth, unless the visitor prefers reduced motion). rAF-throttled. No-JS → the button never appears.
+// ★ It STAYS VISIBLE at the very bottom. It used to slide away within 80px of the end, to keep the
+// fixed FAB off the footer — but the bottom of the page is exactly where the visitor has finished
+// reading and most wants the button, and it vanished from under the pointer as they arrived. The
+// overlap it was avoiding is handled by layout instead (the corner-avoidance rule above), not by
+// removing the control.
 export const BACK_TO_TOP_JS = `(function(){
   var b=document.querySelector('[data-sw-back-to-top]');
   if(!b)return;
@@ -57,14 +61,10 @@ export const BACK_TO_TOP_JS = `(function(){
     ticking=false;
     var doc=document.documentElement;
     // Scroll metrics from whatever actually scrolls: the viewport on a published site, but the BODY in
-    // the editor preview (html{overflow:hidden} → body{overflow-y:auto}) — there doc.scrollHeight is
-    // just the VIEWPORT height, which made atBottom permanently true and the button never show.
+    // the editor preview (html{overflow:hidden} → body{overflow-y:auto}).
     var y=window.pageYOffset||doc.scrollTop||document.body.scrollTop||0;
     var vh=window.innerHeight||600;
-    // Hide within ~80px of the page bottom — that's the FAB's footprint (bottom:1.5rem + 2.5rem tall),
-    // so it slides away before it would overlap the footer instead of covering it.
-    var atBottom=(y+vh)>=(Math.max(doc.scrollHeight||0,document.body.scrollHeight||0)-80);
-    var want=y>vh && !atBottom;
+    var want=y>vh;
     if(want!==shown){shown=want;b.classList.toggle('sw-visible',shown);}
   }
   function onScroll(){if(!ticking){ticking=true;window.requestAnimationFrame(update);}}

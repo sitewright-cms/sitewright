@@ -181,7 +181,8 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
         ))}
         {keys.length === 0 && (
           <li className="text-sm text-slate-500 dark:text-slate-400">
-            No API keys yet. Create one for CI, or run <code>sitewright login</code> for interactive access.
+            No API keys yet. Create one for CI, or for an agent that can’t open a browser to sign in — an interactive
+            agent can connect to <code>/mcp</code> without a key.
           </li>
         )}
       </ul>

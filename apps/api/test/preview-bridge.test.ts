@@ -190,6 +190,16 @@ describe('preview bridge — the affordances never restyle the page', () => {
     expect(PREVIEW_BRIDGE_JS).toContain('.sw-slot-ring{position:fixed;pointer-events:none');
   });
 
+  it('★ the at-rest markers are DIM; only the region under the pointer reads at full strength', () => {
+    // Every paragraph, image and link on a densely-authored page is a region, so at full opacity the
+    // dashed boxes become a wireframe drawn over the design the author is trying to look at. They stay
+    // legible at 0.2, and hovering restores full strength for ONE region: `.sw-ov-box` is painted over
+    // the same rect by outlineFor(), so the emphasis follows the pointer.
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-r{position:fixed;box-sizing:border-box;border:2px dashed #6366f1;border-radius:3px;pointer-events:none;opacity:.2}');
+    // The hover/active box carries NO opacity of its own — that is what makes it the full-strength one.
+    expect(PREVIEW_BRIDGE_JS).toContain('.sw-ov-box{position:fixed;pointer-events:none;border:2px dashed #6366f1;border-radius:3px;box-sizing:border-box}');
+  });
+
   it('the at-rest layer is built from what setEditing ACTUALLY wired, and cleared with it', () => {
     // Not from a querySelectorAll of every data-sw-* on the page: a leaf inside a dataset row, or a
     // chrome slot's shared string viewed from a page, is deliberately NOT editable here. Marking those

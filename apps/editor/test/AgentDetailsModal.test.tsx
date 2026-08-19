@@ -65,11 +65,17 @@ describe('AgentDetailsModal', () => {
     // Le Chat is also free.
     leChatTab.click();
     expect(await screen.findByText(/Free plan/)).toBeInTheDocument();
-    // The CLI tab carries the install step, the universal mcpServers block, and the config helper.
+    // The CLI tab points at the SAME remote endpoint as the hosted clients. There is no npm package
+    // and no stdio launcher — `@sitewright/cli` was never published, so an install step was an
+    // instruction nobody could follow. It must not come back.
     cliTab.click();
-    expect(await screen.findByText(/npm install -g @sitewright\/cli/)).toBeInTheDocument();
+    // Two variants are offered — plain browser sign-in, and the same line with a bearer key.
+    expect(await screen.findAllByText(/claude mcp add --transport http/)).toHaveLength(2);
+    expect(screen.getByText(/Authorization: Bearer swk_/)).toBeInTheDocument();
     expect(screen.getByText(/"mcpServers"/)).toBeInTheDocument();
-    expect(screen.getByText(/sitewright config/)).toBeInTheDocument();
+    expect(screen.getByText(/"type": "http"/)).toBeInTheDocument();
+    expect(screen.queryByText(/@sitewright\/cli/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sitewright config/)).not.toBeInTheDocument();
   });
 
   it('disconnects only after a two-step confirm, reloads, and notifies onChanged', async () => {

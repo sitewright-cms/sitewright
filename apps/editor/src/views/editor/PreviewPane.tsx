@@ -13,6 +13,11 @@ interface PreviewPaneProps {
   /** Exposes the iframe element so the parent can reach `contentWindow` (the editor↔preview
    *  postMessage bridge: validate `event.source`, post scrollTo/setMode). */
   iframeRef?: RefObject<HTMLIFrameElement>;
+  /** Drop the frosted card frame (border + 1-unit gutter + the iframe's own hairline) so the
+   *  document meets the pane edge. The page editor wants this: there the preview IS the surface,
+   *  and the gutter reads as a grey ring drawn around the site rather than as chrome. The slot
+   *  editor and the live-preview panel keep the frame — both sit ON a page next to other cards. */
+  frameless?: boolean;
 }
 
 /**
@@ -29,7 +34,7 @@ interface PreviewPaneProps {
  * silently wins — so both come from the SHARED {@link PREVIEW_SANDBOX_ATTR}/`PREVIEW_SANDBOX_CSP`
  * pair rather than two hand-kept literals. `allow-same-origin` must NEVER be added.
  */
-export function PreviewPane({ src, loading, error, title = 'Live preview', iframeRef }: PreviewPaneProps) {
+export function PreviewPane({ src, loading, error, title = 'Live preview', iframeRef, frameless }: PreviewPaneProps) {
   // The iframe paints blank-white while it fetches/renders its document. Cover it with an
   // animated skeleton until its FIRST real load completes (`about:blank` doesn't count), so
   // the pane never flashes empty. Subsequent reloads keep the last frame + the "updating…"
@@ -40,7 +45,13 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
   const [everLoaded, setEverLoaded] = useState(false);
   const showSkeleton = !everLoaded && !error;
   return (
-    <div className="relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl">
+    <div
+      className={
+        frameless
+          ? 'relative h-full overflow-hidden rounded-2xl bg-white shadow-xl shadow-slate-900/5'
+          : 'relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl'
+      }
+    >
       {error && (
         <div role="alert" className="absolute inset-x-1 top-1 z-10 rounded-t-xl bg-rose-50/90 px-3 py-2 text-xs text-rose-700 backdrop-blur-sm">
           Preview error: {error}
@@ -55,10 +66,10 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
         onLoad={() => {
           if (src) setEverLoaded(true);
         }}
-        className="h-full w-full rounded-xl border border-white/60 bg-white"
+        className={frameless ? 'h-full w-full bg-white' : 'h-full w-full rounded-xl border border-white/60 bg-white'}
       />
       {showSkeleton && (
-        <div role="status" className="absolute inset-1">
+        <div role="status" className={frameless ? 'absolute inset-0' : 'absolute inset-1'}>
           <PreviewSkeleton />
           <span className="sr-only">Loading preview…</span>
         </div>

@@ -13,6 +13,7 @@ import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSe
 import { useDialogs } from './ui/Dialogs';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
+import { SearchField } from './ui/SearchField';
 import { PlaceholderLabel } from './PlaceholderLabel';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
@@ -924,6 +925,25 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               )}
             </div>
             <div className="flex items-center gap-2">
+              {/* Search sits INLINE with the actions — a project can carry hundreds of pages, where
+                  scrolling the tree is not a way to find one. Filters the rows already loaded, so it
+                  is instant and needs no round trip. The count rides in the placeholder (and is
+                  per-language, like the list itself) rather than in a separate readout. */}
+              {orderedPages.length > 8 && (
+                <SearchField
+                  value={search}
+                  onChange={setSearch}
+                  // "N pages", not "Search N pages": at the requested 160px the longer form is
+                  // CLIPPED from three digits up ("Search 905 page|s"), and real projects reach
+                  // hundreds. The magnifier already says search, so the count is what the width is
+                  // spent on. Verified by screenshot at 32 / 340 / 905 / 1240.
+                  placeholder={`${orderedPages.length} pages`}
+                  ariaLabel="Search pages by title, slug or id"
+                  className="w-40 shrink-0"
+                  noFocusRing
+                  dense
+                />
+              )}
               <button
                 type="button"
                 className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:bg-white dark:hover:bg-white/10"
@@ -963,25 +983,6 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               </button>
             </div>
           </div>
-          {/* Search — a project can carry hundreds of pages, where scrolling the tree is not a way to
-              find one. Filters the rows already loaded, so it is instant and needs no round trip. */}
-          {orderedPages.length > 8 && (
-            <div className="mb-3 flex items-center gap-2">
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search pages by title, slug or id…"
-                aria-label="Search pages"
-                className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 placeholder:text-slate-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-              />
-              {search.trim() !== '' && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {visiblePages.length} of {orderedPages.length}
-                </span>
-              )}
-            </div>
-          )}
           <ul
             className="mb-8 flex flex-col gap-2"
             ref={(el) => {
@@ -990,7 +991,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
             }}
           >
             {search.trim() !== '' && visiblePages.length === 0 && (
-              <li className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
+              <li className="rounded-lg border border-dashed border-slate-300 bg-slate-100 px-3 py-6 text-center text-sm text-slate-600 dark:border-slate-600 dark:bg-white/5 dark:text-slate-300">
                 No page matches “{search.trim()}”.
               </li>
             )}

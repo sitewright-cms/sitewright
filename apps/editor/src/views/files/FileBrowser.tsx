@@ -28,7 +28,7 @@ import {
 } from './sort';
 
 /** Human-readable byte size (1 KB = 1024 B). */
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
   let value = bytes / 1024;
@@ -145,6 +145,9 @@ export interface FileBrowserProps {
   onPick?: (asset: MediaAsset) => void;
   /** A short instruction shown above the browser (pick mode). */
   intro?: ReactNode;
+  /** Reports the library total (every asset in the project, not just the open folder) whenever the
+   *  asset list changes, so a host chrome — the File Manager panel's title bar — can show it. */
+  onTotals?: (totals: { count: number; bytes: number }) => void;
 }
 
 /**
@@ -152,7 +155,7 @@ export interface FileBrowserProps {
  * views, upload, new-folder, rename/copy-URL/delete (files + folders) and drag-to-move. Shared by the
  * Assets side panel (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
  */
-export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
+export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro, onTotals }: FileBrowserProps) {
   const pick = mode === 'pick';
   const { confirm, prompt, dialog } = useDialogs();
   const toast = useToast();
@@ -196,6 +199,16 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       active = false;
     };
   }, [projectId]);
+
+  // Report the WHOLE library's size to the host chrome (the panel title bar). Derived from `assets`,
+  // which always holds every asset in the project — the folder view and the search both filter it
+  // client-side — so this is the library total, not the open folder's, and it follows every
+  // upload/delete/live-refresh for free.
+  const onTotalsRef = useRef(onTotals);
+  onTotalsRef.current = onTotals;
+  useEffect(() => {
+    onTotalsRef.current?.({ count: assets.length, bytes: assets.reduce((n, a) => n + a.bytes, 0) });
+  }, [assets]);
 
   // LIVE-REFRESH: when the agent (or another tab) adds/edits/deletes media or a folder, refetch so the
   // File Manager reflects it without a full SPA reload.

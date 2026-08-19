@@ -7,7 +7,7 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
-## [Unreleased]
+## [0.25.0] — 2026-08-19
 
 ### Added
 

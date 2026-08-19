@@ -55,8 +55,13 @@ export interface KeyedShopChannel {
   subject: string; // mailto
   urlTemplate: string; // payment
   provider: string; // payment ('' | paypal | stripe | custom)
-  formId: string; // form
-  /** whatsapp + mailto: buyer-input fields collected in the cart before the deep link opens. */
+  /** form: require a captcha solve, exactly as a contact form can. */
+  captcha: boolean;
+  /** form: a hand-picked form id from before this channel took an address. Never written; carried so
+   *  an unsaved legacy row keeps working until the operator supplies an address. */
+  formId: string;
+  /** Buyer-input fields collected in the cart. whatsapp/mailto append them to the deep link; the
+   *  `form` channel POSTs them, and the managed order Form is provisioned from this same list. */
   fields: KeyedShopField[];
 }
 
@@ -369,12 +374,14 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
       key: c.key ?? '',
       number: c.kind === 'whatsapp' ? c.number : '',
       intro: c.kind === 'whatsapp' ? c.intro ?? '' : '',
-      email: c.kind === 'mailto' ? c.email : '',
-      subject: c.kind === 'mailto' ? c.subject ?? '' : '',
+      // `email`/`subject` are shared by mailto (a deep link) and form (a server-side send).
+      email: c.kind === 'mailto' || c.kind === 'form' ? c.email ?? '' : '',
+      subject: c.kind === 'mailto' || c.kind === 'form' ? c.subject ?? '' : '',
       urlTemplate: c.kind === 'payment' ? c.urlTemplate : '',
       provider: c.kind === 'payment' ? c.provider ?? '' : '',
-      formId: c.kind === 'form' ? c.formId : '',
-      fields: c.kind === 'whatsapp' || c.kind === 'mailto' ? (c.fields ?? []).map(shopFieldToForm) : [],
+      captcha: c.kind === 'form' ? c.captcha === true : false,
+      formId: c.kind === 'form' ? c.formId ?? '' : '',
+      fields: c.kind === 'whatsapp' || c.kind === 'mailto' || c.kind === 'form' ? (c.fields ?? []).map(shopFieldToForm) : [],
     })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
@@ -428,7 +435,22 @@ function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
         }
       : null;
   }
-  return c.formId.trim() ? { kind: 'form', key, formId: c.formId.trim() } : null;
+  // FORM: an address is what makes it dispatchable now. A row that still carries only a legacy
+  // formId is preserved rather than dropped — dropping it would silently delete a working channel
+  // from a project that has not been re-saved since the shape changed.
+  if (c.email.trim()) {
+    return {
+      kind: 'form',
+      key,
+      email: c.email.trim(),
+      ...(c.subject.trim() ? { subject: c.subject.trim() } : {}),
+      // Always present: `.default(false)` makes it a REQUIRED output field on the schema, so omitting
+      // it here would not type-check against ShopChannel even though the parser would fill it in.
+      captcha: c.captcha,
+      ...(formFieldsToShop(c.fields).length ? { fields: formFieldsToShop(c.fields) } : {}),
+    };
+  }
+  return c.formId.trim() ? { kind: 'form', key, formId: c.formId.trim(), captcha: c.captcha } : null;
 }
 
 const trimmed = (s: string): string | undefined => (s.trim() ? s.trim() : undefined);
@@ -697,6 +719,7 @@ export const newShopChannel = (): KeyedShopChannel => ({
   subject: '',
   urlTemplate: '',
   provider: '',
+  captcha: false,
   formId: '',
   fields: [],
 });

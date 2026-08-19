@@ -1,3 +1,4 @@
+import { shopOrderFormId } from '@sitewright/schema';
 // MINI SHOP — a first-party, dependency-free shopping-cart runtime for PUBLISHED
 // static sites.
 //
@@ -239,7 +240,14 @@ export const CART_JS = `(function(){
     // RESERVED_TRANSLATION_DEFAULTS in @sitewright/schema, the single source of truth), so the English
     // fallbacks below are only a safety net for a hand-authored data-sw-cart element with the attribute
     // missing. Change the shipped defaults in the schema registry, not here.
+    // The PROJECT's captcha provider + public site key, emitted only when a channel actually asks for
+    // one. Both are public by nature (the site key ships in the markup of every captcha-guarded form).
+    var captcha=null;
+    var cp=mount.getAttribute('data-captcha-provider');
+    var ck=mount.getAttribute('data-captcha-sitekey');
+    if(cp&&ck){captcha={provider:cp,siteKey:ck};}
     return {
+      captcha:captcha,
       symbol:mount.getAttribute('data-currency-symbol')||'',
       code:mount.getAttribute('data-currency-code')||'',
       pos:mount.getAttribute('data-currency-pos')==='after'?'after':'before',
@@ -555,26 +563,70 @@ export const CART_JS = `(function(){
       form.addEventListener('touchstart',function(e){ixNote(e,'p');},{passive:true});
       form.addEventListener('keydown',function(e){ixNote(e,'k');},{passive:true});
       form.addEventListener('input',function(e){ixNote(e,'k');},{passive:true}); // autofill + paste
-      function field(name,label,type,required){
-        var wrap=part('label','order-field');wrap.appendChild(mk('span',null,label));
-        var inp=type==='textarea'?document.createElement('textarea'):document.createElement('input');
-        if(type!=='textarea'){inp.type=type;}inp.name=name;if(required){inp.required=true;}
-        wrap.appendChild(inp);form.appendChild(wrap);return inp;
+      // ★ The buyer fields are the CHANNEL's own, declared in shop settings — they used to be a fixed
+      // name/email/phone/note baked in here. Fixed fields could not ask for a delivery address or a PO
+      // number, and worse, the endpoint validates against the FORM, so any required field the cart did
+      // not send rejected every order. The platform now provisions that form FROM this same list, so
+      // the two cannot disagree. A channel with no fields still posts the order itself.
+      var defs=(ch&&ch.fields&&ch.fields.length)?ch.fields:[];
+      var inputs=[];
+      for(var fi=0;fi<defs.length;fi++){
+        (function(f){
+          var label=clip(String(f&&f.label!=null?f.label:''),60);
+          var name=String(f&&f.name!=null?f.name:'');
+          if(!name){return;}
+          var wrap=part('label','order-field');wrap.appendChild(mk('span',null,label||name));
+          var type=String(f&&f.type!=null?f.type:'text');
+          var inp;
+          if(type==='textarea'){inp=document.createElement('textarea');}
+          else if((type==='select'||type==='radio')&&f.options&&f.options.length){
+            inp=document.createElement('select');
+            for(var oi=0;oi<f.options.length;oi++){var o=document.createElement('option');o.value=String(f.options[oi]);o.textContent=String(f.options[oi]);inp.appendChild(o);}
+          }
+          else{inp=document.createElement('input');inp.type=(type==='email'||type==='tel'||type==='number'||type==='date')?type:'text';}
+          inp.name=name;if(f&&f.required){inp.required=true;}
+          wrap.appendChild(inp);form.appendChild(wrap);
+          inputs.push({name:name,el:inp});
+        })(defs[fi]);
       }
-      var nameI=field('name','Your name','text',true);
-      var emailI=field('email','Email','email',true);
-      var phoneI=field('phone','Phone (optional)','tel',false);
-      var noteI=field('note','Note (optional)','textarea',false);
+      // CAPTCHA, when the channel asks for it — the same providers and the same markup a contact form
+      // uses, so the vendor script the page already loads picks this widget up too. The token is read
+      // at submit and posted under the provider's own field name, which is what the endpoint verifies.
+      var capProvider=String((cfg.captcha&&cfg.captcha.provider)||'');
+      var capKey=String((cfg.captcha&&cfg.captcha.siteKey)||'');
+      var capBox=null;
+      if(ch&&ch.captcha&&capProvider&&capKey){
+        capBox=part('div','order-captcha');
+        capBox.className=(capProvider==='hcaptcha'?'h-captcha':'g-recaptcha');
+        capBox.setAttribute('data-sitekey',capKey);
+        if(capProvider==='recaptcha-v3'){capBox.setAttribute('data-size','invisible');}
+        form.appendChild(capBox);
+      }
       var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','order-status');
       form.appendChild(submit);form.appendChild(status);
+      // The solved captcha token, or '' when this channel wants none. An unfilled widget is reported
+      // here rather than costing a round trip to be refused by the server.
+      // (No backticks in this runtime: the whole thing is a template literal.)
+      function captchaToken(){
+        if(!capBox){return '';}
+        if(capProvider==='hcaptcha'){return (window.hcaptcha&&window.hcaptcha.getResponse)?window.hcaptcha.getResponse():'';}
+        if(capProvider==='recaptcha-v2'){return (window.grecaptcha&&window.grecaptcha.getResponse)?window.grecaptcha.getResponse():'';}
+        return '';
+      }
       form.addEventListener('submit',function(e){
         e.preventDefault();
         if(!items.length){return;}
-        // Native validation already enforced the required name + email (+ email format) before submit.
+        // Native validation already enforced every required field before submit.
         var ixN=0;for(var ixk in ixF){if(Object.prototype.hasOwnProperty.call(ixF,ixk))ixN++;}
-        var payload={_hpt:'',_elapsed:String(Date.now()-started),_ix:ixP+'.'+ixK+'.'+ixN,name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
-        submit.disabled=true;status.textContent='Sending\\u2026';
+        var payload={_hpt:'',_elapsed:String(Date.now()-started),_ix:ixP+'.'+ixK+'.'+ixN,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
+        for(var pi=0;pi<inputs.length;pi++){payload[inputs[pi].name]=inputs[pi].el.value;}
+        if(capBox){
+          var tok=captchaToken();
+          if(!tok&&capProvider!=='recaptcha-v3'){status.textContent='Please complete the captcha.';return;}
+          if(tok){payload[capProvider==='hcaptcha'?'h-captcha-response':'g-recaptcha-response']=tok;}
+        }
+        submit.disabled=true;status.textContent='Sending\u2026';
         // Assembled at submit time from the encoded blob — the URL is never in the markup.
         fetch(window.__swf(ch.formId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
           if(!res.ok){throw new Error('bad status');}
@@ -705,15 +757,24 @@ export function usesCart(html: string | null | undefined): boolean {
 export function resolveShopChannels(
   shop: unknown,
   formEndpoint: (formId: string) => string,
+  /** The PROJECT's captcha provider + public site key. Carried onto the shop so the {{sw-cart}} helper
+   *  can stamp it on the mount — the helper reads `website.shop`, and the render context's own
+   *  `captcha` is only visible to the post-render form pass, not to a Handlebars helper. */
+  captcha?: { provider: string; siteKey: string },
 ): unknown {
   if (!shop || typeof shop !== 'object' || Array.isArray(shop)) return shop;
   const s = shop as Record<string, unknown>;
   if (!Array.isArray(s.channels)) return shop;
   const channels = (s.channels as Array<Record<string, unknown>>).map((c) => {
-    if (c && typeof c === 'object' && c.kind === 'form' && typeof c.formId === 'string') {
-      return { ...c, endpoint: formEndpoint(c.formId) };
-    }
-    return c;
+    if (!c || typeof c !== 'object' || c.kind !== 'form') return c;
+    // The Form is DERIVED from the channel key (the platform provisions `shop-<key>` on save), so the
+    // config carries an address and not an id. A stored channel from before that still names a
+    // `formId` keeps posting there — the site must not break on an upgrade.
+    const formId = typeof c.email === 'string' && c.email ? shopOrderFormId(String(c.key ?? '')) : typeof c.formId === 'string' ? c.formId : null;
+    return formId ? { ...c, formId, endpoint: formEndpoint(formId) } : c;
   });
-  return { ...s, channels };
+  // Only when a channel actually asks for one — an unused key on every shop would be noise in the
+  // markup of every page that has a cart.
+  const wantsCaptcha = channels.some((c) => c && typeof c === 'object' && c.kind === 'form' && c.captcha === true);
+  return { ...s, channels, ...(wantsCaptcha && captcha ? { captcha } : {}) };
 }

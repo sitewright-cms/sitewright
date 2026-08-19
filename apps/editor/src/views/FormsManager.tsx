@@ -188,11 +188,15 @@ export function FormsManager({ project }: { project: Project }) {
                   the Datasets/Pages rows); the name stays a real keyboard-accessible button and the
                   action buttons stopPropagation so they don't also open the editor. */}
               <div
-                className={`group flex cursor-pointer items-center gap-3 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition`}
-                onClick={() => openForm(f)}
+                className={`group flex items-center gap-3 ${glassCard} ${gradientHover} waves-effect px-4 py-3 text-sm transition ${
+                  f.managed ? '' : 'cursor-pointer'
+                }`}
+                onClick={f.managed ? undefined : () => openForm(f)}
               >
                 <button
-                  className="text-left font-medium group-hover:text-white"
+                  className="text-left font-medium group-hover:text-white disabled:cursor-default"
+                  disabled={f.managed !== undefined}
+                  title={f.managed ? 'Managed by the Shop — edit it in Website settings → Shop' : undefined}
                   onClick={(e) => {
                     e.stopPropagation();
                     openForm(f);
@@ -210,6 +214,17 @@ export function FormsManager({ project }: { project: Project }) {
                 {f.captcha && (
                   <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white">
                     Captcha
+                  </span>
+                )}
+                {/* A form the SHOP owns. It is listed because its orders land in the inbox and you need
+                    to recognise them — but it is provisioned from the shop settings on every save, so
+                    editing it here would be overwritten. The badge says where it is actually edited. */}
+                {f.managed === 'shop' && (
+                  <span
+                    title="Provisioned from Website settings → Shop → Checkout channels. Edit it there; changes made here would be overwritten on the next save."
+                    className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] uppercase text-indigo-700 transition dark:bg-indigo-400/15 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white"
+                  >
+                    Shop
                   </span>
                 )}
                 {(() => {

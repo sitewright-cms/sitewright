@@ -20,10 +20,14 @@ function imageAsset(id: string, original: string): MediaAsset {
 }
 
 describe('derivedThumbnailNames', () => {
-  it('enumerates the 8 cacheable thumbnail names (sizes × formats) for an image', () => {
+  it('enumerates the 10 cacheable thumbnail names (sizes × formats) for an image', () => {
+    // 5 rungs × 2 formats. `xs` (150px) joined the ladder for the small surfaces — a list icon or an
+    // avatar was previously served the 500px `sm`, more than 3x what it paints.
     const names = derivedThumbnailNames(imageAsset('a', 'photo.png'));
     expect([...names].sort()).toEqual(
       [
+        'photo-xs.webp',
+        'photo-xs.avif',
         'photo-sm.webp',
         'photo-md.webp',
         'photo-lg.webp',

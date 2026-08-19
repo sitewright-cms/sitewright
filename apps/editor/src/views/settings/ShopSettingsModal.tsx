@@ -14,7 +14,7 @@ import type { Patch, SettingsForm } from './model';
  * title/note/etc., currency symbol/code, and each channel/field label — is TRANSLATABLE and edited in
  * "Translations & Labels" (the catalog), reached via the button below.
  */
-export function ShopSettingsModal({ form, patch, projectId, onClose }: { form: SettingsForm; patch: Patch; projectId: string; onClose: () => void }) {
+export function ShopSettingsModal({ form, patch, onClose }: { form: SettingsForm; patch: Patch; onClose: () => void }) {
   // Jump to the always-visible "Translations & Labels" card: close this modal, then scroll it into view.
   const editLabels = (): void => {
     onClose();
@@ -61,7 +61,7 @@ export function ShopSettingsModal({ form, patch, projectId, onClose }: { form: S
 
         <div>
           <SubLabel>Checkout channels</SubLabel>
-          <ShopChannelsEditor rows={form.shopChannels} projectId={projectId} onChange={(shopChannels) => patch({ shopChannels })} />
+          <ShopChannelsEditor rows={form.shopChannels} onChange={(shopChannels) => patch({ shopChannels })} />
         </div>
       </div>
     </Modal>

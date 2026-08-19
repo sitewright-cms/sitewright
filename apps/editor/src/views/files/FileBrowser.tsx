@@ -65,9 +65,9 @@ function cleanSegment(name: string): string {
  *
  * SVG is served inline as-is and is never rasterized, so a size hint on one is only a wasted cache key.
  */
-function thumbnailUrl(asset: MediaAsset): string {
+function thumbnailUrl(asset: MediaAsset, size: 'xs' | 'sm' = 'sm'): string {
   if (asset.kind === 'image' && asset.format === 'svg') return asset.url;
-  return `${asset.url}?size=sm`;
+  return `${asset.url}?size=${size}`;
 }
 
 /** A type filter for PICK mode: returns true for assets a field accepts. */
@@ -689,8 +689,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                     className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
                     title={m.filename}
                   >
+                    {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
+                        fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
+                        below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
                     {m.kind === 'image' ? (
-                      <SkeletonImage src={thumbnailUrl(m)} alt="" className="h-8 w-8 shrink-0 rounded" />
+                      <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
                     ) : (
                       <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
                     )}

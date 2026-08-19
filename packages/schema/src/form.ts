@@ -217,6 +217,16 @@ export const FormSchema = z.preprocess(carryLegacyCaptchaFlag, z.object({
     .refine((u) => !targetsPrivateHost(u), 'thirdPartyUrl must be a public host')
     .optional(),
   /**
+   * Set when this Form is OWNED by another feature and provisioned from that feature's config, rather
+   * than authored in the Forms tab.
+   *
+   * `shop` = the mini-shop's order channel: its recipient, subject, fields and captcha are all derived
+   * from the shop settings on save. It is listed READ-ONLY so an operator can see where orders go and
+   * recognise them in the inbox, but cannot edit it into disagreement with the shop — one writer, so
+   * there is nothing to drift.
+   */
+  managed: z.literal('shop').optional(),
+  /**
    * Recipient for the `whatsapp` mode, E.164 (`+` then 7–15 digits, no leading 0). Same shape and
    * same reasoning as the mini-shop's whatsapp channel — the runtime strips the `+` for `wa.me`.
    *

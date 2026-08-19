@@ -2,21 +2,26 @@
  * The bounded, NAMED responsive size set for on-demand thumbnails.
  *
  * A fixed, named set (not an arbitrary `?w=<n>`) is the security boundary for the
- * generate-on-request endpoint: a caller can only ever materialise 4 widths × 2 formats
+ * generate-on-request endpoint: a caller can only ever materialise 5 widths × 2 formats
  * per asset, so an attacker cannot fan out unbounded encodes. Widths are the target box
  * width in CSS pixels; the source is NEVER upscaled (a size larger than the source clamps
  * to the source width).
+ *
+ * ★ `xs` (150px) exists because the smallest rung was 500px — more than 3× what a list icon,
+ * an avatar or a picker tile actually paints, on every one of them. Adding a rung below `sm`
+ * costs one more possible encode per asset and takes a real bite out of what those surfaces
+ * download.
  */
-export type SizeToken = 'sm' | 'md' | 'lg' | 'xl';
+export type SizeToken = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 
 /** Delivery formats a thumbnail can be encoded as. WebP is the universal default; AVIF is opt-in. */
 export type ThumbFormat = 'webp' | 'avif';
 
 /** Named width for each size token (px). */
-export const THUMB_SIZES: Record<SizeToken, number> = { sm: 500, md: 1000, lg: 1600, xl: 2400 };
+export const THUMB_SIZES: Record<SizeToken, number> = { xs: 150, sm: 500, md: 1000, lg: 1600, xl: 2400 };
 
 /** All size tokens, smallest → largest. */
-export const SIZE_TOKENS: readonly SizeToken[] = ['sm', 'md', 'lg', 'xl'];
+export const SIZE_TOKENS: readonly SizeToken[] = ['xs', 'sm', 'md', 'lg', 'xl'];
 
 /**
  * The implicit default size of the DELIVERY route (`/media/<slug>/<id>/<name>` with no

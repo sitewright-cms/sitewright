@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, CART_ORDER_FIELDS, cartIncompatibleFields, type Form, type ShopFieldType } from '@sitewright/schema';
-import { api } from '../../api';
+import { SHOP_MAX_CHANNEL_FIELDS, SHOP_MAX_ORDER_FIELDS, SHOP_CHOICE_FIELD_TYPES, type ShopFieldType } from '@sitewright/schema';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
 import { useReorder } from './use-reorder';
@@ -22,7 +20,9 @@ const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   // same honeypot, interaction gate, proof-of-work and rate limits as a contact form.
   { value: 'mailto', label: 'Email — opens buyer’s mail app (mailto)' },
   { value: 'payment', label: 'Payment link' },
-  { value: 'form', label: 'Email the order — sent by the server (recommended)' },
+  // Still called a FORM, on purpose: orders land in the Submissions inbox, and naming it anything
+  // else would hide where to look for them.
+  { value: 'form', label: 'Order form — emailed by the server (recommended)' },
 ];
 
 /** Order-field input types + their labels (mirrors the schema SHOP_FIELD_TYPES enum; `satisfies` keeps each value valid). */
@@ -52,10 +52,13 @@ function OrderFieldsEditor({
   fields,
   onChange,
   channelIndex,
+  max = SHOP_MAX_CHANNEL_FIELDS,
 }: {
   fields: KeyedShopField[];
   onChange: (fields: KeyedShopField[]) => void;
   channelIndex: number;
+  /** Field cap for this channel kind. */
+  max?: number;
 }) {
   const setField = (id: string, patch: Partial<KeyedShopField>) =>
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -128,7 +131,7 @@ function OrderFieldsEditor({
       </div>
       <button
         type="button"
-        disabled={fields.length >= SHOP_MAX_CHANNEL_FIELDS}
+        disabled={fields.length >= max}
         onClick={() => onChange([...fields, newShopField()])}
         className={`${ghostButton} mt-2 self-start text-xs disabled:cursor-not-allowed disabled:opacity-40`}
       >
@@ -144,36 +147,9 @@ function OrderFieldsEditor({
  * Translations & Labels under `shop.<key>`), and that kind's config fields. whatsapp/mailto rows also gain
  * an Order-fields sub-editor. Rows are keyed on a stable id so add/remove animate cleanly.
  */
-export function ShopChannelsEditor({
-  rows,
-  projectId,
-  onChange,
-}: {
-  rows: KeyedShopChannel[];
-  projectId: string;
-  onChange: (rows: KeyedShopChannel[]) => void;
-}) {
+export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[]; onChange: (rows: KeyedShopChannel[]) => void }) {
   const set = (id: string, patch: Partial<KeyedShopChannel>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const { dragId, dragProps, move } = useReorder(rows, onChange);
-  // The project's forms, so the server-side channel is CHOSEN rather than typed. It asked for a raw
-  // "Form id" before — an opaque string the operator had to go and look up, and a typo in it produced
-  // a channel that 404s at checkout with nothing in the editor to say so.
-  const [forms, setForms] = useState<Form[]>([]);
-  const [formsLoaded, setFormsLoaded] = useState(false);
-  useEffect(() => {
-    let active = true;
-    api
-      .listForms(projectId)
-      .then((r) => {
-        if (!active) return;
-        setForms(r.items);
-        setFormsLoaded(true);
-      })
-      .catch(() => active && setFormsLoaded(true)); // fall back to the free-text id below
-    return () => {
-      active = false;
-    };
-  }, [projectId]);
   return (
     <div className="flex flex-col gap-3">
       <AnimatePresence initial={false}>
@@ -251,52 +227,49 @@ export function ShopChannelsEditor({
                 </>
               )}
               {r.kind === 'form' && (
-                <div className="sm:col-span-2 flex flex-col gap-1">
-                  {formsLoaded && forms.length > 0 ? (
-                    <select
-                      aria-label={`Channel ${i + 1} order form`}
-                      className={glassInput}
-                      value={r.formId}
-                      onChange={(e) => set(r.id, { formId: e.target.value })}
-                    >
-                      <option value="">Choose a form…</option>
-                      {forms.map((f) => {
-                        // ★ A form is only usable here if the CART can fill its required fields. The
-                        // cart sends a fixed set (name/email/phone/note + the order); submission
-                        // validation iterates the FORM's fields, so a required field outside that set
-                        // 400s EVERY order and the buyer just sees "something went wrong". The form is
-                        // fine and the shop is fine — it is the PAIRING that is broken, which is
-                        // exactly the kind of thing a picker should refuse rather than allow.
-                        const blocked = cartIncompatibleFields(f);
-                        return (
-                          <option key={f.id} value={f.id} disabled={blocked.length > 0}>
-                            {f.name} → {f.recipient}
-                            {blocked.length > 0 ? ` — unusable: requires ${blocked.join(', ')}` : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                  ) : (
-                    // No forms yet (or the list failed to load): keep the field usable rather than
-                    // presenting an empty dropdown with no way forward.
+                <>
+                  <input
+                    aria-label={`Channel ${i + 1} order email`}
+                    className={glassInput}
+                    type="email"
+                    value={r.email}
+                    placeholder="orders@acme.com"
+                    onChange={(e) => set(r.id, { email: e.target.value })}
+                  />
+                  <input
+                    aria-label={`Channel ${i + 1} order subject`}
+                    className={glassInput}
+                    value={r.subject}
+                    placeholder="Subject (optional)"
+                    onChange={(e) => set(r.id, { subject: e.target.value })}
+                  />
+                  <label className="sm:col-span-2 flex items-center gap-2 text-sm">
                     <input
-                      aria-label={`Channel ${i + 1} form id`}
-                      className={glassInput}
-                      value={r.formId}
-                      placeholder="Form id (an existing Form)"
-                      onChange={(e) => set(r.id, { formId: e.target.value })}
+                      type="checkbox"
+                      className={toggleInput}
+                      aria-label={`Channel ${i + 1} require captcha`}
+                      checked={r.captcha}
+                      onChange={(e) => set(r.id, { captcha: e.target.checked })}
                     />
-                  )}
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    {formsLoaded && forms.length === 0
-                      ? 'No forms yet — create one under the Forms tab; its recipient is where orders are emailed.'
-                      : `Orders are POSTed to this form: stored in the inbox, emailed to its recipient, and guarded like any contact form. The cart collects ${CART_ORDER_FIELDS.join(', ')} and attaches the order, so a form that REQUIRES anything else cannot be used here.`}
+                    Require a captcha before an order is sent
+                  </label>
+                  <p className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    Orders are sent BY THE SERVER: stored in the Submissions inbox, emailed here, and guarded
+                    like a contact form. A read-only form is kept in the Forms tab so you can find them.
+                    {r.formId && !r.email.trim() ? ' This channel still points at an older hand-made form — enter an address to move it over.' : ''}
                   </p>
-                </div>
+                </>
               )}
             </div>
-            {(r.kind === 'whatsapp' || r.kind === 'mailto') && (
-              <OrderFieldsEditor fields={r.fields} onChange={(fields) => set(r.id, { fields })} channelIndex={i} />
+            {(r.kind === 'whatsapp' || r.kind === 'mailto' || r.kind === 'form') && (
+              <OrderFieldsEditor
+                fields={r.fields}
+                onChange={(fields) => set(r.id, { fields })}
+                channelIndex={i}
+                // A deep-link channel packs its answers into a URL, which must stay short; a posted
+                // order form has no such limit, so it may ask for more.
+                max={r.kind === 'form' ? SHOP_MAX_ORDER_FIELDS : SHOP_MAX_CHANNEL_FIELDS}
+              />
             )}
             </div>
           </motion.div>

@@ -1224,6 +1224,13 @@ function createInstance(): typeof Handlebars {
     // The merchant's brand/business name (the always-present Corporate Identity `name`, projected into the
     // render ctx as `company`) — cart.js uses it for the email greeting ("Hi <brand> — I'd like to order:").
     // Emitted only when present, so a no-args {{sw-cart}} with no identity stays byte-identical.
+    // The captcha provider + PUBLIC site key, stamped on the mount so cart.js can render the widget
+    // for a channel that asks for one. Present only when a channel does (see resolveShopChannels).
+    const shopCaptcha = (shop.captcha ?? null) as { provider?: unknown; siteKey?: unknown } | null;
+    if (shopCaptcha && str(shopCaptcha.provider) && str(shopCaptcha.siteKey)) {
+      attrs += ` data-captcha-provider="${escapeAttr(str(shopCaptcha.provider))}"`;
+      attrs += ` data-captcha-sitekey="${escapeAttr(str(shopCaptcha.siteKey))}"`;
+    }
     const company = (root.company ?? {}) as Record<string, unknown>;
     const brand = str(company.name);
     if (brand) attrs += ` data-brand="${escapeAttr(brand)}"`;
@@ -1274,7 +1281,14 @@ function createInstance(): typeof Handlebars {
         // from the encoded blob (window.__swf), so the endpoint stays out of this attribute — it used to
         // ship the full `/f/…` URL in `data-channels` for any scraper to read. `endpoint` is still what
         // the render projection resolves, and its presence is what proves the channel is dispatchable.
-        if (c.kind === 'form') return typeof c.endpoint === 'string' && typeof c.formId === 'string' ? { kind: 'form', label, formId: c.formId } : null;
+        // The form channel carries its resolved form ID + its own buyer FIELDS, never the endpoint URL:
+        // cart.js assembles the address from the encoded blob (window.__swf), so it stays out of this
+        // attribute. `captcha` is a flag; the provider + site key ride on the mount, not per channel.
+        if (c.kind === 'form') {
+          return typeof c.endpoint === 'string' && typeof c.formId === 'string'
+            ? { kind: 'form', label, formId: c.formId, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}) }
+            : null;
+        }
         return null;
       })
       .filter((c): c is Record<string, unknown> => c !== null);

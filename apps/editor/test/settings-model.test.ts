@@ -65,7 +65,7 @@ describe('settings model', () => {
             { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', intro: 'Hi' },
             { kind: 'mailto', key: 'email', email: 'orders@acme.test', subject: 'Order' },
             { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
-            { kind: 'form', key: 'order_form', formId: 'order' },
+            { kind: 'form', captcha: false, key: 'order_form', formId: 'order' },
           ],
         },
       },

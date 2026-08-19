@@ -286,14 +286,16 @@ function stubListGeometry(): void {
 }
 
 describe('FileBrowser at media-library scale', () => {
-  it('★ asks for the SMALL thumbnail rung, not the 2400px original', async () => {
+  it('★ asks for the SMALLEST thumbnail rung, not the 2400px original', async () => {
     // A bare media URL serves the `xl` (2400px) variant by default — the file manager was painting a
-    // 32px list icon from it. Measured on a photo-like source: sm 36KB vs xl 2,120KB.
+    // 32px list icon from it. Measured on a photo-like source: sm 36KB vs xl 2,120KB. The LIST now
+    // asks for `xs` (150px), which still covers the 4x hover zoom on a 32px box; the GRID tile keeps
+    // `sm` because it paints at 96px and the zoom takes it to ~384px.
     render(<FileBrowser projectId={project.id} mode="manage" />);
     const img = await screen.findByRole('img', { name: '' }).catch(() => null);
     const el = img ?? document.querySelector('img');
     expect(el, 'the list row renders a thumbnail').toBeTruthy();
-    expect((el as HTMLImageElement).getAttribute('src')).toBe(`${image.url}?size=sm`);
+    expect((el as HTMLImageElement).getAttribute('src')).toBe(`${image.url}?size=xs`);
   });
 
   it('★ renders only a WINDOW of a long list, not every row', async () => {

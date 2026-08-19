@@ -327,6 +327,7 @@ import {
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
+import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
 import { normalizeEntryValues } from '../repo/entry-values.js';
@@ -3693,6 +3694,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
+      // Saving SETTINGS provisions the mini-shop's order Forms — same pattern, same reason: the config
+      // implies an entity, and deriving it on save is what keeps the two from disagreeing.
+      if (kind === 'settings') {
+        await ensureShopOrderForms(contentRepo, ctx, item as Settings, await instanceSettingsRepo.getFormModes(), app.log);
+      }
       if (wantReceipt) return reply.send(writeReceipt(kind, req.params.entityId, prior, item));
       return reply.send({ item });
     },

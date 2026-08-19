@@ -6,6 +6,6 @@ describe('public API (index barrel)', () => {
     expect(typeof pkg.storeOriginal).toBe('function');
     expect(typeof pkg.generateThumbnail).toBe('function');
     expect(typeof pkg.thumbFileName).toBe('function');
-    expect(pkg.THUMB_SIZES).toEqual({ sm: 500, md: 1000, lg: 1600, xl: 2400 });
+    expect(pkg.THUMB_SIZES).toEqual({ xs: 150, sm: 500, md: 1000, lg: 1600, xl: 2400 });
   });
 });

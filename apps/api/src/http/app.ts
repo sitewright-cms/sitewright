@@ -8456,45 +8456,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * route resolves through this same function, so a client who calls the endpoint directly gets the
    * same 501 as a client who never sees the button — the setting is an access rule, not a hint.
    */
-  async function instanceAgent(userId: string): Promise<ResolvedAgent | null> {
+  async function platformFundedAgent(userId: string): Promise<ResolvedAgent | null> {
     const inst = await instanceSettingsRepo.getAiConfig();
-    if (!inst?.enabled || !inst.apiKey) return null;
-    if (inst.audience === 'staff' && !(await isStaff(userId))) return null;
-    return {
-      provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
-      source: 'instance',
-      projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
-      maxOutputTokens: inst.maxOutputTokens || undefined,
-      adminsUnlimited: inst.adminsUnlimited,
-      platformFunded: true,
-    };
-  }
 
-  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
-  // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
-  // env-configured fallback. Returns null when the assistant is not configured anywhere.
-  //
-  // `prefer` lets STAFF pick which one answers — an agency debugging a client's own key, or checking
-  // how the house agent behaves on that project. It is honoured only for staff: for anyone else the
-  // ordinary precedence stands, so a client cannot opt themselves onto the operator's budget.
-  async function resolveAiProvider(ctx: ProjectContext, prefer?: AgentSource): Promise<ResolvedAgent | null> {
-    const mayChoose = prefer !== undefined && (await isStaff(ctx.userId));
-    if (mayChoose && prefer === 'instance') {
-      // Explicitly the house agent: skip the project's key, but still fall through to env.
-      return (await instanceAgent(ctx.userId)) ?? (agentProvider ? envAgent() : null);
+    // ★ THE AUDIENCE GATE IS EVALUATED ONCE, BEFORE EITHER SOURCE — deliberately, and this is the
+    // whole reason the two are resolved in one function rather than chained.
+    //
+    // It used to sit inside the instance branch alone, with the env fallback tried after it. That
+    // reads as "prefer the configured one", but it means a REFUSAL falls through to the next source:
+    // an operator running with `SW_AI_API_KEY` set who then restricted the platform assistant to
+    // staff still served every client an assistant, on the operator's key, with caps waived — the
+    // exact spend the setting exists to prevent, and silently, because the UI reflected the setting.
+    //
+    // Both of these spend the OPERATOR's money, so "who may use the platform-funded assistant" is one
+    // question with one answer. A project's own BYO key is never gated here: it is billed to that
+    // project, and an agency that wants its clients to have an assistant configures one.
+    if (inst?.audience === 'staff' && !(await isStaff(userId))) return null;
+
+    if (inst?.enabled && inst.apiKey) {
+      return {
+        provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
+        source: 'instance',
+        projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
+        maxOutputTokens: inst.maxOutputTokens || undefined,
+        adminsUnlimited: inst.adminsUnlimited,
+        platformFunded: true,
+      };
     }
-    const own = await projectAgent(ctx);
-    if (own) return own;
-    // Asked for the project's agent and it has none — say so rather than quietly billing the
-    // operator, which is the opposite of what "use the project agent" meant.
-    if (mayChoose && prefer === 'project') return null;
-    return (await instanceAgent(ctx.userId)) ?? (agentProvider ? envAgent() : null);
-  }
-
-  /** The deploy-time env fallback (no per-user gate — it is the operator's own deployment choice). */
-  function envAgent(): ResolvedAgent {
+    // The deploy-time env fallback. Subject to the gate above for the same reason.
+    if (!agentProvider) return null;
     return {
-      provider: agentProvider!,
+      provider: agentProvider,
       source: 'env',
       projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined,
       adminsUnlimited: true,
@@ -8502,10 +8494,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
   }
 
+  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
+  // (dedicated ai_config kind), then whatever platform-funded agent this user is allowed (the
+  // admin-set instance config, else the env fallback). Null when nothing is available to them.
+  //
+  // `prefer` lets STAFF pick which one answers — an agency debugging a client's own key, or checking
+  // how the house agent behaves on that project. It is honoured only for staff: for anyone else the
+  // ordinary precedence stands, so a client cannot opt themselves onto the operator's budget.
+  async function resolveAiProvider(ctx: ProjectContext, prefer?: AgentSource): Promise<ResolvedAgent | null> {
+    const mayChoose = prefer !== undefined && (await isStaff(ctx.userId));
+    // Explicitly the house agent: skip the project's own key.
+    if (mayChoose && prefer === 'instance') return platformFundedAgent(ctx.userId);
+    const own = await projectAgent(ctx);
+    if (own) return own;
+    // Asked for the project's agent and it has none — say so rather than quietly billing the
+    // operator, which is the opposite of what "use the project agent" meant.
+    if (mayChoose && prefer === 'project') return null;
+    return platformFundedAgent(ctx.userId);
+  }
+
   /** Which configurations exist for this project + whether this caller may switch between them. */
   async function agentSourcesFor(ctx: ProjectContext): Promise<{ project: boolean; instance: boolean; canChoose: boolean }> {
-    const [own, house, staff] = await Promise.all([projectAgent(ctx), instanceAgent(ctx.userId), isStaff(ctx.userId)]);
-    const instance = house !== null || agentProvider !== undefined;
+    // `house` is what THIS user can actually reach, so a client refused by the audience gate is told
+    // there is no platform agent rather than being offered a switch to one that will not answer.
+    const [own, house, staff] = await Promise.all([projectAgent(ctx), platformFundedAgent(ctx.userId), isStaff(ctx.userId)]);
+    const instance = house !== null;
     // Only worth offering a switch when there are genuinely two to switch between.
     return { project: own !== null, instance, canChoose: staff && own !== null && instance };
   }

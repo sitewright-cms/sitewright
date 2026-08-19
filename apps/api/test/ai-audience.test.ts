@@ -85,8 +85,9 @@ const status = async (projectId: string, c: string) =>
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-audience-'));
   db = await makeTestDb();
-  // No env agentProvider: the ONLY platform-funded agent here is the instance config, so the
-  // audience gate is what decides, with no env fallback quietly answering in its place.
+  // No env agentProvider in THIS app: the instance config is the only platform-funded agent, which
+  // isolates the gate itself. The suite below also builds a second app WITH one, because that
+  // combination is where the gate first leaked — see "an env fallback".
   app = await createApp({ db, publishRoot, encryptionKey: randomBytes(32) });
   await app.ready();
 });
@@ -144,6 +145,81 @@ describe('platform assistant audience', () => {
     });
     expect(res.statusCode).toBe(200);
     expect((await status(projectId, client)).enabled).toBe(true);
+  });
+});
+
+describe('★ an env fallback does not become a way around the audience gate', () => {
+  // REGRESSION. The gate was written inside the instance branch, with the env fallback tried after
+  // it — so a refusal fell THROUGH to the env agent. An operator running with SW_AI_API_KEY who then
+  // restricted the assistant to staff still served every client, on the operator's key, with caps
+  // waived. The setting was reflected in the UI, so nothing looked wrong.
+  //
+  // These tests rebuild the app WITH an env agentProvider, which is the configuration the rest of
+  // this file deliberately excludes.
+  class StubProvider {
+    readonly model = 'env-model';
+    // eslint-disable-next-line require-yield
+    async *runTurn(): AsyncIterable<never> {
+      throw new Error('not used — these tests only resolve, they never run a turn');
+    }
+  }
+
+  let envApp: FastifyInstance;
+  beforeEach(async () => {
+    await app.close();
+    app = await createApp({
+      db,
+      publishRoot,
+      encryptionKey: randomBytes(32),
+      agentProvider: new StubProvider() as never,
+    });
+    await app.ready();
+    envApp = app;
+  });
+
+  it('with audience "all" the env agent still answers a client (unchanged behaviour)', async () => {
+    const { c, projectId } = await adminWithProject();
+    const client = await clientOn(projectId);
+    await setInstanceAi(c, 'all');
+    expect((await status(projectId, client)).enabled).toBe(true);
+    expect(envApp).toBeDefined();
+  });
+
+  it('★ with audience "staff" a client gets NOTHING — not the instance agent, not the env one', async () => {
+    const { c, projectId } = await adminWithProject();
+    const client = await clientOn(projectId);
+    await setInstanceAi(c, 'staff');
+
+    const asClient = await status(projectId, client);
+    expect(asClient.enabled).toBe(false);
+    expect(asClient.source).toBeNull();
+    // …and it must not be offered as a switchable source either.
+    expect(asClient.sources.instance).toBe(false);
+
+    // The chat endpoint agrees — the gate is not a UI hint.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/agent/messages`,
+      cookies: { sw_session: client },
+      payload: { message: 'hello' },
+    });
+    expect(res.statusCode).toBe(501);
+  });
+
+  it('staff still reach the env agent under audience "staff"', async () => {
+    const { c, projectId } = await adminWithProject();
+    await setInstanceAi(c, 'staff');
+    // The instance config here HAS a key, so staff get that one; the point is they are not refused.
+    expect((await status(projectId, c)).enabled).toBe(true);
+  });
+
+  it('with NO instance config at all, the env agent serves everyone (no setting, no opinion)', async () => {
+    const { projectId, c } = await adminWithProject();
+    const client = await clientOn(projectId);
+    expect(c).toBeTruthy();
+    const asClient = await status(projectId, client);
+    expect(asClient.enabled).toBe(true);
+    expect(asClient.source).toBe('env');
   });
 });
 

@@ -1520,7 +1520,15 @@ export const api = {
   // --- on-page AI assistant (chat + consent grant + availability) ---
   /** Whether the assistant is available for this project (configured + the user can write). */
   agentStatus: (projectId: string) =>
-    request<{ enabled: boolean }>('GET', `/projects/${projectId}/agent/status`),
+    request<{
+      enabled: boolean;
+      /** Which configuration currently answers: the project's own key, the platform's, or the env
+       *  fallback. Null when none is configured. */
+      source: 'project' | 'instance' | 'env' | null;
+      /** What exists, and whether THIS user may switch between them (staff only, and only when a
+       *  project key and a platform key both exist). */
+      sources: { project: boolean; instance: boolean; canChoose: boolean };
+    }>('GET', `/projects/${projectId}/agent/status`),
   /** The user's consent grant (capabilities + autonomy); `configured:false` → show the consent panel. */
   getAgentGrant: (projectId: string) =>
     request<AgentGrantView>('GET', `/projects/${projectId}/agent/grant`),
@@ -1534,6 +1542,8 @@ export const api = {
       message: string;
       attachments?: AgentAttachment[];
       context?: { pageId?: string; path?: string; selection?: string };
+      /** Answer with a specific configuration. Honoured only for staff (the server re-checks). */
+      agentSource?: 'project' | 'instance';
     },
     handlers: AgentChatHandlers,
     signal?: AbortSignal,

@@ -22,6 +22,7 @@ import {
   MCP_TOOL_CATALOG,
   type PlatformLogo,
   type AiProviderKind,
+  type AiAudience,
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
 import { modelPlaceholder } from './AiConfig';
@@ -146,6 +147,7 @@ export function InstanceSettings() {
   const [aiProjectLimit, setAiProjectLimit] = useState('');
   const [aiMaxTokens, setAiMaxTokens] = useState('');
   const [aiAdminsUnlimited, setAiAdminsUnlimited] = useState(true);
+  const [aiAudience, setAiAudience] = useState<AiAudience>('all');
   const [aiTest, setAiTest] = useState<AiTestResult | null>(null);
   const [aiTesting, setAiTesting] = useState(false);
   const [smtpTest, setSmtpTest] = useState<{ ok: boolean; error?: string; to?: string } | null>(null);
@@ -350,6 +352,7 @@ export function InstanceSettings() {
     setAiProjectLimit(s.ai?.defaultProjectMonthlyTokens != null ? String(s.ai.defaultProjectMonthlyTokens) : '');
     setAiMaxTokens(s.ai?.maxOutputTokens != null ? String(s.ai.maxOutputTokens) : '');
     setAiAdminsUnlimited(s.ai?.adminsUnlimited ?? true);
+    setAiAudience(s.ai?.audience ?? 'all');
     setOidcProviders(
       (s.oidcProviders ?? []).map((p) => ({
         _key: nextOidcProviderKey(),
@@ -464,6 +467,7 @@ export function InstanceSettings() {
           enabled: true,
           provider: aiProvider,
           adminsUnlimited: aiAdminsUnlimited,
+          audience: aiAudience,
           ...(aiModel.trim() ? { model: aiModel.trim() } : {}),
           ...(aiProvider === 'openai' && aiBaseUrl.trim() ? { baseUrl: aiBaseUrl.trim() } : {}),
           ...(aiKey ? { apiKey: aiKey } : {}), // blank = keep current
@@ -1001,6 +1005,21 @@ export function InstanceSettings() {
             <label className="col-span-2 flex items-center gap-2 text-sm">
               <input type="checkbox" className={toggleInput} aria-label="Admins bypass token caps" checked={aiAdminsUnlimited} onChange={(e) => setAiAdminsUnlimited(e.target.checked)} />
               Platform admins bypass token caps
+            </label>
+            <label className="col-span-2 flex flex-col text-xs text-slate-500 dark:text-slate-400">
+              <span className="flex items-center gap-1.5">
+                Offer this assistant to
+                <SectionHelp tip="This key is yours, and so is the bill. Restrict it to staff when clients have logins on your projects — a project that should give its clients an assistant can configure its own key instead, which is billed to that project and is never affected by this setting." />
+              </span>
+              <select
+                className={field}
+                aria-label="Offer this assistant to"
+                value={aiAudience}
+                onChange={(e) => setAiAudience(e.target.value as AiAudience)}
+              >
+                <option value="all">Everyone with access to a project</option>
+                <option value="staff">Admins and developers only</option>
+              </select>
             </label>
             <div className="col-span-2 flex flex-wrap items-center gap-3">
               <button type="button" className={ghostButton} onClick={() => void testAi()} disabled={aiTesting}>

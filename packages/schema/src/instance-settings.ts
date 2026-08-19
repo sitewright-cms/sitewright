@@ -281,6 +281,21 @@ export const StockKeysStoredSchema = z.object({
 });
 export type StockKeysStored = z.infer<typeof StockKeysStoredSchema>;
 
+/**
+ * WHO the platform-wide assistant is offered to.
+ *
+ * `all` — every project member, including invited clients. `staff` — only users who hold a PLATFORM
+ * role (admin or developer), i.e. the agency's own people; a client on the same project sees no
+ * assistant at all.
+ *
+ * The distinction that makes this necessary is funding, not trust: the instance config spends the
+ * OPERATOR's API key, and an agency handing a client a login does not necessarily want to hand them
+ * its token budget. A project that wants its clients to have an assistant configures its OWN key,
+ * which is billed to that project and is never gated by this setting.
+ */
+export const AiAudienceSchema = z.enum(['all', 'staff']);
+export type AiAudience = z.infer<typeof AiAudienceSchema>;
+
 /** Platform-wide AI assistant config as stored: the API key is an encrypted envelope (or absent). */
 export const AiStoredSchema = z.object({
   enabled: z.boolean(),
@@ -296,6 +311,9 @@ export const AiStoredSchema = z.object({
   maxOutputTokens: MaxOutputTokensSchema.optional(),
   /** Platform admins bypass all token caps (default true). */
   adminsUnlimited: z.boolean().default(true),
+  /** Who this platform-funded assistant is offered to. Defaults to `all` — the behaviour before the
+   *  setting existed, so an upgrade changes nothing until an operator narrows it. */
+  audience: AiAudienceSchema.default('all'),
 });
 export type AiStored = z.infer<typeof AiStoredSchema>;
 
@@ -465,6 +483,7 @@ export const AiInputSchema = z
     defaultProjectMonthlyTokens: z.number().int().min(0).optional(),
     maxOutputTokens: MaxOutputTokensSchema.optional(),
     adminsUnlimited: z.boolean().default(true),
+    audience: AiAudienceSchema.default('all'),
   })
   .superRefine(rejectOpenrouterBaseUrl);
 export type AiInput = z.infer<typeof AiInputSchema>;
@@ -581,6 +600,7 @@ export interface AiPublic {
   defaultProjectMonthlyTokens?: number;
   maxOutputTokens?: number;
   adminsUnlimited: boolean;
+  audience: AiAudience;
 }
 
 /**

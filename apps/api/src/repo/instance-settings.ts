@@ -27,6 +27,7 @@ import {
   type StockKeysStored,
   type AiStored,
   type AiProviderKind,
+  type AiAudience,
   type OidcProviderStored,
   type PlatformLogo,
 } from '@sitewright/schema';
@@ -299,6 +300,7 @@ export class InstanceSettingsRepository {
         enabled: input.ai.enabled,
         provider: input.ai.provider,
         adminsUnlimited: input.ai.adminsUnlimited,
+        audience: input.ai.audience,
         ...(input.ai.model !== undefined ? { model: input.ai.model } : {}),
         ...(input.ai.baseUrl !== undefined ? { baseUrl: input.ai.baseUrl } : {}),
         ...(apiKey !== undefined ? { apiKey } : {}),
@@ -507,11 +509,15 @@ export class InstanceSettingsRepository {
     defaultProjectMonthlyTokens?: number;
     maxOutputTokens?: number;
     adminsUnlimited: boolean;
+    audience: AiAudience;
   } | null> {
     const stored = await this.getStored();
     if (!stored.ai) return null;
     const { apiKey, ...rest } = stored.ai;
-    return { ...rest, apiKey: apiKey ? this.decrypt(apiKey) : null };
+    // A row written before the setting existed has no `audience` — read it as `all`, which is the
+    // behaviour it had. Defaulting to `staff` here would silently switch the assistant off for every
+    // client on every existing instance the moment this ships.
+    return { ...rest, audience: rest.audience ?? 'all', apiKey: apiKey ? this.decrypt(apiKey) : null };
   }
 
   /** Enabled OIDC providers for the unauthenticated login screen (id + label only, no secrets). */

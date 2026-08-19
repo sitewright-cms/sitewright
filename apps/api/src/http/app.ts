@@ -213,7 +213,7 @@ import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
-import { registerAiAgentRoutes, type ResolvedAgent } from './ai-agent-routes.js';
+import { registerAiAgentRoutes, type ResolvedAgent, type AgentSource } from './ai-agent-routes.js';
 import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
 import { buildAgentProvider } from '../ai/build-provider.js';
 import { isActiveAgentToken } from '../ai/agent-token.js';
@@ -8328,40 +8328,97 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
   // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
   // env-configured fallback. Returns null when the assistant is not configured anywhere.
-  async function resolveAiProvider(ctx: ProjectContext): Promise<ResolvedAgent | null> {
-    if (opts.encryptionKey) {
-      const [row] = await contentRepo.list(ctx, 'ai_config');
-      const parsed = row ? AiConfigSchema.safeParse(row) : null;
-      if (parsed?.success && parsed.data.enabled && parsed.data.secret) {
-        const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
-        return {
-          provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
-          projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
-          maxOutputTokens: parsed.data.maxOutputTokens || undefined,
-          adminsUnlimited: false, // a project's own budget applies to everyone on it
-          platformFunded: false,
-        };
-      }
-    }
+  /**
+   * Is this user AGENCY STAFF — someone holding a platform role (admin or developer) — as opposed to
+   * a client invited onto a single project? The platform-funded assistant can be restricted to staff,
+   * and only staff may choose which configuration answers them.
+   */
+  async function isStaff(userId: string): Promise<boolean> {
+    return (await getPlatformRole(db, userId)) !== null;
+  }
+
+  /** The project's OWN configured assistant (BYO key), or null. */
+  async function projectAgent(ctx: ProjectContext): Promise<ResolvedAgent | null> {
+    if (!opts.encryptionKey) return null;
+    const [row] = await contentRepo.list(ctx, 'ai_config');
+    const parsed = row ? AiConfigSchema.safeParse(row) : null;
+    if (!parsed?.success || !parsed.data.enabled || !parsed.data.secret) return null;
+    const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
+    return {
+      provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
+      source: 'project',
+      projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
+      maxOutputTokens: parsed.data.maxOutputTokens || undefined,
+      adminsUnlimited: false, // a project's own budget applies to everyone on it
+      platformFunded: false,
+    };
+  }
+
+  /**
+   * The platform-wide assistant, if configured AND offered to this user.
+   *
+   * ★ The audience gate lives HERE, on the resolver, not on the UI that hides the button. The chat
+   * route resolves through this same function, so a client who calls the endpoint directly gets the
+   * same 501 as a client who never sees the button — the setting is an access rule, not a hint.
+   */
+  async function instanceAgent(userId: string): Promise<ResolvedAgent | null> {
     const inst = await instanceSettingsRepo.getAiConfig();
-    if (inst?.enabled && inst.apiKey) {
-      return {
-        provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
-        projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
-        maxOutputTokens: inst.maxOutputTokens || undefined,
-        adminsUnlimited: inst.adminsUnlimited,
-        platformFunded: true,
-      };
+    if (!inst?.enabled || !inst.apiKey) return null;
+    if (inst.audience === 'staff' && !(await isStaff(userId))) return null;
+    return {
+      provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
+      source: 'instance',
+      projectMonthlyTokens: inst.defaultProjectMonthlyTokens || undefined,
+      maxOutputTokens: inst.maxOutputTokens || undefined,
+      adminsUnlimited: inst.adminsUnlimited,
+      platformFunded: true,
+    };
+  }
+
+  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
+  // (dedicated ai_config kind), then the platform-wide instance config (admin-set), then the
+  // env-configured fallback. Returns null when the assistant is not configured anywhere.
+  //
+  // `prefer` lets STAFF pick which one answers — an agency debugging a client's own key, or checking
+  // how the house agent behaves on that project. It is honoured only for staff: for anyone else the
+  // ordinary precedence stands, so a client cannot opt themselves onto the operator's budget.
+  async function resolveAiProvider(ctx: ProjectContext, prefer?: AgentSource): Promise<ResolvedAgent | null> {
+    const mayChoose = prefer !== undefined && (await isStaff(ctx.userId));
+    if (mayChoose && prefer === 'instance') {
+      // Explicitly the house agent: skip the project's key, but still fall through to env.
+      return (await instanceAgent(ctx.userId)) ?? (agentProvider ? envAgent() : null);
     }
-    if (agentProvider) {
-      return { provider: agentProvider, projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined, adminsUnlimited: true, platformFunded: true };
-    }
-    return null;
+    const own = await projectAgent(ctx);
+    if (own) return own;
+    // Asked for the project's agent and it has none — say so rather than quietly billing the
+    // operator, which is the opposite of what "use the project agent" meant.
+    if (mayChoose && prefer === 'project') return null;
+    return (await instanceAgent(ctx.userId)) ?? (agentProvider ? envAgent() : null);
+  }
+
+  /** The deploy-time env fallback (no per-user gate — it is the operator's own deployment choice). */
+  function envAgent(): ResolvedAgent {
+    return {
+      provider: agentProvider!,
+      source: 'env',
+      projectMonthlyTokens: aiQuota.projectMonthlyTokens || undefined,
+      adminsUnlimited: true,
+      platformFunded: true,
+    };
+  }
+
+  /** Which configurations exist for this project + whether this caller may switch between them. */
+  async function agentSourcesFor(ctx: ProjectContext): Promise<{ project: boolean; instance: boolean; canChoose: boolean }> {
+    const [own, house, staff] = await Promise.all([projectAgent(ctx), instanceAgent(ctx.userId), isStaff(ctx.userId)]);
+    const instance = house !== null || agentProvider !== undefined;
+    // Only worth offering a switch when there are genuinely two to switch between.
+    return { project: own !== null, instance, canChoose: staff && own !== null && instance };
   }
 
   registerAiAgentRoutes(app, {
     db,
     resolveAgent: resolveAiProvider,
+    agentSources: agentSourcesFor,
     agentGrants: agentGrantsRepo,
     aiUsageRepo,
     aiQuota,

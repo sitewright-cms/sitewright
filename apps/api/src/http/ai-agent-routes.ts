@@ -77,6 +77,9 @@ const MessageBody = z.object({
       selection: z.string().max(2000).optional(),
     })
     .optional(),
+  /** Which configuration to answer with. A REQUEST, not a grant: honoured only for a caller the
+   *  resolver considers allowed to choose, ignored otherwise. */
+  agentSource: z.enum(['project', 'instance']).optional(),
 });
 
 const GrantBody = z.object({
@@ -84,9 +87,17 @@ const GrantBody = z.object({
   autonomy: z.enum(['full', 'ask']).default('full'),
 });
 
-/** The effective assistant for one project: the provider + the caps that govern its usage. */
+/**
+ * Which configuration the effective assistant came from — the project's own key, the platform-wide
+ * instance config, or the deploy-time env fallback. Reported to the client so the chat can say whose
+ * agent (and whose budget) is answering, and so staff can switch between them.
+ */
+export type AgentSource = 'project' | 'instance' | 'env';
+
 export interface ResolvedAgent {
   provider: AgentProvider;
+  /** Where this config came from. */
+  source: AgentSource;
   /** Effective per-project monthly token cap (undefined/0 = unlimited). */
   projectMonthlyTokens?: number;
   /** Per-turn output-token ceiling for this project's model (undefined → DEFAULT_AGENT_MAX_OUTPUT_TOKENS). */
@@ -101,8 +112,14 @@ export interface ResolvedAgent {
 export interface AiAgentRoutesDeps {
   db: Database;
   /** Resolves the effective assistant for a project (per-project BYO → instance → env), or null when
-   *  the assistant is not configured for this project. */
-  resolveAgent: (ctx: ProjectContext) => Promise<ResolvedAgent | null>;
+   *  the assistant is not configured for this project.
+   *
+   *  `prefer` overrides that order for a caller allowed to choose (staff): `instance` skips the
+   *  project's own key, `project` refuses to fall back past it. Ignored for everyone else, so a
+   *  client cannot spend the operator's budget by asking for it. */
+  resolveAgent: (ctx: ProjectContext, prefer?: AgentSource) => Promise<ResolvedAgent | null>;
+  /** Which agent sources are configured + selectable for this caller — powers the chat switcher. */
+  agentSources: (ctx: ProjectContext) => Promise<{ project: boolean; instance: boolean; canChoose: boolean }>;
   agentGrants: AgentGrantsRepository;
   aiUsageRepo: AiUsageRepository;
   /** Platform + per-user monthly caps (from env). The per-project cap comes from the resolved agent. */
@@ -192,11 +209,17 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     return reply.send({ configured: true, ...saved });
   });
 
-  // Whether the assistant is available on this project — gates the preview "AI" button.
+  // Whether the assistant is available on this project — gates the preview "AI" button — and, for a
+  // caller who may choose, which configurations are available to switch between.
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/agent/status', { config: deps.rl(60) }, async (req, reply) => {
     const { ctx } = await deps.resolveProject(req, 'session-only');
     const resolved = deps.isWriter(ctx) ? await deps.resolveAgent(ctx) : null;
-    return reply.send({ enabled: resolved !== null });
+    const sources = deps.isWriter(ctx) ? await deps.agentSources(ctx) : { project: false, instance: false, canChoose: false };
+    return reply.send({
+      enabled: resolved !== null,
+      source: resolved?.source ?? null,
+      sources,
+    });
   });
 
   // A higher bodyLimit than the app default: attachments (base64 images/PDFs) make this request large.
@@ -205,9 +228,10 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     // --- Preflight (JSON errors) BEFORE hijacking the socket ---
     const { ctx } = await deps.resolveProject(req, 'session-only');
     if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const resolved = await deps.resolveAgent(ctx);
-    if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
+    // Parsed BEFORE resolving: the body carries which configuration to answer with.
     const body = MessageBody.parse(req.body);
+    const resolved = await deps.resolveAgent(ctx, body.agentSource);
+    if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });
     // A turn needs SOMETHING — text or at least one attachment.
     if (body.message.trim() === '' && !body.attachments?.length) {
       return reply.code(400).send({ error: 'a message or an attachment is required' });

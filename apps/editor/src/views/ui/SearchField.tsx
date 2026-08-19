@@ -17,6 +17,7 @@ export function SearchField({
   activeDescendant,
   onEnter,
   noFocusRing,
+  dense,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -29,6 +30,15 @@ export function SearchField({
    *  reads as a second, competing control rather than as focus. Focus stays visible via the
    *  browser's own caret + the field's border. */
   noFocusRing?: boolean;
+  /**
+   * Tighter gutters, for a NARROW field whose placeholder carries real information.
+   *
+   * ★ Measured, not guessed: at the default `pl-9 pr-3` a 160px field clips "Search 32 pages" to
+   * "Search 32 page". The box model says it fits (105px of text in 110px of space) — an `<input>`
+   * reserves more than its content box admits, so the arithmetic said yes and the rendered pixels
+   * said no. Trust the screenshot.
+   */
+  dense?: boolean;
   /** Enter pressed in the field — for lists where the top result is the obvious target. */
   onEnter?: () => void;
   /** Combobox use: the id of the listbox this field filters (`aria-controls`). */
@@ -39,7 +49,7 @@ export function SearchField({
 }) {
   return (
     <div className={className ? `relative ${className}` : 'relative'}>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
+      <Search aria-hidden className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500 dark:text-slate-400 ${dense ? 'left-2' : 'left-3'}`} />
       <input
         type="search"
         aria-label={ariaLabel ?? placeholder}
@@ -59,7 +69,7 @@ export function SearchField({
           })
         }
         placeholder={placeholder}
-        className={`${noFocusRing ? '' : 'sw-brand-focus '}w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:bg-white disabled:opacity-60 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900`}
+        className={`${noFocusRing ? '' : 'sw-brand-focus '}${dense ? 'pl-7 pr-2 ' : 'pl-9 pr-3 '}w-full rounded-lg border border-slate-300 bg-white py-2.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:bg-white disabled:opacity-60 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900`}
       />
     </div>
   );

@@ -933,10 +933,15 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                 <SearchField
                   value={search}
                   onChange={setSearch}
-                  placeholder={`Search ${orderedPages.length} pages`}
+                  // "N pages", not "Search N pages": at the requested 160px the longer form is
+                  // CLIPPED from three digits up ("Search 905 page|s"), and real projects reach
+                  // hundreds. The magnifier already says search, so the count is what the width is
+                  // spent on. Verified by screenshot at 32 / 340 / 905 / 1240.
+                  placeholder={`${orderedPages.length} pages`}
                   ariaLabel="Search pages by title, slug or id"
-                  className="w-40"
+                  className="w-40 shrink-0"
                   noFocusRing
+                  dense
                 />
               )}
               <button

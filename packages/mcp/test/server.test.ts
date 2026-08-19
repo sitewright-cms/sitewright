@@ -1710,3 +1710,53 @@ describe('preview_page — a refused screenshot must SAY SO, not hide behind the
     expect(text).toContain('<p>filler</p>');
   });
 });
+
+describe('transform_image', () => {
+  const okClient = () => fakeClient({ transformMedia: vi.fn(async (_id: string, body: unknown) => ({ id: 'a1', body })) });
+
+  it('needs at least one operation — a call with neither rotate nor crop is refused', async () => {
+    // The schema cannot express "one of these two", so the tool says it plainly rather than sending an
+    // empty edit the server would 400.
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    const res = (await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1' } })) as { isError?: boolean; content: Array<{ text?: string }> };
+    expect(res.isError).toBe(true);
+    expect(res.content.map((c) => c.text).join('')).toMatch(/at least one of/);
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).not.toHaveBeenCalled();
+  });
+
+  it('passes only the operations actually given (in place by default)', async () => {
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1', rotate: 90 } });
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).toHaveBeenCalledWith('a1', { rotate: 90 });
+  });
+
+  it('carries a crop, an explicit format and saveAs when supplied', async () => {
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, writeScope);
+    await mcp.callTool({
+      name: 'transform_image',
+      arguments: { id: 'a1', crop: { left: 1, top: 2, width: 3, height: 4 }, format: 'webp', saveAs: { filename: 'cut.webp' } },
+    });
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).toHaveBeenCalledWith('a1', {
+      crop: { left: 1, top: 2, width: 3, height: 4 },
+      format: 'webp',
+      saveAs: { filename: 'cut.webp' },
+    });
+  });
+
+  it('is gated on content:write — a read-only connection cannot edit pixels', async () => {
+    // The gate refuses at CALL time (the tool stays listed, as every other write tool does), so the
+    // assertion is on the refusal and on the client never being reached.
+    const client = okClient();
+    const mcp = await connect(client as unknown as SitewrightClient, readScope);
+    const res = (await mcp.callTool({ name: 'transform_image', arguments: { id: 'a1', rotate: 90 } })) as {
+      isError?: boolean;
+      content: Array<{ text?: string }>;
+    };
+    expect(res.isError).toBe(true);
+    expect(res.content.map((c) => c.text).join('')).toMatch(/content:write/);
+    expect(callsOf(client as unknown as SitewrightClient).transformMedia).not.toHaveBeenCalled();
+  });
+});

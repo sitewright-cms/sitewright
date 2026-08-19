@@ -517,6 +517,28 @@ describe('api client', () => {
     expect(url).toBe('/projects/p/media/a1/copy');
     expect(JSON.parse(init.body)).toEqual({ folder: 'Copies' });
 
+    // Image EDIT — rotate/crop, in place by default. The id is path-encoded and the body carries only
+    // the operations asked for, so an in-place edit never accidentally requests a format change.
+    await api.transformMedia('p', 'a 1', { rotate: 90 });
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/a%201/transform');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ rotate: 90 });
+
+    // …and SAVE AS, which may also re-encode, because a new asset has no URL to keep stable.
+    await api.transformMedia('p', 'a1', {
+      crop: { left: 1, top: 2, width: 3, height: 4 },
+      format: 'webp',
+      saveAs: { filename: 'cut.webp', folder: 'Crops' },
+    });
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/a1/transform');
+    expect(JSON.parse(init.body)).toEqual({
+      crop: { left: 1, top: 2, width: 3, height: 4 },
+      format: 'webp',
+      saveAs: { filename: 'cut.webp', folder: 'Crops' },
+    });
+
     await api.listMediaFolders('p');
     expect(fetchMock.mock.calls.at(-1)![0]).toBe('/projects/p/media/folders');
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, type Form, type ShopFieldType } from '@sitewright/schema';
+import { SHOP_MAX_CHANNEL_FIELDS, SHOP_CHOICE_FIELD_TYPES, CART_ORDER_FIELDS, cartIncompatibleFields, type Form, type ShopFieldType } from '@sitewright/schema';
 import { api } from '../../api';
 import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
@@ -260,11 +260,21 @@ export function ShopChannelsEditor({
                       onChange={(e) => set(r.id, { formId: e.target.value })}
                     >
                       <option value="">Choose a form…</option>
-                      {forms.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.name} → {f.recipient}
-                        </option>
-                      ))}
+                      {forms.map((f) => {
+                        // ★ A form is only usable here if the CART can fill its required fields. The
+                        // cart sends a fixed set (name/email/phone/note + the order); submission
+                        // validation iterates the FORM's fields, so a required field outside that set
+                        // 400s EVERY order and the buyer just sees "something went wrong". The form is
+                        // fine and the shop is fine — it is the PAIRING that is broken, which is
+                        // exactly the kind of thing a picker should refuse rather than allow.
+                        const blocked = cartIncompatibleFields(f);
+                        return (
+                          <option key={f.id} value={f.id} disabled={blocked.length > 0}>
+                            {f.name} → {f.recipient}
+                            {blocked.length > 0 ? ` — unusable: requires ${blocked.join(', ')}` : ''}
+                          </option>
+                        );
+                      })}
                     </select>
                   ) : (
                     // No forms yet (or the list failed to load): keep the field usable rather than
@@ -280,7 +290,7 @@ export function ShopChannelsEditor({
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     {formsLoaded && forms.length === 0
                       ? 'No forms yet — create one under the Forms tab; its recipient is where orders are emailed.'
-                      : 'Orders are POSTed to this form: stored in the inbox, emailed to its recipient, and guarded like any contact form.'}
+                      : `Orders are POSTed to this form: stored in the inbox, emailed to its recipient, and guarded like any contact form. The cart collects ${CART_ORDER_FIELDS.join(', ')} and attaches the order, so a form that REQUIRES anything else cannot be used here.`}
                   </p>
                 </div>
               )}

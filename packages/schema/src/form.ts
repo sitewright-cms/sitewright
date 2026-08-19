@@ -306,6 +306,31 @@ const NON_DECIMAL_PREFIX = /^0[xob]/i;
  * "A, B" string — so this checks presence, scalar format (email / http(s) url / numeric literal), and
  * SINGLE-select option membership (select/radio), NOT per-option membership of a checkbox group.
  */
+/**
+ * The buyer fields the mini-shop cart actually SENDS when it submits an order through a Form.
+ *
+ * These are hard-coded in the cart runtime (`buildOrderForm` in packages/blocks/src/cart.ts) — the
+ * cart does NOT render the referenced Form's own fields. `name` and `email` are required there;
+ * `phone` and `note` are optional. The order itself rides as `cart_text` + `cart_json`, which no
+ * Form declares and which are stored and emailed regardless (the endpoint keeps the whole submitted
+ * map, not just the declared keys).
+ */
+export const CART_ORDER_FIELDS = ['name', 'email', 'phone', 'note'] as const;
+
+/**
+ * The REQUIRED fields of `form` that a shop order could never fill — i.e. the reason wiring this
+ * Form to the cart's `form` channel would reject every order.
+ *
+ * ★ Why this exists. Submission validation iterates the FORM's fields, so a required field the cart
+ * never sends is empty, invalid, and 400s — and the buyer just sees "Sorry, something went wrong".
+ * Nothing about picking the form warns you, because the form itself is perfectly valid; it is the
+ * PAIRING that is broken. Empty array = compatible.
+ */
+export function cartIncompatibleFields(form: Pick<Form, 'fields'>): string[] {
+  const sendable = new Set<string>(CART_ORDER_FIELDS);
+  return form.fields.filter((f) => f.required && !sendable.has(f.name)).map((f) => f.name);
+}
+
 export function validateFormSubmission(fields: FormField[], values: Record<string, string>): string[] {
   const invalid: string[] = [];
   for (const field of fields) {

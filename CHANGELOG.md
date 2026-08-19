@@ -9,6 +9,65 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Rotate a photograph in place.** EXIF orientation only helps when the tag is there, and a real
+  library holds photographs whose pixels are sideways and whose tag was stripped by whatever produced
+  them — a CMS, an export, a phone messaging app. Nothing in the metadata says so, so nothing could
+  correct them automatically and there was no way to correct them by hand either. Measured on one real
+  site: 455 images carried a tag and were fixed automatically; about a third of some galleries were
+  sideways *without* one.
+
+  `POST /projects/:id/media/:id/rotate` (90/180/270) turns the stored ORIGINAL and drops the cached
+  variants. In place is the point — the asset id and stored file name do not change, so every `<img
+  src>`, every `{{sw-image}}` binding and every gallery listing keeps working, and the correction
+  travels with an export instead of living in a display rule another renderer would ignore.
+
+- **Eight template helpers for shaping data and building strings.** `sw-where` / `sw-sort` /
+  `sw-group` / `sw-includes` query a list in the template instead of storing a second copy of it (a
+  four-argument `sw-where` takes an operator, and the literal `'now'` makes "upcoming" a live query
+  rather than a maintained flag). `sw-concat` / `sw-default` / `sw-join` / `sw-split` build strings —
+  Handlebars has no `+`, so without them an author hard-codes what should be built. `sw-split` in
+  particular turns a delimited FIELD into a list: a dataset holds a size run or a tag list in one cell
+  because that is what an author can type, and nothing could loop it.
+
+- **`{{sw-date}}` named locale formats**, and `description` / `image` on nav items so a dropdown can be
+  a menu rather than a list of titles. `nav.hidden` opts a page out of an auto-nav it would otherwise
+  join.
+
+- **The draft preview reports the page's real Content-Security-Policy** as
+  `Content-Security-Policy-Report-Only`, so an author asking "is my video allowed, is my map allowed?"
+  can see the answer in devtools instead of publishing to find out.
+
+### Fixed
+
+- **EXIF-rotated photographs no longer render on their side.** A phone photographed in portrait writes
+  LANDSCAPE pixels plus an Orientation tag; browsers apply it, so the stored original looks upright.
+  sharp does not unless asked — and drops metadata on encode — so every derived size came out sideways
+  *and* without the tag that would have let the browser put it back. The recorded width/height had the
+  same fault, giving a portrait photo a landscape intrinsic size (wrong aspect box, CLS on load).
+
+  Every pipeline now auto-orients: the thumbnail encoder, the capped-source re-encode, the LQIP and the
+  favicon set. A one-time boot repair corrects what is already stored and drops the stale thumbnails;
+  nothing it deletes is anything but derived.
+
+- **The editor preview no longer drops a page's auto-nav.** Publish hands every page a `nav`; the
+  preview handed it only to the SLOTS, so a page template that read it rendered that whole section as
+  nothing — silently, showing less content than the draft site of the same page.
+
+- **The File Manager no longer loops itself to a blank page.** Entering a folder and clicking back to
+  "Assets" raised React's "Maximum update depth exceeded". The row virtualiser averages the row height
+  over the rendered window and derives the window from that height — a closed loop, stable only while
+  every row is the same height. The file manager's are not (a folder row is an icon and a name, a file
+  row a thumbnail over a two-line stack), and once scrolled the window's *position* depends on the
+  height too, so it alternated between two values for ever.
+
+- **The publish output cap no longer fails a build silently.** It was 100 MiB, applied to a build that
+  had grown past it, and the failure surfaced nowhere — the previous build kept being served with an
+  HTTP 200 and progress reporting idle. The cap is now 512 MiB, configurable via `SW_MAX_OUTPUT_MB`,
+  and a failed build says so.
+
+
 ## [0.24.0] - 2026-08-18
 
 ### Fixed

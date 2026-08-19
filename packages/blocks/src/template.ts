@@ -519,7 +519,31 @@ function createInstance(): typeof Handlebars {
   // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; {{sw-date x "YYYY"}} → year.
   // A NOW value — the literal "now" or a bare {{sw-date}} (no first arg) — renders the CURRENT date, so
   // {{sw-date "now" "YYYY"}} always emits the current year (e.g. a © line). "" if the value is unparseable.
-  hb.registerHelper('sw-date', (value: unknown, format?: unknown) => {
+  // Named LOCALE formats — `medium` (21. Aug. 2026 / 21 Aug 2026), `long` (21. August 2026), `short`
+  // (21.08.2026 / 21/08/2026). Added because the only outputs were ISO, so a German page printed
+  // `2026-01-13` at its reader and every project worked around it by storing a second, pre-formatted
+  // label field per locale. The locale is the PAGE's (publish + preview both project `page.locale`),
+  // overridable with `locale='de'`. Rendered through Intl with a fixed UTC time zone so the same
+  // instant never renders as two different days depending on where the render ran.
+  const NAMED_DATE_FORMATS: Readonly<Record<string, Intl.DateTimeFormatOptions>> = {
+    short: { day: '2-digit', month: '2-digit', year: 'numeric' },
+    medium: { day: 'numeric', month: 'short', year: 'numeric' },
+    long: { day: 'numeric', month: 'long', year: 'numeric' },
+  };
+  const formatDateFor = (d: Date, style: string, locale: string): string => {
+    const opts = NAMED_DATE_FORMATS[style as keyof typeof NAMED_DATE_FORMATS];
+    // A bare `en` resolves to en-US, which is MONTH-first. Every other locale the platform ships is
+    // day-first, so a bilingual site would print "21. August 2026" beside "August 21, 2026" and read as
+    // broken. Bare `en` therefore means en-GB; a US site asks for it explicitly with locale='en-US'.
+    if (locale === 'en') locale = 'en-GB';
+    try {
+      return new Intl.DateTimeFormat(locale, { ...opts, timeZone: 'UTC' }).format(d);
+    } catch {
+      // An unknown/malformed locale tag must not take the page down with it.
+      return new Intl.DateTimeFormat('en', { ...opts, timeZone: 'UTC' }).format(d);
+    }
+  };
+  hb.registerHelper('sw-date', (value: unknown, format?: unknown, options?: unknown) => {
     // A bare {{sw-date}} hands the Handlebars options object as the FIRST arg; treat that (or the explicit
     // "now" sentinel) as "current date". A missing/unparseable field value stays blank (→ '') — it must NOT
     // become today, so `{{sw-date page.nope}}` still renders nothing.
@@ -538,6 +562,16 @@ function createInstance(): typeof Handlebars {
     const fmt = typeof format === 'string' ? format : '';
     if (fmt === 'iso') return d.toISOString();
     if (fmt === 'YYYY') return String(d.getUTCFullYear());
+    if (Object.prototype.hasOwnProperty.call(NAMED_DATE_FORMATS, fmt)) {
+      // `{{sw-date x 'medium'}}` puts the options object in the THIRD slot; `{{sw-date x}}` puts it in
+      // the second, which is why the ISO paths above never look at it.
+      const opts = (typeof format === 'string' ? options : format) as Handlebars.HelperOptions | undefined;
+      const hash = (opts?.hash ?? {}) as Record<string, unknown>;
+      const root = (opts?.data?.root ?? {}) as { page?: { locale?: unknown } };
+      const locale =
+        (typeof hash.locale === 'string' && hash.locale) || (typeof root.page?.locale === 'string' && root.page.locale) || 'en';
+      return formatDateFor(d, fmt, locale);
+    }
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
   // {{sw-icon "arrow-right" "h-5 w-5"}} → inline a built-in icon as an <svg>. A bare name is a
@@ -582,7 +616,7 @@ function createInstance(): typeof Handlebars {
   );
   // {{sw-flag "de" "h-4"}} → a FULL-COLOR country flag. A bare alpha-2 code is the rectangular 4:3 flag;
   // a `<code>-circle` name is the circular variant. This is the helper to WRITE for a flag, and the only
-  // one that works for a DYNAMIC code — a template cannot concatenate strings, so
+  // one that works for a DYNAMIC code without building a string (sw-concat can, but a map is the better shape), so
   // `{{sw-flag (lookup @root.website.data.locale_flags locale)}}` over a stored `{ en: "gb" }` map is
   // the language-switcher idiom, and nothing can express it through a prefixed name.
   //
@@ -747,6 +781,193 @@ function createInstance(): typeof Handlebars {
     if (Array.isArray(value) || typeof value === 'string') return value.length;
     if (typeof value === 'object' && value !== null) return Object.keys(value).length;
     return 0;
+  });
+
+  // ── DATA SHAPING. `sw-slice`/`sw-limit` window a list by POSITION. That is all the engine could do,
+  // and "the events that are still ahead" is not a position: a homepage "Coming up" column rendered the
+  // first four rows by insertion order — seven months in the past — because no helper could compare a
+  // date at all (`sw-lt`/`sw-gt` are number-only, and ISO dates are strings). These four add the
+  // predicate/ordering/grouping layer, on the same rules as the windowing helpers: they take a list, they
+  // return a NEW list, and anything that is not a list is an empty list rather than junk.
+
+  /** A row's readable shape: a dataset ENTRY exposes its fields under `values`, a plain object is itself. */
+  const rowOf = (row: unknown): Record<string, unknown> =>
+    isEntry(row) ? (row.values as Record<string, unknown>) : typeof row === 'object' && row !== null ? (row as Record<string, unknown>) : {};
+  /** Own-property field read — a field name can never reach `__proto__`/`constructor`. */
+  const fieldOf = (row: unknown, field: unknown): unknown => {
+    if (typeof field !== 'string' || field === '') return undefined;
+    const o = rowOf(row);
+    return Object.prototype.hasOwnProperty.call(o, field) ? o[field] : undefined;
+  };
+  /** ONE definition of "missing", shared by the comparator and by sw-sort's ordering guarantee. A blank
+   *  dataset field arrives as '' and a JSON default as null; treating only `undefined` as absent put
+   *  those rows FIRST on a descending sort, which reads as data loss. */
+  const isMissing = (v: unknown): boolean => v === undefined || v === null || v === '';
+  /** An ISO date or date-time: `2026-08-21`, `2026-08-21T09:00`, `…T09:00:00.000Z`. */
+  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(?:[T ][\d:.]+(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+  /**
+   * Compare two values the way the AUTHOR means them, not the way they happen to be typed. Both numeric
+   * → numeric (so 9 < 10, which a string compare gets wrong); otherwise string order, which is exactly
+   * right for the ISO dates the platform stores. Missing values sort LAST rather than scattering.
+   *
+   * ★ Two ISO values are compared at the COARSER of their two granularities. The platform stores both
+   * `2026-08-21` and `2026-08-21T09:00`, and comparing those as raw strings makes the SHORTER one always
+   * sort first — so `gte` against a date-only bound silently accepted every time on that day while `lt`
+   * silently rejected them all, and which you got depended on how the value happened to be typed. Taking
+   * the shorter operand's granularity makes "a date-only side means the whole day" a stated rule instead
+   * of an accident. Ordinary text is untouched — this is gated on the ISO shape, so `apple` and `apples`
+   * still differ.
+   */
+  const compareValues = (a: unknown, b: unknown): number => {
+    if (isMissing(a)) return isMissing(b) ? 0 : 1;
+    if (isMissing(b)) return -1;
+    const na = asNumber(a);
+    const nb = asNumber(b);
+    if (na !== undefined && nb !== undefined) return na === nb ? 0 : na < nb ? -1 : 1;
+    let sa = String(a);
+    let sb = String(b);
+    if (ISO_DATE_RE.test(sa) && ISO_DATE_RE.test(sb) && sa.length !== sb.length) {
+      const n = Math.min(sa.length, sb.length);
+      sa = sa.slice(0, n);
+      sb = sb.slice(0, n);
+    }
+    return sa === sb ? 0 : sa < sb ? -1 : 1;
+  };
+  /** The literal `now` resolves to today's ISO DATE — so "still ahead" is day-granular and anything
+   *  happening today still counts as ahead for the whole day (which is what a calendar means). The
+   *  coarser-granularity rule above is what makes that hold against stored times. */
+  const resolveOperand = (v: unknown): unknown => (v === 'now' ? new Date().toISOString().slice(0, 10) : v);
+
+  // {{#each (sw-where dataset.events 'starts' 'gte' 'now')}} → the rows whose FIELD satisfies OP against
+  // VALUE. Ops: eq ne lt gt lte gte has (substring / list membership). The op may be omitted for `eq`,
+  // which is the common case. An UNKNOWN op matches NOTHING — a filter that silently degraded to "match
+  // everything" would look like it worked while showing the unfiltered list.
+  const WHERE_OPS: Readonly<Record<string, (a: unknown, b: unknown) => boolean>> = {
+    eq: (a, b) => compareValues(a, b) === 0,
+    ne: (a, b) => compareValues(a, b) !== 0,
+    lt: (a, b) => a !== undefined && compareValues(a, b) < 0,
+    gt: (a, b) => a !== undefined && compareValues(a, b) > 0,
+    lte: (a, b) => a !== undefined && compareValues(a, b) <= 0,
+    gte: (a, b) => a !== undefined && compareValues(a, b) >= 0,
+    has: (a, b) =>
+      Array.isArray(a)
+        ? a.some((x) => compareValues(x, b) === 0)
+        : typeof a === 'string' && typeof b === 'string' && a.includes(b),
+  };
+  hb.registerHelper('sw-where', function swWhere(this: unknown, ...args: unknown[]) {
+    const rest = args.slice(0, -1);
+    const [list, field, a, b] = rest;
+    // Three operands = (field, op, value); two = (field, value) with an implied `eq`.
+    const op = rest.length >= 4 ? String(a) : 'eq';
+    const want = resolveOperand(rest.length >= 4 ? b : a);
+    const test = Object.prototype.hasOwnProperty.call(WHERE_OPS, op) ? WHERE_OPS[op] : undefined;
+    if (!test) return [];
+    return asList(list).filter((row) => test(fieldOf(row, field), want));
+  });
+
+  // {{#each (sw-sort page.children 'data.date' 'desc')}} → a NEW list ordered by FIELD. Never mutates the
+  // input: the same list is rendered again elsewhere on the page, and an in-place sort would silently
+  // reorder it there too.
+  hb.registerHelper('sw-sort', function swSort(this: unknown, ...args: unknown[]) {
+    const [list, field, dir] = args.slice(0, -1);
+    const sign = String(dir ?? 'asc').toLowerCase() === 'desc' ? -1 : 1;
+    return [...asList(list)].sort((x, y) => {
+      const c = compareValues(fieldOf(x, field), fieldOf(y, field));
+      // Missing values stay LAST in both directions — flipping them to the front on `desc` would read
+      // as data loss rather than as ordering.
+      if (c === 0) return 0;
+      const xm = isMissing(fieldOf(x, field));
+      const ym = isMissing(fieldOf(y, field));
+      if (xm !== ym) return xm ? 1 : -1;
+      return c * sign;
+    });
+  });
+
+  // {{#each (sw-group dataset.events 'month')}}<h3>{{key}}</h3>{{#each items}}…{{/each}}{{/each}}
+  // → [{key, items}] in FIRST-SEEN order, so the caller controls ordering by sorting first. Rows with no
+  // value for the field are dropped rather than collected under an empty key.
+  hb.registerHelper('sw-group', function swGroup(this: unknown, ...args: unknown[]) {
+    const [list, field] = args.slice(0, -1);
+    const out: Array<{ key: string; items: unknown[] }> = [];
+    const index = new Map<string, { key: string; items: unknown[] }>();
+    for (const row of asList(list)) {
+      const raw = fieldOf(row, field);
+      if (raw === undefined || raw === null || raw === '') continue;
+      const key = String(raw);
+      let bucket = index.get(key);
+      if (!bucket) {
+        bucket = { key, items: [] };
+        index.set(key, bucket);
+        out.push(bucket);
+      }
+      bucket.items.push(row);
+    }
+    return out;
+  });
+
+  // {{#each (sw-split product.sizes ',')}} → a delimited FIELD as a list.
+  //
+  // A dataset holds a size run, a tag list or a set of options as one text field, because that is what
+  // an author can type and edit in a cell. Without this there is no way to loop it: the template can
+  // print the whole string or nothing, so a shop that wanted one "add to cart" button PER SIZE had to
+  // choose between a single button that orders an unknown size and 180 rows in the dataset. The
+  // separator defaults to a comma; each piece is trimmed and empties are dropped, so trailing
+  // separators and "a, b,, c" behave.
+  hb.registerHelper('sw-split', (value: unknown, separator?: unknown) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    const sep = typeof separator === 'string' && separator !== '' ? separator : ',';
+    return value.split(sep).map((part) => part.trim()).filter((part) => part !== '');
+  });
+
+  // {{sw-includes page.data.tags 'sport'}} → membership in a list, or substring in a string. Returns a
+  // BOOLEAN for {{#if}}. Anything else is false.
+  hb.registerHelper('sw-includes', (haystack: unknown, needle: unknown) => {
+    if (Array.isArray(haystack)) return haystack.some((x) => compareValues(x, needle) === 0);
+    return typeof haystack === 'string' && typeof needle === 'string' && haystack.includes(needle);
+  });
+
+  // ── STRING BUILDING. Handlebars has no `+`, so an author could not build "/news-" + n. The observed
+  // outcome was never a compile error — it was a HARD-CODED literal: a paginated archive shipped
+  // href="/news-{{sw-add n 1}}", a ROOT path that no locale prefix reaches, so every translated archive
+  // page linked into the default-language one.
+
+  // {{sw-concat '/news-' (sw-add page.data.page_no 1)}} → the arguments joined. null/undefined contribute
+  // NOTHING (rather than the text "undefined", which is what a bare {{a}}{{b}} would give you in an
+  // attribute). Returns a plain string → HTML-escaped, so it is safe in text and attribute position.
+  hb.registerHelper('sw-concat', function swConcat(this: unknown, ...args: unknown[]) {
+    return args
+      .slice(0, -1)
+      .filter((v) => v !== null && v !== undefined)
+      .map((v) => String(v))
+      .join('');
+  });
+
+  // {{sw-default page.data.subtitle website.data.tagline 'Untitled'}} → the first argument that is
+  // actually present. Absence is null/undefined/'' ONLY: 0 and false are values a template means to
+  // print, and the JS `||` idiom that swallows them is the bug this helper exists to avoid.
+  hb.registerHelper('sw-default', function swDefault(this: unknown, ...args: unknown[]) {
+    for (const v of args.slice(0, -1)) if (v !== null && v !== undefined && v !== '') return v;
+    return '';
+  });
+
+  // {{sw-join page.data.tags ' · '}} → a list as text, separator defaulting to ", ". Reading a FIELD off
+  // each row is a NAMED argument: {{sw-join dataset.staff ', ' field='name'}}.
+  // ★ field is named, not positional, because sw-where/sw-sort/sw-group all put the field SECOND. An
+  // author carrying that habit over writes {{sw-join staff 'name' ', '}}; positionally that reads 'name'
+  // as the separator and ', ' as the field, no row has a ', ' field, every value is dropped and the
+  // helper renders EMPTY — a silent blank where a staff list should be.
+  hb.registerHelper('sw-join', function swJoin(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const [list, sep] = args.slice(0, -1);
+    const hash = (options?.hash ?? {}) as Record<string, unknown>;
+    const field = typeof hash.field === 'string' ? hash.field : undefined;
+    const separator = typeof sep === 'string' ? sep : ', ';
+    return asList(list)
+      .map((row) => (field === undefined ? row : fieldOf(row, field)))
+      .filter((v) => v !== null && v !== undefined && String(v) !== '')
+      .map((v) => String(v))
+      .join(separator);
   });
 
   // ── ARITHMETIC. The engine had none, and said so in its own docs; {{sw-stagger}} exists because one

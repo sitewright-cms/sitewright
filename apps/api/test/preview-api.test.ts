@@ -397,6 +397,39 @@ describe('preview API — code-first source page', () => {
     expect(html).toContain('<footer id="footer"><div class="saved-foot">saved</div></footer>');
   });
 
+  // ★ The editor preview must show what publish shows. `nav` reached only the SLOT context, so a PAGE
+  // that read it — a leaf listing its siblings from the auto-nav — rendered that whole section as
+  // nothing here while the published page rendered it in full. Silently: no error, no warning, just
+  // less content than the draft site, which reads to an author as "my content is missing".
+  it('gives the PAGE context the auto-nav, not just the slots', async () => {
+    const { t, projectId } = await setup('pagenav@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    for (const page of [
+      { id: 'about', path: 'about', title: 'About', nav: { slots: ['header'], dropdown: true } },
+      { id: 'history', path: 'history', title: 'Our history', parent: 'about' },
+      { id: 'staff', path: 'staff', title: 'Staff', parent: 'about' },
+    ]) {
+      await poolApp.inject({ method: 'PUT', url: `${base}/content/page/${page.id}`, cookies: { sw_session: t }, payload: page });
+    }
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'history',
+        path: 'history',
+        title: 'Our history',
+        parent: 'about',
+        source: '<section>{{#each nav.header}}<b class="top">{{label}}</b>{{#each children}}<a class="sib" href="{{sw-url path}}">{{label}}</a>{{/each}}{{/each}}</section>',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('class="top">About<');
+    expect(html).toContain('Our history');
+    expect(html).toContain('Staff');
+  });
+
   it('rejects an unsafe slot override with the same gate a settings SAVE uses', async () => {
     const { t, projectId } = await setup('slotguard@acme.test', poolApp);
     const res = await poolApp.inject({

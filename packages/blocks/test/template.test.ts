@@ -1230,3 +1230,22 @@ describe('findUnknownHelpers', () => {
     expect(renderTemplate(src, {})).toContain('sw:unknown-helper multiply');
   });
 });
+
+describe('sw-split', () => {
+  // A dataset holds a size run as ONE text field ("32, 34, 36") because that is what an author can
+  // type into a cell. Without a split there is no way to loop it — which forced a shop into either one
+  // button that orders an unknown size, or one dataset row per size.
+  it('splits a delimited field, trimming and dropping empties', () => {
+    expect(renderTemplate(`{{#each (sw-split page.sizes)}}[{{this}}]{{/each}}`, { page: { sizes: '32, 34 ,, 36,' } })).toBe('[32][34][36]');
+  });
+
+  it('takes an explicit separator', () => {
+    expect(renderTemplate(`{{#each (sw-split page.v '|')}}[{{this}}]{{/each}}`, { page: { v: 'a|b|c' } })).toBe('[a][b][c]');
+  });
+
+  it('passes an array straight through, and yields nothing for a non-string', () => {
+    expect(renderTemplate(`{{#each (sw-split page.v)}}[{{this}}]{{/each}}`, { page: { v: ['x', 'y'] } })).toBe('[x][y]');
+    expect(renderTemplate(`{{#each (sw-split page.v)}}[{{this}}]{{/each}}`, { page: { v: 42 } })).toBe('');
+    expect(renderTemplate(`{{#each (sw-split page.v)}}[{{this}}]{{/each}}`, { page: {} })).toBe('');
+  });
+});

@@ -121,12 +121,17 @@ In \`source\`:
   never string order. Math: (sw-add a b)/(sw-sub)/(sw-mul)/(sw-div)/(sw-mod), (sw-round x [decimals]),
   (sw-ceil x)/(sw-floor x), (sw-min a b …)/(sw-max a b …) — numeric strings count, anything else is 0, and the
   result is always FINITE (÷0 and overflow give 0, never a NaN you'd never spot inside an attribute).
-  {{sw-json value}} debug-prints a value (escaped). No and/or/contains, and an UNREGISTERED helper hard-fails
-  the render (400) — don't invent one; get_reference has the full list. Current page → {{#if (sw-active path)}}.
+  {{sw-json value}} debug-prints a value (escaped). (sw-concat a b …) BUILDS a string — there is no "+", and
+  without it you WILL hard-code the value. No and/or, and an UNREGISTERED helper hard-fails the render (400) —
+  don't invent one; get_reference has the full list. Current page → {{#if (sw-active path)}}.
 - LIST WINDOWS — render PART of a long list: (sw-limit list 6), (sw-offset list 6), (sw-slice list start [end])
   (a NEGATIVE start counts from the end: (sw-slice posts -3) = the latest three), (sw-paginate list pageNo
   perPage) 1-based paging; {{sw-length list}} counts. ★ A MISSING count leaves the list INTACT, never empty.
   Paginated archive → get_guide("templates").
+- LIST SHAPE — windows pick by POSITION; (sw-where list "field" ["op"] value) picks by VALUE (eq ne lt gt
+  lte gte has), with (sw-sort)/(sw-group) alongside. ISO dates compare correctly and "now" = today, so
+  UPCOMING is (sw-where dataset.events "starts" "gte" "now"). {{#each}} has NO predicate of its own; and
+  {{sw-date v "medium"}} localizes a date a READER sees (bare {{sw-date v}} is ISO). → get_guide("templates")
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -846,6 +851,31 @@ Where the list comes from:
   • ANY OTHER page reaches them by name: {{#each pages.news._attributes.children}} — this is what lets
     archive page 2 list the ROOT's posts, since they are not page 2's own children;
   • a dataset works the same way ({{#each dataset.news}}) and needs no cross-page hop.
+FILTER, ORDER and GROUP a list — windows pick by POSITION, these pick by VALUE:
+  (sw-where list "field" ["op"] value) — ops eq ne lt gt lte gte has (substring / list membership); the op
+    may be omitted for eq. An UNKNOWN op matches NOTHING, never the unfiltered list.
+  (sw-sort list "field" ["desc"]) — a NEW list (never mutates); rows missing the field stay last.
+  (sw-group list "field") — [{key, items}] in first-seen order; sort first if you want another order.
+Comparison is type-directed: two numeric operands compare numerically, everything else as TEXT — which is
+exactly right for the ISO dates the platform stores. Two ISO values compare at the COARSER granularity, so
+a date-only bound covers the WHOLE day (an event at 09:00 today stays "ahead" until midnight) while two
+timestamps compare exactly. Missing means absent/null/"" everywhere. The literal value "now" is today, so:
+  {{#each (sw-limit (sw-where dataset.events "starts" "gte" "now") 4)}}   ← the next four events
+  {{#each (sw-sort (sw-where dataset.staff "team" "eq" "science") "name")}}
+  {{#each (sw-group (sw-sort dataset.events "starts") "month")}}<h3>{{key}}</h3>{{#each items}}…{{/each}}
+★ Without sw-where there is no predicate anywhere in the language: {{#each}} takes the list as given, so a
+"coming up" column built from (sw-limit dataset.events 4) shows the OLDEST four rows forever.
+
+DATES A READER SEES — {{sw-date value "medium"}} → "21. Aug. 2026" on a German page, "21 Aug 2026" on an
+English one; also "long" (21. August 2026) and "short" (21.08.2026). Formatted for the PAGE locale, so one
+template serves every language; locale="de" overrides. A bare {{sw-date value}} stays ISO YYYY-MM-DD — the
+right thing for <time datetime="…"> and the wrong thing for prose. Don't store a second pre-formatted label
+field per locale; that is what these formats replace.
+
+STRINGS — (sw-concat a b …) joins, (sw-default a b … fallback) takes the first present value (0 and false
+are values, not absences), (sw-join list [sep] [field="x"]) prints a list (field is NAMED), (sw-includes haystack needle) tests
+membership. sw-concat is what makes a DYNAMIC href/id/class possible at all.
+
 Give every archive page the SAME source (or one template) and only a different page.data.page_no:
   <ul>
   {{#each (sw-paginate pages.news._attributes.children page.data.page_no 10)}}
@@ -853,7 +883,10 @@ Give every archive page the SAME source (or one template) and only a different p
   {{/each}}
   </ul>
   <p>Page {{page.data.page_no}} of {{sw-ceil (sw-div (sw-length pages.news._attributes.children) 10)}}</p>
-  {{#if (sw-gt page.data.page_no 1)}}<a href="/news-{{sw-sub page.data.page_no 1}}">Previous</a>{{/if}}
+  {{#if (sw-gt page.data.page_no 1)}}<a href="{{sw-url (sw-concat '/news-' (sw-sub page.data.page_no 1))}}">Previous</a>{{/if}}
+★ Build that href with (sw-concat …) inside {{sw-url}}, NEVER as a literal href="/news-{{…}}". sw-url adds
+the locale prefix; a hard-coded root path does not, so on a translated site every archive page links back
+into the DEFAULT language's archive — a bug that renders perfectly and is invisible until someone clicks.
   {{#if (sw-lt page.data.page_no 84)}}<a href="/news-{{sw-add page.data.page_no 1}}">Next</a>{{/if}}
 A computed page number is fine inside an href because the literal prefix ("/news-") already fixes the
 scheme; a WHOLE href that is one binding still needs {{sw-url …}}. @index restarts at 0 in every window,
@@ -945,7 +978,7 @@ The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…), plus "eu" for the Eu
 "-circle" for the round variant ({{sw-flag "de-circle"}}). All ~250 countries are built in. A flag is
 the one set that keeps its OWN colours (it does not take the text colour) and is therefore not
 aria-hidden — the country name is its accessible label. ★ sw-flag is also the ONLY way to render a
-DYNAMIC flag: a template cannot concatenate strings, so a per-locale switcher is
+DYNAMIC flag: prefer a locale->country MAP over building a string with (sw-concat …), so a switcher is
 {{sw-flag (lookup @root.website.data.locale_flags locale)}} over a { "en":"gb" } map.
 {{sw-icon "flag:de"}} renders the same artwork — "flag:<cc>" is how a flag is spelled as an icon NAME,
 which is what a PICKER stores (a dataset "icon" field, an image-map hotspot). Write sw-flag by hand;

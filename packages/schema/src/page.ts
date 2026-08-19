@@ -105,7 +105,20 @@ const PageFields = z
           .array(z.enum(NAV_SLOTS))
           .min(1)
           .max(NAV_SLOTS.length)
-          .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates'),
+          .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates')
+          // Optional so a page can carry `hidden` WITHOUT claiming a slot. A nav object with neither
+          // was invalid before, so nothing can depend on the old behaviour.
+          .optional(),
+        /**
+         * Keep this page out of auto-nav entirely — including a parent's `dropdown`, which otherwise
+         * folds in EVERY child regardless of its own slots.
+         *
+         * Exists because a paginated archive breaks the menu: 40 `news-2 … news-41` pages are real
+         * children of News & Events (they need the route and the breadcrumb), and every one of them
+         * appeared in the mega menu — 43 items, 1,700px tall, 37 of them "Latest News — page N".
+         * There was no way to say "child, but not a menu entry".
+         */
+        hidden: z.boolean().optional(),
         /**
          * @deprecated LEGACY sort order — use the page's top-level `order` instead.
          *

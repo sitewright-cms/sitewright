@@ -132,6 +132,8 @@ import {
   generateThumbnail,
   isThumbnailable,
   isSvgFile,
+  rotateImage,
+  renderPlaceholder,
   isSizeToken,
   isThumbFormat,
   sanitizeSvg,
@@ -249,6 +251,7 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnect
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
 import { migrateInstanceHcaptchaToProjects } from '../repo/captcha-migration.js';
+import { repairMediaOrientation } from '../repo/media-orientation.js';
 import { ReleaseRepository } from '../repo/releases.js';
 import { sweepDerivedStorage, projectStorage } from '../repo/storage-reaper.js';
 import { findUnusedMedia } from '../repo/media-usage.js';
@@ -1530,7 +1533,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // every request). Defined unconditionally + cleared on project delete so they can't leak.
   const previewBuiltVersion = new Map<string, string>();
   const previewBuilds = new Map<string, Promise<void>>();
-  const previewBuildFail = new Map<string, { version: string; at: number }>();
+  const previewBuildFail = new Map<string, { version: string; at: number; message?: string }>();
   // What the IN-FLIGHT draft build is doing right now, so the preview shell can say so instead of
   // showing an unexplained wait. Present only while a build is running (the entry is deleted when it
   // settles), which is also how the shell knows to stop asking.
@@ -1695,6 +1698,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Publish the logger to the module-scope gates (admitMemory and friends), which run outside this
   // closure and until now could not report a refusal anywhere.
   appLogger = app.log;
+
+  // ONE-TIME: repair media stored before the pipeline honoured EXIF orientation — a phone photo taken
+  // in portrait had its raw (sideways) dimensions recorded and every thumbnail encoded on its side.
+  // Detached: it is one header read per image across the whole library, and nothing about serving the
+  // instance waits on it. Marked complete either way, so a library with nothing to fix costs one
+  // query, once, forever.
+  if (mediaStorage) {
+    const storageForRepair = mediaStorage;
+    void (async () => {
+      if (await instanceSettingsRepo.isMediaOrientationRepaired()) return;
+      const report = await repairMediaOrientation(db, storageForRepair, {
+        log: (message) => app.log.info({ migration: 'media-orientation' }, message),
+      });
+      await instanceSettingsRepo.markMediaOrientationRepaired(Date.now());
+      app.log.info({ ...report }, 'media EXIF-orientation repair complete');
+    })().catch((err: unknown) =>
+      // Left unmarked on failure, so the next boot retries. Every write it makes is independent, so a
+      // partial pass simply leaves less to do.
+      app.log.error({ err }, 'media EXIF-orientation repair failed; it will be retried on next boot'),
+    );
+  }
 
   // Introspection seam for the COMMITTED route contract (`contract/http-routes.json`). Fastify's only
   // post-`ready()` introspection is `printRoutes`, and that pretty-printer is LOSSY: it collapses every
@@ -4439,6 +4463,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           parentPage: previewParent,
           pages: previewPages,
           dataset: localeData,
+          // ★ The auto-nav belongs to the PAGE context too, not only to the slots.
+          //
+          // Publish gives every page `nav` (build.ts), and a page template is perfectly entitled to
+          // read it — a leaf page listing its siblings from `nav.header` is exactly the case that
+          // exposed this. Here it was only ever passed to `slotCtx`, so on that page `{{#each
+          // nav.header}}` iterated undefined, the whole section rendered as nothing, and the editor
+          // preview showed LESS than the draft site with no error anywhere. A preview that silently
+          // drops a section is worse than one that fails: the author concludes the content is missing
+          // and goes looking for it in the data.
+          nav: slotNav as unknown as Record<string, unknown>,
           item,
           partials,
           // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
@@ -6152,6 +6186,57 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 
+    // Turn a photograph a quarter at a time, IN PLACE.
+    //
+    // ★ EXIF orientation only helps when the tag is there. A library will hold photographs whose pixels
+    // are sideways and whose tag was stripped by whatever produced them — a CMS, an export, a phone
+    // messaging app. Nothing in the metadata says so, so nothing can fix them automatically and the
+    // author is left with a wall of sideways photographs and no control. (Measured on one real site:
+    // 455 images carried a tag and were corrected automatically; a third of some galleries were
+    // sideways WITHOUT one.)
+    //
+    // In place is the whole point: the asset id and the stored file name do not change, so every
+    // existing reference — an <img src> in a body, a {{sw-image}} binding, a gallery folder listing —
+    // keeps working. Rewriting the stored original also means the correction is permanent and travels
+    // with an export, rather than living in a display rule some other renderer would ignore.
+    const RotateAssetBody = z.object({ degrees: z.union([z.literal(90), z.literal(180), z.literal(270)]) });
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/rotate', { config: rl(120) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = RotateAssetBody.safeParse(req.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: 'rotation must be 90, 180 or 270 degrees' });
+      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
+      if (asset.kind !== 'image') return reply.code(400).send({ error: 'not an image asset' });
+      const image = asset as ImageAsset;
+      // SVG is a vector — a rotation belongs in its markup, and it never goes through sharp here.
+      if (image.format === 'svg' || !image.original || isSvgFile(image.original)) {
+        return reply.code(400).send({ error: 'an SVG cannot be rotated here' });
+      }
+      let rotated;
+      try {
+        rotated = await rotateImage(storage.resolveStoredPath(project.slug, asset.id, image.original), body.data.degrees);
+      } catch (err) {
+        return reply.code(400).send({ error: err instanceof Error ? err.message : 'could not rotate this image' });
+      }
+      // A format we cannot re-encode in kind would change the file's extension, and the stored name is
+      // referenced by every URL — refuse rather than break them.
+      if (rotated.format !== image.format) {
+        return reply.code(400).send({ error: `cannot rotate a ${image.format} without changing its format` });
+      }
+      await storage.storeFile(project.slug, asset.id, image.original, rotated.buffer);
+      // Every cached variant was derived from the OLD pixels. Dropping them is what makes the turn
+      // visible everywhere at once; they regenerate on the next request.
+      await storage.pruneAssetThumbnails(project.slug, asset.id, image.original);
+      const next = {
+        ...image,
+        bytes: rotated.buffer.length,
+        width: rotated.width,
+        height: rotated.height,
+        placeholder: await renderPlaceholder(rotated.buffer),
+      };
+      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    });
+
     // Duplicate a single asset (optionally into another folder).
     const CopyAssetBody = z.object({ folder: MediaFolderSchema.optional() });
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/copy', { config: rl(30) }, async (req, reply) => {
@@ -7218,7 +7303,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           inflight = buildPreviewSite(ctx, project, version)
             .then(() => void previewBuildFail.delete(project.id))
             .catch((err: unknown) => {
-              previewBuildFail.set(project.id, { version, at: Date.now() });
+              previewBuildFail.set(project.id, {
+                version,
+                at: Date.now(),
+                message: err instanceof Error ? err.message : String(err),
+              });
               app.log.warn(
                 { projectId: project.id, errMsg: err instanceof Error ? err.message : String(err) },
                 'preview build failed',
@@ -7276,7 +7365,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // shell "nothing is happening" through the entire wait it exists to explain.
         const building = previewBuilds.has(project.id);
         const p = previewProgress.get(project.id);
-        return reply.send({ building, ...(building && p ? p : {}) });
+        // ★ Report the LAST FAILURE too. A failing build is invisible otherwise: `ensurePreviewBuild`
+        // logs a warning, arms a cooldown and returns, and the route then serves the last SUCCESSFUL
+        // build — so the preview silently shows stale content and the author reads it as "my changes
+        // did not save" or "content is missing". The shell can now say what actually happened.
+        const failed = previewBuildFail.get(project.id);
+        return reply.send({
+          building,
+          ...(building && p ? p : {}),
+          ...(failed ? { failed: { message: failed.message, at: new Date(failed.at).toISOString(), stale: true } } : {}),
+        });
       },
     );
 
@@ -7961,6 +8059,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // popup that inherits this sandbox lands on the target site at an OPAQUE origin and breaks
           // there instead. Neither token grants the framed document same-origin access to the editor.
           .header('content-security-policy', PREVIEW_SANDBOX_CSP)
+          // ★ …and the page's REAL policy, report-only, so it is visible where the author is working.
+          // Publish derives a per-page CSP and ships it as an INERT `<meta name="sw-csp">`; the hosted
+          // routes promote that to a header, but preview did not — so the one policy directive the
+          // preview carried was its own `sandbox`, and an author checking "is my video allowed?" saw
+          // nothing at all in devtools. It CANNOT be enforcing here: this document also runs the
+          // preview bridge and the shell's runtime, which the published policy has no reason to allow,
+          // so enforcing it would break the surface it is meant to explain. Report-only shows the exact
+          // policy and reports violations without blocking.
+          .header(
+            'content-security-policy-report-only',
+            siteCspHeaderFromHtml(html) ?? "default-src 'self'; img-src 'self' data: https:; object-src 'none'",
+          )
           .header('x-frame-options', 'SAMEORIGIN')
           .type('text/html')
           .send(html);

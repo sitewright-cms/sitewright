@@ -44,9 +44,14 @@ function safeBackground(bg: string | undefined): string {
   return /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^[a-zA-Z]+$/.test(v) ? v : '#ffffff';
 }
 
+// `autoOrient` on every read: the master is a stored media asset, which may be a phone photo whose
+// upright appearance lives in an EXIF tag sharp ignores by default — a sideways favicon on every
+// platform at once, from a source that looks fine in the media library.
+const AUTO_ORIENT = { autoOrient: true } as const;
+
 /** Square cover-resize → PNG. `flatten` composites any alpha onto `bg` (for opaque-required slots). */
 function square(source: Buffer, size: number, bg: string, flatten: boolean): Promise<Buffer> {
-  let pipe = sharp(source).resize(size, size, { fit: 'cover' });
+  let pipe = sharp(source, AUTO_ORIENT).resize(size, size, { fit: 'cover' });
   if (flatten) pipe = pipe.flatten({ background: bg });
   return pipe.png({ compressionLevel: 9 }).toBuffer();
 }
@@ -61,9 +66,9 @@ function square(source: Buffer, size: number, bg: string, flatten: boolean): Pro
  *    opaque bg, so the mask can never clip the artwork.
  */
 async function maskable(source: Buffer, size: number, bg: string): Promise<Buffer> {
-  const { hasAlpha } = await sharp(source).metadata();
+  const { hasAlpha } = await sharp(source, AUTO_ORIENT).metadata();
   if (!hasAlpha) {
-    return sharp(source).resize(size, size, { fit: 'cover' }).flatten({ background: bg }).png({ compressionLevel: 9 }).toBuffer();
+    return sharp(source, AUTO_ORIENT).resize(size, size, { fit: 'cover' }).flatten({ background: bg }).png({ compressionLevel: 9 }).toBuffer();
   }
   const inner = Math.round(size * 0.8);
   // Split the remaining border so inner + padA + padB === size EXACTLY (robust for any size, not
@@ -71,7 +76,7 @@ async function maskable(source: Buffer, size: number, bg: string): Promise<Buffe
   const total = size - inner;
   const padA = Math.floor(total / 2);
   const padB = total - padA;
-  return sharp(source)
+  return sharp(source, AUTO_ORIENT)
     .resize(inner, inner, { fit: 'cover' })
     .flatten({ background: bg })
     .extend({ top: padA, bottom: padB, left: padA, right: padB, background: bg })

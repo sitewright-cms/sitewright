@@ -102,7 +102,7 @@ export function renderIconSvg(name: string, cls?: string): string {
     base = name.slice(0, colon);
   }
   // NO bare-country-code fallback. One briefly existed so that `{{sw-icon (lookup locale_flags locale)}}`
-  // could resolve a stored `{ en: "gb" }` map — a template cannot concatenate, so it had no way to add
+  // could resolve a stored `{ en: "gb" }` map — at the time a template could not concatenate at all, so it had no way to add
   // the `flag:` prefix itself. It was safe in the sense that it could never SHADOW an icon (it ran last),
   // but it turned 249 of the 251 two-letter codes from an empty render into a WRONG one: `{{sw-icon "id"}}`
   // drew the Indonesian flag, and `me`/`in`/`no`/`so`/`to`/`is`/`it`/`be`/`do` likewise. An empty render is

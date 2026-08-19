@@ -1,6 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import sharp from 'sharp';
+import { renderPlaceholder } from './orientation.js';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024; // 50 MB on-disk
 const MAX_INPUT_PIXELS = 50_000_000; // ~50 MP decoded per frame — a generous ceiling for web originals
@@ -108,8 +109,18 @@ export async function storeOriginal(
   if (!metadata.format || !ALLOWED_FORMATS.has(metadata.format)) {
     throw new Error('unsupported or disallowed image format');
   }
-  const sourceWidth = metadata.width ?? 0;
-  const sourceHeight = metadata.pageHeight ?? metadata.height ?? 0; // pageHeight = ONE frame's height
+  // ★ UPRIGHT dimensions, i.e. after the EXIF Orientation tag is applied.
+  //
+  // A phone photographed in portrait stores LANDSCAPE pixels plus `Orientation: 6`. Browsers honour
+  // that tag, so what a visitor sees is 900×1600 while the raw buffer says 1600×900. Recording the
+  // raw pair puts a portrait photo in a landscape `width`/`height` box — wrong intrinsic size, wrong
+  // aspect for `sizes`, and CLS. `metadata().autoOrient` is exactly this pair, transposed for the
+  // 90° orientations (5–8) and identical otherwise. Animated sources carry no orientation tag, so
+  // their per-frame `pageHeight` still wins.
+  const rawWidth = metadata.width ?? 0;
+  const rawHeight = metadata.pageHeight ?? metadata.height ?? 0; // pageHeight = ONE frame's height
+  const sourceWidth = metadata.autoOrient?.width ?? rawWidth;
+  const sourceHeight = (metadata.pages ?? 1) > 1 ? rawHeight : (metadata.autoOrient?.height ?? rawHeight);
   if (sourceWidth <= 0 || sourceHeight <= 0) {
     throw new Error('could not read image dimensions');
   }
@@ -144,7 +155,10 @@ export async function storeOriginal(
     // becomes the retained source.
     const quality = options.cappedQuality ?? CAPPED_WEBP_QUALITY;
     storedName = replaceExt(options.storedName, 'webp');
-    let pipeline = sharp(input, { ...SHARP_OPTIONS, animated });
+    // `autoOrient` bakes the rotation into the pixels. It has to: WebP has no orientation tag to
+    // carry forward, so a re-encode that skipped this would produce a permanently sideways ORIGINAL
+    // — the one file everything else is derived from.
+    let pipeline = sharp(input, { ...SHARP_OPTIONS, animated, autoOrient: true });
     if (capApplies) pipeline = pipeline.resize({ width: options.cap!, withoutEnlargement: true });
     const { data, info } = await pipeline.webp({ quality }).toBuffer({ resolveWithObject: true });
     await writeFile(join(outDir, storedName), data);
@@ -161,8 +175,10 @@ export async function storeOriginal(
     height = sourceHeight;
   }
 
-  // Strong blur on a tiny first frame → a smooth LQIP that blends into the real image.
-  const placeholderBuffer = await sharp(input, SHARP_OPTIONS).resize(20).blur(20).webp({ quality: 40 }).toBuffer();
+  // Strong blur on a tiny first frame → a smooth LQIP that blends into the real image (oriented; see
+  // renderPlaceholder). Shared with the one-time repair of media stored before orientation was
+  // honoured, so both produce byte-identical placeholders.
+  const placeholder = await renderPlaceholder(input);
 
   const { size: bytes } = await stat(join(outDir, storedName));
 
@@ -172,7 +188,7 @@ export async function storeOriginal(
     format,
     hasAlpha,
     animated,
-    placeholder: `data:image/webp;base64,${placeholderBuffer.toString('base64')}`,
+    placeholder,
     storedName,
     bytes,
   };

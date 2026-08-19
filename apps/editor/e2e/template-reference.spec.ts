@@ -26,7 +26,10 @@ test('library: template reference — open, search, filter by group', async ({ p
   // The search field's label is derived from the modal title (`Search ${title}`).
   const search = ref.getByLabel('Search Template reference');
   await search.fill('dataset');
-  await expect(ref.getByText(/#each items/)).toBeVisible(); // the unified loop helper's syntax
+  // The loop helper's SYNTAX line, not merely any example that loops over `items` — the
+  // list-shape helpers (sw-group) also show `{{#each items}}` in their sample, so a bare
+  // /#each items/ matches two entries once both are on screen.
+  await expect(ref.getByText(/#each items}} … {{else/)).toBeVisible();
   await expect(ref.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
 
   // The nav-active helper is documented + searchable (e.g. "navbar" / "active").

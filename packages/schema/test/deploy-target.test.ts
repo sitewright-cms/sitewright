@@ -50,11 +50,20 @@ describe('DeployTargetSchema — SFTP host hardening + rsync guards', () => {
     expect(DeployTargetSchema.safeParse({ ...sftp, host: 'h', user: '-oProxyCommand=x' }).success).toBe(false);
   });
 
-  it('rsync requires a non-root remoteDir and a known_hosts pin (not a SHA-256 fingerprint)', () => {
+  it('rsync ALLOWS a root remoteDir unless it would also PRUNE it, and needs a known_hosts pin', () => {
+    // ★ Root was refused outright, which made rsync unusable for an account chrooted to its own web
+    // root — the common shared-hosting shape, where "/" IS the site. The hazard was the COMBINATION
+    // with --delete, so that is what the guard names now.
     const base = { ...sftp, host: 'h', useRsync: true };
     expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/var/www' }).success).toBe(true);
-    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/' }).success).toBe(false);
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/' }).success).toBe(false); // prune defaults on
+    // ★ An ABSENT remoteDir IS root — it resolves to "/" at deploy time, so omitting the field must
+    // not be a way around the guard.
     expect(DeployTargetSchema.safeParse({ ...base, remoteDir: undefined }).success).toBe(false);
+    // Either half defuses it.
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/', rsyncDelete: false }).success).toBe(true);
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: '/', rsyncRootDeleteAck: true }).success).toBe(true);
+    expect(DeployTargetSchema.safeParse({ ...base, remoteDir: undefined, rsyncDelete: false }).success).toBe(true);
     // rsync on a non-SFTP protocol is rejected.
     expect(DeployTargetSchema.safeParse({ ...base, protocol: 'ftp', remoteDir: '/var/www' }).success).toBe(false);
     // A SHA-256 fingerprint can't be enforced via ssh → rejected; a known_hosts line is accepted.

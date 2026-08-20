@@ -183,7 +183,9 @@ export const DeployTargetSchema = z
   // the SFTP transport has always been happy. The hazard was never the path, it was the COMBINATION
   // with --delete (which prunes everything under remoteDir the build does not contain, unlike the
   // manifest-scoped SFTP prune). So name the hazard and require it to be asked for.
-  .refine((t) => !t.useRsync || t.rsyncDelete === false || t.remoteDir !== '/' || t.rsyncRootDeleteAck === true, {
+  // ★ An ABSENT remoteDir is root: `targetToConfig` resolves it with `?? '/'` at deploy time, so
+  // treating undefined as "not root" here would let the guard be bypassed by simply omitting the field.
+  .refine((t) => !t.useRsync || t.rsyncDelete === false || (t.remoteDir ?? '/') !== '/' || t.rsyncRootDeleteAck === true, {
     message:
       'deploying to "/" with rsync pruning enabled deletes every remote file the build does not contain — ' +
       'turn off "Delete remote files" or confirm you intend to mirror the whole root',

@@ -602,6 +602,10 @@ export interface DeployConfig {
   minifyHtml?: boolean;
   /** SFTP-only: transfer with rsync-over-SSH (delta + compression) instead of per-file SFTP. */
   useRsync?: boolean;
+  /** rsync `--delete` — prune remote files absent from the build. Default true. */
+  rsyncDelete?: boolean;
+  /** Acknowledges rsync + prune + a ROOT remote directory (the API refuses it otherwise). */
+  rsyncRootDeleteAck?: boolean;
 }
 
 /** Config for saving a `git` deploy target (commit the built site to a branch). HTTPS remote → a
@@ -636,6 +640,10 @@ export interface UpdateDeployTargetConfig {
   clearPreviewToken?: boolean;
   minifyHtml?: boolean;
   useRsync?: boolean;
+  /** rsync `--delete` — prune remote files absent from the build. Default true. */
+  rsyncDelete?: boolean;
+  /** Acknowledges rsync + prune + a ROOT remote directory (the API refuses it otherwise). */
+  rsyncRootDeleteAck?: boolean;
   repoUrl?: string;
   branch?: string;
   token?: string;
@@ -655,6 +663,9 @@ export interface DeployProgressEvent {
   strategy?: 'files' | 'rsync';
   bytes?: number;
   elapsedMs?: number;
+  /** `preparing` on an FTP/SFTP deploy: remote directories created so far, and how many there are. */
+  dirs?: number;
+  dirTotal?: number;
 }
 
 /** The `done` payload of a streamed deploy — FTP/SFTP report `files` + transfer diagnostics

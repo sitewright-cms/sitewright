@@ -7,6 +7,41 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.32.0] — 2026-08-20
+
+### Fixed
+
+- **An SFTP deploy looked hung, then never reported success.** Two causes, both measured against a
+  real target:
+
+  1. **The remote directory tree was created in silence.** Every leaf directory is made before the
+     first file moves, and that pass emitted no progress at all — so the UI sat on "Uploading 0/254"
+     for the whole of it. On a target where one round trip costs ~1s (measured: 3.3s to connect, 2.0s
+     to read one manifest file), a 106-directory site froze for well over a minute. The pass now runs
+     through the same bounded pool the uploads use and reports `preparing` with its own counter, so
+     the bar advances through it.
+  2. **A silent stream got reaped.** A reverse proxy drops an idle connection (nginx's
+     `proxy_read_timeout` defaults to 60s) and **the server never notices** — the deploy runs to
+     completion, the files land, the manifest is written, and the browser sits on the last frame it
+     saw. That is why the deploy "never finished" while the site was in fact up to date: the remote
+     manifest already matched 253 of 254 files. The stream now emits a keepalive comment every 15s
+     while idle.
+
+  Verified end to end with a full deploy (nothing skipped) to a throwaway SFTP server: 60 `preparing`
+  frames counting 0→59/59, 66 per-file frames, a `done` frame, longest silence 0.3s.
+
+### Added
+
+- **rsync: a "Delete remote files not in the build" toggle**, on by default. Pruning is most of what
+  makes a mirror a mirror — without it a renamed page leaves its old URL live forever — but it is
+  wrong when the remote directory also holds files Sitewright does not manage. `.well-known/` stays
+  protected either way.
+- **rsync accepts a root (`/`) remote directory.** It was refused outright, which made rsync unusable
+  for every account already chrooted to its own web root — the common shared-hosting shape, where `/`
+  IS the site, and where the SFTP transport has always been happy. The hazard was never the path but
+  the COMBINATION with pruning, so that is what the guard now names: root + prune needs an explicit
+  acknowledgement, and the target form warns where the choice is made instead of failing the save.
+
 ## [0.31.1] — 2026-08-20
 
 ### Fixed
@@ -2768,7 +2803,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/sitewright-cms/sitewright/compare/v0.29.0...v0.30.0

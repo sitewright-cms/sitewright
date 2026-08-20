@@ -90,3 +90,25 @@ Total transferred file size: 31,822,702 bytes
     expect(parseRsyncStats(old)).toEqual({ totalFiles: 144, uploaded: 89, removed: 0, bytes: 31822702 });
   });
 });
+
+describe('buildRsyncArgs — the --delete toggle', () => {
+  const cfg = { user: 'u', host: 'h' };
+
+  it('prunes by DEFAULT — a mirror that never removes anything is not a mirror', () => {
+    // Without it a renamed page leaves its old URL live on the server forever.
+    expect(buildRsyncArgs(cfg, '/src', '/var/www', 'ssh')).toContain('--delete');
+  });
+
+  it('omits --delete when pruning is turned off', () => {
+    // For a remote directory shared with files the build does not know about (a hand-uploaded
+    // folder, another site, a CMS's own uploads).
+    expect(buildRsyncArgs({ ...cfg, rsyncDelete: false }, '/src', '/var/www', 'ssh')).not.toContain('--delete');
+  });
+
+  it('keeps the .well-known protection either way', () => {
+    for (const rsyncDelete of [true, false]) {
+      expect(buildRsyncArgs({ ...cfg, rsyncDelete }, '/src', '/var/www', 'ssh')).toContain('--filter=P .well-known/**');
+    }
+  });
+});
+

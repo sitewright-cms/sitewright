@@ -6,7 +6,7 @@ import { Modal } from '../ui/Modal';
 type Strategy = 'files' | 'rsync';
 
 type Status =
-  | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number }
+  | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; dirs?: number; dirTotal?: number }
   | { kind: 'done'; protocol: string; files?: number; uploaded?: number; skipped?: number; removed?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; branch?: string; commit?: string }
   | { kind: 'error'; message: string };
 
@@ -18,7 +18,10 @@ function phaseLabel(s: Extract<Status, { kind: 'running' }>, target: DeployTarge
     case 'checking':
       return 'Checking target & changes…';
     case 'preparing':
-      return 'Preparing the build…';
+      // `preparing` covers two different things: git prepares a commit, and an FTP/SFTP deploy creates
+      // the remote directory tree before any file moves. The payload tells them apart — and the folder
+      // pass MUST show its own counter, because it is the phase that used to look hung.
+      return s.dirTotal ? `Creating folders ${s.dirs ?? 0}/${s.dirTotal}…` : 'Preparing the build…';
     case 'committing':
       return 'Committing…';
     case 'pushing':
@@ -118,7 +121,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
       {
         onProgress: (e) =>
           alive &&
-          setStatus({ kind: 'running', phase: e.phase, index: e.index ?? 0, total: e.total ?? 0, file: e.file, skipped: e.skipped, strategy: e.strategy, bytes: e.bytes, elapsedMs: e.elapsedMs }),
+          setStatus({ kind: 'running', phase: e.phase, index: e.index ?? 0, total: e.total ?? 0, file: e.file, skipped: e.skipped, strategy: e.strategy, bytes: e.bytes, elapsedMs: e.elapsedMs, dirs: e.dirs, dirTotal: e.dirTotal }),
         onDone: (d) =>
           alive &&
           setStatus({ kind: 'done', protocol: d.protocol, files: d.files, uploaded: d.uploaded, skipped: d.skipped, removed: d.removed, strategy: d.strategy, bytes: d.bytes, elapsedMs: d.elapsedMs, branch: d.branch, commit: d.commit }),
@@ -135,7 +138,14 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
   const running = status.kind === 'running';
   // Determinate only once we're actually uploading with a known total; connecting/checking and git
   // phases show an indeterminate (animated) bar rather than a stuck-at-zero one.
-  const pct = running && status.phase === 'uploading' && status.total > 0 ? Math.round((status.index / status.total) * 100) : undefined;
+  // Determinate for BOTH counted phases — the folder pass has its own denominator, and leaving it
+  // indeterminate would keep the longest silent stretch of a deploy looking like nothing is happening.
+  const pct =
+    running && status.phase === 'uploading' && status.total > 0
+      ? Math.round((status.index / status.total) * 100)
+      : running && status.phase === 'preparing' && (status.dirTotal ?? 0) > 0
+        ? Math.round(((status.dirs ?? 0) / status.dirTotal!) * 100)
+        : undefined;
   const showRunningDiag = running && !isGit && (!!status.strategy || (status.bytes ?? 0) > 0);
   const showDoneDiag = status.kind === 'done' && status.protocol !== 'git' && (!!status.strategy || (status.bytes ?? 0) > 0);
 
@@ -165,7 +175,11 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
             {/* Determinate once the file count is known; indeterminate otherwise (git / connecting). */}
             <progress
               className="progress progress-primary w-full"
-              {...(pct !== undefined ? { value: status.index, max: status.total } : {})}
+              {...(pct !== undefined
+                ? status.phase === 'preparing'
+                  ? { value: status.dirs ?? 0, max: status.dirTotal }
+                  : { value: status.index, max: status.total }
+                : {})}
               aria-label="Deploy progress"
             />
             {status.file && <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={status.file}>{status.file}</p>}

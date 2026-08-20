@@ -144,6 +144,14 @@ export const DeployTargetSchema = z
     /** Transfer with rsync-over-SSH (delta + compression, one connection) instead of per-file SFTP —
      *  for a hardened SFTP server that refuses exec but permits rsync. SFTP-only; off by default. */
     useRsync: z.boolean().optional(),
+    /** rsync `--delete` — prune remote files the build no longer contains. Default TRUE (a mirror that
+     *  never removes anything leaves a renamed page's old URL live forever). Turn it off when the
+     *  remote directory holds files the build does not know about. `.well-known/` is protected either
+     *  way. */
+    rsyncDelete: z.boolean().optional(),
+    /** Explicit acknowledgement of rsync + prune + a ROOT remoteDir — the one genuinely destructive
+     *  combination. The UI collects it behind a warning; the schema refuses without it. */
+    rsyncRootDeleteAck: z.boolean().optional(),
     // ── git fields (only meaningful on a `git` target) ──
     /** The remote repository — http(s) (token auth) or ssh (key auth). */
     repoUrl: RepoUrlSchema.optional(),
@@ -170,10 +178,15 @@ export const DeployTargetSchema = z
     message: 'rsync transfer is only available for an SFTP target',
     path: ['useRsync'],
   })
-  // rsync's --delete prunes EVERYTHING under remoteDir not in the build (unlike the manifest-scoped
-  // SFTP prune), so demand an explicit non-root remote directory — never risk wiping the server root.
-  .refine((t) => !t.useRsync || (!!t.remoteDir && t.remoteDir !== '/' && t.remoteDir.split('/').some((s) => s.length > 0)), {
-    message: 'rsync requires an explicit non-root remote directory (it deletes remote files absent from the build)',
+  // ★ A ROOT remoteDir is ALLOWED for rsync. Banning it made rsync unusable for every account already
+  // chrooted to its own web root — the common shared-hosting shape, where "/" IS the site, and where
+  // the SFTP transport has always been happy. The hazard was never the path, it was the COMBINATION
+  // with --delete (which prunes everything under remoteDir the build does not contain, unlike the
+  // manifest-scoped SFTP prune). So name the hazard and require it to be asked for.
+  .refine((t) => !t.useRsync || t.rsyncDelete === false || t.remoteDir !== '/' || t.rsyncRootDeleteAck === true, {
+    message:
+      'deploying to "/" with rsync pruning enabled deletes every remote file the build does not contain — ' +
+      'turn off "Delete remote files" or confirm you intend to mirror the whole root',
     path: ['remoteDir'],
   })
   // rsync host-key pinning needs a full known_hosts LINE (has whitespace); a SHA-256 fingerprint can't

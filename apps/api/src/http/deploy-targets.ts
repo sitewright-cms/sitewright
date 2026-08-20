@@ -29,6 +29,8 @@ const CreateDeployTargetBody = z
     // SFTP host-key fingerprint, OR a git-SSH `known_hosts` host-key line (for pinning).
     hostFingerprint: z.string().min(1).max(1024).optional(),
     useRsync: z.boolean().optional(), // SFTP-only: rsync-over-SSH transfer
+    rsyncDelete: z.boolean().optional(), // prune remote files absent from the build (default true)
+    rsyncRootDeleteAck: z.boolean().optional(), // required for rsync + prune + a ROOT remoteDir
     // ── Local Hosting serve options ──
     previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
     minifyHtml: z.boolean().optional(),
@@ -81,6 +83,8 @@ const UpdateDeployTargetBody = z.object({
   clearPreviewToken: z.boolean().optional(),
   minifyHtml: z.boolean().optional(),
   useRsync: z.boolean().optional(),
+  rsyncDelete: z.boolean().optional(),
+  rsyncRootDeleteAck: z.boolean().optional(),
   repoUrl: z.string().min(1).max(2048).optional(),
   branch: z.string().min(1).max(255).optional(),
   token: z.string().min(1).max(1024).optional(),
@@ -135,6 +139,10 @@ function targetToConfig(target: DeployTarget, key: Buffer): DeployConfig {
     ...(creds.passphrase ? { passphrase: creds.passphrase } : {}),
     remoteDir: target.remoteDir ?? '/',
     hostFingerprint: target.hostFingerprint,
+    // ★ These MUST be carried. buildRsyncArgs reads `rsyncDelete` off the config, so omitting it here
+    // would leave the toggle saved, displayed, and completely inert — the deploy would keep pruning.
+    ...(target.useRsync ? { useRsync: true } : {}),
+    ...(target.rsyncDelete === undefined ? {} : { rsyncDelete: target.rsyncDelete }),
   };
 }
 
@@ -202,6 +210,37 @@ function sanitize(t: DeployTarget): Record<string, unknown> {
   return Object.fromEntries(Object.entries(t).filter(([k]) => k !== 'secret'));
 }
 
+/** How often an otherwise-idle deploy stream emits a comment frame. Well inside the 60s reverse-proxy
+ *  idle timeout that reaps a silent connection (nginx's `proxy_read_timeout` default). */
+export const SSE_KEEPALIVE_MS = 15_000;
+
+/**
+ * Keeps an SSE stream from being reaped while the work behind it is legitimately silent.
+ *
+ * ★ WHY THIS EXISTS. A deploy has phases that produce no events for a long time — a slow SSH
+ * handshake, reading the remote manifest, creating a deep remote directory tree. A reverse proxy
+ * reaps an idle connection (nginx `proxy_read_timeout` defaults to 60s), and when it does the SERVER
+ * DOES NOT NOTICE: the deploy runs to completion, the manifest is written, the files land — and the
+ * browser sits on the last frame it ever saw. That is exactly the reported symptom ("never finishes,
+ * no success message") on a target where a single round trip costs ~1s.
+ *
+ * A comment frame is two bytes, every SSE parser ignores it, and it makes the stream un-reapable.
+ * `lastWriteAt` is read (not tracked here) so real traffic counts as activity and a busy stream sends
+ * no filler at all.
+ */
+export function startSseKeepAlive(
+  write: (frame: string) => void,
+  lastWriteAt: () => number,
+  intervalMs: number = SSE_KEEPALIVE_MS,
+): { stop: () => void } {
+  const timer = setInterval(() => {
+    if (Date.now() - lastWriteAt() < intervalMs) return; // real traffic already refreshed it
+    write(':\n\n');
+  }, intervalMs);
+  timer.unref?.();
+  return { stop: () => clearInterval(timer) };
+}
+
 /**
  * Runs a deploy and STREAMS its progress as Server-Sent Events on the (hijacked) response:
  *   `event: progress` { phase, index, total, file } … then `event: done` { deployed } OR
@@ -222,9 +261,12 @@ async function streamDeploy(
     connection: 'keep-alive',
     'x-accel-buffering': 'no', // disable proxy buffering so frames flush immediately
   });
+  let lastWriteAt = Date.now();
   const send = (event: string, data: unknown): void => {
+    lastWriteAt = Date.now();
     raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
+  const keepAlive = startSseKeepAlive((frame) => raw.write(frame), () => lastWriteAt);
   try {
     const result = await run((e) => send('progress', e));
     send('done', { deployed: result });
@@ -233,6 +275,7 @@ async function streamDeploy(
     // Generic message — never leak credentials/host internals (parity with the non-streaming route).
     send('error', { message: 'deploy failed: could not connect or transfer to the target' });
   } finally {
+    keepAlive.stop();
     raw.end();
   }
 }
@@ -312,6 +355,10 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               remoteDir: body.remoteDir ?? '/',
               ...(body.minifyHtml ? { minifyHtml: true } : {}),
               ...(body.useRsync ? { useRsync: true } : {}),
+              // `false` must SURVIVE — it is the whole point of the toggle, so it cannot be spread
+              // conditionally the way a default-off flag can.
+              ...(body.rsyncDelete === undefined ? {} : { rsyncDelete: body.rsyncDelete }),
+              ...(body.rsyncRootDeleteAck ? { rsyncRootDeleteAck: true } : {}),
               ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
               secret: encodeCreds(
                 {
@@ -445,6 +492,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           remoteDir,
           ...(minifyHtml ? { minifyHtml: true } : {}),
           ...(useRsync ? { useRsync: true } : {}),
+          ...((body.rsyncDelete ?? existing.rsyncDelete) === undefined ? {} : { rsyncDelete: body.rsyncDelete ?? existing.rsyncDelete }),
+          ...((body.rsyncRootDeleteAck ?? existing.rsyncRootDeleteAck) ? { rsyncRootDeleteAck: true } : {}),
           ...(hostFingerprint ? { hostFingerprint } : {}),
           secret: encodeCreds(merged, encryptionKey),
         };

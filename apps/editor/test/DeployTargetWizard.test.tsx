@@ -104,6 +104,40 @@ describe('DeployTargetWizard', () => {
     expect(cfg.password).toBeUndefined();
   });
 
+  it('warns before rsync PRUNES a root remote directory, and gates the save on a confirmation', async () => {
+    // ★ Root used to be refused outright, which made rsync unusable for an account chrooted to its
+    // own web root — the common shared-hosting shape, and the exact setup in the report. The hazard
+    // was never the PATH, it was root + prune, so warn where the choice is made rather than letting
+    // the API's validation error be the first the author hears of it.
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /SSH \/ SFTP Upload/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /SSH \/ SFTP Upload/ }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Box' } });
+    fireEvent.change(screen.getByLabelText('Host'), { target: { value: 'box.example.com' } });
+    fireEvent.change(screen.getByLabelText('User'), { target: { value: 'deployer' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw' } });
+    fireEvent.change(screen.getByLabelText('Remote directory'), { target: { value: '/' } });
+
+    // No rsync → no pruning question at all.
+    expect(screen.queryByLabelText('Delete remote files not in the build')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText('Transfer with rsync'));
+    // Pruning defaults ON, and root + prune raises the warning.
+    expect(screen.getByLabelText('Delete remote files not in the build')).toBeChecked();
+    expect(screen.getByRole('alert')).toHaveTextContent(/deletes remote files outside your site/i);
+
+    // Turning pruning off retires the warning — the dangerous pair is what matters, not the path.
+    fireEvent.click(screen.getByLabelText('Delete remote files not in the build'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    await waitFor(() => expect(createDeployTarget).toHaveBeenCalled());
+    const cfg = createDeployTarget.mock.calls[0]![1] as { useRsync?: boolean; rsyncDelete?: boolean; remoteDir?: string };
+    expect(cfg.useRsync).toBe(true);
+    expect(cfg.rsyncDelete).toBe(false); // ★ `false` must SURVIVE the send — it is the whole point
+    expect(cfg.remoteDir).toBe('/');
+  });
+
   it('edits a git target (rotates the token; protocol/branch sent, secret blank by default)', async () => {
     listDeployTargets.mockResolvedValue({
       items: [{ id: 'g1', name: 'Pages', protocol: 'git', repoUrl: 'https://github.com/me/site.git', branch: 'gh-pages' }],

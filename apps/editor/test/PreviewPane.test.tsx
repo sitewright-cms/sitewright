@@ -65,7 +65,7 @@ describe('PreviewPane', () => {
     // change here once moved the hit targets so clicks landed on <body> instead of the document.
     // Padding can only ever SHRINK the iframe, so removing it is the safe direction — but assert the
     // shape so nobody restores it by reflex.
-    const { container } = render(<PreviewPane src="/p/" frameless />);
+    const { container } = render(<PreviewPane src="/p/" loading={false} error={null} frameless />);
     const pane = container.firstElementChild as HTMLElement;
     expect(pane.className).not.toMatch(/(^|\s)p-\d/);
     // The iframe fills it completely.
@@ -78,7 +78,7 @@ describe('PreviewPane', () => {
   it('the FRAMED variant keeps its card gutter', () => {
     // The slot editor and the live-preview panel sit ON a page beside other cards — there the frame
     // is the point, and dropping it would make the preview bleed into the surrounding surface.
-    const { container } = render(<PreviewPane src="/p/" />);
+    const { container } = render(<PreviewPane src="/p/" loading={false} error={null} />);
     expect((container.firstElementChild as HTMLElement).className).toMatch(/(^|\s)p-1(\s|$)/);
   });
 });

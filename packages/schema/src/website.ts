@@ -1117,13 +1117,29 @@ const WebsiteSettingsObject = z.object({
           /** Keep only these fields from each row (dataset sources only). Empty/absent = every field. */
           fields: z.array(z.string().min(1).max(64)).max(32).optional(),
           /**
-           * Thumbnail size the emitted image URLs point at (folder sources only). Default `md`.
+           * Thumbnail size the emitted image URLs point at. Default `md`.
+           *
+           * Applies to BOTH sources: a folder listing is all images, and a dataset row carries them
+           * too (a product photo, an `<img>` in a rich-text cell) — those are rewritten to published
+           * URLs at this size.
            *
            * ★ This is what the export MATERIALIZES for every image in the folder — the published site
            * bundles only referenced variants, so a data file has to declare which one it references or
            * its URLs point at files the export never produced.
            */
           size: z.enum(['xs', 'sm', 'md', 'lg', 'xl']).optional(),
+          /**
+           * ALSO emit a `full` URL per row at this larger size (folder sources only).
+           *
+           * ★ A gallery needs TWO urls per image and one size cannot be both: the tile renders at a
+           * few hundred pixels and the lightbox opens full-screen. With one size an author must pick a
+           * side — a soft lightbox, or a grid that ships megabytes of oversized tiles. Measured on a
+           * 3,384-image folder: `sm` tiles are 19 MB where `md` is 58 MB, and the `lg` a lightbox
+           * wants is 133 MB — but only for the photos someone actually opens, one at a time.
+           *
+           * Both sizes are materialized, so the export grows by the second variant.
+           */
+          full: z.enum(['xs', 'sm', 'md', 'lg', 'xl']).optional(),
         })
         .superRefine((v, ctx) => {
           if (!v.dataset === !v.folder) {
@@ -1135,8 +1151,10 @@ const WebsiteSettingsObject = z.object({
           if (v.folder && v.fields?.length) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'fields= applies to a dataset source, not a folder' });
           }
-          if (v.dataset && v.size) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'size= applies to a folder source, not a dataset' });
+          if (v.dataset && v.full) {
+            // A dataset row's URLs are rewritten IN PLACE inside whatever field holds them, so there
+            // is no second slot to put a `full` in — accepting it here would silently do nothing.
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'full= applies to a folder source, not a dataset' });
           }
         }),
     )

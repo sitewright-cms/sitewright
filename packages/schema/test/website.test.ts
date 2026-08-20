@@ -761,6 +761,14 @@ describe('website.dataFiles', () => {
     bad([{ path: 'g.json', folder: 'gallery', fields: ['url'] }]);
   });
 
+  it('accepts full= on a folder source and rejects it on a dataset', () => {
+    // A gallery wants a small tile and a large full-screen image from ONE listing. A dataset row's
+    // URLs are rewritten in place inside whatever field holds them, so there is no second slot to put
+    // a `full` in — accepting it there would silently do nothing.
+    expect(ok([{ path: 'g.json', folder: 'gallery', size: 'sm', full: 'lg' }]).dataFiles).toHaveLength(1);
+    bad([{ path: 'p.json', dataset: 'products', full: 'lg' }]);
+  });
+
   it('caps how many files a site can declare', () => {
     const many = Array.from({ length: 21 }, (_, i) => ({ path: `f${i}.json`, dataset: 'a' }));
     bad(many);

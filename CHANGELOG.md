@@ -7,6 +7,48 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.29.0] — 2026-08-20
+
+### Added
+
+- **`full=` on a folder data file — two URLs per image, because one size cannot be both.** A gallery
+  needs a small tile and a full-screen photo from the same listing, and a single variant forces the
+  author to pick which one to get wrong: a soft lightbox, or a grid that ships full-size photos to
+  render them at 350px. `{ path: 'gallery.json', folder: 'gallery', size: 'sm', full: 'lg' }` gives
+  each row `url` for the tile and `full` for what the viewer opens. Both are materialized into the
+  export — an unregistered `full` is a gallery whose tiles render and whose lightbox 404s.
+
+  Measured on a 3,384-image folder: `sm` tiles total 19 MB where `md` is 58 MB, and the `lg` a viewer
+  wants is 133 MB — fetched one photo at a time, only for photos someone opens.
+
+### Fixed
+
+- **A dataset data file named media the export did not contain** — the same defect just fixed for
+  folder sources, wearing a different hat. A dataset row carries asset URLs exactly as a folder listing
+  does: a product's `image`, a download's `file`, an `<img src>` inside a rich-text cell. Those kept the
+  CMS `/media/…` form, which is a live route on platform hosting and absent from an exported site,
+  and the variant was never materialized because nothing rendered it.
+
+  Every `/media/…` URL anywhere in a row — nested, in arrays, embedded in markup — is now rewritten to
+  its published `_assets/` path and registered for materialization. A non-image asset references its
+  ORIGINAL rather than a thumbnail that does not exist for it. The rewrite is decided by a lookup
+  against the project's own media, so prose mentioning a path that isn't an asset is left alone.
+
+  `size=` now applies to both source kinds rather than folders only.
+
+- **A lightbox ignored tiles appended after page load** — the pairing defect to the JSON data
+  features: a "load more" over an island or a `data/*.json` file appends tiles long after
+  `DOMContentLoaded`, but the runtime bound its items ONCE at init, so an appended tile was dead —
+  clicking it followed the href and left the page. A gallery now watches its roots and re-binds, and
+  an appended tile opens the viewer at itself with the thumbnail strip covering the whole grown set.
+
+  Two failures came with it, both measured on a 3,384-image gallery. The rebuild replaces every anchor
+  with a clone, which is itself a mutation — a connected observer re-triggers on its own work, and one
+  "load more" produced 37 rebuilds. And each viewer instance builds its own overlay with no `destroy()`,
+  so those rebuilds stacked 37 overlays and a click opened whichever bound last, showing the first
+  image instead of the tile clicked. A gallery now owns exactly one viewer and retires its previous
+  one, without touching the other galleries on the page.
+
 ## [0.28.0] — 2026-08-20
 
 ### Added

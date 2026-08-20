@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
+import { makePng } from './png.js';
 
 /**
  * INTEGRATION: getting structured data to a script, end to end through a real publish.
@@ -111,6 +112,61 @@ describe('json data → publish', () => {
     // servable because they live under `data/`, not because the root was opened up.
     expect((await client.get(`/sites/${slug}/release.json`)).statusCode).toBe(404);
     expect((await client.get(`/sites/${slug}/data/../release.json`)).statusCode).not.toBe(200);
+  });
+
+  it('a folder file with full= names TWO variants, and the export contains BOTH', async () => {
+    // ★ The failure this guards is not "the JSON is wrong" — it is a data file naming a file the
+    // export never produced. A published site bundles only REFERENCED variants, so an unregistered
+    // `full` yields a gallery whose tiles render and whose lightbox 404s, and nothing upstream says
+    // so. Both URLs are therefore fetched back over HTTP.
+    const proj = client.project(projectId);
+    const boundary = 'SWJSONDATA';
+    const png = makePng(1600, 1200, [30, 90, 160]);
+    const upload = await client.inject({
+      method: 'POST',
+      url: `${proj.base}/media?folder=gallery`,
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      payload: Buffer.concat([
+        Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="tile.png"\r\nContent-Type: image/png\r\n\r\n`),
+        png,
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]),
+    });
+    expect(upload.statusCode, upload.body).toBe(201);
+
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { dataFiles: [{ path: 'gallery.json', folder: 'gallery', size: 'sm', full: 'lg' }] },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>Gallery</section>' })).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const file = await client.get(`/sites/${slug}/data/gallery.json`);
+    expect(file.statusCode).toBe(200);
+    const rows = JSON.parse(file.body) as Array<Record<string, string>>;
+    expect(rows).toHaveLength(1);
+    // Two DIFFERENT published URLs — the tile and what a lightbox opens.
+    expect(rows[0]!.url).toMatch(/^_assets\/.+\.webp$/);
+    expect(rows[0]!.full).toMatch(/^_assets\/.+\.webp$/);
+    expect(rows[0]!.full).not.toBe(rows[0]!.url);
+
+    // ★ Both are really in the export. This is the assertion that would have failed before `full`
+    // registered its variant for materialization.
+    for (const url of [rows[0]!.url, rows[0]!.full]) {
+      const asset = await client.get(`/sites/${slug}/${url}`);
+      expect(asset.statusCode, `${url} is named by the data file but absent from the export`).toBe(200);
+    }
+    // …and the FULL one is the larger file, so the two names are not the same image twice.
+    const small = await client.get(`/sites/${slug}/${rows[0]!.url}`);
+    const large = await client.get(`/sites/${slug}/${rows[0]!.full}`);
+    expect(large.rawPayload.length).toBeGreaterThan(small.rawPayload.length);
   });
 
   it('does not emit a data file for a site that declares none', async () => {

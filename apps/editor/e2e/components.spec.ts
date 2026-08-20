@@ -144,6 +144,9 @@ test.beforeAll(async ({ baseURL }) => {
 <section id="lbfx"><div data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="Gallery 2">
   <div data-sw-part="grid">${lbItems}</div>
 </div></section>
+<section id="lbgrow"><div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Growing gallery">
+  <div data-sw-part="grid">${lbItems}</div>
+</div></section>
 <section id="lbsingle"><img data-sw-component="lightbox" data-thumbnails="false" src="${imgs[1]}" data-full="${imgs[0]}" data-caption="Solo" alt="solo" style="max-width:200px"></section>
 <section id="lbbare"><div data-sw-component="lightbox" aria-label="Bare gallery"><img src="${imgs[0]}" data-caption="Bare 0"><img src="${imgs[1]}" data-caption="Bare 1"><img src="${imgs[2]}" data-caption="Bare 2"></div></section>
 <section id="lbgA"><img data-sw-component="lightbox" data-gallery="tour" data-thumbnails="false" src="${imgs[0]}" data-caption="Tour 0" alt="t0" style="max-width:160px"></section>
@@ -473,6 +476,64 @@ test('lightbox: gallery viewer with thumbnail strip, counter, arrows, keyboard, 
   await page.keyboard.press('Escape');
   await expect(overlay).toBeHidden();
   await expect(items.first()).toBeFocused();
+});
+
+test('lightbox: tiles appended AFTER init join the gallery, and the old viewer goes with the rebuild', async ({ page }) => {
+  // ★ A gallery is not always the DOM the page shipped with. Client-side paging (a "load more" over a
+  // data file or a JSON island) appends tiles long after DOMContentLoaded, and the runtime bound its
+  // items ONCE — so every appended tile was dead: clicking it followed the href and left the page.
+  //
+  // The other half is why this test counts OVERLAYS. Each `new SmartPhoto` builds its own overlay and
+  // there is no destroy(), and the rebuild replaces every anchor — which is itself a childList
+  // mutation, so an observer left connected re-triggers on its own work. Measured before the fix: two
+  // appends produced 37 stacked overlays and a click opened whichever bound last, showing image 0
+  // instead of the tile clicked. Both failures look like "the lightbox doesn't work".
+  const root = page.locator('#lbgrow [data-sw-block="Lightbox"]');
+  await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
+  const grid = root.locator('[data-sw-part="grid"]');
+  const overlaysOnPage = () => page.locator('.sw-lightbox').count();
+  const before = await overlaysOnPage();
+
+  const src = (await root.locator('[data-sw-part="item"] img').first().getAttribute('src'))!;
+  await grid.evaluate((el, u) => {
+    for (let i = 0; i < 2; i += 1) {
+      const a = document.createElement('a');
+      a.setAttribute('data-sw-part', 'item');
+      a.setAttribute('data-caption', `Appended ${i}`);
+      a.href = u;
+      const img = document.createElement('img');
+      img.src = u;
+      img.alt = `appended-${i}`;
+      a.appendChild(img);
+      el.appendChild(a);
+    }
+  }, src);
+
+  // The runtime re-enhances on a debounce; the appended anchors are stamped into the group when it does.
+  const items = root.locator('[data-sw-part="item"]');
+  await expect(items).toHaveCount(5);
+  await expect(items.nth(4)).toHaveAttribute('data-group', /.+/);
+
+  // The rebuild must NOT leave the previous overlay behind — the page carries the same number it did.
+  expect(await overlaysOnPage()).toBe(before);
+
+  // Clicking an APPENDED tile opens the viewer at THAT tile, inside the grown set.
+  await items.nth(4).click();
+  const overlay = page.locator('.sw-lightbox:visible').first();
+  await expect(overlay).toBeVisible();
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('5/5');
+  await expect(overlay.locator('.sw-lightbox-caption')).toContainText('Appended 1');
+  await expect(overlay.locator('.sw-lightbox-nav li')).toHaveCount(5); // the strip covers the whole grown gallery
+  await page.keyboard.press('Escape');
+  await expect(overlay).toBeHidden();
+
+  // …and a tile that was there from the start still opens ITSELF, not a stale instance's slide.
+  await items.first().click();
+  const reopened = page.locator('.sw-lightbox:visible').first();
+  await expect(reopened.locator('.sw-lightbox-count')).toHaveText('1/5');
+  await expect(reopened.locator('.sw-lightbox-caption')).toContainText('Caption 0');
+  expect(await overlaysOnPage()).toBe(before);
+  await page.keyboard.press('Escape');
 });
 
 test('lightbox switches: data-thumbnails / data-arrows omit the strip and arrows', async ({ page }) => {

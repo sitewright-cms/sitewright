@@ -96,6 +96,18 @@ export const DeployConfigSchema = z
       .optional(),
     // Transfer with rsync-over-SSH instead of the per-file SFTP transport (SFTP-only).
     useRsync: z.boolean().optional(),
+    /**
+     * rsync `--delete` — prune remote files the build no longer contains. Default TRUE: that pruning
+     * is most of why a mirror stays a mirror, and without it a renamed page leaves its old URL live
+     * forever. Turn it OFF when the remote directory is shared with something the build does not know
+     * about (a hand-uploaded folder, another site, a CMS's own uploads).
+     *
+     * ★ `.well-known/` is protected from the prune either way — see the filter in buildRsyncArgs.
+     */
+    rsyncDelete: z.boolean().optional(),
+    /** Explicit acknowledgement for the one genuinely destructive combination: rsync + `--delete` +
+     *  a ROOT remoteDir. The UI collects this behind a warning; the API refuses without it. */
+    rsyncRootDeleteAck: z.boolean().optional(),
   })
   .refine((c) => c.password !== undefined || c.privateKey !== undefined, {
     message: 'a password or a private key is required',
@@ -111,9 +123,16 @@ export const DeployConfigSchema = z
     message: 'rsync transfer is only available for the SFTP protocol',
     path: ['useRsync'],
   })
-  // rsync's --delete prunes everything under remoteDir not in the build → require a non-root dir.
-  .refine((c) => !c.useRsync || (c.remoteDir !== '/' && c.remoteDir.split('/').some((s) => s.length > 0)), {
-    message: 'rsync requires an explicit non-root remote directory (it deletes remote files absent from the build)',
+  // ★ A ROOT remote directory is allowed for rsync — the SFTP transport has always permitted it, and
+  // refusing it here made rsync unusable for every target whose account is already chrooted to its own
+  // web root (the common shared-hosting shape, where "/" IS the site). What was actually dangerous is
+  // the COMBINATION with --delete, which would prune everything in that root the build does not
+  // contain. So the guard now names the real hazard instead of banning the path: root + prune must be
+  // asked for deliberately.
+  .refine((c) => !c.useRsync || c.rsyncDelete === false || c.remoteDir !== '/' || c.rsyncRootDeleteAck === true, {
+    message:
+      'deploying to "/" with rsync pruning enabled deletes every remote file the build does not contain — ' +
+      'turn off "Delete remote files" or confirm you intend to mirror the whole root',
     path: ['remoteDir'],
   })
   // rsync host-key pinning needs a known_hosts LINE (whitespace); reject a SHA-256 fingerprint rather
@@ -147,8 +166,14 @@ export interface DeployTransport {
   readManifest(remoteDir: string): Promise<DeployManifest | null>;
   /** Writes the manifest into remoteDir — called last, after the uploads + prune succeed. */
   writeManifest(remoteDir: string, manifest: DeployManifest): Promise<void>;
-  /** Uploads `files` (already filtered to the changed set) under remoteDir. onFile ticks once per file. */
-  upload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void>;
+  /** Uploads `files` (already filtered to the changed set) under remoteDir. onFile ticks once per file.
+   *  `onDir` ticks once per created remote directory — the pass that runs BEFORE any file moves. */
+  upload(
+    remoteDir: string,
+    files: ReadonlyArray<SiteFile>,
+    onFile?: (rel: string) => void,
+    onDir?: (done: number, total: number) => void,
+  ): Promise<void>;
   /** Deletes the given safe relative paths under remoteDir (best-effort per file). */
   remove(remoteDir: string, rels: ReadonlyArray<string>): Promise<void>;
   close(): Promise<void>;
@@ -157,7 +182,12 @@ export interface DeployTransport {
 /** A deploy progress event streamed to the UI. `index`/`total` drive a determinate bar; `bytes` +
  *  `elapsedMs` let the UI show throughput; `strategy` names the transfer mode. */
 export interface DeployProgress {
-  phase: 'connecting' | 'checking' | 'uploading' | 'done';
+  /** ★ `preparing` = creating the remote directory tree, BEFORE the first byte of any file moves.
+   *  It exists because that pass used to run in total silence: on a site with 106 leaf directories
+   *  and a target ~1s away, the UI sat on "Uploading 0/254" for close to two minutes with nothing
+   *  moving — long enough for a reverse proxy to drop the idle SSE connection, so the deploy finished
+   *  server-side and the browser never learned. A phase nobody can see is a phase that looks hung. */
+  phase: 'connecting' | 'checking' | 'preparing' | 'uploading' | 'done';
   total: number;
   index: number;
   file?: string;
@@ -171,6 +201,9 @@ export interface DeployProgress {
   bytes?: number;
   /** Milliseconds since the upload phase started (0 on the first `uploading` event). */
   elapsedMs?: number;
+  /** `preparing` only: remote directories created so far, and how many there are. */
+  dirs?: number;
+  dirTotal?: number;
 }
 
 /** The result of a completed deploy (returned + streamed as the `done` payload). */
@@ -403,20 +436,48 @@ class SftpTransport implements DeployTransport {
     });
     await this.client.put(Buffer.from(serializeManifest(manifest), 'utf8'), remoteJoin(remoteDir, MANIFEST_FILENAME));
   }
-  async upload(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
-    await this.putFiles(remoteDir, files, onFile);
+  async upload(
+    remoteDir: string,
+    files: ReadonlyArray<SiteFile>,
+    onFile?: (rel: string) => void,
+    onDir?: (done: number, total: number) => void,
+  ): Promise<void> {
+    await this.putFiles(remoteDir, files, onFile, onDir);
   }
   /** Pre-create the leaf dirs, then fastPut through a bounded concurrency pool. With the flat
    *  `_assets/` layout there are far fewer leaf dirs, so the per-file path is fast without a tar
    *  fast-path or an SSH capability probe (both removed — they added a round trip and could hang on
    *  odd servers for a benefit the flat layout erased). */
-  private async putFiles(remoteDir: string, files: ReadonlyArray<SiteFile>, onFile?: (rel: string) => void): Promise<void> {
+  private async putFiles(
+    remoteDir: string,
+    files: ReadonlyArray<SiteFile>,
+    onFile?: (rel: string) => void,
+    onDir?: (done: number, total: number) => void,
+  ): Promise<void> {
     const rels = files.map((f) => toPosixRel(f.rel));
-    for (const dir of planLeafDirs(remoteDir, rels)) {
-      await this.client.mkdir(dir, true).catch(() => {
-        /* already exists */
-      });
-    }
+    // ★ THE SILENT PASS. Every leaf directory is created before the first file moves, and this used
+    // to be a SEQUENTIAL loop that reported nothing: measured against a real target ~1s per round
+    // trip, a 106-directory site sat at "Uploading 0/254" for ~1m45s with the UI frozen — past the
+    // point where a reverse proxy drops an idle SSE stream. Now it runs through the same bounded pool
+    // the uploads use (≈8× faster) AND ticks, so the phase is both shorter and visible.
+    const dirs = planLeafDirs(remoteDir, rels);
+    let madeDirs = 0;
+    onDir?.(0, dirs.length);
+    let nextDir = 0;
+    const dirWorker = async (): Promise<void> => {
+      for (;;) {
+        const i = nextDir;
+        nextDir += 1;
+        if (i >= dirs.length) return;
+        // `mkdir -p` semantics: a parent created concurrently by a sibling worker is not an error.
+        await this.client.mkdir(dirs[i]!, true).catch(() => {
+          /* already exists */
+        });
+        madeDirs += 1;
+        onDir?.(madeDirs, dirs.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(SFTP_UPLOAD_CONCURRENCY, dirs.length) }, () => dirWorker()));
     let next = 0;
     let failed = false;
     const worker = async (): Promise<void> => {
@@ -502,11 +563,18 @@ export async function deploySite(
     onProgress?.({ phase: 'uploading', total, index, skipped, strategy, bytes, elapsedMs: 0 });
 
     if (changed.length > 0) {
-      await transport.upload(config.remoteDir, changed, (rel) => {
-        index += 1;
-        bytes += nextManifest[rel]?.size ?? 0;
-        onProgress?.({ phase: 'uploading', total, index, file: rel, skipped, strategy, bytes, elapsedMs: Date.now() - startedAt });
-      });
+      await transport.upload(
+        config.remoteDir,
+        changed,
+        (rel) => {
+          index += 1;
+          bytes += nextManifest[rel]?.size ?? 0;
+          onProgress?.({ phase: 'uploading', total, index, file: rel, skipped, strategy, bytes, elapsedMs: Date.now() - startedAt });
+        },
+        // The remote directory tree, created before any file moves — reported against ITS OWN total so
+        // the bar advances through a pass that is otherwise minutes of nothing.
+        (done, dirTotal) => onProgress?.({ phase: 'preparing', total, index, skipped, strategy, dirs: done, dirTotal }),
+      );
     }
     // True per-file transfer time, measured before the prune + manifest write (which the reported
     // throughput should not be diluted by).

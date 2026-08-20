@@ -95,11 +95,18 @@ describe('DeployConfigSchema', () => {
     }
   });
 
-  it('rsync demands a non-root remoteDir and a known_hosts pin (not a SHA-256 fingerprint)', () => {
+  it('rsync ALLOWS a root remoteDir — unless it would also PRUNE it', () => {
     const base = { protocol: 'sftp' as const, host: 'h', user: 'u', password: 'p', useRsync: true };
-    // remoteDir defaults to '/', and '/' is explicitly refused — rsync --delete must never target root.
-    expect(() => DeployConfigSchema.parse(base)).toThrow(/remote directory/i);
-    expect(() => DeployConfigSchema.parse({ ...base, remoteDir: '/' })).toThrow(/remote directory/i);
+    // ★ Root used to be refused outright, which made rsync unusable for every account already chrooted
+    // to its own web root — the common shared-hosting shape, where "/" IS the site and where the SFTP
+    // transport has always been happy. The hazard was never the PATH, it was root + --delete.
+    expect(() => DeployConfigSchema.parse(base)).toThrow(/deletes every remote file/i);
+    expect(() => DeployConfigSchema.parse({ ...base, remoteDir: '/' })).toThrow(/deletes every remote file/i);
+    // Either half defuses it: stop pruning…
+    expect(DeployConfigSchema.parse({ ...base, remoteDir: '/', rsyncDelete: false }).remoteDir).toBe('/');
+    // …or say plainly that mirroring the whole root is the intent.
+    expect(DeployConfigSchema.parse({ ...base, remoteDir: '/', rsyncRootDeleteAck: true }).remoteDir).toBe('/');
+    // A non-root directory prunes by default, as before.
     expect(DeployConfigSchema.parse({ ...base, remoteDir: '/var/www/site' }).useRsync).toBe(true);
     // A SHA-256 fingerprint can't be enforced by ssh → rejected (no silent TOFU downgrade).
     expect(() => DeployConfigSchema.parse({ ...base, remoteDir: '/web', hostFingerprint: 'aa:bb:cc:dd' })).toThrow(/known_hosts/i);
@@ -133,10 +140,14 @@ function makeFake(opts: { prev?: DeployManifest | null } = {}) {
       calls.push('write');
       written.push(manifest);
     },
-    upload: async (_remote, files: ReadonlyArray<SiteFile>, onFile) => {
+    upload: async (_remote, files: ReadonlyArray<SiteFile>, onFile, onDir) => {
       calls.push('upload');
       const rels = files.map((f) => f.rel.split(/[\\/]/).join('/'));
       uploads.push({ rels });
+      // Model the real transports: the remote directory tree is created BEFORE any file moves.
+      const dirs = [...new Set(rels.map((r) => r.split('/').slice(0, -1).join('/')).filter(Boolean))];
+      onDir?.(0, dirs.length);
+      dirs.forEach((_d, i) => onDir?.(i + 1, dirs.length));
       rels.forEach((r) => onFile?.(r));
     },
     remove: async (_remote, rels) => {
@@ -209,7 +220,9 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     const events: DeployProgress[] = [];
     const fake = makeFake({ prev: null });
     await deploySite(siteDir, cfg, () => fake.transport, (e) => events.push(e));
-    expect(events.map((e) => e.phase)).toEqual(['connecting', 'checking', 'uploading', 'uploading', 'uploading', 'done']);
+    expect(events.map((e) => e.phase).filter((p) => p !== 'preparing')).toEqual([
+      'connecting', 'checking', 'uploading', 'uploading', 'uploading', 'done',
+    ]);
     const done = events.at(-1)!;
     expect(done.index).toBe(done.total);
     expect(done.strategy).toBe('files');
@@ -219,6 +232,22 @@ describe('deploySite (incremental orchestration via fake transport)', () => {
     const fileEvents = events.filter((e) => e.phase === 'uploading' && e.file);
     expect(fileEvents.map((e) => e.file)).toEqual(['about/index.html', 'index.html']);
     expect(fileEvents.at(-1)!.bytes).toBe(done.bytes);
+  });
+
+  it('reports the DIRECTORY pass, which runs before any file moves', async () => {
+    // ★ THE REPORTED BUG. Creating the remote tree used to emit nothing at all, so the UI sat on
+    // "Uploading 0/N" for the whole pass. Measured against a real target where one round trip costs
+    // ~1s, a 106-directory site was frozen for ~1m45s — long enough for a reverse proxy to reap the
+    // idle SSE stream, after which the deploy finished server-side and the browser never found out.
+    const events: DeployProgress[] = [];
+    const fake = makeFake({ prev: null });
+    await deploySite(siteDir, cfg, () => fake.transport, (e) => events.push(e));
+    const preparing = events.filter((e) => e.phase === 'preparing');
+    expect(preparing.length).toBeGreaterThan(0);
+    // It carries its OWN denominator — the file total says nothing about how far the tree pass is.
+    expect(preparing.at(-1)!.dirs).toBe(preparing.at(-1)!.dirTotal);
+    // …and it lands BEFORE the first byte of any file.
+    expect(events.findIndex((e) => e.phase === 'preparing')).toBeLessThan(events.findIndex((e) => e.file !== undefined));
   });
 
   it('the bar starts partly filled (index = skipped) on an incremental deploy', async () => {

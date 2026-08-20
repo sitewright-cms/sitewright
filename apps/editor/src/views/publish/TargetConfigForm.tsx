@@ -92,6 +92,9 @@ export function TargetConfigForm({
   const [fingerprint, setFingerprint] = useState(editing?.hostFingerprint ?? '');
   // SFTP-only: rsync-over-SSH transfer (delta + compression) for servers that permit it.
   const [useRsync, setUseRsync] = useState(!!editing?.useRsync);
+  // Pruning defaults ON: a mirror that never removes anything leaves a renamed page's old URL live.
+  const [rsyncDelete, setRsyncDelete] = useState(editing?.rsyncDelete !== false);
+  const [rsyncRootDeleteAck, setRsyncRootDeleteAck] = useState(!!editing?.rsyncRootDeleteAck);
   // git
   const [repoUrl, setRepoUrl] = useState(editing?.repoUrl ?? '');
   const [branch, setBranch] = useState(editing?.branch ?? 'gh-pages');
@@ -196,7 +199,7 @@ export function TargetConfigForm({
         minifyHtml: minify,
         ...(portNum !== undefined ? { port: portNum } : {}),
         ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
-        ...(protocol === 'sftp' ? { useRsync } : {}),
+        ...(protocol === 'sftp' ? { useRsync, rsyncDelete, rsyncRootDeleteAck } : {}),
         ...(useKey && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
         ...(!useKey && password ? { password } : {}),
       };
@@ -216,7 +219,7 @@ export function TargetConfigForm({
       remoteDir: remoteDir || '/',
       ...(portNum !== undefined ? { port: portNum } : {}),
       ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
-      ...(protocol === 'sftp' && useRsync ? { useRsync: true } : {}),
+      ...(protocol === 'sftp' && useRsync ? { useRsync: true, rsyncDelete, rsyncRootDeleteAck } : {}),
       ...(minify ? { minifyHtml: true } : {}),
     };
     await api.createDeployTarget(project.id, cfg);
@@ -293,8 +296,40 @@ export function TargetConfigForm({
             label="Transfer with rsync"
             checked={useRsync}
             onChange={setUseRsync}
-            hint="Delta + compression over SSH in one connection — much faster for large or repeat deploys. Enable only if your SFTP server permits rsync. Prunes remote files not in the build."
+            hint="Delta + compression over SSH in one connection — much faster for large or repeat deploys. Enable only if your SFTP server permits rsync."
           />
+          {useRsync && (
+            <>
+              <Toggle
+                label="Delete remote files not in the build"
+                checked={rsyncDelete}
+                onChange={setRsyncDelete}
+                hint="Keeps the remote an exact mirror, so a renamed or removed page stops being reachable. Turn it off if this directory also holds files Sitewright does not manage. ‘.well-known/’ is never pruned."
+              />
+              {/* ★ Root + prune is the one genuinely destructive combination, and it is the ONE the
+                  API refuses without an explicit acknowledgement. Warn where the choice is made
+                  rather than letting the save fail with a validation error. */}
+              {rsyncDelete && remoteDir.trim() === '/' && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200"
+                >
+                  <p className="font-bold">This deletes remote files outside your site.</p>
+                  <p className="mt-1">
+                    The remote directory is the account root, and pruning removes <em>everything</em> under it that this
+                    build does not contain — including anything you uploaded by hand. Point it at a sub-directory, turn
+                    pruning off, or confirm below.
+                  </p>
+                  <Toggle
+                    label="I understand — mirror the whole root"
+                    checked={rsyncRootDeleteAck}
+                    onChange={setRsyncRootDeleteAck}
+                    hint=""
+                  />
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
 

@@ -32,11 +32,15 @@ function withTrailingSlash(path: string): string {
  * src/dest as options (argument-injection guard, mirroring the git path's `--`).
  */
 export function buildRsyncArgs(
-  config: Pick<DeployConfig, 'user' | 'host'>,
+  config: Pick<DeployConfig, 'user' | 'host' | 'rsyncDelete'>,
   srcDir: string,
   remoteDir: string,
   sshCommand: string,
 ): string[] {
+  // Pruning is the default — a mirror that never removes anything is not a mirror, and a renamed page
+  // would leave its old URL live forever. Opt OUT when the remote directory is shared with files the
+  // build does not know about.
+  const prune = config.rsyncDelete !== false;
   return [
     // -r recurse, -l symlinks, -p perms, -t times, -z compress. Deliberately NOT -a: skip owner/group
     // (--no-o/--no-g) and devices/specials — shared hosting rejects chown and has no device nodes.
@@ -58,7 +62,7 @@ export function buildRsyncArgs(
     '--filter=P .well-known/**',
     // The SFTP transport's own state manifest: hidden AND protected (switching transports stays safe).
     `--exclude=/${MANIFEST_FILENAME}`,
-    '--delete', // prune remote files absent from the build (remoteDir is the schema-guarded, non-root site root)
+    ...(prune ? ['--delete'] : []), // prune remote files absent from the build (see `rsyncDelete`)
     '--stats', // machine-parseable summary at the end
     '--info=progress2', // one aggregate progress line (bytes / % / xfr# / to-chk)
     '-e',

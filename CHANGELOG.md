@@ -7,6 +7,21 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.31.1] — 2026-08-20
+
+### Fixed
+
+- **"Download .zip" was unreachable without a deploy target** — the one case it exists for. The
+  Deploy control collapsed to a single button when a project had no targets, and the ▾ menu is the
+  only route to the download, so the manual deployment path was hidden from exactly the projects that
+  have no automated one. Both the route and this component's own docstring already said the opposite:
+  the route builds a fresh archive precisely when there is no retained build, and the component
+  documents "an always-on split button". The button is now always split.
+- **The download was a dead link until the first publish.** The archive is the site AS PUBLISHED, so
+  the route answers `409` until a release exists — as a bare `<a>` that opened a browser tab of raw
+  JSON. It is now disabled with the reason in its tooltip.
+- With no targets the menu no longer shows a "Deploy to…" heading and a divider above an empty list.
+
 ## [0.31.0] — 2026-08-20
 
 ### Fixed
@@ -2753,7 +2768,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...HEAD
+[0.31.1]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/sitewright-cms/sitewright/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/sitewright-cms/sitewright/compare/v0.28.0...v0.29.0

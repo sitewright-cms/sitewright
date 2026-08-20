@@ -1230,6 +1230,43 @@ function createInstance(): typeof Handlebars {
   //     Narrow on purpose: a bare `key` is a legitimate field name (the shop's channels use it), so
   //     only credential-shaped names are matched.
   //   · anything unserializable (cycle/function/BigInt), and anything over MAX_JSON_DATA_BYTES.
+/** The size tokens the media pipeline produces. */
+const JSON_DATA_SIZES = ['xs', 'sm', 'md', 'lg', 'xl'] as const;
+
+/**
+ * Stamps `?size=<token>` onto every CMS media URL inside a projected island payload.
+ *
+ * ★ WHY AN ISLAND NEEDS THIS. `fields=` can only pick a field, never transform it — so an island
+ * carries a page's `image` exactly as stored, with no size. Publish then rewrites that bare URL at the
+ * DEFAULT variant, and a script that paints 400px cards from the island downloads the largest one:
+ * measured on a real archive, 132 KB per card where the server-rendered cards beside them use a
+ * srcset. Nothing reports it — the images load, they are simply ten times the bytes they render.
+ *
+ * Stamping the query is all that is needed, because both surfaces already understand it: the platform
+ * serves `?size=` dynamically in preview, and publish rewrites it to a static `-<size>.webp` name AND
+ * registers that variant for materialization. Exactly what {{sw-image}} does — an island just had no
+ * way to ask.
+ *
+ * A URL that already carries a query is left alone: the author asked for something specific.
+ */
+function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
+  if (depth > 8) return value;
+  if (typeof value === 'string') {
+    if (!value.includes('/media/') || value.includes('?')) return value;
+    return value.replace(/\/media\/[A-Za-z0-9_-]+\/(?:[A-Za-z0-9_-]+\/)?[A-Za-z0-9_.-]+/g, (hit) => `${hit}?size=${size}`);
+  }
+  if (Array.isArray(value)) return value.map((v) => sizeMediaUrls(v, size, depth + 1));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // eslint-disable-next-line security/detect-object-injection -- own-property key from Object.entries
+      out[k] = sizeMediaUrls(v, size, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
   hb.registerHelper('sw-json-data', function swJsonData(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const hash = (options?.hash ?? {}) as Record<string, unknown>;
@@ -1264,6 +1301,16 @@ function createInstance(): typeof Handlebars {
     const rawFields = typeof hash.fields === 'string' ? hash.fields : '';
     const fields = rawFields.split(',').map((f) => f.trim()).filter(Boolean);
     if (fields.length > 0) payload = projectFields(payload, fields);
+
+    // `size="sm"` — the variant the island's image URLs point at. See sizeMediaUrls: without it an
+    // island's images are published at the default size and a card grid ships ten times what it shows.
+    if (hash.size !== undefined) {
+      const size = typeof hash.size === 'string' ? hash.size : '';
+      if (!(JSON_DATA_SIZES as readonly string[]).includes(size)) {
+        return refuse(`size= must be one of ${JSON_DATA_SIZES.join(', ')}`);
+      }
+      payload = sizeMediaUrls(payload, size);
+    }
 
     const secret = findSecretKey(payload);
     if (secret) return refuse(`refusing a value containing a credential-shaped key ("${secret}")`);

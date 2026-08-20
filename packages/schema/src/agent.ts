@@ -861,7 +861,12 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     is a template ERROR (a value there could close the tag), so the helper emits the whole element.
     NARROW each row with fields="title,path,image,description:130,data.date" — comma-separated; DOTTED
     paths keep their shape (data.date lands at {data:{date}}); a trailing :N caps a STRING field, so an
-    island carries what the card SHOWS rather than the whole text. Applied BEFORE the size check. A page-tree
+    island carries what the card SHOWS rather than the whole text. Applied BEFORE the size check.
+    ★ SIZE THE IMAGES with size="sm" (xs|sm|md|lg|xl). fields= can only PICK a field, never transform
+    it, so an island carries an image URL with NO size and the build publishes it at the DEFAULT
+    variant — a script painting 400px cards from the island then downloads the largest one (measured:
+    132 KB per card, ten times what it renders). size= stamps the variant onto every media URL in the
+    payload, which is also what makes the export materialize it. A page-tree
     listing carries each child's whole data object: 488 posts = 1.25 MB raw, a tenth of that projected.
     It REFUSES loudly (an HTML comment saying why) rather than emitting something wrong: a whole
     ambient namespace (website / pages / dataset — pass a projection like dataset.products), a value

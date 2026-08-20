@@ -7,6 +7,29 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.32.1] — 2026-08-20
+
+### Fixed
+
+- **The first deploy into an EMPTY remote directory failed; the second succeeded.** A regression from
+  0.32.0's parallel directory pass. Firing RECURSIVE `mkdir` at leaf paths concurrently races on the
+  shared missing parent — and the losers do not quietly no-op, the library aborts the whole call, so
+  the leaf is never created. Measured against a real SFTP server: **8 concurrent recursive mkdirs of
+  siblings under one missing parent left 1 of 8 directories in place**, reporting "permission denied"
+  rather than anything resembling a race.
+
+  The deploy then died much later on an unrelated-looking `fastPut … no such file or directory`,
+  because the failures were swallowed by a bare `.catch(() => {})`. A retry appeared to "fix" it only
+  because each attempt created a few more directories.
+
+  Directories are now created SHALLOWEST FIRST, one depth level at a time: within a level every parent
+  already exists and no two concurrent calls target the same path, so the pass keeps the parallelism
+  and loses the race. A `mkdir` that fails is no longer assumed benign — it is re-checked, retried
+  once, and then raised naming the directory, instead of surfacing minutes later as an upload error.
+
+  Verified against the reported target with a genuinely empty remote directory: 255/255 files,
+  16.2 MB, 43s, zero errors.
+
 ## [0.32.0] — 2026-08-20
 
 ### Fixed
@@ -2803,7 +2826,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...HEAD
+[0.32.1]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...v0.31.1
 [0.31.0]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...v0.31.0

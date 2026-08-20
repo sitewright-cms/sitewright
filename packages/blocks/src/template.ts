@@ -16,12 +16,42 @@
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
-import { escapeAttr, escapeHtml } from './escape.js';
+import { escapeAttr, escapeHtml, jsonForScript } from './escape.js';
 import { renderSearchBox } from './search.js';
 import { renderIconSvg, FLAG_PREFIX } from './icon-render.js';
 import { resolveDirectives } from './directives.js';
 import { markEntry } from './entry-marker.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
+
+/**
+ * Ceiling for ONE on-page data island, in bytes of serialized JSON.
+ *
+ * An island is inlined into the HTML of every page that renders it and is re-sent on every visit — it
+ * is never cached separately the way a fetched file is. 256 KiB is the same ceiling the platform puts
+ * on other authored blobs, and it is comfortably above a page-sized list while staying far below the
+ * point where a page stops being a page. Past it the right answer is a `website.dataFiles` entry,
+ * which ships once and is cached.
+ */
+export const MAX_JSON_DATA_BYTES = 256 * 1024;
+
+/**
+ * The first credential-shaped key anywhere in `value`, or `undefined`.
+ *
+ * NARROW ON PURPOSE. `key` and `id` are ordinary field names — the shop's own channels use `key` — so
+ * matching them would break real data and teach authors to route around the guard. Only names that are
+ * credentials in every codebase are matched, at any depth, on the key rather than the value (a secret
+ * is recognizable by what it is called, not by what it looks like).
+ */
+function findSecretKey(value: unknown, depth = 0): string | undefined {
+  if (depth > 8 || value === null || typeof value !== 'object') return undefined;
+  const SECRET = /^(pass(word|phrase)?|secret|.*secret|api[-_]?key|access[-_]?token|refresh[-_]?token|private[-_]?key|client[-_]?secret|authorization|credentials?)$/i;
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (!Array.isArray(value) && SECRET.test(k)) return k;
+    const nested = findSecretKey(v, depth + 1);
+    if (nested) return nested;
+  }
+  return undefined;
+}
 import {
   renderImageMapMarkup,
   resolveImageMapEmbeds,
@@ -1080,6 +1110,75 @@ function createInstance(): typeof Handlebars {
     } catch {
       return ''; // circular / non-serializable
     }
+  });
+  // {{sw-json-data value id="products"}} → the value as an INERT on-page data island:
+  //   <script type="application/json" id="products">[…]</script>
+  //
+  // The counterpart to {{sw-json}} above: that one HTML-ESCAPES for a human to read in a <pre>; this
+  // one emits a machine-parseable island for a script to read with
+  // `JSON.parse(document.getElementById('products').textContent)`.
+  //
+  // ★ It emits the WHOLE ELEMENT and cannot be written any other way. `checkOutput` rejects every
+  // interpolation inside a <script> body (mode 'rawtext'), because a script body is raw text where a
+  // value could close the tag — so `<script>{{sw-json x}}</script>` is a template error by design.
+  // Emitting the element from the helper is what keeps that rule intact: the payload goes through
+  // `jsonForScript`, so `</script>`, `<!--` and U+2028/9 are unrepresentable in the output.
+  //
+  // type="application/json" is INERT — the browser never executes it. The helper deliberately offers no
+  // way to emit `text/javascript`, and never assigns to a global: a data island is data.
+  // `type="application/ld+json"` is allowed for author-written structured data, which is the one other
+  // thing a <script> data island is legitimately used for.
+  //
+  // REFUSALS (each emits an HTML COMMENT naming the reason — visible in view-source and in the build
+  // output, never a silent empty element):
+  //   · the AMBIENT namespaces — `website`, `settings`, `pages`, `dataset` as a whole — are refused by
+  //     IDENTITY (===) against the render root. Two reasons, both load-bearing: `website` carries the
+  //     form endpoint, which the platform deliberately keeps OUT of markup as spam protection
+  //     (window.__swf), and `pages` is the self-referential page tree whose own JSON.stringify has
+  //     already thrown in production. Pass a projection — `dataset.products`, `page.data.tiles` — not
+  //     the namespace.
+  //   · a key that LOOKS like a credential anywhere in the value (password/secret/apiKey/token/…).
+  //     Narrow on purpose: a bare `key` is a legitimate field name (the shop's channels use it), so
+  //     only credential-shaped names are matched.
+  //   · anything unserializable (cycle/function/BigInt), and anything over MAX_JSON_DATA_BYTES.
+  hb.registerHelper('sw-json-data', function swJsonData(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const hash = (options?.hash ?? {}) as Record<string, unknown>;
+    const value = args.length > 1 ? args[0] : undefined;
+    const refuse = (why: string): Handlebars.SafeString =>
+      new Handlebars.SafeString(`<!-- sw-json-data: ${escapeHtml(why)} -->`);
+
+    if (value === undefined) return refuse('no value given');
+
+    const id = typeof hash.id === 'string' ? hash.id : '';
+    // The id is how the reading script finds the island, so it must be a plain token — not a place to
+    // smuggle attribute syntax.
+    if (!/^[A-Za-z][\w-]{0,63}$/.test(id)) return refuse('id= must be a name like "products" (letter, then letters/digits/-/_)');
+
+    const type = typeof hash.type === 'string' ? hash.type : 'application/json';
+    if (type !== 'application/json' && type !== 'application/ld+json') {
+      return refuse('type= must be application/json or application/ld+json');
+    }
+
+    const root = (options.data?.root ?? {}) as Record<string, unknown>;
+    for (const ambient of ['website', 'settings', 'pages', 'dataset'] as const) {
+      // eslint-disable-next-line security/detect-object-injection -- fixed literal list
+      if (value === root[ambient]) {
+        return refuse(`refusing to serialize the whole "${ambient}" namespace — pass a projection like dataset.products`);
+      }
+    }
+
+    const secret = findSecretKey(value);
+    if (secret) return refuse(`refusing a value containing a credential-shaped key ("${secret}")`);
+
+    const json = jsonForScript(value);
+    if (json === undefined) return refuse('value is not serializable (circular, function, or BigInt)');
+    if (json.length > MAX_JSON_DATA_BYTES) {
+      // ★ LOUD, never truncated. Half a data island is worse than none: the reading script gets valid
+      // JSON that is quietly missing rows, which looks like missing content rather than a size problem.
+      return refuse(`value is ${json.length} bytes, over the ${MAX_JSON_DATA_BYTES}-byte limit — emit it as a data file (website.dataFiles) and fetch it instead`);
+    }
+    return new Handlebars.SafeString(`<script type="${type}" id="${escapeAttr(id)}">${json}</script>`);
   });
   // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
   // page locale, from the project translation catalog (website.translations). The render projection

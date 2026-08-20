@@ -7,6 +7,45 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **Hand structured data to a script — two ways, for two different problems.** A page that wants to
+  filter, sort or paginate a list in the browser had no way to get the data there: a template may not
+  interpolate inside a `<script>` body at all (a value could close the tag), so the only route was to
+  render one more page per window. A gallery of 3,400 photographs cost 24 near-identical pages, and the
+  page count is a hand-maintained number that drifts the moment the data changes — removing duplicates
+  from one real gallery left two of its pages rendering nothing.
+
+  `{{sw-json-data value id="tiles"}}` emits an inert on-page island —
+  `<script type="application/json" id="tiles">…</script>` — read with
+  `JSON.parse(document.getElementById('tiles').textContent)`. The helper emits the whole element,
+  which is what keeps the "no interpolation inside a script" rule intact, and escapes the payload so
+  `</script>`, `<!--` and U+2028/9 are unrepresentable in the output.
+
+  `website.dataFiles` emits a `.json` next to the pages at publish — from a dataset (published entries
+  only, optionally narrowed with `fields`) or from a media folder. An island is inlined in the HTML and
+  re-sent on every view; a file ships once, is cached, and can be fetched lazily. Use the island for one
+  page's own list or a widget's config, the file for a list too large to inline or one several pages
+  share. Real pages remain the right answer whenever each item needs its own URL — search, SEO and deep
+  links all work on pages and none of them see a data island.
+
+  Both REFUSE rather than emit something subtly wrong, and say why: the island turns down a whole
+  ambient namespace (`website` carries the form endpoint the platform deliberately keeps out of markup;
+  `pages` is the self-referential tree whose own `JSON.stringify` has thrown in production), a value
+  carrying a credential-shaped key, anything unserializable, and anything over 256 KB. A data file that
+  is over 4 MB, has a duplicate path, or whose source resolved to nothing reports on the publish result
+  rather than shipping an empty list in silence.
+
+### Fixed
+
+- **One script-safe JSON serializer instead of three.** The same `</script>` escaping existed in three
+  copies (the JSON-LD head, the image-map embed, and now this) — the shape that lets one copy drift and
+  quietly lose an escape. They now share `jsonForScript`, which also escapes U+2028/U+2029: both are
+  legal inside a JSON string and are line terminators in JavaScript source, so a payload carrying one
+  parsed fine and broke the moment the same text was read as JS.
+
 ## [0.26.0] — 2026-08-19
 
 ### Added

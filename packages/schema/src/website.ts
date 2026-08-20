@@ -1082,6 +1082,55 @@ const WebsiteSettingsObject = z.object({
     })
     .optional(),
   /**
+   * DATA FILES emitted as `.json` next to the pages at publish.
+   *
+   * The counterpart to the on-page `{{sw-json-data}}` island. An island is inlined into the HTML of
+   * every page that renders it and re-sent on every visit; a data file ships ONCE, is cached by the
+   * browser like any other asset, and can be fetched lazily — which is what a list too large to inline
+   * (a 3,000-image gallery, a whole archive) actually needs.
+   *
+   * Each entry names exactly ONE source:
+   *   · `dataset` — that dataset's PUBLISHED entries (drafts are never emitted), optionally projected
+   *     to `fields` so a file carries the three columns a grid needs rather than every column.
+   *   · `folder` — the images in that media folder, as `{url,alt,width,height}`.
+   *
+   * `path` is a site-root-relative filename ending in `.json`. It is deliberately NOT a free path: a
+   * traversal or an absolute path could overwrite a generated file (`sitemap.xml`, a page's
+   * `index.html`) during publish.
+   */
+  dataFiles: z
+    .array(
+      z
+        .object({
+          path: z
+            .string()
+            .min(1)
+            .max(128)
+            .regex(/^[A-Za-z0-9][\w.-]*\.json$/, 'path must be a plain filename ending in .json (no directories)')
+            // `..` can't appear given the pattern above, but assert it: this value names a WRITE target.
+            .refine((v) => !v.includes('..'), 'path must not contain ".."'),
+          /** Emit this dataset's published entries. Mutually exclusive with `folder`. */
+          dataset: z.string().min(1).max(64).optional(),
+          /** Emit this media folder's images. Mutually exclusive with `dataset`. */
+          folder: z.string().min(1).max(256).optional(),
+          /** Keep only these fields from each row (dataset sources only). Empty/absent = every field. */
+          fields: z.array(z.string().min(1).max(64)).max(32).optional(),
+        })
+        .superRefine((v, ctx) => {
+          if (!v.dataset === !v.folder) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: 'each data file needs exactly one source: dataset or folder',
+            });
+          }
+          if (v.folder && v.fields?.length) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'fields= applies to a dataset source, not a folder' });
+          }
+        }),
+    )
+    .max(20)
+    .optional(),
+  /**
    * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on
    * publish. `from` is a path; `to` is a path or absolute URL.
    */

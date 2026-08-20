@@ -273,6 +273,31 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'sw-concat escapes its result, so it is safe in text and in an attribute. sw-split trims each piece and drops empties, so a trailing separator and "a, b,, c" both behave; an array passes straight through.',
       },
       {
+        id: 'h-json-data',
+        syntax: '{{sw-json-data value id="products"}}',
+        name: 'sw-json-data — hand data to a script',
+        keywords:
+          'sw-json-data json script data island parse client javascript fetch pagination filter sort map chart ld+json structured data application/json',
+        description:
+          'Emits the value as an inert data island — <script type="application/json" id="…">…</script> — for page JavaScript to read with JSON.parse(document.getElementById(\'…\').textContent). This is the ONLY way to get structured data to a script: a template may not interpolate inside a <script> body at all (that is a template error, because a value there could close the tag), so the helper emits the whole element and escapes the payload itself. Use it for a list a script filters, sorts or paginates in the browser, for a widget\'s configuration, or with type="application/ld+json" for your own structured data. For a list too large to inline, declare a data FILE instead (Settings → Website → Data files) and fetch it: an island is re-sent with every page view, a file ships once and is cached.',
+        args: [
+          { name: 'value', desc: 'What to serialize — a dataset, a page field, any projection. NOT a whole namespace (see the note).' },
+          { name: 'id', desc: 'NAMED, required: the element id the reading script looks up. A plain name — letters, digits, - and _.' },
+          { name: 'type', desc: 'NAMED, optional: application/json (default) or application/ld+json. Executable types are refused.' },
+        ],
+        example:
+          '{{! a gallery the page filters without a round-trip }}\n' +
+          '{{sw-json-data page.data.tiles id="tiles"}}\n' +
+          '\n' +
+          '{{! only the columns the grid needs }}\n' +
+          "{{sw-json-data (sw-limit dataset.products 200) id=\"products\"}}\n" +
+          '\n' +
+          '<script>\n' +
+          "  const rows = JSON.parse(document.getElementById('products').textContent);\n" +
+          '</script>',
+        note: 'It REFUSES, with a visible HTML comment saying why, rather than emitting something wrong: a whole ambient namespace (website / pages / dataset — pass a projection like dataset.products), a value containing a credential-shaped key, anything unserializable, and anything over 256 KB (use a data file). The payload is escaped so no value can close the <script> element.',
+      },
+      {
         id: 'h-math',
         syntax: '{{sw-add a b}} · {{sw-sub a b}} · {{sw-mul a b}} · {{sw-div a b}} · {{sw-mod a b}}',
         name: 'arithmetic',

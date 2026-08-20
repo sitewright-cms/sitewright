@@ -25,7 +25,7 @@ import type { Element } from 'domhandler';
 import { isSvgShapeAttr, isSvgShapeTag } from '@sitewright/schema';
 import { sanitizeSvg } from '@sitewright/image-pipeline/svg';
 import { sanitizeRichHtml } from './sanitize-rich.js';
-import { escapeAttr } from './escape.js';
+import { escapeAttr, jsonForScript as jsonForScriptOrUndefined } from './escape.js';
 
 /** The attribute an image-map reference is carried on. */
 export const IMAGE_MAP_ATTR = 'data-sw-imagemap';
@@ -47,13 +47,16 @@ export interface ImageMapEmbedContext {
 }
 
 /**
- * JSON safe to place inside a `<script>` element.
+ * The shared script-safe serializer, narrowed to a total function.
  *
- * Escaping `<`, `>` and `&` as \uXXXX (still valid JSON) neutralises `</script>`, `<!--` and
- * `<script>` breakouts while keeping the payload parseable. Same treatment head.ts gives JSON-LD.
+ * ★ There were THREE copies of this escaping in the package (here, head.ts, and now the canonical one
+ * in escape.ts) — the exact duplication that lets one copy drift and quietly lose an escape. This is a
+ * thin adapter: an image-map config is built by the renderer from validated data and cannot be
+ * circular, so an unserializable value means a bug in the caller, and `{}` keeps the embed parseable
+ * rather than emitting the literal text "undefined" into a <script>.
  */
-export function jsonForScript(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026');
+function jsonForScript(value: unknown): string {
+  return jsonForScriptOrUndefined(value) ?? '{}';
 }
 
 /**

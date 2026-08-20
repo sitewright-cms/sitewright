@@ -33,7 +33,6 @@ export interface OpenProjectZip {
  */
 export function openProjectZipFile(path: string, maxEntries: number): Promise<OpenProjectZip> {
   return new Promise((resolve, reject) => {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private temp path written by the upload handler
     openZip(path, { lazyEntries: true, autoClose: false }, (err, zipfile) => {
       if (err || !zipfile) {
         reject(new UploadError('not a valid zip archive'));

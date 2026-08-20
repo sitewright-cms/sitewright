@@ -1,4 +1,4 @@
-import { readFile, readdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import { readdir, mkdtemp, rm, stat } from 'node:fs/promises';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve, sep } from 'node:path';

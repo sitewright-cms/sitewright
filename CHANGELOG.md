@@ -7,6 +7,23 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.30.0] — 2026-08-20
+
+### Added
+
+- **`size=` on `{{sw-json-data}}` — an island can finally size the images it carries.** `fields=` can
+  only PICK a field, never transform it, so an island carried a page's `image` exactly as stored, with
+  no size — and the build published that bare URL at the default variant. A script painting cards from
+  the island then downloaded the largest one: measured on a 488-post archive, **132 KB per card** for a
+  400px slot, beside server-rendered cards using a proper srcset. The images loaded, so nothing
+  reported it.
+
+  `{{sw-json-data … size="sm"}}` stamps the variant onto every media URL in the payload. That is all it
+  takes, because both surfaces already understand the query: preview serves `?size=` dynamically, and
+  publish rewrites it to a static `-sm.webp` name AND registers that variant for materialization —
+  exactly what `{{sw-image}}` does. A URL that already carries a query is left alone, and an unknown
+  token is refused with a visible comment rather than emitting a URL nothing will produce.
+
 ## [0.29.0] — 2026-08-20
 
 ### Added
@@ -2687,7 +2704,11 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...HEAD
+[0.30.0]: https://github.com/sitewright-cms/sitewright/compare/v0.29.0...v0.30.0
+[0.29.0]: https://github.com/sitewright-cms/sitewright/compare/v0.28.0...v0.29.0
+[0.28.0]: https://github.com/sitewright-cms/sitewright/compare/v0.27.0...v0.28.0
+[0.27.0]: https://github.com/sitewright-cms/sitewright/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/sitewright-cms/sitewright/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/sitewright-cms/sitewright/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/sitewright-cms/sitewright/compare/v0.23.0...v0.24.0

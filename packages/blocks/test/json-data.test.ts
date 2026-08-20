@@ -275,4 +275,46 @@ describe('{{sw-json-data}} field length limits', () => {
     expect(ok).toContain('<script type="application/json" id="r">');
     expect(body(ok)).toHaveLength(488);
   });
+
+  describe('size= — the variant the island\'s image URLs point at', () => {
+    // ★ `fields=` can only PICK a field, never transform it, so an island carries a page's `image`
+    // exactly as stored — with no size. Publish then rewrites that bare URL at the DEFAULT variant and
+    // a script painting 400px cards downloads the largest one: measured at 132 KB per card on a real
+    // archive, beside server-rendered cards using a srcset. The images load; they are simply ten times
+    // the bytes they render, and nothing reports it.
+    const island = (out: string) => JSON.parse(out.slice(out.indexOf('>') + 1, out.indexOf('</script>')));
+
+    it('stamps ?size= onto media urls so publish materializes THAT variant', () => {
+      const out = render('{{sw-json-data page.data.posts id="p" size="sm"}}', { page: { data: { posts: [{ title: 'A', image: '/media/site/abc123-photo.jpg' }] } } });
+      expect(island(out)).toEqual([{ title: 'A', image: '/media/site/abc123-photo.jpg?size=sm' }]);
+    });
+
+    it('reaches urls nested in objects and arrays', () => {
+      const out = render('{{sw-json-data page.data.rows id="p" size="lg"}}', { page: { data: { rows: [{ gallery: ['/media/site/a1-x.jpg'], meta: { hero: '/media/site/b2-y.jpg' } }] } } });
+      expect(island(out)).toEqual([{ gallery: ['/media/site/a1-x.jpg?size=lg'], meta: { hero: '/media/site/b2-y.jpg?size=lg' } }]);
+    });
+
+    it('leaves a url that already carries a query alone', () => {
+      // The author asked for something specific; a second ?size= would be wrong and unparseable.
+      const out = render('{{sw-json-data page.data.rows id="p" size="sm"}}', { page: { data: { rows: [{ image: '/media/site/a1-x.jpg?size=original' }] } } });
+      expect(island(out)[0].image).toBe('/media/site/a1-x.jpg?size=original');
+    });
+
+    it('leaves prose that merely MENTIONS a path alone', () => {
+      const out = render('{{sw-json-data page.data.rows id="p" size="sm"}}', { page: { data: { rows: [{ note: 'Nothing here', image: '/media/site/a1-x.jpg' }] } } });
+      expect(island(out)[0].note).toBe('Nothing here');
+    });
+
+    it('REFUSES an unknown size rather than emitting a url nothing will produce', () => {
+      const out = render('{{sw-json-data page.data.rows id="p" size="huge"}}', { page: { data: { rows: [{ image: '/media/site/a1-x.jpg' }] } } });
+      expect(out).toContain('<!-- sw-json-data:');
+      expect(out).toContain('size= must be one of');
+      expect(out).not.toContain('<script');
+    });
+
+    it('is inert when size= is absent — the URL is untouched', () => {
+      const out = render('{{sw-json-data page.data.rows id="p"}}', { page: { data: { rows: [{ image: '/media/site/a1-x.jpg' }] } } });
+      expect(island(out)[0].image).toBe('/media/site/a1-x.jpg');
+    });
+  });
 });

@@ -227,7 +227,9 @@ export const CART_JS = `(function(){
   function siteKey(mount){
     var s=document.currentScript;
     if(!s){var all=q('script[src]');for(var i=0;i<all.length;i++){if(/\\/cart\\.js(\\?|$)/.test(all[i].getAttribute('src')||'')){s=all[i];break;}}}
-    try{if(s&&s.src){return new URL('.',s.src).href;}}catch(e){}
+    // ★ SITE ROOT, not the script's directory — the runtimes moved into '_assets/_sw/', and keying a
+    // cart off that would orphan every shopper's basket on the first deploy with the new layout.
+    try{if(s&&s.src){var h=new URL('.',s.src).href,d='_assets/_sw/';return h.slice(-d.length)===d?h.slice(0,-d.length):h;}}catch(e){}
     return (mount&&mount.getAttribute('data-cart-key'))||(location.host+location.pathname.replace(/[^\\/]*$/,''));
   }
   // ---- config from the mount's escaped data-* attributes ----

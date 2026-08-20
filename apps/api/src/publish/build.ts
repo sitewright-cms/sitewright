@@ -394,6 +394,17 @@ export interface BuildProgress {
 
 /** The published directory that holds each project's bundled asset binaries. */
 export const ASSET_DIR = '_assets';
+/**
+ * Where the platform's own runtime scripts live: a RESERVED subdirectory of the bundled asset tree.
+ *
+ * ★ They used to sit at the site ROOT — a 254-file site put 21 loose `.js` files beside `index.html`,
+ * and a deploy to `/` dropped them straight into the customer's web root. `_assets/` is where bundled
+ * output already belongs; the `_sw/` segment keeps them apart from imported media (flattened to
+ * `_assets/<alias>-<name>`) and from platform textures (`_assets/_textures/`), which is what lets the
+ * serving layer tell OUR scripts from a cloned site's imported ones — the latter must never execute on
+ * the cookie-bearing app origin. See PLATFORM_SCRIPT_PATH in store.ts.
+ */
+export const SCRIPT_DIR = `${ASSET_DIR}/_sw`;
 
 /**
  * Conservatively minify a rendered page (the `website.minifyHtml` option). `conservativeCollapse`
@@ -1286,17 +1297,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageScripts = [
           // One external chunk per interactive-component TYPE this page renders (stable name → cached
           // across pages; a component-free page links none of them).
-          ...pageComponentTypes.map((t) => `${siteRoot}${componentChunkName(t)}`),
+          ...pageComponentTypes.map((t) => `${siteRoot}${SCRIPT_DIR}/${componentChunkName(t)}`),
           // Shared registry: link each body-effect runtime THIS page uses (marquee is CSS-only → no
           // script). Same set as the inline CSS above + the editor preview's inline JS for this page.
-          ...pageBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${r.script}`] : [])),
-          ...(pageNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
-          ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
-          ...(pageNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
-          ...(pageBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
-          ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
-          ...(usesStickyHeaderRuntime ? [`${siteRoot}${STICKY_HEADER_SCRIPT}`] : []),
-          ...(pageScrollSpy ? [`${siteRoot}${SCROLLSPY_SCRIPT}`] : []),
+          ...pageBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${SCRIPT_DIR}/${r.script}`] : [])),
+          ...(pageNavLink ? [`${siteRoot}${SCRIPT_DIR}/${NAV_LINK_SCRIPT}`] : []),
+          ...(usesPreloaderRuntime ? [`${siteRoot}${SCRIPT_DIR}/${PRELOADER_SCRIPT}`] : []),
+          ...(pageNavRuntime ? [`${siteRoot}${SCRIPT_DIR}/${NAV_EFFECTS_SCRIPT}`] : []),
+          ...(pageBtnRuntime ? [`${siteRoot}${SCRIPT_DIR}/${BUTTON_EFFECTS_SCRIPT}`] : []),
+          ...(usesBackToTopRuntime ? [`${siteRoot}${SCRIPT_DIR}/${BACK_TO_TOP_SCRIPT}`] : []),
+          ...(usesStickyHeaderRuntime ? [`${siteRoot}${SCRIPT_DIR}/${STICKY_HEADER_SCRIPT}`] : []),
+          ...(pageScrollSpy ? [`${siteRoot}${SCRIPT_DIR}/${SCROLLSPY_SCRIPT}`] : []),
         ];
         // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
         // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
@@ -1331,7 +1342,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
-          headScripts: pageThemeToggle ? [`${siteRoot}${THEME_SCRIPT}?v=${assetVer}`] : undefined,
+          headScripts: pageThemeToggle ? [`${siteRoot}${SCRIPT_DIR}/${THEME_SCRIPT}?v=${assetVer}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
           // Sticky/fixed top-header → the fixed `#main-nav` + `--sw-header-h` offset token, emitted at
@@ -1610,10 +1621,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // manifest reflects what actually ships. Vendored library runtimes inside these bundles are already
     // minified; re-minifying the whole concatenation is idempotent-safe.
     report({ phase: 'scripts' });
+    // A site with no media has no `_assets/` yet, and the runtimes may be the first thing in it.
+    await mkdir(join(tmp, SCRIPT_DIR), { recursive: true });
     const writeJs = async (name: string, code: string): Promise<void> => {
       const min = await minifyJs(code);
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant/registry filename under the validated tmp dir
-      await writeFile(join(tmp, name), min, 'utf8');
+      await writeFile(join(tmp, SCRIPT_DIR, name), min, 'utf8');
       bytes += Buffer.byteLength(min);
     };
 

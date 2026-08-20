@@ -83,7 +83,7 @@ describe('buildSite — code-first form embedding', () => {
     // only-used-ships: the source scan caught the {{sw-form …}} reference → the Form chunk is written
     expect(html).toContain('c-form.js');
     // The shipped chunk is what knows how to build the URL from the blob.
-    await expect(readFile(join(outDir, 'c-form.js'), 'utf8')).resolves.toContain('__swf');
+    await expect(readFile(join(outDir, '_assets/_sw/c-form.js'), 'utf8')).resolves.toContain('__swf');
   });
 
   it('endpoints are absolute when a publicBaseUrl is configured', async () => {

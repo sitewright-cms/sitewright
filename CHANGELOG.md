@@ -7,6 +7,33 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.33.0] — 2026-08-20
+
+### Changed
+
+- **Runtime scripts moved out of the site root into `_assets/_sw/`.** A 254-file site put **21 loose
+  `.js` files** beside `index.html`, and a deploy to `/` dropped them straight into the customer's web
+  root. They now live under the bundled asset tree, where generated output belongs.
+
+  Three things had to move with them, none of them obvious:
+
+  - **Serving.** A `.js` under `_assets/` is deliberately served DOWNLOAD-ONLY on the cookie-bearing
+    app origin, because that tree also holds scripts imported from a cloned site. The platform's own
+    runtimes are not that, and they were already served executable from the site root — so they get a
+    reserved `_sw/` prefix that imported media (flattened to `_assets/<alias>-<name>`) and textures
+    (`_assets/_textures/`) can never reach. Without it every component was a 200 that downloaded
+    instead of running: silently dead interactivity, on both published sites and draft previews.
+  - **Site search.** The runtime resolves the index against its own `<script src>`, so the move asked
+    for `_assets/_sw/search-index.json` and 404'd — the same silent-inert failure this feature already
+    shipped with once. It now climbs out of the reserved directory.
+  - **Stored visitor data.** The consent and cart runtimes key their `localStorage` on the script's
+    own directory. Left alone, the first deploy on the new layout would have re-asked every returning
+    visitor for consent and orphaned every saved basket. Both now key on the SITE ROOT, which is
+    byte-identical to what older builds wrote.
+
+  Nothing to do on an existing site: the stale root-level scripts are pruned by the same manifest diff
+  (SFTP/FTP) or `--delete` (rsync) that removes any other file a build no longer contains.
+
 ## [0.32.1] — 2026-08-20
 
 ### Fixed
@@ -2826,7 +2853,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.33.0...HEAD
+[0.33.0]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...v0.32.0
 [0.31.1]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...v0.31.1

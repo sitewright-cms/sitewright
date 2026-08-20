@@ -27,6 +27,8 @@ export const SEARCH_CSS = [
 ].join('');
 
 export const SEARCH_JS = `(function(){
+  var RUNTIME_DIR = '_assets/_sw/';
+  function stripRuntimeDir(href){ return href.slice(-RUNTIME_DIR.length) === RUNTIME_DIR ? href.slice(0, -RUNTIME_DIR.length) : href; }
   'use strict';
   var hosts = document.querySelectorAll('[data-sw-component="search"]');
   if (!hosts.length) return;
@@ -42,6 +44,15 @@ export const SEARCH_JS = `(function(){
     var guess = document.querySelector('script[src*="c-search.js"]');
     here = guess ? guess.src : location.href;
   }
+
+  // ★ The index lives at the SITE ROOT, but this script does NOT: runtimes are emitted into the
+  // reserved '_assets/_sw/' directory. Resolving the index "beside this script" therefore asks for
+  // '_assets/_sw/search-index.json', which does not exist — a 404 that leaves every search box
+  // silently inert, exactly the failure this feature already shipped with once. Climb out of the
+  // reserved directory; a no-op for any older build whose script sat at the root.
+  var root = (function () {
+    try { return stripRuntimeDir(new URL('.', here).href); } catch (e) { return here; }
+  })();
 
   // ---- tokenizer (mirror of packages/blocks/src/search-tokenize.ts) ---------------------------
   var LATIN_MARKS = /(\\p{sc=Latin})\\p{M}+/gu;
@@ -303,13 +314,13 @@ export const SEARCH_JS = `(function(){
 
     function load(){
       if (loading) return loading;
-      loading = fetch(new URL('search-index.json', here).href)
+      loading = fetch(new URL('search-index.json', root).href)
         .then(function(r){ if (!r.ok) throw new Error('no index'); return r.json(); })
         .then(function(data){
           var pageLang = (document.documentElement.getAttribute('lang') || '').toLowerCase();
           // One request on the default locale; a second only for a translated page.
           if (pageLang && data.lang && data.lang.toLowerCase() !== pageLang) {
-            return fetch(new URL('search-index.' + pageLang + '.json', here).href)
+            return fetch(new URL('search-index.' + pageLang + '.json', root).href)
               .then(function(r2){
                 if (!r2.ok) return data;
                 // suffix is set only AFTER the body parses: a truncated file mid-deploy would
@@ -327,7 +338,7 @@ export const SEARCH_JS = `(function(){
 
     function loadText(){
       if (textFile) return Promise.resolve(textFile);
-      return fetch(new URL('search-text' + suffix + '.json', here).href)
+      return fetch(new URL('search-text' + suffix + '.json', root).href)
         .then(function(r){ return r.ok ? r.json() : null; })
         .then(function(d){ textFile = d; return d; })
         .catch(function(){ return null; });

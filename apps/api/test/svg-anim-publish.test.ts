@@ -63,17 +63,17 @@ describe('SVG animation engine → publish', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('data-sw-svg="draw"');
-    expect(index.body).toContain('<script defer src="svg-anim.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/svg-anim.js?v=');
     expect(index.body).toContain('[data-sw-svg]{transform-box:fill-box'); // inline structural stylesheet
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
 
     // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../svg-anim.js?v=');
+    expect(aboutPage.body).toContain('<script defer src="../_assets/_sw/svg-anim.js?v=');
 
     // The runtime itself is served from the site root and drives WAAPI + stroke draw.
-    const js = await client.get(`/sites/${slug}/svg-anim.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/svg-anim.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('IntersectionObserver');
     expect(js.body).toContain('getTotalLength');
@@ -106,7 +106,7 @@ describe('SVG animation engine → publish', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-svg="draw"');
-    expect(index.body).toContain('<script defer src="svg-anim.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/svg-anim.js?v=');
   });
 
   it('ships NOTHING extra for a site that uses no SVG animation', async () => {
@@ -124,6 +124,6 @@ describe('SVG animation engine → publish', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('svg-anim.js');
     expect(index.body).not.toContain('transform-box:fill-box');
-    expect((await client.get(`/sites/${slug}/svg-anim.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/svg-anim.js`)).statusCode).toBe(404);
   });
 });

@@ -617,7 +617,7 @@ describe('preview API — code-first source page', () => {
     // the reveal actually plays inside the iframe (its CSP allows scripts).
     expect(html).toContain('[data-sw-animation].sw-animation-active');
     expect(html).toContain('IntersectionObserver');
-    expect(html).not.toContain('src="animations.js"');
+    expect(html).not.toContain('src="_assets/_sw/animations.js"');
 
     const plain = await poolApp.inject({
       method: 'POST',

@@ -161,7 +161,7 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('href="https://docs.example.com"'); // external target
     expect(home).toContain('target="_blank"'); // newTab
     expect(home).toContain('nav-link.js'); // runtime shipped (a placeholder targets a #fragment)
-    expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/nav-link.js`)).statusCode).toBe(200);
     // The slugless link placeholders produce NO HTML page of their own.
     expect((await client.get(`/sites/${slug}/nav-contact/index.html`)).statusCode).toBe(404);
   });

@@ -35,6 +35,31 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
 export const MAX_JSON_DATA_BYTES = 256 * 1024;
 
 /**
+ * Unwraps dataset ENTRY ENVELOPES to the flat rows a template actually sees.
+ *
+ * ★ `dataset.products` is an array of `{id, dataset, status, order, values:{…}}` records, but inside
+ * `{{#each dataset.products}}` an author writes `{{name}}`, not `{{values.name}}` — the engine
+ * flattens. Serializing the raw records would hand a script a DIFFERENT shape from the one the same
+ * page renders from, and would publish the internal machinery (`status`, `order`, the storage id) into
+ * the page as a bonus. An integration test through a real publish is what caught this; the shape looks
+ * fine in isolation.
+ *
+ * Conservative: only an array whose every element carries a `values` OBJECT is unwrapped, so an
+ * ordinary list that happens to have a `values` field is left alone.
+ */
+function flattenEntryEnvelopes(value: unknown): unknown {
+  if (!Array.isArray(value) || value.length === 0) return value;
+  const isEnvelope = (row: unknown): row is { values: Record<string, unknown> } =>
+    typeof row === 'object' &&
+    row !== null &&
+    !Array.isArray(row) &&
+    typeof (row as { values?: unknown }).values === 'object' &&
+    (row as { values?: unknown }).values !== null &&
+    !Array.isArray((row as { values?: unknown }).values);
+  return value.every(isEnvelope) ? value.map((row) => (row as { values: Record<string, unknown> }).values) : value;
+}
+
+/**
  * The first credential-shaped key anywhere in `value`, or `undefined`.
  *
  * NARROW ON PURPOSE. `key` and `id` are ordinary field names — the shop's own channels use `key` — so
@@ -1168,10 +1193,13 @@ function createInstance(): typeof Handlebars {
       }
     }
 
-    const secret = findSecretKey(value);
+    // Serialize what the TEMPLATE sees, not the storage record — see flattenEntryEnvelopes.
+    const payload = flattenEntryEnvelopes(value);
+
+    const secret = findSecretKey(payload);
     if (secret) return refuse(`refusing a value containing a credential-shaped key ("${secret}")`);
 
-    const json = jsonForScript(value);
+    const json = jsonForScript(payload);
     if (json === undefined) return refuse('value is not serializable (circular, function, or BigInt)');
     if (json.length > MAX_JSON_DATA_BYTES) {
       // ★ LOUD, never truncated. Half a data island is worse than none: the reading script gets valid

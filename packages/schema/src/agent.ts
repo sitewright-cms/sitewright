@@ -863,10 +863,10 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     ambient namespace (website / pages / dataset — pass a projection like dataset.products), a value
     containing a credential-shaped key, anything unserializable, or anything over 256 KB.
   • DATA FILE — website.dataFiles: [{ path:"gallery.json", folder:"gallery" }] or
-    [{ path:"products.json", dataset:"products", fields:["name","price"] }] emits a .json next to the
-    pages at publish, fetched with fetch('gallery.json'). Ships ONCE and is cached, and can be fetched
-    lazily — right for a list too large to inline, or one several pages share. "path" is a plain
-    filename (no directories). A dataset source emits PUBLISHED entries only; "fields" narrows the
+    [{ path:"products.json", dataset:"products", fields:["name","price"] }] emits the file at
+    data/<path> — fetch('data/gallery.json'). Ships ONCE and is cached, and can be fetched lazily —
+    right for a list too large to inline, or one several pages share. "path" is a plain filename; the
+    data/ directory is fixed (the site ROOT cannot serve .json, so the build manifest stays private). A dataset source emits PUBLISHED entries only; "fields" narrows the
     columns. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
   Prefer real PAGES when each item needs its own URL and to be findable — search, SEO and deep links
   all work on pages and none of them see a data island.

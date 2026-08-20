@@ -24,8 +24,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   which is what keeps the "no interpolation inside a script" rule intact, and escapes the payload so
   `</script>`, `<!--` and U+2028/9 are unrepresentable in the output.
 
-  `website.dataFiles` emits a `.json` next to the pages at publish — from a dataset (published entries
-  only, optionally narrowed with `fields`) or from a media folder. An island is inlined in the HTML and
+  `website.dataFiles` emits a `.json` at `data/<name>.json` at publish — from a dataset (published
+  entries only, optionally narrowed with `fields`) or from a media folder. The `data/` prefix is load-
+  bearing: `.json` is not a servable root extension, precisely so the build manifest `release.json`
+  stays unreachable, and an integration test through a real publish asserts both. An island is inlined in the HTML and
   re-sent on every view; a file ships once, is cached, and can be fetched lazily. Use the island for one
   page's own list or a widget's config, the file for a list too large to inline or one several pages
   share. Real pages remain the right answer whenever each item needs its own URL — search, SEO and deep

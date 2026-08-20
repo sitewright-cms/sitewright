@@ -1094,9 +1094,10 @@ const WebsiteSettingsObject = z.object({
    *     to `fields` so a file carries the three columns a grid needs rather than every column.
    *   · `folder` — the images in that media folder, as `{url,alt,width,height}`.
    *
-   * `path` is a site-root-relative filename ending in `.json`. It is deliberately NOT a free path: a
-   * traversal or an absolute path could overwrite a generated file (`sitemap.xml`, a page's
-   * `index.html`) during publish.
+   * `path` is a plain filename ending in `.json`; the file is emitted at `data/<path>` and fetched from
+   * there. It is deliberately NOT a free path — a traversal could overwrite a generated file during
+   * publish — and the `data/` prefix is not cosmetic: `.json` is NOT a servable root extension, because
+   * the build manifest `release.json` sits at the root and must stay unreachable.
    */
   dataFiles: z
     .array(

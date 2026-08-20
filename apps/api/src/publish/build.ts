@@ -1684,9 +1684,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (dataFileSpecs.length > 0) {
       const built = buildDataFiles({ specs: dataFileSpecs, entries: datasets, media });
       dataFileWarnings.push(...built.warnings);
+      if (built.files.length > 0) {
+        // ★ Data files live in `data/`, never at the site root. `.json` is deliberately NOT a servable
+        // root extension so `release.json` (the build manifest: route counts, page failures, warnings)
+        // stays unreachable — putting author data next to it would have meant opening the root.
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant subdir of the validated tmp dir
+        await mkdir(join(tmp, 'data'), { recursive: true });
+      }
       for (const file of built.files) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- schema-validated plain filename (no separators, no "..") under the validated tmp dir
-        await writeFile(join(tmp, file.path), file.json, 'utf8');
+        await writeFile(join(tmp, 'data', file.path), file.json, 'utf8');
         bytes += Buffer.byteLength(file.json);
       }
     }

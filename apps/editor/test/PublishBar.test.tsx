@@ -81,6 +81,43 @@ describe('PublishBar — deploy split button', () => {
     expect(screen.getByRole('menuitem', { name: /Download/ })).toBeInTheDocument();
   });
 
+  it('offers Download .zip with NO targets configured — the manual deployment path', async () => {
+    // ★ THE BUG: the ▾ only rendered when targets.length > 0, so the menu holding "Download .zip"
+    // could not be opened at all without a deploy target — and a zip download is what you reach for
+    // precisely BECAUSE you have no target. The route agrees: with no retained build it builds a
+    // fresh archive for exactly this case.
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: false });
+    listDeployTargets.mockResolvedValue({ items: [] });
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
+    const download = await screen.findByRole('menuitem', { name: /Download/ });
+    expect(download).toHaveAttribute('href', '/projects/p/publish/archive');
+    // …and no empty "Deploy to…" heading above a list of nothing.
+    expect(screen.queryByText('Deploy to…')).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Add a target/ })).toBeInTheDocument();
+  });
+
+  it('with no targets the primary button still opens the config modal', async () => {
+    const onOpenDeploy = vi.fn();
+    listDeployTargets.mockResolvedValue({ items: [] });
+    render(<PublishBar project={project} onOpenDeploy={onOpenDeploy} />);
+    (await screen.findByRole('button', { name: 'Deploy' })).click();
+    expect(onOpenDeploy).toHaveBeenCalled(); // unchanged behaviour — only the ▾ beside it is new
+  });
+
+  it('DISABLES Download .zip until the site has been published, with the reason', async () => {
+    // The archive is the site AS PUBLISHED, so the route answers 409 until a release exists. As a
+    // bare link that 409 opened a tab of raw JSON.
+    publishStatus.mockResolvedValue({ release: null, url: '', dirty: false, localHosting: false });
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
+    const download = await screen.findByRole('menuitem', { name: /Download/ });
+    expect(download).toHaveAttribute('aria-disabled', 'true');
+    expect(download).not.toHaveAttribute('href');
+    expect(download.getAttribute('title')).toMatch(/publish the site first/i);
+  });
+
   it('deploying a remote target from the dropdown opens the streaming deploy modal', async () => {
     listDeployTargets.mockResolvedValue({ items: [local, remote] });
     render(<PublishBar project={project} />);

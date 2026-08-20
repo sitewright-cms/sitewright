@@ -294,51 +294,50 @@ export function PublishBar({
         </a>
       )}
 
-      {/* DEPLOY — split button (no targets → opens the config modal). */}
+      {/* DEPLOY — split button. ★ ALWAYS split, INCLUDING with no targets: the ▾ menu is the only
+          route to "Download .zip", and a zip download is most useful precisely when there is NO
+          deploy target — that IS the manual deployment path (the route says so, and builds a fresh
+          archive for exactly that case). Collapsing to a lone button at targets.length === 0 hid the
+          feature from the only people who need it. */}
       <div className="relative" ref={menuRef}>
-        {targets.length === 0 ? (
-          <button onClick={() => onOpenDeploy?.()} title="Set up where to deploy your site" aria-label="Deploy" className={btnBase}>
+        <div className="inline-flex">
+          <button
+            onClick={() => (defaultTarget ? deployTo(defaultTarget) : onOpenDeploy?.())}
+            disabled={busy}
+            title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Set up where to deploy your site'}
+            aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
+              // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
+              // label. -700 carries the same "there is something to deploy" green at 5.2:1.
+              dirty
+                ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
+            }`}
+          >
             <DeployIcon />
-            Deploy
+            {busy ? 'Deploying…' : 'Deploy'}
+            {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
           </button>
-        ) : (
-          <div className="inline-flex">
-            <button
-              onClick={() => defaultTarget && deployTo(defaultTarget)}
-              disabled={busy || !defaultTarget}
-              title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
-              aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
-                // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
-                // label. -700 carries the same "there is something to deploy" green at 5.2:1.
-                dirty
-                  ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
-                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
-              }`}
-            >
-              <DeployIcon />
-              {busy ? 'Deploying…' : 'Deploy'}
-              {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
-            </button>
-            <button
-              aria-label="Choose a deploy target"
-              aria-haspopup="menu"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen((o) => !o)}
-              className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
-                dirty
-                  ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
-                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
-              }`}
-            >
-              <ChevronDown className="h-4 w-4" />
-            </button>
-          </div>
-        )}
+          <button
+            aria-label="Choose a deploy target"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+            className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
+              dirty
+                ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
+                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
+            }`}
+          >
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </div>
 
         {menuOpen && (
           <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
-            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Deploy to…</p>
+            {targets.length > 0 && (
+              <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Deploy to…</p>
+            )}
             {targets.map((t) => (
               <button
                 key={t.id}
@@ -354,7 +353,7 @@ export function PublishBar({
                 </span>
               </button>
             ))}
-            <div className="my-1 border-t border-slate-100 dark:border-white/10" />
+            {targets.length > 0 && <div className="my-1 border-t border-slate-100 dark:border-white/10" />}
             <button
               role="menuitem"
               onClick={() => {
@@ -365,15 +364,30 @@ export function PublishBar({
             >
               + Add a target…
             </button>
-            <a
-              role="menuitem"
-              href={api.archiveUrl(project.id)}
-              aria-label="Download site zip"
-              className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download .zip
-            </a>
+            {/* ★ The archive is the site AS PUBLISHED, so the route answers 409 until a release
+                exists. As a bare <a> that 409 opened a tab of raw JSON; disabled WITH THE REASON is
+                the same information without the dead end. */}
+            {published ? (
+              <a
+                role="menuitem"
+                href={api.archiveUrl(project.id)}
+                aria-label="Download site zip"
+                className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download .zip
+              </a>
+            ) : (
+              <span
+                role="menuitem"
+                aria-disabled="true"
+                title="Publish the site first — the archive is the site as published"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download .zip
+              </span>
+            )}
           </div>
         )}
       </div>

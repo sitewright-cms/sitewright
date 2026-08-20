@@ -26,6 +26,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A folder data file named images the export did not contain.** It emitted the CMS URL
+  (`/media/<project>/<id>-<name>`), which is a live route on platform hosting and does not exist on a
+  site exported to the owner's own server — that bundles media into a flat `_assets/` directory and
+  produces only REFERENCED variants. So the URLs 404'd there AND the files were never written: two
+  failures that both hide behind a working platform-hosted preview. A folder source now emits published
+  `_assets/` paths and registers each image for materialization at the declared `size` (default `md`),
+  which required moving the emission ahead of the thumbnail step so those references are collected in
+  time. Net effect on a real export is nothing new — the paginated pages this replaces already
+  referenced every image — minus the pages themselves.
+
 - **Data files 404'd on the draft preview.** The publish route serves them; the preview route consults
   a SEPARATE allowlist first (`isPreviewAssetPath`) and treated `data/gallery.json` as a page request,
   so the file was written, was servable, and never got the chance. That module exists because this has

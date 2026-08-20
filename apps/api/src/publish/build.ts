@@ -2,12 +2,13 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { dirname, join, resolve, sep } from 'node:path';
 import { minify as minifyHtmlDocument } from 'html-minifier-terser';
-import type { SizeToken } from '@sitewright/image-pipeline';
+import { thumbFileName, type SizeToken } from '@sitewright/image-pipeline';
 import {
   materializeImageThumbs,
   rewriteMediaUrlsFlat,
   resolveThumbForHead,
   rebaseMediaHeadUrl,
+  addThumbRef,
   type ThumbRefs,
 } from './media-thumbs.js';
 import { buildAliasMap, aliasResolver, flatMediaName } from './asset-alias.js';
@@ -966,6 +967,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Locales whose corpus passed the size ceiling — reported on the manifest, not silently grown.
     const searchLargeLocales: Array<{ locale: string; pages: number }> = [];
     const dataFileWarnings: string[] = [];
+    let dataFiles: ReturnType<typeof buildDataFiles>['files'] = [];
     // Site-search corpus, collected per rendered route and emitted per locale after the loop.
     // Only pages that finish rendering are collected (see the push after the page write), so a
     // draft preview's error documents never enter the index.
@@ -1545,6 +1547,34 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Materialize exactly the thumbnails (+ any referenced originals) the rendered output points at,
     // from the retained originals — so the export is COMPLETE (every referenced variant is produced)
     // AND MINIMAL (only referenced sizes of referenced assets), independent of any preview traffic.
+    // DATA FILES — author-declared `.json` next to the pages (website.dataFiles).
+    //
+    // ★ EMITTED BEFORE the thumbnails are materialized, and that ordering is the whole point. The
+    // export ships only the image variants something REFERENCES; a data file listing a folder is such
+    // a reference, so it has to register its images while `thumbRefs` is still being collected. Built
+    // after this point, a gallery data file would name 3,384 photographs of which the export contained
+    // only the handful the pages happened to render.
+    //
+    // Same delivery shape as the search index: a plain JSON document in the site root, fetched by the
+    // page's own script. `.json` is served under `data/`, so this needs no route work.
+    const dataFileSpecs = website?.dataFiles ?? [];
+    if (dataFileSpecs.length > 0) {
+      const built = buildDataFiles({
+        specs: dataFileSpecs,
+        entries: datasets,
+        media,
+        // Root-relative, NOT page-relative: one file is read by script from pages at any depth, so it
+        // cannot carry the `../../_assets/…` form the rendered pages use. The client resolves it
+        // against the site root.
+        resolveImageUrl: (asset, size) => {
+          addThumbRef(thumbRefs, asset.id, size, 'webp');
+          return `${ASSET_DIR}/${flatMediaName(alias(asset.id), thumbFileName(asset.original, size, 'webp'))}`;
+        },
+      });
+      dataFileWarnings.push(...built.warnings);
+      dataFiles = built.files;
+    }
+
     if (opts.readMedia && thumbRefs.size > 0) {
       // Usually the longest single step on a cold project — every referenced size of every referenced
       // image is encoded here — which is exactly why it gets its own label.
@@ -1672,26 +1702,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       }
     }
 
-    // DATA FILES — author-declared `.json` next to the pages (website.dataFiles).
-    //
-    // Same delivery shape as the search index above: a plain JSON document in the site root, fetched by
-    // the page's own script. `.json` is in the served MIME map, so this needs no route work.
-    //
-    // ★ Every warning is SURFACED. A spec whose dataset has no published entries still emits (an empty
-    // list is a real answer for a client that has to render something), but silence about it is how a
-    // page ends up rendering nothing with no clue why.
-    const dataFileSpecs = website?.dataFiles ?? [];
-    if (dataFileSpecs.length > 0) {
-      const built = buildDataFiles({ specs: dataFileSpecs, entries: datasets, media });
-      dataFileWarnings.push(...built.warnings);
-      if (built.files.length > 0) {
-        // ★ Data files live in `data/`, never at the site root. `.json` is deliberately NOT a servable
-        // root extension so `release.json` (the build manifest: route counts, page failures, warnings)
-        // stays unreachable — putting author data next to it would have meant opening the root.
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant subdir of the validated tmp dir
-        await mkdir(join(tmp, 'data'), { recursive: true });
-      }
-      for (const file of built.files) {
+    // The data files themselves, written after materialization so their images exist beside them.
+    if (dataFiles.length > 0) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant subdir of the validated tmp dir
+      await mkdir(join(tmp, 'data'), { recursive: true });
+      for (const file of dataFiles) {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- schema-validated plain filename (no separators, no "..") under the validated tmp dir
         await writeFile(join(tmp, 'data', file.path), file.json, 'utf8');
         bytes += Buffer.byteLength(file.json);

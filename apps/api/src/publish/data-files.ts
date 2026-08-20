@@ -19,6 +19,7 @@ export interface DataFileSpec {
   dataset?: string;
   folder?: string;
   fields?: readonly string[];
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 }
 
 /** A dataset entry as the publish bundle holds it. */
@@ -31,6 +32,21 @@ export interface BuildDataFilesInput {
   /** Published entries KEYED BY DATASET NAME — the shape the publish bundle already has. */
   entries: Readonly<Record<string, readonly DatasetEntryLike[]>>;
   media: readonly MediaAsset[];
+  /**
+   * Turns an image into the URL the PUBLISHED site serves it at, and registers it so the export
+   * materializes that variant.
+   *
+   * ★ Without this the file carries the CMS URL (`/media/<project>/<id>-<name>`), which is a live
+   * route on platform hosting and DOES NOT EXIST on a site exported to the owner's own server — the
+   * export bundles media into a flat `_assets/` directory and produces only referenced variants. So
+   * the URLs 404 and the files were never written: two failures that both hide behind a working
+   * platform-hosted preview. Passing this makes a data file reference its images the same way a
+   * rendered page does.
+   *
+   * Absent (tests, or a caller with no asset pipeline) → the CMS URL, which is right for a
+   * platform-hosted site.
+   */
+  resolveImageUrl?: (asset: ImageAsset, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl') => string;
 }
 
 export interface BuiltDataFile {
@@ -73,7 +89,7 @@ function project(values: Record<string, unknown>, fields: readonly string[] | un
  * Builds every declared data file. Pure: it returns the bytes, the caller writes them, so the whole
  * thing is testable without a filesystem or a publish.
  */
-export function buildDataFiles({ specs, entries, media }: BuildDataFilesInput): BuildDataFilesResult {
+export function buildDataFiles({ specs, entries, media, resolveImageUrl }: BuildDataFilesInput): BuildDataFilesResult {
   const files: BuiltDataFile[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
@@ -105,8 +121,9 @@ export function buildDataFiles({ specs, entries, media }: BuildDataFilesInput): 
       if (inFolder.length === 0) {
         warnings.push(`data file "${spec.path}": media folder "${spec.folder}" has no images — emitting an empty list`);
       }
+      const size = spec.size ?? 'md';
       rows = inFolder.map((m) => ({
-        url: m.url,
+        url: resolveImageUrl ? resolveImageUrl(m, size) : m.url,
         alt: m.alt ?? '',
         ...(typeof m.width === 'number' ? { width: m.width } : {}),
         ...(typeof m.height === 'number' ? { height: m.height } : {}),

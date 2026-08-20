@@ -20,6 +20,8 @@ export interface DataFileSpec {
   folder?: string;
   fields?: readonly string[];
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  /** Folder sources: ALSO emit `full` at this size, for what a lightbox opens. */
+  full?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
 }
 
 /** A dataset entry as the publish bundle holds it. */
@@ -169,6 +171,12 @@ export function buildDataFiles({ specs, entries, media, resolveAssetUrl }: Build
       const size = spec.size ?? 'md';
       rows = inFolder.map((m) => ({
         url: resolveAssetUrl ? resolveAssetUrl(m, size) : m.url,
+        // ★ The SECOND url a gallery needs. `url` is the tile; `full` is what the lightbox opens.
+        // One size cannot be both, and picking one means either a soft viewer or a grid that ships
+        // full-size photos to render them at 350px. Emitting it also REGISTERS that variant, so the
+        // export materializes it — a URL naming a file the export never produced is the failure this
+        // whole resolver exists to prevent.
+        ...(spec.full ? { full: resolveAssetUrl ? resolveAssetUrl(m, spec.full) : m.url } : {}),
         alt: m.alt ?? '',
         ...(typeof m.width === 'number' ? { width: m.width } : {}),
         ...(typeof m.height === 'number' ? { height: m.height } : {}),

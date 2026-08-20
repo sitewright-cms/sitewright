@@ -874,7 +874,12 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     columns. Media URLs are rewritten to published _assets/ paths and MATERIALIZED into the export
     — for a folder source's images and for any /media/ URL inside a DATASET row (a product photo, an
     <img> in a rich-text cell). "size" picks the variant (xs|sm|md|lg|xl, default md). So the assets a
-    data file names are the assets the exported site actually contains. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
+    data file names are the assets the exported site actually contains.
+    ★ A GALLERY needs TWO urls per image and one size cannot be both — the tile renders at a few
+    hundred pixels, the lightbox opens full-screen. Add "full" (folder sources only) and each row
+    carries BOTH: {url} for the tile, {full} for what the viewer opens.
+    [{ path:"gallery.json", folder:"gallery", size:"sm", full:"lg" }] — both variants are
+    materialized, so the export grows by the second one. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
   Prefer real PAGES when each item needs its own URL and to be findable — search, SEO and deep links
   all work on pages and none of them see a data island.
 FILTER, ORDER and GROUP a list — windows pick by POSITION, these pick by VALUE:

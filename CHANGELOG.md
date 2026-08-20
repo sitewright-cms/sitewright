@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [0.29.0] — 2026-08-20
 
+### Added
+
+- **`full=` on a folder data file — two URLs per image, because one size cannot be both.** A gallery
+  needs a small tile and a full-screen photo from the same listing, and a single variant forces the
+  author to pick which one to get wrong: a soft lightbox, or a grid that ships full-size photos to
+  render them at 350px. `{ path: 'gallery.json', folder: 'gallery', size: 'sm', full: 'lg' }` gives
+  each row `url` for the tile and `full` for what the viewer opens. Both are materialized into the
+  export — an unregistered `full` is a gallery whose tiles render and whose lightbox 404s.
+
+  Measured on a 3,384-image folder: `sm` tiles total 19 MB where `md` is 58 MB, and the `lg` a viewer
+  wants is 133 MB — fetched one photo at a time, only for photos someone opens.
+
 ### Fixed
 
 - **A dataset data file named media the export did not contain** — the same defect just fixed for

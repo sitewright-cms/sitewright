@@ -73,6 +73,45 @@ describe('buildDataFiles', () => {
     expect(registered).toEqual([{ id: 'asset1', size: 'sm' }]);
   });
 
+  it('emits a SECOND `full` url when full= is declared, and registers that variant too', () => {
+    // ★ A gallery needs two urls per image and one size cannot be both: the tile renders at a few
+    // hundred pixels, the lightbox opens full-screen. Without this an author picks a soft viewer or a
+    // grid that ships full-size photos to display them at 350px. Measured on a 3,384-image folder:
+    // sm tiles 19 MB, md 58 MB, and the lg a viewer wants 133 MB — fetched one photo at a time.
+    const registered: Array<{ id: string; size: string }> = [];
+    const { files } = buildDataFiles({
+      specs: [{ path: 'g.json', folder: 'gallery', size: 'sm', full: 'lg' }],
+      entries: {},
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery', id: 'a1', alt: 'A' })],
+      resolveAssetUrl: (asset, size) => {
+        registered.push({ id: asset.id, size });
+        return `_assets/AbC-${asset.id}-${size}.webp`;
+      },
+    });
+    expect(JSON.parse(files[0]!.json)[0]).toEqual({
+      url: '_assets/AbC-a1-sm.webp',
+      full: '_assets/AbC-a1-lg.webp',
+      alt: 'A',
+      width: 800,
+      height: 600,
+    });
+    // BOTH variants registered — an unregistered `full` names a file the export never produces.
+    expect(registered).toEqual([
+      { id: 'a1', size: 'sm' },
+      { id: 'a1', size: 'lg' },
+    ]);
+  });
+
+  it('omits `full` entirely when it is not declared', () => {
+    // Opt-in: emitting it always would silently double what every existing gallery materializes.
+    const { files } = buildDataFiles({
+      specs: [{ path: 'g.json', folder: 'gallery' }],
+      entries: {},
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery' })],
+    });
+    expect(Object.prototype.hasOwnProperty.call(JSON.parse(files[0]!.json)[0], 'full')).toBe(false);
+  });
+
   it('defaults the size to md', () => {
     const seen: string[] = [];
     buildDataFiles({

@@ -284,10 +284,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'value', desc: 'What to serialize — a dataset, a page field, any projection. NOT a whole namespace (see the note).' },
           { name: 'id', desc: 'NAMED, required: the element id the reading script looks up. A plain name — letters, digits, - and _.' },
           { name: 'type', desc: 'NAMED, optional: application/json (default) or application/ld+json. Executable types are refused.' },
+          { name: 'fields', desc: 'NAMED, optional: comma-separated field names kept from each row. Dotted paths work and keep their shape ("data.date" → {data:{date}}). Applied BEFORE the size limit.' },
         ],
         example:
           '{{! a gallery the page filters without a round-trip }}\n' +
           '{{sw-json-data page.data.tiles id="tiles"}}\n' +
+          '\n' +
+          '{{! only the fields the card needs — a page listing is far too big without this }}\n' +
+          '{{sw-json-data pages.news._attributes.children id="posts" fields="title,path,image,description,data.date"}}\n' +
           '\n' +
           '{{! only the columns the grid needs }}\n' +
           "{{sw-json-data (sw-limit dataset.products 200) id=\"products\"}}\n" +

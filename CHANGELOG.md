@@ -7,6 +7,30 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **`fields=` on `{{sw-json-data}}`** — narrows each row before the island is measured, which is what
+  makes a page listing fit in one at all. A page-tree child carries its whole `data` object, so the 488
+  posts behind a news archive serialize to 1.25 MB raw — five times the cap — while the four fields the
+  cards actually render are a tenth of that. Comma-separated, and DOTTED paths keep their shape:
+  `fields="title,path,image,data.date"` emits `{title, path, image, data:{date}}`, the same structure
+  the template reads, rather than a re-keyed flat object.
+
+  Without it the only way to render such a list client-side is to store a second, slimmer copy of it in
+  the database — a value kept in the DB because the template cannot express it, which is a bug report
+  rather than a design.
+
+### Fixed
+
+- **Data files 404'd on the draft preview.** The publish route serves them; the preview route consults
+  a SEPARATE allowlist first (`isPreviewAssetPath`) and treated `data/gallery.json` as a page request,
+  so the file was written, was servable, and never got the chance. That module exists because this has
+  now happened three times — `site.webmanifest` and the search index each shipped 404ing on the draft
+  preview alone, because local hosting has no allowlist and hid it. The integration test covered the
+  published route; the preview route did not have one.
+
 ## [0.27.0] — 2026-08-20
 
 ### Added

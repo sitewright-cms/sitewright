@@ -58,3 +58,26 @@ describe('isPreviewAssetPath', () => {
     }
   });
 });
+
+describe('data files (website.dataFiles)', () => {
+  // ★ The regression this module exists to prevent, hit a THIRD time. `site.webmanifest` and the
+  // search index each shipped 404ing on the draft preview alone; data files repeated it, because the
+  // integration test covered the PUBLISHED route and the preview consults this gate first.
+  it('treats an emitted data file as an asset, not a page', () => {
+    expect(isPreviewAssetPath('data/gallery.json')).toBe(true);
+    expect(isPreviewAssetPath('data/products-2.json')).toBe(true);
+    expect(isPreviewAssetPath('data/news_index.json')).toBe(true);
+  });
+
+  it('still treats a stray root .json as a page request', () => {
+    // The allowlist serves only what the publish itself writes — release.json above all.
+    expect(isPreviewAssetPath('release.json')).toBe(false);
+    expect(isPreviewAssetPath('secrets.json')).toBe(false);
+  });
+
+  it('does not open up nested paths generally', () => {
+    expect(isPreviewAssetPath('data/nested/deep.json')).toBe(false);
+    expect(isPreviewAssetPath('data/../release.json')).toBe(false);
+    expect(isPreviewAssetPath('notdata/x.json')).toBe(false);
+  });
+});

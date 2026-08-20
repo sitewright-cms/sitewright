@@ -27,6 +27,21 @@ const ROOT_ASSET = /^[^/]+\.(css|js|xml|txt|webmanifest)$/;
  */
 const SEARCH_INDEX_FILE = /^search-(index|text)(\.[A-Za-z0-9-]+)?\.json$/;
 
+/**
+ * Author-declared data files (`website.dataFiles`), emitted into `data/`.
+ *
+ * ★ THE SAME REGRESSION A THIRD TIME. `site.webmanifest` and the search index each shipped 404ing on
+ * the draft preview ALONE — local hosting has no allowlist, so both worked on a published site and
+ * were silently inert in preview. Data files repeated it exactly: the publish route was covered by an
+ * integration test and the PREVIEW route, which consults this separate gate first, was not. The file
+ * was on disk and `readAsset` would have served it; this function never gave it the chance.
+ *
+ * Mirrors `PublishStore`'s `DATA_FILE_PATH` — if one changes, change both.
+ */
+const DATA_FILE_PATH = /^data\/[A-Za-z0-9][A-Za-z0-9_-]*\.json$/;
+
 export function isPreviewAssetPath(path: string): boolean {
-  return path.startsWith('_assets/') || ROOT_ASSET.test(path) || SEARCH_INDEX_FILE.test(path);
+  return (
+    path.startsWith('_assets/') || ROOT_ASSET.test(path) || SEARCH_INDEX_FILE.test(path) || DATA_FILE_PATH.test(path)
+  );
 }

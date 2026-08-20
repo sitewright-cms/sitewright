@@ -144,7 +144,11 @@ export const CONSENT_JS = `(function(){
   // element HERE, but is NULL inside a later event handler — so deriving it lazily would key a click→writeStore
   // off location.pathname yet key the init→readStore off the script URL, and consent would be silently lost on
   // reload (write key != read key). Caching it makes both sides use the same key.
-  var SITE_KEY=(function(){try{var s=document.currentScript;if(s&&s.src)return new URL('.',s.src).href;}catch(e){}return location.pathname||'/';})();
+  // ★ The key is the SITE ROOT, not this script's directory. Runtimes now live in the reserved
+  // '_assets/_sw/' directory, and keying off that would silently re-ask every returning visitor for
+  // consent the first time a site deploys with the new layout. Stripping the suffix keeps the key
+  // identical to what older builds wrote from the site root.
+  var SITE_KEY=(function(){try{var s=document.currentScript;if(s&&s.src){var h=new URL('.',s.src).href,d='_assets/_sw/';return h.slice(-d.length)===d?h.slice(0,-d.length):h;}}catch(e){}return location.pathname||'/';})();
   function keyOf(){return STORE+':'+SITE_KEY;}
   function readStore(){try{var raw=localStorage.getItem(keyOf());if(!raw)return null;var o=JSON.parse(raw);return (o&&typeof o==='object'&&!(o instanceof Array))?o:null;}catch(e){return null;}}
   function writeStore(rec){try{localStorage.setItem(keyOf(),JSON.stringify(rec));}catch(e){}}

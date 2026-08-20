@@ -61,16 +61,16 @@ describe('parallax → publish + preview', () => {
     expect(index.body).toContain('data-sw-parallax-translate="40,-40"'); // authored attrs survive
     expect(index.body).toContain('data-sw-parallax-opacity-range="0,0.5"');
     expect(index.body).toContain('data-sw-parallax-scene'); // the scene container
-    expect(index.body).toContain('<script defer src="parallax.js?v='); // runtime linked
+    expect(index.body).toContain('<script defer src="_assets/_sw/parallax.js?v='); // runtime linked
     expect(index.body).toContain('[data-sw-parallax-scene]{position:relative;overflow:hidden}'); // structural CSS inlined
 
     // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../parallax.js?v=');
+    expect(aboutPage.body).toContain('<script defer src="../_assets/_sw/parallax.js?v=');
 
     // The runtime itself is served from the site root + bails under reduced motion.
-    const js = await client.get(`/sites/${slug}/parallax.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/parallax.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('prefers-reduced-motion'); // accessibility gate
     expect(js.body).toContain('requestAnimationFrame');
@@ -99,7 +99,7 @@ describe('parallax → publish + preview', () => {
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-parallax-scale="0.9,1"');
-    expect(index.body).toContain('<script defer src="parallax.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/parallax.js?v=');
   });
 
   it('serves the builder preview DOC as a sandboxed text/html route so the inline runtime can run', async () => {
@@ -139,6 +139,6 @@ describe('parallax → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('parallax.js');
     expect(index.body).not.toContain('data-sw-parallax-bg]{position');
-    expect((await client.get(`/sites/${slug}/parallax.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/parallax.js`)).statusCode).toBe(404);
   });
 });

@@ -58,7 +58,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('data-sw-animation="fade-up"');
-    expect(index.body).toContain('<script defer src="animations.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/animations.js?v=');
     expect(index.body).toContain('[data-sw-animation].sw-animation-active'); // inline animation stylesheet (reveal rule)
     expect(index.body).toContain('prefers-reduced-motion'); // accessibility gate
     // PE-first escape hatches for the FIRST-PAINT hide: the CSS self-heal failsafe (JS failed to load) +
@@ -69,10 +69,10 @@ describe('scroll-reveal animations → publish + preview', () => {
     // A nested page that authors the runtime links it rebased to its depth (per-page shipping).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../animations.js?v=');
+    expect(aboutPage.body).toContain('<script defer src="../_assets/_sw/animations.js?v=');
 
     // The runtime itself is served from the site root.
-    const js = await client.get(`/sites/${slug}/animations.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/animations.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('IntersectionObserver');
     expect(js.body).toContain('sw-animation-active');
@@ -102,7 +102,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     // The footer slot's neutral <div> is wrapped by the skeleton's own <footer id="footer"> landmark.
     expect(index.body).toContain('<footer id="footer"><div data-sw-animation="fade">© Acme</div></footer>');
-    expect(index.body).toContain('<script defer src="animations.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/animations.js?v=');
   });
 
   it('ships NOTHING extra for a site that uses no animations', async () => {
@@ -120,7 +120,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('animations.js');
     expect(index.body).not.toContain('sw-animation-init');
-    expect((await client.get(`/sites/${slug}/animations.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/animations.js`)).statusCode).toBe(404);
   });
 
 });

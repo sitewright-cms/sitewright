@@ -92,15 +92,15 @@ describe('mini shop cart → publish', () => {
     expect(index.body).toContain('paypal.me/acme/{total}'); // payment urlTemplate survives verbatim
     expect(index.body).toContain('14155550123'); // whatsapp number
     // The runtime is linked at the site root.
-    expect(index.body).toContain('<script defer src="cart.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/cart.js?v=');
 
     // Site-wide asset: the nested page links it rebased to its depth (footer mount → every page).
     const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
-    expect(aboutPage.body).toContain('<script defer src="../cart.js?v=');
+    expect(aboutPage.body).toContain('<script defer src="../_assets/_sw/cart.js?v=');
 
     // The runtime itself is served from the site root.
-    const js = await client.get(`/sites/${slug}/cart.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/cart.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('https://wa.me/');
     expect(js.body).toContain('localStorage');
@@ -184,7 +184,7 @@ describe('mini shop cart → publish', () => {
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('cart.js');
     expect(index.body).not.toContain('data-sw-cart');
-    expect((await client.get(`/sites/${slug}/cart.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/cart.js`)).statusCode).toBe(404);
   });
 
   it('resolves the /f endpoint for a form channel in the published cart mount', async () => {

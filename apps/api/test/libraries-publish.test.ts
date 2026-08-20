@@ -42,9 +42,9 @@ describe('lazyload + ripple runtimes → publish', () => {
   it('ships lazyload.js + CSS only when a page uses data-bg', async () => {
     const html = await publishWith('<section data-bg="/media/hero.jpg" class="h-64">Hero</section>');
     expect(html).toContain('data-bg="/media/hero.jpg"');
-    expect(html).toContain('<script defer src="lazyload.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/lazyload.js?v=');
     expect(html).toContain('.lazyloaded'); // inline lazyload CSS
-    const js = await client.get(`/sites/${slug}/lazyload.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/lazyload.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('IntersectionObserver');
   });
@@ -52,9 +52,9 @@ describe('lazyload + ripple runtimes → publish', () => {
   it('ships ripple.js + CSS only when a page uses waves-effect', async () => {
     const html = await publishWith('<a class="btn btn-primary waves-effect waves-light" href="/contact">Go</a>');
     expect(html).toContain('waves-effect waves-light');
-    expect(html).toContain('<script defer src="ripple.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/ripple.js?v=');
     expect(html).toContain('@keyframes sw-waves'); // inline ripple CSS
-    const js = await client.get(`/sites/${slug}/ripple.js`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/ripple.js`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('createElement("span")'); // JS minified → string quotes normalized to double
   });
@@ -79,7 +79,7 @@ describe('lazyload + ripple runtimes → publish', () => {
     ).toBe(200);
     const html = await publishWith('<section><h1>No ripple in the page body</h1></section>');
     expect(html).toContain('waves-effect'); // the slot
-    expect(html).toContain('<script defer src="ripple.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/ripple.js?v=');
   });
 
   it('a plain site ships NONE of the library runtimes', async () => {
@@ -87,8 +87,8 @@ describe('lazyload + ripple runtimes → publish', () => {
     expect(html).not.toContain('lazyload.js');
     expect(html).not.toContain('ripple.js');
     expect(html).not.toContain('waves-rippling');
-    expect((await client.get(`/sites/${slug}/lazyload.js`)).statusCode).toBe(404);
-    expect((await client.get(`/sites/${slug}/ripple.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/lazyload.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/ripple.js`)).statusCode).toBe(404);
   });
 
   it('ships all three runtimes together when a page uses all markers', async () => {
@@ -96,8 +96,8 @@ describe('lazyload + ripple runtimes → publish', () => {
       '<section data-bg="/media/bg.jpg"><h1 data-sw-animation="fade-up">Hi</h1>' +
         '<a class="btn waves-effect waves-light">Act</a></section>',
     );
-    expect(html).toContain('<script defer src="animations.js?v=');
-    expect(html).toContain('<script defer src="lazyload.js?v=');
-    expect(html).toContain('<script defer src="ripple.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/animations.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/lazyload.js?v=');
+    expect(html).toContain('<script defer src="_assets/_sw/ripple.js?v=');
   });
 });

@@ -280,3 +280,33 @@ describe('Search runtime behavior (jsdom)', () => {
     expect(hits()).toHaveLength(0);
   });
 });
+
+describe('the runtime lives in _assets/_sw/ but the index does not', () => {
+  it('fetches the index from the SITE ROOT, not from beside the script', async () => {
+    // ★ The runtime resolves the index against its own <script src>. Moving the runtimes into the
+    // reserved `_assets/_sw/` directory therefore pointed it at `_assets/_sw/search-index.json` — a
+    // 404 that leaves every search box silently inert, which is EXACTLY how this feature shipped
+    // broken once before (readAsset closes `.json` at the root on purpose, so the index 404'd on
+    // every platform-hosted site and only a browser against a deployed instance found it).
+    const asked: string[] = [];
+    document.documentElement.setAttribute('lang', 'en');
+    document.body.innerHTML =
+      `<script src="${SITE}_assets/_sw/c-search.js"></script>${renderSearchBox({ limit: 5 })}`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        asked.push(String(url));
+        return Promise.resolve({ ok: false, status: 404, json: () => Promise.reject(new Error('404')) });
+      }),
+    );
+    (0, eval)(SEARCH_JS);
+    (document.querySelector('[data-sw-part="input"]') as HTMLInputElement).value = 'anything';
+    (document.querySelector('[data-sw-part="input"]') as HTMLInputElement).dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 250));
+
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked[0]).toBe(`${SITE}search-index.json`);
+    expect(asked.some((u) => u.includes('_assets/_sw/search-index'))).toBe(false);
+  });
+});
+

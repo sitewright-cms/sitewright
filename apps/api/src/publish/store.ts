@@ -36,6 +36,22 @@ const NESTED_ASSET_PATHS: ReadonlySet<string> = new Set([SECURITY_TXT_PATH]);
 // names are platform-generated and hold only text already public in the rendered pages.
 const SEARCH_INDEX_FILE = /^search-(index|text)(\.[A-Za-z0-9-]+)?\.json$/;
 
+/**
+ * PLATFORM-GENERATED runtime scripts, emitted by the builder under a RESERVED `_assets/` subdirectory.
+ *
+ * ★ Why they need a carve-out at all. A `.js` anywhere else under `_assets/` is served DOWNLOAD-ONLY on
+ * the cookie-bearing app origin, because that tree also holds scripts IMPORTED from a cloned site and
+ * executing foreign code there could read a visitor's session (see `readBinary`). These files are not
+ * that: they are the platform's own component runtimes, and they were served executable from the site
+ * ROOT until they moved here — so serving them executable keeps exactly the posture they already had,
+ * rather than granting anything new.
+ *
+ * The prefix is unreachable for tenant content: imported media is flattened to `_assets/<alias>-<name>`
+ * with a generated alias, and platform textures live under `_assets/_textures/`. Nothing writes a
+ * caller-controlled name into `_sw/`.
+ */
+const PLATFORM_SCRIPT_PATH = /^_assets\/_sw\/[A-Za-z0-9][A-Za-z0-9_.-]*\.js$/;
+
 // Author-declared data files (`website.dataFiles`), which live in their own `data/` directory.
 //
 // ★ The directory is the WHOLE POINT and is not cosmetic. `.json` is absent from ASSET_CONTENT_TYPES on
@@ -223,6 +239,11 @@ export class PublishStore {
     const segments = rel.split('/');
     // Only the builder's bundled asset dir is binary-servable; reject traversal segments.
     if (segments[0] !== '_assets' || segments.some((seg) => seg === '.' || seg === '..')) return null;
+    // ★ Hand the platform's own runtimes to `readAsset`, which serves them as EXECUTABLE javascript.
+    // Claiming them here would make every component runtime a DOWNLOAD on the app-origin path form —
+    // silently dead interactivity on every platform-served page — because this method's `.js` rule
+    // exists for IMPORTED foreign scripts, which these are not.
+    if (PLATFORM_SCRIPT_PATH.test(rel)) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     let body: Buffer;
@@ -273,7 +294,9 @@ export class PublishStore {
     // to root-level files so no future write path into a subdirectory could become
     // publicly served as CSS/JS. NESTED_ASSET_PATHS is an EXACT-path exception list, not a
     // relaxation of that rule: each entry is one platform-generated file at one fixed location.
-    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel) && !DATA_FILE_PATH.test(rel)) return null;
+    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel) && !DATA_FILE_PATH.test(rel) && !PLATFORM_SCRIPT_PATH.test(rel)) {
+      return null;
+    }
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     try {

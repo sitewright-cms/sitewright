@@ -302,6 +302,30 @@ describe('preview-site API (signed path)', () => {
     expect(draft.body).toContain('Draft WIP');
   });
 
+  it('serves a platform RUNTIME from _assets/_sw/ — executable, not a download', async () => {
+    // ★★ THE SAME REGRESSION A FOURTH TIME IF THIS IS MISSING. `site.webmanifest`, the search index and
+    // the data files each shipped 404ing on the DRAFT PREVIEW alone — local hosting has no allowlist, so
+    // each worked on a published site and was silently inert here. Moving the runtimes into `_assets/`
+    // adds a second way to get it wrong: that tree's `.js` rule serves IMPORTED scripts download-only on
+    // the app origin, and claiming ours under it would leave every component dead with a 200 response.
+    const { t, projectId } = await setup('rt@acme.test');
+    await putPage(`/projects/${projectId}`, { sw_session: t }, {
+      id: 'home', path: '', title: 'Home',
+      source: '<section data-bg="/media/hero.jpg" class="h-64">Hero</section>',
+    });
+    const pbase = await signedBase(projectId, t);
+    const page = await app.inject({ method: 'GET', url: pbase });
+    expect(page.statusCode).toBe(200);
+    // The page links it from the reserved directory…
+    expect(page.body).toContain('_assets/_sw/lazyload.js');
+    // …and the preview actually serves it, as RUNNABLE javascript with no attachment disposition.
+    const js = await app.inject({ method: 'GET', url: `${pbase}_assets/_sw/lazyload.js` });
+    expect(js.statusCode).toBe(200);
+    expect(js.headers['content-type']).toContain('javascript');
+    expect(js.headers['content-disposition']).toBeUndefined();
+    expect(js.body).toContain('IntersectionObserver');
+  });
+
   it('a tampered or missing signature is a 404', async () => {
     const { t, projectId } = await setup('tm@acme.test');
     await putPage(`/projects/${projectId}`, { sw_session: t }, { id: 'home', path: '', title: 'Home', source: '<h1>H</h1>' });

@@ -67,17 +67,17 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="modal"');
     expect(index.body).toContain('data-sw-part="open"');
     // Both runtimes are linked (the modal ships as its own per-type chunk c-modal.js).
-    expect(index.body).toContain('<script defer src="c-modal.js?v=');
-    expect(index.body).toContain('<script defer src="nav-link.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/c-modal.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/nav-link.js?v=');
     // No other component type is authored → no other c-*.js chunk ships.
     expect(index.body).not.toContain('c-carousel.js');
 
     // c-modal.js carries the modal behavior; nav-link.js carries the general dialog/anchor handler.
-    const comp = await client.get(`/sites/${slug}/c-modal.js`);
+    const comp = await client.get(`/sites/${slug}/_assets/_sw/c-modal.js`);
     expect(comp.statusCode).toBe(200);
     expect(comp.body).toContain('[data-sw-component="modal"]');
     expect(comp.body).toContain('showModal');
-    const navLink = await client.get(`/sites/${slug}/nav-link.js`);
+    const navLink = await client.get(`/sites/${slug}/_assets/_sw/nav-link.js`);
     expect(navLink.statusCode).toBe(200);
     expect(navLink.body).toContain('scrollIntoView'); // unique to NAV_LINK_JS
   });
@@ -117,9 +117,9 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     // The config data block and the no-JS fallback are the EASY half — they were always there.
     expect(index.body).toContain('"Wing"');
     // …the runtime is the half that was missing. Without this link the map is a static picture.
-    expect(index.body).toContain('<script defer src="c-imagemap.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/c-imagemap.js?v=');
 
-    const runtime = await client.get(`/sites/${slug}/c-imagemap.js`);
+    const runtime = await client.get(`/sites/${slug}/_assets/_sw/c-imagemap.js`);
     expect(runtime.statusCode).toBe(200);
     expect(runtime.body).toContain('Sitewright Image Map runtime');
     // And the component's CSS shipped, or the hotspots have no fill to paint.
@@ -161,14 +161,14 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     const homeHtml = (await client.get(`/sites/${slug}/index.html`)).body;
     const aboutHtml = (await client.get(`/sites/${slug}/about/index.html`)).body;
     // CHROME (shared slot): the carousel chunk ships on BOTH pages, rebased to each page's depth.
-    expect(homeHtml).toContain('src="c-carousel.js?v=');
-    expect(aboutHtml).toContain('src="../c-carousel.js?v=');
+    expect(homeHtml).toContain('src="_assets/_sw/c-carousel.js?v=');
+    expect(aboutHtml).toContain('src="../_assets/_sw/c-carousel.js?v=');
     // CONTENT (page body): the modal chunk ships ONLY on home — the plain about page never loads it.
     expect(homeHtml).toContain('c-modal.js');
     expect(aboutHtml).not.toContain('c-modal.js');
     // Both chunk files exist once at the site root.
-    expect((await client.get(`/sites/${slug}/c-carousel.js`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/c-carousel.js`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/c-modal.js`)).statusCode).toBe(200);
   });
 
   it('ships the Banner runtime for a code-first page that authors a dismissible banner', async () => {
@@ -188,10 +188,10 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('data-sw-component="banner"');
     expect(index.body).toContain('data-sw-part="dismiss-forever"');
     expect(index.body).toContain('hidden');
-    expect(index.body).toContain('<script defer src="c-banner.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/c-banner.js?v=');
 
     // c-banner.js carries the Banner runtime (its per-banner storage namespace) + CSS.
-    const comp = await client.get(`/sites/${slug}/c-banner.js`);
+    const comp = await client.get(`/sites/${slug}/_assets/_sw/c-banner.js`);
     expect(comp.statusCode).toBe(200);
     expect(comp.body).toContain('sw-banner:'); // JS minified → string quotes normalized to double
     expect(comp.body).toContain('data-sw-component="banner"');
@@ -219,19 +219,19 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('id="sw-consent"');
     expect(index.body).toContain('data-sw-consent-config');
     expect(index.body).toContain('data-sw-consent-open');
-    expect(index.body).toContain('<script defer src="consent.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/consent.js?v=');
     // CACHE: the page itself revalidates so a republish/redeploy is picked up immediately.
     expect(index.headers['cache-control']).toBe('no-cache');
 
     // CACHE: the VERSIONED runtime asset (as the page references it, with ?v) is hard-cached.
-    const js = await client.get(`/sites/${slug}/consent.js?v=1`);
+    const js = await client.get(`/sites/${slug}/_assets/_sw/consent.js?v=1`);
     expect(js.statusCode).toBe(200);
     expect(js.body).toContain('sw:consentchange');
     expect(js.body).toContain('window.swConsent');
     expect(js.headers['cache-control']).toContain('immutable');
     // CACHE: a BARE (unversioned) asset URL must revalidate — `immutable` is gated on the ?v token, so
     // unversioned root files (manifest / robots / sitemap / direct hits) never cache stale across a republish.
-    const bare = await client.get(`/sites/${slug}/consent.js`);
+    const bare = await client.get(`/sites/${slug}/_assets/_sw/consent.js`);
     expect(bare.statusCode).toBe(200);
     expect(bare.headers['cache-control']).toBe('no-cache');
   });
@@ -244,7 +244,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('consent.js');
-    expect((await client.get(`/sites/${slug}/consent.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/consent.js`)).statusCode).toBe(404);
   });
 
   it('ships the consent runtime when a page references the manager (#sw-consent) even with consent OFF', async () => {
@@ -257,8 +257,8 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('<script defer src="consent.js?v=');
-    expect((await client.get(`/sites/${slug}/consent.js?v=1`)).statusCode).toBe(200);
+    expect(index.body).toContain('<script defer src="_assets/_sw/consent.js?v=');
+    expect((await client.get(`/sites/${slug}/_assets/_sw/consent.js?v=1`)).statusCode).toBe(200);
   });
 
   it('widens the per-site CSP (response header + baked meta) for a consent site with a GA integration', async () => {
@@ -348,7 +348,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).not.toMatch(/<iframe[^>]*\ssrc=/); // no live third-party src in the published HTML
     expect(index.body).toContain('width="640"'); // author attrs preserved
     // The consent runtime ships (it hydrates the held iframe) even though no integration is registered.
-    expect(index.body).toContain('<script defer src="consent.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/consent.js?v=');
     // The per-page CSP allows the iframe's frame-src — derived from the iframe. ENFORCED as the hosted
     // response header; the document's copy is the inert `name="sw-csp"` meta the header is built from.
     const csp = index.headers['content-security-policy'] as string;
@@ -418,11 +418,11 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('<script defer src="nav-link.js?v=');
-    expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
+    expect(index.body).toContain('<script defer src="_assets/_sw/nav-link.js?v=');
+    expect((await client.get(`/sites/${slug}/_assets/_sw/nav-link.js`)).statusCode).toBe(200);
     // No component marker → NO per-type component chunk ships.
     expect(index.body).not.toContain('src="c-');
-    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/c-modal.js`)).statusCode).toBe(404);
   });
 
   it('ships the dialog runtime when a GLOBAL modal lives in the bottom skeleton slot', async () => {
@@ -445,7 +445,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('<dialog id="newsletter"');
-    expect(index.body).toContain('<script defer src="nav-link.js?v=');
+    expect(index.body).toContain('<script defer src="_assets/_sw/nav-link.js?v=');
   });
 
   it('ships NOTHING extra for a plain code-first page (no component, no dialog)', async () => {
@@ -460,8 +460,8 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('src="c-');
     expect(index.body).not.toContain('nav-link.js');
-    expect((await client.get(`/sites/${slug}/c-modal.js`)).statusCode).toBe(404);
-    expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/c-modal.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/nav-link.js`)).statusCode).toBe(404);
   });
 
   it('inlines the component + dialog runtimes into the sandboxed CODE-FIRST preview (WYSIWYG parity)', async () => {
@@ -474,7 +474,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(html).toContain('[data-sw-component="modal"]'); // MODAL component JS selector inlined
     expect(html).toContain('showModal'); // NAV_LINK_JS inlined (a <dialog> is present) — unique to it
     expect(html).not.toContain('src="c-'); // no external component chunk in the self-contained preview
-    expect(html).not.toContain('src="nav-link.js"');
+    expect(html).not.toContain('src="_assets/_sw/nav-link.js"');
   });
 
   it('keeps the code-first preview clean for a page with no component or dialog', async () => {

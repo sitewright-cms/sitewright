@@ -191,3 +191,44 @@ describe('PublishStore text-asset serving', () => {
     expect((await store.readAsset('site', '/robots.txt'))?.contentType).toBe('text/plain; charset=utf-8');
   });
 });
+
+describe('platform runtimes under _assets/_sw/', () => {
+  it('are EXECUTABLE javascript on every origin — they are our code, not imported', async () => {
+    // ★ They were served executable from the site ROOT until they moved into `_assets/`. The `.js`
+    // download-only rule in readBinary exists for scripts IMPORTED from a cloned site, which could read
+    // a visitor's session if they ran on the cookie-bearing app origin. Claiming the platform's own
+    // component runtimes under that rule would leave every interactive component silently dead on a
+    // platform-served page — a download instead of a script.
+    const dir = store.dirFor('site');
+    {
+      await mkdir(join(dir, '_assets', '_sw'), { recursive: true });
+      await writeFile(join(dir, '_assets', '_sw', 'c-lightbox.js'), 'console.log(1)');
+      // readBinary DECLINES it, so the route falls through to readAsset…
+      expect(await store.readBinary('site', '/_assets/_sw/c-lightbox.js')).toBeNull();
+      // …which serves it runnable, with no attachment disposition.
+      const asset = await store.readAsset('site', '_assets/_sw/c-lightbox.js');
+      expect(asset?.contentType).toContain('text/javascript');
+      expect(asset?.body).toContain('console.log(1)');
+    }
+  });
+
+  it('does NOT widen the rule for any other script under _assets/', async () => {
+    // The security invariant this carve-out must not break: a script imported from a cloned site is
+    // still download-only on the app origin, and readAsset still refuses anything nested it does not
+    // explicitly name.
+    const dir = store.dirFor('site');
+    {
+      await mkdir(join(dir, '_assets', 'js1'), { recursive: true });
+      await writeFile(join(dir, '_assets', 'js1', 'foreign.js'), 'steal()');
+      const bin = await store.readBinary('site', '/_assets/js1/foreign.js');
+      expect(bin?.attachment).toBe(true);
+      expect(bin?.contentType).not.toContain('javascript');
+      expect(await store.readAsset('site', '_assets/js1/foreign.js')).toBeNull();
+      // A nested path that merely LOOKS like the reserved one is not it.
+      await mkdir(join(dir, '_assets', '_sw', 'nested'), { recursive: true });
+      await writeFile(join(dir, '_assets', '_sw', 'nested', 'x.js'), 'nope()');
+      expect(await store.readAsset('site', '_assets/_sw/nested/x.js')).toBeNull();
+    }
+  });
+});
+

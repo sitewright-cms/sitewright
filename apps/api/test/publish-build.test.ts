@@ -704,7 +704,7 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<body class="sw-nav-sliding-pill">');
     expect(home).toContain('nav-effects.js'); // the runtime is linked
-    const runtime = await readFile(join(outDir, 'nav-effects.js'), 'utf8'); // … and the asset exists
+    const runtime = await readFile(join(outDir, '_assets/_sw/nav-effects.js'), 'utf8'); // … and the asset exists
     expect(runtime).toContain('sw-nav-indicator');
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     expect(sheet).toContain('.sw-nav-indicator'); // the indicator CSS shipped with the scheme
@@ -788,7 +788,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('nav-effects.js'); // source-scan gate caught the per-element class
-    expect(await readFile(join(outDir, 'nav-effects.js'), 'utf8')).toContain('sw-nav-indicator');
+    expect(await readFile(join(outDir, '_assets/_sw/nav-effects.js'), 'utf8')).toContain('sw-nav-indicator');
   });
 
   it('ships the preloader overlay + runtime when effects.preloaderEffect is set (and nothing when not)', async () => {
@@ -813,7 +813,7 @@ describe('buildSite', () => {
     expect(home).toContain('[data-sw-preloader]{display:none!important}'); // noscript no-JS safety
     expect(home).toContain('preloader.js'); // runtime linked
     // The runtime file is emitted at the site root.
-    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
+    expect(await readFile(join(outDir, '_assets/_sw/preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
   });
 
   it('says WHY a chrome slot with a snippet fails, instead of just "partial not found"', async () => {
@@ -861,7 +861,7 @@ describe('buildSite', () => {
     expect(home).toContain('data-sw-preloader'); // …inside the platform's overlay
     expect(home).toContain('sw-preloader-custom');
     expect(home).toContain('preloader.js'); // ← the whole point: something now clears it
-    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain('sw-loading');
+    expect(await readFile(join(outDir, '_assets/_sw/preloader.js'), 'utf8')).toContain('sw-loading');
   });
 
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {
@@ -940,7 +940,7 @@ describe('buildSite', () => {
     expect(home).toContain('position:fixed'); // BACK_TO_TOP_CSS inlined
     // The square-shape utility (tree-shaken) compiles into the sheet because build feeds the injected classes in.
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('sw-btn-shape-square');
-    expect(await readFile(join(outDir, 'back-to-top.js'), 'utf8')).toContain('scrollTo');
+    expect(await readFile(join(outDir, '_assets/_sw/back-to-top.js'), 'utf8')).toContain('scrollTo');
   });
 
   it('omits the back-to-top button entirely when effects.backToTop is explicitly false', async () => {
@@ -983,7 +983,7 @@ describe('buildSite', () => {
     expect(home).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}'); // hide-on-scroll rule
     expect(home).toContain('sw-header-hide-on-scroll'); // the <body> mode class (runtime reads it)
     expect(home).toContain('sticky-header.js'); // runtime linked
-    expect(await readFile(join(outDir, 'sticky-header.js'), 'utf8')).toContain('sw-nav-hidden');
+    expect(await readFile(join(outDir, '_assets/_sw/sticky-header.js'), 'utf8')).toContain('sw-nav-hidden');
   });
 
   it('sticky header (pinned): fixed + offset CSS, but NO runtime (pure CSS); none = static', async () => {
@@ -1054,7 +1054,7 @@ describe('buildSite', () => {
     expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
     expect(home).toContain('scrollspy.js'); // runtime linked
     expect(home).toContain('nav-link.js'); // smooth-scroll runtime ships with scrollspy (in-page anchors)
-    expect(await readFile(join(outDir, 'scrollspy.js'), 'utf8')).toContain('main-nav'); // minified — assert the stable id token
+    expect(await readFile(join(outDir, '_assets/_sw/scrollspy.js'), 'utf8')).toContain('main-nav'); // minified — assert the stable id token
   });
 
   it('scrollspy (per-element attribute): source scan ships the runtime without the site-wide flag', async () => {
@@ -1121,8 +1121,8 @@ describe('buildSite', () => {
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
     const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
-    expect(head).toContain('<script src="theme.js?v=');
-    expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain('localStorage.setItem'); // minified — locals are renamed, assert the API call
+    expect(head).toContain('<script src="_assets/_sw/theme.js?v=');
+    expect(await readFile(join(outDir, '_assets/_sw/theme.js'), 'utf8')).toContain('localStorage.setItem'); // minified — locals are renamed, assert the API call
   });
 
   it('themes OFF: no dark CSS, no theme.js, and the toggle helper renders nothing', async () => {
@@ -1205,10 +1205,10 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-component="modal"'); // the snippet's component expanded into the page
     // Per-page scan includes the snippets a page composes → the Modal chunk is linked on this page.
-    expect(home).toContain('<script defer src="c-modal.js?v=');
-    expect(home).toContain('<script defer src="nav-link.js?v=');
-    expect(await readFile(join(outDir, 'c-modal.js'), 'utf8')).toContain('[data-sw-component="modal"]');
-    expect(await readFile(join(outDir, 'nav-link.js'), 'utf8')).toContain('scrollIntoView');
+    expect(home).toContain('<script defer src="_assets/_sw/c-modal.js?v=');
+    expect(home).toContain('<script defer src="_assets/_sw/nav-link.js?v=');
+    expect(await readFile(join(outDir, '_assets/_sw/c-modal.js'), 'utf8')).toContain('[data-sw-component="modal"]');
+    expect(await readFile(join(outDir, '_assets/_sw/nav-link.js'), 'utf8')).toContain('scrollIntoView');
   });
 
   it('ships classes only for snippets the site actually composes (an un-included one adds no weight)', async () => {

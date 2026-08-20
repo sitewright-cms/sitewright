@@ -7,6 +7,31 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.34.0] — 2026-08-20
+
+### Fixed
+
+- **The Deploy button never stopped saying "changes to deploy".** Its dot came from a project-wide
+  `dirty` flag derived from the LOCAL release record — but a remote deploy builds into a temp
+  directory and uploads, and never writes one. So a project deployed only over SFTP/FTP/rsync/git had
+  no release, ever: seconds after a successful 255-file upload the API still reported
+  `status: "unpublished", dirty: true`, and the button stayed green.
+
+  "Are there changes to deploy?" only has an answer relative to a DESTINATION — publishing to Local
+  Hosting says nothing about whether the customer's SFTP server is current. Each target now records
+  `lastDeployedAt` on a successful deploy, the split button reflects the target it would actually
+  deploy to, and each row in the dropdown shows its own state. Recording is best-effort: a bookkeeping
+  failure can never turn a successful deploy into a reported failure.
+
+### Changed
+
+- **The page editor's preview has no gutter.** The frameless variant still carried a 1-unit pad, which
+  read as a grey ring drawn around the site rather than as chrome — there the preview IS the working
+  surface. Measured after the change: the iframe's inset inside its pane is 0 on every side, a click at
+  the centre resolves to a real element, and 4px into the corner — the strip the gutter used to eat —
+  resolves to an element rather than the body. The framed variant (slot editor, live-preview panel)
+  keeps its card gutter, and a test now pins both shapes.
+
 ## [0.33.0] — 2026-08-20
 
 ### Changed
@@ -2853,7 +2878,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.33.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.34.0...HEAD
+[0.34.0]: https://github.com/sitewright-cms/sitewright/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...v0.32.1
 [0.32.0]: https://github.com/sitewright-cms/sitewright/compare/v0.31.1...v0.32.0

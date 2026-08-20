@@ -71,6 +71,48 @@ describe('PublishBar — deploy split button', () => {
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
   });
 
+  it('CLEARS the deploy dot once that target has received the content — the reported bug', async () => {
+    // ★ The dot came from the project-wide `dirty`, which is derived from the LOCAL release record.
+    // A project deployed only over SFTP has no local release at all, so it stayed green with "changes
+    // to deploy" FOREVER — seconds after a successful upload. Confirmed on a real instance: right
+    // after a 255-file SFTP deploy the API still reported status "unpublished", dirty true.
+    const deployed = { ...remote, lastDeployedAt: '2026-01-02T00:00:00.000Z' };
+    listDeployTargets.mockResolvedValue({ items: [deployed] });
+    publishStatus.mockResolvedValue({
+      release: null, // remote-only: there is no local release, and there never will be
+      url: '',
+      dirty: true, // the project-wide flag stays true — the button must no longer believe it
+      latestContentAt: '2026-01-01T00:00:00.000Z', // content is OLDER than the deploy
+      localHosting: false,
+    });
+    render(<PublishBar project={project} />);
+    const primary = await screen.findByRole('button', { name: 'Deploy to Production' });
+    await waitFor(() => expect(primary.className).not.toContain('emerald'));
+    expect(primary.querySelector('span[aria-hidden]')).toBeNull();
+  });
+
+  it('KEEPS the dot when the content is newer than that target\'s last deploy', async () => {
+    const stale = { ...remote, lastDeployedAt: '2026-01-01T00:00:00.000Z' };
+    listDeployTargets.mockResolvedValue({ items: [stale] });
+    publishStatus.mockResolvedValue({
+      release: null, url: '', dirty: false, // even with the project-wide flag CLEAR…
+      latestContentAt: '2026-01-02T00:00:00.000Z', // …this target is behind
+      localHosting: false,
+    });
+    render(<PublishBar project={project} />);
+    const primary = await screen.findByRole('button', { name: 'Deploy to Production' });
+    await waitFor(() => expect(primary.className).toContain('emerald'));
+    expect(primary.querySelector('span[aria-hidden]')).not.toBeNull();
+  });
+
+  it('a target that has NEVER been deployed always has something to send', async () => {
+    listDeployTargets.mockResolvedValue({ items: [remote] }); // no lastDeployedAt
+    publishStatus.mockResolvedValue({ release: null, url: '', dirty: false, latestContentAt: '2026-01-01T00:00:00.000Z', localHosting: false });
+    render(<PublishBar project={project} />);
+    const primary = await screen.findByRole('button', { name: 'Deploy to Production' });
+    await waitFor(() => expect(primary.className).toContain('emerald'));
+  });
+
   it('the ▾ opens a dropdown listing every target plus Add + Download', async () => {
     listDeployTargets.mockResolvedValue({ items: [local, remote] });
     render(<PublishBar project={project} />);

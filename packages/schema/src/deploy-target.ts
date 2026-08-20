@@ -148,6 +148,16 @@ export const DeployTargetSchema = z
      *  never removes anything leaves a renamed page's old URL live forever). Turn it off when the
      *  remote directory holds files the build does not know about. `.well-known/` is protected either
      *  way. */
+    /**
+     * When this target last received a SUCCESSFUL deploy (ISO 8601).
+     *
+     * ★ Why per TARGET and not one flag on the project. "Are there changes to deploy?" only has an
+     * answer relative to a destination: publishing to Local Hosting says nothing about whether the
+     * customer's SFTP server is current. The editor's Deploy button previously derived that hint from
+     * the LOCAL release record alone, so a project deployed only over SFTP — the whole FTP/SFTP/rsync
+     * audience — read as "unpublished" with changes pending FOREVER, seconds after a successful upload.
+     */
+    lastDeployedAt: z.string().datetime().optional(),
     rsyncDelete: z.boolean().optional(),
     /** Explicit acknowledgement of rsync + prune + a ROOT remoteDir — the one genuinely destructive
      *  combination. The UI collects it behind a warning; the schema refuses without it. */

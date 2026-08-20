@@ -7042,6 +7042,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const latest = await contentRepo.latestContentUpdate(ctx);
         const dirty =
           latest !== null && (release === null || latest.getTime() > Date.parse(release.publishedAt));
+        // ★ `dirty` above answers "is the LOCAL build behind?" — which is not the question the Deploy
+        // button asks. A project deployed only over SFTP has no local release at all, so it read as
+        // dirty forever, seconds after a successful upload. Hand the client the raw timestamp so it can
+        // ask the honest, per-DESTINATION question against each target's `lastDeployedAt`.
+        const latestContentAt = latest === null ? null : latest.toISOString();
         // `localHosting` = a `local` deploy target exists, so the site is (or can be) served at /sites/.
         // `status` is the headline an agent should act on: with NO deploy target the project is UNPUBLISHED
         // no matter how many releases were built, because nothing serves them. See hostingState().
@@ -7052,6 +7057,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           url: hosting.url,
           previewUrl: hosting.previewUrl,
           dirty,
+          latestContentAt,
           localHosting: !!hosting.local,
           deployTargets: hosting.deployTargets,
           ...(hosting.deployTargets === 0

@@ -242,6 +242,20 @@ export function startSseKeepAlive(
 }
 
 /**
+ * Stamps a target as freshly deployed. Read-modify-write of the STORED record, so the encrypted
+ * `secret` and every other field are carried through untouched — this runs on the success path of a
+ * deploy, and losing a credential here would break the next one.
+ */
+async function recordDeployed(
+  contentRepo: DeployTargetDeps['contentRepo'],
+  ctx: Parameters<DeployTargetDeps['contentRepo']['put']>[0],
+  target: DeployTarget,
+  now: () => string = () => new Date().toISOString(),
+): Promise<void> {
+  await contentRepo.put(ctx, 'deploy_target', target.id, { ...target, lastDeployedAt: now() });
+}
+
+/**
  * Runs a deploy and STREAMS its progress as Server-Sent Events on the (hijacked) response:
  *   `event: progress` { phase, index, total, file } … then `event: done` { deployed } OR
  *   `event: error` { message }. The caller must have run all preflight checks (auth/lock/release)
@@ -252,6 +266,7 @@ async function streamDeploy(
   run: (onProgress: (e: unknown) => void) => Promise<unknown>,
   logCtx: Record<string, unknown>,
   log: { error: (obj: unknown, msg: string) => void },
+  onSuccess?: () => Promise<void>,
 ): Promise<void> {
   reply.hijack();
   const raw = reply.raw;
@@ -269,6 +284,17 @@ async function streamDeploy(
   const keepAlive = startSseKeepAlive((frame) => raw.write(frame), () => lastWriteAt);
   try {
     const result = await run((e) => send('progress', e));
+    // Stamp BEFORE the done frame: the editor refreshes its status when the modal closes, and a
+    // stamp written after that read would leave the button stale until the next reload.
+    if (onSuccess) {
+      try {
+        await onSuccess();
+      } catch (err) {
+        // A bookkeeping failure must not turn a SUCCESSFUL deploy into a reported failure — the files
+        // are on the server either way. Worst case the button stays dirty, which is where it was.
+        log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
+      }
+    }
     send('done', { deployed: result });
   } catch (err) {
     log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming deploy failed');
@@ -602,6 +628,11 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               : target.useRsync
                 ? await deployRsync(dir, targetToConfig(target, encryptionKey))
                 : await deploySite(dir, targetToConfig(target, encryptionKey));
+          // Same stamp as the streaming route — an agent deploying through this path must leave the
+          // project in the same state a UI deploy does.
+          await recordDeployed(contentRepo, ctx, target).catch((err: unknown) => {
+            app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
+          });
           return reply.send({ deployed: result });
         } catch (err) {
           app.log.error(
@@ -659,7 +690,14 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               : (onProgress: (e: unknown) => void) => deploySite(dir, targetToConfig(target, encryptionKey), undefined, (p) => onProgress(p));
         try {
           // All checks passed → hijack + stream to completion (lock held until the stream ends).
-          await streamDeploy(reply, run, { host: deployHostOf(target), protocol: target.protocol }, app.log);
+          await streamDeploy(
+            reply,
+            run,
+            { host: deployHostOf(target), protocol: target.protocol },
+            app.log,
+            // Only on success — a failed upload must not mark the target current.
+            () => recordDeployed(contentRepo, ctx, target),
+          );
         } finally {
           await rm(dir, { recursive: true, force: true });
         }

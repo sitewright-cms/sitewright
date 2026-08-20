@@ -1366,6 +1366,8 @@ export const api = {
       url: string | null;
       previewUrl: string;
       dirty: boolean;
+    /** When the project's content last changed — compared against each target's `lastDeployedAt`. */
+    latestContentAt?: string | null;
       localHosting?: boolean;
       deployTargets?: number;
       previewToken?: string;

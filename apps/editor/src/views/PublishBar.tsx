@@ -57,6 +57,8 @@ export function PublishBar({
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
   const [dirty, setDirty] = useState(false);
+  /** When the project's content last changed — compared against a TARGET's own last deploy. */
+  const [latestContentAt, setLatestContentAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const toast = useToast();
@@ -121,6 +123,7 @@ export function PublishBar({
         setRelease(res.release);
         setUrl(res.url ?? '');
         setDirty(res.dirty);
+        setLatestContentAt(res.latestContentAt ?? null);
         setPreviewToken(res.previewToken);
         setLocalHosting(!!res.localHosting);
       })
@@ -229,6 +232,27 @@ export function PublishBar({
   const defaultTarget =
     targets.find((t) => t.id === lastTargetId) ?? targets.find((t) => t.protocol === 'local') ?? targets[0] ?? null;
 
+  /**
+   * Is THIS target behind the current content?
+   *
+   * ★ The button used to read the project-wide `dirty`, which is derived from the LOCAL release
+   * record. A project deployed only over SFTP has no local release at all, so it stayed green with
+   * "changes to deploy" forever — seconds after a successful upload. "Are there changes to deploy?"
+   * only has an answer relative to a DESTINATION.
+   */
+  const targetStale = useCallback(
+    (t: DeployTargetView | null): boolean => {
+      if (!t) return dirty; // no target yet → fall back to the project-wide hint
+      if (!t.lastDeployedAt) return true; // never deployed anywhere → there is certainly something to send
+      if (!latestContentAt) return false; // no content at all
+      return Date.parse(latestContentAt) > Date.parse(t.lastDeployedAt);
+    },
+    [dirty, latestContentAt],
+  );
+
+  /** What the split button shows: is the target it would deploy to behind? */
+  const primaryStale = targetStale(defaultTarget);
+
   const published = release !== null;
   // "View live" opens the served site; shown only when local hosting is configured + published + clean.
   const showView = published && !dirty && localHosting && !!url;
@@ -309,14 +333,14 @@ export function PublishBar({
             className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
               // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
               // label. -700 carries the same "there is something to deploy" green at 5.2:1.
-              dirty
+              primaryStale
                 ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
                 : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
             }`}
           >
             <DeployIcon />
             {busy ? 'Deploying…' : 'Deploy'}
-            {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
+            {primaryStale && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
           </button>
           <button
             aria-label="Choose a deploy target"
@@ -324,7 +348,7 @@ export function PublishBar({
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((o) => !o)}
             className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
-              dirty
+              primaryStale
                 ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
                 : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-indigo-400'
             }`}
@@ -349,7 +373,11 @@ export function PublishBar({
                 <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.protocol === 'local' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{t.name}</span>
-                  <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{targetWhere(t)}</span>
+                  {/* Per-target, because deploying to one destination says nothing about the others. */}
+                  <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
+                    {targetStale(t) ? 'changes to deploy · ' : ''}
+                    {targetWhere(t)}
+                  </span>
                 </span>
               </button>
             ))}

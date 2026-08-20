@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +8,7 @@ import { MediaStorage } from '../src/media/storage.js';
 import { extractProjectMedia } from '../src/import/unpack-project-zip.js';
 import { rewriteMediaSlug } from '../src/import/rewrite-slug.js';
 import { UploadError } from '../src/import/upload.js';
+import { openProjectZipFile, type OpenProjectZip } from '../src/import/project-zip-file.js';
 import type { ProjectExportBundle } from '@sitewright/schema';
 
 let root: string;
@@ -23,6 +24,23 @@ afterEach(async () => {
 
 const LEGACY = 'legacy-asset-1'; // not a 6-char base62 id → per-asset folder (with `file/` nesting)
 const SHORT = 'a1B2c3'; // 6-char base62 id → flat `<slug>/<id>-<name>` (single segment, no nesting)
+
+// The reader works from a file descriptor, so a test archive has to land on disk first.
+const openedZips: OpenProjectZip[] = [];
+const zipDirs: string[] = [];
+afterAll(async () => {
+  openedZips.forEach((z) => z.close());
+  await Promise.all(zipDirs.map((d) => rm(d, { recursive: true, force: true })));
+});
+async function openZipAt(bytes: Buffer): Promise<OpenProjectZip> {
+  const dir = await mkdtemp(join(tmpdir(), 'sw-import-sec-'));
+  zipDirs.push(dir);
+  const path = join(dir, 'a.zip');
+  await writeFile(path, bytes);
+  const opened = await openProjectZipFile(path, 10_000);
+  openedZips.push(opened);
+  return opened;
+}
 
 describe('MediaStorage.importAssetFile (zip-slip defense)', () => {
   it('LEGACY id: writes a valid top-level + nested `file/` entry, confined to the asset dir', async () => {
@@ -61,15 +79,25 @@ describe('extractProjectMedia', () => {
     zip.file(`media/${LEGACY}/original-800.webp`, 'img');
     zip.file(`media/${LEGACY}/file/doc.pdf`, 'doc');
     zip.file(`media/${SHORT}/photo.png`, 'flat'); // a flat (short-id) asset → <slug>/<id>-photo.png
-    zip.file('media/../evil.txt', 'nope'); // traversal → normalizeZipPath drops it
     zip.file('bundle.json', '{}'); // non-media entry ignored
-    const buf = await zip.generateAsync({ type: 'nodebuffer' });
-    const loaded = await JSZip.loadAsync(buf);
+    const opened = await openZipAt(await zip.generateAsync({ type: 'nodebuffer' }));
 
-    const count = await extractProjectMedia(loaded, storage, 'site');
+    const count = await extractProjectMedia(opened, storage, 'site');
     expect(count).toBe(3);
     expect(existsSync(join(root, 'site', LEGACY, 'original-800.webp'))).toBe(true);
     expect(existsSync(join(root, 'site', `${SHORT}-photo.png`))).toBe(true);
+  });
+
+  it('REFUSES a whole archive that declares a traversal entry name', async () => {
+    // ★ Stricter than the old behaviour, which normalized the name and skipped that ONE entry while
+    // extracting the rest. A `media/../evil.txt` in a Sitewright export cannot arise by accident —
+    // our own writer only ever emits `media/<assetId>/<rel>` — so its presence is evidence of a
+    // tampered or hostile archive, and quietly restoring the other 40,000 files from it is the wrong
+    // answer. The reader rejects the archive at directory-parse time, before any entry is opened.
+    const zip = new JSZip();
+    zip.file('media/asset1/ok.webp', 'y');
+    zip.file('media/../evil.txt', 'nope');
+    await expect(openZipAt(await zip.generateAsync({ type: 'nodebuffer' }))).rejects.toBeInstanceOf(UploadError);
     expect(existsSync(join(root, 'site', 'evil.txt'))).toBe(false);
     expect(existsSync(join(root, 'evil.txt'))).toBe(false);
   });
@@ -77,9 +105,9 @@ describe('extractProjectMedia', () => {
   it('throws when a media entry exceeds the per-entry byte cap (bomb guard)', async () => {
     const zip = new JSZip();
     zip.file('media/asset1/big.webp', Buffer.alloc(4096, 1));
-    const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: 'nodebuffer' }));
+    const opened = await openZipAt(await zip.generateAsync({ type: 'nodebuffer' }));
     await expect(
-      extractProjectMedia(loaded, storage, 'site', {
+      extractProjectMedia(opened, storage, 'site', {
         maxEntries: 100,
         maxEntryBytes: 256, // below the entry size
         maxTotalBytes: 10_000,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
@@ -37,8 +37,8 @@ describe('collectSiteFiles', () => {
 
 describe('archiveSite', () => {
   it('produces a zip containing every built file', async () => {
-    const buf = await archiveSite(siteDir);
-    const zip = await JSZip.loadAsync(buf);
+    const archive = await archiveSite(siteDir);
+    const zip = await JSZip.loadAsync(await readFile(archive.path));
     expect(Object.keys(zip.files).sort()).toContain('index.html');
     const home = await zip.file('index.html')!.async('string');
     expect(home).toContain('Home');

@@ -163,3 +163,54 @@ describe('{{sw-json-data}}', () => {
     expect(render('{{sw-json-data id="x"}}')).toContain('no value given');
   });
 });
+
+describe('{{sw-json-data}} fields= projection', () => {
+  const render = (src: string, ctx: Record<string, unknown> = {}) => renderTemplate(src, ctx as never);
+  const body = (out: string) => JSON.parse(out.slice(out.indexOf('>') + 1, out.lastIndexOf('</script>')));
+
+  it('keeps only the named fields', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="title,path"}}', {
+      page: { data: { rows: [{ title: 'A', path: '/a', description: 'long…', image: '/i.jpg' }] } },
+    });
+    expect(body(out)).toEqual([{ title: 'A', path: '/a' }]);
+  });
+
+  it('supports dotted paths and PRESERVES the shape', () => {
+    // `{data:{date}}`, not `{"data.date"}` — the reading script sees the same structure the template
+    // does, which is the whole point of projecting rather than re-keying.
+    const out = render('{{sw-json-data page.data.rows id="r" fields="title,data.date"}}', {
+      page: { data: { rows: [{ title: 'A', data: { date: '2026-01-01', body: 'x'.repeat(5000) } }] } },
+    });
+    expect(body(out)).toEqual([{ title: 'A', data: { date: '2026-01-01' } }]);
+    expect(out).not.toContain('xxxx');
+  });
+
+  it('skips a field a row does not have, rather than emitting null', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="title,image"}}', {
+      page: { data: { rows: [{ title: 'A' }, { title: 'B', image: '/b.jpg' }] } },
+    });
+    expect(body(out)).toEqual([{ title: 'A' }, { title: 'B', image: '/b.jpg' }]);
+  });
+
+  it('projects BEFORE the size check, which is what makes a big listing fit', () => {
+    // Each row carries a large `data` blob, as a real page-tree child does.
+    const rows = Array.from({ length: 500 }, (_, i) => ({
+      title: `Post ${i}`,
+      path: `/news/post-${i}`,
+      data: { date: '2026-01-01', body: 'x'.repeat(2000) },
+    }));
+    expect(render('{{sw-json-data page.data.rows id="r"}}', { page: { data: { rows } } }))
+      .toContain('over the');
+    const projected = render('{{sw-json-data page.data.rows id="r" fields="title,path,data.date"}}', { page: { data: { rows } } });
+    expect(projected).toContain('<script type="application/json" id="r">');
+    expect(body(projected)).toHaveLength(500);
+    expect(projected).not.toContain('xxxx');
+  });
+
+  it('is prototype-safe about field paths', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="constructor,__proto__.x,title"}}', {
+      page: { data: { rows: [{ title: 'A' }] } },
+    });
+    expect(body(out)).toEqual([{ title: 'A' }]);
+  });
+});

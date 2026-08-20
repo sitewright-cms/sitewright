@@ -60,6 +60,54 @@ function flattenEntryEnvelopes(value: unknown): unknown {
 }
 
 /**
+ * Keeps only `fields` from each row of a list, supporting DOTTED PATHS.
+ *
+ * ★ Without this the helper is unusable for the case it exists for. A page-tree child row carries its
+ * whole `data` object, so `pages.news._attributes.children` serializes to 1.25 MB for 488 posts — five
+ * times over the island cap — while the four fields a card actually renders are a tenth of that. A
+ * template cannot project an object (Handlebars has no map/pick), so without `fields=` the only way out
+ * is to store a second, slimmer copy of the list in the database, which is precisely the "workaround
+ * that IS the bug report" shape.
+ *
+ * A dotted path keeps its SHAPE — `data.date` lands at `{data:{date}}`, not `{"data.date"}` — so the
+ * reading script sees the same structure the template does.
+ */
+function projectFields(value: unknown, fields: readonly string[]): unknown {
+  if (!Array.isArray(value)) return pickPaths(value, fields);
+  return value.map((row) => pickPaths(row, fields));
+}
+
+function pickPaths(row: unknown, fields: readonly string[]): unknown {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) return row;
+  const out: Record<string, unknown> = {};
+  for (const path of fields) {
+    const segs = path.split('.').filter(Boolean);
+    if (segs.length === 0) continue;
+    let src: unknown = row;
+    let ok = true;
+    for (const seg of segs) {
+      if (typeof src !== 'object' || src === null || !Object.prototype.hasOwnProperty.call(src, seg)) { ok = false; break; }
+      // eslint-disable-next-line security/detect-object-injection -- own-property-guarded, author-declared path
+      src = (src as Record<string, unknown>)[seg];
+    }
+    if (!ok) continue;
+    // Rebuild the path so the emitted shape mirrors the source's.
+    let cursor = out;
+    for (let i = 0; i < segs.length - 1; i += 1) {
+      const seg = segs[i]!;
+      // eslint-disable-next-line security/detect-object-injection -- own-property-guarded above
+      const next = cursor[seg];
+      if (typeof next !== 'object' || next === null) cursor[seg] = {};
+      // eslint-disable-next-line security/detect-object-injection -- just assigned
+      cursor = cursor[seg] as Record<string, unknown>;
+    }
+    // eslint-disable-next-line security/detect-object-injection -- author-declared leaf name
+    cursor[segs[segs.length - 1]!] = src;
+  }
+  return out;
+}
+
+/**
  * The first credential-shaped key anywhere in `value`, or `undefined`.
  *
  * NARROW ON PURPOSE. `key` and `id` are ordinary field names — the shop's own channels use `key` — so
@@ -1194,7 +1242,12 @@ function createInstance(): typeof Handlebars {
     }
 
     // Serialize what the TEMPLATE sees, not the storage record — see flattenEntryEnvelopes.
-    const payload = flattenEntryEnvelopes(value);
+    let payload = flattenEntryEnvelopes(value);
+    // `fields="title,path,data.date"` narrows each row BEFORE the size check, which is the only reason
+    // a page-tree listing fits in an island at all.
+    const rawFields = typeof hash.fields === 'string' ? hash.fields : '';
+    const fields = rawFields.split(',').map((f) => f.trim()).filter(Boolean);
+    if (fields.length > 0) payload = projectFields(payload, fields);
 
     const secret = findSecretKey(payload);
     if (secret) return refuse(`refusing a value containing a credential-shaped key ("${secret}")`);

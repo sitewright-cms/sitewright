@@ -7,6 +7,21 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [Unreleased]
+
+### Added
+
+- **`fields=` on `{{sw-json-data}}`** — narrows each row before the island is measured, which is what
+  makes a page listing fit in one at all. A page-tree child carries its whole `data` object, so the 488
+  posts behind a news archive serialize to 1.25 MB raw — five times the cap — while the four fields the
+  cards actually render are a tenth of that. Comma-separated, and DOTTED paths keep their shape:
+  `fields="title,path,image,data.date"` emits `{title, path, image, data:{date}}`, the same structure
+  the template reads, rather than a re-keyed flat object.
+
+  Without it the only way to render such a list client-side is to store a second, slimmer copy of it in
+  the database — a value kept in the DB because the template cannot express it, which is a bug report
+  rather than a design.
+
 ## [0.27.0] — 2026-08-20
 
 ### Added

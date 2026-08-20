@@ -56,12 +56,19 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
       // hit targets of the surface people type into.
       className={
         frameless
-          ? 'relative h-full overflow-hidden rounded-2xl bg-white p-1 shadow-xl shadow-slate-900/5'
+          ? // FRAMELESS: no gutter at all. The page editor's preview IS the working surface, so any
+            // padding reads as a grey ring drawn around the site rather than as chrome around a card.
+            'relative h-full overflow-hidden rounded-2xl bg-white shadow-xl shadow-slate-900/5'
           : 'relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl'
       }
     >
       {error && (
-        <div role="alert" className="absolute inset-x-1 top-1 z-10 rounded-t-xl bg-rose-50/90 px-3 py-2 text-xs text-rose-700 backdrop-blur-sm">
+        <div
+          role="alert"
+          className={`absolute z-10 rounded-t-xl bg-rose-50/90 px-3 py-2 text-xs text-rose-700 backdrop-blur-sm ${
+            frameless ? 'inset-x-0 top-0' : 'inset-x-1 top-1'
+          }`}
+        >
           Preview error: {error}
         </div>
       )}
@@ -74,10 +81,12 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
         onLoad={() => {
           if (src) setEverLoaded(true);
         }}
-        className={frameless ? 'h-full w-full rounded-xl bg-white' : 'h-full w-full rounded-xl border border-white/60 bg-white'}
+        // Frameless: match the container's radius, or the document's square corners sit inside a
+        // rounded box and the mismatch reads as a sliver of background.
+        className={frameless ? 'h-full w-full rounded-2xl bg-white' : 'h-full w-full rounded-xl border border-white/60 bg-white'}
       />
       {showSkeleton && (
-        <div role="status" className="absolute inset-1">
+        <div role="status" className={frameless ? 'absolute inset-0' : 'absolute inset-1'}>
           <PreviewSkeleton />
           <span className="sr-only">Loading preview…</span>
         </div>

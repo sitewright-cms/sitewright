@@ -58,4 +58,27 @@ describe('PreviewPane', () => {
     expect(iframe?.getAttribute('title')).toBe('Preview');
     expect(iframe?.getAttribute('aria-label')).toBe('Preview');
   });
+
+  it('frameless has NO gutter — the document meets the pane edge', () => {
+    // ★ The page editor's preview IS the working surface, so a gutter reads as a grey ring drawn
+    // around the site. It also sits in the one place where cosmetics have bitten before: a padding
+    // change here once moved the hit targets so clicks landed on <body> instead of the document.
+    // Padding can only ever SHRINK the iframe, so removing it is the safe direction — but assert the
+    // shape so nobody restores it by reflex.
+    const { container } = render(<PreviewPane src="/p/" loading={false} error={null} frameless />);
+    const pane = container.firstElementChild as HTMLElement;
+    expect(pane.className).not.toMatch(/(^|\s)p-\d/);
+    // The iframe fills it completely.
+    const frame = container.querySelector('iframe')!;
+    expect(frame.className).toContain('h-full');
+    expect(frame.className).toContain('w-full');
+    expect(frame.className).not.toContain('border');
+  });
+
+  it('the FRAMED variant keeps its card gutter', () => {
+    // The slot editor and the live-preview panel sit ON a page beside other cards — there the frame
+    // is the point, and dropping it would make the preview bleed into the surrounding surface.
+    const { container } = render(<PreviewPane src="/p/" loading={false} error={null} />);
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/(^|\s)p-1(\s|$)/);
+  });
 });

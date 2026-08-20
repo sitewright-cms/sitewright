@@ -214,3 +214,65 @@ describe('{{sw-json-data}} fields= projection', () => {
     expect(body(out)).toEqual([{ title: 'A' }]);
   });
 });
+
+describe('{{sw-json-data}} field length limits', () => {
+  const render = (src: string, ctx: Record<string, unknown> = {}) => renderTemplate(src, ctx as never);
+  const body = (out: string) => JSON.parse(out.slice(out.indexOf('>') + 1, out.lastIndexOf('</script>')));
+
+  it('truncates a field to `name:N`, on a word boundary', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="title,description:30"}}', {
+      page: { data: { rows: [{ title: 'A', description: 'The quick brown fox jumps over the lazy dog' }] } },
+    });
+    const [row] = body(out);
+    expect(row.title).toBe('A');
+    expect(row.description.length).toBeLessThanOrEqual(31); // 30 + the ellipsis
+    expect(row.description.endsWith('…')).toBe(true);
+    expect(row.description).not.toMatch(/\s…$/); // no dangling space before the ellipsis
+  });
+
+  it('leaves a value shorter than the limit exactly as it is', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="description:200"}}', {
+      page: { data: { rows: [{ description: 'Short.' }] } },
+    });
+    expect(body(out)[0].description).toBe('Short.');
+  });
+
+  it('ignores a limit on a non-string, and treats `:0` as no limit', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="n:10,ok:0"}}', {
+      page: { data: { rows: [{ n: 1234567890123, ok: 'also whole' }] } },
+    });
+    expect(body(out)[0]).toEqual({ n: 1234567890123, ok: 'also whole' });
+  });
+
+  it('treats a non-numeric suffix as part of the NAME, not a broken limit', () => {
+    // `title:abc` names a field that does not exist, so it drops — the same way any unknown field
+    // does. Silently rewriting it to `title` would be a guess about what the author meant.
+    const out = render('{{sw-json-data page.data.rows id="r" fields="title:abc,kept"}}', {
+      page: { data: { rows: [{ title: 'x', kept: 'y', 'title:abc': 'literal' }] } },
+    });
+    expect(body(out)[0]).toEqual({ 'title:abc': 'literal', kept: 'y' });
+  });
+
+  it('works on a dotted path', () => {
+    const out = render('{{sw-json-data page.data.rows id="r" fields="data.summary:12"}}', {
+      page: { data: { rows: [{ data: { summary: 'one two three four five' } }] } },
+    });
+    expect(body(out)[0].data.summary.endsWith('…')).toBe(true);
+  });
+
+  it('is what brings a real archive under the cap', () => {
+    // 488 posts with long summaries: refused whole, accepted once each summary is cut to what the
+    // card actually renders.
+    const rows = Array.from({ length: 488 }, (_, i) => ({
+      title: `Post ${i}`,
+      path: `/news/${i}`,
+      image: `/media/p/img-${i}-abcdefghijklmnop.jpg`,
+      description: `Summary ${i}. `.repeat(40),
+    }));
+    expect(render('{{sw-json-data page.data.rows id="r" fields="title,path,image,description"}}', { page: { data: { rows } } }))
+      .toContain('over the');
+    const ok = render('{{sw-json-data page.data.rows id="r" fields="title,path,image,description:130"}}', { page: { data: { rows } } });
+    expect(ok).toContain('<script type="application/json" id="r">');
+    expect(body(ok)).toHaveLength(488);
+  });
+});

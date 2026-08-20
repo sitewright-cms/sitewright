@@ -16,7 +16,9 @@ The running version of an instance is reported at `GET /version` (baked into the
   posts behind a news archive serialize to 1.25 MB raw — five times the cap — while the four fields the
   cards actually render are a tenth of that. Comma-separated, and DOTTED paths keep their shape:
   `fields="title,path,image,data.date"` emits `{title, path, image, data:{date}}`, the same structure
-  the template reads, rather than a re-keyed flat object.
+  the template reads, rather than a re-keyed flat object. A trailing `:N` caps a string field —
+  `description:130` carries exactly what a 130-character card renders, which is the difference between
+  a real 488-post archive being refused at 250 KB and fitting at 176 KB.
 
   Without it the only way to render such a list client-side is to store a second, slimmer copy of it in
   the database — a value kept in the DB because the template cannot express it, which is a bug report

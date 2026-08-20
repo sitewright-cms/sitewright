@@ -859,8 +859,9 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     every view: right for ONE page's own list, a widget's config, or your own application/ld+json.
     ★ You CANNOT write <script>{{sw-json x}}</script> yourself — an interpolation inside a script body
     is a template ERROR (a value there could close the tag), so the helper emits the whole element.
-    NARROW each row with fields="title,path,image,data.date" — comma-separated, DOTTED paths allowed
-    and shape-preserving (data.date lands at {data:{date}}), applied BEFORE the size check. A page-tree
+    NARROW each row with fields="title,path,image,description:130,data.date" — comma-separated; DOTTED
+    paths keep their shape (data.date lands at {data:{date}}); a trailing :N caps a STRING field, so an
+    island carries what the card SHOWS rather than the whole text. Applied BEFORE the size check. A page-tree
     listing carries each child's whole data object: 488 posts = 1.25 MB raw, a tenth of that projected.
     It REFUSES loudly (an HTML comment saying why) rather than emitting something wrong: a whole
     ambient namespace (website / pages / dataset — pass a projection like dataset.products), a value

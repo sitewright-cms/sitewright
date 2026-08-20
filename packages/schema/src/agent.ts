@@ -871,9 +871,10 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     data/<path> — fetch('data/gallery.json'). Ships ONCE and is cached, and can be fetched lazily —
     right for a list too large to inline, or one several pages share. "path" is a plain filename; the
     data/ directory is fixed (the site ROOT cannot serve .json, so the build manifest stays private). A dataset source emits PUBLISHED entries only; "fields" narrows the
-    columns. A FOLDER source emits published _assets/ URLs and MATERIALIZES that variant into the
-    export — "size" picks it (xs|sm|md|lg|xl, default md), so the images a data file names are the
-    images the exported site actually contains. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
+    columns. Media URLs are rewritten to published _assets/ paths and MATERIALIZED into the export
+    — for a folder source's images and for any /media/ URL inside a DATASET row (a product photo, an
+    <img> in a rich-text cell). "size" picks the variant (xs|sm|md|lg|xl, default md). So the assets a
+    data file names are the assets the exported site actually contains. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
   Prefer real PAGES when each item needs its own URL and to be findable — search, SEO and deep links
   all work on pages and none of them see a data island.
 FILTER, ORDER and GROUP a list — windows pick by POSITION, these pick by VALUE:

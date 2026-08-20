@@ -7,6 +7,23 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.29.0] — 2026-08-20
+
+### Fixed
+
+- **A dataset data file named media the export did not contain** — the same defect just fixed for
+  folder sources, wearing a different hat. A dataset row carries asset URLs exactly as a folder listing
+  does: a product's `image`, a download's `file`, an `<img src>` inside a rich-text cell. Those kept the
+  CMS `/media/…` form, which is a live route on platform hosting and absent from an exported site,
+  and the variant was never materialized because nothing rendered it.
+
+  Every `/media/…` URL anywhere in a row — nested, in arrays, embedded in markup — is now rewritten to
+  its published `_assets/` path and registered for materialization. A non-image asset references its
+  ORIGINAL rather than a thumbnail that does not exist for it. The rewrite is decided by a lookup
+  against the project's own media, so prose mentioning a path that isn't an asset is left alone.
+
+  `size=` now applies to both source kinds rather than folders only.
+
 ## [0.28.0] — 2026-08-20
 
 ### Added

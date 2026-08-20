@@ -46,7 +46,7 @@ export interface BuildDataFilesInput {
    * Absent (tests, or a caller with no asset pipeline) → the CMS URL, which is right for a
    * platform-hosted site.
    */
-  resolveImageUrl?: (asset: ImageAsset, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl') => string;
+  resolveAssetUrl?: (asset: MediaAsset, size: 'xs' | 'sm' | 'md' | 'lg' | 'xl') => string;
 }
 
 export interface BuiltDataFile {
@@ -89,7 +89,47 @@ function project(values: Record<string, unknown>, fields: readonly string[] | un
  * Builds every declared data file. Pure: it returns the bytes, the caller writes them, so the whole
  * thing is testable without a filesystem or a publish.
  */
-export function buildDataFiles({ specs, entries, media, resolveImageUrl }: BuildDataFilesInput): BuildDataFilesResult {
+/**
+ * Rewrites every CMS media URL inside a value to the URL the PUBLISHED site serves it at.
+ *
+ * ★ A dataset row carries asset URLs just as a folder listing does — a product's `image`, a
+ * download's `file`, an `<img src>` inside a rich-text cell. They have exactly the failure the folder
+ * source had: `/media/<project>/<id>-<name>` is a live route on platform hosting and does not exist on
+ * an exported site, and the variant was never materialized because nothing rendered it. Fixing the
+ * folder source and leaving these is fixing one half of one bug.
+ *
+ * Walks strings anywhere in the row (nested objects, arrays, rich-text bodies) and replaces every
+ * occurrence, so a URL inside markup is rewritten too — not just a field whose whole value is a URL.
+ */
+function rewriteAssetUrls(
+  value: unknown,
+  byUrl: ReadonlyMap<string, MediaAsset>,
+  resolve: (asset: MediaAsset) => string,
+  depth = 0,
+): unknown {
+  if (depth > 8) return value;
+  if (typeof value === 'string') {
+    if (!value.includes('/media/')) return value;
+    // Match the delivery route shape; the map lookup is what decides whether it is really ours, so a
+    // look-alike string in prose can never be rewritten into something that does not exist.
+    return value.replace(/\/media\/[A-Za-z0-9_-]+\/(?:[A-Za-z0-9_-]+\/)?[A-Za-z0-9_.-]+/g, (hit) => {
+      const asset = byUrl.get(hit);
+      return asset ? resolve(asset) : hit;
+    });
+  }
+  if (Array.isArray(value)) return value.map((v) => rewriteAssetUrls(v, byUrl, resolve, depth + 1));
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      // eslint-disable-next-line security/detect-object-injection -- own-property key from Object.entries
+      out[k] = rewriteAssetUrls(v, byUrl, resolve, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function buildDataFiles({ specs, entries, media, resolveAssetUrl }: BuildDataFilesInput): BuildDataFilesResult {
   const files: BuiltDataFile[] = [];
   const warnings: string[] = [];
   const seen = new Set<string>();
@@ -113,6 +153,11 @@ export function buildDataFiles({ specs, entries, media, resolveImageUrl }: Build
         warnings.push(`data file "${spec.path}": dataset "${spec.dataset}" has no published entries — emitting an empty list`);
       }
       rows = matching.map((e) => project(e.values ?? {}, spec.fields));
+      if (resolveAssetUrl) {
+        const size = spec.size ?? 'md';
+        const byUrl = new Map(media.map((m) => [m.url, m]));
+        rows = rows.map((r) => rewriteAssetUrls(r, byUrl, (asset) => resolveAssetUrl(asset, size)) as Record<string, unknown>);
+      }
     } else {
       // A typed predicate, so the `width`/`height` reads below narrow to the image variant of the
       // MediaAsset union rather than needing a cast.
@@ -123,7 +168,7 @@ export function buildDataFiles({ specs, entries, media, resolveImageUrl }: Build
       }
       const size = spec.size ?? 'md';
       rows = inFolder.map((m) => ({
-        url: resolveImageUrl ? resolveImageUrl(m, size) : m.url,
+        url: resolveAssetUrl ? resolveAssetUrl(m, size) : m.url,
         alt: m.alt ?? '',
         ...(typeof m.width === 'number' ? { width: m.width } : {}),
         ...(typeof m.height === 'number' ? { height: m.height } : {}),

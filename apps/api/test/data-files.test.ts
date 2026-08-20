@@ -52,7 +52,7 @@ describe('buildDataFiles', () => {
     expect(files[0]!.json).not.toContain('do not ship');
   });
 
-  it('emits PUBLISHED asset URLs and registers them, when the build supplies a resolver', () => {
+  it('emits PUBLISHED asset URLs for a FOLDER source, and registers them', () => {
     // ★ The defect this closes: without a resolver the file carries the CMS URL
     // (/media/<project>/<id>-<name>), which is a live route on platform hosting and does not exist on
     // a site exported to the owner's own server — that bundles media into a flat _assets/ directory
@@ -62,7 +62,7 @@ describe('buildDataFiles', () => {
       specs: [{ path: 'g.json', folder: 'gallery', size: 'sm' }],
       entries: {},
       media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery', id: 'asset1' })],
-      resolveImageUrl: (asset, size) => {
+      resolveAssetUrl: (asset, size) => {
         registered.push({ id: asset.id, size });
         return `_assets/AbC123-${asset.id}-${size}.webp`;
       },
@@ -79,9 +79,56 @@ describe('buildDataFiles', () => {
       specs: [{ path: 'g.json', folder: 'gallery' }],
       entries: {},
       media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery', id: 'a' })],
-      resolveImageUrl: (_a, size) => { seen.push(size); return 'x'; },
+      resolveAssetUrl: (_a, size) => { seen.push(size); return 'x'; },
     });
     expect(seen).toEqual(['md']);
+  });
+
+  it('rewrites media URLs inside DATASET rows, and registers those assets too', () => {
+    // ★ The other half of the same defect. A product row carries `/media/…` in `image` exactly as a
+    // folder listing does in `url`; fixing folders and leaving datasets fixes one half of one bug.
+    const seen: string[] = [];
+    const { files } = buildDataFiles({
+      specs: [{ path: 'p.json', dataset: 'products', size: 'sm' }],
+      entries: { products: [{ values: { name: 'Cap', image: '/media/p/a-1.jpg', price: 120 } }] },
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'shop', id: 'asset1' })],
+      resolveAssetUrl: (asset, size) => { seen.push(`${asset.id}:${size}`); return `_assets/AbC-${asset.id}-${size}.webp`; },
+    });
+    expect(JSON.parse(files[0]!.json)).toEqual([{ name: 'Cap', image: '_assets/AbC-asset1-sm.webp', price: 120 }]);
+    expect(seen).toEqual(['asset1:sm']);
+  });
+
+  it('rewrites a media URL EMBEDDED in markup, not only a whole-value one', () => {
+    const { files } = buildDataFiles({
+      specs: [{ path: 'p.json', dataset: 'posts' }],
+      entries: { posts: [{ values: { body: '<p>See <img src="/media/p/a-1.jpg" alt="x"> here</p>' } }] },
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'x', id: 'a1' })],
+      resolveAssetUrl: (asset) => `_assets/AbC-${asset.id}.webp`,
+    });
+    expect(JSON.parse(files[0]!.json)[0].body).toContain('src="_assets/AbC-a1.webp"');
+    expect(files[0]!.json).not.toContain('/media/');
+  });
+
+  it('rewrites nested and array values', () => {
+    const { files } = buildDataFiles({
+      specs: [{ path: 'p.json', dataset: 'd' }],
+      entries: { d: [{ values: { gallery: ['/media/p/a-1.jpg'], meta: { hero: '/media/p/a-1.jpg' } } }] },
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'x', id: 'a1' })],
+      resolveAssetUrl: () => '_assets/OK.webp',
+    });
+    expect(JSON.parse(files[0]!.json)[0]).toEqual({ gallery: ['_assets/OK.webp'], meta: { hero: '_assets/OK.webp' } });
+  });
+
+  it('leaves a look-alike string that is not a real asset alone', () => {
+    // The map lookup decides, not the pattern — so prose mentioning a path can never be rewritten
+    // into a URL the export does not contain.
+    const { files } = buildDataFiles({
+      specs: [{ path: 'p.json', dataset: 'd' }],
+      entries: { d: [{ values: { note: 'Upload it to /media/p/not-a-real-asset.jpg first.' } }] },
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'x', id: 'a1' })],
+      resolveAssetUrl: () => '_assets/WRONG.webp',
+    });
+    expect(JSON.parse(files[0]!.json)[0].note).toContain('/media/p/not-a-real-asset.jpg');
   });
 
   it('emits a media folder as url/alt/width/height', () => {

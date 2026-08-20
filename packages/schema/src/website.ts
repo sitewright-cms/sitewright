@@ -1117,7 +1117,11 @@ const WebsiteSettingsObject = z.object({
           /** Keep only these fields from each row (dataset sources only). Empty/absent = every field. */
           fields: z.array(z.string().min(1).max(64)).max(32).optional(),
           /**
-           * Thumbnail size the emitted image URLs point at (folder sources only). Default `md`.
+           * Thumbnail size the emitted image URLs point at. Default `md`.
+           *
+           * Applies to BOTH sources: a folder listing is all images, and a dataset row carries them
+           * too (a product photo, an `<img>` in a rich-text cell) — those are rewritten to published
+           * URLs at this size.
            *
            * ★ This is what the export MATERIALIZES for every image in the folder — the published site
            * bundles only referenced variants, so a data file has to declare which one it references or
@@ -1134,9 +1138,6 @@ const WebsiteSettingsObject = z.object({
           }
           if (v.folder && v.fields?.length) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'fields= applies to a dataset source, not a folder' });
-          }
-          if (v.dataset && v.size) {
-            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'size= applies to a folder source, not a dataset' });
           }
         }),
     )

@@ -9,6 +9,7 @@ import {
   resolveThumbForHead,
   rebaseMediaHeadUrl,
   addThumbRef,
+  addOriginalRef,
   type ThumbRefs,
 } from './media-thumbs.js';
 import { buildAliasMap, aliasResolver, flatMediaName } from './asset-alias.js';
@@ -1566,9 +1567,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Root-relative, NOT page-relative: one file is read by script from pages at any depth, so it
         // cannot carry the `../../_assets/…` form the rendered pages use. The client resolves it
         // against the site root.
-        resolveImageUrl: (asset, size) => {
-          addThumbRef(thumbRefs, asset.id, size, 'webp');
-          return `${ASSET_DIR}/${flatMediaName(alias(asset.id), thumbFileName(asset.original, size, 'webp'))}`;
+        resolveAssetUrl: (asset, size) => {
+          // An IMAGE gets the declared thumbnail; anything else (a dataset's PDF, an audio file) has no
+          // thumbnail at all and must reference — and materialize — its ORIGINAL, or the data file names
+          // a variant that does not exist for that kind of asset.
+          if (asset.kind === 'image') {
+            addThumbRef(thumbRefs, asset.id, size, 'webp');
+            return `${ASSET_DIR}/${flatMediaName(alias(asset.id), thumbFileName(asset.original, size, 'webp'))}`;
+          }
+          addOriginalRef(thumbRefs, asset.id);
+          const name = 'storedName' in asset ? asset.storedName : asset.filename;
+          return `${ASSET_DIR}/${flatMediaName(alias(asset.id), name)}`;
         },
       });
       dataFileWarnings.push(...built.warnings);

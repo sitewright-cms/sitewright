@@ -731,3 +731,38 @@ describe('the shop order channel after the formId removal', () => {
     expect(() => shop([{ kind: 'form', key: 'order', email: 'a@b.test', fields: [...fields, { key: 'over', type: 'text' }] }])).toThrow();
   });
 });
+
+describe('website.dataFiles', () => {
+  const ok = (dataFiles: unknown) => WebsiteSettingsSchema.parse({ dataFiles });
+  const bad = (dataFiles: unknown) => expect(() => WebsiteSettingsSchema.parse({ dataFiles })).toThrow();
+
+  it('accepts a dataset source and a folder source', () => {
+    expect(ok([{ path: 'products.json', dataset: 'products' }]).dataFiles).toHaveLength(1);
+    expect(ok([{ path: 'gallery.json', folder: 'gallery' }]).dataFiles).toHaveLength(1);
+    expect(ok([{ path: 'p.json', dataset: 'products', fields: ['name', 'price'] }]).dataFiles).toHaveLength(1);
+  });
+
+  it('requires EXACTLY one source', () => {
+    bad([{ path: 'x.json' }]);
+    bad([{ path: 'x.json', dataset: 'a', folder: 'b' }]);
+  });
+
+  // ★ `path` names a WRITE TARGET inside the publish output. A traversal or a nested path could
+  // overwrite a generated file — a page's index.html, sitemap.xml — during publish, so the pattern is
+  // a plain filename and nothing else.
+  it('rejects any path that is not a plain .json filename', () => {
+    for (const path of ['../secrets.json', 'a/b.json', '/abs.json', 'index.html', 'no-extension', '.hidden.json', 'x.json/../y.json']) {
+      bad([{ path, dataset: 'a' }]);
+    }
+    expect(ok([{ path: 'a-b_c.2.json', dataset: 'a' }]).dataFiles).toHaveLength(1);
+  });
+
+  it('rejects fields= on a folder source, where it means nothing', () => {
+    bad([{ path: 'g.json', folder: 'gallery', fields: ['url'] }]);
+  });
+
+  it('caps how many files a site can declare', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ path: `f${i}.json`, dataset: 'a' }));
+    bad(many);
+  });
+});

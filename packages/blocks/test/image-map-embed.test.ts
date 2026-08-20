@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { renderTemplate } from '../src/template.js';
 import { componentAssets, componentTypesInSource } from '../src/components.js';
+import { jsonForScript } from '../src/escape.js';
 import {
   IMAGE_MAP_ATTR,
-  jsonForScript,
   renderImageMapMarkup,
   resolveImageMapEmbeds,
   sanitizeImageMapConfig,
@@ -53,11 +53,15 @@ describe('image map markup', () => {
 });
 
 describe('jsonForScript', () => {
+  // Moved to src/escape.ts: this escaping existed in THREE copies (here, head.ts and template.ts's new
+  // data-island helper), which is exactly how one copy drifts and quietly loses an escape. The image
+  // map keeps a thin local adapter for the total-function signature it needs; the escaping is shared.
   it('neutralises a </script> breakout while staying parseable', () => {
     const out = jsonForScript({ text: '</script><script>alert(1)</script>' });
+    expect(out).toBeDefined();
     expect(out).not.toContain('</script>');
     expect(out).not.toContain('<script>');
-    expect(JSON.parse(out)).toEqual({ text: '</script><script>alert(1)</script>' });
+    expect(JSON.parse(out as string)).toEqual({ text: '</script><script>alert(1)</script>' });
   });
 });
 

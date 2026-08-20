@@ -1,7 +1,7 @@
 // Platform-managed document head: SEO/Open-Graph meta and schema.org JSON-LD.
 // These are data-driven (populated from the project's company/website/page data)
 // — there is no per-tenant template code here, so there is no code-exec surface.
-import { escapeAttr } from './escape.js';
+import { escapeAttr, jsonForScript } from './escape.js';
 
 /** Head metadata for a page (mapped from page SEO + company/website data). */
 export interface SeoMeta {
@@ -114,15 +114,6 @@ export function metaTags(seo: SeoMeta): string {
   return tags.join('\n');
 }
 
-// JSON embedded in <script> must not be able to close the tag or open a comment.
-// Escaping `<`, `>`, `&` (as valid JSON \uXXXX escapes) neutralises `</script>`,
-// `<!--`, and `<script>` breakouts while keeping the JSON parseable.
-function jsonForScript(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, '\\u003c')
-    .replace(/>/g, '\\u003e')
-    .replace(/&/g, '\\u0026');
-}
 
 /**
  * Renders an auto-generated schema.org JSON-LD `<script>` from company data, or
@@ -158,5 +149,8 @@ export function schemaOrgJsonLd(org: SchemaOrgInfo | undefined): string {
   }
   if (org.sameAs && org.sameAs.length > 0) data.sameAs = [...org.sameAs];
 
-  return `<script type="application/ld+json">${jsonForScript(data)}</script>`;
+  const json = jsonForScript(data);
+  // Unserializable company data emits NOTHING rather than `<script>undefined</script>`, which would
+  // be invalid structured data that search engines report as an error.
+  return json === undefined ? '' : `<script type="application/ld+json">${json}</script>`;
 }

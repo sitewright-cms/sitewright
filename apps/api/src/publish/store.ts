@@ -36,6 +36,16 @@ const NESTED_ASSET_PATHS: ReadonlySet<string> = new Set([SECURITY_TXT_PATH]);
 // names are platform-generated and hold only text already public in the rendered pages.
 const SEARCH_INDEX_FILE = /^search-(index|text)(\.[A-Za-z0-9-]+)?\.json$/;
 
+// Author-declared data files (`website.dataFiles`), which live in their own `data/` directory.
+//
+// ★ The directory is the WHOLE POINT and is not cosmetic. `.json` is absent from ASSET_CONTENT_TYPES on
+// purpose so `release.json` — the build manifest, which carries route counts, page failures and build
+// warnings — stays unreachable. Allowing `.json` at the ROOT to serve author data would expose it. A
+// dedicated prefix keeps every author-declared file servable while the root stays closed, and the name
+// pattern (no dots beyond the extension, no separators) keeps `data/../release.json` unrepresentable
+// before the path resolution below even runs.
+const DATA_FILE_PATH = /^data\/[A-Za-z0-9][A-Za-z0-9_-]*\.json$/;
+
 // A locked-down response CSP for inline-served SVG. SVG can carry <script>; even though our imported
 // SVGs are SANITIZED and referenced via <img> (browser "secure static mode" = no scripts/fetches), this
 // CSP is the HARD guarantee for the residual DIRECT-navigation vector: no script executes and no remote
@@ -256,14 +266,14 @@ export class PublishStore {
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
     const contentType =
       ASSET_CONTENT_TYPES.get(extname(rel).toLowerCase()) ??
-      (SEARCH_INDEX_FILE.test(rel) ? 'application/json; charset=utf-8' : undefined);
+      (SEARCH_INDEX_FILE.test(rel) || DATA_FILE_PATH.test(rel) ? 'application/json; charset=utf-8' : undefined);
     if (!contentType) return null;
     // The builder writes these assets ONLY at the site root (styles.css, the
     // per-type component chunks c-<type>.js, the effect runtimes). Restrict serving
     // to root-level files so no future write path into a subdirectory could become
     // publicly served as CSS/JS. NESTED_ASSET_PATHS is an EXACT-path exception list, not a
     // relaxation of that rule: each entry is one platform-generated file at one fixed location.
-    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel)) return null;
+    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel) && !DATA_FILE_PATH.test(rel)) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     try {

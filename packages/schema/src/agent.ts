@@ -851,6 +851,25 @@ Where the list comes from:
   • ANY OTHER page reaches them by name: {{#each pages.news._attributes.children}} — this is what lets
     archive page 2 list the ROOT's posts, since they are not page 2's own children;
   • a dataset works the same way ({{#each dataset.news}}) and needs no cross-page hop.
+HAND DATA TO A SCRIPT instead of rendering another page — the alternative to a paginated archive when
+the list is decorative (a photo wall) rather than something each item needs a URL for. Two shapes:
+  • ON-PAGE ISLAND — {{sw-json-data value id="tiles"}} emits
+    <script type="application/json" id="tiles">…</script>, read with
+    JSON.parse(document.getElementById('tiles').textContent). Inlined in the HTML, so it is re-sent on
+    every view: right for ONE page's own list, a widget's config, or your own application/ld+json.
+    ★ You CANNOT write <script>{{sw-json x}}</script> yourself — an interpolation inside a script body
+    is a template ERROR (a value there could close the tag), so the helper emits the whole element.
+    It REFUSES loudly (an HTML comment saying why) rather than emitting something wrong: a whole
+    ambient namespace (website / pages / dataset — pass a projection like dataset.products), a value
+    containing a credential-shaped key, anything unserializable, or anything over 256 KB.
+  • DATA FILE — website.dataFiles: [{ path:"gallery.json", folder:"gallery" }] or
+    [{ path:"products.json", dataset:"products", fields:["name","price"] }] emits the file at
+    data/<path> — fetch('data/gallery.json'). Ships ONCE and is cached, and can be fetched lazily —
+    right for a list too large to inline, or one several pages share. "path" is a plain filename; the
+    data/ directory is fixed (the site ROOT cannot serve .json, so the build manifest stays private). A dataset source emits PUBLISHED entries only; "fields" narrows the
+    columns. Warnings (empty source, duplicate path, over 4 MB) come back on the publish result.
+  Prefer real PAGES when each item needs its own URL and to be findable — search, SEO and deep links
+  all work on pages and none of them see a data island.
 FILTER, ORDER and GROUP a list — windows pick by POSITION, these pick by VALUE:
   (sw-where list "field" ["op"] value) — ops eq ne lt gt lte gte has (substring / list membership); the op
     may be omitted for eq. An UNKNOWN op matches NOTHING, never the unfiltered list.

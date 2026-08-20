@@ -102,6 +102,7 @@ import {
 } from './seo.js';
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { buildSearchIndex, type SearchPageInput } from './search-index.js';
+import { buildDataFiles } from './data-files.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
   toPublicForm,
@@ -223,6 +224,13 @@ export interface ReleaseManifest {
    * locale's index on first search, so this is the number that matters — not the site total.
    */
   searchLargeLocales?: Array<{ locale: string; pages: number }>;
+  /**
+   * Problems with `website.dataFiles` that did NOT fail the publish: a source that resolved to nothing,
+   * a duplicate path, a file over the size cap. Each one means the site shipped a data file that is
+   * empty — or shipped none where the author declared one — and the page fetching it will render an
+   * empty list with no other clue. Absent when every declared file emitted cleanly.
+   */
+  dataFileWarnings?: string[];
   /**
    * Pages whose `{{#each page.children}}` listing hit {@link MAX_PAGE_CHILDREN} and therefore rendered
    * FEWER children than the page has. Absent when nothing was dropped.
@@ -957,6 +965,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const sitemapUrls: Array<{ loc: string; lastmod?: string }> = [];
     // Locales whose corpus passed the size ceiling — reported on the manifest, not silently grown.
     const searchLargeLocales: Array<{ locale: string; pages: number }> = [];
+    const dataFileWarnings: string[] = [];
     // Site-search corpus, collected per rendered route and emitted per locale after the loop.
     // Only pages that finish rendering are collected (see the push after the page write), so a
     // draft preview's error documents never enter the index.
@@ -1663,6 +1672,32 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       }
     }
 
+    // DATA FILES — author-declared `.json` next to the pages (website.dataFiles).
+    //
+    // Same delivery shape as the search index above: a plain JSON document in the site root, fetched by
+    // the page's own script. `.json` is in the served MIME map, so this needs no route work.
+    //
+    // ★ Every warning is SURFACED. A spec whose dataset has no published entries still emits (an empty
+    // list is a real answer for a client that has to render something), but silence about it is how a
+    // page ends up rendering nothing with no clue why.
+    const dataFileSpecs = website?.dataFiles ?? [];
+    if (dataFileSpecs.length > 0) {
+      const built = buildDataFiles({ specs: dataFileSpecs, entries: datasets, media });
+      dataFileWarnings.push(...built.warnings);
+      if (built.files.length > 0) {
+        // ★ Data files live in `data/`, never at the site root. `.json` is deliberately NOT a servable
+        // root extension so `release.json` (the build manifest: route counts, page failures, warnings)
+        // stays unreachable — putting author data next to it would have meant opening the root.
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant subdir of the validated tmp dir
+        await mkdir(join(tmp, 'data'), { recursive: true });
+      }
+      for (const file of built.files) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- schema-validated plain filename (no separators, no "..") under the validated tmp dir
+        await writeFile(join(tmp, 'data', file.path), file.json, 'utf8');
+        bytes += Buffer.byteLength(file.json);
+      }
+    }
+
     // security.txt (RFC 9116) — OPT-IN, at the normative `.well-known/` path only.
     //
     // The contact SELECTION is resolved against this publish rather than retyped by the author, so
@@ -1783,6 +1818,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // `pageFailures`, which is deliberately attached afterwards and only for draft builds).
       ...(searchSkippedRawHtml > 0 ? { searchSkippedRawHtml } : {}),
       ...(searchLargeLocales.length > 0 ? { searchLargeLocales } : {}),
+      ...(dataFileWarnings.length > 0 ? { dataFileWarnings } : {}),
       ...(childrenTruncated.size > 0 ? { childrenTruncated: [...childrenTruncated.values()] } : {}),
     };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir

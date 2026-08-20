@@ -18,7 +18,7 @@ import {
   serializeManifest,
   toPosixRel,
 } from './deploy/manifest.js';
-import { planLeafDirs, remoteJoin } from './deploy/plan.js';
+import { planDirLevels, remoteJoin } from './deploy/plan.js';
 import { PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, assertDiskHeadroom } from '../limits.js';
 
@@ -455,29 +455,55 @@ class SftpTransport implements DeployTransport {
     onDir?: (done: number, total: number) => void,
   ): Promise<void> {
     const rels = files.map((f) => toPosixRel(f.rel));
-    // ★ THE SILENT PASS. Every leaf directory is created before the first file moves, and this used
-    // to be a SEQUENTIAL loop that reported nothing: measured against a real target ~1s per round
-    // trip, a 106-directory site sat at "Uploading 0/254" for ~1m45s with the UI frozen — past the
-    // point where a reverse proxy drops an idle SSE stream. Now it runs through the same bounded pool
-    // the uploads use (≈8× faster) AND ticks, so the phase is both shorter and visible.
-    const dirs = planLeafDirs(remoteDir, rels);
+    // ★ THE PASS THAT RUNS BEFORE ANY FILE MOVES — and the one that used to be both silent AND unsafe.
+    //
+    // Silent: it reported nothing, so a 106-directory site on a target ~1s away sat at "Uploading 0/N"
+    // for well over a minute looking hung.
+    //
+    // Unsafe: firing RECURSIVE mkdir at leaf paths concurrently races on the shared missing parent, and
+    // the losers do not no-op — the library aborts the whole call, so the leaf is never created and the
+    // deploy dies later on a confusing `fastPut … no such file or directory`. Measured: 8 concurrent
+    // recursive mkdirs of siblings under one missing parent left 1 of 8 directories in place.
+    //
+    // So: create the base once, then walk SHALLOWEST FIRST. Within a level every parent already exists
+    // and no two calls target the same path, so the parallelism is kept and the race is gone.
+    await this.client.mkdir(remoteDir, true).catch(() => {
+      /* the base itself — already there on every deploy after the first */
+    });
+    const levels = planDirLevels(remoteDir, rels);
+    const dirTotal = levels.reduce((n, l) => n + l.length, 0);
     let madeDirs = 0;
-    onDir?.(0, dirs.length);
-    let nextDir = 0;
-    const dirWorker = async (): Promise<void> => {
-      for (;;) {
-        const i = nextDir;
-        nextDir += 1;
-        if (i >= dirs.length) return;
-        // `mkdir -p` semantics: a parent created concurrently by a sibling worker is not an error.
-        await this.client.mkdir(dirs[i]!, true).catch(() => {
-          /* already exists */
-        });
-        madeDirs += 1;
-        onDir?.(madeDirs, dirs.length);
+    onDir?.(0, dirTotal);
+    for (const level of levels) {
+      let nextDir = 0;
+      const failures: string[] = [];
+      const dirWorker = async (): Promise<void> => {
+        for (;;) {
+          const i = nextDir;
+          nextDir += 1;
+          if (i >= level.length) return;
+          const dir = level[i]!;
+          try {
+            await this.client.mkdir(dir, false); // parents exist by construction — no recursive walk
+          } catch {
+            // ★ NEVER swallow blindly. "Already exists" is the normal case on a repeat deploy, but a
+            // real failure here surfaces minutes later as an unrelated upload error. Ask.
+            if (!(await this.client.exists(dir))) failures.push(dir);
+          }
+          madeDirs += 1;
+          onDir?.(madeDirs, dirTotal);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(SFTP_UPLOAD_CONCURRENCY, level.length) }, () => dirWorker()));
+      // One sequential retry: a transient server-side hiccup should not cost the whole deploy, and by
+      // now nothing else is in flight to contend with.
+      for (const dir of failures) {
+        await this.client.mkdir(dir, true).catch(() => {});
+        if (!(await this.client.exists(dir))) {
+          throw new Error(`could not create the remote directory ${dir}`);
+        }
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(SFTP_UPLOAD_CONCURRENCY, dirs.length) }, () => dirWorker()));
+    }
     let next = 0;
     let failed = false;
     const worker = async (): Promise<void> => {

@@ -24,6 +24,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
   `size=` now applies to both source kinds rather than folders only.
 
+- **A lightbox ignored tiles appended after page load** — the pairing defect to the JSON data
+  features: a "load more" over an island or a `data/*.json` file appends tiles long after
+  `DOMContentLoaded`, but the runtime bound its items ONCE at init, so an appended tile was dead —
+  clicking it followed the href and left the page. A gallery now watches its roots and re-binds, and
+  an appended tile opens the viewer at itself with the thumbnail strip covering the whole grown set.
+
+  Two failures came with it, both measured on a 3,384-image gallery. The rebuild replaces every anchor
+  with a clone, which is itself a mutation — a connected observer re-triggers on its own work, and one
+  "load more" produced 37 rebuilds. And each viewer instance builds its own overlay with no `destroy()`,
+  so those rebuilds stacked 37 overlays and a click opened whichever bound last, showing the first
+  image instead of the tile clicked. A gallery now owns exactly one viewer and retires its previous
+  one, without touching the other galleries on the page.
+
 ## [0.28.0] — 2026-08-20
 
 ### Added

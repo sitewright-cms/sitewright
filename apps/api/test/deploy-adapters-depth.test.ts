@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
@@ -60,8 +60,8 @@ function makeConfig(overrides: Partial<DeployConfig> = {}): DeployConfig {
 
 describe('archiveSite — zip fidelity (depth)', () => {
   it('packs every file at its correct nested relative path (forward-slash, no leading slash)', async () => {
-    const buf = await archiveSite(siteDir);
-    const zip = await JSZip.loadAsync(buf);
+    const archive = await archiveSite(siteDir);
+    const zip = await JSZip.loadAsync(await readFile(archive.path));
 
     // Compare against the canonical file list the archiver itself walks.
     const collected = await collectSiteFiles(siteDir);
@@ -85,8 +85,8 @@ describe('archiveSite — zip fidelity (depth)', () => {
   });
 
   it('preserves exact text and binary contents through the zip round-trip', async () => {
-    const buf = await archiveSite(siteDir);
-    const zip = await JSZip.loadAsync(buf);
+    const archive = await archiveSite(siteDir);
+    const zip = await JSZip.loadAsync(await readFile(archive.path));
 
     expect(await zip.file('index.html')!.async('string')).toBe(ROOT_HTML);
     expect(await zip.file('about/index.html')!.async('string')).toBe(ABOUT_HTML);
@@ -100,9 +100,9 @@ describe('archiveSite — zip fidelity (depth)', () => {
   it('produces a valid, empty zip for an empty site dir', async () => {
     const empty = await mkdtemp(join(tmpdir(), 'sw-adapters-empty-'));
     try {
-      const buf = await archiveSite(empty);
-      expect(buf.length).toBeGreaterThan(0); // a valid (empty) zip still has an EOCD record
-      const zip = await JSZip.loadAsync(buf);
+      const archive = await archiveSite(empty);
+      expect(archive.bytes).toBeGreaterThan(0); // a valid (empty) zip still has an EOCD record
+      const zip = await JSZip.loadAsync(await readFile(archive.path));
       const fileEntries = Object.values(zip.files).filter((e) => !e.dir);
       expect(fileEntries).toHaveLength(0);
     } finally {

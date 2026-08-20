@@ -226,7 +226,8 @@ import { signPreview, verifyPreview, signShare, verifyShare } from './preview-to
 import { PreviewStore } from './preview-store.js';
 import { UploadTicketStore } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
-import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
+import { archiveSite, deploySite, DeployConfigSchema, SiteArchiveSizeError } from '../publish/adapters.js';
+import { MAX_PROJECT_ARCHIVE_BYTES, DiskSpaceError, assertDiskHeadroom } from '../limits.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
 import { assertRemoteFormEndpointsReachable } from '../publish/form-guard.js';
 import { writePhpSmtpConfig } from '../publish/php-smtp.js';
@@ -392,9 +393,11 @@ const CONTENT_BODY_LIMIT = 4 * 1024 * 1024;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 /** Images still go through sharp, which must not be handed an arbitrarily huge buffer. */
 const MAX_IMAGE_UPLOAD_BYTES = 15 * 1024 * 1024;
-const PROJECT_EXPORT_MAX_BYTES = 500 * 1024 * 1024; // 500 MiB cap on a whole-project export zip
+/** See limits.ts — ONE ceiling for the export zip, the site zip and the import that reads one back. */
+const PROJECT_EXPORT_MAX_BYTES = MAX_PROJECT_ARCHIVE_BYTES;
 const MAX_CONCURRENT_EXPORTS = 2; // whole-instance ceiling on simultaneous export builds (disk/CPU guard)
-const PROJECT_IMPORT_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // compressed project-zip upload cap
+/** Must MATCH the export ceiling: a backup you can take and never restore is not a backup. */
+const PROJECT_IMPORT_UPLOAD_MAX_BYTES = MAX_PROJECT_ARCHIVE_BYTES;
 const MAX_CONCURRENT_PROJECT_IMPORTS = 2; // whole-instance ceiling on simultaneous project imports/duplicates
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: per-socket INACTIVITY timeout + the deadline for a normal import
 /**
@@ -4031,10 +4034,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             )
           : [];
         const manifest = buildExportManifest(project, bundle, opts.version);
+        // Refuse a doomed build up front. The archive is written to the temp filesystem, and an
+        // ENOSPC part-way through a multi-gigabyte export surfaces as a crash rather than as a
+        // reason — and can take unrelated writes down with it.
+        await assertDiskHeadroom(tmpdir(), bundle.media.reduce((n, m) => n + (m.bytes ?? 0), 0));
         zip = await buildProjectExportZip({ manifest, bundle, media, maxBytes });
       } catch (err) {
         if (err instanceof ExportSizeLimitError) {
           return reply.code(413).send({ error: 'project export exceeds the archive size limit' });
+        }
+        if (err instanceof DiskSpaceError) {
+          return reply.code(507).send({ error: 'not enough free disk space to build the export' });
         }
         throw err;
       } finally {
@@ -4075,12 +4085,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // single outer finally releases it on every path (early 4xx or the SSE stream).
     activeProjectImports += 1;
     const storage = mediaStorage;
+    // Declared out here so the single outer `finally` can release them on EVERY path — an early 4xx,
+    // a failed import, or a client that vanished mid-stream. The open archive holds a file
+    // descriptor and the temp dir holds a multi-gigabyte upload; leaking either is not an option.
+    let uploadTemp: string | undefined;
+    let parsedZip: Awaited<ReturnType<typeof readProjectZip>> | undefined;
     try {
-      let buffer: Buffer;
+      // ★ STREAMED TO DISK, never buffered. `file.toBuffer()` held the whole compressed archive in
+      // memory, and the zip reader then needed a second copy to parse it — two full copies of an
+      // archive that legitimately reaches gigabytes. That is why the upload cap sat below the
+      // export's, and why a project could be backed up and never restored.
+      let uploadPath: string;
       try {
         const file = await req.file({ limits: { fileSize: PROJECT_IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
         if (!file) return reply.code(400).send({ error: 'no file uploaded' });
-        buffer = await file.toBuffer();
+        uploadTemp = await mkdtemp(join(tmpdir(), 'sw-project-import-'));
+        uploadPath = join(uploadTemp, 'project.zip');
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
+        await pipeline(file.file, createWriteStream(uploadPath));
         if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
       } catch (err) {
         if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
@@ -4092,7 +4114,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Validate the archive BEFORE hijacking the reply for SSE, so a bad zip is a clean 400.
       let parsed: Awaited<ReturnType<typeof readProjectZip>>;
       try {
-        parsed = await readProjectZip(buffer, DEFAULT_PROJECT_ZIP_LIMITS);
+        parsed = await readProjectZip(uploadPath, DEFAULT_PROJECT_ZIP_LIMITS);
+        parsedZip = parsed;
       } catch (err) {
         if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
         throw err;
@@ -4142,6 +4165,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         'import failed: could not restore the project',
       );
     } finally {
+      // The open archive holds a file descriptor; the temp dir holds the upload. Release both on
+      // every path — success, a failed import, or a client that vanished mid-stream.
+      parsedZip?.zip.close();
+      if (uploadTemp) await rm(uploadTemp, { recursive: true, force: true }).catch(() => {});
       activeProjectImports -= 1;
     }
   });
@@ -7056,15 +7083,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const retained = (await store.readRelease(project.slug)) !== null;
         const dir = retained ? store.dirFor(project.slug) : await buildForDeploy(ctx, project.id);
+        // ★ STREAMED, not buffered. The archive lands in a temp file and goes out as a read stream,
+        // so a 1.25 GB site downloads on an instance with a fraction of that in RAM. Cleanup is tied
+        // to the socket closing — the same contract the project export uses.
+        let zip: Awaited<ReturnType<typeof archiveSite>>;
         try {
-          const zip = await archiveSite(dir);
-          return reply
-            .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
-            .header('content-type', 'application/zip')
-            .send(zip);
+          zip = await archiveSite(dir);
+        } catch (err) {
+          if (err instanceof SiteArchiveSizeError) {
+            return reply.code(413).send({ error: 'published site exceeds the archive size limit' });
+          }
+          if (err instanceof DiskSpaceError) {
+            return reply.code(507).send({ error: 'not enough free disk space to build the archive' });
+          }
+          throw err;
         } finally {
           if (!retained) await rm(dir, { recursive: true, force: true }).catch(() => {});
         }
+        if (reply.raw.destroyed) {
+          await zip.cleanup();
+          return reply;
+        }
+        reply.raw.on('close', () => {
+          void zip.cleanup();
+        });
+        return reply
+          .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
+          .header('content-length', String(zip.bytes))
+          .header('content-type', 'application/zip')
+          .send(createReadStream(zip.path));
       },
     );
 

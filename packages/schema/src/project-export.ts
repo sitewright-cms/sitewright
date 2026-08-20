@@ -33,17 +33,31 @@ import { mergeLegacyTranslations } from './migrate-translations.js';
  * total decompression caps. The first four mirror `content.ts` MAX_BUNDLE so a
  * bundle that imports here also survives the legacy JSON import path.
  */
+/**
+ * ★ These bound an IN-MEMORY object graph, not a stream — the bundle is assembled, serialized to
+ * `bundle.json`, and on import parsed back in one piece. So unlike the archive BYTE ceiling (which is
+ * disk-bound and generous — see apps/api/src/limits.ts), each of these trades directly against RAM.
+ *
+ * Measured on the reference large project: 1,085 pages = 3.0 MB of JSON (~2.8 KB each) and 7,907
+ * media records = 3.5 MB (~0.45 KB each) — 6.7 MB of content in total, for a project holding 2.9 GB
+ * of media. Media BYTES stream; media RECORDS do not, which is why the counts below are generous
+ * rather than unbounded.
+ *
+ * At these ceilings a maximal bundle serializes to roughly 75 MB, which an instance with a
+ * few hundred MB of headroom can hold while it writes the archive. The previous values were
+ * ~5× lower and already within reach: the reference project sat at 54% of the page cap.
+ */
 export const EXPORT_BUNDLE_CAPS = {
-  pages: 2000,
-  templates: 500,
-  snippets: 1000,
-  datasets: 500,
-  entries: 50_000,
-  translations: 20_000,
-  forms: 500,
-  imageMaps: 200,
-  media: 20_000,
-  mediaFolders: 2000,
+  pages: 10_000,
+  templates: 2000,
+  snippets: 5000,
+  datasets: 2000,
+  entries: 200_000,
+  translations: 50_000,
+  forms: 2000,
+  imageMaps: 1000,
+  media: 100_000,
+  mediaFolders: 10_000,
 } as const;
 
 /**

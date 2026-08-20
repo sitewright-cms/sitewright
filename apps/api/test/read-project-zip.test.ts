@@ -1,9 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import JSZip from 'jszip';
 import { readProjectZip, extractProjectMedia } from '../src/import/unpack-project-zip.js';
 import { UploadError } from '../src/import/upload.js';
+import { openProjectZipFile } from '../src/import/project-zip-file.js';
 import { MediaStorage } from '../src/media/storage.js';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -20,10 +21,24 @@ const VALID_BUNDLE = {
   project: { id: 'p', name: 'X', slug: 'x', identity: { name: 'X', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
 };
 
-async function zipOf(files: Record<string, string>): Promise<Buffer> {
+const tempDirs: string[] = [];
+afterAll(async () => {
+  await Promise.all(tempDirs.map((d) => rm(d, { recursive: true, force: true })));
+});
+
+/** Builds a zip and returns its PATH — the reader takes a file, never a buffer. */
+async function zipOf(files: Record<string, string>): Promise<string> {
   const zip = new JSZip();
   for (const [name, content] of Object.entries(files)) zip.file(name, content);
-  return zip.generateAsync({ type: 'nodebuffer' });
+  return writeZip(await zip.generateAsync({ type: 'nodebuffer' }));
+}
+
+async function writeZip(bytes: Buffer): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'sw-zip-test-'));
+  tempDirs.push(dir);
+  const path = join(dir, 'project.zip');
+  await writeFile(path, bytes);
+  return path;
 }
 
 describe('readProjectZip', () => {
@@ -35,7 +50,7 @@ describe('readProjectZip', () => {
   });
 
   it('rejects a non-zip buffer', async () => {
-    await expect(readProjectZip(Buffer.from('not a zip at all'))).rejects.toBeInstanceOf(UploadError);
+    await expect(readProjectZip(await writeZip(Buffer.from('not a zip at all')))).rejects.toBeInstanceOf(UploadError);
   });
 
   it('rejects an archive missing manifest.json / bundle.json', async () => {
@@ -74,11 +89,16 @@ describe('extractProjectMedia — edge entries', () => {
     const root = await mkdtemp(join(tmpdir(), 'sw-extract-'));
     try {
       const storage = new MediaStorage(root);
-      const zip = new JSZip();
-      zip.file('media/loosefile.txt', 'x'); // no <assetId>/<file> → skipped
-      zip.file('media/asset1/ok.webp', 'y'); // valid
-      const loaded = await JSZip.loadAsync(await zip.generateAsync({ type: 'nodebuffer' }));
-      expect(await extractProjectMedia(loaded, storage, 'site')).toBe(1);
+      const path = await zipOf({
+        'media/loosefile.txt': 'x', // no <assetId>/<file> → skipped
+        'media/asset1/ok.webp': 'y', // valid
+      });
+      const opened = await openProjectZipFile(path, 1000);
+      try {
+        expect(await extractProjectMedia(opened, storage, 'site')).toBe(1);
+      } finally {
+        opened.close();
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }

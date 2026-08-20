@@ -1,6 +1,9 @@
-import { readFile, readdir } from 'node:fs/promises';
-import { relative, resolve, sep } from 'node:path';
-import { Readable, Writable } from 'node:stream';
+import { readdir, mkdtemp, rm, stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve, sep } from 'node:path';
+import { Readable, Transform, Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { z } from 'zod';
 import JSZip from 'jszip';
 import { Client as FtpClientImpl } from 'basic-ftp';
@@ -17,6 +20,7 @@ import {
 } from './deploy/manifest.js';
 import { planLeafDirs, remoteJoin } from './deploy/plan.js';
 import { PHP_SMTP_CONFIG_FILE } from './contact-php.js';
+import { MAX_PROJECT_ARCHIVE_BYTES, assertDiskHeadroom } from '../limits.js';
 
 // Re-exported so deploy consumers + tests get the manifest type from the adapters barrel.
 export type { DeployManifest } from './deploy/manifest.js';
@@ -29,15 +33,18 @@ const SFTP_CONNECT_TIMEOUT_MS = 60_000;
  *  just the initial connect, so it's kept tighter than the SFTP handshake timeout to bound the
  *  worst-case per-operation hold against a stalled control connection. */
 const FTP_TIMEOUT_MS = 15_000;
-const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024; // 100 MiB cap on a built site archive
+
 /** Concurrent fastPut operations over the single SSH connection (SFTP upload path).
  *  ssh2 multiplexes SFTP handles over one transport, so parallel puts overlap the round-trip
  *  latency; kept modest so a strict server's max-open-handles / channel limits aren't tripped. */
 const SFTP_UPLOAD_CONCURRENCY = 8;
 /** Cap on the untrusted remote manifest we download + JSON.parse. A manifest is path→{size,hash};
- *  even tens of thousands of files stay well under this. Anything larger (a compromised/MITM'd
- *  target returning a giant payload) is treated as unreadable → a first-deploy full upload. */
-const MAX_MANIFEST_BYTES = 8 * 1024 * 1024;
+ *  at roughly 100 bytes an entry, the reference large project's ~11k files come to ~1 MB. Raised to
+ *  64 MiB so a site with HUNDREDS of thousands of files still reads its own manifest and deploys
+ *  INCREMENTALLY — an unreadable manifest is not an error, it silently degrades to re-uploading
+ *  everything, which on a 1.25 GB site is the difference between seconds and an hour. Anything larger
+ *  (a compromised/MITM'd target returning a giant payload) is still treated as unreadable. */
+const MAX_MANIFEST_BYTES = 64 * 1024 * 1024;
 
 /** True if the string contains an ASCII control character (0x00–0x1f or 0x7f). */
 function hasControlChars(value: string): boolean {
@@ -203,19 +210,77 @@ export async function collectSiteFiles(siteDir: string): Promise<SiteFile[]> {
   return out.sort((a, b) => a.rel.localeCompare(b.rel));
 }
 
-/** Packages a built site directory into a zip archive (Buffer), bounded in size. */
-export async function archiveSite(siteDir: string): Promise<Buffer> {
+/** A built site archive on disk. `cleanup` removes it once the response has been flushed. */
+export interface SiteArchive {
+  path: string;
+  bytes: number;
+  cleanup: () => Promise<void>;
+}
+
+/** Thrown when a site archive would exceed its cap — the route maps this to HTTP 413. */
+export class SiteArchiveSizeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`published site exceeds the ${maxBytes}-byte archive size limit`);
+    this.name = 'SiteArchiveSizeError';
+  }
+}
+
+/**
+ * Packages a built site directory into a zip STREAMED to a private temp file.
+ *
+ * ★ This used to read every file into memory and return the finished zip as one Buffer, which is why
+ * it carried a 100 MiB cap: the cap was not a policy about archive size, it was the only thing
+ * standing between a large site and an out-of-memory kill. The reference large project builds to
+ * 1.25 GB, so "download your site as a zip" was unavailable to exactly the projects that most need a
+ * manual deployment path — and the failure was a flat refusal with no way forward.
+ *
+ * Nothing is held whole now: each file enters as a read stream, jszip emits through
+ * `generateNodeStream`, and a pass-through trips the byte cap mid-flight. Identical to the project
+ * export path (`buildProjectExportZip`), which is where this technique already lived. The caller
+ * streams {@link SiteArchive.path} to the client and then invokes `cleanup`.
+ */
+export async function archiveSite(siteDir: string, maxBytes = MAX_PROJECT_ARCHIVE_BYTES): Promise<SiteArchive> {
   const files = await collectSiteFiles(siteDir);
-  const zip = new JSZip();
-  let total = 0;
+  // Refuse a doomed build before writing a byte: the zip lands on the temp filesystem, and an ENOSPC
+  // mid-write reads as a crash rather than as "the disk is full".
+  let want = 0;
   for (const file of files) {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs confined to siteDir
-    const data = await readFile(file.abs);
-    total += data.length;
-    if (total > MAX_ARCHIVE_BYTES) throw new Error('published site exceeds the archive size limit');
-    zip.file(file.rel, data);
+    want += (await stat(file.abs)).size;
   }
-  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const dir = await mkdtemp(join(tmpdir(), 'sw-site-archive-'));
+  const path = join(dir, 'site.zip');
+  const cleanup = async (): Promise<void> => {
+    await rm(dir, { recursive: true, force: true });
+  };
+  try {
+    await assertDiskHeadroom(dir, want);
+    const zip = new JSZip();
+    for (const file of files) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs confined to siteDir
+      zip.file(file.rel, createReadStream(file.abs));
+    }
+    let total = 0;
+    const cap = new Transform({
+      transform(chunk: Buffer, _enc, done): void {
+        total += chunk.length;
+        if (total > maxBytes) {
+          done(new SiteArchiveSizeError(maxBytes));
+          return;
+        }
+        done(null, chunk);
+      },
+    });
+    const source = zip.generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'DEFLATE' });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
+    await pipeline(source, cap, createWriteStream(path));
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- private mkdtemp path
+    const bytes = (await stat(path)).size;
+    return { path, bytes, cleanup };
+  } catch (err) {
+    await cleanup();
+    throw err;
+  }
 }
 
 /** SFTP host-key verifier: enforces the pinned fingerprint when provided (TOFU otherwise). */

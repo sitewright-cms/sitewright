@@ -7,6 +7,55 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [0.31.0] — 2026-08-20
+
+### Fixed
+
+- **A large project could not be exported, downloaded, or restored.** Four size ceilings, set in four
+  different files, all sat below what a real large project reaches — and two of them were not policy
+  at all, they were the only thing standing between an archive and an out-of-memory kill.
+
+  Measured on the reference project (1,085 pages · 7,907 media assets · 2.9 GB of media · a 1.25 GB
+  built site):
+
+  | Endpoint | Was | Now |
+  | --- | --- | --- |
+  | `GET /projects/:id/export.zip` | 500 MiB → **413 after 66 s** | 1.65 GB, `200`, 177 s |
+  | `GET /projects/:id/publish/archive` | 100 MiB → refused | 1,096 MB, `200`, 59 s |
+  | `POST /projects/import/zip` | 200 MiB upload · 600 MiB media | 1.65 GB restored in 18 s |
+
+  Verified end to end under a hard **768 MiB** cgroup limit — peak resident 624 MiB for the export and
+  604 MiB for the site archive — and the restored project came back with all 1,085 pages and 7,859
+  media records intact.
+
+  Raising the numbers was only part of it. Two paths held whole archives in memory, so their caps were
+  load-bearing:
+
+  - `archiveSite` read every built file and returned one Buffer. It now streams to a temp file, exactly
+    as the project export already did, and the route sends a read stream.
+  - The import buffered the upload (`file.toBuffer()`) and needed a second copy to parse it. The upload
+    now streams to disk and the archive is read through its central directory one entry at a time, so
+    an import is bounded by its largest single FILE rather than by the whole archive.
+
+  The three ceilings that form a round trip are now ONE constant: a backup you can take and cannot
+  restore is not a backup, and three numbers in three files is how that happened. A new disk-headroom
+  check refuses up front with a `507` naming the shortfall, instead of an `ENOSPC` part-way through a
+  multi-gigabyte write.
+
+  The export bundle's per-section caps rose too (pages 2,000 → 10,000; media 20,000 → 100,000). These
+  bound an in-memory object graph rather than a stream, so they are sized from measurement: the
+  reference project's entire content bundle is 6.7 MB — media BYTES stream, media RECORDS do not — and
+  it was already sitting at 54% of the old page cap.
+
+### Changed
+
+- An import now **refuses an archive that declares a traversal entry name** instead of skipping that
+  one entry and restoring the rest. Sitewright's own export only ever writes `media/<assetId>/<rel>`,
+  so such a name is evidence of tampering, not of an unusual project.
+- The remote deploy manifest cap rose from 8 MiB to 64 MiB. It is read to decide what to upload
+  INCREMENTALLY, and an unreadable manifest silently degrades to re-uploading everything — on a
+  1.25 GB site, the difference between seconds and an hour.
+
 ## [0.30.0] — 2026-08-20
 
 ### Added
@@ -2704,7 +2753,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.31.0...HEAD
+[0.31.0]: https://github.com/sitewright-cms/sitewright/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/sitewright-cms/sitewright/compare/v0.29.0...v0.30.0
 [0.29.0]: https://github.com/sitewright-cms/sitewright/compare/v0.28.0...v0.29.0
 [0.28.0]: https://github.com/sitewright-cms/sitewright/compare/v0.27.0...v0.28.0

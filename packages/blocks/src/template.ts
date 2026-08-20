@@ -80,7 +80,18 @@ function projectFields(value: unknown, fields: readonly string[]): unknown {
 function pickPaths(row: unknown, fields: readonly string[]): unknown {
   if (typeof row !== 'object' || row === null || Array.isArray(row)) return row;
   const out: Record<string, unknown> = {};
-  for (const path of fields) {
+  for (const field of fields) {
+    // ★ `description:130` — a LENGTH LIMIT per field. An island should carry what the page SHOWS and
+    // no more: these cards truncate the summary to 130 characters, so shipping the full text is pure
+    // waste. Measured on a real archive: 488 posts are 250 KB with full descriptions (over the cap and
+    // refused) and 176 KB truncated to exactly what renders.
+    // Only a trailing `:<digits>` is a limit. Anything else is part of the NAME, so a field that
+    // genuinely contains a colon still resolves, and a typo behaves like any other unknown field
+    // (dropped) rather than being special-cased into something surprising.
+    const limitMatch = /^(.*):(\d+)$/.exec(field);
+    const path = limitMatch ? limitMatch[1]! : field;
+    const limit = limitMatch ? Number(limitMatch[2]) : 0;
+    const hasLimit = limit > 0;
     const segs = path.split('.').filter(Boolean);
     if (segs.length === 0) continue;
     let src: unknown = row;
@@ -100,6 +111,11 @@ function pickPaths(row: unknown, fields: readonly string[]): unknown {
       if (typeof next !== 'object' || next === null) cursor[seg] = {};
       // eslint-disable-next-line security/detect-object-injection -- just assigned
       cursor = cursor[seg] as Record<string, unknown>;
+    }
+    if (hasLimit && typeof src === 'string' && src.length > limit) {
+      // Break on a word boundary where there is one, so the island reads like the rendered card
+      // rather than stopping mid-word.
+      src = `${src.slice(0, limit).replace(/\s+\S*$/, '')}…`;
     }
     // eslint-disable-next-line security/detect-object-injection -- author-declared leaf name
     cursor[segs[segs.length - 1]!] = src;

@@ -52,6 +52,38 @@ describe('buildDataFiles', () => {
     expect(files[0]!.json).not.toContain('do not ship');
   });
 
+  it('emits PUBLISHED asset URLs and registers them, when the build supplies a resolver', () => {
+    // ★ The defect this closes: without a resolver the file carries the CMS URL
+    // (/media/<project>/<id>-<name>), which is a live route on platform hosting and does not exist on
+    // a site exported to the owner's own server — that bundles media into a flat _assets/ directory
+    // and produces only REFERENCED variants. Both failures hide behind a working platform preview.
+    const registered: Array<{ id: string; size: string }> = [];
+    const { files } = buildDataFiles({
+      specs: [{ path: 'g.json', folder: 'gallery', size: 'sm' }],
+      entries: {},
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery', id: 'asset1' })],
+      resolveImageUrl: (asset, size) => {
+        registered.push({ id: asset.id, size });
+        return `_assets/AbC123-${asset.id}-${size}.webp`;
+      },
+    });
+    expect(JSON.parse(files[0]!.json)[0].url).toBe('_assets/AbC123-asset1-sm.webp');
+    // Registered for materialization, at the size the file references — else the export names files
+    // it never produced.
+    expect(registered).toEqual([{ id: 'asset1', size: 'sm' }]);
+  });
+
+  it('defaults the size to md', () => {
+    const seen: string[] = [];
+    buildDataFiles({
+      specs: [{ path: 'g.json', folder: 'gallery' }],
+      entries: {},
+      media: [img({ url: '/media/p/a-1.jpg', folder: 'gallery', id: 'a' })],
+      resolveImageUrl: (_a, size) => { seen.push(size); return 'x'; },
+    });
+    expect(seen).toEqual(['md']);
+  });
+
   it('emits a media folder as url/alt/width/height', () => {
     const { files } = buildDataFiles({
       specs: [{ path: 'gallery.json', folder: 'gallery' }],

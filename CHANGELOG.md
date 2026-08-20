@@ -7,7 +7,7 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
-## [Unreleased]
+## [0.28.0] — 2026-08-20
 
 ### Added
 
@@ -16,13 +16,25 @@ The running version of an instance is reported at `GET /version` (baked into the
   posts behind a news archive serialize to 1.25 MB raw — five times the cap — while the four fields the
   cards actually render are a tenth of that. Comma-separated, and DOTTED paths keep their shape:
   `fields="title,path,image,data.date"` emits `{title, path, image, data:{date}}`, the same structure
-  the template reads, rather than a re-keyed flat object.
+  the template reads, rather than a re-keyed flat object. A trailing `:N` caps a string field —
+  `description:130` carries exactly what a 130-character card renders, which is the difference between
+  a real 488-post archive being refused at 250 KB and fitting at 176 KB.
 
   Without it the only way to render such a list client-side is to store a second, slimmer copy of it in
   the database — a value kept in the DB because the template cannot express it, which is a bug report
   rather than a design.
 
 ### Fixed
+
+- **A folder data file named images the export did not contain.** It emitted the CMS URL
+  (`/media/<project>/<id>-<name>`), which is a live route on platform hosting and does not exist on a
+  site exported to the owner's own server — that bundles media into a flat `_assets/` directory and
+  produces only REFERENCED variants. So the URLs 404'd there AND the files were never written: two
+  failures that both hide behind a working platform-hosted preview. A folder source now emits published
+  `_assets/` paths and registers each image for materialization at the declared `size` (default `md`),
+  which required moving the emission ahead of the thumbnail step so those references are collected in
+  time. Net effect on a real export is nothing new — the paginated pages this replaces already
+  referenced every image — minus the pages themselves.
 
 - **Data files 404'd on the draft preview.** The publish route serves them; the preview route consults
   a SEPARATE allowlist first (`isPreviewAssetPath`) and treated `data/gallery.json` as a page request,

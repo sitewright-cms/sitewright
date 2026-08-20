@@ -122,6 +122,16 @@ function enhanceGallery(gallery) {
     if (!a.getAttribute('data-id')) a.setAttribute('data-id', gallery.key + '-' + i);
   });
 
+  // ★ Each `new SmartPhoto` builds its OWN overlay and the library has no destroy(), so a re-enhance
+  // (see watchForNewItems) would stack one overlay per rebuild and a click would open whichever bound
+  // last. Take ownership by DIFFING the document either side of the constructor — the one that
+  // appeared is this gallery's — and retire the one this gallery owned before. Removing every
+  // `.sw-lightbox` instead would take the OTHER galleries' viewers on the page down with it.
+  var viewersNow = function () {
+    return Array.prototype.slice.call(document.querySelectorAll('.' + CLASS_NAMES.smartPhoto));
+  };
+  var viewersBefore = viewersNow();
+
   var sp = new SmartPhoto(items, {
     classNames: CLASS_NAMES, // vendor-neutral "sw-lightbox-*" classes (see CLASS_NAMES above)
     nav: flag('data-thumbnails', true), // bottom thumbnail strip
@@ -131,6 +141,10 @@ function enhanceGallery(gallery) {
     useHistoryApi: flag('data-history', false), // OFF: a CMS page shouldn't hijack the URL hash
     resizeStyle: attr('data-fit', 'fit') === 'fill' ? 'fill' : 'fit',
   });
+  var mine = viewersNow().filter(function (el) { return viewersBefore.indexOf(el) === -1; });
+  if (gallery.viewer && gallery.viewer.parentNode) gallery.viewer.parentNode.removeChild(gallery.viewer);
+  gallery.viewer = mine.length === 1 ? mine[0] : null;
+
   // Caption is SmartPhoto's data-caption, injected into the viewer at TENANT trust (tenants
   // already author raw HTML) — NEVER bind visitor-submitted content into it.
 
@@ -232,19 +246,78 @@ function init() {
     if (name) {
       gallery = byName[name];
       if (!gallery) {
-        gallery = { key: 'sw-lb-g-' + name, items: [], optionRoot: root };
+        gallery = { key: 'sw-lb-g-' + name, items: [], roots: [], optionRoot: root };
         byName[name] = gallery;
         galleries.push(gallery);
       }
     } else {
-      gallery = { key: 'sw-lb-' + ++seq, items: [], optionRoot: root };
+      gallery = { key: 'sw-lb-' + ++seq, items: [], roots: [], optionRoot: root };
       galleries.push(gallery);
     }
+    gallery.roots.push(root);
     items.forEach(function (it) {
       gallery.items.push(it);
     });
   });
-  galleries.forEach(enhanceGallery);
+  galleries.forEach(function (g) {
+    enhanceGallery(g);
+    watchForNewItems(g);
+  });
+}
+
+// ★ ITEMS ADDED AFTER INIT.
+//
+// `init` runs once and hands SmartPhoto a FIXED item list, so a gallery that grows later — a
+// "load more" button appending tiles from a data file, an infinite scroll, anything client-rendered —
+// left every new tile dead: it looked identical to a working one and simply did nothing when clicked.
+// The platform now ships that pattern itself, so the lightbox has to cope with it.
+//
+// There is no destroy() on SmartPhoto, and constructing a second instance over the same anchors would
+// bind them twice and open two viewers. So a re-enhance REPLACES every item anchor with a clone first:
+// a replaced node takes its listeners with it, leaving exactly one live binding per tile. The previous
+// instance is left holding detached nodes and does nothing.
+function watchForNewItems(gallery) {
+  if (typeof window.MutationObserver !== 'function') return;
+  var pending = 0;
+
+  var reenhance = function () {
+    pending = 0;
+    // ★ STOP OBSERVING WHILE WE MUTATE. The rebuild replaces every anchor with a clone (to drop the
+    // stale listeners), and that is itself a childList mutation — left connected, the observer
+    // re-triggers on its own work and rebuilds forever. Measured before this guard: one "load more"
+    // produced 37 rebuilds.
+    observer.disconnect();
+    try {
+      var fresh = [];
+      gallery.roots.forEach(function (root) {
+        resolveItems(root).forEach(function (a) {
+          var clone = a.cloneNode(true);
+          if (a.parentNode) a.parentNode.replaceChild(clone, a);
+          fresh.push(clone);
+        });
+      });
+      if (!fresh.length) return;
+      gallery.items = fresh;
+      enhanceGallery(gallery); // owns the overlay swap
+    } finally {
+      observe();
+    }
+  };
+
+  var observer = new window.MutationObserver(function (records) {
+    for (var i = 0; i < records.length; i += 1) {
+      if (records[i].addedNodes && records[i].addedNodes.length) {
+        if (!pending) pending = window.setTimeout(reenhance, 120); // coalesce a burst of appends
+        return;
+      }
+    }
+  });
+  var observe = function () {
+    gallery.roots.forEach(function (root) {
+      observer.observe(root, { childList: true, subtree: true });
+    });
+  };
+  observe();
 }
 if (document.readyState !== 'loading') init();
 else document.addEventListener('DOMContentLoaded', init);

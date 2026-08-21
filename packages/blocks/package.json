@@ -68,14 +68,14 @@
     "embla-carousel-autoplay": "8.6.0",
     "embla-carousel-fade": "8.6.0",
     "embla-carousel-wheel-gestures": "8.1.0",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "flag-icons": "^7.5.0",
     "glightbox": "3.3.1",
     "lucide-static": "^0.544.0",
     "simple-icons": "^16.27.1",
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",
-    "vanilla-calendar-pro": "3.1.0",
+    "vanilla-calendar-pro": "3.2.0",
     "vitest": "^4.1.10"
   }
 }

@@ -1785,7 +1785,12 @@ STEP 2 — ADD EACH ROW (entry): put_content({ kind: "entry", id: "delays", data
     STRIPPED and the entry saves EMPTY (values:{}) — it looks like it worked but renders nothing. Always wrap the
     row in \`values\`.
   - The entry id is an underscore identifier too ("fast_pickup", not "fast-pickup"). Omit data.id / data.dataset —
-    they're copied from the id/dataset args. Optional on data: status ("draft" default | "published"), locale, order.
+    they're copied from the id/dataset args.
+  - ★ RE-SYNCING an existing row (a price refresh, a stock flag): pass \`merge:true\` and send ONLY the fields
+    you are changing — put_content("entry","p815",{ dataset:"products", values:{ price: 149 } },{ merge:true }).
+    A plain write REPLACES the row, so re-sending a whole row you read a minute ago reverts every field an
+    operator edited in between. The fragment MUST carry \`dataset\` (that is how the current row is found), and
+    a merge into a row that does not exist 404s rather than quietly creating a half-populated one. Optional on data: status ("draft" default | "published"), locale, order.
   - **ORDER** = the render sort key (ascending), and it is what the editor's drag-reorder writes. You normally
     DON'T set it: rows you create are numbered in the order you write them, so \`{{#each}}\` renders them in that
     order. Set \`order\` explicitly only to place a row deliberately (0 = first). A full re-PUT that omits \`order\`

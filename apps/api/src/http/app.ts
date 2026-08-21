@@ -3639,15 +3639,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       //   - `settings`, the big singleton (a partial write reverts every slot it omits), and
       //   - `page`, where sending {id, path, title, nav} to relabel a nav entry used to wipe `source`,
       //     `status`, `description`, `order`, `parent` AND `data.swImport` (the marker every fidelity
-      //     tool requires) with no warning.
+      //     tool requires) with no warning, and
+      //   - `entry`, where a row is EDITOR-OWNED but also machine-written. A catalogue sync that only
+      //     wants to move a price had to read the row, splice one number in and write it all back — so
+      //     every field an operator had edited in between was silently reverted to the snapshot the sync
+      //     happened to read. "Small enough to resend whole" is about payload size; the hazard here is
+      //     concurrency, and re-sending whole is exactly what loses the other writer's work.
       // Other kinds are id-keyed rows small enough to resend whole, so a partial write there is rejected
       // rather than silently full-replacing. The merged result still goes through the schema in
       // contentRepo.put, so a bad patch fails exactly like a bad full write.
       const wantMerge = req.query.merge === '1' || req.query.merge === 'true';
       let body: unknown = req.body;
       if (wantMerge) {
-        if (kind !== 'settings' && kind !== 'page') {
-          return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings" and "page" kinds, not "${kind}"` });
+        if (kind !== 'settings' && kind !== 'page' && kind !== 'entry') {
+          return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings", "page" and "entry" kinds, not "${kind}"` });
         }
         const current = (await loadPrior()) ?? null;
         // Merge needs a base. Settings are seeded on project create and can't be deleted, so that case is a
@@ -3659,10 +3664,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             error:
               kind === 'settings'
                 ? 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)'
-                : `no page "${req.params.entityId}" to merge into — create it with a full write first (without ?merge)`,
+                : kind === 'entry'
+                  ? `no entry "${req.params.entityId}" in dataset "${String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '')}" to merge into — create it with a full write first (without ?merge), and check the fragment carries the right \`dataset\``
+                  : `no page "${req.params.entityId}" to merge into — create it with a full write first (without ?merge)`,
           });
         }
-        body = deepMerge(current, req.body);
+        // NORMALISE THE FRAGMENT FIRST. `normalizeEntryValues` folds stray top-level keys into `values`
+        // but resolves collisions as `{...folded, ...existing}` — existing WINS. So merging a flat
+        // fragment `{dataset, price: 123}` before folding produces `{...current, price: 123}`, and the
+        // fold then discards the 123 in favour of the row's current `values.price`: the write reports
+        // success and changes nothing. Folding first makes it `{dataset, values:{price:123}}`, which
+        // deep-merges into `values` exactly as intended.
+        body = deepMerge(current, kind === 'entry' ? normalizeEntryValues(req.body) : req.body);
       }
       validateSourceOnSave(req.params.kind, body); // fail fast on unsafe Handlebars source (in the MERGED body)
       // A full page REPLACE must not silently drop `data.swImport`. It is importer-owned PROVENANCE the

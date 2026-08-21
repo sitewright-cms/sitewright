@@ -3,10 +3,8 @@ import type { Entry, Page } from '@sitewright/schema';
 import type { ProjectBundle } from '../src/validate.js';
 import {
   allRoutes,
-  collectionRoutes,
   datasetEntries,
   publishedDatasetEntries,
-  entrySlug,
   pagePath,
   pagesById,
   pathToSlug,
@@ -80,17 +78,6 @@ describe('pagePath', () => {
   });
 });
 
-describe('entrySlug', () => {
-  const entry: Entry = { id: 'e1', dataset: 'posts', status: 'published', values: { slug: 'hello-world' } };
-  it('uses a safe field value', () => {
-    expect(entrySlug(entry, 'slug')).toBe('hello-world');
-  });
-  it('falls back to the id for unsafe/missing values', () => {
-    expect(entrySlug({ ...entry, values: { slug: '../etc' } }, 'slug')).toBe('e1');
-    expect(entrySlug({ ...entry, values: {} }, 'slug')).toBe('e1');
-  });
-});
-
 describe('datasetEntries', () => {
   it('groups entries by dataset (drafts included)', () => {
     const entries: Entry[] = [
@@ -159,25 +146,5 @@ describe('resolvedPages / allRoutes', () => {
     });
     expect(() => allRoutes(b)).not.toThrow();
     expect(resolvedPages(b).map((p) => p.id)).toEqual(['home']);
-  });
-});
-
-describe('collectionRoutes', () => {
-  it('expands a collection page once per published entry, nested under its parent', () => {
-    const blog = page({ id: 'blog', path: 'blog' });
-    const posts = page({
-      id: 'post',
-      path: '[slug]',
-      parent: 'blog',
-      collection: { dataset: 'posts', param: 'slug' },
-    });
-    const entries: Entry[] = [
-      { id: 'p1', dataset: 'posts', status: 'published', values: { slug: 'first' } },
-      { id: 'p2', dataset: 'posts', status: 'published', values: { slug: 'second' } },
-      { id: 'p3', dataset: 'posts', status: 'draft', values: { slug: 'hidden' } },
-    ];
-    const routes = collectionRoutes(bundle({ pages: [blog, posts], entries }));
-    expect(routes.map((r) => r.slug).sort()).toEqual(['blog/first', 'blog/second']);
-    expect(routes.every((r) => r.entry)).toBe(true);
   });
 });

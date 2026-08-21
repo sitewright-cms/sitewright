@@ -89,18 +89,12 @@ describe('auto-nav → publish', () => {
     expect(about).toContain('href="../about"'); // About
   });
 
-  it('renders footer-slot menus and excludes collection pages', async () => {
+  it('renders footer-slot menus', async () => {
     const proj = client.project(projectId);
-    // The footer skeleton slot iterates nav.footer; two pages are placed in the footer slot;
-    // a collection page also flagged for the footer (must NOT appear).
+    // The footer skeleton slot iterates nav.footer; two pages are placed in the footer slot.
     await putSlots({ footer: FOOTER_SLOT });
     expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['footer'], order: 0 }))).statusCode).toBe(200);
     expect((await proj.putContent('page', 'terms', navPage('terms', 'terms', 'Terms', { slots: ['footer'], order: 1 }))).statusCode).toBe(200);
-    // dataset + collection page flagged for the footer slot — excluded from nav.
-    expect((await proj.putContent('dataset', 'posts', { id: 'posts', slug: 'posts', name: 'Posts', fields: [] })).statusCode).toBe(200);
-    expect(
-      (await proj.putContent('page', 'post', { id: 'post', path: '[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' }, source: '<section><h1>{{page.title}}</h1></section>' })).statusCode,
-    ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const home = await fetchSite('index.html');
@@ -110,7 +104,6 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('href="./"'); // Home
     expect(home).toContain('href="terms"'); // Terms
     expect(home).toContain('>Terms<');
-    expect(home).not.toContain('posts/'); // collection page excluded from nav
   });
 
   it('excludes draft pages from the published site, its routes, and the nav', async () => {

@@ -1,10 +1,18 @@
 import { z } from 'zod';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
-import { AssetRefSchema, IdSchema, KeyNameSchema, NavTargetSchema, OrderSchema, PageSlugSchema, SlugSchema } from './primitives.js';
+import { AssetRefSchema, IdSchema, NavTargetSchema, OrderSchema, PageSlugSchema } from './primitives.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 
-const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
+/**
+ * The rejection message for a write that still carries `collection` (see the field below). Kept as a
+ * named constant so the API/MCP error text and the test that pins it cannot drift apart.
+ */
+export const COLLECTION_REMOVED =
+  'collection pages were removed: a `[param]` path never rendered its dataset entry. ' +
+  'Give each item its own page with a shared `template:` ref (that is also the only way to get ' +
+  'per-item SEO, nav placement and revisions), or keep the content in a dataset and loop it with ' +
+  '{{#each dataset.<slug>}} on one page.';
 
 /**
  * Navigation slots a page can appear in (the page-tree-driven auto-nav). `header`/`footer`/`mobile`
@@ -17,9 +25,8 @@ export type NavSlot = (typeof NAV_SLOTS)[number];
 /**
  * A page. `path` is the page's OWN slug SEGMENT (no slashes) — the full URL is computed
  * from the parent chain (see `pagePath` in @sitewright/core). The home page's slug is the
- * empty string. A collection page's slug is a single `[param]` segment (e.g. `[slug]`),
- * in which case `collection` must be set — and a `collection` requires the `[param]`. Both
- * directions are enforced.
+ * empty string. Every page URL is literal: there are no `[param]` segments and no
+ * dataset-driven route expansion (see the `collection` field below).
  */
 const PageFields = z
   .object({
@@ -160,13 +167,25 @@ const PageFields = z
      * is never emitted to HTML unsanitized.
      */
     data: JsonObjectStoreSchema.optional(),
-    /** Present when this page is generated once per dataset entry. */
-    collection: z
-      .object({
-        dataset: SlugSchema,
-        param: KeyNameSchema,
-      })
-      .optional(),
+    /**
+     * REMOVED — dataset-driven collection pages. `{ dataset, param }` on a `[param]` path once
+     * expanded to one route per entry, but the renderer never bound the entry into the render
+     * context, so every generated route rendered the same page with no entry data. It had no
+     * editor UI, was never documented for agents, and had zero uses across all live projects — but
+     * the schema ACCEPTED it, so a write guessing at the feature got HTTP 200 and N blank pages.
+     *
+     * Declared (rather than deleted) so that write still fails LOUDLY, with a message naming the
+     * model that works, instead of being silently stripped by Zod and then failing on `path` with
+     * an opaque slug-format error. `never` (not `undefined`) because PageSchema is published as the
+     * MCP `put_page` input schema: `undefined` has no JSON Schema form and throws while building the
+     * tool catalog, whereas `never` serializes to `{"not":{}}` — "no value is valid here", which is
+     * exactly the intent and is visible to an agent reading the schema.
+     *
+     * Give anything that owns a URL its own page with a shared `template:` ref — that is also the
+     * only model with per-item SEO, nav placement, revisions and a correct search-index entry.
+     * Datasets remain right for repeated content with no URL of its own (`{{#each dataset.x}}`).
+     */
+    collection: z.never({ error: COLLECTION_REMOVED }).optional(),
     /**
      * Entry kind. Absent/`'page'` = a normal page (slug + a rendered route/HTML file). `'link'` = a
      * NAVIGATION PLACEHOLDER: no own route/HTML — a pages-list entry that appears in the auto-nav (via
@@ -207,25 +226,6 @@ const PageObject = PageFields.superRefine((page, ctx) => {
           message: 'a link page needs a target, or must be a dropdown parent (set nav.dropdown)',
         });
       }
-      // A link placeholder renders no page → it can't be a collection (would expand to bogus `/` routes).
-      if (page.collection) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['collection'], message: 'a link (placeholder) page cannot be a collection' });
-      }
-    }
-    const hasParam = COLLECTION_PARAM.test(page.path);
-    if (page.collection && !hasParam) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['path'],
-        message: 'a collection page path must contain a [param] segment',
-      });
-    }
-    if (hasParam && !page.collection) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['collection'],
-        message: 'a path with a [param] segment requires a collection definition',
-      });
     }
   });
 
@@ -243,8 +243,8 @@ export type Page = z.infer<typeof PageSchema>;
  *
  * Exists because a page write is otherwise a total REPLACE: sending `{id, path, title, nav}` to relabel a
  * nav entry silently deleted `source`, `status`, `description`, `order`, `parent` and `data.swImport`.
- * The cross-field rules (link pages need a `link`, `[param]` paths need a `collection`) deliberately do NOT
- * run on the fragment — they are checked on the MERGED page, where they are actually meaningful.
+ * The cross-field rules (a link page needs a `link`, and that link needs a target or a dropdown) deliberately
+ * do NOT run on the fragment — they are checked on the MERGED page, where they are actually meaningful.
  *
  * Every field is also NULLABLE, because `deepMerge` reads `null` as "delete this key" (see
  * repo/merge.ts) — that is the ONLY way to clear a field, since omitting it means "leave unchanged"

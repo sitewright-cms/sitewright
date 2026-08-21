@@ -115,14 +115,16 @@ export const RoutePathSchema = z
  * A page's OWN path segment (its slug) — NOT the full route. The full URL is computed by
  * joining the slugs of the page and its ancestors ({root}/{parent slugs}/{slug}); see
  * `pagePath` in @sitewright/core. Allowed: the EMPTY string (the home page / tree root, at
- * `/`), a single lowercase slug segment (`about`, `web-design`), or a single `[param]`
- * segment for a collection page's leaf. No slashes — nesting comes from `parent`, not the path.
+ * `/`) or a single lowercase slug segment (`about`, `web-design`). No slashes — nesting comes
+ * from `parent`, not the path. A `[param]` segment was once accepted for dataset-driven
+ * collection pages; that feature was removed (see `Page.collection` in ./page.ts), so every
+ * page URL is now literal.
  */
 export const PageSlugSchema = z
   .string()
   .max(64)
   // Linear: alternation of anchored, non-overlapping single-segment forms; length-capped above.
-  .regex(/^$|^[a-z0-9]+(?:-[a-z0-9]+)*$|^\[[A-Za-z0-9_]+\]$/, 'must be empty (home) or a single lowercase slug segment (no slashes)'); // eslint-disable-line security/detect-unsafe-regex
+  .regex(/^$|^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be empty (home) or a single lowercase slug segment (no slashes)'); // eslint-disable-line security/detect-unsafe-regex
 
 /**
  * A navigation link target for a placeholder (`kind:'link'` page). Allowed: the EMPTY string (a pure

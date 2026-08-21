@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PageSchema, PagePatchSchema } from '../src/page.js';
+import { PageSchema, PagePatchSchema, COLLECTION_REMOVED } from '../src/page.js';
 
 describe('PageSchema', () => {
   it('parses a minimal page (home = empty slug)', () => {
@@ -43,41 +43,35 @@ describe('PageSchema', () => {
     expect(() => PageSchema.parse({ id: 'p', path: 'p', title: 'P', data: null })).toThrow();
   });
 
-  it('parses a collection page (leaf slug is the [param] segment)', () => {
-    const page = PageSchema.parse({
-      id: 'product',
-      path: '[slug]',
-      title: 'Product',
-      collection: { dataset: 'products', param: 'slug' },
-    });
-    expect(page.collection?.dataset).toBe('products');
-  });
-
   it('rejects a slug containing slashes (nesting comes from `parent`, not the path)', () => {
     for (const path of ['de/services', '/about', '//evil.com', 'a/b']) {
       expect(() => PageSchema.parse({ id: 'x', path, title: 'X' }), path).toThrow();
     }
   });
 
-  it('rejects a collection without a [param] segment in the slug', () => {
-    expect(() =>
-      PageSchema.parse({
-        id: 'product',
-        path: 'products',
-        title: 'Product',
-        collection: { dataset: 'products', param: 'slug' },
-      }),
-    ).toThrow();
+  // Collection pages were RETIRED: `[param]` slugs and the `collection` field are both gone. The
+  // field is still DECLARED (as `z.undefined()`) purely so a write that carries it fails loudly with
+  // advice, instead of being silently stripped and then failing on `path` with an opaque slug error.
+  it('rejects a [param] slug — dataset-driven route expansion was removed', () => {
+    expect(() => PageSchema.parse({ id: 'product', path: '[slug]', title: 'Product' })).toThrow();
   });
 
-  it('rejects a [param] slug with no collection definition', () => {
-    expect(() =>
-      PageSchema.parse({
-        id: 'product',
-        path: '[slug]',
-        title: 'Product',
-      }),
-    ).toThrow();
+  it('rejects a `collection` definition, naming the model that works', () => {
+    const res = PageSchema.safeParse({
+      id: 'product',
+      path: 'products',
+      title: 'Product',
+      collection: { dataset: 'products', param: 'slug' },
+    });
+    expect(res.success).toBe(false);
+    const issue = res.error?.issues.find((i) => i.path[0] === 'collection');
+    expect(issue?.message).toBe(COLLECTION_REMOVED);
+    // The advice must actually name the alternative — this string is what an agent reads on failure.
+    expect(COLLECTION_REMOVED).toMatch(/template:/);
+  });
+
+  it('still accepts a page with no `collection` key at all (the normal case)', () => {
+    expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P' })).not.toHaveProperty('collection');
   });
 });
 

@@ -7,6 +7,44 @@ All notable changes to Sitewright are documented here. The format is based on
 The running version of an instance is reported at `GET /version` (baked into the release image; see
 [RELEASING.md](RELEASING.md)). While pre-1.0, minor versions may include breaking changes.
 
+## [Unreleased]
+
+### Removed
+
+- **Dataset-driven collection pages (`page.collection` + `[param]` paths).** A page with
+  `collection: { dataset, param }` on a `[slug]` path expanded to one route per published entry —
+  and that was all it did. `Route.entry` was populated by `allRoutes()` and read by nothing: the
+  publish render context carried `company / website / page / dataset / nav / media / …` and no
+  `entry`, so all N generated routes rendered the same page with every entry field empty.
+
+  The feature predates the block→Handlebars pivot and nothing in the current era could have used
+  it: no editor UI creates one (the page-settings modal only *excludes* them from parent pickers),
+  the agent guide never mentioned it, and its integration suite asserted `statusCode` and route
+  counts while binding the entry through `root: { type:'Heading', props:{ textField } }` — a
+  block-tree prop from an authoring model removed in #84, and `page.root` is not referenced by the
+  renderer at all. Across three live instances, 0 of 2,700 pages used it, and 0 had a bracketed
+  path.
+
+  Wiring `entry` in was never the small part. `renderDocument` takes the PAGE, so `<title>`,
+  description, `og:image`, canonical and hreflang would be identical on every generated route, and
+  the search index is built from `page.title` — per-entry head fields are a design decision, not a
+  patch. Two further defects sat on the same path: locale variants could never resolve
+  (`routes.ts` hand-rolled `<dataset>-<locale>` with a HYPHEN while `localizedDatasetName()` uses an
+  underscore and `DatasetSlugSchema` rejects hyphens), and `collection.dataset` was `SlugSchema`
+  (hyphens) against dataset slugs' `DatasetSlugSchema` (underscores), so only single-token slugs
+  could ever bind.
+
+  **Upgrade note.** The field is still *declared*, as `z.never()`, so a write that carries it is
+  refused with advice rather than silently stripped and then failing on `path` with an opaque
+  slug-format error — the schema accepting it was the actual bug, since an agent guessing at the
+  feature got HTTP 200 and N blank pages. `[param]` page slugs are likewise rejected. Give anything
+  that owns a URL its own page with a shared `template:` ref: that is the only model with per-item
+  SEO, nav placement, revisions and a correct search-index row. Content with no URL of its own
+  stays a dataset, looped with `{{#each dataset.<slug>}}` on one page.
+
+  Also gone with it: the `collection_datasets` / `missing_collection_dataset` database-integrity
+  check and the `unknown_collection_dataset` bundle-validation code.
+
 ## [0.34.0] — 2026-08-20
 
 ### Fixed

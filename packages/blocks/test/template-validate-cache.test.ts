@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { validateTemplate, validateTemplateStats, TemplateError } from '../src/index.js';
 
 // `validateTemplate` is a character scan of the whole source, run on EVERY render — including once per
-// partial, per route. A collection page renders one source hundreds of times, so an 800-route build
-// re-scanned identical strings and a CPU profile put it at 8% of build time after the clean-css fix.
+// partial, per route. Pages sharing one `template:` ref render the same source hundreds of times, so an
+// 800-route build re-scanned identical strings and a CPU profile put it at 8% of build time after the
+// clean-css fix.
 // The verdict is a pure function of the source, so it is memoizable — but only if a REJECTION still
 // rejects on every later call, which is the property these tests pin.
 

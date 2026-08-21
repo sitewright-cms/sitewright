@@ -240,7 +240,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'page.children',
     keywords: 'child pages subpages blog overview index grid list parent tree',
     description:
-      'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{sw-url path}}), .slug, .description (its meta description), .image (its OG/share image), .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
+      'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{sw-url path}}), .slug, .description (its meta description), .image (its OG/share image), .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — a dataset never generates pages of its own, so this is how you list many items that each own a URL.',
     example:
       '{{#each page.children}}\n' +
       '  <a class="card" href="{{sw-url path}}">\n' +

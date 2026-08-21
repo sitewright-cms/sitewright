@@ -138,16 +138,6 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     }
   }
 
-  for (const page of bundle.pages) {
-    if (page.collection && !datasetSlugs.has(page.collection.dataset)) {
-      issues.push({
-        code: 'unknown_collection_dataset',
-        message: `page "${page.id}" collection references unknown dataset "${page.collection.dataset}"`,
-        path: `pages/${page.id}`,
-      });
-    }
-  }
-
   // Templates are code-first (Handlebars source, no block tree) — their source is
   // validated by renderTemplate at render time, like page sources.
 

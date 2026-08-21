@@ -177,17 +177,15 @@ describe('checkProjectIntegrity', () => {
     expect(report.projectsScanned).toBe(1);
   });
 
-  it('detects broken page/template/collection/translation references', async () => {
+  it('detects broken page/template/translation references', async () => {
     await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
     await content.put(ctx, 'page', 'child', { id: 'child', path: 'c', title: 'C', parent: 'ghost_parent' });
     await content.put(ctx, 'page', 'tpl', { id: 'tpl', path: 't', title: 'T', template: 'ghost_template' });
-    await content.put(ctx, 'page', 'coll', { id: 'coll', path: '[slug]', title: 'X', collection: { dataset: 'ghost-ds', param: 'slug' } });
     await content.put(ctx, 'translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
 
     const codes = (await checkDatabaseIntegrity(db)).issues.map((i) => i.code);
     expect(codes).toContain('missing_page_parent');
     expect(codes).toContain('missing_page_template');
-    expect(codes).toContain('missing_collection_dataset');
     expect(codes).toContain('orphan_translation');
   });
 

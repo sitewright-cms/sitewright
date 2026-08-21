@@ -140,13 +140,8 @@ describe('ContentRepository', () => {
     expect(result.imported).toBeGreaterThanOrEqual(1);
     expect(await content.get(pctxA, 'page', 'home')).toMatchObject({ title: 'Home' });
 
-    // page references a collection dataset that doesn't exist → validateProject rejects
-    const badPage = {
-      id: 'bad',
-      path: '[slug]',
-      title: 'Bad',
-      collection: { dataset: 'ghost', param: 'slug' },
-    };
+    // page references a template that doesn't exist → validateProject rejects
+    const badPage = { id: 'bad', path: 'bad', title: 'Bad', template: 'ghost' };
     await expect(content.importBundle(pctxA, projA, { pages: [badPage] })).rejects.toThrow(
       ConflictError,
     );

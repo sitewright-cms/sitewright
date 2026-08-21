@@ -300,7 +300,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   const invalidParents = selfAndDescendants(page.id, pages);
   // A page nests only within its OWN language's subtree — offer only same-locale pages as parents.
   const parentChoices = pages.filter(
-    (p) => !invalidParents.has(p.id) && !p.collection && localeOf(p, defaultLocale) === pageLocale,
+    (p) => !invalidParents.has(p.id) && localeOf(p, defaultLocale) === pageLocale,
   );
   // The parent the form submits: the root home has none; a locale home keeps its fixed parent
   // (the site root); every other page submits its chosen parent (defaulting to its language home).
@@ -436,7 +436,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 {/* Convenience: pick an existing page's route; the value is still a free string. */}
                 <datalist id="sw-page-targets">
                   {pages
-                    .filter((p) => !isLinkPage(p) && !p.collection)
+                    .filter((p) => !isLinkPage(p))
                     .map((p) => (
                       <option key={p.id} value={pagePath(p, previewById)}>{p.title}</option>
                     ))}

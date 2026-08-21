@@ -7508,7 +7508,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const pages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(pages);
         const page = byId.get(entity);
-        if (!page || isLinkPage(page) || page.collection) return reply.send({ path: null });
+        if (!page || isLinkPage(page)) return reply.send({ path: null });
         return reply.send({ path: pathToSlug(pagePath(page, byId)) ?? '' });
       },
     );
@@ -7904,7 +7904,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const byId = pagesById(allPages);
         const targetPage = byId.get(req.params.pageId) ?? null;
         if (!targetPage) throw new NotFoundError('page not found');
-        if (isLinkPage(targetPage) || targetPage.collection) {
+        if (isLinkPage(targetPage)) {
           return reply.code(400).send({ error: 'this page has no rendered route to audit' });
         }
         const formFactor: FormFactor = req.query.formFactor === 'desktop' ? 'desktop' : 'mobile';
@@ -8605,13 +8605,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     rl,
     cloneOrchestration: {
       // Imported pages that still need authoring (have an import source), home first, skipping link
-      // placeholders + collection parents. The gate — not this list — decides whether each is actually done.
+      // placeholders. The gate — not this list — decides whether each is actually done.
       listPages: async (ctx) => {
         const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(allPages);
         return allPages
           .filter((p) => Boolean((p.data as { swImport?: { sourceUrl?: string } } | undefined)?.swImport?.sourceUrl))
-          .filter((p) => !isLinkPage(p) && !p.collection)
+          .filter((p) => !isLinkPage(p))
           .sort((a, b) => (((a.path ?? '') === '' ? 0 : 1) - ((b.path ?? '') === '' ? 0 : 1)))
           .map((p) => ({ pageId: p.id, slug: pathToSlug(pagePath(p, byId)) ?? '', title: p.title }));
       },

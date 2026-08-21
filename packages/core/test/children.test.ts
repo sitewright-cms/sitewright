@@ -17,12 +17,11 @@ describe('childrenOf', () => {
       description: 'One', image: '/one.jpg', nav: { title: 'First (nav)', slots: ['header'] }, data: { article_title: 'One!' },
     }),
     page({ id: 'elsewhere', path: 'x', parent: 'home', title: 'Elsewhere' }),
-    page({ id: 'product', path: '[slug]', parent: 'blog', title: 'Product', collection: { dataset: 'products', param: 'slug' } }),
   ];
 
   it('returns the direct children, flattened and ordered by order then title', () => {
     const kids = childrenOf(pages, pages[0]!, 'en');
-    expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2 — not the collection page
+    expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2
     expect(kids[0]).toMatchObject({
       id: 'a1', title: 'First', slug: 'first', path: '/blog/first',
       description: 'One', image: '/one.jpg', navTitle: 'First (nav)',
@@ -31,9 +30,8 @@ describe('childrenOf', () => {
     expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', status: 'published' });
   });
 
-  it('excludes collection pages and pages parented elsewhere', () => {
+  it('excludes pages parented elsewhere', () => {
     const kids = childrenOf(pages, pages[0]!, 'en');
-    expect(kids.find((k) => k.id === 'product')).toBeUndefined(); // [param] collection page
     expect(kids.find((k) => k.id === 'elsewhere')).toBeUndefined(); // parent !== blog
   });
 
@@ -152,14 +150,14 @@ describe('childrenOf', () => {
     expect(view.children).toHaveLength(3);
   });
 
-  it('counts only the children that would be LISTED (same-locale, non-collection, non-placeholder)', () => {
+  it('counts only the children that would be LISTED (same-locale, non-placeholder)', () => {
     const parent = page({ id: 'blog', path: 'blog', title: 'Blog' });
     const view = childrenView(
       [
         parent,
         page({ id: 'en1', path: 'en1', parent: 'blog', title: 'EN' }),
         page({ id: 'de1', path: 'de1', parent: 'blog', title: 'DE', locale: 'de' }),
-        page({ id: 'coll', path: '[slug]', parent: 'blog', title: 'C', collection: { dataset: 'products', param: 'slug' } }),
+        page({ id: 'ph', path: '', parent: 'blog', kind: 'link', title: 'Elsewhere', link: { target: '/contact' } }),
       ],
       parent,
       'en',

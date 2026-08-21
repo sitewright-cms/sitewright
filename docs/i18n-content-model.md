@@ -153,17 +153,15 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`.
    prefers `<name>-<page.locale>` when that dataset exists, else `<name>`. Implement in the
    render-context assembly (a small locale-aware view over `datasetEntries(bundle)`), keeping
    explicit `dataset.<name>_<locale>` working as the manual override.
-3. **Collection pages** honor the same suffix: a collection variant whose `page.locale` is `de`
-   expands over `<dataset>-de` when present.
-4. **`<html lang>`** = `page.locale ?? defaultLocale`.
-5. **hreflang / x-default** comes from the **translation group**: for each page, emit one
+3. **`<html lang>`** = `page.locale ?? defaultLocale`.
+4. **hreflang / x-default** comes from the **translation group**: for each page, emit one
    `<link rel="alternate" hreflang="<member.locale>" href="<member.path>">` per group member
    plus `x-default` = the default-locale member. (Replaces the current "same pageId across
    locales" assumption.)
-6. **Language-switcher context.** Expose `{{ page.locale }}` and `{{ page.translations }}`
+5. **Language-switcher context.** Expose `{{ page.locale }}` and `{{ page.translations }}`
    (the group's members as `{ locale, path, title }`) so a skeleton slot / template can render
    a language menu with `{{#each page.translations}}`.
-7. **Sitemap** includes every locale variant (each is a real, published page).
+6. **Sitemap** includes every locale variant (each is a real, published page).
 
 ---
 
@@ -201,9 +199,8 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`.
 1. **Schema + core.** Add `Page.locale` + `Page.translationGroup`; retire the
    `PageTranslation` override path; implement locale-suffix dataset resolution + `page.locale`
    / `page.translations` context in core. Unit tests.
-2. **Publish.** hreflang-by-group, `<html lang>`, collection-page suffix, language-switcher
-   context; remove the locale loop. Integration tests (multi-locale publish, fallback,
-   hreflang, dataset suffix).
+2. **Publish.** hreflang-by-group, `<html lang>`, language-switcher context; remove the locale
+   loop. Integration tests (multi-locale publish, fallback, hreflang, dataset suffix).
 3. **Editor.** Settings (locale + group + localized path); pages-list grouping + the four
    actions (Save as template / Add translation / Copy as translation / Promote). Unit + e2e.
 4. **MCP + seed + e2e + reviews + DinD deploy.**

@@ -13,10 +13,10 @@ import { childrenView } from './children.js';
 // pages (addressed by their slug — `pages.services`, `pages.[web-design]`) and its OWN fields (title,
 // data, image, …). They are kept in SEPARATE namespaces so a page may use ANY slug (no reserved words,
 // no SEO restriction): a node's children sit at its top level by slug, and everything the node OWNS lives
-// under the single `_attributes` key. No traversable node can EVER have path `_attributes`: a normal slug
-// (`^[a-z0-9]+(?:-[a-z0-9]+)*$`, PageSlugSchema) can't contain an underscore at all, and the only paths that
-// can — bracketed `[param]` collection slugs — belong to collection pages, which are EXCLUDED from this tree
-// (the `!p.collection` filters below). So a child slug and `_attributes` can never clash. Read a page's own fields through
+// under the single `_attributes` key. No traversable node can EVER have path `_attributes`: PageSlugSchema
+// (`^$|^[a-z0-9]+(?:-[a-z0-9]+)*$`) admits no underscore at all, so a child slug and `_attributes` can never
+// clash. (Bracketed `[param]` slugs used to be the one exception; collection pages were removed and the
+// schema no longer accepts them.) Read a page's own fields through
 // `_attributes` (`pages.about._attributes.image`, `pages._attributes.data` for home); descend to a child
 // with a bare slug (`pages.about`, `pages.services.[web-design]`). Thus a page literally slugged `data`
 // or `image` is fully reachable: `pages.data._attributes.title` (the page) vs `pages._attributes.data`
@@ -101,9 +101,9 @@ export function pagesContext(
   if (!home) return undefined;
 
   const byId = pagesById(pages);
-  // Direct children of a page, in THIS locale, excluding collection (`[param]`) pages (not real children).
+  // Direct children of a page, in THIS locale.
   const childrenOf = (parentId: string): Page[] =>
-    pages.filter((p) => p.parent === parentId && !p.collection && localeOf(p, defaultLocale) === locale);
+    pages.filter((p) => p.parent === parentId && localeOf(p, defaultLocale) === locale);
 
   // Two budgets: how many NODES may be built, and how many BYTES their child listings may weigh in
   // total. The second is the one that bounds the payload — see MAX_PAGES_CONTEXT_BYTES.
@@ -131,7 +131,7 @@ export function pagesContext(
       // root siblings, so `pages.services` must find them either way. Deeper levels: a node's own children.
       const kids =
         depth === 0
-          ? pages.filter((p) => p.id !== home.id && (p.parent === home.id || !p.parent) && !p.collection && localeOf(p, defaultLocale) === locale)
+          ? pages.filter((p) => p.id !== home.id && (p.parent === home.id || !p.parent) && localeOf(p, defaultLocale) === locale)
           : childrenOf(node.id);
       for (const chain of chains) {
         if (chain.length === 0) continue;

@@ -33,7 +33,6 @@ export type IntegrityIssueCode =
   | 'duplicate_dataset_slug'
   | 'missing_page_parent'
   | 'missing_page_template'
-  | 'missing_collection_dataset'
   | 'orphan_translation'
   | 'deleted_project_holding_slug';
 
@@ -105,7 +104,6 @@ const CHECKS: Array<{ id: string; label: string }> = [
   { id: 'dataset_slugs', label: 'Dataset slugs are unique' },
   { id: 'page_tree', label: 'Page parents resolve' },
   { id: 'page_templates', label: 'Page templates resolve' },
-  { id: 'collection_datasets', label: 'Collection pages reach their dataset' },
   { id: 'translations', label: 'Translations reach their page' },
   { id: 'deleted_projects', label: 'Deleted projects holding slugs' },
 ];
@@ -389,7 +387,7 @@ export async function checkDatabaseIntegrity(
     (rows) => rows.filter((r) => r.kind === 'dataset').length,
   );
 
-  // ---- 8/9/10. Page tree, templates, collection datasets.
+  // ---- 8/9. Page tree, templates.
   perProject(
     7,
     'page_tree',
@@ -431,25 +429,6 @@ export async function checkDatabaseIntegrity(
 
   perProject(
     9,
-    'collection_datasets',
-    (rows, p) => {
-      const slugs = datasetSlugsOf(rows);
-      return group(
-        pagesOf(rows)
-          .filter((r) => {
-            const ds = dataOf<{ collection?: { dataset?: string } }>(r).collection?.dataset;
-            return typeof ds === 'string' && ds !== '' && !slugs.has(ds);
-          })
-          .map((r) => ({ subject: String(dataOf<{ collection?: { dataset?: string } }>(r).collection?.dataset), id: r.entityId })),
-        { code: 'missing_collection_dataset', severity: 'error', projectId: p.id, projectSlug: p.slug },
-        (ds, n) => `${plural(n, 'collection page', 'collection pages')} expand over dataset "${ds}", which does not exist — publishing them produces no routes.`,
-      );
-    },
-    (rows) => pagesOf(rows).length,
-  );
-
-  perProject(
-    10,
     'translations',
     (rows, p) => {
       const ids = new Set(pagesOf(rows).map((r) => r.entityId));
@@ -468,14 +447,14 @@ export async function checkDatabaseIntegrity(
     (rows) => rows.filter((r) => r.kind === 'translation').length,
   );
 
-  // ---- 12. Soft-deleted projects still holding their slug. Informational, not damage: it is by design
+  // ---- 11. Soft-deleted projects still holding their slug. Informational, not damage: it is by design
   // (a restore must find the slug intact) but it blocks reusing that slug, which surprises operators.
-  begin(CHECKS[11]!.label);
+  begin(CHECKS[10]!.label);
   {
     const held = allProjects.filter((p) => p.deletedAt);
     record(
       'deleted_projects',
-      CHECKS[11]!.label,
+      CHECKS[10]!.label,
       allProjects.length,
       held.length
         ? [

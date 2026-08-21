@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11",
-    "@fastify/multipart": "^9",
+    "@fastify/multipart": "^10",
     "@fastify/rate-limit": "^10",
     "@fastify/static": "^10.1.3",
     "@libsql/client": "^0.17",

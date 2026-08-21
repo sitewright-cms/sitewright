@@ -74,7 +74,7 @@
     "lucide-static": "^0.544.0",
     "simple-icons": "^16.27.1",
     "smartphoto": "1.6.5",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vanilla-calendar-pro": "3.2.0",
     "vitest": "^4.1.10"
   }

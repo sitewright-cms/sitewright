@@ -88,7 +88,7 @@ export function translationsOf(
   if (!page.translationGroup) return [];
   const byId = pagesById(pages);
   return pages
-    .filter((p) => p.translationGroup === page.translationGroup && !p.collection)
+    .filter((p) => p.translationGroup === page.translationGroup)
     .map((p) => ({ locale: p.locale ?? defaultLocale, path: pagePath(p, byId), title: p.title }))
     .sort((a, b) => a.locale.localeCompare(b.locale, 'en'));
 }
@@ -266,7 +266,6 @@ export function buildLocaleVariant(
   if (owner.nav !== undefined) variant.nav = cloneJson(owner.nav);
   if (owner.order !== undefined) variant.order = owner.order;
   if (owner.data !== undefined) variant.data = cloneJson(owner.data);
-  if (owner.collection !== undefined) variant.collection = cloneJson(owner.collection);
   // Link placeholders carry their kind + target into each locale (path stays '' — the isHome guard
   // above prevents a locale-code slug; an internal `/path` target rebases per locale at render).
   if (owner.kind !== undefined) variant.kind = owner.kind;

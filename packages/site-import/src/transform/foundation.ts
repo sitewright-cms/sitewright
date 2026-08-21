@@ -574,7 +574,7 @@ export function configurePageNav(pages: Page[], siteName?: string): void {
   // TOP-LEVEL = home + the pages that render at `/<slug>`: home's direct children (the importer now
   // parents top-level pages to home) OR a parentless root sibling (the older structure) — handle both so
   // the header menu is identical either way. A top-level page's OWN children become its dropdown items.
-  const isTopLevel = (p: Page): boolean => !p.collection && (isHome(p) || p.parent === home?.id || !p.parent);
+  const isTopLevel = (p: Page): boolean => isHome(p) || p.parent === home?.id || !p.parent;
   const topLevel = pages.filter(isTopLevel).sort((a, b) => {
     if (isHome(a)) return -1;
     if (isHome(b)) return 1;

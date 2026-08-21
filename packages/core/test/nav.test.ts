@@ -33,13 +33,6 @@ describe('buildNav', () => {
     expect(buildNav(pages, 'header').map((i) => i.label)).toEqual(['Alpha', 'Zeta', 'Bravo']);
   });
 
-  it('excludes collection pages', () => {
-    const pages = [
-      page({ id: 'c', path: '[slug]', title: 'C', collection: { dataset: 'd', param: 'slug' }, nav: { slots: ['header'] } }),
-    ];
-    expect(buildNav(pages, 'header')).toEqual([]);
-  });
-
   it('nests child pages under a dropdown parent (no own slots needed), ordered by nav.order', () => {
     const pages = [
       page({ id: 'services', path: 'services', title: 'Services', nav: { slots: ['header'], order: 1, dropdown: true } }),

@@ -48,7 +48,7 @@ describe('IdSchema', () => {
 });
 
 describe('RoutePathSchema', () => {
-  it.each(['/', '/about', '/products/[slug]', '/a/b/c/'])('accepts %s', (p) => {
+  it.each(['/', '/about', '/products/widgets', '/a/b/c/'])('accepts %s', (p) => {
     expect(RoutePathSchema.parse(p)).toBe(p);
   });
   it.each(['//evil.com', 'javascript:alert(1)', 'https://x', 'no-leading-slash', '/a//b'])(

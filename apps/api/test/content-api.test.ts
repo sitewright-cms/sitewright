@@ -127,6 +127,38 @@ describe('content API', () => {
     expect(unknown.statusCode).toBe(404);
   });
 
+  // Collection pages were retired. The whole point of keeping the field DECLARED is that a write
+  // still carrying it fails with ADVICE — so pin the behaviour at the write boundary an agent
+  // actually hits, not just at the schema. A silently-stripped key would 200 here (the old bug in
+  // reverse) or 400 with an opaque `path` error; both are the confusion this replaced.
+  it('rejects a page carrying the retired `collection` field, with advice (400)', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/product`,
+      cookies: { sw_session: t },
+      payload: { id: 'product', path: 'product', title: 'Product', collection: { dataset: 'products', param: 'slug' } },
+    });
+    expect(res.statusCode).toBe(400);
+    // The error text must reach the caller and name the model that works — an agent reads THIS.
+    expect(res.payload).toContain('collection pages were removed');
+    expect(res.payload).toContain('template:');
+    // The page was not written.
+    const get = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/product`, cookies: { sw_session: t } });
+    expect(get.statusCode).toBe(404);
+  });
+
+  it('rejects a `[param]` page path — dataset-driven route expansion was removed (400)', async () => {
+    const { t, projectId } = await setup('b@acme.test');
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/product`,
+      cookies: { sw_session: t },
+      payload: { id: 'product', path: '[slug]', title: 'Product' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('imports a bundle (200) and rejects an invalid one (409)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
@@ -146,8 +178,9 @@ describe('content API', () => {
       cookies: { sw_session: t },
       payload: {
         pages: [
-          // Page references a collection dataset that doesn't exist → validateProject → 409
-          { id: 'b', path: '[slug]', title: 'B', collection: { dataset: 'ghost', param: 'slug' } },
+          // Two pages resolving to the SAME route → validateProject → 409.
+          { id: 'b', path: 'dup', title: 'B' },
+          { id: 'c', path: 'dup', title: 'C' },
         ],
       },
     });

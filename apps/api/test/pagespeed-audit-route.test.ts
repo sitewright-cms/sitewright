@@ -56,9 +56,9 @@ async function adminClient() {
 test('audits a real page — real scores when a browser is present, else a clean 503', async () => {
   const { auth, projectId } = await adminClient();
   const pages = (await auth({ method: 'GET', url: `/projects/${projectId}/content/page` })).json() as {
-    items: Array<{ id: string; kind?: string; collection?: unknown }>;
+    items: Array<{ id: string; kind?: string }>;
   };
-  const home = pages.items.find((p) => p.kind !== 'link' && !p.collection);
+  const home = pages.items.find((p) => p.kind !== 'link');
   expect(home, 'a rendered page to audit').toBeTruthy();
 
   const res = await auth({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/${home!.id}?formFactor=mobile` });

@@ -7,7 +7,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
  * Extends (does not duplicate) the round-trip smoke coverage in
  * `content-api.test.ts` / `content.test.ts`: those assert a single page imports
  * and a small bundle re-exports. Here we assert that a *rich* bundle — brand,
- * company, settings, a collection page + its dataset, a block-tree page, and
+ * company, settings, a dataset-bound page, a block-tree page, and
  * published + draft entries — round-trips field-for-field through
  * `POST /import` → `GET /export`, that cross-entity integrity violations are
  * rejected with the documented 409 `validateProject` codes, that array bounds
@@ -45,7 +45,7 @@ async function exportBundle() {
       identity: { name: string; colors: Record<string, string>; legalName?: string; email?: string; social?: Array<{ link: string; name?: string; icon?: string }> };
       settings: { defaultLocale: string; locales: string[] };
     };
-    pages: Array<{ id: string; path: string; title: string; collection?: unknown }>;
+    pages: Array<{ id: string; path: string; title: string; template?: string }>;
     datasets: Array<{ id: string; name: string; slug: string; fields: unknown[] }>;
     entries: Array<{ id: string; dataset: string; status: string; values: Record<string, unknown> }>;
   };
@@ -54,7 +54,7 @@ async function exportBundle() {
 // A rich, fully-valid bundle exercising every entity + cross-entity reference:
 //   - brand + company + non-default settings
 //   - a static home page with a source template
-//   - a collection page `/blog/[slug]` bound to the `posts` dataset (param match)
+//   - a `/blog-post` page that LOOPS the `posts` dataset in its source
 //   - the `posts` dataset + a published and a draft entry
 function richBundle() {
   return {
@@ -78,10 +78,9 @@ function richBundle() {
       },
       {
         id: 'blog-post',
-        path: '[slug]',
+        path: 'blog-post',
         title: 'Blog Post',
-        collection: { dataset: 'posts', param: 'slug' },
-        source: '{{#each item.posts}}<p>{{title}}</p>{{/each}}',
+        source: '{{#each dataset.posts}}<p>{{title}}</p>{{/each}}',
       },
     ],
     datasets: [
@@ -118,12 +117,11 @@ describe('bundle export/import fidelity (HTTP)', () => {
     expect(out.project.id).toBe(projectId);
     expect(out.project.slug).toBe('site');
 
-    // ---- Pages: ids + paths + the collection definition survive ----
+    // ---- Pages: ids + paths survive ----
     const pagesById = new Map(out.pages.map((p) => [p.id, p]));
     expect([...pagesById.keys()].sort()).toEqual(['blog-post', 'home']);
     expect(pagesById.get('home')?.path).toBe('');
-    expect(pagesById.get('blog-post')?.path).toBe('[slug]');
-    expect(pagesById.get('blog-post')?.collection).toEqual({ dataset: 'posts', param: 'slug' });
+    expect(pagesById.get('blog-post')?.path).toBe('blog-post');
 
     // ---- Datasets ----
     expect(out.datasets).toHaveLength(1);
@@ -159,20 +157,13 @@ describe('bundle export/import fidelity (HTTP)', () => {
   });
 
   describe('referential-integrity rejection (409)', () => {
-    it('rejects a collection page bound to a missing dataset (unknown_collection_dataset)', async () => {
+    it('rejects a page bound to a missing template (unknown_template)', async () => {
       const res = await importBundle({
-        pages: [
-          {
-            id: 'p',
-            path: '[slug]',
-            title: 'P',
-            collection: { dataset: 'missing', param: 'slug' },
-          },
-        ],
-        // no datasets → the collection's `missing` dataset cannot resolve
+        pages: [{ id: 'p', path: 'p', title: 'P', template: 'missing' }],
+        // no templates → the page's `missing` template cannot resolve
       });
       expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain('unknown_collection_dataset');
+      expect((res.json() as { error: string }).error).toContain('unknown_template');
     });
 
     it('rejects duplicate page ids (duplicate_page_id)', async () => {
@@ -227,19 +218,14 @@ describe('bundle export/import fidelity (HTTP)', () => {
     expect(before.entries).toHaveLength(2);
 
     // 2) Attempt an invalid bundle that also tries to add a brand-new page and a
-    //    different brand. It fails integrity (unknown_binding_dataset), so NOTHING
+    //    different brand. It fails integrity (unknown_template), so NOTHING
     //    from it must be written — and nothing prior must be removed.
     const failing = await importBundle({
       project: { identity: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [
         { id: 'home', path: '', title: 'Home' },
-        // Collection page references a missing dataset → validateProject → 409
-        {
-          id: 'injected',
-          path: '[slug]',
-          title: 'Injected',
-          collection: { dataset: 'ghost', param: 'slug' },
-        },
+        // The page references a missing template → validateProject → 409
+        { id: 'injected', path: 'injected', title: 'Injected', template: 'ghost' },
       ],
     });
     expect(failing.statusCode).toBe(409);

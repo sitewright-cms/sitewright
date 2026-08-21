@@ -1741,6 +1741,16 @@ page.data.swImport.rewritten:true (or remove the marker) and flip its status to 
 A DATASET is a reusable COLLECTION (team members, FAQs, menu items, testimonials, slides). It has TWO parts:
 its SCHEMA (the field definitions) and its ENTRIES (the rows). You render it by looping in a page source with
 {{#each dataset.<slug>}}…{{/each}}. Writing one is TWO steps — the dataset, then its entries.
+
+★ A DATASET NEVER GENERATES PAGES. There is no [slug]/[param] route, no page.collection field, no
+per-entry URL: N entries render inside ONE page's loop. So choose by whether the item needs its OWN URL.
+  · No own URL (FAQ, team, slides, menu) → a dataset. This is the common case.
+  · Own URL (articles, services, products) → a real PAGE per item, all sharing one template: ref
+    (put_content("page", …) with { template: "<id>" }). Only pages get their own <title>/description/
+    og:image, a nav + sitemap entry, revisions, and a search-index row. List them from a parent page with
+    {{#each page.children}} — see get_reference("page.children").
+Writing { collection: { dataset, param } } on a page is REJECTED with that advice; it is not a feature
+you have missed.
 To render only PART of a long dataset, window the loop: {{#each (sw-limit dataset.x 6)}} (first six),
 (sw-slice dataset.x -3) (latest three), (sw-paginate dataset.x page.data.page_no 10) (page N). Entries stay
 click-to-edit through a window. Full recipe incl. page counts + prev/next: get_guide("templates").

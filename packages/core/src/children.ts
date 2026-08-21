@@ -170,8 +170,8 @@ export function parentPageView(pages: readonly Page[], page: Page, defaultLocale
 /**
  * The direct child pages of `page` (those whose `parent` is its id), FLATTENED to {@link PageChild}
  * for `{{#each page.children}}`. Same-locale only (an overview lists articles in its own language),
- * non-collection (collection `[param]` pages aren't real tree children), ordered by the shared
- * sibling order (page-tree `order` → legacy `nav.order` → title), and capped at {@link MAX_PAGE_CHILDREN}.
+ * ordered by the shared sibling order (page-tree `order` → legacy `nav.order` → title), and capped
+ * at {@link MAX_PAGE_CHILDREN}.
  * Draft visibility follows WHICH list the caller passes: both the preview and publish call sites pass
  * the already-published subset (drafts excluded — the preview mirrors publish, like nav/translations).
  */
@@ -197,8 +197,8 @@ export function childrenView(pages: readonly Page[], page: Page, defaultLocale: 
     // `page.children` is a CONTENT listing (title/description/image/data) — exclude nav PLACEHOLDERS
     // (kind:'link', path:''). A placeholder is grouping/menu chrome, not a content child; leaving it in
     // leaked a degenerate entry (empty slug + rich nav label). Nav DROPDOWNS gather children separately
-    // (buildNav), so they're unaffected. Collections ([param] pages) are excluded too — not real children.
-    .filter((c) => c.parent === page.id && !c.collection && !isLinkPage(c) && localeOf(c, defaultLocale) === pageLocale)
+    // (buildNav), so they're unaffected.
+    .filter((c) => c.parent === page.id && !isLinkPage(c) && localeOf(c, defaultLocale) === pageLocale)
     .sort(byNavOrder);
   // Walk in order, stopping at whichever bound trips first — the byte budget in practice, the count as
   // a backstop. Projecting lazily means an over-budget listing never builds the children it won't use.

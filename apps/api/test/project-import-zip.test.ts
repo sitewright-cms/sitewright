@@ -207,11 +207,11 @@ describe('POST /projects/import/zip', () => {
 
   it('rolls back a project whose bundle fails integrity checks (nothing left behind)', async () => {
     const t = await staff('dev5@test.local');
-    // A page bound to a non-existent dataset passes the schema but fails validateProject.
+    // A page bound to a non-existent template passes the schema but fails validateProject.
     const bad = await projectZip({
       formatVersion: 2,
       project: { id: 'p', name: 'Bad', slug: 'bad', identity: { name: 'Bad', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
-      pages: [{ id: 'x', path: '[slug]', title: 'X', collection: { dataset: 'ghost', param: 'slug' } }],
+      pages: [{ id: 'x', path: 'x', title: 'X', template: 'ghost' }],
     });
     const res = await app.inject({
       method: 'POST',

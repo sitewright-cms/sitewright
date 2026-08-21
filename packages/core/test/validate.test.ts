@@ -24,11 +24,7 @@ function validBundle(): ProjectBundle {
     entries: [{ id: 'e1', dataset: 'products', status: 'published', values: {} }],
     pages: [
       page('home', '/'),
-      page(
-        'product',
-        '/products/[slug]',
-        { collection: { dataset: 'products', param: 'slug' } },
-      ),
+      page('product', '/products/widgets'),
     ],
   };
 }
@@ -52,16 +48,6 @@ describe('validateProject', () => {
     // Their ids are still uniqueness-checked (a second 'l1' link trips duplicate_page_id).
     bundle.pages = [...bundle.pages, page('l1', '', { kind: 'link', link: { target: '#x' }, nav: { slots: ['header'] } })];
     expect(codes(bundle)).toContain('duplicate_page_id');
-  });
-
-  it('flags a collection page bound to an unknown dataset', () => {
-    const bundle = validBundle();
-    bundle.pages = [
-      page('p', '/x/[slug]', {
-        collection: { dataset: 'ghost', param: 'slug' },
-      }),
-    ];
-    expect(codes(bundle)).toContain('unknown_collection_dataset');
   });
 
   it('flags an entry referencing an unknown dataset', () => {

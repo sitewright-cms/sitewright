@@ -1216,7 +1216,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <PageAuditPanel
             projectId={project.id}
             pageId={page.id}
-            auditable={!page.collection}
             dirty={dirty}
             seo={{ title: settings.title, path: settings.path, description: settings.description ?? '', image: settings.image ?? '' }}
           />

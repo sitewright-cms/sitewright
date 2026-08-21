@@ -119,7 +119,6 @@ export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
   return pages
     .filter(
       (page) =>
-        !page.collection &&
         page.nav?.hidden !== true &&
         (page.nav?.slots?.includes(slot) ?? false) &&
         // Nested under a dropdown parent → rendered as that parent's child, never flat.
@@ -132,7 +131,7 @@ export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
       const children = pages
         // `hidden` is the ONLY way a child opts out: a dropdown folds in every child by design, since
         // children are not required to declare slots of their own.
-        .filter((child) => child.parent === page.id && !child.collection && child.nav?.hidden !== true)
+        .filter((child) => child.parent === page.id && child.nav?.hidden !== true)
         .sort(byNavOrder)
         .map((child) => toItem(child, byId));
       return children.length > 0 ? { ...item, children } : item;

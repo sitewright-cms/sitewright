@@ -1289,7 +1289,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     placeholder="/about, https://…, mailto:…, #section, #dialog-id"
                   />
                   <datalist id="sw-ph-targets">
-                    {pages.filter((p) => !isLinkPage(p) && !p.collection).map((p) => (
+                    {pages.filter((p) => !isLinkPage(p)).map((p) => (
                       <option key={p.id} value={fullPath(p)}>{p.title}</option>
                     ))}
                   </datalist>

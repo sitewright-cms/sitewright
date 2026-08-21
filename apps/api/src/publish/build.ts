@@ -470,8 +470,7 @@ async function copyMedia(
 }
 
 /**
- * Generates a static site for a project bundle: one `index.html` per route
- * (static pages + collection pages expanded per published entry), rendered by
+ * Generates a static site for a project bundle: one `index.html` per page, rendered by
  * the pure `@sitewright/blocks` renderer. Drafts are excluded (published build).
  * Pure Node — no Astro toolchain — so it runs inside the single API container.
  *
@@ -648,9 +647,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const tmp = `${base}.tmp`;
 
   // Drafts are excluded from the published site: filter once, so routes, auto-nav,
-  // and the sitemap all see only published pages. Draft *collection pages* are
-  // excluded here too (collectionRoutes iterates this filtered set); draft
-  // *collection entries* are filtered separately inside collectionRoutes.
+  // and the sitemap all see only published pages. Draft dataset ENTRIES are filtered
+  // separately, at the binding boundary (`publishedDatasetEntries`).
   const pubBundle: ProjectBundle = {
     ...bundle,
     pages: opts.includeDrafts ? [...bundle.pages] : publishedPages(bundle.pages),

@@ -5,18 +5,25 @@ import { useDialogs } from '../ui/Dialogs';
 import { ghostButton, dangerButton, glassPanel, accentChip } from '../../theme';
 import { DeployModal } from './DeployModal';
 import { TargetConfigForm, type WizardProtocol } from './TargetConfigForm';
+import { localSiteLabel } from '../../lib/local-site-url';
 
-/** The four wizard entry points. `ftp` opens the FTP/FTPS family (a TLS toggle picks the variant). */
-const TYPES: ReadonlyArray<{ protocol: WizardProtocol; title: string; blurb: string; icon: LucideIcon }> = [
-  { protocol: 'local', title: 'Local Hosting', blurb: 'Serve on this platform at /sites/…', icon: Server },
+/** The four wizard entry points. `ftp` opens the FTP/FTPS family (a TLS toggle picks the variant).
+ *  Local Hosting's blurb names the address the site will ACTUALLY serve at: with subdomain routing on
+ *  that is `<slug>.<sitesDomain>` and `/sites/<slug>/` only 301s there, so advertising the path form
+ *  pointed authors at a URL they never see. */
+const typesFor = (
+  slug: string,
+  sitesDomain?: string,
+): ReadonlyArray<{ protocol: WizardProtocol; title: string; blurb: string; icon: LucideIcon }> => [
+  { protocol: 'local', title: 'Local Hosting', blurb: `Serve on this platform at ${localSiteLabel(slug, sitesDomain)}`, icon: Server },
   { protocol: 'ftp', title: 'FTP / FTPS Upload', blurb: 'Upload to your own server', icon: Upload },
   { protocol: 'sftp', title: 'SSH / SFTP Upload', blurb: 'Upload over SSH (password or key)', icon: TerminalSquare },
   { protocol: 'git', title: 'Git Deploy', blurb: 'Push to a branch (gh-pages style)', icon: GitBranch },
 ];
 
 /** A human "where" label for a saved target row. */
-function whereLabel(t: DeployTargetView): string {
-  if (t.protocol === 'local') return 'Local Hosting';
+function whereLabel(t: DeployTargetView, slug?: string, sitesDomain?: string): string {
+  if (t.protocol === 'local') return slug ? `Local Hosting · ${localSiteLabel(slug, sitesDomain)}` : 'Local Hosting';
   if (t.protocol === 'git') return `Git · ${t.branch ?? ''}`;
   return `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
 }
@@ -28,7 +35,7 @@ type Mode = { kind: 'list' } | { kind: 'configure'; protocol: WizardProtocol; ed
  * entry points to ADD one — Local Hosting / FTP-FTPS / SSH-SFTP / Git. Picking a type (or Edit) opens
  * {@link TargetConfigForm}. Local Hosting is a singleton, so its card is hidden once one exists.
  */
-export function DeployTargetWizard({ project }: { project: Project }) {
+export function DeployTargetWizard({ project, sitesDomain }: { project: Project; sitesDomain?: string }) {
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null); // null = feature unavailable
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [deploying, setDeploying] = useState<DeployTargetView | null>(null);
@@ -62,6 +69,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
       <div className="mt-1">
         <TargetConfigForm
           project={project}
+          sitesDomain={sitesDomain}
           protocol={mode.protocol}
           editing={mode.editing}
           onCancel={() => setMode({ kind: 'list' })}
@@ -86,7 +94,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
             {targets.map((t) => (
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t)}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}
@@ -104,7 +112,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
                     onClick={async () => {
                       const ok = await confirm({
                         title: 'Delete deploy target',
-                        message: `Delete the saved deploy target "${t.name}" (${whereLabel(t)})? This cannot be undone.`,
+                        message: `Delete the saved deploy target "${t.name}" (${whereLabel(t, project.slug, sitesDomain)})? This cannot be undone.`,
                         confirmLabel: 'Delete',
                       });
                       if (!ok) return;
@@ -129,7 +137,7 @@ export function DeployTargetWizard({ project }: { project: Project }) {
       <div>
         <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Add a deploy target</h4>
         <div className="grid grid-cols-2 gap-2">
-          {TYPES.filter((ty) => !(ty.protocol === 'local' && hasLocal)).map((ty) => {
+          {typesFor(project.slug, sitesDomain).filter((ty) => !(ty.protocol === 'local' && hasLocal)).map((ty) => {
             const Icon = ty.icon;
             return (
               <button

@@ -10,6 +10,7 @@ import {
 } from '../../api';
 import { Field, TextArea } from '../settings/ui';
 import { toggleInput, primaryButton, ghostButton, fieldLabel } from '../../theme';
+import { localSiteUrl } from '../../lib/local-site-url';
 
 /** The wizard protocols. `ftp` covers the FTP/FTPS family (a TLS toggle picks plain vs FTPS). */
 export type WizardProtocol = 'local' | 'ftp' | 'ftps' | 'sftp' | 'git';
@@ -58,12 +59,15 @@ function Toggle({ label, checked, onChange, hint, disabled = false }: { label: s
  */
 export function TargetConfigForm({
   project,
+  sitesDomain,
   protocol,
   editing,
   onCancel,
   onSaved,
 }: {
   project: Project;
+  /** `SW_SITES_DOMAIN` when subdomain routing is on — see `localSiteUrl`. */
+  sitesDomain?: string;
   protocol: WizardProtocol;
   editing: DeployTargetView | null;
   onCancel: () => void;
@@ -225,7 +229,10 @@ export function TargetConfigForm({
     await api.createDeployTarget(project.id, cfg);
   }
 
-  const siteUrl = `${window.location.origin}/sites/${project.slug}/`;
+  // The address the site really serves at — `<slug>.<sitesDomain>` when subdomain routing is on,
+  // otherwise the `/sites/<slug>/` path form. Absolute either way, so it can be shown and copied.
+  const relOrAbs = localSiteUrl(project.slug, sitesDomain);
+  const siteUrl = relOrAbs.startsWith('/') ? `${window.location.origin}${relOrAbs}` : relOrAbs;
 
   return (
     <div className="flex flex-col gap-3">

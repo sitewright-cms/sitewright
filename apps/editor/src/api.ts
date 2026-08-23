@@ -830,6 +830,10 @@ export const api = {
       /** When true, the user must set a new password before doing anything (seeded default-password admin). */
       mustChangePassword: boolean;
       projects: Project[];
+      /** Base domain for subdomain-hosted sites (`SW_SITES_DOMAIN`). Set → a locally-hosted site is
+       *  canonically at `<slug>.<sitesDomain>`; unset → subdomain routing is off and `/sites/<slug>/`
+       *  is the real address. Drives every "where will this serve" label in the deploy UI. */
+      sitesDomain?: string;
     }>('GET', '/me'),
   // Self-service account management (the header user menu). Both re-authenticate with the
   // current password server-side; a wrong password surfaces as a 403 ApiError (not a logout).

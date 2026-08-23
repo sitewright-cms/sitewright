@@ -10,10 +10,13 @@ import { DeployTargetWizard } from './DeployTargetWizard';
  */
 export function PublishDeployModal({
   project,
+  sitesDomain,
   onClose,
   onSaved,
 }: {
   project: Project;
+  /** `SW_SITES_DOMAIN` when subdomain routing is on (see DeployTargetWizard). */
+  sitesDomain?: string;
   /** Retained for call-site compatibility; the modal is now a single deploy-targets view. */
   initialTab?: 'publish' | 'deploy';
   onClose: () => void;
@@ -35,7 +38,7 @@ export function PublishDeployModal({
           <strong>FTP / FTPS / SFTP</strong> upload it to your own server; <strong>Git</strong> pushes it to a branch.
           Final page assembly happens at deploy time.
         </p>
-        <DeployTargetWizard project={project} />
+        <DeployTargetWizard project={project} sitesDomain={sitesDomain} />
       </div>
     </Modal>
   );

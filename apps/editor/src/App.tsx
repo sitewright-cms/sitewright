@@ -119,6 +119,9 @@ function MainApp({
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(0);
   const [hasPassword, setHasPassword] = useState(true);
+  // `SW_SITES_DOMAIN`, when subdomain routing is on — drives the deploy UI's "where will this
+  // serve" labels, which otherwise hardcode the /sites/ path form the site only redirects from.
+  const [sitesDomain, setSitesDomain] = useState<string | undefined>(undefined);
   // Set when the signed-in user still has the seeded default password; gates the whole app behind a
   // forced "set a new password" screen until they change it (the server enforces this independently).
   const [mustChangePassword, setMustChangePassword] = useState(false);
@@ -157,6 +160,7 @@ function MainApp({
     setEmail('');
     setTotpEnabled(false);
     setRecoveryCodesRemaining(0);
+    setSitesDomain(undefined);
     setMustChangePassword(false);
     setStage({ name: 'auth' });
   }
@@ -175,6 +179,7 @@ function MainApp({
       setTotpEnabled(me.totpEnabled);
       setRecoveryCodesRemaining(me.recoveryCodesRemaining);
       setHasPassword(me.hasPassword);
+      setSitesDomain(me.sitesDomain);
       setMustChangePassword(me.mustChangePassword);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
@@ -403,6 +408,7 @@ function MainApp({
         {inProject && (
           <PublishBar
             project={inProject}
+            sitesDomain={sitesDomain}
             onOpenDeploy={() => setPublishModalTab('deploy')}
             refreshSignal={publishRefresh}
           />
@@ -544,6 +550,7 @@ function MainApp({
       {inProject && publishModalTab && (
         <PublishDeployModal
           project={inProject}
+          sitesDomain={sitesDomain}
           initialTab={publishModalTab}
           onClose={() => setPublishModalTab(null)}
           onSaved={() => setPublishRefresh((n) => n + 1)}

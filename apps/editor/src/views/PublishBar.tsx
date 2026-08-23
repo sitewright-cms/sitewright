@@ -8,6 +8,7 @@ import { Modal } from './ui/Modal';
 import { PreviewShareLinks } from './settings/PreviewShareLinks';
 import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
+import { localSiteLabel } from '../lib/local-site-url';
 
 /** Eye glyph for the "Preview" (browse the live draft site). */
 function PreviewIcon() {
@@ -31,8 +32,10 @@ function DeployIcon() {
 }
 
 /** Where a deploy target sends the site (the dropdown sub-label). */
-function targetWhere(t: DeployTargetView): string {
-  if (t.protocol === 'local') return 'Local Hosting · /sites/';
+function targetWhere(t: DeployTargetView, slug: string, sitesDomain?: string): string {
+  // Name the address the site actually serves at: `<slug>.<sitesDomain>` when subdomain routing is
+  // on (the `/sites/` form only 301s there), else the path form.
+  if (t.protocol === 'local') return `Local Hosting · ${localSiteLabel(slug, sitesDomain)}`;
   if (t.protocol === 'git') return `Git · ${t.branch ?? ''}`;
   return `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
 }
@@ -45,10 +48,13 @@ function targetWhere(t: DeployTargetView): string {
  */
 export function PublishBar({
   project,
+  sitesDomain,
   onOpenDeploy,
   refreshSignal = 0,
 }: {
   project: Project;
+  /** `SW_SITES_DOMAIN` when subdomain routing is on — names the address a local target really serves. */
+  sitesDomain?: string;
   /** Open the deploy-targets modal (to add/manage targets). */
   onOpenDeploy?: () => void;
   /** Bumped by the parent when targets change, so the list + default stay current. */
@@ -376,7 +382,7 @@ export function PublishBar({
                   {/* Per-target, because deploying to one destination says nothing about the others. */}
                   <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">
                     {targetStale(t) ? 'changes to deploy · ' : ''}
-                    {targetWhere(t)}
+                    {targetWhere(t, project.slug, sitesDomain)}
                   </span>
                 </span>
               </button>

@@ -2434,7 +2434,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, projects });
+    // `sitesDomain` lets the editor name the URL a locally-hosted site will ACTUALLY serve at.
+    // With it set the canonical address is `<slug>.<sitesDomain>` and `/sites/<slug>/` only
+    // 301s there, so a hardcoded "/sites/…" in the deploy UI advertised an address the author
+    // never sees in the bar. Undefined when subdomain routing is off (the path form is then real).
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, projects, ...(sitesDomain ? { sitesDomain } : {}) });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----

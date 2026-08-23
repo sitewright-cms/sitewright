@@ -235,6 +235,10 @@ export async function materializeImageThumbs(
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
   alias: AliasFn,
   storeMedia?: (assetId: string, file: string, data: Buffer) => Promise<void>,
+  /** Called once per referenced image with the count FINISHED before it, so a waiting human sees
+   *  "Processing images… 12 of 30" rather than an unmoving label. Re-encoding a cold project's
+   *  images is the longest step of a draft preview, and it was the least legible. */
+  onProgress?: (done: number) => void,
 ): Promise<void> {
   const dir = join(base, ASSET_DIR);
   if (!resolve(dir).startsWith(base + sep)) return; // defensive
@@ -248,7 +252,12 @@ export async function materializeImageThumbs(
     await writeFile(target, data);
   };
 
+  let processed = 0;
   for (const [assetId, want] of refs) {
+    // Reported BEFORE the work (like the pages phase), so the count is right no matter which of the
+    // early `continue`s below this iteration takes.
+    onProgress?.(processed);
+    processed += 1;
     const asset = media.find((a) => a.id === assetId && a.kind === 'image');
     if (!asset || asset.kind !== 'image') continue;
     const a = alias(assetId);

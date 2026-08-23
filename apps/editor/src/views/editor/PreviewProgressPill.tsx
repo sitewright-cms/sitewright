@@ -17,16 +17,18 @@ const isPhase = (v: string | undefined): v is PreviewPhase => v !== undefined &&
  * What the preview is waiting on, as one line of text.
  *
  * A cold project renders every page, re-encodes every referenced image size and compiles a stylesheet
- * before the iframe can show anything, and that is easily tens of seconds. `pages` is the one phase
- * that can count itself, so it says "Rendering pages… 12 of 93"; the rest name the step and lean on
- * the spinner to show that something is in fact happening.
+ * before the iframe can show anything, and that is easily tens of seconds. The two phases that are a
+ * countable loop say so — "Rendering pages… 12 of 93", "Processing images… 7 of 30" — because those
+ * are also the two long ones; the rest name the step and lean on the spinner to show that something
+ * is in fact happening.
  */
 export function previewProgressLabel(phase: string | undefined, done?: number, total?: number): string {
   if (!isPhase(phase)) return 'Building the preview…'; // incl. the isolated worker, which reports no phase
-  if (phase === 'pages' && typeof total === 'number' && total > 0) {
-    // `done` counts pages FINISHED, so add one to name the page actually being rendered — and clamp,
-    // so the last page never reads "94 of 93".
-    return `${LABELS.pages} ${Math.min(total, (done ?? 0) + 1)} of ${total}`;
+  if ((phase === 'pages' || phase === 'media') && typeof total === 'number' && total > 0) {
+    // `done` counts items FINISHED, so add one to name the one actually being worked on — and clamp,
+    // so the last never reads "94 of 93". The media phase reports a total only for the image
+    // re-encode; copying non-image assets is one indivisible step and stays uncounted.
+    return `${LABELS[phase]} ${Math.min(total, (done ?? 0) + 1)} of ${total}`;
   }
   return LABELS[phase];
 }

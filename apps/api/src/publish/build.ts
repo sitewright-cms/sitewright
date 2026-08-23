@@ -384,8 +384,9 @@ export interface BuildSiteOptions {
   onProgress?: (progress: BuildProgress) => void;
 }
 
-/** A build step worth telling a waiting human about. `done`/`total` are set only where the step is
- *  a countable loop (pages), so the UI can say "12 of 93" instead of an unmoving label. */
+/** A build step worth telling a waiting human about. `done`/`total` are set where the step is a
+ *  countable loop — rendering pages, and re-encoding referenced images — so the UI can say "12 of 93"
+ *  instead of an unmoving label. Steps that are one indivisible action report the phase alone. */
 export interface BuildProgress {
   phase: 'preparing' | 'media' | 'pages' | 'styles' | 'scripts' | 'finalizing';
   done?: number;
@@ -1003,7 +1004,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // every NON-image kind — raw files, stylesheet/script, AND `kind:'font'` (a font's faces are
     // bundled flat as `_assets/<alias>-<face>`, so its `@font-face` media url resolves in the export).
     if (media.length > 0 && opts.readMedia) {
-      report({ phase: 'media', total: media.length });
+      // No total: copyMedia SKIPS images (they are materialized as thumbnails below), so
+      // `media.length` counted assets this step never touches — a 33-asset project with 30 images
+      // would have shown "3 of 33" and stalled there.
+      report({ phase: 'media' });
       await copyMedia(tmp, media, opts.readMedia, alias);
     }
 
@@ -1596,8 +1600,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (opts.readMedia && thumbRefs.size > 0) {
       // Usually the longest single step on a cold project — every referenced size of every referenced
       // image is encoded here — which is exactly why it gets its own label.
-      report({ phase: 'media', total: thumbRefs.size });
-      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias, opts.storeMedia);
+      report({ phase: 'media', done: 0, total: thumbRefs.size });
+      await materializeImageThumbs(tmp, media, thumbRefs, opts.readMedia, alias, opts.storeMedia, (done) =>
+        report({ phase: 'media', done, total: thumbRefs.size }),
+      );
     }
 
     // Copy the platform textures any page referenced into `_assets/_textures/` so the export is

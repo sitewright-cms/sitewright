@@ -20,6 +20,21 @@ describe('previewProgressLabel', () => {
     expect(previewProgressLabel('pages', 93, 93)).toBe('Rendering pages… 93 of 93');
   });
 
+  it('counts images the same way, naming the one being processed', () => {
+    // Re-encoding a cold project's images is the other long phase, and the one that used to sit on a
+    // motionless "Processing images…" for tens of seconds.
+    expect(previewProgressLabel('media', 0, 30)).toBe('Processing images… 1 of 30');
+    expect(previewProgressLabel('media', 6, 30)).toBe('Processing images… 7 of 30');
+    expect(previewProgressLabel('media', 30, 30)).toBe('Processing images… 30 of 30');
+  });
+
+  it('leaves the media label uncounted when no total is reported', () => {
+    // Copying non-image assets is one indivisible step, so it reports the phase alone — a counter
+    // there would have been "3 of 33" against a total that included images it never touches.
+    expect(previewProgressLabel('media')).toBe('Processing images…');
+    expect(previewProgressLabel('media', 2, 0)).toBe('Processing images…');
+  });
+
   it('drops the counter when there is no total to count against', () => {
     expect(previewProgressLabel('pages')).toBe('Rendering pages…');
     expect(previewProgressLabel('pages', 3, 0)).toBe('Rendering pages…');

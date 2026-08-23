@@ -15,6 +15,11 @@ export default tseslint.config(
       // code as this one's — `pnpm verify` in the primary checkout failed with 275 errors that
       // belonged entirely to a sibling worktree.
       '.wt/**',
+      // Agent task worktrees land at `.claude/worktrees/<name>` (git-excluded via
+      // .git/info/exclude), which `.wt/**` above does not cover — the same sibling-worktree
+      // bleed it guards against, at a second path: linting the primary checkout reported 1389
+      // errors that all belonged to `.claude/worktrees/entrymerge`.
+      '.claude/**',
     ],
   },
   js.configs.recommended,

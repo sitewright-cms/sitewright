@@ -68,14 +68,17 @@ COPY --chown=node:node package.json ./
 # Sizes V8's heap from the container limit before exec'ing the server (see the script).
 COPY --chown=node:node docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
+# NOT redundant with the app's own default: dependencies read NODE_ENV directly. finalhandler/express
+# fall back to 'development' when it is unset, which sends error stack traces in HTTP responses;
+# postcss/dayjs/@sentry also switch on it. Removing this changes behaviour outside our config.
 ENV NODE_ENV=production
 ENV PORT=80
 # Baked at release time (release.yml passes `--build-arg SW_VERSION=<tag>`); reported at GET /version so an
 # operator can see exactly which release is running. Defaults to 0.0.0 for local/dev builds.
 ARG SW_VERSION=0.0.0
 ENV SW_VERSION=$SW_VERSION
-# The editor SPA is copied into the deploy context as ./editor (see deploy step).
-ENV EDITOR_DIST=/app/editor
+# The editor SPA is copied into the deploy context as ./editor (see deploy step). No ENV needed:
+# server.js derives ../editor from its own module URL; EDITOR_DIST is only an override.
 # ONE persistent data dir holds the SQLite DB, media, published sites + preview builds — mount a single
 # volume here to persist an instance (`-v sw-data:/app/data`). No DATABASE_URL needed; the app defaults
 # the DB to <SW_DATA_DIR>/sitewright.db (SW_DATA_DIR defaults to ./data → /app/data, since WORKDIR=/app).
@@ -84,7 +87,6 @@ ENV EDITOR_DIST=/app/editor
 # On each start, before applying any PENDING schema migration, the app auto-writes a WAL-safe DB snapshot to
 # <SW_DATA_DIR>/backups/*.pre-migration.bak (VACUUM INTO; DB only — media isn't touched by migrations).
 # RESTORE (app stopped): copy the chosen .bak over sitewright.db, remove the -wal/-shm sidecars, restart.
-ENV SW_DATA_DIR=/app/data
 
 # Run as the non-root `node` user (present in the base image). Own the data dir AND the /app dir itself
 # so the app can create the DB + media subdirs at boot — the COPY'd contents are already node-owned, and

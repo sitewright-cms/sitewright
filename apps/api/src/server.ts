@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { mkdir } from 'node:fs/promises';
 import { createApp, initMemoryBudget } from './http/app.js';
 import { seedInstance } from './seed.js';
@@ -17,11 +18,18 @@ import { InstanceSettingsRepository } from './repo/instance-settings.js';
 import { runShutdown } from './shutdown.js';
 import { createReleaseChecker } from './version/checker.js';
 import { resolveRuntimeConfig } from './config.js';
+
 import { WorkerBuildRunner } from './publish/worker-runner.js';
 import { sweepOrphanedDeployDirs } from './publish/deploy-tmp.js';
 import { AnthropicProvider } from './ai/provider.js';
 import { AnthropicAgentProvider } from './ai/anthropic-agent.js';
 import { OpenAiAgentProvider } from './ai/openai-agent.js';
+
+// The editor SPA ships next to the compiled server (dist/server.js -> ../editor), so the path is DERIVED
+// rather than configured — the same pattern the drizzle migrations, imagemap assets and worker entrypoints
+// already use. EDITOR_DIST stays as an optional override for a non-standard layout; when neither resolves
+// to a real directory the API simply runs without the SPA (an API-only deployment).
+const DEFAULT_EDITOR_DIST = fileURLToPath(new URL('../editor', import.meta.url));
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
@@ -291,11 +299,9 @@ const app = await createApp({
   logger: cfg.isProduction,
   // Only enable SPA serving if the dist actually exists (avoids a startup crash
   // for API-only deployments that don't bake in the editor).
-  editorDist:
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
-    process.env.EDITOR_DIST && existsSync(process.env.EDITOR_DIST)
-      ? process.env.EDITOR_DIST
-      : undefined,
+  editorDist: ((dir: string) =>
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup path
+    (existsSync(dir) ? dir : undefined))(process.env.EDITOR_DIST ?? DEFAULT_EDITOR_DIST),
 });
 
 // First-boot bootstrap: seed the super-admin + showcase "Example Project" when the instance is

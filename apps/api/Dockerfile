@@ -77,8 +77,8 @@ ENV PORT=80
 # operator can see exactly which release is running. Defaults to 0.0.0 for local/dev builds.
 ARG SW_VERSION=0.0.0
 ENV SW_VERSION=$SW_VERSION
-# The editor SPA is copied into the deploy context as ./editor (see deploy step).
-ENV EDITOR_DIST=/app/editor
+# The editor SPA is copied into the deploy context as ./editor (see deploy step). No ENV needed:
+# server.js derives ../editor from its own module URL; EDITOR_DIST is only an override.
 # ONE persistent data dir holds the SQLite DB, media, published sites + preview builds — mount a single
 # volume here to persist an instance (`-v sw-data:/app/data`). No DATABASE_URL needed; the app defaults
 # the DB to <SW_DATA_DIR>/sitewright.db (SW_DATA_DIR defaults to ./data → /app/data, since WORKDIR=/app).

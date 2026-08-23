@@ -9,6 +9,35 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.36.0] — 2026-08-23
+
+### Added
+
+- **The draft preview counts images while it processes them** — "Processing images… 7 of 30".
+  Re-encoding a cold project's images is the longest step of a preview and was the least legible:
+  the pill sat on a motionless "Processing images…" while every referenced size of every referenced
+  asset was generated. `materializeImageThumbs` now reports the count finished before each image, at
+  the top of the loop — the pattern the pages phase already used, and the one that stays correct
+  through the early exits for a fully-cached asset or a missing original.
+
+### Fixed
+
+- **The deploy UI named a URL locally-hosted sites do not serve at.** Three static strings advertised
+  `/sites/…`, but with `SW_SITES_DOMAIN` configured the canonical origin is `<slug>.<sitesDomain>`
+  and `/sites/<slug>/` only 301-redirects there — so the wizard card, the publish-bar label and the
+  target form all pointed authors at an address they never see in the bar. `/me` now carries
+  `sitesDomain` (only when subdomain routing is on) and the labels mirror the API's `servedSiteUrl`:
+  the subdomain when configured, the path form otherwise — still correct, because without a sites
+  domain the path form is the real address rather than a redirect. Neither form was removed; they are
+  different trust boundaries (a subdomain site runs author JS on an isolated origin, the path form
+  shares the cookie-bearing app origin).
+
+- **A wrong total on the media build phase.** The step reported `total: media.length` before copying
+  assets, but that copy SKIPS images — they are materialized as thumbnails separately — so a
+  33-asset project with 30 images would have counted against a total it could never reach. Copying
+  non-image assets is one indivisible step and now reports the phase alone.
+
+
 ## [0.35.0] — 2026-08-23
 
 ### Added
@@ -2949,7 +2978,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/sitewright-cms/sitewright/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sitewright-cms/sitewright/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/sitewright-cms/sitewright/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...v0.33.0

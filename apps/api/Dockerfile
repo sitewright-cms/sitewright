@@ -68,6 +68,9 @@ COPY --chown=node:node package.json ./
 # Sizes V8's heap from the container limit before exec'ing the server (see the script).
 COPY --chown=node:node docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
+# NOT redundant with the app's own default: dependencies read NODE_ENV directly. finalhandler/express
+# fall back to 'development' when it is unset, which sends error stack traces in HTTP responses;
+# postcss/dayjs/@sentry also switch on it. Removing this changes behaviour outside our config.
 ENV NODE_ENV=production
 ENV PORT=80
 # Baked at release time (release.yml passes `--build-arg SW_VERSION=<tag>`); reported at GET /version so an
@@ -84,7 +87,6 @@ ENV EDITOR_DIST=/app/editor
 # On each start, before applying any PENDING schema migration, the app auto-writes a WAL-safe DB snapshot to
 # <SW_DATA_DIR>/backups/*.pre-migration.bak (VACUUM INTO; DB only — media isn't touched by migrations).
 # RESTORE (app stopped): copy the chosen .bak over sitewright.db, remove the -wal/-shm sidecars, restart.
-ENV SW_DATA_DIR=/app/data
 
 # Run as the non-root `node` user (present in the base image). Own the data dir AND the /app dir itself
 # so the app can create the DB + media subdirs at boot — the COPY'd contents are already node-owned, and

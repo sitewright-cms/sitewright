@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.35.0] — 2026-08-23
+
 ### Added
 
 - **`?merge=1` now works for dataset entries.** A row is editor-owned but also machine-written: a
@@ -55,6 +57,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
   Also gone with it: the `collection_datasets` / `missing_collection_dataset` database-integrity
   check and the `unknown_collection_dataset` bundle-validation code.
+
+### Changed
+
+- **The runtime image no longer sets `SW_DATA_DIR` or `EDITOR_DIST`.** Both restated a value the app
+  already derives: `SW_DATA_DIR=/app/data` duplicated `resolve('./data')` against `WORKDIR=/app`, and
+  the editor bundle sits next to the compiled server, so `../editor` is computable from
+  `import.meta.url` — the pattern the drizzle migrations, imagemap assets and worker entrypoints
+  already used. `EDITOR_DIST` remains an optional override for a non-standard layout. The image's
+  baked environment drops from 9 entries to 7, three of which come from the `node:22` base image.
+
+  `NODE_ENV=production` was reviewed alongside them and deliberately **kept**: seven production
+  dependencies read it directly, and `finalhandler`/`express` fall back to `development` when it is
+  unset, which sends error stack traces in HTTP responses. The Dockerfile now records why.
+
+### Fixed
+
+- **Sibling worktrees no longer fail the local lint gate.** eslint skipped `.wt/**` for this reason
+  already, but agent task worktrees land at `.claude/worktrees/<name>`, which that pattern did not
+  cover — linting a primary checkout reported 1398 errors, 1389 of them belonging to another branch's
+  worktree. CI was never affected (the directory is git-excluded, so a fresh clone has none of it).
 
 ## [0.34.0] — 2026-08-20
 
@@ -2927,7 +2949,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.34.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/sitewright-cms/sitewright/compare/v0.34.0...v0.35.0
 [0.34.0]: https://github.com/sitewright-cms/sitewright/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/sitewright-cms/sitewright/compare/v0.32.1...v0.33.0
 [0.32.1]: https://github.com/sitewright-cms/sitewright/compare/v0.32.0...v0.32.1

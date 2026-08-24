@@ -9,6 +9,63 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.38.0] — 2026-08-24
+
+### Added
+
+- **Approve a pending member without the invite link.** The link flow assumes the invitee can receive
+  and act on it — exactly what fails with no mail server configured, or when a client simply never
+  clicks. "Approve now" completes the decision the admin already made: the grant is applied, an account
+  is created if there is none (with a password shown once), and the outstanding link is burned so the
+  same grant cannot also be redeemed from an old email later. An account that already exists is only
+  granted — its password is untouched, because approval is a grant and not a credential change.
+- **Admins can create admins.** The API already accepted a staff invite with `role: "admin"`; the
+  Administrators panel never offered it, so the only admin was whoever ran the first boot. The role is
+  now picked when inviting, shown on each pending invite, and grantable by direct approval as well as
+  by link. Developer accounts follow the same path.
+- **Issue a replacement password** for a member or staff account that cannot sign in. Shown once —
+  only the hash is stored. A project owner may do this only for accounts whose access is limited to
+  that project; a member who also holds staff rights or belongs to another project takes a platform
+  admin. Nobody resets their own password this way: Account settings re-authenticates first.
+- **An entry opened from a page names its dataset**, with a link that closes the entry and selects
+  that dataset in the Data rail. Clicking a rendered row used to open a form whose shape had no
+  explanation unless you already knew which dataset to look for.
+
+### Changed
+
+- **Single sign-on moved from Ops to Integrations**, and each provider now shows the exact redirect
+  URL to register with the identity provider, with a copy button. It previously existed only as an
+  `<id>`-shaped template in a tooltip, to be assembled by hand — and a mistyped or stale value fails at
+  the END of the flow, after the consent screen, which is the least debuggable moment for it to
+  surface.
+- **A project member can see the agents attached to their project** and disconnect their own. They
+  could already attach one — the consent flow grants their own role — but the connections list was
+  owner-only, so the person who connected an agent could watch it edit the project and still be told
+  only the owner may look. Creating and revoking access keys remains owner-only.
+- **A rate-limited MCP tool call says how long to wait.** The 429 previously pointed at the
+  `retry-after` HEADER, which a model driving these tools cannot read — it sees the JSON-RPC body and
+  nothing else, so the throttle read as an unexplained failure and it retried immediately. The wait is
+  now in the message and in `error.data.retryAfterSeconds`, and the text says the throttle is temporary.
+
+### Fixed
+
+- **An OIDC sign-in failure now names what the provider rejected.** A token-endpoint rejection arrives
+  as a generic "server responded with an error in the response body" — the same sentence for a wrong
+  client secret, a replayed code and a mismatched redirect URI. The OAuth error code and description
+  were being discarded; the log now reads `invalid_client: The OAuth client was not found. (HTTP 401)`.
+- **The PKCE help implied it replaces the client secret.** It read "disabling it needs a client
+  secret", which invites the reading that enabling PKCE means you do not need one. PKCE protects the
+  authorization code; the secret authenticates the client at the token endpoint, and a confidential
+  client (a Google "Web application") needs both. Because the authorize step carries only the client
+  id, a missing secret reaches a working consent screen and fails only at the exchange.
+- **`scripts/backfill-page-parents.mjs` can run from a checkout.** pnpm links dependencies per package
+  and the repo root declares none, so `scripts/` could not resolve `@sitewright/core` — it only ever
+  worked inside a container that happened to have it. The resolution is inlined, with a parity test
+  asserting it agrees with the real resolver so the copy cannot drift.
+- **The agent-facing icon docs described a fallback that no longer exists** ("a name with no Phosphor
+  match falls back to a Lucide OUTLINE"), and `search_icons` never mentioned it also returns
+  `brand:` logos and `flag:` country flags.
+
 ## [0.37.0] — 2026-08-24
 
 ### Fixed
@@ -3000,7 +3057,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/sitewright-cms/sitewright/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/sitewright-cms/sitewright/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sitewright-cms/sitewright/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/sitewright-cms/sitewright/compare/v0.34.0...v0.35.0

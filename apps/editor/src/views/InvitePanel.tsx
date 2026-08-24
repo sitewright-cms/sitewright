@@ -3,7 +3,7 @@ import { Check } from 'lucide-react';
 import type { Invite } from '../api';
 import { useToast } from './ui/Toast';
 import { useDialogs } from './ui/Dialogs';
-import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton, ghostButton } from '../theme';
 
 interface InvitePanelProps {
   kind: 'developer' | 'client';
@@ -11,6 +11,12 @@ interface InvitePanelProps {
   onInvite: (email: string) => Promise<{ token: string }>;
   onRevoke: (id: string) => Promise<void>;
   onChanged: () => void | Promise<void>;
+  /**
+   * Approve a pending invite outright, skipping the link. Project-scoped only — a platform-staff
+   * invite grants an instance-wide role, which is not a decision to complete on someone's behalf from
+   * here. Omitted ⇒ no Approve button.
+   */
+  onApprove?: (invite: Invite) => void | Promise<void>;
 }
 
 /** Builds the shareable invite link from a raw token. */
@@ -22,7 +28,7 @@ function inviteLink(token: string): string {
  * Shared invite UI: invite by email, surface the one-time link to copy (no email infra),
  * and list/revoke pending invites. Used for both developer and client invites.
  */
-export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: InvitePanelProps) {
+export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onApprove }: InvitePanelProps) {
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,13 +119,25 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
                 {inv.email}
                 <span className="ml-2 text-[11px] text-slate-500 dark:text-slate-400">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
               </span>
-              <button
-                aria-label={`Revoke invite for ${inv.email}`}
-                className={dangerButton}
-                onClick={() => revoke(inv.id)}
-              >
-                Revoke
-              </button>
+              <span className="flex shrink-0 items-center gap-2">
+                {onApprove && (
+                  <button
+                    type="button"
+                    aria-label={`Approve ${inv.email} now`}
+                    className={`${ghostButton} px-2.5 py-1 text-xs`}
+                    onClick={() => void onApprove(inv)}
+                  >
+                    Approve now
+                  </button>
+                )}
+                <button
+                  aria-label={`Revoke invite for ${inv.email}`}
+                  className={dangerButton}
+                  onClick={() => revoke(inv.id)}
+                >
+                  Revoke
+                </button>
+              </span>
             </li>
           ))}
         </ul>

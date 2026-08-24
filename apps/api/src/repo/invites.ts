@@ -263,3 +263,83 @@ export async function acceptPendingInvitesForEmail(db: Database, userId: string,
     }
   });
 }
+
+/** The outcome of approving an invite directly. `password` is present only when an ACCOUNT was created. */
+export interface ApprovedInvite {
+  email: string;
+  userId: string;
+  /** True when this call created the account (and therefore minted a password to show once). */
+  created: boolean;
+  /** The one-time password, only for a newly-created account. Never stored in the clear, never re-shown. */
+  password?: string;
+}
+
+/**
+ * Approve a pending invite WITHOUT the invite link — the admin vouches for the person instead.
+ *
+ * The link flow assumes the invitee can receive and act on it, which is exactly what fails when there
+ * is no mail server configured (the common self-hosted case) or the client simply never clicks. The
+ * admin already decided to grant access when they added the member, so this completes that decision:
+ * the grant is applied, and the invite is marked used so the outstanding link cannot ALSO be redeemed
+ * later — one decision, one grant, no second door left open.
+ *
+ * An account that already exists is only granted; its password is untouched. A new account is created
+ * with a generated password returned ONCE for the admin to hand over. Either way the invitee can then
+ * sign in with SSO too, because `resolveOidcUser` federates onto an existing account by verified email.
+ *
+ * An EXPIRED invite is still approvable: expiry bounds how long an unattended LINK stays redeemable,
+ * and an admin acting deliberately now is not that risk. An already-accepted one is not — that grant
+ * has been made.
+ */
+export async function approveInvite(
+  db: Database,
+  inviteId: string,
+  opts: { projectId: string; actorUserId: string; generatePassword: () => string; hashPassword: (p: string) => Promise<string> },
+  now: Date = new Date(),
+): Promise<ApprovedInvite> {
+  const [invite] = await db.select().from(invites).where(eq(invites.id, inviteId));
+  if (!invite) throw new NotFoundError('invite not found');
+  // Scope the action to the project the caller was authorized for — an invite id alone must not reach
+  // across projects, and a platform-wide invite is not a project owner's to approve.
+  if (invite.projectId !== opts.projectId) throw new NotFoundError('invite not found');
+  if (invite.acceptedAt) throw new ConflictError('this invite has already been used');
+
+  const email = invite.email.trim().toLowerCase();
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+
+  let created = false;
+  let password: string | undefined;
+  let userId = existing?.id;
+  let passwordHash: string | undefined;
+  if (!userId) {
+    // Hash OUTSIDE the transaction: scrypt at these parameters takes ~100ms and would hold a write
+    // transaction open for it (SQLite serializes writers).
+    password = opts.generatePassword();
+    passwordHash = await opts.hashPassword(password);
+    created = true;
+    userId = newId();
+  }
+
+  const resolvedUserId = userId;
+  await db.transaction(async (tx) => {
+    if (created && passwordHash) {
+      await tx.insert(users).values({
+        id: resolvedUserId,
+        email,
+        passwordHash,
+        platformRole: null,
+        mustChangePassword: false,
+        createdAt: now,
+      });
+    }
+    const claimed = await tx
+      .update(invites)
+      .set({ acceptedAt: now, acceptedBy: resolvedUserId })
+      .where(and(eq(invites.id, invite.id), isNull(invites.acceptedAt)))
+      .returning({ id: invites.id });
+    if (claimed.length === 0) throw new ConflictError('this invite has already been used');
+    await applyInviteGrant(tx, resolvedUserId, invite, now);
+  });
+
+  return { email, userId: resolvedUserId, created, ...(password ? { password } : {}) };
+}

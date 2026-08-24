@@ -278,6 +278,8 @@ import {
   verifyUserPassword,
   userHasPassword,
   resolveOidcUser,
+  hasAccessBeyondProject,
+  setPasswordAsAdmin,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
 import { sweepExpiredAuthRows, reapDeletedMedia, reapUnusedOAuthClients, reapDeadPats } from '../repo/maintenance.js';
@@ -297,6 +299,7 @@ import {
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import {
   acceptInvite,
+  approveInvite,
   createInvite,
   getInvite,
   hasPendingInvite,
@@ -304,6 +307,7 @@ import {
   peekInvite,
   revokeInvite,
 } from '../repo/invites.js';
+import { generatePassword, hashPassword } from '../auth/password.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } from '../repo/integrity.js';
@@ -3164,6 +3168,54 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const peek = await peekInvite(db, token);
       if (!peek) throw new NotFoundError('invite not found');
       return reply.send({ invite: peek });
+    },
+  );
+
+  // Approve a pending invite WITHOUT the link — the admin vouches for the invitee. Creates the account
+  // if there is none (returning a one-time password to hand over) and burns the outstanding link, so
+  // the same grant cannot also be redeemed from an email later.
+  app.post<{ Params: { projectId: string; inviteId: string } }>(
+    '/projects/:projectId/invites/:inviteId/approve',
+    { config: rl(20) },
+    async (req, reply) => {
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const result = await approveInvite(db, req.params.inviteId, {
+        projectId: req.params.projectId,
+        actorUserId: ctx.userId,
+        generatePassword,
+        hashPassword,
+      });
+      req.log.info(
+        { projectId: req.params.projectId, actor: ctx.userId, created: result.created },
+        'invite approved directly by an admin',
+      );
+      // The password is in the RESPONSE only — never logged, never stored in the clear, never re-shown.
+      return reply.send(result);
+    },
+  );
+
+  // Issue a fresh password for a project member the admin manages. The plaintext is returned once.
+  app.post<{ Params: { projectId: string; userId: string } }>(
+    '/projects/:projectId/members/:userId/password',
+    { config: rl(10) },
+    async (req, reply) => {
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const target = req.params.userId;
+      // Managing a project does not make its owner the custodian of an ACCOUNT. If the member holds
+      // staff rights or belongs to another client's project, a password minted here would hand over
+      // that access too — so it takes a platform admin.
+      if (await hasAccessBeyondProject(db, target, req.params.projectId)) {
+        await requireInstanceAdmin(req);
+      } else {
+        // Still has to BE a member of this project — a bare user id is not a licence to reset anyone.
+        const members = await listProjectMembers(db, ctx);
+        if (!members.some((m) => m.userId === target)) throw new NotFoundError('member not found');
+      }
+      const password = generatePassword();
+      await setPasswordAsAdmin(db, target, password);
+      const email = await getUserEmail(db, target);
+      req.log.info({ projectId: req.params.projectId, actor: ctx.userId }, 'member password reset by an admin');
+      return reply.send({ email, password });
     },
   );
 

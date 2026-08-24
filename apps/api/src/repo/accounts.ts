@@ -529,3 +529,39 @@ export async function addProjectMember(
     createdAt: new Date(),
   });
 }
+
+/**
+ * Whether `userId` holds access BEYOND `projectId` — platform staff, or a member of another project.
+ *
+ * The gate on an admin-issued password. Managing a project does not make its owner the custodian of
+ * an ACCOUNT: the same login may hold staff rights or belong to other clients' projects, and minting
+ * a password for it would hand over all of that. So the reset is confined to accounts whose only
+ * access is the project the caller already administers; anything wider is a platform-admin action.
+ */
+export async function hasAccessBeyondProject(db: Database, userId: string, projectId: string): Promise<boolean> {
+  const [user] = await db.select({ role: users.platformRole }).from(users).where(eq(users.id, userId));
+  if (!user) return false;
+  if (user.role) return true; // admin or developer — staff, not a project-scoped client
+  const memberships = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, userId));
+  return memberships.some((m) => m.projectId !== projectId);
+}
+
+/**
+ * Replace a user's password on an admin's authority, returning nothing — the caller shows the
+ * plaintext it generated exactly once.
+ *
+ * No current-password check, deliberately: the point is that the user CANNOT supply one (lost it, or
+ * never had one because the account was federated). Authorization is the caller's job, and
+ * {@link hasAccessBeyondProject} is what keeps it from reaching accounts the caller does not own.
+ * Clears `mustChangePassword` for the same reason {@link changePassword} does — the account is no
+ * longer on a well-known credential.
+ */
+export async function setPasswordAsAdmin(db: Database, userId: string, newPassword: string): Promise<void> {
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
+  if (!user) throw new NotFoundError('user not found');
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
+}

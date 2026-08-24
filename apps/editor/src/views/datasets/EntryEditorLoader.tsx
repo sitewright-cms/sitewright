@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Dataset, Entry } from '@sitewright/schema';
 import { api } from '../../api';
 import { EntryEditorModal } from './EntryEditorModal';
+import { requestDatasetView } from '../../lib/dataset-navigation';
 
 interface EntryEditorLoaderProps {
   projectId: string;
@@ -41,5 +42,21 @@ export function EntryEditorLoader({ projectId, dataset, id, onSaved, onClose }: 
   }, [projectId, dataset, id]);
 
   if (!found) return null;
-  return <EntryEditorModal projectId={projectId} dataset={found.dataset} entry={found.entry} onSaved={onSaved} onClose={onClose} />;
+  // This loader IS the page-editor path (a preview-clicked `data-sw-entry`), so the row's dataset is
+  // off-screen — offer the way there. Close first: the rail is a full-height panel, and leaving the
+  // entry stacked over it would bury what the click just navigated to.
+  const viewDataset = (): void => {
+    onClose();
+    requestDatasetView(found.dataset.slug);
+  };
+  return (
+    <EntryEditorModal
+      projectId={projectId}
+      dataset={found.dataset}
+      entry={found.entry}
+      onSaved={onSaved}
+      onClose={onClose}
+      onViewDataset={viewDataset}
+    />
+  );
 }

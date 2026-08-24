@@ -180,10 +180,23 @@ describe('remote MCP transport (/mcp)', () => {
       if (res.statusCode !== 200) expect.fail(`unexpected status ${res.statusCode} on call ${i + 1}`);
     }
     expect(firstLimited, 'expected to reach the /mcp route cap').toBeDefined();
-    const body = firstLimited!.json() as { jsonrpc: string; id: unknown; error?: { code: number; message: string } };
+    const body = firstLimited!.json() as {
+      jsonrpc: string;
+      id: unknown;
+      error?: { code: number; message: string; data?: { retryAfterSeconds?: number } };
+    };
     expect(body.jsonrpc).toBe('2.0');
     expect(body.error?.code).toBe(-32000);
-    expect(body.error?.message).toContain('retry-after');
-    expect(firstLimited!.headers['retry-after']).toBeDefined();
+
+    // ★ The envelope must state HOW LONG, not point at a header. A model driving these tools sees this
+    // body and nothing else; "honor the retry-after header" is unactionable to it, so it retries at once
+    // and spends its failure budget re-tripping the same limit.
+    const header = Number(firstLimited!.headers['retry-after']);
+    expect(header, 'the plugin still sets retry-after').toBeGreaterThan(0);
+    const seconds = body.error?.data?.retryAfterSeconds;
+    expect(seconds, 'the wait is machine-readable for the host').toBe(header);
+    expect(body.error?.message, 'the wait is stated for the model').toContain(`${seconds}s`);
+    // And it must read as temporary — a throttle the same call survives, not a rejected request.
+    expect(body.error?.message).toMatch(/temporary|will succeed|retry/i);
   }, 120_000);
 });

@@ -25,6 +25,8 @@ export const MCP_RL_MAX = 600;
  * the token has authenticated, so a real agent is unaffected past its first call.
  */
 const MCP_RL_BASE = 120;
+/** The rate-limit window in seconds — the floor a 429 reports when the plugin set no `retry-after`. */
+const RATE_LIMIT_WINDOW_SECONDS = 60;
 
 function bearerOf(req: FastifyRequest): string | undefined {
   const header = req.headers.authorization;
@@ -88,8 +90,28 @@ export function registerMcpRoutes(
     const id = (body as { id?: unknown } | null | undefined)?.id;
     return typeof id === 'string' || typeof id === 'number' ? id : null;
   };
-  const rpcError = (reply: FastifyReply, status: number, message: string, id: string | number | null): FastifyReply =>
-    reply.code(status).send({ jsonrpc: '2.0', id, error: { code: -32000, message } });
+  const rpcError = (
+    reply: FastifyReply,
+    status: number,
+    message: string,
+    id: string | number | null,
+    data?: Record<string, unknown>,
+  ): FastifyReply =>
+    reply.code(status).send({ jsonrpc: '2.0', id, error: { code: -32000, message, ...(data ? { data } : {}) } });
+
+  /**
+   * How long the caller must wait, in SECONDS, from the reply the rate limiter already built.
+   *
+   * @fastify/rate-limit writes `retry-after` in seconds (v10 `res.header(labels.retryAfter, ttlInSeconds)`)
+   * — worth pinning, because the same header carried MILLISECONDS in older majors and a silent unit swap
+   * would turn a 30-second wait into an eight-hour one. Falls back to the window when the header is
+   * absent: an agent needs A number to back off on, and "unknown" reads as "retry immediately".
+   */
+  const retryAfterSecondsOf = (reply: FastifyReply): number => {
+    const raw = reply.getHeader('retry-after');
+    const n = Number(Array.isArray(raw) ? raw[0] : raw);
+    return Number.isFinite(n) && n > 0 ? Math.ceil(n) : RATE_LIMIT_WINDOW_SECONDS;
+  };
 
   // Introspect cache: EVERY /mcp POST resolves the token's scope via GET /api-key/self, which sits in the
   // same per-token rate bucket at 30/min — an agent pacing tool calls well under the /mcp cap still tripped
@@ -170,8 +192,24 @@ export function registerMcpRoutes(
   // already on the reply and survive this handler; the message tells the agent to honor them.
   const mcpErrorHandler = (error: { statusCode?: number }, req: FastifyRequest, reply: FastifyReply): void => {
     const status = error.statusCode ?? 500;
-    const message = status === 429 ? 'rate limit exceeded — honor the retry-after header and back off' : 'internal error';
-    void rpcError(reply, status, message, rpcIdOf(req.body));
+    if (status === 429) {
+      // ★ SAY THE NUMBER. Pointing at the `retry-after` HEADER only helps a caller that can read
+      // headers, and a model driving these tools generally sees the JSON-RPC body and nothing else —
+      // so "honor the retry-after header" was, to the reader, indistinguishable from "you failed".
+      // It then retries at once, trips the limit again, and burns its failure budget on a wait it was
+      // never told the length of. The seconds go in the MESSAGE (for the model) and in `error.data`
+      // (for the host, which can back off programmatically); the header stays for HTTP clients.
+      const retryAfterSeconds = retryAfterSecondsOf(reply);
+      void rpcError(
+        reply,
+        status,
+        `rate limit exceeded — wait ${retryAfterSeconds}s before the next call, then retry. This is a temporary throttle, not a rejection of the request: the same call will succeed after the wait.`,
+        rpcIdOf(req.body),
+        { retryAfterSeconds },
+      );
+      return;
+    }
+    void rpcError(reply, status, 'internal error', rpcIdOf(req.body));
   };
   app.post('/mcp', { config: opts.rlAgent(MCP_RL_BASE), errorHandler: mcpErrorHandler }, handle);
   // Stateless JSON mode uses neither the standalone SSE stream (GET) nor session termination

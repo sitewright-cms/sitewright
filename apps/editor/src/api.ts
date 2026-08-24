@@ -887,6 +887,15 @@ export const api = {
     request<{ invite: Invite; token: string }>('POST', `/projects/${projectId}/invites`, { email }),
   /** Platform-staff invites (instance-wide). */
   listInvites: () => request<{ invites: Invite[] }>('GET', '/admin/invites'),
+  /** Approve a pending STAFF invite without the link. `password` only when the account was created. */
+  approveStaffInvite: (inviteId: string) =>
+    request<{ email: string; userId: string; created: boolean; password?: string }>(
+      'POST',
+      `/admin/invites/${encodeURIComponent(inviteId)}/approve`,
+    ),
+  /** Issue a fresh password for another staff account. Returned once — only the hash is stored. */
+  resetStaffPassword: (userId: string) =>
+    request<{ email: string | null; password: string }>('POST', `/admin/users/${encodeURIComponent(userId)}/password`),
   /** A project's pending (client) invites. */
   listProjectInvites: (projectId: string) =>
     request<{ invites: Invite[] }>('GET', `/projects/${projectId}/invites`),
@@ -902,6 +911,19 @@ export const api = {
     request<{ members: OrgMember[] }>('GET', `/projects/${projectId}/members`),
   removeProjectMember: (projectId: string, userId: string) =>
     request<void>('DELETE', `/projects/${projectId}/members/${encodeURIComponent(userId)}`),
+  /** Approve a pending invite WITHOUT the link. `password` comes back only when the account was created
+   *  by this call — an existing account is granted access and keeps its own credential. Shown once. */
+  approveProjectInvite: (projectId: string, inviteId: string) =>
+    request<{ email: string; userId: string; created: boolean; password?: string }>(
+      'POST',
+      `/projects/${projectId}/invites/${encodeURIComponent(inviteId)}/approve`,
+    ),
+  /** Issue a fresh password for a project member. Returned once — only the hash is stored. */
+  resetProjectMemberPassword: (projectId: string, userId: string) =>
+    request<{ email: string | null; password: string }>(
+      'POST',
+      `/projects/${projectId}/members/${encodeURIComponent(userId)}/password`,
+    ),
   createProject: (name: string, slug: string) =>
     request<{ project: Project }>('POST', '/projects', { name, slug }),
   /** Rename a project's display NAME and/or its SLUG (owner-only). A slug change rewrites media refs + moves

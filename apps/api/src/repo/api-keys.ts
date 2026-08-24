@@ -163,9 +163,14 @@ export class ApiKeyRepository {
    * idle agent stays visible for its whole session, not just while a 1h access token is valid.
    */
   async listAgentConnections(ctx: ProjectContext, now: Date = new Date()): Promise<ApiKeyView[]> {
-    if (!WRITE_ROLES.has(ctx.role)) {
-      throw new ForbiddenError('insufficient role to view agent connections');
-    }
+    // ★ ANY member of the project, not just the owner — unlike minting/revoking keys above.
+    // A member can already connect an agent (the OAuth consent path freezes THEIR role into the grant)
+    // and watches it edit the project in front of them, so hiding the list of what is connected bought
+    // no secrecy and cost them the one screen that says whether their agent is still attached. Nothing
+    // here is a credential: a PAT's row is its name, role, capabilities and last-used time — the secret
+    // is returned once at creation and never stored in the clear. Creating and revoking keys stays
+    // owner-only, which is the boundary that actually matters.
+    if (!ctx.role) throw new ForbiddenError('insufficient role to view agent connections');
     const rows = await this.db
       .select()
       .from(apiKeys)

@@ -111,6 +111,30 @@ export async function startOidcAuth(p: OidcProviderRuntime, redirectUri: string,
  * issuer, audience, expiry, and the expected state + nonce) — all enforced by openid-client. Returns
  * the verified claims. Throws {@link OidcError} on any validation failure.
  */
+/**
+ * What the provider actually objected to, for the log line an operator reads at 2am.
+ *
+ * A token-endpoint rejection arrives as oauth4webapi's `ResponseBodyError`, whose `message` is the
+ * generic "server responded with an error in the response body" — the same sentence for a wrong client
+ * secret, a replayed code and a redirect-URI mismatch. The OAuth error CODE and description that
+ * distinguish them sit on the error object and were being dropped, so every failure logged identically
+ * and told nobody anything. Read duck-typed rather than by importing oauth4webapi: it is a transitive
+ * dependency of openid-client, not ours to pin.
+ */
+export function describeExchangeFailure(err: unknown): string {
+  const e = err as { error?: unknown; error_description?: unknown; status?: unknown; message?: unknown };
+  const code = typeof e?.error === 'string' ? e.error : undefined;
+  if (code) {
+    const detail = typeof e.error_description === 'string' ? e.error_description : undefined;
+    const status = typeof e.status === 'number' ? ` (HTTP ${e.status})` : '';
+    // `invalid_client` = the client id/secret pair the provider has does not match ours; `invalid_grant`
+    // = the code was already used, expired, or the clock is off; `redirect_uri_mismatch` = the callback
+    // URL differs from the registered one. Naming the code is what makes those three distinguishable.
+    return detail ? `${code}: ${detail}${status}` : `${code}${status}`;
+  }
+  return typeof e?.message === 'string' ? e.message : 'token exchange failed';
+}
+
 export async function completeOidcAuth(
   p: OidcProviderRuntime,
   currentUrl: URL,
@@ -129,7 +153,7 @@ export async function completeOidcAuth(
     });
     claims = tokens.claims();
   } catch (err) {
-    throw new OidcError('exchange', err instanceof Error ? err.message : 'token exchange failed', { cause: err });
+    throw new OidcError('exchange', describeExchangeFailure(err), { cause: err });
   }
   if (!claims) throw new OidcError('no_id_token', 'the identity provider did not return an ID token');
   return {

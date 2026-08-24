@@ -18,8 +18,9 @@ test('admin configures an OIDC provider; the login screen offers it', async ({ p
   await page.getByRole('menuitem', { name: 'System Settings' }).click();
 
   const modal = page.getByRole('dialog', { name: 'System settings' });
-  // Single sign-on (OIDC) is grouped under the "Ops" tab.
-  await modal.getByRole('tab', { name: 'Ops' }).click();
+  // Single sign-on (OIDC) sits under "Integrations" — an identity provider belongs with the other
+  // third-party wiring (SMTP, captcha, AI keys), not with Ops (backups, logging, database health).
+  await modal.getByRole('tab', { name: 'Integrations' }).click();
   // Providers are INSTANCE-GLOBAL: start from none so a re-run against the same slot doesn't edit
   // "Provider 2" and assert against a stale "Provider 1".
   // (Removing provider 1 renumbers the rest, so the same locator drains the list; the bound keeps a
@@ -51,7 +52,7 @@ test('admin configures an OIDC provider; the login screen offers it', async ({ p
   await dismissProjectSelector(page); // a fresh load with no project open covers the header gear
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('menuitem', { name: 'System Settings' }).click();
-  await modal.getByRole('tab', { name: 'Ops' }).click();
+  await modal.getByRole('tab', { name: 'Integrations' }).click();
   await modal.getByRole('button', { name: 'Remove provider 1' }).click();
   await modal.getByRole('button', { name: 'Save settings' }).click();
   await expect(modal.getByText('Saved.')).toBeVisible();

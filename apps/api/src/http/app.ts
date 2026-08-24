@@ -278,6 +278,8 @@ import {
   verifyUserPassword,
   userHasPassword,
   resolveOidcUser,
+  hasAccessBeyondProject,
+  setPasswordAsAdmin,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
 import { sweepExpiredAuthRows, reapDeletedMedia, reapUnusedOAuthClients, reapDeadPats } from '../repo/maintenance.js';
@@ -297,6 +299,7 @@ import {
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import {
   acceptInvite,
+  approveInvite,
   createInvite,
   getInvite,
   hasPendingInvite,
@@ -304,6 +307,7 @@ import {
   peekInvite,
   revokeInvite,
 } from '../repo/invites.js';
+import { generatePassword, hashPassword } from '../auth/password.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } from '../repo/integrity.js';
@@ -3091,6 +3095,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(201).send(result);
   });
 
+  // Approve a pending STAFF invite without the link — the same decision the project surface offers,
+  // for admin/developer accounts. Instance-admin only: this grants an instance-wide role.
+  app.post<{ Params: { inviteId: string } }>('/admin/invites/:inviteId/approve', { config: rl(20) }, async (req, reply) => {
+    const actor = await requireInstanceAdmin(req);
+    const result = await approveInvite(db, req.params.inviteId, {
+      projectId: null, // platform scope — a project's invite is not reachable from here
+      actorUserId: actor,
+      generatePassword,
+      hashPassword,
+    });
+    req.log.info({ actor, created: result.created }, 'staff invite approved directly by an admin');
+    return reply.send(result);
+  });
+
+  // Issue a fresh password for another STAFF account. Instance-admin only, and never your own — an
+  // admin changing their own password goes through Account settings, which re-authenticates first;
+  // routing it through here would turn a hijacked admin session into a permanent credential.
+  app.post<{ Params: { userId: string } }>('/admin/users/:userId/password', { config: rl(10) }, async (req, reply) => {
+    const actor = await requireInstanceAdmin(req);
+    const target = req.params.userId;
+    if (target === actor) throw new ForbiddenError('change your own password in Account settings');
+    const role = await getPlatformRole(db, target);
+    if (!role) throw new NotFoundError('not a platform staff account');
+    const password = generatePassword();
+    await setPasswordAsAdmin(db, target, password);
+    const email = await getUserEmail(db, target);
+    req.log.info({ actor }, 'staff password reset by an admin');
+    return reply.send({ email, password });
+  });
+
   app.get('/admin/invites', { config: rl(30) }, async (req, reply) => {
     await requireInstanceAdmin(req);
     return reply.send({ invites: await listInvites(db, {}) });
@@ -3164,6 +3198,54 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const peek = await peekInvite(db, token);
       if (!peek) throw new NotFoundError('invite not found');
       return reply.send({ invite: peek });
+    },
+  );
+
+  // Approve a pending invite WITHOUT the link — the admin vouches for the invitee. Creates the account
+  // if there is none (returning a one-time password to hand over) and burns the outstanding link, so
+  // the same grant cannot also be redeemed from an email later.
+  app.post<{ Params: { projectId: string; inviteId: string } }>(
+    '/projects/:projectId/invites/:inviteId/approve',
+    { config: rl(20) },
+    async (req, reply) => {
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const result = await approveInvite(db, req.params.inviteId, {
+        projectId: req.params.projectId,
+        actorUserId: ctx.userId,
+        generatePassword,
+        hashPassword,
+      });
+      req.log.info(
+        { projectId: req.params.projectId, actor: ctx.userId, created: result.created },
+        'invite approved directly by an admin',
+      );
+      // The password is in the RESPONSE only — never logged, never stored in the clear, never re-shown.
+      return reply.send(result);
+    },
+  );
+
+  // Issue a fresh password for a project member the admin manages. The plaintext is returned once.
+  app.post<{ Params: { projectId: string; userId: string } }>(
+    '/projects/:projectId/members/:userId/password',
+    { config: rl(10) },
+    async (req, reply) => {
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const target = req.params.userId;
+      // Managing a project does not make its owner the custodian of an ACCOUNT. If the member holds
+      // staff rights or belongs to another client's project, a password minted here would hand over
+      // that access too — so it takes a platform admin.
+      if (await hasAccessBeyondProject(db, target, req.params.projectId)) {
+        await requireInstanceAdmin(req);
+      } else {
+        // Still has to BE a member of this project — a bare user id is not a licence to reset anyone.
+        const members = await listProjectMembers(db, ctx);
+        if (!members.some((m) => m.userId === target)) throw new NotFoundError('member not found');
+      }
+      const password = generatePassword();
+      await setPasswordAsAdmin(db, target, password);
+      const email = await getUserEmail(db, target);
+      req.log.info({ projectId: req.params.projectId, actor: ctx.userId }, 'member password reset by an admin');
+      return reply.send({ email, password });
     },
   );
 
@@ -3940,9 +4022,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/agent-connections',
     { config: rl(60) },
     async (req, reply) => {
+      // Any member of the project may SEE what is connected to it; creating or revoking a key stays
+      // owner-only (ApiKeyRepository.WRITE_ROLES). `session-only` still holds: a token must not be able
+      // to enumerate the other agents attached to the project it was issued for.
       const { ctx } = await resolveProject(req, 'session-only');
-      // Owner-only — gate at the route so it doesn't rely on listAgentConnections throwing first.
-      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can view agent connections');
       const [pats, sessions] = await Promise.all([
         apiKeysRepo.listAgentConnections(ctx),
         oauthRepo.listActiveSessions(ctx.projectId),
@@ -3986,10 +4069,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
-      // Owner-only. The PAT path enforces this inside apiKeysRepo.revoke, but the oauth: path calls
-      // revokeAllForUserProject directly (no role guard), so gate both here.
-      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can disconnect agents');
       const id = req.params.id;
+      // Owner-only, with ONE exception: a member may sever their OWN agent. They can create that
+      // connection (the consent path takes any project role), so being unable to undo it would leave
+      // the person who attached ChatGPT waiting on the owner to detach it. Anything else — another
+      // user's session, or any PAT — stays owner-only. The PAT path enforces that inside
+      // apiKeysRepo.revoke, but the oauth: path calls revokeAllForUserProject directly with no role
+      // guard, so both are gated here.
+      const ownSession = id === `oauth:${ctx.userId}`;
+      if (ctx.role !== 'owner' && !ownSession) {
+        throw new ForbiddenError('only the project owner can disconnect another agent');
+      }
       if (id.startsWith('oauth:')) {
         // An OAuth/MCP session: sever the whole chain + in-flight access tokens for that user+project.
         await oauthRepo.revokeAllForUserProject(id.slice('oauth:'.length), ctx.projectId);

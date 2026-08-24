@@ -324,4 +324,33 @@ describe('DatasetManager — filtering entries', () => {
     expect(screen.getByText(/No entry matches/)).toBeInTheDocument();
     expect(screen.queryByText('No entries yet.')).toBeNull();
   });
+
+  describe('a "View dataset" jump from an entry opened over the page editor', () => {
+    it('selects the dataset named by SLUG', async () => {
+      // The marker on the page carries the slug; selection is keyed by entity id, and a renamed
+      // dataset keeps its id — so the jump has to resolve one to the other.
+      const { rerender } = render(<DatasetManager project={project} selectSlug={null} selectSignal={0} />);
+      await screen.findByText('Alpha');
+      rerender(<DatasetManager project={project} selectSlug="alpha" selectSignal={1} />);
+      // Selecting a dataset loads its entries — the proof it was actually selected.
+      await waitFor(() => expect(listEntries).toHaveBeenCalled());
+      expect(await screen.findByText('First post')).toBeInTheDocument();
+    });
+
+    it('re-selects on a SECOND request for the same dataset', async () => {
+      // Keyed on the signal, not the slug: clicking through twice must work the second time too.
+      const { rerender } = render(<DatasetManager project={project} selectSlug="alpha" selectSignal={1} />);
+      await screen.findByText('First post');
+      fireEvent.click(await screen.findByText('Zeta'));
+      rerender(<DatasetManager project={project} selectSlug="alpha" selectSignal={2} />);
+      expect(await screen.findByText('First post')).toBeInTheDocument();
+    });
+
+    it('ignores an unknown slug rather than erroring', async () => {
+      // The dataset may have been deleted since the page was rendered.
+      render(<DatasetManager project={project} selectSlug="gone" selectSignal={1} />);
+      await screen.findByText('Alpha');
+      expect(screen.queryByText('First post')).toBeNull();
+    });
+  });
 });

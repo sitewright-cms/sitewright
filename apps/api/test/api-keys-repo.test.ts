@@ -222,7 +222,13 @@ describe('ApiKeyRepository.listAgentConnections + revoke', () => {
     await expect(keys.revoke(pctxA, key.id)).rejects.toThrow(NotFoundError);
   });
 
-  it('requires a write role to list agent connections', async () => {
-    await expect(keys.listAgentConnections(memberCtxA)).rejects.toThrow(ForbiddenError);
+  it('lets any project role LIST agent connections, while minting stays owner-only', async () => {
+    // Deliberately split: a member can already attach an agent (the OAuth consent path freezes their
+    // role into the grant), so seeing what is attached tells them nothing they could not observe in
+    // the editor. Creating a durable credential is the boundary that matters, and it does not move.
+    await expect(keys.listAgentConnections(memberCtxA)).resolves.toEqual([]);
+    await expect(
+      keys.create(memberCtxA, { name: 'k', role: 'member', capabilities: ['content:read'], expiresAt: new Date(Date.now() + 86_400_000) }),
+    ).rejects.toThrow(ForbiddenError);
   });
 });

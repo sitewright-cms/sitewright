@@ -527,6 +527,12 @@ interface EntryEditorModalProps {
   /** When true (a NEW entry), the author can set the entry KEY (its id) — used as {{item.<set>.<key>}}.
    *  False/omitted: the key is shown read-only (the id is immutable after creation). */
   keyEditable?: boolean;
+  /**
+   * Jump to this entry's DATASET. Present only when the modal was opened from the page editor, where
+   * the dataset is not otherwise reachable — inside the Data rail the reader is already there, and a
+   * link back to the panel they are standing in would be noise.
+   */
+  onViewDataset?: () => void;
   /** The dataset's existing entry ids — to reject a duplicate key. */
   existingIds?: ReadonlySet<string>;
   /** All datasets + entries in the project — powers a `reference` field's entry picker. */
@@ -544,7 +550,7 @@ interface EntryEditorModalProps {
  * saving persists via `putEntry`, surfaces a toast, and keeps the modal open (the baseline resets so
  * the form is no longer dirty) — the parent only reloads its list / refreshes the preview.
  */
-export function EntryEditorModal({ projectId, dataset, entry, keyEditable = false, existingIds, allDatasets, allEntries, onSaved, onClose }: EntryEditorModalProps) {
+export function EntryEditorModal({ projectId, dataset, entry, keyEditable = false, existingIds, allDatasets, allEntries, onSaved, onClose, onViewDataset }: EntryEditorModalProps) {
   const { confirm, dialog } = useDialogs();
   const toast = useToast();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -683,9 +689,22 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   // Title reflects the CURRENT (possibly unsaved) first-text-field value, not the stale prop.
   const title = `Edit ${entryLabel(dataset, { ...entry, id: base.id, values })}`;
 
+  // Opened from a page, the row says nothing about WHICH dataset it came from — and the answer is one
+  // rail away, but only if you already know the name. Naming it here also makes the row's shape
+  // explicable ("this is a Team member") rather than a set of fields that appeared from somewhere.
+  const datasetLink = onViewDataset ? (
+    <button
+      type="button"
+      className="mt-0.5 truncate text-[11px] font-medium text-indigo-600 underline-offset-2 hover:underline dark:text-indigo-400"
+      onClick={onViewDataset}
+    >
+      View dataset “{dataset.name || dataset.slug}”
+    </button>
+  ) : undefined;
+
   return (
     <>
-    <Modal title={title} size="lg" onClose={onClose} onBeforeClose={confirmClose} onSave={() => void submit()} saving={saving} saveDisabled={!canSave} headerExtra={statusSwitch}>
+    <Modal title={title} titleBelow={datasetLink} size="lg" onClose={onClose} onBeforeClose={confirmClose} onSave={() => void submit()} saving={saving} saveDisabled={!canSave} headerExtra={statusSwitch}>
       <EntryFormContext.Provider value={ctx}>
         <div className="flex flex-col gap-3 p-5">
           {keyFieldOpen ? (

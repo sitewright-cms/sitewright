@@ -9012,6 +9012,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       `object-src 'none'; base-uri 'self'; frame-ancestors ${frameAncestors ?? "'none'"}`;
     /** Stamps the SPA shell's framing headers: XFO is omitted once an allowlist is active (it cannot
      *  express one), leaving `frame-ancestors` as the guard. */
+    /** A request for Vite's content-hashed build output (`/assets/…`), ignoring any query string. */
+    const isBuildAssetPath = (url: string): boolean => (url.split('?', 1)[0] ?? '').startsWith('/assets/');
     const applyShellFraming = (reply: { header(k: string, v: string): unknown }): void => {
       reply.header('content-security-policy', editorCsp());
       if (frameAncestors === null) reply.header('x-frame-options', 'DENY');
@@ -9038,6 +9040,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
+      // ★ NEVER answer a missing BUILD ASSET with the SPA shell. `/assets/*` is Vite's content-hashed
+      // output: a name that isn't on disk is not a client-side route, it is a STALE one — a tab opened
+      // before a redeploy asking for the previous build's chunk. Handing it index.html returns 200 with
+      // `text/html` where the browser expects a JS module, so `import()` rejects on a MIME/parse error
+      // instead of a clean 404, and every lazily-loaded surface (the icon library's brand + flag tabs,
+      // the DaisyUI variants, the Google-fonts catalog) silently fails in a still-working editor. Same
+      // reasoning as the `/.well-known/security.txt` carve-out above: a 200 page of HTML where a file
+      // was expected is worse than the honest 404.
+      if (isBuildAssetPath(req.url)) return reply.code(404).send({ error: 'not found' });
       if (req.method === 'GET' && !isApiPath(req.url)) {
         applyShellFraming(reply);
         return reply

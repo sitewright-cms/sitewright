@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useUnsavedWork } from '../lib/unsaved-work';
 import { api, type Project } from '../api';
 import { glassInput } from '../theme';
 import { Modal } from './ui/Modal';
@@ -43,6 +44,8 @@ export function ProjectSettingsModal({ project, existingSlugs, onSaved, onClose 
   const nameInvalid = trimmedName === '';
   const nameChanged = trimmedName !== project.name;
   const dirty = nameChanged || slugChanged;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Project settings');
   const blocked = nameInvalid || (slugChanged && (!slugValid || slugTaken));
 
   async function run() {

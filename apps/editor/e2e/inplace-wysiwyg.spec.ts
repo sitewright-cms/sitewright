@@ -70,10 +70,20 @@ test('data-sw-html: in-place rich editing (contenteditable + toolbar) persists',
   await expect(region).toHaveAttribute('contenteditable', 'true');
 
   // Select the region's text → the floating toolbar appears; Bold it.
+  //
+  // ★ Ctrl/Cmd+B, not a click on the toolbar's B. Both work in a real browser (verified by hand against
+  // a deployed instance), but headless Chromium will not deliver pointer input to the LEFTMOST control
+  // of this toolbar: it is `position: fixed` inside the sandboxed, opaque-origin preview iframe, and a
+  // click at its centre — Playwright's own computed coordinates, `force: true`, or a raw `mouse.click`
+  // alike — produces no pointerdown at all, while the neighbouring Italic 27px away receives the full
+  // sequence. A dispatched event does fire the handler, which is how we know the button itself is sound.
+  // This spec had been failing on that quirk since 0.35.0 and reads as "rich editing is broken" when it
+  // is not. Keyboard input is a real user path and exercises the same execCommand; the toolbar's own
+  // click path stays covered by the superscript spec below, which does not sit at the toolbar's edge.
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
   await expect(preview.locator('.sw-tb')).toBeVisible();
-  await tbClick(preview, 'bold', 'Bold');
+  await page.keyboard.press('ControlOrMeta+b');
   await expect(region.locator('b, strong')).toHaveCount(1);
 
   // Persist → reopen → the rich region's rendered content keeps the bold markup.

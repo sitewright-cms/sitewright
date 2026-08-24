@@ -71,7 +71,7 @@
     "esbuild": "^0.28.2",
     "flag-icons": "^7.5.0",
     "glightbox": "3.3.1",
-    "lucide-static": "^0.544.0",
+    "lucide-static": "^1.31.0",
     "simple-icons": "^16.27.1",
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",

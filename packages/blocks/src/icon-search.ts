@@ -7,7 +7,7 @@
 import { PHOSPHOR_NAMES, isPhosphorName } from './phosphor-icons.js';
 import { aliasToPhosphor } from './icon-aliases.js';
 import { ICON_NAMES, iconTags } from './icons.js';
-import { BRAND_ICON_NAMES } from './brand-icons.js';
+import { BRAND_ICON_NAMES_ALL, NAME_ALIASES, VENDORED_WEIGHTED_NAMES } from './vendored-icons.js';
 import { FLAG_CODES, flagIcon } from './flag-icons.js';
 import { FLAG_PREFIX } from './icon-render.js';
 
@@ -61,13 +61,26 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
         if (ph) bump(ph, lu === term ? 80 : 35);
       }
     }
+    // RETIRED names, mapped to what they now draw. Searching "twitter" must offer the X mark, because
+    // that is what the name renders — surfacing only Phosphor's retired `twitter-logo` would have the
+    // library disagree with the renderer about the same word.
+    for (const [retired, target] of NAME_ALIASES) {
+      if (retired === term) bump(target, 88);
+    }
+    // VENDORED bare marks. These are drawn in-house because the upstream sets retired them, and they are
+    // real weighted icons — so searching "linkedin" has to offer the untiled letterform, not only the
+    // `brand:` tile. Renderable-but-unfindable is how an author concludes an icon does not exist.
+    for (const name of VENDORED_WEIGHTED_NAMES) {
+      if (name === term) bump(name, 90);
+      else if (name.startsWith(term) || name.includes(term)) bump(name, 45);
+    }
     // BRAND LOGOS. `brand:<slug>` renders a simple-icons logo, but the slugs were not searchable at
     // all — and an unknown slug renders NOTHING: no error, no fallback. A clone author guessed
     // `brand:dinersclub`, got silence, and only caught it by counting <svg> elements against the
     // spans that should have held them. Returning the slugs makes the set discoverable instead of a
     // blind guess. Scored below an exact Phosphor hit but above a loose substring, and emitted with
     // the `brand:` prefix so the result is the literal string {{sw-icon}} expects.
-    for (const slug of BRAND_ICON_NAMES) {
+    for (const slug of BRAND_ICON_NAMES_ALL) {
       if (slug === term) bump(`brand:${slug}`, 95);
       else if (slug.startsWith(term) || slug.endsWith(term)) bump(`brand:${slug}`, 60);
       else if (slug.includes(term)) bump(`brand:${slug}`, 40);

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useUnsavedWork } from '../../lib/unsaved-work';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { History } from 'lucide-react';
 import { ApiError, api, type Project, type SettingsBundle } from '../../api';
@@ -171,6 +172,8 @@ export function SettingsView({
     () => form != null && baseline != null && sectionSnapshot(form, section) !== sectionSnapshot(baseline, section),
     [form, baseline, section],
   );
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Website settings');
 
   function patch(p: Partial<SettingsForm>) {
     setForm((f) => (f ? { ...f, ...p } : f));

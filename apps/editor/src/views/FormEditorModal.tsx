@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useUnsavedWork } from '../lib/unsaved-work';
 import { X } from 'lucide-react';
 import { DEFAULT_FORM_MODES, isPlatformRoutedMode, type Form, type FormField, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
@@ -77,6 +78,9 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
   }, [project.id, modesProp, captchaProp]);
 
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(form), [draft, form]);
+
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Form editor');
 
   function patch(updates: Partial<Form>) {
     setDraft((d) => ({ ...d, ...updates }));

@@ -34,6 +34,7 @@ export * from './icon-render.js';
 export * from './icon-search.js';
 export * from './texture-catalog.js';
 export * from './brand-icons.js';
+export * from './vendored-icons.js';
 export * from './flag-icons.js';
 export * from './components.js';
 export * from './shader-bg.js';

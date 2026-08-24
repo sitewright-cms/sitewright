@@ -462,14 +462,21 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('[{{sw-icon "brand:nope-xyz"}}]', ctx)).toBe('[]');
   });
 
-  it('{{sw-icon "brand:linkedin"}} falls back to the FILLED Phosphor logo (simple-icons dropped the mark)', () => {
-    // simple-icons removed the LinkedIn logo at the brand's request; we fall back to Phosphor's FILLED
-    // `linkedin-logo` (not an outline), so brand:linkedin is a solid LinkedIn mark, never an invisible gap.
+  it('{{sw-icon "brand:linkedin"}} draws the vendored tile, and the bare name the untiled mark', () => {
+    // simple-icons removed the LinkedIn logo at the brand's request and Lucide 1.x dropped its brand set,
+    // so the mark is vendored. `brand:` is the TILED cut; the bare name is the letterform alone and takes
+    // a weight, which is the whole reason it is not simply an alias for the tile.
     const out = renderTemplate('{{sw-icon "brand:linkedin" "size-7"}}', ctx);
-    expect(out).toContain('sw-icon-linkedin-logo sw-icon-fill size-7');
-    expect(out).toContain('viewBox="0 0 256 256"');
-    expect(out).toContain('fill="currentColor"'); // FILLED, not the old stroke fallback
+    expect(out).toContain('sw-icon-brand-linkedin');
+    expect(out).toContain('size-7');
+    expect(out).toContain('viewBox="0 0 24 24"');
+    expect(out).toContain('fill="currentColor"');
     expect(out).not.toContain('stroke="currentColor"');
+
+    const bare = renderTemplate('{{sw-icon "linkedin:bold" "size-7"}}', ctx);
+    expect(bare).toContain('sw-icon-linkedin sw-icon-bold');
+    expect(bare).toContain('viewBox="0 0 256 256"');
+    expect(bare).not.toContain('sw-icon-brand-linkedin');
   });
 
   it('{{sw-icon "flag:…"}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {

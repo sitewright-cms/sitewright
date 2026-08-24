@@ -48,11 +48,14 @@ describe('renderIconSvg — Phosphor icon resolution', () => {
     expect(out).toContain('opacity="0.2"'); // the secondary layer survives
   });
 
-  it('brand:<slug> renders a simple-icons filled logo; brand:linkedin falls back to the FILLED Phosphor logo', () => {
+  it('brand:<slug> renders a filled logo; brand:linkedin now draws the VENDORED tile', () => {
     expect(renderIconSvg('brand:github')).toContain('sw-icon-brand-github');
     expect(renderIconSvg('brand:github')).toContain('viewBox="0 0 24 24"');
+    // Was Phosphor's `linkedin-logo` while simple-icons had no mark to inline. That fallback is gone:
+    // the tile is vendored, so `brand:linkedin` is a brand tile like every other `brand:` name.
     const li = renderIconSvg('brand:linkedin');
-    expect(li).toContain('sw-icon-linkedin-logo sw-icon-fill'); // filled Phosphor fallback (simple-icons lacks it)
+    expect(li).toContain('sw-icon-brand-linkedin');
+    expect(li).toContain('viewBox="0 0 24 24"');
     expect(li).toContain('fill="currentColor"');
     expect(li).not.toContain('stroke="currentColor"');
   });

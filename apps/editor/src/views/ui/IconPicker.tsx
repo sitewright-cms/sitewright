@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
-  BRAND_ICON_NAMES,
+  BRAND_ICON_NAMES_ALL,
   FLAG_CIRCLE_SUFFIX,
   FLAG_CODES,
   flagIcon,
   PHOSPHOR_NAMES,
+  VENDORED_WEIGHTED_NAMES,
   PHOSPHOR_WEIGHTS,
   searchIcons,
   type PhosphorWeight,
@@ -93,7 +94,7 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
   const names = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (tab === 'brands') {
-      const all = BRAND_ICON_NAMES.map((slug: string) => `brand:${slug}`);
+      const all = BRAND_ICON_NAMES_ALL.map((slug: string) => `brand:${slug}`);
       return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
     }
     if (tab === 'flags') {
@@ -111,7 +112,9 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
     }
     // Phosphor: the platform's own scored search when there's a query (it understands synonyms —
     // "car" finds `taxi`), the plain name list when there isn't.
-    const base = q ? [...new Set(searchIcons(q, PAGE).flatMap((g) => g.matches))] : [...PHOSPHOR_NAMES];
+    // Browsing must list the vendored marks alongside Phosphor's, or `linkedin` is renderable but
+    // absent from the only surface an author browses.
+    const base = q ? [...new Set(searchIcons(q, PAGE).flatMap((g) => g.matches))] : [...VENDORED_WEIGHTED_NAMES, ...PHOSPHOR_NAMES];
     return base
       .filter((n: string) => !n.startsWith('brand:'))
       .slice(0, PAGE)

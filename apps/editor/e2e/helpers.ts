@@ -1,4 +1,4 @@
-import { expect, request, type APIResponse, type Locator, type Page } from '@playwright/test';
+import { expect, request, type APIRequestContext, type APIResponse, type Locator, type Page } from '@playwright/test';
 
 /**
  * Seed a signed-in E2E user for a BROWSER spec.
@@ -42,20 +42,54 @@ const baseURL = (): string => process.env.E2E_BASE_URL ?? 'http://dind.local:200
  * reported it as "the seeded platform admin must be able to log in", which reads like a broken slot.
  * Logging in once and reusing the context removes the whole class of failure.
  */
+/**
+ * POST a seed request, waiting out a 429 instead of failing the test that asked for it.
+ *
+ * The auth routes carry a deliberately tight per-IP throttle (20/min) — a security control sized for
+ * humans, not for a suite that seeds ~50 users in one run. Averaged over a run the suite sits under it;
+ * in bursts it does not, and the failure surfaced as "the seeded platform admin must be able to log in"
+ * or a bare `expected 201, received 429` in whichever spec happened to be next. That reads like a
+ * broken slot or a product bug, and it moves between runs.
+ *
+ * So the harness does what any well-behaved client does: honour `retry-after` and try again. Raising
+ * the server's cap for tests was the alternative and a worse one — it would stop exercising the limit
+ * that protects the real login route.
+ */
+async function postSeed(
+  ctx: APIRequestContext,
+  url: string,
+  data: Record<string, unknown>,
+  attempts = 5,
+): Promise<APIResponse> {
+  for (let i = 0; ; i++) {
+    const res = await ctx.post(url, { data });
+    if (res.status() !== 429 || i >= attempts) return res;
+    // The plugin reports seconds; cap it so a misconfigured window cannot hang the run.
+    const after = Math.min(Number(res.headers()['retry-after']) || 2, 65);
+    await new Promise((r) => setTimeout(r, after * 1000));
+  }
+}
+
 let adminCtx: Promise<APIRequestContext> | null = null;
 function admin(): Promise<APIRequestContext> {
   adminCtx ??= (async () => {
     const ctx = await request.newContext({ baseURL: baseURL() });
-    const res = await ctx.post('/auth/login', { data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD } });
+    const res = await postSeed(ctx, '/auth/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD });
     expect(res.status(), 'the seeded platform admin must be able to log in').toBe(200);
     return ctx;
-  })();
+  })().catch((err: unknown) => {
+    // ★ Never cache a FAILED login. `??=` memoizes the PROMISE, so one rejection was replayed to every
+    // later test in the run — a single throttled attempt turned into dozens of identical failures that
+    // pointed at the admin account rather than at the burst that actually caused it.
+    adminCtx = null;
+    throw err;
+  });
   return adminCtx;
 }
 
 /** Invite `email` and return the token. Uses the shared admin session. */
 async function inviteUser(email: string, role: 'developer' | 'admin'): Promise<string> {
-  const res = await (await admin()).post('/admin/invites', { data: { email, role } });
+  const res = await postSeed(await admin(), '/admin/invites', { email, role });
   expect(res.status(), `inviting ${email}`).toBe(201);
   return (await res.json()).token as string;
 }
@@ -68,9 +102,9 @@ async function inviteUser(email: string, role: 'developer' | 'admin'): Promise<s
  */
 export async function signUp(page: Page, email: string, role: 'developer' | 'admin' = 'developer'): Promise<void> {
   const token = await inviteUser(email, role);
-  const reg = await page.request.post('/auth/register', { data: { email, password: E2E_PASSWORD } });
+  const reg = await postSeed(page.request, '/auth/register', { email, password: E2E_PASSWORD });
   expect(reg.status(), `registering ${email} against its invite`).toBe(201);
-  const accepted = await page.request.post('/invites/accept', { data: { token } });
+  const accepted = await postSeed(page.request, '/invites/accept', { token });
   expect(accepted.status(), `accepting the invite for ${email}`).toBe(200);
   await page.goto('/');
 }
@@ -162,8 +196,8 @@ export async function fetchLiveSite(page: Page, slug: string, path = '/'): Promi
 export async function seedApiUser(baseUrl: string, email: string, role: 'developer' | 'admin' = 'developer') {
   const token = await inviteUser(email, role);
   const ctx = await request.newContext({ baseURL: baseUrl });
-  expect((await ctx.post('/auth/register', { data: { email, password: E2E_PASSWORD } })).status()).toBe(201);
-  expect((await ctx.post('/invites/accept', { data: { token } })).status()).toBe(200);
+  expect((await postSeed(ctx, '/auth/register', { email, password: E2E_PASSWORD })).status()).toBe(201);
+  expect((await postSeed(ctx, '/invites/accept', { token })).status()).toBe(200);
   return ctx;
 }
 

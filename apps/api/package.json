@@ -29,7 +29,7 @@
     "@sitewright/site-import": "workspace:*",
     "@sitewright/tailwind": "workspace:*",
     "@sitewright/tailwind-reference": "workspace:*",
-    "basic-ftp": "^5",
+    "basic-ftp": "^6",
     "chrome-launcher": "^1.2.1",
     "clean-css": "^5.3.3",
     "drizzle-orm": "^0.45.2",

@@ -3711,7 +3711,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
       // A receipt reports what actually CHANGED, so the prior value must be read before the write.
       if (wantReceipt) await loadPrior();
-      const item = await contentRepo.put(ctx, kind, req.params.entityId, body);
+      const item = await contentRepo.put(ctx, kind, req.params.entityId, body, { merged: wantMerge });
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
       // Saving SETTINGS provisions the mini-shop's order Forms — same pattern, same reason: the config

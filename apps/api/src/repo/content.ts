@@ -13,6 +13,7 @@ import {
   EntrySchema,
   FormSchema,
   ImageMapSchema,
+  isLinkPage,
   SmtpStoredSchema,
   MediaAssetSchema,
   MediaFolderRecordSchema,
@@ -39,7 +40,7 @@ import {
   type Snippet,
   type Template,
 } from '@sitewright/schema';
-import { validateProject, type ProjectBundle } from '@sitewright/core';
+import { validateProject, withResolvedParent, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
@@ -417,7 +418,17 @@ export class ContentRepository {
     kind: ContentKind,
     entityId: string,
     raw: unknown,
-    revisionMeta?: { op?: RevisionOp; note?: string },
+    opts?: {
+      op?: RevisionOp;
+      note?: string;
+      /**
+       * This write is a `?merge=1` PATCH of the stored entity, not a full replace. It changes what an
+       * ABSENT `parent` means: the fragment was already deep-merged over the stored page, so the field
+       * can only be missing because the caller CLEARED it (`parent: null`) — the documented way to
+       * un-nest. A full replace omits it for the opposite reason (it just wasn't sent).
+       */
+      merged?: boolean;
+    },
   ): Promise<unknown> {
     const parsed = schemaFor(kind).parse(raw);
     // Rich (data-sw-html) content now lives in the single page.data store and is sanitized at RENDER
@@ -442,13 +453,80 @@ export class ContentRepository {
       const known = slug ? ((await this.list(ctx, 'dataset')) as Array<{ slug?: string }>).some((d) => d.slug === slug) : false;
       if (!known) throw new ConflictError(`entry "${key}" references unknown dataset "${slug ?? ''}" — create the dataset first (after rename_dataset, entries must carry the NEW slug)`);
     }
+    // THE PAGE-TREE INVARIANT (see `withResolvedParent`): a page always hangs off a home. Applied here
+    // rather than at the route because the MCP tools, the editor and a bundle import do not share one.
+    const value = kind === 'page' ? await this.withPageParent(ctx, parsed as Page, opts?.merged === true) : parsed;
     // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
-    const scope = this.scopeForData(kind, parsed);
-    await this.writeRow(this.db, ctx, kind, key, parsed);
+    const scope = this.scopeForData(kind, value);
+    await this.writeRow(this.db, ctx, kind, key, value);
     // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
-    await this.recordRevision(ctx, kind, key, scope, parsed, revisionMeta?.op ?? 'put', revisionMeta?.note);
+    await this.recordRevision(ctx, kind, key, scope, value, opts?.op ?? 'put', opts?.note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor });
-    return parsed;
+    return value;
+  }
+
+  /**
+   * A single page write, with the tree invariant applied.
+   *
+   * ORDER MATTERS, and it depends on HOW the page was written.
+   *
+   * A FULL REPLACE omits every field the caller didn't send, so its own stored parent wins: recomputing
+   * from scratch would yank `/services/web-design` up to `/web-design` — a live URL change on somebody's
+   * site, from a routine metadata write. Only a page that has never had a parent gets the computed
+   * default.
+   *
+   * A MERGE (`patch_page`) is the opposite. The fragment has already been merged over the stored page,
+   * so an absent `parent` means the caller sent `parent: null` to CLEAR it. Carrying the stored value
+   * there would make the documented un-nest a silent no-op. Under the invariant "un-nest" cannot mean
+   * "no parent at all", so it resolves to the page's home — the tree's root for that language — which
+   * is exactly where an un-nested page belongs.
+   *
+   * A parent naming a page that does not exist is LEFT ALONE either way (`repairDangling` stays off): a
+   * caller may legitimately create a child before its parent, and the whole-project passes (import,
+   * backfill) fix what is genuinely dangling.
+   *
+   * Costs at most two reads, and only on the path that needs them — a write that already carries a
+   * parent, and every non-page kind, pays nothing.
+   */
+  private async withPageParent(ctx: ProjectContext, page: Page, merged: boolean): Promise<Page> {
+    if (page.parent !== undefined) return page;
+    // The ROOT HOME is parentless by definition, and it is the most-edited page on any site. Recognising
+    // it from the payload alone keeps the busiest write on this path free of the project-wide read below.
+    // (`locale` absent IS the default locale, so this needs no settings lookup; a locale-tagged page at
+    // the empty slug is rare enough to fall through to the full resolution.)
+    if (page.path === '' && page.locale === undefined && !isLinkPage(page)) return page;
+    if (!merged) {
+      const prior = (await this.row(this.db, ctx, 'page', page.id, '')) ?? null;
+      const priorParent = prior ? (prior.data as { parent?: unknown }).parent : undefined;
+      if (typeof priorParent === 'string' && priorParent !== '') return { ...page, parent: priorParent };
+    }
+    // A DEFAULT-LOCALE page (no `locale`) only needs the root home, and the seeded home is keyed `home`
+    // — one indexed row read instead of listing every page in the project. Verified before it is used,
+    // so an imported project whose home carries a different id still falls through to the full pass.
+    if (page.locale === undefined) {
+      const homeRow = await this.row(this.db, ctx, 'page', 'home', '');
+      const home = homeRow?.data as Page | undefined;
+      if (home && home.path === '' && home.locale === undefined && !isLinkPage(home) && home.id !== page.id) {
+        return { ...page, parent: home.id };
+      }
+    }
+    const [pages, defaultLocale] = await Promise.all([
+      this.list(ctx, 'page') as Promise<Page[]>,
+      this.defaultLocaleOf(ctx),
+    ]);
+    // `page` may be new (absent from the list) — resolve against the list PLUS itself.
+    const known = pages.some((p) => p.id === page.id) ? pages : [...pages, page];
+    return withResolvedParent(page, known, defaultLocale);
+  }
+
+  /** The project's default locale, falling back to `en` when settings are absent or unreadable. */
+  private async defaultLocaleOf(ctx: ProjectContext): Promise<string> {
+    try {
+      const settings = (await this.get(ctx, 'settings', 'settings')) as Settings;
+      return settings.settings.defaultLocale;
+    } catch {
+      return 'en';
+    }
   }
 
   /**
@@ -707,6 +785,17 @@ export class ContentRepository {
       })
       .parse(raw);
 
+    // THE PAGE-TREE INVARIANT, applied to the WHOLE bundle before it is validated or written. Every
+    // page is present here, so a `parent` that is unresolvable OR circular is genuinely broken (it
+    // renders as a second root) rather than a child that merely arrived first — hence `repairDangling`.
+    //
+    // ★ The locale comes from the bundle when it carries settings, and from the PROJECT otherwise. A
+    // content-only bundle (`{pages:[…]}`, no `project` block) is a supported re-import, and assuming
+    // `en` there parents an `en` page of a German-default project to the ROOT home instead of the
+    // English one — silently moving it from `/en/about` to `/about`, onto the German page's slug.
+    const bundleLocale = input.project?.settings?.defaultLocale ?? (await this.defaultLocaleOf(ctx));
+    const importPages = await this.resolveBatchParents(ctx, input.pages, bundleLocale, { repairDangling: true });
+
     const bundle: ProjectBundle = {
       project: {
         formatVersion: PROJECT_FORMAT_VERSION,
@@ -717,7 +806,7 @@ export class ContentRepository {
         website: input.project?.website,
         settings: input.project?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
-      pages: input.pages,
+      pages: importPages,
       templates: input.templates,
       datasets: input.datasets,
       entries: input.entries,
@@ -734,7 +823,7 @@ export class ContentRepository {
         await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, input.project);
         imported += 1;
       }
-      for (const page of input.pages) {
+      for (const page of importPages) {
         // Rich (data-sw-html) content lives in page.data (the single store) and is sanitized at RENDER
         // by the html sink; an imported page.data HTML leaf is therefore never emitted unsanitized. The
         // bundle's PageSchema bounds + proto-checks page.data (and strips any unknown legacy shapes —
@@ -794,13 +883,43 @@ export class ContentRepository {
    * NOTE: like `importBundle`, the transactional `writeRow`s here do NOT record revisions — locale
    * scaffolding/teardown is structural; per-entity revisioning of batch ops is a deferred enhancement.
    */
+  /**
+   * Apply the page-tree invariant to a BATCH of pages, resolved against the batch AND the project's
+   * stored pages.
+   *
+   * ★ BOTH halves are required. The batch alone is not enough: a content-only import (`{pages:[…]}`) or
+   * a locale scaffold may contain a single page whose home already lives in the project — resolving
+   * against the batch would find no home and leave it rootless, and with `repairDangling` on it would
+   * go further and REPLACE a parent that points at a stored page, on the false reading that the id
+   * does not exist. The stored pages alone are not enough either: a scaffold writes a language's home
+   * and its children in one call, so a child's locale home may exist only inside the batch. The batch
+   * wins on an id collision — it is the newer copy of that page.
+   */
+  private async resolveBatchParents(
+    ctx: ProjectContext,
+    batch: Page[],
+    defaultLocale: string,
+    opts?: { repairDangling?: boolean },
+  ): Promise<Page[]> {
+    const stored = (await this.list(ctx, 'page')) as Page[];
+    const batchIds = new Set(batch.map((p) => p.id));
+    const known = [...stored.filter((p) => !batchIds.has(p.id)), ...batch];
+    return batch.map((p) => withResolvedParent(p, known, defaultLocale, opts));
+  }
+
   async applyLocaleChange(
     ctx: ProjectContext,
     change: { putPages?: unknown[]; removePageIds?: string[]; settings?: unknown },
   ): Promise<{ pages: Page[] }> {
-    const putPages = (change.putPages ?? []).map((raw) => {
-      return PageSchema.parse(raw) as Page;
-    });
+    const parsedPages = (change.putPages ?? []).map((raw) => PageSchema.parse(raw) as Page);
+    // ★ The locale routes pre-compute each variant's parent (buildLocaleVariant / scaffoldLocale /
+    // propagatePageToLocales in @sitewright/core), so in practice these arrive correctly parented. This
+    // is the BACKSTOP: `applyLocaleChange` writes rows directly, and a second writer relying on its
+    // caller to uphold the invariant is precisely the arrangement that let parentless pages exist in the
+    // first place. Resolved against the project's whole tree, since a batch references pages outside it.
+    const putPages = parsedPages.some((p) => p.parent === undefined)
+      ? await this.resolveBatchParents(ctx, parsedPages, await this.defaultLocaleOf(ctx))
+      : parsedPages;
     const settings =
       change.settings !== undefined ? schemaFor('settings').parse(change.settings) : undefined;
     const removeIds = change.removePageIds ?? [];

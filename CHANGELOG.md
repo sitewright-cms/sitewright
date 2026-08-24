@@ -9,6 +9,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A page could be written with no parent, and then behaved like a second site root.** `page.path` is a
+  single slug segment; the full route comes from the parent chain. A page whose `parent` was never set
+  sat flush in the pages list, formed its own drag group, and could never fold into a parent's nav
+  dropdown. Nothing prevented it, and three writers produced them: a bundle import, an MCP `put_page`
+  that omitted the field, and the editor's own page-settings modal, which DISPLAYED a parent it had not
+  stored. The invariant — every page except the site's root home hangs off a home page — is now enforced
+  in `ContentRepository`, which is the one place all four writers (editor, REST, MCP, import) meet. A
+  page in the default locale takes the root home; a page in another language takes that language's home,
+  so it lands in its own subtree. Existing projects are repaired by `scripts/backfill-page-parents.mjs`,
+  which runs over the admin API and reports every URL its changes would move.
+- **A full `put_page` replace no longer yanks a sub-page to the site root.** The documented semantic is
+  that an omitted field is deleted, so a routine metadata write that did not resend `parent` moved
+  `/services/web-design` to `/web-design` — a live URL change on a published site. A replace now carries
+  the stored parent (as it already carried `data.swImport`). Clearing a parent deliberately still works
+  through `patch_page({id, parent: null})`, which returns the page to the home of its language rather
+  than leaving it rootless. The `put_page` and `patch_page` tool descriptions said otherwise and have
+  been corrected.
+
 ## [0.36.0] — 2026-08-23
 
 ### Added

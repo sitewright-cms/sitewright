@@ -3992,9 +3992,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/agent-connections',
     { config: rl(60) },
     async (req, reply) => {
+      // Any member of the project may SEE what is connected to it; creating or revoking a key stays
+      // owner-only (ApiKeyRepository.WRITE_ROLES). `session-only` still holds: a token must not be able
+      // to enumerate the other agents attached to the project it was issued for.
       const { ctx } = await resolveProject(req, 'session-only');
-      // Owner-only — gate at the route so it doesn't rely on listAgentConnections throwing first.
-      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can view agent connections');
       const [pats, sessions] = await Promise.all([
         apiKeysRepo.listAgentConnections(ctx),
         oauthRepo.listActiveSessions(ctx.projectId),
@@ -4038,10 +4039,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
-      // Owner-only. The PAT path enforces this inside apiKeysRepo.revoke, but the oauth: path calls
-      // revokeAllForUserProject directly (no role guard), so gate both here.
-      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can disconnect agents');
       const id = req.params.id;
+      // Owner-only, with ONE exception: a member may sever their OWN agent. They can create that
+      // connection (the consent path takes any project role), so being unable to undo it would leave
+      // the person who attached ChatGPT waiting on the owner to detach it. Anything else — another
+      // user's session, or any PAT — stays owner-only. The PAT path enforces that inside
+      // apiKeysRepo.revoke, but the oauth: path calls revokeAllForUserProject directly with no role
+      // guard, so both are gated here.
+      const ownSession = id === `oauth:${ctx.userId}`;
+      if (ctx.role !== 'owner' && !ownSession) {
+        throw new ForbiddenError('only the project owner can disconnect another agent');
+      }
       if (id.startsWith('oauth:')) {
         // An OAuth/MCP session: sever the whole chain + in-flight access tokens for that user+project.
         await oauthRepo.revokeAllForUserProject(id.slice('oauth:'.length), ctx.projectId);

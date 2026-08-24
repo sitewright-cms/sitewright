@@ -327,8 +327,8 @@ describe('agent connections — list + disconnect', () => {
     ).toBe(401);
   });
 
-  it('forbids a project MEMBER (non-owner) from listing or disconnecting — including the oauth: path', async () => {
-    const { projectId } = await setup('owner@acme.test');
+  it('lets a project MEMBER list connections and sever their OWN, but nothing else', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
     const base = `/projects/${projectId}`;
     // A second user, added as a plain member of the same project. Seed via the repo (register is
     // invite-only) — a plain client with no platform role — then log in for a session cookie.
@@ -337,15 +337,49 @@ describe('agent connections — list + disconnect', () => {
     const memberCookie = sessionCookie(login);
     await addProjectMember(db, memberId, projectId, 'member');
 
-    // List → 403 (the route's own owner gate, not just the inner repo throw).
-    expect((await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: memberCookie } })).statusCode).toBe(403);
-    // Disconnect via the oauth: path → 403 (this path bypasses apiKeysRepo.revoke's role check).
+    // A member CAN see what is attached to the project. They can already connect an agent (the OAuth
+    // consent path takes any project role) and watch it edit in front of them, so hiding the list
+    // bought no secrecy — and nothing in it is a credential.
+    const list = await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: memberCookie } });
+    expect(list.statusCode).toBe(200);
+
+    // …and may sever their OWN session, or they would depend on the owner to undo their own action.
     expect(
       (await app.inject({
         method: 'DELETE',
         url: `${base}/agent-connections/${encodeURIComponent(`oauth:${memberId}`)}`,
         cookies: { sw_session: memberCookie },
       })).statusCode,
+    ).toBeLessThan(400);
+
+    // But NOT someone else's session…
+    expect(
+      (await app.inject({
+        method: 'DELETE',
+        url: `${base}/agent-connections/${encodeURIComponent('oauth:someone-else')}`,
+        cookies: { sw_session: memberCookie },
+      })).statusCode,
+    ).toBe(403);
+
+    // …nor a PAT, which is the owner's to manage.
+    const created = await createKey(base, t, { capabilities: ['content:read'] });
+    const patId = (created.json() as { key: { id: string } }).key.id;
+    expect(
+      (await app.inject({ method: 'DELETE', url: `${base}/agent-connections/${patId}`, cookies: { sw_session: memberCookie } })).statusCode,
     ).toBe(403);
   });
+
+  it('still refuses a MEMBER the long-lived credentials themselves', async () => {
+    // The boundary that actually matters: a member may attach an agent, but not mint a durable token.
+    const { projectId } = await setup('owner2@acme.test', 'site2');
+    const base = `/projects/${projectId}`;
+    const { userId: memberId } = await registerAccount(db, 'member2@acme.test', 'Pw-secret-1');
+    const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member2@acme.test', password: 'Pw-secret-1' } });
+    const memberCookie = sessionCookie(login);
+    await addProjectMember(db, memberId, projectId, 'member');
+
+    expect((await createKey(base, memberCookie, { role: 'member', capabilities: ['content:read'] })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: `${base}/api-keys`, cookies: { sw_session: memberCookie } })).statusCode).toBe(403);
+  });
+
 });

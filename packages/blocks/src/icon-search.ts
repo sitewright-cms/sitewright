@@ -7,7 +7,7 @@
 import { PHOSPHOR_NAMES, isPhosphorName } from './phosphor-icons.js';
 import { aliasToPhosphor } from './icon-aliases.js';
 import { ICON_NAMES, iconTags } from './icons.js';
-import { BRAND_ICON_NAMES_ALL } from './vendored-icons.js';
+import { BRAND_ICON_NAMES_ALL, NAME_ALIASES, VENDORED_WEIGHTED_NAMES } from './vendored-icons.js';
 import { FLAG_CODES, flagIcon } from './flag-icons.js';
 import { FLAG_PREFIX } from './icon-render.js';
 
@@ -60,6 +60,19 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
         const ph = isPhosphorName(lu) ? lu : aliasToPhosphor(lu);
         if (ph) bump(ph, lu === term ? 80 : 35);
       }
+    }
+    // RETIRED names, mapped to what they now draw. Searching "twitter" must offer the X mark, because
+    // that is what the name renders — surfacing only Phosphor's retired `twitter-logo` would have the
+    // library disagree with the renderer about the same word.
+    for (const [retired, target] of NAME_ALIASES) {
+      if (retired === term) bump(target, 88);
+    }
+    // VENDORED bare marks. These are drawn in-house because the upstream sets retired them, and they are
+    // real weighted icons — so searching "linkedin" has to offer the untiled letterform, not only the
+    // `brand:` tile. Renderable-but-unfindable is how an author concludes an icon does not exist.
+    for (const name of VENDORED_WEIGHTED_NAMES) {
+      if (name === term) bump(name, 90);
+      else if (name.startsWith(term) || name.includes(term)) bump(name, 45);
     }
     // BRAND LOGOS. `brand:<slug>` renders a simple-icons logo, but the slugs were not searchable at
     // all — and an unknown slug renders NOTHING: no error, no fallback. A clone author guessed

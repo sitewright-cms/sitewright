@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { renderIconSvg } from '../src/icon-render.js';
+import { searchIcons } from '../src/icon-search.js';
 import { PHOSPHOR_WEIGHTS } from '../src/phosphor-icons.js';
 
 /**
@@ -55,5 +56,38 @@ describe('bare brand names survived the Lucide brand-set removal', () => {
 
   it('carries the requested weight through the logo fallback', () => {
     expect(renderIconSvg('slack:bold')).toContain('sw-icon-bold');
+  });
+});
+
+describe('a retired name is not shadowed by the stale mark upstream still ships', () => {
+  it('bare twitter draws the X mark, not Phosphor\'s retired bird', () => {
+    // The bare-name chain tries `<name>-logo` before the brand aliases, and Phosphor still ships
+    // `twitter-logo` (the bird). Without an explicit alias the bare name and `brand:` disagree.
+    const out = renderIconSvg('twitter');
+    expect(out).toContain('sw-icon-x-logo');
+    expect(out).not.toContain('sw-icon-twitter-logo');
+  });
+
+  it('agrees with the brand: form about which mark twitter is', () => {
+    expect(renderIconSvg('brand:twitter')).toContain('sw-icon-brand-x');
+    expect(renderIconSvg('twitter')).toContain('sw-icon-x-logo');
+  });
+
+  it('keeps the weight, unlike a brand tile', () => {
+    expect(renderIconSvg('twitter:bold')).toContain('sw-icon-bold');
+  });
+});
+
+describe('vendored marks are findable, not merely renderable', () => {
+  const matches = (q: string): string[] => searchIcons(q, 12)[0]?.matches ?? [];
+
+  it('offers the untiled letterform as well as the tile', () => {
+    const m = matches('linkedin');
+    expect(m).toContain('linkedin');
+    expect(m).toContain('brand:linkedin');
+  });
+
+  it('offers what a retired name now draws', () => {
+    expect(matches('twitter')).toContain('x-logo');
   });
 });

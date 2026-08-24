@@ -11,6 +11,7 @@
 // `gen-brand-icons.mjs` rewrite their outputs wholesale and would erase anything parked there.
 
 import { BRAND_ICON_NAMES, brandIcon, type BrandIcon } from './brand-icons.js';
+import { escapeAttr } from './escape.js';
 import { PHOSPHOR_WEIGHTS, type PhosphorWeight } from './phosphor-icons.js';
 
 /**
@@ -34,7 +35,11 @@ const STROKE_W: Record<Exclude<PhosphorWeight, 'fill' | 'duotone'>, number> = {
 const SCALE = 256 / 24;
 
 /** Render one 24-grid path as the six weight bodies Phosphor's map holds. */
-function weightedBodies(d: string): readonly string[] {
+function weightedBodies(raw: string): readonly string[] {
+  // Escaped for the same reason the brand tile is escaped at its call site: this is the ONE hand-keyed
+  // icon module, and a stray quote in a future entry should break loudly at review, not silently produce
+  // a malformed attribute.
+  const d = escapeAttr(raw);
   const wrap = (inner: string): string => `<g transform="scale(${SCALE.toFixed(6)})">${inner}</g>`;
   return PHOSPHOR_WEIGHTS.map((w) => {
     if (w === 'fill') return wrap(`<path d="${d}"/>`);
@@ -94,6 +99,12 @@ export const BRAND_ALIASES: ReadonlyMap<string, string> = new Map([
 export const NAME_ALIASES: ReadonlyMap<string, string> = new Map([
   ['pocket', 'bookmark-simple'],
   ['rail-symbol', 'train-simple'],
+  // ★ Twitter is X now, and this entry is load-bearing rather than cosmetic. Phosphor still ships the
+  // retired BIRD as `twitter-logo`, and the bare-name chain tries `<name>-logo` before it ever consults
+  // the brand aliases — so without this, `{{sw-icon "twitter"}}` keeps drawing the old bird while
+  // `brand:twitter` correctly draws the X, and the two surfaces disagree. Targets `x-logo`, NOT `x`:
+  // Phosphor's `x` is the close/times glyph, so aliasing there would silently swap a logo for a cross.
+  ['twitter', 'x-logo'],
 ]);
 
 /** The Phosphor stand-in for a retired bare name, or the name unchanged. */

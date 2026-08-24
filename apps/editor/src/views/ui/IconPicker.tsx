@@ -5,6 +5,7 @@ import {
   FLAG_CODES,
   flagIcon,
   PHOSPHOR_NAMES,
+  VENDORED_WEIGHTED_NAMES,
   PHOSPHOR_WEIGHTS,
   searchIcons,
   type PhosphorWeight,
@@ -111,7 +112,9 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
     }
     // Phosphor: the platform's own scored search when there's a query (it understands synonyms —
     // "car" finds `taxi`), the plain name list when there isn't.
-    const base = q ? [...new Set(searchIcons(q, PAGE).flatMap((g) => g.matches))] : [...PHOSPHOR_NAMES];
+    // Browsing must list the vendored marks alongside Phosphor's, or `linkedin` is renderable but
+    // absent from the only surface an author browses.
+    const base = q ? [...new Set(searchIcons(q, PAGE).flatMap((g) => g.matches))] : [...VENDORED_WEIGHTED_NAMES, ...PHOSPHOR_NAMES];
     return base
       .filter((n: string) => !n.startsWith('brand:'))
       .slice(0, PAGE)

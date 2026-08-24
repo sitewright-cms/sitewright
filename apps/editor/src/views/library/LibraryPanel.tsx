@@ -475,7 +475,16 @@ function GridTab({ lazy, blurb, label }: { lazy: 'brand' | 'flags'; blurb: strin
       />
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
         {error ? (
-          <p className="py-8 text-center text-sm text-rose-500 dark:text-rose-300">Couldn’t load the library set. Switch tabs and back to retry.</p>
+          // A dynamic import fails for one dominant reason: this tab was opened BEFORE a redeploy, so the
+          // chunk it is asking for belongs to the previous build and no longer exists. Switching tabs
+          // re-runs the same import against the same missing URL, so the old "switch tabs to retry"
+          // advice could never work — only reloading picks up the new build's asset names.
+          <div className="py-8 text-center">
+            <p className="text-sm text-rose-500 dark:text-rose-300">Couldn’t load this set — the editor was updated while this tab was open.</p>
+            <button type="button" className={`${ghostButton} mt-3`} onClick={() => window.location.reload()}>
+              Reload the editor
+            </button>
+          </div>
         ) : loading ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
             {Array.from({ length: 36 }, (_, i) => (

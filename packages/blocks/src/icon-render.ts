@@ -17,6 +17,7 @@ import { phosphorBody, isPhosphorName, PHOSPHOR_WEIGHTS, type PhosphorWeight } f
 import { aliasToPhosphor } from './icon-aliases.js';
 import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
+import { resolveBrandAlias, resolveNameAlias, vendoredBrand, vendoredWeightedBody } from './vendored-icons.js';
 import { escapeAttr, escapeHtml } from './escape.js';
 
 const svgTag = (hooks: string, authorCls: string, attrs: string, body: string): string =>
@@ -52,6 +53,14 @@ function flagSvg(spec: string, cls?: string): string {
   );
 }
 
+/** A brand TILE (vendored first, then simple-icons) as a filled 24-viewBox svg. */
+function brandSvgFor(slug: string, authorCls: string): string | undefined {
+  const brand = vendoredBrand(slug) ?? brandIcon(slug);
+  return brand
+    ? svgTag(`sw-icon-brand-${slug}`, authorCls, 'viewBox="0 0 24 24" fill="currentColor"', `<path d="${escapeAttr(brand.path)}"/>`)
+    : undefined;
+}
+
 function lucideSvg(name: string, authorCls: string): string | undefined {
   const body = iconBody(name);
   return body === undefined
@@ -65,7 +74,13 @@ function lucideSvg(name: string, authorCls: string): string | undefined {
 }
 
 function phosphorSvg(name: string, weight: PhosphorWeight, authorCls: string): string | undefined {
-  const target = isPhosphorName(name) ? name : aliasToPhosphor(name);
+  // A VENDORED mark wins over the alias table: `linkedin` must draw the letterform we ship, not be
+  // redirected to Phosphor's `linkedin-logo`, which is the TILED form and carries a box the caller of a
+  // bare name did not ask for. Vendored bodies are authored in the same 256 space, so they wrap identically.
+  const vendored = vendoredWeightedBody(name, weight);
+  if (vendored) return svgTag(`sw-icon-${name} sw-icon-${weight}`, authorCls, 'viewBox="0 0 256 256" fill="currentColor"', vendored);
+  const wanted = resolveNameAlias(name);
+  const target = isPhosphorName(wanted) ? wanted : aliasToPhosphor(wanted);
   const body = target ? phosphorBody(target, weight) : undefined;
   return body ? svgTag(`sw-icon-${target} sw-icon-${weight}`, authorCls, 'viewBox="0 0 256 256" fill="currentColor"', body) : undefined;
 }
@@ -87,9 +102,11 @@ export function renderIconSvg(name: string, cls?: string): string {
   // brand:<slug> — a simple-icons filled logo; where simple-icons lacks the slug (e.g. linkedin, removed at
   // the brand's request) fall back to a Phosphor filled logo (`<slug>` / `<slug>-logo`), then a Lucide glyph.
   if (name.startsWith('brand:')) {
-    const slug = name.slice('brand:'.length);
-    const brand = brandIcon(slug);
-    if (brand) return svgTag(`sw-icon-brand-${slug}`, authorCls, 'viewBox="0 0 24 24" fill="currentColor"', `<path d="${escapeAttr(brand.path)}"/>`);
+    // A retired slug resolves to its successor FIRST (`brand:twitter` → the X mark), so a name already
+    // written into a published page keeps drawing something after the upstream set renames it.
+    const slug = resolveBrandAlias(name.slice('brand:'.length));
+    const tile = brandSvgFor(slug, authorCls);
+    if (tile) return tile;
     return phosphorSvg(slug, 'fill', authorCls) ?? phosphorSvg(`${slug}-logo`, 'fill', authorCls) ?? lucideSvg(slug, authorCls) ?? '';
   }
 
@@ -108,5 +125,17 @@ export function renderIconSvg(name: string, cls?: string): string {
   // drew the Indonesian flag, and `me`/`in`/`no`/`so`/`to`/`is`/`it`/`be`/`do` likewise. An empty render is
   // the clearer failure. The need vanished with {{sw-flag}} restored as a first-class helper — a DYNAMIC
   // flag is written `{{sw-flag (lookup …)}}`, which takes the bare code by design.
-  return phosphorSvg(base, weight, authorCls) ?? lucideSvg(base, authorCls) ?? '';
+  return (
+    phosphorSvg(base, weight, authorCls) ??
+    // A BARE brand name (`facebook`, `slack`, `github`) used to land on a Lucide outline. Lucide 1.x
+    // dropped its brand set, so without this those names render NOTHING — and they are exactly the names
+    // a footer uses. Phosphor spells them `<name>-logo`, which is a better answer than the old outline
+    // anyway: it is the real mark, and it carries the weight the caller asked for.
+    phosphorSvg(`${base}-logo`, weight, authorCls) ??
+    lucideSvg(base, authorCls) ??
+    // Last resort: a retired slug whose successor is a brand TILE (`twitter` → the X mark). Filled, not
+    // weighted — but a drawn mark beats an empty gap where a logo used to be.
+    brandSvgFor(resolveBrandAlias(base), authorCls) ??
+    ''
+  );
 }

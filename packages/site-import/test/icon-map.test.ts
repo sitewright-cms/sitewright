@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ICON_NAMES, BRAND_ICON_NAMES, validateTemplate } from '@sitewright/blocks';
+import { renderIconSvg, validateTemplate } from '@sitewright/blocks';
 import { mapIconClass, mapMaterialLigature, mapFlagClass } from '../src/transform/icon-map.js';
 import { parse } from '../src/dom.js';
 import { transformBody, type TransformCtx } from '../src/transform/page.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
-
-const LUCIDE = new Set(ICON_NAMES);
-const BRANDS = new Set(BRAND_ICON_NAMES);
 
 describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
   it('matches FA names that equal a Lucide name directly (no alias needed)', () => {
@@ -119,13 +116,17 @@ describe('mapIconClass — catalog-aware foreign icon → {{sw-icon}}', () => {
     expect(mapFlagClass('')).toBeNull();
   });
 
-  it('every produced name actually EXISTS in the platform icon sets (no dangling refs)', () => {
+  it('every produced name actually RENDERS (no dangling refs)', () => {
+    // Membership in the Lucide map used to stand in for "this name exists". It stopped being a safe
+    // proxy when Lucide 1.x dropped its brand set: `linkedin` is now drawn from the vendored marks and
+    // `slack` from Phosphor's `slack-logo`, so a set-membership check failed a name that renders
+    // perfectly. Assert what the importer actually depends on — that the name resolves to artwork.
     const samples = ['fa-suitcase', 'fa-envelope', 'fa-question-circle', 'fa-cog', 'fa-twitter', 'fa-facebook-f', 'fa-linkedin', 'fa-pie-chart', 'fa-sign-out', 'fa-trash', 'bi-telephone', 'bi-cart'];
     for (const s of samples) {
       const r = mapIconClass(`fa ${s}`) ?? mapIconClass(s);
       expect(r, s).toBeTruthy();
-      if (r && 'brand' in r) expect(BRANDS.has(r.brand), r.brand).toBe(true);
-      else if (r) expect(LUCIDE.has(r.icon), r.icon).toBe(true);
+      const name = r && 'brand' in r ? `brand:${r.brand}` : r ? r.icon : '';
+      expect(renderIconSvg(name), `${s} -> ${name}`).not.toBe('');
     }
   });
 

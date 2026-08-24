@@ -7,7 +7,7 @@
 import { PHOSPHOR_NAMES, isPhosphorName } from './phosphor-icons.js';
 import { aliasToPhosphor } from './icon-aliases.js';
 import { ICON_NAMES, iconTags } from './icons.js';
-import { BRAND_ICON_NAMES } from './brand-icons.js';
+import { BRAND_ICON_NAMES_ALL } from './vendored-icons.js';
 import { FLAG_CODES, flagIcon } from './flag-icons.js';
 import { FLAG_PREFIX } from './icon-render.js';
 
@@ -67,7 +67,7 @@ export function searchIcons(query: string, limitPerTerm = 24): IconSearchGroup[]
     // spans that should have held them. Returning the slugs makes the set discoverable instead of a
     // blind guess. Scored below an exact Phosphor hit but above a loose substring, and emitted with
     // the `brand:` prefix so the result is the literal string {{sw-icon}} expects.
-    for (const slug of BRAND_ICON_NAMES) {
+    for (const slug of BRAND_ICON_NAMES_ALL) {
       if (slug === term) bump(`brand:${slug}`, 95);
       else if (slug.startsWith(term) || slug.endsWith(term)) bump(`brand:${slug}`, 60);
       else if (slug.includes(term)) bump(`brand:${slug}`, 40);

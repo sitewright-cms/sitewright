@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  BRAND_ICON_NAMES,
+  BRAND_ICON_NAMES_ALL,
   FLAG_CIRCLE_SUFFIX,
   FLAG_CODES,
   flagIcon,
@@ -93,7 +93,7 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
   const names = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (tab === 'brands') {
-      const all = BRAND_ICON_NAMES.map((slug: string) => `brand:${slug}`);
+      const all = BRAND_ICON_NAMES_ALL.map((slug: string) => `brand:${slug}`);
       return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
     }
     if (tab === 'flags') {

@@ -1,4 +1,4 @@
-import { BRAND_ICON_NAMES, brandIcon, FLAG_CODES, flagIcon } from '@sitewright/blocks';
+import { BRAND_ICON_NAMES_ALL, anyBrandIcon, FLAG_CODES, flagIcon } from '@sitewright/blocks';
 import type { LibraryItem } from './catalog';
 
 // Brand + flag catalogs — split out so the Library LAZY-loads them (dynamic import) the first time their
@@ -14,8 +14,8 @@ function brandSvg(path: string, cls = 'h-6 w-6'): string {
 }
 
 /** The built-in brand/social logos — inserted with the `brand:` prefix. */
-export const BRAND_ITEMS: LibraryItem[] = BRAND_ICON_NAMES.map((slug) => {
-  const b = brandIcon(slug)!;
+export const BRAND_ITEMS: LibraryItem[] = BRAND_ICON_NAMES_ALL.map((slug) => {
+  const b = anyBrandIcon(slug)!;
   return {
     id: `brand-${slug}`,
     name: b.title,

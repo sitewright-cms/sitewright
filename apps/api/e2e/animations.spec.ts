@@ -50,13 +50,15 @@ test('publish ships the data-sw-animation runtime for an animated code-first sit
   expect(html).toContain('data-sw-animation="fade-up"');
   expect(html).toContain('data-sw-delay="200"');
   // Published assets carry a per-publish `?v=` token (immutable caching), so match the src prefix
-  // rather than an exact tag — asserting the bare filename broke on the cache-busting change.
-  expect(html).toMatch(/<script defer src="animations\.js(\?v=[0-9a-f]+)?"><\/script>/);
+  // rather than an exact tag — asserting the bare filename broke on the cache-busting change. The
+  // runtimes then moved into the reserved `_assets/_sw/` directory (#968), which this missed because
+  // the E2E suites do not run in CI.
+  expect(html).toMatch(/<script defer src="_assets\/_sw\/animations\.js(\?v=[0-9a-f]+)?"><\/script>/);
   expect(html).toContain('[data-sw-animation].sw-animation-active');
   expect(html).toContain('prefers-reduced-motion');
 
-  // The runtime is served from the site root and is the real thing.
-  const js = await ctx.get(`/sites/${slug}/animations.js`);
+  // The runtime is served from the reserved runtime directory and is the real thing.
+  const js = await ctx.get(`/sites/${slug}/_assets/_sw/animations.js`);
   expect(js.status()).toBe(200);
   const runtime = await js.text();
   expect(runtime).toContain('IntersectionObserver');
@@ -89,7 +91,8 @@ test('a site without data-sw-animation ships no animation assets', async ({ play
   const html = await index.text();
   expect(html).not.toContain('animations.js');
   expect(html).not.toContain('sw-animation-init');
-  expect((await ctx.get(`/sites/${slug}/animations.js`)).status()).toBe(404);
+  // The REAL runtime location — a 404 at the pre-#968 path would pass no matter what shipped.
+  expect((await ctx.get(`/sites/${slug}/_assets/_sw/animations.js`)).status()).toBe(404);
 
   await ctx.dispose();
 });

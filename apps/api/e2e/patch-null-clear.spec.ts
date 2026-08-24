@@ -16,6 +16,12 @@ type PwFixture = PlaywrightWorkerArgs['playwright'];
  *
  * Unit tests pin the schema. These pin the whole stack: route → deepMerge → full-PageSchema
  * revalidation → storage, on both surfaces, which is the level the divergence lived at.
+ *
+ * ★ `parent` is the one field a null does NOT erase. Every page hangs off a home (see
+ * `withResolvedParent`), so clearing a parent un-nests the page to the home of its language rather
+ * than leaving it rootless. Null is still ACCEPTED there — that acceptance is the bug these tests
+ * exist for — so the parent cases below assert where the page lands, and `description` carries the
+ * "a field is genuinely gone" half.
  */
 
 async function newProject(playwright: PwFixture, baseURL: string) {
@@ -27,15 +33,20 @@ async function newProject(playwright: PwFixture, baseURL: string) {
   return { ctx, projectId, base: `/projects/${projectId}`, stamp };
 }
 
-/** A child page carrying the fields we intend to clear. */
-async function seedChild(ctx: Awaited<ReturnType<typeof newProject>>['ctx'], base: string, id: string) {
+/** A child page carrying the fields we intend to clear, nested under `parent` (default: home). */
+async function seedChild(
+  ctx: Awaited<ReturnType<typeof newProject>>['ctx'],
+  base: string,
+  id: string,
+  parent = 'home',
+) {
   const res = await ctx.put(`${base}/content/page/${id}`, {
     data: {
       id,
       path: id,
       title: 'Child',
       source: '<section><h2>child</h2></section>',
-      parent: 'home',
+      parent,
       description: 'seeded',
       data: { swImport: { sourceUrl: 'https://example.com/child' }, headline: 'hi', keep: 'me' },
     },
@@ -52,20 +63,35 @@ test('REST ?merge=1: null clears a field, and omitting one leaves it alone', asy
   const { ctx, base } = await newProject(playwright, baseURL!);
   await seedChild(ctx, base, 'child');
 
-  const res = await ctx.put(`${base}/content/page/child?merge=1`, { data: { id: 'child', parent: null } });
-  expect(res.status(), 'clearing parent over REST').toBe(200);
+  const res = await ctx.put(`${base}/content/page/child?merge=1`, { data: { id: 'child', description: null } });
+  expect(res.status(), 'clearing description over REST').toBe(200);
 
   const page = (await getPage(ctx, base, 'child')).item ?? {};
-  expect('parent' in page, 'parent must be GONE, not null').toBe(false);
+  expect('description' in page, 'description must be GONE, not null').toBe(false);
   // Everything the patch did not mention survives — that is the whole point of a merge write.
   expect(page.title).toBe('Child');
-  expect(page.description).toBe('seeded');
+  expect(page.parent).toBe('home');
+  expect((page.data as Record<string, unknown>)?.swImport, 'the import marker must survive').toBeTruthy();
+});
+
+test('REST ?merge=1: a null parent un-nests to the home, never to rootless', async ({ playwright, baseURL }) => {
+  const { ctx, base } = await newProject(playwright, baseURL!);
+  await seedChild(ctx, base, 'mid');
+  await seedChild(ctx, base, 'deep', 'mid');
+
+  const res = await ctx.put(`${base}/content/page/deep?merge=1`, { data: { id: 'deep', parent: null } });
+  expect(res.status(), 'clearing parent over REST').toBe(200);
+
+  const page = (await getPage(ctx, base, 'deep')).item ?? {};
+  // Not `mid` (the null was honoured) and not absent (a page is never a second root).
+  expect(page.parent, 'a cleared parent resolves to the home').toBe('home');
   expect((page.data as Record<string, unknown>)?.swImport, 'the import marker must survive').toBeTruthy();
 });
 
 test('MCP patch_page: null clears a field (the surface that used to reject it)', async ({ playwright, baseURL }) => {
   const { ctx, base } = await newProject(playwright, baseURL!);
-  await seedChild(ctx, base, 'child');
+  await seedChild(ctx, base, 'mid');
+  await seedChild(ctx, base, 'child', 'mid');
 
   const mint = await ctx.post(`${base}/api-keys`, {
     data: { name: 'e2e-mcp', role: 'owner', capabilities: ['content:read', 'content:write'], expiresInDays: 1 },
@@ -101,9 +127,17 @@ test('MCP patch_page: null clears a field (the surface that used to reject it)',
     expect(body, 'null must not be rejected as an invalid argument').not.toContain('Input validation error');
     expect(body).not.toContain('expected string, received null');
 
+    // The null was applied, not dropped: `child` was seeded under `mid`, and clearing its parent
+    // returns it to the home rather than leaving it rootless.
     const page = (await getPage(ctx, base, 'child')).item ?? {};
-    expect('parent' in page, 'MCP must be able to clear a field too').toBe(false);
+    expect(page.parent, 'MCP must be able to clear a field too').toBe('home');
     expect((page.data as Record<string, unknown>)?.swImport, 'patch must not wipe the import marker').toBeTruthy();
+
+    // And a field with no invariant behind it disappears outright over the same surface.
+    const cleared = await call({ id: 'child', description: null });
+    expect(cleared, 'null must not be rejected as an invalid argument').not.toContain('Input validation error');
+    const after = (await getPage(ctx, base, 'child')).item ?? {};
+    expect('description' in after, 'description must be GONE, not null').toBe(false);
   } finally {
     await mcp.dispose();
   }

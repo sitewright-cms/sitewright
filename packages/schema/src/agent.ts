@@ -1002,12 +1002,20 @@ arrow-right, caret-down/left/right (chevrons), caret-double-left/right, envelope
 map-pin, calendar-blank, star, user, heart, shopping-cart, rocket, sparkle, gear (settings),
 lightning (zap), check, plus, minus, gauge, chat-circle, bell, lightbulb. If you write a
 FAMILIAR Lucide/Heroicons-style name that differs (settings, search, mail, trash-2, chevron-*),
-it is auto-mapped to the Phosphor twin; a name with no Phosphor match falls back to a Lucide
-OUTLINE (never invisible) — but PREFER native Phosphor names. Use search_icons("term1, term2")
-to find exact names. Brand/social logos use "brand:" (simple-icons, ~270): {{sw-icon "brand:github"}},
-brand:x, brand:youtube, brand:instagram, brand:facebook, brand:whatsapp, brand:tiktok,
-brand:linkedin (a FILLED logo), brand:figma, brand:spotify, brand:discord, etc. Unknown names
-render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
+it is auto-mapped to the Phosphor twin — but PREFER native Phosphor names. Use
+search_icons("term1, term2") to find exact names. A BARE BRAND NAME works too and keeps its
+weight: "facebook", "github", "youtube", "slack", "linkedin" resolve to the logo (via Phosphor's
+"<name>-logo"), so {{sw-icon "slack:bold"}} is a bold Slack mark. Unknown names render nothing.
+
+Brand/social logos also have a TILED cut under "brand:" (simple-icons, ~270):
+{{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram, brand:facebook,
+brand:whatsapp, brand:tiktok, brand:figma, brand:spotify, brand:discord, etc. The two cuts are
+different artwork, which is the point: "linkedin" is the "in" letterform ALONE and takes a weight,
+"brand:linkedin" is the rounded LinkedIn tile (filled, no weight). Pick the tile for a social-link
+badge and the bare name for an icon sitting inline with text.
+(Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
+RETIRED NAMES still render: "twitter" draws the X mark, "chrome"/"chromium" Google Chrome — the
+brands renamed, and a name already written into a page keeps working.
 
 FLAGS: country flags are FULL-COLOR, so they have their own helper — {{sw-flag "de" "h-4"}}.
 The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…), plus "eu" for the European Union; add
@@ -1027,6 +1035,16 @@ code per locale.
     title: "Navigation — menus, dropdowns, mobile drawer",
     summary: "slot menus (header/mobile/footer) + child-page dropdowns + a pure-CSS mobile drawer + active item + auto language/theme",
     body: `
+THE PAGE TREE underneath every menu: EVERY page hangs off a home — the server guarantees it, so
+OMITTING "parent" does not create a top-level page. Leave it out and the page is filed under the home
+of ITS OWN language (an en page under "home", a { locale:"de" } page under the German home), which is
+also why omitting it moves no URL: a home's slug is empty and adds no segment. Set "parent" explicitly
+only when you mean a SUB-page — that is the one case the default cannot infer. A full put_page that
+omits "parent" KEEPS the parent the page already had (it will not yank /services/web-design up to
+/web-design), and patch_page({id, parent:null}) un-nests a page back to its language home rather than
+leaving it rootless. Dropdowns below build on exactly this: a page's CHILD pages are the ones whose
+"parent" is its id.
+
 CHROME SLOTS = the SITE-WIDE header / footer / sidebars, shown on EVERY page. They are STRING fields on
 the WEBSITE SETTINGS — NOT pages, NOT templates, NOT snippets on their own: website.mainNav (the header /
 top bar), website.footer, website.sidebarLeft, website.sidebarRight, website.bottom. To fill one, EDIT

@@ -435,7 +435,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'search_icons',
     {
       description:
-        'Find icon names for {{sw-icon "name"}} (Phosphor, filled by default; add a ":weight" suffix like ":bold" or ":duotone"). Pass ONE OR MORE search terms, comma- or whitespace-separated (e.g. "settings, trash cart") — returns matching Phosphor names per term. Searches names, Lucide-name aliases, and keyword synonyms.',
+        'Find icon names for {{sw-icon "name"}} (Phosphor, filled by default; add a ":weight" suffix like ":bold" or ":duotone"). Pass ONE OR MORE search terms, comma- or whitespace-separated (e.g. "settings, trash cart") — returns matching names per term. Searches Phosphor names, Lucide-name aliases and keyword synonyms, and also returns `brand:<slug>` logos and `flag:<cc>` country flags, so the result is always the literal string {{sw-icon}} takes. A brand may come back in two cuts — the bare name (weighted, no tile) and `brand:` (the tile) — which are different artwork, not duplicates.',
       inputSchema: { query: z.string().min(1).max(200), limit: z.number().int().min(1).max(48).optional() },
     },
     ({ query, limit }: { query: string; limit?: number }) => {

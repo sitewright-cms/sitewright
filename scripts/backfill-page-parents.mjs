@@ -28,7 +28,109 @@
  */
 import { writeFile } from 'node:fs/promises';
 import { stdin, stdout } from 'node:process';
-import { pagePath, pagesById, withResolvedParent } from '@sitewright/core';
+import { pathToFileURL } from 'node:url';
+
+// ---------------------------------------------------------------------------
+// Page-tree resolution — INLINED from @sitewright/core on purpose
+// ---------------------------------------------------------------------------
+//
+// This script has to run from a bare checkout (`node scripts/backfill-page-parents.mjs …`) and from a
+// deployed container, neither of which can resolve a workspace package from `scripts/`: pnpm links
+// dependencies per PACKAGE, and the repo root declares none. Adding one to the root looked like the
+// tidy fix and was not — it re-resolved `@sitewright/blocks` from a workspace link to a store path and
+// left the editor build with a dangling symlink. So the ~40 lines it needed live here instead, and the
+// script imports nothing outside Node.
+//
+// The obvious hazard of a copy is DRIFT: a backfill that computes different parents from the API would
+// quietly write the wrong tree across every project. `apps/api/test/backfill-script-parity.test.ts`
+// imports both this file and `@sitewright/core` and asserts they agree, so the copy cannot diverge
+// without a red test. Keep the two in step — mirror of `packages/core/src/page-parent.ts`,
+// `routes.ts` and the `localeOf`/`localeHomeFor` pair in `i18n.ts`.
+
+/** `kind: 'link'` is a nav PLACEHOLDER — it has no route of its own. */
+const isLinkPage = (page) => page.kind === 'link';
+
+/** A page's locale; the default-locale pages carry no explicit `locale`. */
+const localeOf = (page, defaultLocale) => page.locale ?? defaultLocale;
+
+/** Index pages by id, for the parent-chain walks below. */
+export function pagesById(pages) {
+  return new Map(pages.map((p) => [p.id, p]));
+}
+
+/**
+ * The full root-relative route, from the PARENT CHAIN: `{ancestor slugs}/{own slug}`. Each `path` is a
+ * single slug SEGMENT, and the home page's is empty — which is why parenting to home moves no URL.
+ * Cycle-safe: a broken chain stops at the first repeated id.
+ */
+export function pagePath(page, byId) {
+  const segments = [];
+  const seen = new Set();
+  let cur = page;
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.path) segments.unshift(cur.path);
+    cur = cur.parent ? byId.get(cur.parent) : undefined;
+  }
+  return '/' + segments.join('/');
+}
+
+/** The site's root home: the empty-slug page in the default locale (a placeholder is not one). */
+function rootHomeOf(pages, defaultLocale) {
+  return pages.find((p) => p.path === '' && !isLinkPage(p) && localeOf(p, defaultLocale) === defaultLocale);
+}
+
+/** The home page of one language — the root of that language's subtree. */
+function localeHomeFor(pages, locale, defaultLocale) {
+  const home = pages.find((p) => p.path === '' && !isLinkPage(p) && localeOf(p, defaultLocale) === defaultLocale);
+  if (!home) return undefined;
+  const group = home.translationGroup ?? home.id;
+  return pages.find((p) => (p.translationGroup ?? p.id) === group && localeOf(p, defaultLocale) === locale);
+}
+
+/** Does `candidate` sit anywhere under `pageId`? Keeps a repair from closing a cycle. */
+function descendsFrom(candidate, pageId, byId) {
+  const seen = new Set();
+  let cur = candidate;
+  while (cur && !seen.has(cur.id)) {
+    if (cur.id === pageId) return true;
+    seen.add(cur.id);
+    cur = cur.parent ? byId.get(cur.parent) : undefined;
+  }
+  return false;
+}
+
+/** The parent a page should hang off when it has none: its own language's home, else the root home. */
+export function defaultParentFor(page, pages, defaultLocale) {
+  const root = rootHomeOf(pages, defaultLocale);
+  if (!root || root.id === page.id) return undefined;
+  const locale = localeOf(page, defaultLocale);
+  const localeHome = locale === defaultLocale ? undefined : localeHomeFor(pages, locale, defaultLocale);
+  const target = localeHome && localeHome.id !== page.id ? localeHome : root;
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  if (descendsFrom(target, page.id, byId)) return undefined;
+  return target.id;
+}
+
+/** Whether `page.parent` fails the invariant. A cycle passes an existence check while being rootless. */
+function parentIsBroken(page, pages, repairDangling) {
+  if (page.parent === undefined) return true;
+  if (page.parent === page.id) return true;
+  if (!repairDangling) return false;
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const parent = byId.get(page.parent);
+  if (!parent) return true;
+  return descendsFrom(parent, page.id, byId);
+}
+
+/** `page` with the invariant applied — returned unchanged (by identity) when it already satisfies it. */
+export function withResolvedParent(page, pages, defaultLocale, opts = {}) {
+  if (!parentIsBroken(page, pages, opts.repairDangling === true)) return page;
+  const parent = defaultParentFor(page, pages, defaultLocale);
+  if (parent === undefined || parent === page.parent) return page;
+  return { ...page, parent };
+}
+
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -175,7 +277,7 @@ async function login(base, email, password, totp) {
 // ---------------------------------------------------------------------------
 
 /** Every page that needs a parent, with the route it has now and the route it will have. */
-function planProject(pages, defaultLocale) {
+export function planProject(pages, defaultLocale) {
   // Resolve against the WHOLE set at once: a locale home must itself be parented before the pages that
   // will hang off it are costed, or their "after" route would miss the language segment.
   const resolved = pages.map((p) => withResolvedParent(p, pages, defaultLocale, { repairDangling: true }));
@@ -303,7 +405,11 @@ async function run() {
   if (failed.length > 0) process.exitCode = 1;
 }
 
-run().catch((err) => {
-  process.stderr.write(`${err.message}\n`);
-  process.exitCode = 1;
-});
+// Only run the CLI when this file IS the entry point — importing it (the parity test does) must not
+// start talking to an instance.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run().catch((err) => {
+    process.stderr.write(`${err.message}\n`);
+    process.exitCode = 1;
+  });
+}

@@ -98,8 +98,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tailwind-reference
       basic-ftp:
-        specifier: ^5
-        version: 5.3.1
+        specifier: ^6
+        version: 6.2.0
       chrome-launcher:
         specifier: ^1.2.1
         version: 1.2.1(supports-color@7.2.0)
@@ -2462,8 +2462,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@5.3.1:
-    resolution: {integrity: sha512-bopVNp6ugyA150DDuZfPFdt1KZ5a94ZDiwX4hMgZDzF+GttD80lEy8kj98kbyhLXnPvhtIo93mdnLIjpCAeeOw==}
+  basic-ftp@6.2.0:
+    resolution: {integrity: sha512-H8eLjhoYPbOI717FLP8fGE7XInkMI7Ucj/ft0fp1avABtSiV5Bb2kYzScnOqlvJZs/KJZypr9Mp5zJmhaPFAEg==}
     engines: {node: '>=10.0.0'}
 
   bcrypt-pbkdf@1.0.2:
@@ -6652,7 +6652,7 @@ snapshots:
 
   baseline-browser-mapping@2.10.32: {}
 
-  basic-ftp@5.3.1: {}
+  basic-ftp@6.2.0: {}
 
   bcrypt-pbkdf@1.0.2:
     dependencies:

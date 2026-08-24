@@ -62,7 +62,17 @@ function newEntryId(taken: ReadonlySet<string> = new Set()): string {
   return key;
 }
 
-export function DatasetManager({ project }: { project: Project }) {
+export function DatasetManager({
+  project,
+  selectSlug = null,
+  selectSignal = 0,
+}: {
+  project: Project;
+  /** Select this dataset by SLUG when `selectSignal` changes (a "View dataset" jump from an entry). */
+  selectSlug?: string | null;
+  /** Bumped per request, so asking for the SAME dataset twice still re-selects it. */
+  selectSignal?: number;
+}) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
@@ -129,6 +139,21 @@ export function DatasetManager({ project }: { project: Project }) {
     setSelId(id);
     requestAnimationFrame(() => scrollPanelToTop(rootRef.current));
   }
+
+  // A "View dataset" jump from an entry opened over the page editor. Keyed on the SIGNAL, not the
+  // slug, so asking for the same dataset a second time still re-selects and re-scrolls it — and so a
+  // stale `selectSlug` cannot fight the reader's own clicks on every unrelated re-render.
+  const lastJump = useRef(0);
+  useEffect(() => {
+    if (selectSignal === lastJump.current || !selectSlug || datasets.length === 0) return;
+    lastJump.current = selectSignal;
+    // Resolve by SLUG: the marker on the page carries the slug, while selection is keyed by entity id,
+    // and a renamed dataset keeps its id (see rename_dataset). Silently ignore an unknown slug — the
+    // dataset may have been deleted since the page was rendered, and opening the rail on nothing is a
+    // better outcome than an error about a name the reader never typed.
+    const target = datasets.find((d) => d.slug === selectSlug) ?? datasets.find((d) => d.id === selectSlug);
+    if (target) selectDataset(target.id);
+  }, [selectSignal, selectSlug, datasets]);
 
   // Force the Data side-panel to stay open for the duration of a drag-reorder, exactly as a child
   // Modal does (null outside any panel). The click-open drawer no longer collapses on pointer

@@ -69,6 +69,12 @@ interface ModalProps {
   /** Optional inline content shown right after the title text (e.g. a path / status badges). */
   titleExtra?: ReactNode;
   /**
+   * Optional content UNDER the title — a caption or a link out of this modal. Absent leaves the header
+   * exactly as it was (one centred row); present stacks the title and this, so a subtitle cannot shift
+   * the layout of every other modal.
+   */
+  titleBelow?: ReactNode;
+  /**
    * Replaces the rendered title TEXT with a control (e.g. a picker that switches what the modal is
    * editing). `title` is still required and becomes the dialog's accessible name via a visually-hidden
    * heading — the control's own label is about choosing, not about naming the dialog.
@@ -105,7 +111,7 @@ interface ModalProps {
  * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
  * ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, titleControl, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, titleBelow, titleControl, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
@@ -275,6 +281,11 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                     <h2 id={titleId} className="sr-only">{title}</h2>
                     {titleControl}
                   </>
+                ) : titleBelow ? (
+                  <div className="min-w-0">
+                    <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                    {titleBelow}
+                  </div>
                 ) : (
                   <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
                 )}

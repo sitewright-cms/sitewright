@@ -246,3 +246,36 @@ describe('an `icon` field', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 });
+
+describe('the way back to the entry’s dataset', () => {
+  it('offers it when the entry was opened from a page, naming the dataset', async () => {
+    // Opened over the page editor, the row gives no clue WHICH dataset it belongs to — and the answer
+    // is one rail away only if you already know the name.
+    const onViewDataset = vi.fn();
+    render(
+      <EntryEditorModal projectId="p" dataset={dataset} entry={entry} onSaved={() => {}} onClose={() => {}} onViewDataset={onViewDataset} />,
+    );
+    const link = await screen.findByRole('button', { name: /View dataset .*Hero/ });
+    fireEvent.click(link);
+    expect(onViewDataset).toHaveBeenCalledTimes(1);
+  });
+
+  it('omits it inside the Data rail, where the reader is already there', () => {
+    render(<EntryEditorModal projectId="p" dataset={dataset} entry={entry} onSaved={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole('button', { name: /View dataset/ })).toBeNull();
+  });
+
+  it('falls back to the slug when the dataset has no display name', async () => {
+    render(
+      <EntryEditorModal
+        projectId="p"
+        dataset={{ ...dataset, name: '' }}
+        entry={entry}
+        onSaved={() => {}}
+        onClose={() => {}}
+        onViewDataset={() => {}}
+      />,
+    );
+    expect(await screen.findByRole('button', { name: /View dataset .*hero/ })).toBeInTheDocument();
+  });
+});

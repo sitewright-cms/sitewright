@@ -142,3 +142,77 @@ describe('resetting a member password', () => {
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
   });
 });
+
+describe('approving STAFF the same way, and issuing their passwords', () => {
+  /** A signed-in instance admin. The first registered admin is the instance admin by persisted role. */
+  async function admin(): Promise<string> {
+    await registerAccount(db, 'boss@agency.test', 'Pw-secret-1', { platformRole: 'admin' });
+    return login('boss@agency.test');
+  }
+
+  it('creates an ADMIN account from a pending staff invite, with a one-time password', async () => {
+    const t = await admin();
+    const inv = await app.inject({
+      method: 'POST',
+      url: '/admin/invites',
+      cookies: { sw_session: t },
+      payload: { email: 'second-admin@agency.test', role: 'admin' },
+    });
+    expect(inv.statusCode).toBe(201);
+    const inviteId = (inv.json() as { invite: { id: string } }).invite.id;
+
+    const res = await app.inject({ method: 'POST', url: `/admin/invites/${inviteId}/approve`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { email: string; created: boolean; password?: string };
+    expect(body.created).toBe(true);
+    expect(body.password).toBeTruthy();
+
+    // The new admin can sign in AND reaches instance settings — the role actually landed.
+    const theirs = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'second-admin@agency.test', password: body.password } }));
+    expect((await app.inject({ method: 'GET', url: '/admin/settings', cookies: { sw_session: theirs } })).statusCode).toBe(200);
+  });
+
+  it('grants the DEVELOPER role by the same path', async () => {
+    const t = await admin();
+    const inv = await app.inject({ method: 'POST', url: '/admin/invites', cookies: { sw_session: t }, payload: { email: 'dev@agency.test', role: 'developer' } });
+    const inviteId = (inv.json() as { invite: { id: string } }).invite.id;
+    const res = await app.inject({ method: 'POST', url: `/admin/invites/${inviteId}/approve`, cookies: { sw_session: t } });
+    const body = res.json() as { password?: string };
+
+    const theirs = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'dev@agency.test', password: body.password } }));
+    // A developer may create a project…
+    expect((await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: theirs }, payload: { name: 'D', slug: 'd' } })).statusCode).toBe(201);
+    // …but is NOT an instance admin.
+    expect((await app.inject({ method: 'GET', url: '/admin/settings', cookies: { sw_session: theirs } })).statusCode).toBe(403);
+  });
+
+  it('will not let the platform surface reach into a PROJECT invite', async () => {
+    // The scope check runs both ways: a project's invite is not an instance admin's to approve here.
+    const { projectId, inviteId } = await setup();
+    const t = await admin();
+    void projectId;
+    expect((await app.inject({ method: 'POST', url: `/admin/invites/${inviteId}/approve`, cookies: { sw_session: t } })).statusCode).toBe(404);
+  });
+
+  it('refuses a non-admin', async () => {
+    const { t } = await setup(); // a developer, not an admin
+    const inv = await registerAccount(db, 'x@agency.test', 'Pw-secret-1');
+    void inv;
+    expect((await app.inject({ method: 'POST', url: '/admin/invites/whatever/approve', cookies: { sw_session: t } })).statusCode).toBe(403);
+  });
+
+  it('resets another staff password, but never the admin’s own', async () => {
+    const t = await admin();
+    const dev = await registerAccount(db, 'dev2@agency.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const res = await app.inject({ method: 'POST', url: `/admin/users/${dev.userId}/password`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const { password } = res.json() as { password: string };
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'dev2@agency.test', password } })).statusCode).toBe(200);
+
+    // Own account is refused — that path re-authenticates in Account settings for a reason.
+    const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: t } });
+    const myId = (me.json() as { userId: string }).userId;
+    expect(myId, 'the admin resolves to a real user id').toBeTruthy();
+    expect((await app.inject({ method: 'POST', url: `/admin/users/${myId}/password`, cookies: { sw_session: t } })).statusCode).toBe(403);
+  });
+});

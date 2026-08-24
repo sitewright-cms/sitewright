@@ -287,6 +287,10 @@ export interface ApprovedInvite {
  * with a generated password returned ONCE for the admin to hand over. Either way the invitee can then
  * sign in with SSO too, because `resolveOidcUser` federates onto an existing account by verified email.
  *
+ * Works for a PLATFORM-staff invite as well as a project one — `applyInviteGrant` writes whichever the
+ * invite carries (a platform role on the user, or a project membership), so admin/developer accounts
+ * are created exactly the way client members are.
+ *
  * An EXPIRED invite is still approvable: expiry bounds how long an unattended LINK stays redeemable,
  * and an admin acting deliberately now is not that risk. An already-accepted one is not — that grant
  * has been made.
@@ -294,14 +298,21 @@ export interface ApprovedInvite {
 export async function approveInvite(
   db: Database,
   inviteId: string,
-  opts: { projectId: string; actorUserId: string; generatePassword: () => string; hashPassword: (p: string) => Promise<string> },
+  opts: {
+    /** The scope the caller was authorized for: a project id, or `null` for a PLATFORM-staff invite. */
+    projectId: string | null;
+    actorUserId: string;
+    generatePassword: () => string;
+    hashPassword: (p: string) => Promise<string>;
+  },
   now: Date = new Date(),
 ): Promise<ApprovedInvite> {
   const [invite] = await db.select().from(invites).where(eq(invites.id, inviteId));
   if (!invite) throw new NotFoundError('invite not found');
-  // Scope the action to the project the caller was authorized for — an invite id alone must not reach
-  // across projects, and a platform-wide invite is not a project owner's to approve.
-  if (invite.projectId !== opts.projectId) throw new NotFoundError('invite not found');
+  // Scope the action to what the caller was authorized for. The comparison covers both directions:
+  // a project owner (projectId set) cannot approve a PLATFORM invite, and an instance admin acting on
+  // the platform surface (null) cannot reach into a project's invites by id.
+  if ((invite.projectId ?? null) !== opts.projectId) throw new NotFoundError('invite not found');
   if (invite.acceptedAt) throw new ConflictError('this invite has already been used');
 
   const email = invite.email.trim().toLowerCase();

@@ -483,6 +483,18 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[1]![1].method).toBe('DELETE');
   });
 
+  it('approves a pending STAFF invite and issues a staff password', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { email: 's@x.test', userId: 'u-3', created: true, password: 'Ht4@nBv6-Cx1zRq9' }));
+    const approved = await api.approveStaffInvite('i 2');
+    expect(approved.created).toBe(true);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/admin/invites/i%202/approve');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { email: 's@x.test', password: 'Pl2^kZw8-Nf5uGe7' }));
+    const reset = await api.resetStaffPassword('u/3');
+    expect(reset.password).toBe('Pl2^kZw8-Nf5uGe7');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/admin/users/u%2F3/password');
+  });
+
   it('approves a pending invite and issues a member password', async () => {
     // Both mint credentials, so the ids must be encoded into the path rather than concatenated raw.
     fetchMock.mockResolvedValue(jsonResponse(200, { email: 'c@x.test', userId: 'u-2', created: true, password: 'Sw3!tPq7-Ln2xVd8' }));

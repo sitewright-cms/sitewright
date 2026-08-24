@@ -3095,6 +3095,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(201).send(result);
   });
 
+  // Approve a pending STAFF invite without the link — the same decision the project surface offers,
+  // for admin/developer accounts. Instance-admin only: this grants an instance-wide role.
+  app.post<{ Params: { inviteId: string } }>('/admin/invites/:inviteId/approve', { config: rl(20) }, async (req, reply) => {
+    const actor = await requireInstanceAdmin(req);
+    const result = await approveInvite(db, req.params.inviteId, {
+      projectId: null, // platform scope — a project's invite is not reachable from here
+      actorUserId: actor,
+      generatePassword,
+      hashPassword,
+    });
+    req.log.info({ actor, created: result.created }, 'staff invite approved directly by an admin');
+    return reply.send(result);
+  });
+
+  // Issue a fresh password for another STAFF account. Instance-admin only, and never your own — an
+  // admin changing their own password goes through Account settings, which re-authenticates first;
+  // routing it through here would turn a hijacked admin session into a permanent credential.
+  app.post<{ Params: { userId: string } }>('/admin/users/:userId/password', { config: rl(10) }, async (req, reply) => {
+    const actor = await requireInstanceAdmin(req);
+    const target = req.params.userId;
+    if (target === actor) throw new ForbiddenError('change your own password in Account settings');
+    const role = await getPlatformRole(db, target);
+    if (!role) throw new NotFoundError('not a platform staff account');
+    const password = generatePassword();
+    await setPasswordAsAdmin(db, target, password);
+    const email = await getUserEmail(db, target);
+    req.log.info({ actor }, 'staff password reset by an admin');
+    return reply.send({ email, password });
+  });
+
   app.get('/admin/invites', { config: rl(30) }, async (req, reply) => {
     await requireInstanceAdmin(req);
     return reply.send({ invites: await listInvites(db, {}) });

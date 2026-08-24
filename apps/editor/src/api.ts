@@ -887,6 +887,15 @@ export const api = {
     request<{ invite: Invite; token: string }>('POST', `/projects/${projectId}/invites`, { email }),
   /** Platform-staff invites (instance-wide). */
   listInvites: () => request<{ invites: Invite[] }>('GET', '/admin/invites'),
+  /** Approve a pending STAFF invite without the link. `password` only when the account was created. */
+  approveStaffInvite: (inviteId: string) =>
+    request<{ email: string; userId: string; created: boolean; password?: string }>(
+      'POST',
+      `/admin/invites/${encodeURIComponent(inviteId)}/approve`,
+    ),
+  /** Issue a fresh password for another staff account. Returned once — only the hash is stored. */
+  resetStaffPassword: (userId: string) =>
+    request<{ email: string | null; password: string }>('POST', `/admin/users/${encodeURIComponent(userId)}/password`),
   /** A project's pending (client) invites. */
   listProjectInvites: (projectId: string) =>
     request<{ invites: Invite[] }>('GET', `/projects/${projectId}/invites`),

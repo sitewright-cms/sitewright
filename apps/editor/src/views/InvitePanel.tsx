@@ -8,7 +8,13 @@ import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerBut
 interface InvitePanelProps {
   kind: 'developer' | 'client';
   invites: Invite[];
-  onInvite: (email: string) => Promise<{ token: string }>;
+  onInvite: (email: string, role?: string) => Promise<{ token: string }>;
+  /**
+   * The roles this panel may grant. Present ⇒ a picker is shown and the choice is passed to
+   * `onInvite`; absent ⇒ the caller's default role. Project invites always grant `member`, so only
+   * the platform surface supplies this.
+   */
+  roleOptions?: readonly { value: string; label: string }[];
   onRevoke: (id: string) => Promise<void>;
   onChanged: () => void | Promise<void>;
   /**
@@ -28,8 +34,9 @@ function inviteLink(token: string): string {
  * Shared invite UI: invite by email, surface the one-time link to copy (no email infra),
  * and list/revoke pending invites. Used for both developer and client invites.
  */
-export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onApprove }: InvitePanelProps) {
+export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onApprove, roleOptions }: InvitePanelProps) {
   const [email, setEmail] = useState('');
+  const [role, setRole] = useState(roleOptions?.[0]?.value ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
@@ -42,7 +49,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onAp
     setError(null);
     setBusy(true);
     try {
-      const res = await onInvite(email.trim());
+      const res = await onInvite(email.trim(), role || undefined);
       setLink({ email: email.trim(), url: inviteLink(res.token) });
       setCopied(false);
       setEmail('');
@@ -117,7 +124,9 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onAp
             >
               <span className="text-slate-600 dark:text-slate-300">
                 {inv.email}
-                <span className="ml-2 text-[11px] text-slate-500 dark:text-slate-400">pending · expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                <span className="ml-2 text-[11px] text-slate-500 dark:text-slate-400">
+                  {inv.role} · pending · expires {new Date(inv.expiresAt).toLocaleDateString()}
+                </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 {onApprove && (
@@ -159,6 +168,26 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onAp
             required
           />
         </div>
+        {roleOptions && roleOptions.length > 0 && (
+          <div className="flex flex-col">
+            <label className={fieldLabel} htmlFor={`invite-role-${kind}`}>
+              Role
+            </label>
+            <select
+              id={`invite-role-${kind}`}
+              aria-label="Invite role"
+              className={glassInput}
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              {roleOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button
           type="submit"
           disabled={busy}

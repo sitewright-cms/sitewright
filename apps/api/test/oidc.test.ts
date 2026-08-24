@@ -14,7 +14,7 @@ vi.mock('../src/auth/oidc.js', async () => {
   };
 });
 
-import { OidcError } from '../src/auth/oidc.js';
+import { describeExchangeFailure, OidcError } from '../src/auth/oidc.js';
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -213,5 +213,35 @@ describe('OIDC single sign-on', () => {
   it('redirects unknown providers (start + callback) without leaking detail', async () => {
     expect((await harness.app.inject({ method: 'GET', url: '/auth/oidc/nope/start' })).headers.location).toBe('/?oidc_error=unknown_provider');
     expect((await harness.app.inject({ method: 'GET', url: '/auth/oidc/nope/callback?state=x' })).headers.location).toBe('/?oidc_error=unknown_provider');
+  });
+});
+
+describe('a token-endpoint rejection names what the provider objected to', () => {
+  // Every one of these arrives as the SAME generic wrapper message from oauth4webapi
+  // ("server responded with an error in the response body"), which is why the code and description
+  // have to be lifted off the error object — otherwise a wrong secret, a replayed code and a bad
+  // redirect URI are indistinguishable in the log.
+  it.each([
+    ['invalid_client', 'The OAuth client was not found.', 401],
+    ['invalid_grant', 'Code was already redeemed.', 400],
+    ['redirect_uri_mismatch', undefined, 400],
+  ])('surfaces %s', async (code, description, status) => {
+    const rejection = Object.assign(new Error('server responded with an error in the response body'), {
+      error: code,
+      ...(description ? { error_description: description } : {}),
+      status,
+    });
+    const message = describeExchangeFailure(rejection);
+    expect(message).toContain(code);
+    if (description) expect(message).toContain(description);
+    expect(message).toContain(String(status));
+  });
+
+  it('falls back to the message when the provider sent no OAuth error code', () => {
+    expect(describeExchangeFailure(new Error('network unreachable'))).toBe('network unreachable');
+  });
+
+  it('never returns an empty description for a non-Error throw', () => {
+    expect(describeExchangeFailure('boom')).toBe('token exchange failed');
   });
 });

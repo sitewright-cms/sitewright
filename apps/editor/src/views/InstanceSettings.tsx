@@ -760,6 +760,16 @@ export function InstanceSettings() {
 
       <div className={panelCls('integrations')}>
       <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Single sign-on (OIDC)
+          <SectionHelp
+            tip="Let users sign in via an external identity provider. Each provider shows the exact redirect URL to register with it. Only users who already exist or hold a pending invite can sign in; the client secret is stored encrypted."
+          />
+        </legend>
+        <OidcProvidersField providers={oidcProviders} onChange={setOidcProviders} origin={origin} />
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-bold">Global SMTP</legend>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -1467,16 +1477,6 @@ export function InstanceSettings() {
         <button type="button" className={primaryButton} onClick={() => setIntegrityOpen(true)}>
           <ShieldCheck className="h-4 w-4" aria-hidden /> Check database integrity
         </button>
-      </fieldset>
-
-      <fieldset className={`${glassCard} p-4`}>
-        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
-          Single sign-on (OIDC)
-          <SectionHelp
-            tip={`Let users sign in via an external identity provider. Register this app at each provider with the redirect URL ${origin}/auth/oidc/<id>/callback. Only users who already exist or hold a pending invite can sign in; the client secret is stored encrypted.`}
-          />
-        </legend>
-        <OidcProvidersField providers={oidcProviders} onChange={setOidcProviders} />
       </fieldset>
 
       <DeletedProjectsCard />

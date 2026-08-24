@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useUnsavedWork } from '../../lib/unsaved-work';
 import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical, History } from 'lucide-react';
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
 import { compareEntryOrder, hasPageField } from '@sitewright/core';
@@ -605,6 +606,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const keyInvalid = typedKey && computedId === '';
   const hasInvalidJson = invalidPaths.size > 0;
   const dirty = status !== base.status || JSON.stringify(values) !== JSON.stringify(base.values) || idChanged;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Dataset entry');
   // Save is live when there is something to persist (a change, or an as-yet-uncreated new entry) AND
   // the key + every json field are valid.
   const canSave = (dirty || !existsServer) && !keyTaken && !keyInvalid && !hasInvalidJson;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useUnsavedWork } from '../../lib/unsaved-work';
 import { Modal } from './Modal';
 import { CodeEditor, type CodeLanguage } from '../../lib/code-editor';
 
@@ -72,6 +73,8 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
   const [justSaved, setJustSaved] = useState(false);
   const nameError = nameEdit?.validate ? nameEdit.validate(draftName) : null;
   const dirty = draft !== saved.value || (nameEdit ? draftName !== saved.name : false);
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Code editor');
 
   // Clear the "Saved" flash on a timer, and on unmount so a late tick never touches a dead component.
   const flash = useRef<ReturnType<typeof setTimeout>>();

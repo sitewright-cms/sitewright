@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useUnsavedWork } from '../../lib/unsaved-work';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { CodeEditor } from '../../lib/code-editor';
@@ -23,6 +24,8 @@ export function HtmlSourceModal({ swKey, value, onSave, onClose }: HtmlSourceMod
   const { confirm, dialog } = useDialogs();
   const [html, setHtml] = useState(value);
   const dirty = html !== value;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'HTML source');
   return (
     <Modal
       title={`Edit HTML — ${swKey}`}

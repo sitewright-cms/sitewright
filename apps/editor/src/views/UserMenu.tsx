@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useUnsavedWork } from '../lib/unsaved-work';
 import { isPasswordValid, PASSWORD_MIN_LENGTH } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { Modal } from './ui/Modal';
@@ -85,6 +86,9 @@ function AccountTab({ email, onEmailChanged }: { email: string; onEmailChanged: 
   }, [email]);
 
   const dirty = next.trim().toLowerCase() !== email.toLowerCase();
+
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Account');
 
   async function submit(e: FormEvent) {
     e.preventDefault();

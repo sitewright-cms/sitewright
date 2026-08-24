@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useUnsavedWork } from '../lib/unsaved-work';
 import { Settings, RotateCcw, History, ExternalLink } from 'lucide-react';
 import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
@@ -261,6 +262,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const stateKey = keyOf(source, settings, pageData);
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Page editor');
 
   // A rejected SAVE (validate-on-save) carries the offending line/column in its message — surface it
   // as a gutter marker in the source editor. We use the SAVE error (not the live preview error):

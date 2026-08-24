@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useUnsavedWork } from '../lib/unsaved-work';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
@@ -105,6 +106,8 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const dirty = source !== value;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Chrome slot');
 
   /** Tell the freshly-loaded preview which slot it shows (which also scrolls it into view) and the mode. */
   const syncPreview = useCallback(() => {

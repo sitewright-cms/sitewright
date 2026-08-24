@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useUnsavedWork } from '../../../lib/unsaved-work';
 import type { ImageMap, ImageMapObject, ImageMapTemplate } from '@sitewright/schema';
 import { Modal } from '../../ui/Modal';
 import { useToast } from '../../ui/Toast';
@@ -419,13 +420,9 @@ function MapEditor({
   );
   const selected = selectedId && artboard ? findObject(artboard, selectedId) : undefined;
 
-  // Warn before losing unsaved work — a map is a lot of positioning to redo.
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent): void => e.preventDefault();
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [dirty]);
+  // Warn before losing unsaved work — a map is a lot of positioning to redo. This was the only surface
+  // that guarded leaving the page; the guard now lives in one place and every editor shares it.
+  useUnsavedWork(dirty, 'Image map');
 
   /**
    * Apply an update to the map.

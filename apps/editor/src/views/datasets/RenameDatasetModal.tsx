@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useUnsavedWork } from '../../lib/unsaved-work';
 import type { Dataset, Entry } from '@sitewright/schema';
 import { api } from '../../api';
 import { glassInput } from '../../theme';
@@ -47,6 +48,8 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
   const nameInvalid = trimmedName === '';
   const nameChanged = trimmedName !== dataset.name;
   const dirty = nameChanged || slugChanged;
+  // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
+  useUnsavedWork(dirty, 'Dataset rename');
   const blocked = nameInvalid || (slugChanged && (!slugValid || slugTaken));
 
   async function run(cascade: boolean) {

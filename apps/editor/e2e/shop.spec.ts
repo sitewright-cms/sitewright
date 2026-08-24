@@ -57,7 +57,7 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
 
   // The runtime is shipped only-when-used.
-  expect((await ctx.get(`/sites/${slug}/cart.js`)).status()).toBe(200);
+  expect((await ctx.get(`/sites/${slug}/_assets/_sw/cart.js`)).status()).toBe(200);
 
   // --- drive the PUBLISHED page in a real browser ---
   // Capture window.open so we can assert the channel deep link without leaving the page.

@@ -36,9 +36,10 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   expect(body).toContain('data-bg="/media/x.jpg"');
   expect(body).toContain('waves-effect waves-light');
   // Match the src WITHOUT pinning the cache-busting `?v=<hash>` published assets carry — an exact-string
-  // assertion here would break every time that hash scheme legitimately changes.
-  expect(body).toMatch(/<script defer src="\.\.\/lazyload\.js(\?v=[^"]*)?"><\/script>/);
-  expect(body).toMatch(/<script defer src="\.\.\/ripple\.js(\?v=[^"]*)?"><\/script>/);
+  // assertion here would break every time that hash scheme legitimately changes. The `../` is this
+  // page's relative root (it sits one level deep); the runtimes themselves live in `_assets/_sw/` (#968).
+  expect(body).toMatch(/<script defer src="\.\.\/_assets\/_sw\/lazyload\.js(\?v=[^"]*)?"><\/script>/);
+  expect(body).toMatch(/<script defer src="\.\.\/_assets\/_sw\/ripple\.js(\?v=[^"]*)?"><\/script>/);
 
   // The Library is a LEFT hover side-panel; hovering its edge tab expands the fixed-size panel to
   // reveal the section buttons. Each section title opens a searchable gallery modal (which pins the

@@ -120,7 +120,7 @@ state rather than rewriting from scratch.
 | pinned | rewritten by |
 |---|---|
 | exact CSP sandbox token list | a deliberately widened sandbox |
-| `<script defer src="../lazyload.js">` | cache-busting `?v=<hash>` on published assets |
+| `<script defer src="../_assets/_sw/lazyload.js">` | cache-busting `?v=<hash>` on published assets |
 | `h1,…,.sw-h1,…{…}` selector order | the CSS minifier SORTS selector lists |
 | a trailing `;` in a declaration block | the minifier drops it |
 | `/sites/<slug>/` | subdomain serving |

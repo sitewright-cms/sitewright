@@ -131,16 +131,19 @@ test('mobile: the tablist scrolls in its own row, and modals arrive as bottom sh
   const [tabs, acct] = await Promise.all([tablist.boundingBox(), account.boundingBox()]);
   expect(tabs!.y, 'the tab strip must start below the control row').toBeGreaterThanOrEqual(acct!.y + acct!.height - 2);
 
-  // It overflows on purpose: the cut-off tab is what says "there is more this way".
+  // The strip is BUILT to scroll, but shortening the two long labels ("Corporate Identity" → "Identity",
+  // "Website Settings" → "Website") bought back enough width that all five now fit at 412px — the
+  // better outcome, and worth pinning so a future long label does not quietly reintroduce the scroll.
   const strip = page.locator('div.sw-scroll-none').filter({ has: tablist });
-  const overflows = await strip.evaluate((el) => el.scrollWidth > el.clientWidth);
-  expect(overflows, 'five tabs must not fit — the strip is meant to scroll').toBe(true);
-  // …and scrolling it must not drag the PAGE sideways.
+  const [content, visible] = await strip.evaluate((el) => [el.scrollWidth, el.clientWidth]);
+  expect(content, 'the five tabs should fit without scrolling at this width').toBeLessThanOrEqual(visible + 1);
+  // And if a longer label ever does overflow it, scrolling the strip must still not drag the PAGE.
   await strip.evaluate((el) => el.scrollBy({ left: 400 }));
-  await expectNoHorizontalOverflow(page, 'tab strip scrolled to the end');
+  await expectNoHorizontalOverflow(page, 'tab strip scrolled');
 
   // A modal is a bottom sheet: full-bleed to both side edges and anchored to the bottom of the screen.
-  await page.getByRole('button', { name: 'New page' }).click();
+  // "+ Page" on a phone, "+ New page" on desktop — the verb is implied by the "+".
+  await page.getByRole('button', { name: '+ Page' }).click();
   const sheet = page.getByRole('dialog', { name: /New page/i });
   await expect(sheet).toBeVisible();
   const [box, viewport] = await Promise.all([

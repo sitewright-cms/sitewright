@@ -47,8 +47,21 @@ vi.mock('../src/views/Project', () => ({
     }, [onLoaded]);
     return <div>PROJECT {project.name} tab={tab}</div>;
   },
-  MANAGE_TABS: ['pages', 'forms'] as const,
-  TAB_LABELS: { pages: 'Pages', forms: 'Forms' },
+  // Carries the two LONG-named tabs as well, because the mobile strip renames exactly those two and a
+  // stub without them could not show that.
+  MANAGE_TABS: ['corporate-identity', 'website-settings', 'pages', 'forms'] as const,
+  TAB_LABELS: {
+    'corporate-identity': 'Corporate Identity',
+    'website-settings': 'Website Settings',
+    pages: 'Pages',
+    forms: 'Forms',
+  },
+  TAB_LABELS_SHORT: {
+    'corporate-identity': 'Identity',
+    'website-settings': 'Website',
+    pages: 'Pages',
+    forms: 'Forms',
+  },
 }));
 vi.mock('../src/views/files/AssetsPanel', () => ({
   AssetsPanel: () => <div>ASSETS PANEL</div>,
@@ -429,6 +442,25 @@ describe('App shell on a phone', () => {
     // And it still does its job.
     fireEvent.click(screen.getByRole('tab', { name: 'Forms' }));
     expect(await screen.findByText(/PROJECT Acme tab=forms/)).toBeInTheDocument();
+  });
+
+  it('names the two long tabs for a strip that scrolls', async () => {
+    withMobileViewport();
+    await openProject();
+    // "Corporate Identity" and "Website Settings" are most of the strip's width at 412px, and the
+    // first word carries the meaning in both. A separate map, not truncation: "Website Sett…" is a
+    // clipped label; "Website" is a name.
+    expect(screen.getByRole('tab', { name: 'Identity' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Website' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Corporate Identity' })).not.toBeInTheDocument();
+    // The other three were already short enough to leave alone.
+    expect(screen.getByRole('tab', { name: 'Pages' })).toBeInTheDocument();
+  });
+
+  it('keeps the full tab names on desktop', async () => {
+    await openProject();
+    expect(screen.getByRole('tab', { name: 'Corporate Identity' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Website Settings' })).toBeInTheDocument();
   });
 
   it('keeps the tablist centred inside the header row on desktop', async () => {

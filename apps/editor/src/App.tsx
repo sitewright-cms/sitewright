@@ -6,7 +6,7 @@ import { useBranding } from './lib/use-branding';
 import { useIsMobile } from './lib/use-is-mobile';
 import { Login } from './views/Login';
 import { ForcePasswordChange } from './views/ForcePasswordChange';
-import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
+import { ProjectView, MANAGE_TABS, TAB_LABELS, TAB_LABELS_SHORT, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
 import { LibraryPanel } from './views/library/LibraryPanel';
 import { CriticalCssShortcut } from './views/settings/CriticalCssShortcut';
@@ -375,7 +375,7 @@ function MainApp({
           }`}
         >
           {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
-          {TAB_LABELS[t]}
+          {(isMobile ? TAB_LABELS_SHORT : TAB_LABELS)[t]}
         </button>
       ))}
     </div>
@@ -393,9 +393,15 @@ function MainApp({
           mark is scaled 1.7× — a 22px box paints at 37.4px, overhanging ~7.7px per side; `pr-2` (8px) on
           the button absorbs the right overhang so the selector pill stays clear, and the top/bottom
           overhang sits comfortably inside the header's py-3. Keep that relationship if either value changes. */}
-      <div className="flex min-w-0 items-center gap-3">
+      <div className={`flex min-w-0 items-center ${isMobile ? 'gap-1' : 'gap-3'}`}>
         <button
-          className="flex shrink-0 items-center pr-2 text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300"
+          className={`flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300 ${
+            // The mark is scaled 1.7×, so it overhangs its 22px box by ~7.7px per side. On desktop the
+            // padding absorbs the RIGHT overhang, keeping the selector pill clear. On a phone the pill
+            // sits nearly flush against it (gap-1) and the screen edge is the tighter constraint, so the
+            // same allowance moves to the LEFT — the overhang itself then does most of the separating.
+            isMobile ? 'pl-2' : 'pr-2'
+          }`}
           onClick={() => setSelectorOpen(true)}
           aria-label={inProject ? `${inProject.name} — switch project` : `${branding.name} — switch project`}
           title="Switch project"

@@ -105,7 +105,7 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="waves-effect rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
       >
         <UserIcon />
       </button>

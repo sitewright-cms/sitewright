@@ -53,6 +53,18 @@ export const TAB_LABELS: Record<Tab, string> = {
   forms: 'Forms',
   history: 'History',
 };
+/**
+ * The same five tabs, named for a strip that scrolls. Two of the labels are two-word phrases whose
+ * first word carries the meaning ("Corporate Identity", "Website Settings"), and at 412px those two
+ * alone are most of the strip's scrollable width — so the tail goes and the tabs nearly fit without
+ * scrolling at all. Kept as a SEPARATE map rather than truncating, because "Website Sett…" is a
+ * clipped label and "Website" is a name.
+ */
+export const TAB_LABELS_SHORT: Record<Tab, string> = {
+  ...TAB_LABELS,
+  'corporate-identity': 'Identity',
+  'website-settings': 'Website',
+};
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
 // preview is immediately meaningful: it demonstrates the {{ company.* }} bindings AND a `data-sw-text`
@@ -983,7 +995,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                 }}
                 title="A menu item with no page of its own — links somewhere or groups child pages in a dropdown"
               >
-                + New Placeholder
+                + {isMobile ? 'Placeholder' : 'New Placeholder'}
               </button>
               <button
                 type="button"
@@ -994,7 +1006,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   setAddOpen(true);
                 }}
               >
-                + New page
+                + {isMobile ? 'Page' : 'New page'}
               </button>
             </div>
           </div>

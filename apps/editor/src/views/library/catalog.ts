@@ -98,16 +98,17 @@ export const LAZYLOAD_ITEMS: LibraryItem[] = [
   },
   {
     id: 'lazy-iframe',
-    name: 'Lazy iframe (native)',
+    name: 'Lazy iframe (native — no-JS fallback only)',
     keywords: 'lazyload lazy iframe embed map video skeleton loading',
-    description: 'Native loading="lazy" defers the embed and works without JS; the skeleton shimmers behind it until it paints.',
+    description:
+      'Native loading="lazy" is NOT a real deferral for iframes — browsers fetch it at page load (distance threshold), which hurts pagespeed. Reserve for the rare frame that must exist without JS; otherwise use the data-src variant.',
     example: '<iframe src="…" loading="lazy" class="skeleton" width="560" height="315" title="…"></iframe>',
   },
   {
     id: 'lazy-iframe-defer',
-    name: 'Lazy iframe (data-src)',
+    name: 'Lazy iframe (data-src — preferred)',
     keywords: 'lazyload lazy iframe embed data-src defer skeleton',
-    description: 'Defer the embed until near the viewport — the runtime swaps data-src → src on scroll-in. Needs JS; wrap in a skeleton for the loading state.',
+    description: 'The platform rule for every iframe/third-party embed: the runtime swaps data-src → src only on scroll-in, so nothing is fetched at page load. Wrap in a skeleton for the loading state.',
     example:
       '<div class="skeleton w-full overflow-hidden rounded-box" style="aspect-ratio:16/9">\n  <iframe data-src="…" class="h-full w-full" title="…"></iframe>\n</div>',
   },

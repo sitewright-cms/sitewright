@@ -1,10 +1,11 @@
 // Lazy-loading: a first-party runtime for the industry-standard vanilla-lazyload /
 // lozad vocabulary (`data-src` / `data-srcset` / `data-bg`).
 //
-// Native `loading="lazy"` already covers plain `<img>`/`<iframe>` (and the image
-// pipeline emits an LQIP blur placeholder), so this fills the gap native lazy does
-// NOT cover: BACKGROUND images (`data-bg`) and a deferred `data-src`/`data-srcset`
-// swap with a blur-up fade. The DATA-ATTRIBUTE is the marker: any element carrying
+// Native `loading="lazy"` remains acceptable for plain self-hosted `<img>` (the image
+// pipeline emits an LQIP blur placeholder), but for iframes/third-party embeds it is NOT
+// a real deferral — its distance threshold fetches at page load — so this runtime is the
+// platform rule for those, and it also covers what native lazy cannot: BACKGROUND images
+// (`data-bg`) and a deferred `data-src`/`data-srcset` swap with a blur-up fade. The DATA-ATTRIBUTE is the marker: any element carrying
 // `data-src`/`data-srcset`/`data-bg` is lazy-loaded — no `lazyload` class is required
 // (it stays accepted for backward compatibility). The swap is element-agnostic, so
 // `<img data-src>` AND `<iframe data-src>` both get their real `src`/`srcset` set on

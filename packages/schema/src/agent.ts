@@ -1583,8 +1583,9 @@ against this list BEFORE you publish it:
   not from what a screenshot shows.
 - KEEP THE FOOTER MAP. Many sites embed a Google Map in the FOOTER (or a contact strip). The importer
   captures it into \`company.mapUrl\` and the starting \`website.footer\` slot already contains
-  \`<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" class="skeleton loading … border-0">\`.
-  When you RE-AUTHOR the footer, do NOT drop that map — re-add the same iframe (lazy + \`.skeleton .loading\`)
+  \`<iframe data-src="{{sw-url company.mapUrl}}" title="Map" class="skeleton loading … border-0">\` —
+  data-src (the platform lazy runtime), NOT loading="lazy" (see the LAZY-LOAD rule above).
+  When you RE-AUTHOR the footer, do NOT drop that map — re-add the same iframe (data-src + \`.skeleton .loading\`)
   if the original's footer shows one. If \`company.mapUrl\` is empty but the original clearly has a footer map,
   author the map iframe from the source's own embed URL (an allow-listed maps host). A footer that silently
   loses the map is a common miss — verify it against compare_regions(pageId)'s FOOTER crop. DETECTION: the map

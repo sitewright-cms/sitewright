@@ -58,9 +58,15 @@ describe('transformBody', () => {
 
   it('preserves allowlisted embeds (lazy map, YouTube, Facebook page) and drops non-allowlisted iframes', () => {
     const map = run('<iframe data-src="https://www.google.com/maps/embed?pb=1" title="map"></iframe>').source;
-    expect(map).toContain('src="https://www.google.com/maps/embed?pb=1"'); // lazy data-src promoted + kept
-    expect(map).toContain('loading="lazy"');
+    expect(map).toContain('data-src="https://www.google.com/maps/embed?pb=1"'); // kept on the platform lazy runtime
+    expect(map).not.toMatch(/<iframe[^>]* src="/); // no eager src — data-src defers the fetch until scroll-in
+    expect(map).not.toContain('loading="lazy"'); // native lazy fetches at page load (distance threshold)
     expect(map).toContain('allowfullscreen');
+    // A source iframe that ALREADY carries loading="lazy": the attr must be fully dropped, not left
+    // behind as an empty `loading=""` residue (the attr-loop key snapshot vs. mid-loop delete trap).
+    const lazySrc = run('<iframe src="https://player.vimeo.com/video/123" loading="lazy"></iframe>').source;
+    expect(lazySrc).toContain('data-src="https://player.vimeo.com/video/123"');
+    expect(lazySrc).not.toMatch(/loading\s*=/);
     const yt = run('<iframe src="https://www.youtube.com/embed/abc"></iframe>').source;
     expect(yt).toContain('https://www.youtube.com/embed/abc');
     const fb = run('<iframe src="https://www.facebook.com/plugins/page.php?href=acme"></iframe>').source;
@@ -150,7 +156,7 @@ describe('transformBody', () => {
     expect(source).not.toContain('http://insecure');
     expect(source).not.toContain('random.example'); // https but not an allowlisted embed host → dropped
     expect(source).toContain('https://player.vimeo.com/video/123');
-    expect(source).toMatch(/loading="lazy"/); // kept embed gets the loading state
+    expect(source).toMatch(/data-src="https:\/\/player\.vimeo\.com/); // kept embed defers via the platform lazy runtime
     expect(source).toMatch(/class="[^"]*skeleton/); // + the .skeleton shimmer placeholder
   });
 
@@ -158,8 +164,8 @@ describe('transformBody', () => {
     const pdfCtx: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/company_profile.pdf', '/media/p/a/file/company_profile.pdf']]) };
     const { source, diagnostics } = transformBody(parse('<html><body><iframe src="/company_profile.pdf" title="Company Profile"></iframe></body></html>'), pdfCtx);
     expect(source).toContain('<iframe'); // KEPT as an iframe — the platform serves PDFs inline + frameable
-    expect(source).toContain('src="/media/p/a/file/company_profile.pdf"');
-    expect(source).toMatch(/loading="lazy"/); // lazy-loaded
+    expect(source).toContain('data-src="/media/p/a/file/company_profile.pdf"');
+    expect(source).not.toMatch(/loading="lazy"/); // defers via the platform lazy runtime, not native lazy
     expect(source).toMatch(/class="[^"]*skeleton[^"]*loading/); // + .skeleton .loading placeholder
     expect(source).toContain('Company Profile'); // the title is preserved
     expect(source).not.toContain('target="_blank"'); // NOT a download link

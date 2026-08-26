@@ -494,7 +494,9 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
   // via the {{sw-url company.mapUrl}} HELPER — NOT a bare `{{company.mapUrl}}`, which validateTemplate rejects as
   // "a bare value in a URL attribute" (it renders on the no-validation import path but then BLOCKS every later
   // settings save, whose validateSourceOnSave re-validates the chrome slots). sw-url passes validation and returns
-  // an absolute external https URL unchanged. A skeleton placeholder shows while it loads. Only when the source had
+  // an absolute external https URL unchanged. Deferred via the platform lazy runtime (data-src) — NOT native
+  // loading="lazy", whose distance threshold fetches the whole Maps payload at page load and measurably hurts
+  // pagespeed. A skeleton placeholder shows while it loads. Only when the source had
   // a map — else the footer stays map-free. The iframe is SANDBOXED (the map still works with allow-scripts/
   // -same-origin/-popups/-forms) so the embedded page can't navigate the top-level context. When the consent
   // manager is ENABLED, gateAuthorIframes turns this into a click-to-load embed like any other cross-origin iframe
@@ -503,7 +505,7 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
   // can't emit a non-http(s) iframe src.
   const hasMap = !!identity.mapUrl && /^https?:\/\//i.test(identity.mapUrl);
   const map = hasMap
-    ? `<iframe src="{{sw-url company.mapUrl}}" title="Map" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton loading h-64 w-full border-0"></iframe>`
+    ? `<iframe data-src="{{sw-url company.mapUrl}}" title="Map" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-forms" class="skeleton loading h-64 w-full border-0"></iframe>`
     : '';
   return (
     `<div class="bg-neutral text-neutral-content">` +

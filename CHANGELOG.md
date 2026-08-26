@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Iframes now defer via the platform lazy runtime (`data-src`) everywhere the platform authors them.**
+  Online pagespeed testing showed native `loading="lazy"` on iframes still fetches the third party's
+  whole payload at page load (its distance threshold covers a typical page), while the `data-src`
+  runtime reliably defers until scroll-in. The agent instructions' one remaining `loading="lazy"`
+  iframe example (the footer map) now prescribes `data-src`, and all three importer emit-sites follow
+  suit: the starter footer map, the self-hosted PDF modal embed, and allowlisted third-party embeds
+  (which previously promoted a source site's own `data-src` to an eager `src` + `loading="lazy"`).
+  Native `loading="lazy"` remains acceptable for self-hosted images only.
+
 ## [0.38.0] — 2026-08-24
 
 ### Added

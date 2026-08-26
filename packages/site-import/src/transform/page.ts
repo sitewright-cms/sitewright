@@ -372,8 +372,10 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
   // before this pass, so only <iframe> reaches here — the common PDF-modal pattern).
   //  • A PDF is served INLINE + same-origin-frameable, so KEEP it as a lazy <iframe> pointing at the
   //    hosted /media ref — the browser's sandboxed viewer renders it (e.g. the original's "Company Profile"
-  //    modal PDF). Carries loading="lazy" + `.skeleton .loading` (platform rule: every iframe lazy-loads
-  //    behind a placeholder) + a min-height so the frame has size before it paints. Finalised HERE and the
+  //    modal PDF). Defers via the platform lazy runtime (data-src, NOT native loading="lazy" — the runtime
+  //    fetches only on scroll-in/modal-open, native lazy's distance threshold fetches at page load) +
+  //    `.skeleton .loading` (platform rule: every iframe lazy-loads behind a placeholder) + a min-height
+  //    so the frame has size before it paints. Finalised HERE and the
   //    function RETURNS — otherwise the main src loop would run isAllowedEmbed() on this same-origin /media
   //    path (not an allow-listed provider host) and DROP it.
   //  • A NON-PDF doc (doc/xls/…) a browser can't render inline → convert to a LINK the browser downloads.
@@ -386,9 +388,8 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
       el.name = 'iframe';
       (el as { tagName?: string }).tagName = 'iframe';
       for (const k of Object.keys(el.attribs)) delete el.attribs[k];
-      el.attribs.src = hostedDoc; // same-origin /media ref; publish rebases it to _assets/….pdf
+      el.attribs['data-src'] = hostedDoc; // same-origin /media ref; publish rebases it to _assets/….pdf
       el.attribs.title = title;
-      el.attribs.loading = 'lazy';
       el.attribs.class = 'skeleton loading w-full border-0';
       el.attribs.style = 'min-height:80vh';
       el.children = [];
@@ -431,6 +432,10 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
   const imgKey = isImageEl && el.attribs.src ? assetKey(el.attribs.src, ctx.pageUrl) : null;
   /* eslint-disable security/detect-object-injection -- `name` iterates the element's OWN attribute keys (a plain parsed Record), not attacker-controlled object access */
   for (const name of Object.keys(el.attribs)) {
+    // The key list is a snapshot: an earlier iteration may have DELETED this attr (the embed branch
+    // drops `loading` while handling `src`) — without this guard the generic fallback below would
+    // resurrect it as an empty `loading=""`.
+    if (!(name in el.attribs)) continue;
     const value = el.attribs[name] ?? '';
     // Event handlers + forged platform markers are stripped (on* would even fail validateTemplate).
     if (name.startsWith('on') || name.startsWith('data-sw-')) {
@@ -463,11 +468,14 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
         const abs = resolveUrl(value, ctx.pageUrl);
         // (A self-hosted DOCUMENT embed was already converted to a link in the pre-pass — download-only docs
         // can't be iframed.) Keep embeds only from the trusted provider allowlist (video, maps, social incl.
-        // Facebook, audio, forms, code, commerce, …); they're origin-isolated. Defer loading, allow the usual
-        // embed capabilities + fullscreen, and don't leak the full referrer. Anything else is dropped.
+        // Facebook, audio, forms, code, commerce, …); they're origin-isolated. Defer via the platform lazy
+        // runtime (data-src — native loading="lazy" still fetches the third party's whole payload at page
+        // load through its distance threshold), allow the usual embed capabilities + fullscreen, and don't
+        // leak the full referrer. Anything else is dropped.
         if (abs && isAllowedEmbed(abs)) {
-          el.attribs.src = abs;
-          if (!el.attribs.loading) el.attribs.loading = 'lazy';
+          delete el.attribs.src;
+          delete el.attribs.loading;
+          el.attribs['data-src'] = abs;
           // Modern strict default: send only the origin (not the page path/query) to the embed host.
           if (!el.attribs.referrerpolicy) el.attribs.referrerpolicy = 'strict-origin-when-cross-origin';
           // No clipboard-write by default (silent-clipboard risk); a legit embed's own allow is kept.

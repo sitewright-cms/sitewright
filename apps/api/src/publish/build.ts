@@ -515,7 +515,7 @@ const STORAGE_BOUND_EMBED_HOSTS: ReadonlyArray<{ match: RegExp; label: string }>
 /**
  * Drop the LOADING-PLACEHOLDER classes when copying an embed's class list onto a static stand-in.
  *
- * The platform's media rule puts `loading="lazy"` + a `.skeleton` shimmer on iframes, so a lazy embed's
+ * The platform's media rule defers iframes via the lazy runtime (`data-src`) + a `.skeleton` shimmer, so a lazy embed's
  * class list usually carries `skeleton` and/or `loading`. Copying those verbatim onto the placeholder
  * breaks it in two ways, and neither is subtle:
  *

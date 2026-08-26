@@ -530,7 +530,8 @@ iframe { border: 0; max-width: 100%; }
 @media (prefers-reduced-motion: no-preference) { .btn .sw-btn-ripple { animation: sw-btn-ripple .6s ease-out forwards; } }
 @keyframes sw-btn-ripple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
-/* MEDIA LOADING STATE — platform rule: iframes + large off-screen images/media carry loading="lazy" plus a
+/* MEDIA LOADING STATE — platform rule: iframes defer via the lazy runtime (data-src; images may also use
+   native loading="lazy") plus a
    .skeleton shimmer placeholder (shown until the content paints over it). daisyUI .loading is a fixed 1.5rem
    SPINNER meant for inline/button use — on a REPLACED media element it would collapse the box and apply a
    spinner mask, so here we neutralise those spinner-specific props on media and let .loading act as a

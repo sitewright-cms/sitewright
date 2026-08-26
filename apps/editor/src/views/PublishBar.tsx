@@ -348,13 +348,6 @@ export function PublishBar({
         )}
       </div>
 
-      {showView && !compact && (
-        <a href={viewUrl} target="_blank" rel="noreferrer" title="View your live (served) site" aria-label="View the live site" className={btnBase}>
-          <ExternalLink className="h-4 w-4" />
-          View live
-        </a>
-      )}
-
       {/* DEPLOY — split button. ★ ALWAYS split, INCLUDING with no targets: the ▾ menu is the only
           route to "Download .zip", and a zip download is most useful precisely when there is NO
           deploy target — that IS the manual deployment path (the route says so, and builds a fresh
@@ -399,6 +392,27 @@ export function PublishBar({
 
         {menuOpen && (
           <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
+            {/* VIEW LIVE lives here rather than as a button of its own. It is the same family as the
+                rest of this menu — what happened to the published site — and it only appears at all
+                once there IS a served release with nothing pending, so as a top-level button it was a
+                control that came and went as you edited, shifting everything beside it. Leads the menu
+                because it is the one item that reads rather than writes. */}
+            {showView && (
+              <>
+                <a
+                  role="menuitem"
+                  href={viewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="View the live site"
+                  className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  View live site
+                </a>
+                <div className="my-1 border-t border-slate-100 dark:border-white/10" />
+              </>
+            )}
             {targets.length > 0 && (
               <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Deploy to…</p>
             )}

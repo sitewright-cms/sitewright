@@ -181,7 +181,10 @@ describe('PublishBar — deploy split button', () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     listDeployTargets.mockResolvedValue({ items: [local] });
     render(<PublishBar project={project} />);
-    const view = await screen.findByRole('link', { name: 'View the live site' });
+    // It lives in the deploy dropdown now, not in the bar — same family as the rest of that menu, and
+    // it stops being a control that comes and goes as you edit.
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a deploy target' }));
+    const view = await screen.findByRole('menuitem', { name: 'View the live site' });
     expect(view).toHaveAttribute('href', '/sites/acme/');
   });
 
@@ -190,7 +193,8 @@ describe('PublishBar — deploy split button', () => {
     listDeployTargets.mockResolvedValue({ items: [remote] });
     render(<PublishBar project={project} />);
     await screen.findByRole('button', { name: 'Deploy to Production' });
-    expect(screen.queryByRole('link', { name: 'View the live site' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose a deploy target' }));
+    expect(screen.queryByRole('menuitem', { name: 'View the live site' })).toBeNull();
   });
 });
 

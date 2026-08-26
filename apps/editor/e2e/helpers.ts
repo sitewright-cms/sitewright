@@ -149,9 +149,24 @@ export async function deployLocally(page: Page): Promise<string> {
   // "no target" — until the modal is dismissed. Close it, as a user does, or the split button never appears.
   await page.getByRole('button', { name: 'Close' }).first().click();
   await page.getByRole('button', { name: /^Deploy to / }).click();
-  const view = page.getByRole('link', { name: 'View the live site' });
-  await expect(view).toBeVisible({ timeout: 60_000 });
+  // "View live" moved OUT of the bar and INTO the deploy dropdown: it only exists once there is a
+  // served release with nothing pending, so as a top-level button it appeared and vanished as you
+  // edited, shifting every control beside it. Open the caret to reach it. The wait for the deploy to
+  // finish is the menu ITEM's visibility, exactly as before — the deploy is what makes it exist.
+  const caret = page.getByRole('button', { name: 'Choose a deploy target' });
+  const view = page.getByRole('menuitem', { name: 'View the live site' });
+  await expect(async () => {
+    if (!(await view.isVisible())) await caret.click();
+    await expect(view).toBeVisible({ timeout: 5_000 });
+  }).toPass({ timeout: 60_000 });
   const href = await view.getAttribute('href');
+  // ★ PUT THE MENU BACK. Reaching the link means opening the deploy dropdown, and this helper is
+  // shared by 8 specs that carry on driving that same split button — publish.spec.ts clicks the caret
+  // straight after, which TOGGLED the still-open menu shut and made its "Download .zip" click land on
+  // nothing. A helper that leaves UI state changed breaks its callers at a distance.
+  // The dropdown closes on its caret or an outside click, NOT on Escape.
+  if (await view.isVisible()) await caret.click();
+  await expect(view).toBeHidden();
   // Local hosting serves on `<slug>.<SW_SITES_DOMAIN>` when that is configured (the /sites/<slug>/ path
   // 301s there), so do NOT pin a path shape — assert only that a live address was advertised.
   expect(href, 'the deployed site must advertise a live address').toBeTruthy();

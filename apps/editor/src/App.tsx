@@ -393,7 +393,13 @@ function MainApp({
           mark is scaled 1.7× — a 22px box paints at 37.4px, overhanging ~7.7px per side; `pr-2` (8px) on
           the button absorbs the right overhang so the selector pill stays clear, and the top/bottom
           overhang sits comfortably inside the header's py-3. Keep that relationship if either value changes. */}
-      <div className={`flex min-w-0 items-center ${isMobile ? 'gap-1' : 'gap-3'}`}>
+      {/* A FIXED 285px left column, so the tablist that follows starts at the same x on every project
+          rather than sliding with the length of the project's name.
+          Safe at every width despite being fixed: this is a flex CHILD with `min-w-0`, so 285px is the
+          PREFERRED size (flex-basis) and the default `flex-shrink: 1` still lets it give way when the
+          row is tight — which is the whole story on a phone, where 285px plus the action nav is more
+          than the screen. The project name truncates into whatever it actually gets. */}
+      <div className={`flex w-[285px] min-w-0 items-center ${isMobile ? 'gap-1' : 'gap-3'}`}>
         <button
           className={`flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300 ${
             // The mark is scaled 1.7×, so it overhangs its 22px box by ~7.7px per side. On desktop the

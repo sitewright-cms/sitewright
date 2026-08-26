@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.39.1] — 2026-08-26
+
+### Changed
+
+- **The header's left column is a fixed 285px**, so the project tablist starts at the same place on
+  every project instead of sliding with the length of the project's name. It is a flex child with
+  `min-w-0`, so 285px is the preferred size and it still gives way on a narrow screen.
+- **"View live" moved into the Deploy dropdown.** It belongs to the same family as the rest of that
+  menu — what happened to the published site — and it only exists once there IS a served release with
+  nothing pending, so as a top-level button it appeared and vanished as you edited, shifting every
+  control beside it.
+
 ## [0.39.0] — 2026-08-26
 
 ### Changed

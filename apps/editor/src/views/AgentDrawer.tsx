@@ -529,7 +529,7 @@ export function AgentDrawer({
                 </button>
                 <textarea
                   ref={taRef}
-                  className={`${glassInput} max-h-[50vh] min-h-[2.5rem] flex-1 resize-none overflow-y-auto`}
+                  className={`${glassInput} max-h-[50dvh] min-h-[2.5rem] flex-1 resize-none overflow-y-auto`}
                   aria-label="Message the assistant"
                   placeholder="Ask the assistant to edit this page…"
                   rows={1}

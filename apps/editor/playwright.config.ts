@@ -27,5 +27,15 @@ export default defineConfig({
     // which are gated on prefers-reduced-motion: no-preference — don't inherit the host's.
     reducedMotion: 'no-preference',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // The whole suite, at desktop size — the mobile specs are excluded because they assert the
+    // ABSENCE of chrome that is correctly present here.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: /mobile\..*\.spec\.ts/ },
+    // A DELIBERATELY SMALL second pass. The editor now mounts a different app below `sm` (rails culled
+    // to two bottom corners, page editor stripped to the content editor, row toolbars replaced by the
+    // long-press menu) and nothing in a jsdom unit test can see a layout. This project runs only the
+    // `mobile.*` specs — running all 60+ twice would triple CI time to re-assert desktop behaviour.
+    // Pixel 7 is 412×915: under the 640px `sm` breakpoint, with a coarse pointer and real touch events.
+    { name: 'mobile-chrome', use: { ...devices['Pixel 7'] }, testMatch: /mobile\..*\.spec\.ts/ },
+  ],
 });

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { OVERLAY_STACK } from './overlay';
+import { useIsMobile } from '../../lib/use-is-mobile';
 
 /**
  * True for any subtree rendered inside a {@link SidePanel}'s content. {@link Modal} reads it to
@@ -45,7 +46,7 @@ interface SidePanelProps {
   headerExtra?: ReactNode;
   /**
    * Fixed panel size — left/right ⇒ a width class (e.g. `w-[26rem]`), bottom ⇒ a height class
-   * (e.g. `h-[60vh]`). FIXED on purpose: the panel slides in/out at a constant size so nothing
+   * (e.g. `h-[60dvh]`). FIXED on purpose: the panel slides in/out at a constant size so nothing
    * reflows on open/close.
    */
   size?: string;
@@ -66,10 +67,13 @@ interface SidePanelProps {
   children: ReactNode;
 }
 
+// The side defaults are CLAMPED to the viewport: a bare `w-[26rem]` is 416px, wider than the phone it
+// would slide over, so the panel hung off the edge with its close button unreachable. `min()` keeps the
+// desktop size exactly as it was (26rem wins on any screen ≥ ~452px) and only bites where it must.
 const DEFAULT_SIZE: Record<SidePanelSide, string> = {
-  left: 'w-[26rem]',
-  right: 'w-[26rem]',
-  bottom: 'h-[60vh]',
+  left: 'w-[min(26rem,92vw)]',
+  right: 'w-[min(26rem,92vw)]',
+  bottom: 'h-[60dvh]',
 };
 
 // Panel REST position (open). Left/right span the full screen height (top-0, over the header); a
@@ -143,9 +147,20 @@ export function SidePanel({ side, label, icon, headerExtra, size, width, align =
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
+  const isMobile = useIsMobile();
   // A bottom panel is flush to its corner (so its near-edge content can sit under the centered
   // Library/Assets EDGE tabs). Inset that side so they don't clip.
-  const edgeInset = side === 'bottom' ? (align === 'start' ? 'pl-10' : align === 'end' ? 'pr-10' : '') : '';
+  //
+  // Those insets are sized for a DESKTOP corner, and on a phone they are 40px of a ~400px panel spent
+  // avoiding a tab that is no longer beside the content — mobile's two rails own a corner each, so
+  // nothing overlaps the far edge. The right-hand one goes entirely (the File Manager's grid was
+  // losing a column to it); the left keeps half, because the Datasets rail's own tab does still sit
+  // over that corner.
+  const edgeInset =
+    side !== 'bottom' ? ''
+    : align === 'start' ? (isMobile ? 'pl-5' : 'pl-10')
+    : align === 'end' ? (isMobile ? 'pr-0' : 'pr-10')
+    : '';
 
   // Number of child dialogs currently holding the panel open (see SidePanelHold).
   const [held, setHeld] = useState(0);

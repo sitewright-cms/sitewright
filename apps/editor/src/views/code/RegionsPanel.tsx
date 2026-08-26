@@ -61,10 +61,13 @@ export function RegionsPanel({
   regions,
   projectId,
   onEdit,
+  mobile,
 }: {
   regions: RegionItem[];
   projectId: string;
   onEdit: (rid: number) => void;
+  /** Dock to the bottom edge instead of the left one — see the `side` note below. */
+  mobile?: boolean;
 }) {
   // Resolve real entry titles (the bridge's label is the rendered row text, which is empty for an
   // image-only entry → its id). Keyed by "<dataset-slug>|<entry-id>" → first-text-field value.
@@ -115,7 +118,24 @@ export function RegionsPanel({
   }, [regions]);
 
   return (
-    <SidePanel side="left" align="start" compact label="Regions" icon={<LayoutList className="h-3.5 w-3.5" aria-hidden />} size="w-[22rem]">
+    // ★ THE ONE RAIL MOBILE KEEPS INSIDE THE PAGE EDITOR, and the only left/right panel that moves
+    // rather than disappearing. Every row here is a comfortable, labelled tap target that jumps to and
+    // opens one editable region — which is precisely the affordance a phone lacks, where the
+    // alternative is precision-tapping a line of body text inside a live preview. It is the same
+    // argument that keeps the Datasets rail: a list of fields beats hunting for one by finger.
+    // It docks to the BOTTOM on mobile because the screen sides are deliberately clear there (App.tsx),
+    // and `size` means height on a bottom panel, so the width moves to `width`. Bottom-CENTRE, not the
+    // `start` it uses on the left edge: on mobile the two bottom CORNERS are already spoken for by the
+    // Datasets and File Manager rails, which stay mounted and reachable over this modal.
+    <SidePanel
+      side={mobile ? 'bottom' : 'left'}
+      align={mobile ? 'center' : 'start'}
+      compact
+      label="Regions"
+      icon={<LayoutList className="h-3.5 w-3.5" aria-hidden />}
+      size={mobile ? 'h-[70dvh]' : 'w-[22rem]'}
+      width={mobile ? 'w-[min(28rem,100vw)]' : undefined}
+    >
       <div className="flex flex-col gap-3 p-2">
         {regions.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-slate-500 dark:text-slate-400">No editable regions on this page.</p>

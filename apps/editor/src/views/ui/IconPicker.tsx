@@ -141,7 +141,7 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
 
   return (
     <Modal title="Choose an icon" onClose={onClose} size="2xl">
-      <div className="flex h-[60vh] flex-col gap-3 p-4">
+      <div className="flex h-[60dvh] flex-col gap-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
             {tabBtn('icons', 'Icons')}

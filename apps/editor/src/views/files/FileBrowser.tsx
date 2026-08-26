@@ -14,6 +14,7 @@ import { useDialogs } from '../ui/Dialogs';
 import { SkeletonImage } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
+import { useIsMobile } from '../../lib/use-is-mobile';
 import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
 import { cleanSvgFile } from '../library/svg-studio-helpers';
 import { ImageEditorStudio } from '../library/ImageEditorStudio';
@@ -158,6 +159,8 @@ export interface FileBrowserProps {
  */
 export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro, onTotals }: FileBrowserProps) {
   const pick = mode === 'pick';
+  // Narrow viewport: the Actions column has to hold FIVE 44px touch targets (see the <th>).
+  const isMobile = useIsMobile();
   const { confirm, prompt, dialog } = useDialogs();
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('URL copied — paste it into your page code'));
@@ -616,7 +619,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
         // `min-w` + the overflow wrapper are a graceful fallback ONLY on a very narrow drawer
         // (< ~34rem): the table scrolls a little rather than collapsing the Name column to nothing.
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[34rem] table-fixed text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap">
+        <table className={`w-full table-fixed text-left text-sm [&_td]:whitespace-nowrap [&_th]:whitespace-nowrap ${
+          // The floor grows with the Actions column: widening that column inside the SAME minimum just
+          // takes the width back off the Name column, which is the one thing that must stay readable.
+          isMobile ? 'min-w-[41rem]' : 'min-w-[34rem]'
+        }`}>
           <thead className="text-[11px] uppercase tracking-wide text-slate-500 dark:text-slate-400">
             <tr>
               <th className="py-1 font-medium" aria-sort={ariaSort('name')}>
@@ -634,7 +641,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                   Size {sortArrow('size')}
                 </button>
               </th>
-              <th className="w-36 py-1 text-right font-medium">Actions</th>
+              {/* A file row carries up to FIVE actions — Use, Copy URL, Download, Rename, Delete. At the
+                  desktop icon size they fit in 9rem; under the coarse-pointer 44px touch floor they need
+                  220px plus gaps, and in 9rem they spilled out of the column. The table already scrolls
+                  horizontally inside the rail, which is the accepted trade here. */}
+              <th className={`py-1 text-right font-medium ${isMobile ? 'w-64' : 'w-36'}`}>Actions</th>
             </tr>
           </thead>
           <tbody ref={virt.listRef as (el: HTMLTableSectionElement | null) => void}>
@@ -875,7 +886,7 @@ function ImagePreview({
       <img
         src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
         alt={asset.alt ?? asset.filename}
-        className="max-h-[40vh] w-auto rounded-lg shadow-lg"
+        className="max-h-[40dvh] w-auto rounded-lg shadow-lg"
       />
       <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>

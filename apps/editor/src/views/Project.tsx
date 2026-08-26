@@ -6,6 +6,7 @@ import { api, previewDocUrl, type Project } from '../api';
 import { hasOwnSource } from '../page-summary';
 import { useVirtualRows } from '../lib/virtual-rows';
 import { useLongPress } from '../lib/use-long-press';
+import { useIsMobile } from '../lib/use-is-mobile';
 import { ContextMenu, type ContextMenuRow } from './ui/ContextMenu';
 import { useProjectEvents } from '../lib/use-project-events';
 import { CodePageEditor } from './CodePageEditor';
@@ -148,6 +149,9 @@ const ROW_ACTION =
 
 export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
+  // Phone-sized viewport: page rows drop their action toolbar in favour of the long-press menu they
+  // already carry (see the row's action <div>).
+  const isMobile = useIsMobile();
   // Held in a ref so passing a fresh arrow from App can never re-trigger the mount load below.
   const onLoadedRef = useRef(onLoaded);
   onLoadedRef.current = onLoaded;
@@ -880,7 +884,13 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
         empty-string spread is the React 18 idiom for this boolean HTML attribute. */}
     {/* The left Library rail (a fixed 44px strip); pad the content so it never sits under the
         collapsed rail. Every project member (incl. invited clients) gets the full studio. */}
-    <main {...(editing ? ({ inert: '' } as object) : {})} className="mx-auto max-w-5xl px-6 py-8 pl-14">
+    <main
+      {...(editing ? ({ inert: '' } as object) : {})}
+      // `pl-14` reserves room for the LEFT edge rails' collapsed tabs. A phone mounts none of those —
+      // its two rails dock to the bottom corners — so on mobile that 56px is pure waste at the exact
+      // width where waste hurts most, and the gutters shrink with it.
+      className={`mx-auto max-w-5xl ${isMobile ? 'px-3 py-4' : 'px-6 py-8 pl-14'}`}
+    >
       {dialog}
       {/* The project name, tablist, and Publish control now live in the App header bar. */}
       {tab === 'corporate-identity' || tab === 'website-settings' ? (
@@ -944,6 +954,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   dense
                 />
               )}
+              {/* Adding a whole LANGUAGE to the project is a setup decision, not day-to-day editing —
+                  and it is the widest control in this row. Mobile drops it; per-page translation is
+                  still there in the row’s long-press menu ("Translate into all languages"). */}
+              {!isMobile && (
               <button
                 type="button"
                 className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 transition hover:bg-white dark:hover:bg-white/10"
@@ -954,6 +968,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               >
                 + Add translation
               </button>
+              )}
               <button
                 type="button"
                 className={ghostButton}
@@ -1167,6 +1182,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       </span>
                     )}
                   </button>
+                  {/* The per-row action toolbar. NOT MOUNTED ON MOBILE: seven icon buttons on a phone row
+                      leave no width for the page name they act on, and every one of them is already in
+                      the long-press context menu (menuRowsFor is a strict superset — it adds "Move to"
+                      on top). So mobile loses no capability, only the crowding. Unmounted rather than
+                      `hidden` so the buttons leave the tab order and the accessibility tree too. */}
+                  {!isMobile && (
                   <div className="flex shrink-0 items-center gap-0.5">
                     {/* Preview + code editor are page-only — a link placeholder renders nothing. */}
                     {!isLink && (
@@ -1227,6 +1248,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       </Tooltip>
                     )}
                   </div>
+                  )}
                   </li>
               );
             })}

@@ -41,7 +41,7 @@ export function HtmlSourceModal({ swKey, value, onSave, onClose }: HtmlSourceMod
           Raw HTML for this rich-text region. Disallowed tags and attributes (scripts, event handlers,
           inline styles other than text-align, …) are stripped when the page renders.
         </p>
-        <div className="h-[60vh] min-h-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="h-[60dvh] min-h-0 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
           <CodeEditor value={html} onChange={setHtml} ariaLabel="HTML source" language="html" />
         </div>
       </div>

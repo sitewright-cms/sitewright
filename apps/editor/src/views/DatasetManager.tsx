@@ -15,6 +15,7 @@ import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
 import { SearchField } from './ui/SearchField';
+import { useIsMobile } from '../lib/use-is-mobile';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 
 // Alphabetical: the list is long enough that a curated order is one nobody but its author can
@@ -73,6 +74,8 @@ export function DatasetManager({
   /** Bumped per request, so asking for the SAME dataset twice still re-selects it. */
   selectSignal?: number;
 }) {
+  // Narrow viewport: the entry pane gets a width floor so it cannot be squeezed out (see the <section>).
+  const isMobile = useIsMobile();
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
@@ -638,7 +641,12 @@ export function DatasetManager({
       </aside>
 
       {/* Selected dataset detail */}
-      <section className="min-w-0 flex-1">
+      {/* The entry pane. `min-w-0 flex-1` lets it give up width to the dataset list — correct on a
+          monitor, fatal on a phone, where "give up width" bottoms out at a column of single characters.
+          A floor stops the collapse and lets the ROW overflow instead; the rail scrolls horizontally,
+          which is a far better failure mode than an unreadable pane. Capped as well as floored so it
+          cannot swing to the opposite extreme on a large tablet. */}
+      <section className={`flex-1 ${isMobile ? 'min-w-[370px] max-w-[450px]' : 'min-w-0'}`}>
         {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
         {!selected && <p className="text-sm text-slate-500 dark:text-slate-400">Select or create a dataset.</p>}
 

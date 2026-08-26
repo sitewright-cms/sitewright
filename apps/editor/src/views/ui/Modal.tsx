@@ -5,6 +5,7 @@ import { FOCUSABLE, OVERLAY_STACK } from './overlay';
 import { InSidePanel, SidePanelHold } from './SidePanel';
 import { Tooltip } from './Tooltip';
 import { saveSurface } from '../../theme';
+import { useIsMobile } from '../../lib/use-is-mobile';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
 
@@ -33,12 +34,12 @@ const SIZES = {
   /** Wider than xl but WITHOUT a forced height (unlike `full`) — for content-sized modals that need
    *  more horizontal room (e.g. a multi-column picker). */
   '2xl': 'max-w-6xl',
-  full: 'max-w-5xl h-[82vh]',
+  full: 'max-w-5xl h-[82dvh]',
   /** The SVG Studio workbench — wider than `full` (three columns: tree · canvas · settings) + tall. */
-  studio: 'max-w-[92rem] h-[88vh]',
-  /** Near-fullscreen workbench (the page editor): wide + tall (90vh) for maximum editing room. The
+  studio: 'max-w-[92rem] h-[88dvh]',
+  /** Near-fullscreen workbench (the page editor): wide + tall (90dvh) for maximum editing room. The
    *  bottom side-panel rails are nudged up (z above the modal) so they stay visible over it. */
-  screen: 'max-w-none h-[90vh]',
+  screen: 'max-w-none h-[90dvh]',
 } as const;
 
 // Modals share the OVERLAY_STACK (see ./overlay) with Drawers so Escape/⌘S act on the TOP
@@ -80,6 +81,13 @@ interface ModalProps {
    * heading — the control's own label is about choosing, not about naming the dialog.
    */
   titleControl?: ReactNode;
+  /**
+   * Render the title as a visually-hidden heading only. For a header so tight that the name of the
+   * thing has to give way to the CONTROLS acting on it — the page editor on a phone, where the page
+   * being edited is the only thing on screen and so needs no label, but a screen reader still needs
+   * the dialog to have an accessible name. Never a way to ship a dialog with no name at all.
+   */
+  titleHidden?: boolean;
   /** Center the title block in the space between `headerLeft` and the right-side actions. */
   centerTitle?: boolean;
   /** Optional extra header content shown just BEFORE the Save/Close actions (right side). */
@@ -111,10 +119,13 @@ interface ModalProps {
  * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
  * ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, titleBelow, titleControl, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', pinPanel = true, elevate = false, children, headerLeft, titleExtra, titleBelow, titleControl, titleHidden = false, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
+  // Below `sm` every modal becomes a BOTTOM SHEET (see the panel's className) — the `size` key is
+  // ignored there, because "how wide" has one answer on a phone.
+  const isMobile = useIsMobile();
   // Local visibility drives the exit animation: a confirmed close flips this to false, the
   // panel plays its fade-out-up (rises toward the top), and AnimatePresence's onExitComplete then
   // calls the parent's onClose (which unmounts us). So callers keep the simple
@@ -158,6 +169,30 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   // A modal opened from WITHIN a side panel must sit above the panel layer (z-60/61); a normal
   // modal sits below the panel tabs so they stay visible over it.
   const elevated = useContext(InSidePanel) || elevate;
+
+  /**
+   * The panel's SHAPE — a centred card on desktop, a bottom sheet on a phone.
+   *
+   * On mobile the `size` key is dropped entirely: `max-w-2xl` and friends answer "how wide should this
+   * be on a big screen", and on a 412px phone every answer is "all of it". What survives is the height
+   * question, and it has two cases:
+   *
+   *   · The TALL sizes exist because their content lays itself out against a fixed-height parent (the
+   *     page editor's body is `flex h-full flex-col` — with an auto-height sheet its `h-full` resolves
+   *     against nothing and the whole editor collapses to the height of its toolbar). Those get `h-full`.
+   *   · Everything else stays CONTENT-SIZED and merely capped, so a two-line confirm is a small sheet
+   *     rather than a full-screen one. `max-h-full` is 100% of the wrapper's CONTENT box — i.e. already
+   *     minus the `pb-12` gutter that keeps the bottom rail tabs peeking out below the sheet.
+   *
+   * Square bottom corners on purpose: the sheet is anchored to the bottom edge, and rounding a corner
+   * that sits against the edge of the screen just puts two slivers of backdrop where nothing can go.
+   */
+  // The header stacks (title row above the actions row) whenever the title is BOTH visible and
+  // competing for a narrow row — see the <header> below.
+  const stackHeader = isMobile && !titleHidden && !titleControl;
+  const sheetShape = isMobile
+    ? `max-w-none rounded-t-2xl ${size === 'full' || size === 'studio' || size === 'screen' ? 'h-full' : 'max-h-full'}`
+    : `${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100dvh-4rem)]' : 'max-h-[82dvh]'} rounded-2xl`;
   // While this (panel-owned) modal lives, pin the panel open so it can't collapse behind us.
   //
   // `pinPanel={false}` opts out while KEEPING the elevation above: the two are separate concerns, and
@@ -243,7 +278,14 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
         <div
           // Gutters (px/pb) keep the panel clear of the screen edges so the side-panel tabs peek
           // out around it; `z` puts panel-owned dialogs above the panels, normal modals below them.
-          className={`fixed inset-0 flex items-center justify-center px-14 pb-12 pt-4 ${elevated ? 'z-[70]' : 'z-50'}`}
+          // Below `sm` the SIDE gutters all but disappear, because the thing they reserve room for is
+          // gone: a phone mounts no side rails at all — its two surviving rails dock to the bottom
+          // corners (App.tsx). 112px of horizontal chrome on a 375px screen left a modal 263px wide;
+          // this gives those 96px back to the content. The BOTTOM gutter stays at full size on every
+          // viewport — that is where the mobile rail tabs live and they still have to peek out.
+          className={`fixed inset-0 flex justify-center overscroll-contain ${
+            isMobile ? 'items-end px-0 pb-12 pt-2' : 'items-center px-2 pb-12 pt-2 sm:px-14 sm:pt-4'
+          } ${elevated ? 'z-[70]' : 'z-50'}`}
           role="presentation"
           onMouseDown={(e) => {
             // Backdrop click (not a click inside the panel) requests a close; the parent's
@@ -267,16 +309,49 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
+            // A card DROPS in from above and rises back out; a bottom sheet must do the opposite, or it
+            // reads as the panel falling through the bottom of the screen on the way in.
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: isMobile ? 24 : -24 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: isMobile ? 24 : -24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/95`}
+            className={`relative flex w-full ${sheetShape} flex-col overflow-hidden border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/95`}
           >
-            <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3 dark:border-white/10">
+            {/* ON A NARROW HEADER THE TITLE GETS ITS OWN ROW.
+                One row has to hold the title, whatever the modal pins to either side, and Save/Close.
+                Below 1000px that is a fight the title loses by truncating to a few characters — and in
+                the entry editor it does not even lose cleanly: the "View dataset" link under the title
+                collides with the action buttons beside it. Stacking gives the name (and its link) the
+                full width and leaves the controls a row of their own.
+
+                Skipped when `titleHidden` — the page editor deliberately gives its title's width AWAY
+                on mobile, so stacking would add an empty row to buy back nothing. */}
+            <header className={`flex border-b border-slate-200/70 px-5 py-3 dark:border-white/10 ${
+              // Centred once stacked: with the title on its own row there is no left-hand anchor left to
+              // align to, and a left-aligned title over a right-aligned button row reads as two unrelated
+              // strips rather than one header.
+              stackHeader ? 'flex-col items-center gap-2' : 'items-center gap-3'
+            }`}>
+              {stackHeader && (
+                <div className="flex min-w-0 flex-col items-center text-center">
+                  {titleBelow ? (
+                    <>
+                      <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                      {titleBelow}
+                    </>
+                  ) : (
+                    <h2 id={titleId} className="truncate text-sm font-bold text-slate-800 dark:text-slate-100">{title}</h2>
+                  )}
+                  {titleExtra && <div className="mt-0.5 flex items-center gap-2">{titleExtra}</div>}
+                </div>
+              )}
+              <div className={stackHeader ? 'flex w-full items-center justify-center gap-3' : 'contents'}>
               {headerLeft}
+              {!stackHeader && (
               <div className={`flex min-w-0 flex-1 items-center gap-2 ${centerTitle ? 'justify-center' : ''}`}>
-                {titleControl ? (
+                {titleHidden ? (
+                  <h2 id={titleId} className="sr-only">{title}</h2>
+                ) : titleControl ? (
                   <>
                     <h2 id={titleId} className="sr-only">{title}</h2>
                     {titleControl}
@@ -291,6 +366,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                 )}
                 {titleExtra}
               </div>
+              )}
               {headerExtra}
               {onSave && (
                 <Tooltip tip={`${saveLabel} (${IS_MAC ? '⌘' : 'Ctrl+'}S)`} side="bottom">
@@ -317,8 +393,12 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                   <CloseIcon />
                 </button>
               </Tooltip>
+              </div>
             </header>
-            <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+            {/* `overscroll-contain`: dragging past the end of this list must not start scrolling the PAGE
+                behind the sheet. On iOS that chaining is what makes a modal feel like it is not really
+                modal — and it happens despite the `overflow: hidden` lock on <body>. */}
+            <div className="min-h-0 flex-1 overflow-auto overscroll-contain">{children}</div>
           </motion.div>
         </div>
       )}

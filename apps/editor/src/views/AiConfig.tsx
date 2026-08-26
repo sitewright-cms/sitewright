@@ -120,7 +120,7 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
           Use this project’s own AI provider (bring your own key)
         </label>
         {enabled && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Provider
               <select className={field} aria-label="AI provider" value={provider} onChange={(e) => setProvider(e.target.value as AiProviderKind)}>

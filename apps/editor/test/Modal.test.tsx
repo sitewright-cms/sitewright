@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Modal } from '../src/views/ui/Modal';
 
@@ -164,5 +164,122 @@ describe('Modal', () => {
       </Modal>,
     );
     expect(screen.getByRole('button', { name: 'Save' }).className).toContain('sw-brand-gradient');
+  });
+});
+
+/**
+ * MOBILE: every modal becomes a BOTTOM SHEET. The `size` key answers "how wide on a big screen", and
+ * on a 412px phone the answer is always "all of it" — so the key is dropped rather than reinterpreted.
+ */
+describe('Modal as a bottom sheet', () => {
+  function withMobileViewport() {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('max-width'),
+      media: q,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  const panel = () => screen.getByRole('dialog');
+  const wrapper = () => screen.getByRole('dialog').parentElement as HTMLElement;
+
+  it('anchors to the BOTTOM edge and squares off its bottom corners', () => {
+    withMobileViewport();
+    render(
+      <Modal title="Sheet" onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(wrapper().className).toContain('items-end'); // grows from the bottom, not centred
+    expect(wrapper().className).not.toContain('items-center');
+    expect(panel().className).toContain('rounded-t-2xl');
+    // A corner rounded against the edge of the screen only shows slivers of backdrop.
+    expect(panel().className).not.toContain('rounded-2xl');
+  });
+
+  it('ignores the size key — "how wide" has one answer on a phone', () => {
+    withMobileViewport();
+    render(
+      <Modal title="Sheet" size="md" onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(panel().className).toContain('max-w-none');
+    expect(panel().className).not.toContain('max-w-lg');
+    // Content-sized, merely capped: a two-line confirm must not become a full-screen takeover.
+    expect(panel().className).toContain('max-h-full');
+    // classList, not a substring match — `max-h-full` contains `h-full`.
+    expect(panel().classList.contains('h-full')).toBe(false);
+  });
+
+  it('★ keeps a FIXED height for the sizes whose content lays out against one', () => {
+    // The page editor's body is `flex h-full flex-col`. Under an auto-height sheet that `h-full` has
+    // nothing to resolve against and the entire editor collapses to the height of its toolbar.
+    withMobileViewport();
+    render(
+      <Modal title="Editor" size="screen" onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(panel().classList.contains('h-full')).toBe(true);
+  });
+
+  it('stays a centred card on desktop', () => {
+    render(
+      <Modal title="Card" size="md" onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(wrapper().className).toContain('items-center');
+    expect(panel().className).toContain('max-w-lg');
+    expect(panel().className).toContain('rounded-2xl');
+  });
+
+  it('★ gives the title its own row, above the actions', () => {
+    // One row cannot hold a title, a subtitle link and Save/Close below 1000px. In the entry editor it
+    // did not even fail cleanly: the "View dataset" link under the title collided with the buttons.
+    withMobileViewport();
+    render(
+      <Modal title="Edit Team member" titleBelow={<a href="#x">View dataset</a>} onClose={() => {}} onSave={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    const header = screen.getByRole('heading', { name: 'Edit Team member' }).closest('header')!;
+    expect(header.className).toContain('flex-col');
+    // Centred: with the title on its own row there is no left-hand anchor left to align to, and a
+    // left-aligned title above a right-aligned button row reads as two unrelated strips.
+    expect(header.className).toContain('items-center');
+    // The title and its link share a container that the action buttons are NOT inside.
+    const titleBlock = screen.getByRole('heading', { name: 'Edit Team member' }).parentElement!;
+    expect(titleBlock).toContainElement(screen.getByRole('link', { name: 'View dataset' }));
+    expect(titleBlock).not.toContainElement(screen.getByRole('button', { name: 'Save' }));
+    expect(titleBlock.className).toContain('text-center');
+    // …and the action row centres too, rather than being pushed to one edge.
+    expect((screen.getByRole('button', { name: 'Save' }).closest('div') as HTMLElement).className).toContain('justify-center');
+  });
+
+  it('does NOT stack when the title is deliberately hidden — that would add an empty row', () => {
+    withMobileViewport();
+    render(
+      <Modal title="Home" titleHidden onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    const header = screen.getByRole('heading', { name: 'Home' }).closest('header')!;
+    expect(header.className).not.toContain('flex-col');
+  });
+
+  it('contains scroll chaining so a drag past the end never scrolls the page behind', () => {
+    render(
+      <Modal title="Long" onClose={() => {}}>
+        <p>hi</p>
+      </Modal>,
+    );
+    const body = screen.getByText('hi').parentElement as HTMLElement;
+    expect(body.className).toContain('overscroll-contain');
   });
 });

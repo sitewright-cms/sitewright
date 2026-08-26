@@ -124,7 +124,7 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
             <div className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-400">
               <CircleCheck className="h-5 w-5" /> Imported “{report.name}”
             </div>
-            <dl className="grid grid-cols-2 gap-2 text-sm">
+            <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
               <Stat label="New slug" value={report.slug} />
               <Stat label="Entities imported" value={String(report.imported)} />
               <Stat label="Media files" value={String(report.media)} />

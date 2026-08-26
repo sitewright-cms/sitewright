@@ -22,14 +22,22 @@ function FilesIcon() {
  * whole project, not the open folder, so it answers "how big is this site's media?" from anywhere in
  * the tree. Media is the dominant term in a project's footprint and the number was previously
  * reachable only by adding up folders by hand.
+ *
+ * ON MOBILE it moves off the right EDGE and docks into the BOTTOM-RIGHT CORNER instead — one of the
+ * only two rails a phone keeps (App.tsx explains which and why). Two reasons it has to move rather
+ * than just stay: a 26rem side rail is wider than the phone it would slide over, and clearing both
+ * screen sides is the whole point of the mobile rail cull. Note `size` is axis-dependent in
+ * {@link SidePanel} — a width class on a side rail, a HEIGHT class on a bottom one — so the panel's
+ * width moves to the separate `width` prop when it docks to the bottom.
  */
-export function AssetsPanel({ projectId, openSignal }: { projectId: string; openSignal?: number }) {
+export function AssetsPanel({ projectId, openSignal, mobile }: { projectId: string; openSignal?: number; mobile?: boolean }) {
   const [totals, setTotals] = useState<{ count: number; bytes: number } | null>(null);
   // Identity-stable so the browser's report effect doesn't re-fire on every parent render.
   const onTotals = useCallback((t: { count: number; bytes: number }) => setTotals(t), []);
   return (
     <SidePanel
-      side="right"
+      side={mobile ? 'bottom' : 'right'}
+      align={mobile ? 'end' : undefined}
       label="File Manager"
       icon={<FilesIcon />}
       headerExtra={
@@ -39,7 +47,10 @@ export function AssetsPanel({ projectId, openSignal }: { projectId: string; open
           </span>
         )
       }
-      size="w-[min(56rem,94vw)]"
+      // Bottom: nearly the whole viewport, matching the Datasets rail — a file grid needs the room,
+      // and on a phone there is nothing behind it worth keeping visible.
+      size={mobile ? 'h-[100dvh]' : 'w-[min(56rem,94vw)]'}
+      width={mobile ? 'w-[min(56rem,100vw)]' : undefined}
       openSignal={openSignal}
       openOnFileDrag
     >

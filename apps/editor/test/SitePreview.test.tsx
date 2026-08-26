@@ -125,44 +125,19 @@ describe('SitePreview', () => {
     expect(screen.queryByText(/could not be rendered/)).not.toBeInTheDocument();
   });
 
-  it('copies the share-able preview URL when the button is clicked', async () => {
+  // The "Copy preview link" button was REMOVED from this surface. It floated a low-contrast pill over
+  // the customer's own page on every viewport, to duplicate something the editor already does properly:
+  // preview share links are minted and managed in Settings → Preview share links, which is also the only
+  // place that can issue a link outliving the member-minted, time-bucketed default. Asserted as an
+  // absence so it cannot drift back in.
+  //
+  // Its two tests went with it — including the regression guarding the "Link copied" revert timer against
+  // firing on an unmounted tree. That timer no longer exists, so neither does the failure mode.
+  it('offers no copy-link button over the preview', async () => {
     stubEventSource();
-    const writeText = vi.fn(() => Promise.resolve());
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<SitePreview target={{ projectId: 'p', path: '' }} />);
-    const btn = await screen.findByRole('button', { name: 'Copy preview link' });
-    await act(async () => {
-      btn.click();
-    });
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/preview-site/p/sig123/'));
-    expect(await screen.findByText('Link copied')).toBeInTheDocument();
-  });
-
-  // REGRESSION: the "Link copied" revert used a bare setTimeout with no cleanup. Left pending, it fired
-  // ~1.5s later on an unmounted tree — and in jsdom that landed AFTER the test environment was torn down,
-  // throwing `ReferenceError: window is not defined` as an unhandled error. Vitest then failed the whole
-  // run with all 840 tests green and no failing test named, so it read as an inexplicable CI flake.
-  it('cancels the pending "Link copied" revert when unmounted mid-timer', async () => {
-    stubEventSource();
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true });
-    const setSpy = vi.spyOn(globalThis, 'setTimeout');
-    const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
-    const { unmount } = render(<SitePreview target={{ projectId: 'p', path: '' }} />);
-    const btn = await screen.findByRole('button', { name: 'Copy preview link' });
-    await act(async () => {
-      btn.click();
-    });
-    // the revert timer the click scheduled (1500ms — the only one at that delay)
-    const i = setSpy.mock.calls.findIndex(([, ms]) => ms === 1500);
-    expect(i, 'no 1500ms revert timer was scheduled').toBeGreaterThanOrEqual(0);
-    // eslint-disable-next-line security/detect-object-injection -- `i` is a findIndex result on this same spy's call list, not external input
-    const timerId = setSpy.mock.results[i]!.value;
-
-    unmount();
-
-    expect(clearSpy).toHaveBeenCalledWith(timerId);
-    setSpy.mockRestore();
-    clearSpy.mockRestore();
+    await screen.findByTitle('Site preview');
+    expect(screen.queryByRole('button', { name: /copy preview link/i })).not.toBeInTheDocument();
   });
 
   it('shows the agent pill only when a connection exists', async () => {
@@ -223,5 +198,49 @@ describe('SitePreview', () => {
     // The drawer stub reports "working" up → the FAB relabels and grows a pulsing halo.
     expect(await screen.findByRole('button', { name: 'AI is working' })).toBeInTheDocument();
     await waitFor(() => expect(container.querySelector('.animate-ping')).not.toBeNull());
+  });
+});
+
+/**
+ * MOBILE: the assistant drawer is 26rem BESIDE a desktop page, but `max-w-[92vw]` ON a phone — it
+ * covers the bottom-left corner the FAB lives in. So the FAB steps aside while the drawer is up.
+ *
+ * Nothing is lost by it: the FAB's second job is showing live turn status, and the drawer's own header
+ * carries the same state (AgentDrawer's StatusPill) on the surface actually in front of the user.
+ */
+describe('SitePreview AI FAB on a phone', () => {
+  function withMobileViewport() {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('max-width'),
+      media: q,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows the FAB while the drawer is CLOSED, and hides it once the drawer is open', async () => {
+    stubEventSource();
+    agentStatus.mockResolvedValue({ enabled: true });
+    withMobileViewport();
+    render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    const fab = await screen.findByRole('button', { name: 'Open the AI assistant' });
+    await act(async () => {
+      fab.click();
+    });
+    expect(screen.queryByRole('button', { name: 'Close the AI assistant' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the FAB visible with the drawer open on DESKTOP — there it sits beside the drawer', async () => {
+    stubEventSource();
+    agentStatus.mockResolvedValue({ enabled: true });
+    render(<SitePreview target={{ projectId: 'p', path: '' }} />);
+    const fab = await screen.findByRole('button', { name: 'Open the AI assistant' });
+    await act(async () => {
+      fab.click();
+    });
+    expect(screen.getByRole('button', { name: 'Close the AI assistant' })).toBeInTheDocument();
   });
 });

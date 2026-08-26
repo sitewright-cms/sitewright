@@ -19,6 +19,68 @@ The running version of an instance is reported at `GET /version` (baked into the
   suit: the starter footer map, the self-hosted PDF modal embed, and allowlisted third-party embeds
   (which previously promoted a source site's own `data-src` to an eager `src` + `loading="lazy"`).
   Native `loading="lazy"` remains acceptable for self-hosted images only.
+- **The editor is usable on a phone**, by deciding what a phone is FOR rather than shrinking the
+  desktop UI into it. A phone-sized viewport now mounts a deliberately smaller app — not a hidden one:
+  what goes is not rendered at all, so mobile stops paying for it.
+  - **Two edge rails survive, in the two bottom corners**: Datasets (bottom-left) because editing site
+    copy through a form is the commonest thing anyone does from a phone, and the File Manager
+    (bottom-right) because the phone is the camera. The System Library, Snippets, Templates and
+    Widgets rails all feed the code editor a phone cannot open, so they would be tabs leading nowhere.
+    Clearing both screen SIDES is what gives modals and the page body the full viewport width — a
+    modal on a 375px screen went from 263px of content to ~359px.
+  - **The page editor is the Content Editor, and nothing else.** No mode switcher (the mode is pinned,
+    not just hidden, so CodeMirror is never constructed), no page-data tree, no responsive device
+    toggles — simulating a 390px phone inside a 390px phone. The whole preview rail goes with them:
+    keeping it alive for its one remaining button meant parking that button on top of the page being
+    edited, so "open in a new tab" leads the header's overflow menu instead, with Revision history and
+    Reload. The page title gives its width to the controls and survives as the dialog's accessible name. The **Regions rail stays**, docked to the bottom — a list of labelled rows is the
+    touch-friendly way to reach an editable region, where the alternative is precision-tapping body
+    text inside a live preview.
+  - **Page rows drop their seven-button action toolbar** in favour of the long-press menu they already
+    carried, which offers every one of those actions and adds "Move to" on top.
+  - **The project tabs get their own row, and it scrolls rather than wraps.** Five tabs cannot share a
+    412px row with the brand, the project pill, Publish and two menus. Wrapping — the previous
+    behaviour — made the header silently one row or two depending on how long the current labels
+    happened to be, so every control beneath it moved when you opened a project or switched language.
+    A strip that scrolls keeps the header one fixed height and lets the tabs run off the edge, which is
+    the honest thing for a list that does not fit; snap points stop a flick leaving a tab half-cut.
+  - **Every modal arrives as a bottom sheet**: full-bleed, anchored to the bottom edge, square-cornered
+    where it meets the screen, and rising into view rather than dropping from above. The `size` key is
+    dropped rather than reinterpreted — it answers "how wide on a big screen", and on a phone there is
+    one answer. Sheets stop just above the rail tabs so those stay reachable over an open modal.
+  - **Controls meet a 44px touch floor**, and hover-reveal actions simply appear where there is no
+    hover — "Duplicate dataset" and the File Manager's "Copy" were invisible AND undiscoverable on
+    touch, since you cannot hover to learn they are there.
+  - **The publish bar goes icon-only**, keeping Preview and Deploy and dropping the labels, the two
+    split-button carets, "View live" and the "Connect an agent" nudge. It measured 447px inside a
+    412px viewport — wider than the screen on its own — and an overflowing header is not merely ugly:
+    mobile Chrome WIDENS THE LAYOUT VIEWPORT to fit overflowing content, and `position: fixed` resolves
+    against that viewport, so the bottom rail tabs were laid out below the bottom of the screen and no
+    tap could reach them. Everything behind the carets (share links, choosing a target, Download .zip)
+    stays reachable from the gear menu's Publish & Deploy Options, and every button keeps its label for
+    a screen reader.
+- **The draft preview lost its "Copy preview link" button** on every viewport. It floated a
+  low-contrast pill over the customer's own page to duplicate something the editor already does
+  properly — preview share links are minted and managed in Settings → Preview share links, the only
+  place that can issue a link outliving the member-minted, time-bucketed default. On a phone the AI
+  assistant button now steps aside while the chat drawer is open, since the drawer covers the corner it
+  sits in; the drawer's own header already shows the same live turn status.
+
+### Fixed
+
+- **A side panel no longer hangs off a narrow screen.** The left/right rails were a flat `26rem` —
+  wider than the phone they slid over, which put their close button out of reach. The desktop size is
+  unchanged.
+- **Tapping a field no longer zooms the page in and leaves it there.** iOS Safari magnifies the whole
+  page when a form control under 16px takes focus, and does not undo it on blur — and the editor's
+  fields are 14px. Controls are floored to 16px on a coarse pointer; nothing changes for a mouse.
+- **Full-height surfaces stop hiding under the mobile browser chrome.** Every viewport height in the
+  platform UI moved from `vh` (which measures the viewport with the URL bar collapsed) to `dvh`, so
+  the sign-in screen, the previews, and every modal fit what is actually visible.
+- **Sixteen two-column form layouts collapse to one column on a phone**, where each column was ~170px
+  — Host/Port, Legal name/Short name, the address block, the deploy target forms and the SMTP, stock
+  and AI provider settings. Genuinely paired short values (latitude/longitude, duration/delay) and the
+  label/value tables keep their two columns, because stacking those helps nobody.
 
 ## [0.38.0] — 2026-08-24
 

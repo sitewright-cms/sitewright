@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
 const { publishStatus, publish, archiveUrl, listDeployTargets, listAgentConnections } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
@@ -25,6 +25,7 @@ vi.mock('../src/views/publish/DeployModal', () => ({
 }));
 
 import { PublishBar } from '../src/views/PublishBar';
+import { LONG_PRESS_MS } from '../src/lib/use-long-press';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100 };
@@ -227,5 +228,77 @@ describe('PublishBar — agent presence', () => {
     render(<PublishBar project={project} />);
     (await screen.findByText('Connect an agent')).click();
     expect(await screen.findByRole('heading', { name: 'AI agent details' })).toBeInTheDocument();
+  });
+});
+
+/**
+ * COMPACT (a phone-sized header). Found by the mobile E2E overflow guard, not by reading the code: at
+ * 412px this bar measured 447px — wider than the whole screen on its own. That is not just ugly.
+ * Mobile Chrome WIDENS THE LAYOUT VIEWPORT to fit overflowing content, and `position: fixed` is
+ * relative to that viewport — so the bottom rail tabs were laid out at y=1136 on a 915px-tall device
+ * and no tap could reach them. An overflowing header broke controls nowhere near it.
+ */
+describe('PublishBar in a compact header', () => {
+  const both = { ...project };
+
+  it('keeps BOTH primary actions, as icons, and drops the labels', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    render(<PublishBar project={both} compact />);
+    // Still reachable — and still named, so nothing is lost to a screen reader.
+    expect(await screen.findByRole('button', { name: 'Preview the live site' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Deploy/ })).toBeInTheDocument();
+    // …but the visible text labels are what cost the width.
+    expect(screen.queryByText('Preview')).not.toBeInTheDocument();
+    expect(screen.queryByText('Deploy')).not.toBeInTheDocument();
+  });
+
+  it('drops the split-button carets — those open CONFIGURATION, not the action', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local, remote] });
+    render(<PublishBar project={both} compact />);
+    await screen.findByRole('button', { name: 'Preview the live site' });
+    // Share links, choosing a target and Download .zip all remain reachable from the gear menu's
+    // Publish & Deploy Options.
+    expect(screen.queryByRole('button', { name: 'Preview options' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Choose a deploy target' })).not.toBeInTheDocument();
+  });
+
+  it('drops the "Connect an agent" nudge, but NOT a live agent indicator', async () => {
+    // Nothing connected → the pill is pure suggestion, and suggestion is what a 412px row cannot afford.
+    const { unmount } = render(<PublishBar project={both} compact />);
+    await screen.findByRole('button', { name: 'Preview the live site' });
+    expect(screen.queryByRole('button', { name: /Connect an agent/i })).not.toBeInTheDocument();
+    unmount();
+
+    // Connected → it is live status, and it stays.
+    listAgentConnections.mockResolvedValue({ items: [{ id: 'a1', name: 'agent' }] });
+    render(<PublishBar project={both} compact />);
+    expect(await screen.findByRole('button', { name: /Agent connected/i })).toBeInTheDocument();
+  });
+
+  it('★ LONG-PRESS opens what the dropped caret used to open', async () => {
+    // Dropping a control is only acceptable if what it opened is still reachable. The caret bought
+    // ~88px of a 412px header; the gesture gives its menu back on the button it was attached to.
+    vi.useFakeTimers();
+    try {
+      listDeployTargets.mockResolvedValue({ items: [local] });
+      render(<PublishBar project={both} compact />);
+      await act(async () => {});
+      const deploy = screen.getByRole('button', { name: /^Deploy/ });
+      fireEvent.touchStart(deploy, { touches: [{ clientX: 10, clientY: 10 }] });
+      act(() => {
+        vi.advanceTimersByTime(LONG_PRESS_MS);
+      });
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps every one of them at full size on desktop', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    render(<PublishBar project={both} />);
+    expect(await screen.findByRole('button', { name: 'Preview options' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Choose a deploy target' })).toBeInTheDocument();
+    expect(screen.getByText('Preview')).toBeInTheDocument();
   });
 });

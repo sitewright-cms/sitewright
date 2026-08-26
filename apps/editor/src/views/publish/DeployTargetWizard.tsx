@@ -136,7 +136,7 @@ export function DeployTargetWizard({ project, sitesDomain }: { project: Project;
 
       <div>
         <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Add a deploy target</h4>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {typesFor(project.slug, sitesDomain).filter((ty) => !(ty.protocol === 'local' && hasLocal)).map((ty) => {
             const Icon = ty.icon;
             return (

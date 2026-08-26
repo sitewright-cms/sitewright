@@ -160,7 +160,7 @@ function UploadFontForm({
         <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Family name</span>
         <input aria-label="Family name" className={glassInput} placeholder="Boombox" value={family} onChange={(e) => setFamily(e.target.value)} />
       </label>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         <label className="block">
           <span className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Weight</span>
           <select className={`${glassInput} cursor-pointer`} value={weight} onChange={(e) => setWeight(Number(e.target.value))}>

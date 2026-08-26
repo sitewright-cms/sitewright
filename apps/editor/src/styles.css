@@ -29,6 +29,26 @@
   }
 }
 
+/* THE SECOND READABILITY FLOOR, and this one is not cosmetic: iOS Safari ZOOMS THE PAGE IN whenever a
+   form control whose font-size is under 16px takes focus — and it does not zoom back out when the field
+   is blurred. The user is left on a magnified, horizontally scrolling page after tapping one input.
+   The editor's fields are `text-sm` (14px) via `glassInput`, so every one of them triggered it.
+
+   Scoped to a COARSE POINTER rather than a narrow viewport: the behaviour belongs to touch devices, and
+   an iPad in landscape is well past the `sm` breakpoint while still doing it. Pointer-only controls
+   (checkbox/radio/range) carry no text and are excluded so their box metrics are untouched.
+
+   ★ Deliberately UNLAYERED. Tailwind emits its utilities inside `@layer utilities`, and an unlayered
+   rule beats any layered one no matter the specificity — which is what a bare `select`/`textarea`
+   element selector (0-0-1) needs to win against `.text-sm` (0-1-0). Do NOT move this into a layer. */
+@media (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* The WYSIWYG rich-text toolbars emit EXISTING Tailwind utilities into AUTHOR content (never inline
    styles — see packages/blocks/src/rich-toolbar.ts). Those classes are applied at RUNTIME, in the
    contentEditable, so this SPA's source scan never sees a single one of them: a utility used to reach
@@ -213,7 +233,7 @@ body {
      `fixed` keeps it stable while content scrolls. */
   background: linear-gradient(to bottom right, #e0e7ff 0%, #f0f9ff 45%, #fdf2ff 100%) fixed;
   color: #0f172a;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Reserve the scrollbar gutter app-wide so content NEVER shifts when a scrollbar appears/disappears
@@ -238,6 +258,10 @@ html[data-theme='dark'],
    (behind all content); when it's active the `sw-platform-bg` class on <html> yields the static gradient
    shell (both html + body, light + dark) so the animation shows through. The canvas is opaque and the
    preset's theme-tracking base color keeps content legible above it. */
+/* Deliberately `vh`, not `dvh`, unlike every other viewport height in the app (which moved to `dvh` so
+   nothing hides under a mobile URL bar). This canvas is a FIXED decorative backdrop: `vh` is the LARGE
+   viewport, so it always covers, while `dvh` would resize — and re-render the WebGL scene — on every
+   scroll that collapses or reveals the browser chrome. Covering is the requirement here; tracking is not. */
 .sw-platform-canvas {
   position: fixed;
   inset: 0;
@@ -273,6 +297,56 @@ html.sw-platform-bg[data-theme='dark'] body {
 ::-webkit-scrollbar-thumb:hover {
   background-color: color-mix(in srgb, var(--sw-brand-1) 55%, transparent);
   background-clip: padding-box;
+}
+
+/* A strip that scrolls but shows NO bar. For the mobile header's tab strip: the app reserves a
+   scrollbar gutter and paints a 10px brand thumb everywhere (above), which under a 5-tab strip reads as
+   a stray rule across the header rather than as an affordance. The overflow itself is the affordance —
+   a tab cut off at the edge is what says "there is more this way". */
+.sw-scroll-none {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+}
+.sw-scroll-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Touch ergonomics ─────────────────────────────────────────────────────────────────────────────
+   Both rules are UNLAYERED for the same reason as the 16px input floor above: they have to beat
+   Tailwind utilities (`.opacity-0`, `.p-1.5`) that live inside `@layer utilities`, and an unlayered
+   rule wins over any layered one regardless of specificity. */
+
+/* A 44px floor for anything tappable. The editor's controls are sized for a mouse — `ghostButton` and
+   `dangerButton` are `py-1.5`, about 30px tall, and the icon buttons are 20px glyphs in `p-2` boxes.
+   That is under every platform's touch-target guidance, and `dangerButton` is the DESTRUCTIVE one.
+   Applied on a coarse pointer only, so nothing about the desktop UI moves.
+
+   Safe against the virtualised lists: `useVirtualRows` MEASURES row height at runtime rather than
+   assuming a constant, so rows growing on touch is something it already handles. */
+@media (pointer: coarse) {
+  button,
+  [role='tab'],
+  [role='menuitem'],
+  [role='option'] {
+    min-height: 44px;
+  }
+  /* Width too for the icon-only controls — they are the ones that are actually 24px square. A control
+     with a text label is already wider than this and the floor never binds. */
+  button.waves-effect,
+  button[aria-label] {
+    min-width: 44px;
+  }
+}
+
+/* Hover-reveal is an empty affordance where there is no hover: on touch the control stays at
+   `opacity-0`, so it is invisible AND undiscoverable — you cannot hover to find out it is there. Both
+   current uses sit in rails a phone keeps (Duplicate dataset in the Datasets rail, Copy in the File
+   Manager's URL rows), so they simply appear on such devices. Keyed on `(hover: none)` rather than a
+   pointer type because the missing hover IS the precondition. */
+@media (hover: none) {
+  .group-hover\:opacity-100 {
+    opacity: 1;
+  }
 }
 /* The code editor is a dark surface — a translucent indigo thumb is nearly invisible there, so give
    its scroller a lighter (slate) thumb that stays legible against black. */

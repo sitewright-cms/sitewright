@@ -77,7 +77,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
       <GlassCard title="Identity" icon={<Building2 className="h-4 w-4" />}>
         <div className="flex flex-col gap-3">
           <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Legal name" value={form.legalName} onChange={(v) => patch({ legalName: v })} placeholder="Acme Inc." />
             <Field label="Short name" value={form.shortName} onChange={(v) => patch({ shortName: v })} placeholder="Acme" />
           </div>
@@ -92,7 +92,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
       </GlassCard>
 
       <GlassCard title="Logos & images" icon={<Images className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <AssetField label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} projectId={projectId} artwork placeholder="/logo.svg" />
           <AssetField label="Icon (favicon, apple-touch & PWA)" value={form.icon} onChange={(v) => patch({ icon: v })} projectId={projectId} artwork placeholder="/icon.png — one square ≥512px image; all sizes generated" />
           <AssetField label="Logo (light bg)" value={form.logoLight} onChange={(v) => patch({ logoLight: v })} projectId={projectId} artwork placeholder="/logo-light.svg" />
@@ -162,12 +162,12 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
       </GlassCard>
 
       <GlassCard title="Contact & location" icon={<Mail className="h-4 w-4" />}>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Email" value={form.email} onChange={(v) => patch({ email: v })} type="email" placeholder="hi@acme.com" />
           <Field label="Telephone" value={form.telephone} onChange={(v) => patch({ telephone: v })} placeholder="+1 555 0100" />
         </div>
         <SubLabel>Address</SubLabel>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Street" value={form.street} onChange={(v) => patch({ street: v })} />
           <Field label="Locality" value={form.locality} onChange={(v) => patch({ locality: v })} />
           <Field label="Region" value={form.region} onChange={(v) => patch({ region: v })} />

@@ -64,7 +64,7 @@ export function LivePreview({ target }: LivePreviewProps) {
   }, [projectId, render]);
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-dvh flex-col">
       <div className={`m-2 mb-0 flex items-center gap-2 px-4 py-2.5 text-xs ${glassPanel}`}>
         <span className="font-bold tracking-tight text-slate-800">Live preview</span>
         <span className={`inline-flex items-center gap-1 ${connected ? 'text-emerald-600' : 'text-slate-500 dark:text-slate-400'}`} aria-label="connection status">

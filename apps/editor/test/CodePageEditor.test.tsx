@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
@@ -376,5 +376,87 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
     fireEvent.click(within(warn).getByRole('button', { name: 'Discard & open' }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('about'));
+  });
+});
+
+/**
+ * MOBILE: the page editor is stripped to the one job a phone can do — edit the CONTENT of the page in
+ * front of you. Everything removed here is either impossible on a phone (writing code), a duplicate of
+ * something reachable by tapping the page itself (the page-data tree), or a simulation of the very
+ * device you are holding (the responsive toggles).
+ */
+describe('CodePageEditor on a phone', () => {
+  /** A phone-sized viewport. jsdom answers `false` to every media query, i.e. desktop, by default. */
+  function withMobileViewport() {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('max-width'),
+      media: q,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  }
+
+  beforeEach(withMobileViewport);
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('offers NO mode switcher, and opens in the Content Editor whatever mode was asked for', async () => {
+    // `initialMode="source"` is the strong case: even asked for the code editor outright, mobile pins
+    // the mode — hiding the switch alone would have left it in a mode with no way out.
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="source" />);
+    await screen.findByTitle('Preview');
+    expect(screen.queryByRole('group', { name: 'Edit mode' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Code Editor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Page Audit' })).not.toBeInTheDocument();
+    // Pinned to content ⇒ the source strip is never mounted, so CodeMirror is never constructed.
+    expect(screen.queryByLabelText('Template source')).not.toBeInTheDocument();
+  });
+
+  it('drops the page-data button — every value it reaches is editable by tapping the page', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    await screen.findByTitle('Preview');
+    expect(screen.queryByRole('button', { name: 'Edit page data' })).not.toBeInTheDocument();
+  });
+
+  it('drops the whole preview rail — toggles AND the floating open-in-a-new-tab button', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    await screen.findByTitle('Preview');
+    for (const d of ['Large desktop', 'Laptop', 'Tablet', 'Mobile']) {
+      expect(screen.queryByRole('button', { name: `Preview: ${d}` })).not.toBeInTheDocument();
+    }
+    // Simulating a 390px phone inside a 390px phone is a scaled-down copy of what is already on
+    // screen. With the toggles gone, keeping a floating rail alive for ONE button meant parking it on
+    // top of the page being edited — so that button moved into the header overflow instead.
+    expect(screen.queryByRole('group', { name: 'Preview device' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open this page in a new tab' })).not.toBeInTheDocument();
+  });
+
+  it('hides the page TITLE visually but keeps it as the dialog\'s accessible name', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    await screen.findByTitle('Preview');
+    // Still named for assistive tech…
+    const dialog = screen.getByRole('dialog', { name: 'Home' });
+    // …but the heading carrying that name takes no visible space in the header.
+    expect(within(dialog).getByRole('heading', { name: 'Home' })).toHaveClass('sr-only');
+  });
+
+  it('folds Reload and Revision history into ONE overflow, leaving the header room for Undo/Redo/Save', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    await screen.findByTitle('Preview');
+    expect(screen.queryByRole('button', { name: 'Reload page' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revision history' })).not.toBeInTheDocument();
+    // The frequent actions keep their own targets.
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Redo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Page settings' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More page actions' }));
+    const menu = await screen.findByRole('menu', { name: 'More page actions' });
+    // First item: on a phone this is the only way to see the page at TRUE viewport width, unwrapped
+    // by the editor chrome — the most useful of the three, so it leads.
+    expect(within(menu).getByRole('menuitem', { name: 'Open this page in a new tab' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Revision history' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Reload from the server' })).toBeInTheDocument();
   });
 });

@@ -356,3 +356,85 @@ describe('the selector is released only by the project it is actually waiting on
     expect(screen.getByText(/PROJECT Acme/)).toBeInTheDocument();
   });
 });
+
+/**
+ * MOBILE RAILS. A phone keeps exactly two of the five edge rails, and they take the two BOTTOM corners
+ * so both screen SIDES stay clear for modals and the page body:
+ *
+ *   · Datasets      — editing site copy through a form is the commonest job done from a phone.
+ *   · File Manager  — the phone is the camera; uploading from it is what mobile does best.
+ *
+ * The three that go (System Library, Snippets, Templates, Widgets) all feed the CODE editor, which
+ * mobile does not mount — they would be tabs leading nowhere.
+ */
+describe('App shell on a phone', () => {
+  function withMobileViewport() {
+    vi.stubGlobal('matchMedia', (q: string) => ({
+      matches: q.includes('max-width'),
+      media: q,
+      addListener() {},
+      removeListener() {},
+      addEventListener() {},
+      removeEventListener() {},
+    }));
+  }
+  afterEach(() => vi.unstubAllGlobals());
+
+  async function openProject() {
+    render(<App />);
+    const dialog = await screen.findByRole('dialog', { name: 'SiteWright' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Acme/ }));
+    return screen.findByText(/PROJECT Acme/);
+  }
+
+  it('mounts only the File Manager rail out of the code-authoring set', async () => {
+    withMobileViewport();
+    await openProject();
+    expect(screen.getByText('ASSETS PANEL')).toBeInTheDocument();
+    for (const rail of ['LIBRARY PANEL', 'SNIPPETS PANEL', 'WIDGETS PANEL', 'TEMPLATES PANEL']) {
+      expect(screen.queryByText(rail)).not.toBeInTheDocument();
+    }
+  });
+
+  it('drops the System Library even with NO project open — it is a code reference, not a project rail', async () => {
+    withMobileViewport();
+    render(<App />);
+    await screen.findByRole('dialog', { name: 'SiteWright' });
+    expect(screen.queryByText('LIBRARY PANEL')).not.toBeInTheDocument();
+  });
+
+  /**
+   * ★ The tablist gets its own row, and it SCROLLS rather than WRAPS.
+   *
+   * Wrapping was the old behaviour and it is the wrong answer for a tablist: the header silently
+   * becomes one row or two depending on how long the current labels are, so every control beneath it
+   * moves when you open a project or switch language. A strip that scrolls keeps the header one fixed
+   * height and lets the tabs run off the edge — honest about a list that does not fit.
+   */
+  it('moves the project tablist out of the header row and into a scrolling strip', async () => {
+    withMobileViewport();
+    await openProject();
+
+    const tablist = screen.getByRole('tablist', { name: 'Project sections' });
+    expect(tablist.className).toContain('flex-nowrap');
+    expect(tablist.className).not.toContain('flex-wrap');
+    expect(tablist.className).toContain('snap-x'); // a flick cannot leave a tab half-cut
+
+    const strip = tablist.parentElement as HTMLElement;
+    expect(strip.className).toContain('overflow-x-auto');
+    expect(strip.className).toContain('sw-scroll-none'); // the cut-off tab is the affordance, not a bar
+    // It is a row of its own, NOT the centred slot inside the header's flex row.
+    expect(strip.className).not.toContain('mx-auto');
+
+    // And it still does its job.
+    fireEvent.click(screen.getByRole('tab', { name: 'Forms' }));
+    expect(await screen.findByText(/PROJECT Acme tab=forms/)).toBeInTheDocument();
+  });
+
+  it('keeps the tablist centred inside the header row on desktop', async () => {
+    await openProject();
+    const tablist = screen.getByRole('tablist', { name: 'Project sections' });
+    expect(tablist.className).toContain('flex-wrap');
+    expect((tablist.parentElement as HTMLElement).className).toContain('mx-auto');
+  });
+});

@@ -159,7 +159,7 @@ function TopicSection({
       <p className="mb-2 mt-1 font-mono text-[11px] text-slate-400 dark:text-slate-500">
         {topic.props.join(' · ')}
       </p>
-      <div ref={ref} onScroll={onScroll} className="max-h-[60vh] overflow-auto">
+      <div ref={ref} onScroll={onScroll} className="max-h-[60dvh] overflow-auto">
         <ul>
           {topic.classes.slice(0, shown).map(([name], i) => (
             <ClassRow

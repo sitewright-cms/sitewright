@@ -104,7 +104,7 @@ export function FontSlotEditor({
           </span>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="block">
           <span className="sr-only">{label} family</span>
           <select

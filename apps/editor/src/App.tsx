@@ -3,6 +3,7 @@ import { FolderOpen } from 'lucide-react';
 import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
+import { useIsMobile } from './lib/use-is-mobile';
 import { Login } from './views/Login';
 import { ForcePasswordChange } from './views/ForcePasswordChange';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
@@ -126,6 +127,9 @@ function MainApp({
   // forced "set a new password" screen until they change it (the server enforces this independently).
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  // Phone-sized viewport: the edge rails and other desktop-only chrome are not mounted at all (see
+  // the rail block at the end of this component, and lib/use-is-mobile).
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -341,11 +345,49 @@ function MainApp({
   const inProject = stage.name === 'project' ? stage.project : null;
   const isClient = inProject?.role === 'member';
 
+  /**
+   * The project sections. ONE definition, TWO homes: centred inside the header row on desktop, and on
+   * mobile a scrollable strip of its own underneath it (see below) — because at 412px the row already
+   * holds the brand, the project pill, Publish and two menus, and five tabs do not fit beside them.
+   *
+   * `flex-wrap` was how it coped before, and wrapping is the wrong answer for a tablist: the header
+   * silently becomes one row or two depending on how long the current labels are, so opening a project
+   * or switching language moves every control beneath it. A strip that scrolls keeps the header one
+   * fixed height and lets the tabs run off the edge, which is the honest thing for a list that does not
+   * fit. Snap points stop a flick leaving a tab half-cut.
+   */
+  const projectTablist = inProject && (
+    <div
+      role="tablist"
+      aria-label="Project sections"
+      className={`flex gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm dark:border-white/10 dark:bg-white/5 ${
+        isMobile ? 'mx-auto w-max flex-nowrap snap-x snap-mandatory' : 'flex-wrap justify-center'
+      }`}
+    >
+      {MANAGE_TABS.map((t) => (
+        <button
+          key={t}
+          role="tab"
+          aria-selected={tab === t}
+          onClick={() => setTab(t)}
+          className={`waves-effect shrink-0 snap-start rounded-xl px-3 py-1.5 text-sm font-medium transition ${
+            tab === t ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
+          }`}
+        >
+          {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
+          {TAB_LABELS[t]}
+        </button>
+      ))}
+    </div>
+  );
+
   const header = (
-    <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60">
+    <header className={`sticky top-0 z-20 border-b border-white/40 bg-white/60 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60 ${
+      isMobile ? 'px-3 py-2' : 'px-6 py-3'
+    }`}>
       {/* Full-width flex row: project selector at the far left, the tablist centered via its own
           mx-auto, and the publish/admin nav at the far right. */}
-      <div className="flex w-full items-center gap-x-4">
+      <div className={`flex w-full items-center ${isMobile ? 'gap-x-2' : 'gap-x-4'}`}>
       {/* Left: the brand mark (opens the selector) + the project selector. When a project is open the mark
           becomes that project's favicon (generic globe fallback); otherwise it's the platform logo. The
           mark is scaled 1.7× — a 22px box paints at 37.4px, overhanging ~7.7px per side; `pr-2` (8px) on
@@ -381,36 +423,19 @@ function MainApp({
         )}
       </div>
 
-      {/* Center: the project tablist (any project member — clients get the full studio too) — mx-auto centers it. */}
-      <div className="mx-auto flex justify-center">
-        {inProject && (
-          <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm dark:border-white/10 dark:bg-white/5">
-            {MANAGE_TABS.map((t) => (
-              <button
-                key={t}
-                role="tab"
-                aria-selected={tab === t}
-                onClick={() => setTab(t)}
-                className={`waves-effect rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-                  tab === t ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
-                }`}
-              >
-                {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
-                {TAB_LABELS[t]}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Center: the project tablist (any project member — clients get the full studio too) — mx-auto
+          centers it. On MOBILE it is not in this row at all; see the strip below the row. */}
+      {!isMobile && <div className="mx-auto flex justify-center">{projectTablist}</div>}
 
       {/* Right: the publish control (any project member) + the unified settings gear menu, far right. */}
-      <nav className="flex items-center justify-end gap-3">
+      <nav className={`ml-auto flex items-center justify-end ${isMobile ? 'gap-1.5' : 'gap-3'}`}>
         {inProject && (
           <PublishBar
             project={inProject}
             sitesDomain={sitesDomain}
             onOpenDeploy={() => setPublishModalTab('deploy')}
             refreshSignal={publishRefresh}
+            compact={isMobile}
           />
         )}
         {/* The gear menu unifies Publish & Deploy Options, System Settings, Project Members/Administrators/Access,
@@ -435,12 +460,19 @@ function MainApp({
         <UserDropdown onAccountSettings={() => setUserMenuOpen(true)} onSignOut={() => void signOut()} />
       </nav>
       </div>
+
+      {/* MOBILE: the tablist's own row. `-mx-3` bleeds it to the header's edges so a tab scrolled to
+          the end sits flush rather than stranded behind the padding, and the matching `px-3` keeps the
+          first and last tabs inset when the strip is at rest. */}
+      {isMobile && projectTablist && (
+        <div className="sw-scroll-none -mx-3 mt-2 overflow-x-auto px-3">{projectTablist}</div>
+      )}
     </header>
   );
 
   return (
     <CiPaletteForProject projectId={inProject?.id}>
-    <div className="relative min-h-screen">
+    <div className="relative min-h-dvh">
       {/* Soft blurred accent blobs over the gradient shell (decorative, behind content). */}
       <div aria-hidden className="pointer-events-none fixed -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-fuchsia-300/20 blur-3xl dark:bg-fuchsia-500/10" />
       <div aria-hidden className="pointer-events-none fixed -bottom-32 -left-32 -z-10 h-96 w-96 rounded-full bg-sky-300/20 blur-3xl dark:bg-sky-500/10" />
@@ -587,22 +619,41 @@ function MainApp({
         />
       )}
       {/* The System Library (global reference: snippets/templates/icons/builders) is project-agnostic,
-          so it stays on the left edge even with NO project selected — a reachable reference at all times. */}
-      <LibraryPanel projectId={inProject?.id} isInstanceAdmin={isInstanceAdmin} />
+          so it stays on the left edge even with NO project selected — a reachable reference at all times.
+          DESKTOP ONLY: it is an authoring reference you read while writing code, and the page editor
+          cannot write code on a phone (see CodePageEditor's mobile gate), so on mobile it would occupy
+          an edge to serve a workflow that is not reachable from there. */}
+      {!isMobile && <LibraryPanel projectId={inProject?.id} isInstanceAdmin={isInstanceAdmin} />}
       {/* Critical CSS on Ctrl/⌘+Alt+C. Mounted here rather than in Settings because it is written
           WHILE looking at the page it is fixing — which is behind the page editor, a modal the
           settings modal cannot open over. It renders nothing until the chord is pressed. */}
       <CriticalCssShortcut projectId={inProject?.id} />
       {/* Project-scoped edge side-panels (any project member): File Manager (right), and the bottom
           rails — Datasets (left), the paired Snippets + Widgets (center), Templates (right). They render
-          above modals so their tabs stay reachable; each opens on hover/click of its own edge tab. */}
+          above modals so their tabs stay reachable; each opens on hover/click of its own edge tab.
+
+          ON MOBILE only TWO of the five survive, and they take the two BOTTOM CORNERS:
+
+            · Datasets  (bottom-left)  — editing website copy is the commonest thing anyone does from a
+                                         phone, and a dataset row is a form: entirely usable by thumb.
+            · File Manager (bottom-right) — the phone IS the camera. Uploading a photo from the device
+                                         that took it is the one job mobile does BETTER than desktop.
+
+          Snippets, Widgets and Templates are all code-authoring rails feeding a code editor that mobile
+          does not mount, so they would be tabs leading nowhere. Dropping them also clears `align="end"`,
+          which is what lets the File Manager claim the bottom-right corner uncontested — and leaves both
+          screen SIDES free, so modals and the SPA body get the full viewport width. */}
       {inProject && (
         <>
-          <AssetsPanel key={inProject.id} projectId={inProject.id} />
-          <DataPanel key={`dt-${inProject.id}`} project={inProject} />
-          <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
-          <WidgetsPanel key={`wg-${inProject.id}`} projectId={inProject.id} />
-          <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
+          <AssetsPanel key={inProject.id} projectId={inProject.id} mobile={isMobile} />
+          <DataPanel key={`dt-${inProject.id}`} project={inProject} mobile={isMobile} />
+          {!isMobile && (
+            <>
+              <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
+              <WidgetsPanel key={`wg-${inProject.id}`} projectId={inProject.id} />
+              <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
+            </>
+          )}
         </>
       )}
     </div>

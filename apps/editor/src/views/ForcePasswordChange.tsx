@@ -47,7 +47,7 @@ export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAU
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-dvh items-center justify-center p-4">
       <form onSubmit={submit} className={`w-full max-w-sm ${glassCard} p-8`}>
         <h1 className="mb-1 flex items-center gap-2.5 text-2xl font-bold tracking-tight">
           <BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-7 w-7" />

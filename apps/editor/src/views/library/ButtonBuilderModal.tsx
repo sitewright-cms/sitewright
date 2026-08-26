@@ -311,9 +311,9 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
           <p className="text-xs text-white/50">Every button effect, shape and hover-accent, live with your brand. Switch to the Builder to compose &amp; copy one.</p>
           <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
             {css ? (
-              <iframe title="Button lab" srcDoc={frame(labBody)} className="block h-[62vh] w-full border-0" sandbox="allow-scripts" />
+              <iframe title="Button lab" srcDoc={frame(labBody)} className="block h-[62dvh] w-full border-0" sandbox="allow-scripts" />
             ) : (
-              <div className="flex h-[62vh] items-center justify-center text-sm text-white/40">Loading…</div>
+              <div className="flex h-[62dvh] items-center justify-center text-sm text-white/40">Loading…</div>
             )}
           </div>
         </div>

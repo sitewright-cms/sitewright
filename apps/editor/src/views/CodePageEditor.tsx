@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useUnsavedWork } from '../lib/unsaved-work';
-import { Settings, RotateCcw, History, ExternalLink } from 'lucide-react';
+import { Settings, RotateCcw, History, ExternalLink, MoreVertical } from 'lucide-react';
 import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATES,
@@ -19,6 +19,7 @@ import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { registerCodeInsertSink } from '../lib/code-insert-sink';
 import { useProjectEvents } from '../lib/use-project-events';
+import { useIsMobile } from '../lib/use-is-mobile';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
@@ -37,6 +38,7 @@ import { ImageMapStudio } from './library/imagemap/ImageMapStudio';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
+import { ContextMenu } from './ui/ContextMenu';
 import { RevisionHistoryModal } from './RevisionHistoryModal';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
@@ -136,7 +138,15 @@ const INLINE_EDIT_QUIET_MS = 2000;
 
 export function CodePageEditor({ project, page, pages = [], locales = [], onClose, onNavigate, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
-  const [mode, setMode] = useState<EditMode>(initialMode);
+  // MOBILE IS CONTENT-EDITOR-ONLY. A phone cannot usefully drive CodeMirror or read an audit report,
+  // so it is offered neither: no mode switcher, and the mode is pinned here rather than merely hidden.
+  // Pinning (instead of hiding the switch and leaving `chosenMode` live) is what makes `codeEditorMounted`
+  // below evaluate false, so CodeMirror is never constructed on the device least able to afford it.
+  // The choice is kept, not discarded — widening back past `sm` (a rotation, a desktop window resize)
+  // restores whatever mode the user was last in.
+  const isMobile = useIsMobile();
+  const [chosenMode, setMode] = useState<EditMode>(initialMode);
+  const mode: EditMode = isMobile ? 'content' : chosenMode;
   const [source, setSource] = useState(page.source ?? '');
   // Per-page data → the SINGLE editable store: ALL data-sw-* leaves (text/html/href/src/bg) live here
   // as page.data, plus {{ page.data.* }} structured data. Edited in-preview (the directives) and via
@@ -163,6 +173,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // The form whose definition is open in the modal (clicked on the canvas).
   const [formEdit, setFormEdit] = useState<Form | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  // Where the mobile header's overflow menu was opened from (null = closed). Only ever set on mobile.
+  const [moreMenuAt, setMoreMenuAt] = useState<{ x: number; y: number } | null>(null);
   // A chrome slot opened from the preview's hover affordance — stacked OVER this editor, so
   // closing it returns to the page you were on. null = not editing a slot.
   const [slotEdit, setSlotEdit] = useState<{ slot: ChromeSlotKey; value: string } | null>(null);
@@ -194,8 +206,28 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const codeRef = useRef<CodeEditorHandle>(null);
   const [srcCanUndo, setSrcCanUndo] = useState(false);
   const [srcCanRedo, setSrcCanRedo] = useState(false);
-  // Responsive simulation — large desktop (fluid, the modal's full width) is the default.
-  const [device, setDevice] = useState<PreviewDeviceKey>('desktop');
+  /** Open THIS page in the whole-site draft preview, in a new tab — a real, navigable, unscaled
+   *  surface, so a fixed background and the true viewport width are what a visitor would get. Shared
+   *  by the desktop preview rail and the mobile header's overflow menu. */
+  const openInNewTab = () =>
+    window.open(
+      buildPreviewUrl(
+        window.location.origin,
+        window.location.pathname,
+        project.id,
+        // The FULL route, not this page's own segment — a nested page is served under its parent
+        // chain, so the bare slug opened a route that does not exist.
+        fullRouteFor(settings, pages),
+      ),
+      '_blank',
+      'noopener',
+    );
+
+  // Responsive simulation — large desktop (fluid, the modal's full width) is the default. Pinned to
+  // fluid on mobile for the same reason the toggles are not offered there: the device IS the device.
+  // Pinned rather than reset so a chosen width survives the trip through a narrow window and back.
+  const [chosenDevice, setDevice] = useState<PreviewDeviceKey>('desktop');
+  const device: PreviewDeviceKey = isMobile ? 'desktop' : chosenDevice;
   // The authoring strip opens COLLAPSED; it expands while hovered OR focused (so typing
   // keeps it open when the pointer wanders, and keyboard users get it via Tab).
   const [stripHover, setStripHover] = useState(false);
@@ -952,8 +984,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
 
   // Source⇄content, IN PLACE: both drafts live in this component, so switching is lossless —
-  // no unmount, no discard, no confirm needed. Pinned to the header's LEFT edge.
-  const editModeSwitch = (
+  // no unmount, no discard, no confirm needed. Pinned to the header's LEFT edge, and absent entirely
+  // on mobile, where `mode` is pinned to the Content Editor.
+  const editModeSwitch = isMobile ? null : (
     <div
       role="group"
       aria-label="Edit mode"
@@ -1020,29 +1053,57 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </svg>
         </button>
       </Tooltip>
-      <Tooltip tip="Edit page data" side="bottom">
-        <button type="button" aria-label="Edit page data" aria-expanded={pageDataOpen} className={toolBtnClass} onClick={() => setPageDataOpen(true)}>
-          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1" />
-            <path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />
-          </svg>
-        </button>
-      </Tooltip>
+      {/* Page data — the raw {{ page.data.* }} tree/JSON. A developer's view of the same values the
+          preview edits in place, so mobile (content-editor-only) omits it: everything it can reach is
+          reachable by tapping the text itself. */}
+      {!isMobile && (
+        <Tooltip tip="Edit page data" side="bottom">
+          <button type="button" aria-label="Edit page data" aria-expanded={pageDataOpen} className={toolBtnClass} onClick={() => setPageDataOpen(true)}>
+            <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1" />
+              <path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />
+            </svg>
+          </button>
+        </Tooltip>
+      )}
       <Tooltip tip="Page settings" side="bottom">
         <button type="button" aria-label="Page settings" aria-expanded={settingsOpen} className={toolBtnClass} onClick={() => setSettingsOpen(true)}>
           <Settings className="h-5 w-5" />
         </button>
       </Tooltip>
-      <Tooltip tip="Reload from the server (discards unsaved changes)" side="bottom">
-        <button type="button" aria-label="Reload page" className={toolBtnClass} onClick={() => void onReloadClick()}>
-          <RotateCcw className="h-5 w-5" />
+      {/* Reload and Revision history are RARE and both are recoveries, not edits — so on a phone they
+          fold into one overflow button rather than each taking a 44px slot in a header that has to fit
+          Undo, Redo, Page settings, Save and Close beside them. */}
+      {isMobile ? (
+        <button
+          type="button"
+          aria-label="More page actions"
+          aria-haspopup="menu"
+          aria-expanded={moreMenuAt !== null}
+          className={toolBtnClass}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            // Anchor the menu under the button's own bottom-left; ContextMenu clamps itself to the
+            // viewport from there, so a button near the right edge still opens a fully visible menu.
+            setMoreMenuAt({ x: r.left, y: r.bottom });
+          }}
+        >
+          <MoreVertical className="h-5 w-5" />
         </button>
-      </Tooltip>
-      <Tooltip tip="Revision history" side="bottom">
-        <button type="button" aria-label="Revision history" className={toolBtnClass} onClick={() => setHistoryOpen(true)}>
-          <History className="h-5 w-5" />
-        </button>
-      </Tooltip>
+      ) : (
+        <>
+          <Tooltip tip="Reload from the server (discards unsaved changes)" side="bottom">
+            <button type="button" aria-label="Reload page" className={toolBtnClass} onClick={() => void onReloadClick()}>
+              <RotateCcw className="h-5 w-5" />
+            </button>
+          </Tooltip>
+          <Tooltip tip="Revision history" side="bottom">
+            <button type="button" aria-label="Revision history" className={toolBtnClass} onClick={() => setHistoryOpen(true)}>
+              <History className="h-5 w-5" />
+            </button>
+          </Tooltip>
+        </>
+      )}
     </>
   );
 
@@ -1057,6 +1118,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       saveDisabled={!dirty}
       headerLeft={editModeSwitch}
       centerTitle
+      // On a phone the page's own name is the one thing in this header that is not a control, and the
+      // page it names fills the screen underneath — so it gives its width up to Undo/Redo/Save/Close
+      // and survives as the dialog's accessible name only.
+      titleHidden={isMobile}
       titleExtra={titleExtra}
       headerExtra={headerExtra}
     >
@@ -1077,6 +1142,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             wins is decided by their order in the generated stylesheet, not by the class list — and a
             border that survived would leave a 2px ghost of the strip behind (box-border keeps borders
             outside a `h-0` content box). */}
+        {/* MOBILE UNMOUNTS THE STRIP ENTIRELY. The reason it survives a mode switch on desktop — staying
+            mounted so the switch glides and CodeMirror keeps its scroll and undo history — needs a mode
+            switch to exist, and mobile has none: it is pinned to the Content Editor. A collapsed strip
+            there would be a CodeMirror instance that can never be opened, constructed and held on the
+            device with the least memory to spare. */}
+        {!isMobile && (
         <section
           aria-label="Template source editor"
           data-expanded={stripExpanded}
@@ -1086,7 +1157,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           } ${
             mode !== 'source'
               ? 'invisible h-0 opacity-0'
-              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45vh]' : 'h-36'}`
+              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45dvh]' : 'h-36'}`
           }`}
           onMouseEnter={() => setStripHover(true)}
           onMouseLeave={() => setStripHover(false)}
@@ -1153,6 +1224,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             />
           )}
         </section>
+        )}
 
         {/* Row 2 — the preview (source/content) and the Page Audit tab. BOTH stay MOUNTED, toggled with
             `hidden`, so returning to the preview never reloads the iframe and a run's audit result +
@@ -1165,6 +1237,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
             <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} frameless />
           </DevicePreview>
+          {/* The preview rail — DESKTOP ONLY now. Its four device toggles simulate a 390px phone inside
+              a 390px phone, which is a scaled-down copy of what is already on screen; and its remaining
+              action, "open in a new tab", moved to the header's overflow menu rather than keeping a
+              floating rail alive for one button that was sitting on top of the page being edited. */}
+          {!isMobile && (
           <div
             role="group"
             aria-label="Preview device"
@@ -1194,26 +1271,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               <button
                 type="button"
                 aria-label="Open this page in a new tab"
-                onClick={() =>
-                  window.open(
-                    buildPreviewUrl(
-                      window.location.origin,
-                      window.location.pathname,
-                      project.id,
-                      // The FULL route, not this page's own segment — a nested page is served under its
-                      // parent chain, so the bare slug opened a route that does not exist.
-                      fullRouteFor(settings, pages),
-                    ),
-                    '_blank',
-                    'noopener',
-                  )
-                }
+                onClick={openInNewTab}
                 className="inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
               >
                 <ExternalLink className="h-4 w-4" />
               </button>
             </Tooltip>
           </div>
+          )}
         </div>
         <div className={mode === 'audit' ? 'flex min-h-0 flex-1' : 'hidden'}>
           <PageAuditPanel
@@ -1308,9 +1373,26 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         <RegionsPanel
           regions={regions}
           projectId={project.id}
+          mobile={isMobile}
           onEdit={(rid) =>
             iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
           }
+        />
+      )}
+
+      {/* The mobile header's overflow: the two rare recoveries that were dropped from the toolbar.
+          ContextMenu positions and clamps itself, and closes on select/Escape/outside click. */}
+      {moreMenuAt && (
+        <ContextMenu
+          at={moreMenuAt}
+          label="More page actions"
+          rows={[
+            { kind: 'item', label: 'Open this page in a new tab', onSelect: openInNewTab },
+            { kind: 'divider' },
+            { kind: 'item', label: 'Revision history', onSelect: () => setHistoryOpen(true) },
+            { kind: 'item', label: 'Reload from the server', onSelect: () => void onReloadClick() },
+          ]}
+          onClose={() => setMoreMenuAt(null)}
         />
       )}
 

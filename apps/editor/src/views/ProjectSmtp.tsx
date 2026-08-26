@@ -151,7 +151,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
           Send this project’s form mail via its own SMTP
         </label>
         {enabled && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />

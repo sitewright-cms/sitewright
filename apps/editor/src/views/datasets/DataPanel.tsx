@@ -18,8 +18,13 @@ function DataIcon() {
 /**
  * The project's datasets/entries CMS as a bottom-LEFT {@link SidePanel} (it left the top tablist).
  * Wider than the code rails — the {@link DatasetManager} has a list + editor two-column layout.
+ *
+ * Already in the corner mobile wants it in, so `mobile` only widens it: 66vw of a phone is ~250px,
+ * too narrow for a form, where 66vw of a monitor is the deliberate "does not swallow the screen"
+ * size. Editing copy through a dataset form is the main reason to open the editor on a phone at all
+ * (App.tsx's rail block), so it takes the full width there.
  */
-export function DataPanel({ project }: { project: Project }) {
+export function DataPanel({ project, mobile }: { project: Project; mobile?: boolean }) {
   // "View dataset" from an entry opened over the page editor: force the rail open and select the one
   // asked for. The counter is what SidePanel takes — a boolean could not re-open the panel after the
   // reader closed it and clicked through a second time.
@@ -40,7 +45,7 @@ export function DataPanel({ project }: { project: Project }) {
       align="start"
       label="Datasets"
       icon={<DataIcon />}
-      width="w-[min(56rem,66vw)]"
+      width={mobile ? 'w-[min(56rem,100vw)]' : 'w-[min(56rem,66vw)]'}
       size="h-[100dvh]"
       openSignal={openSignal}
     >

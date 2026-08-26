@@ -265,7 +265,7 @@ export function TargetConfigForm({
       {isFtpFamily && (
         <>
           <Toggle label="Use TLS (FTPS)" checked={isEdit ? protocol === 'ftps' : tls} disabled={isEdit} hint={isEdit ? 'protocol is fixed once created' : 'encrypted FTP over TLS'} onChange={setTls} />
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Host" value={host} onChange={setHost} required />
             <Field label="Port" value={port} onChange={setPort} type="number" placeholder="auto" />
             <Field label="User" value={user} onChange={setUser} required />
@@ -277,7 +277,7 @@ export function TargetConfigForm({
 
       {protocol === 'sftp' && (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Host" value={host} onChange={setHost} required />
             <Field label="Port" value={port} onChange={setPort} type="number" placeholder="22" />
             <Field label="User" value={user} onChange={setUser} required />

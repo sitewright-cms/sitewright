@@ -80,7 +80,7 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
           autoFocus
         />
 
-        <div className="flex max-h-[55vh] flex-col gap-3 overflow-auto">
+        <div className="flex max-h-[55dvh] flex-col gap-3 overflow-auto">
           {/* Default + Disabled specials (hidden when a search excludes them). "Default" means the
               field is UNSET (value === ''); an explicit `Organization` highlights its list item. */}
           {showDefault && (

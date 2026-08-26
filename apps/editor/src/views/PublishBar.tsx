@@ -3,6 +3,7 @@ import { ChevronDown, ExternalLink, Download, Link2 } from 'lucide-react';
 import { api, eventsUrl, type DeployTargetView, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
+import { useLongPress } from '../lib/use-long-press';
 import { DeployModal } from './publish/DeployModal';
 import { Modal } from './ui/Modal';
 import { PreviewShareLinks } from './settings/PreviewShareLinks';
@@ -51,6 +52,7 @@ export function PublishBar({
   sitesDomain,
   onOpenDeploy,
   refreshSignal = 0,
+  compact = false,
 }: {
   project: Project;
   /** `SW_SITES_DOMAIN` when subdomain routing is on — names the address a local target really serves. */
@@ -59,6 +61,18 @@ export function PublishBar({
   onOpenDeploy?: () => void;
   /** Bumped by the parent when targets change, so the list + default stay current. */
   refreshSignal?: number;
+  /**
+   * PHONE-SIZED HEADER. This bar measured 447px inside a 412px viewport — on its own, more than the
+   * whole screen — and a header that overflows does not merely look wrong on mobile: Chrome widens the
+   * LAYOUT VIEWPORT to fit it, so `position: fixed` stops meaning "the screen". That is what put the
+   * bottom rail tabs at y=1136 on a 915px-tall device, out of reach of a tap.
+   *
+   * Compact keeps both PRIMARY actions and drops what is configuration: the labels (every button keeps
+   * its `aria-label`, so nothing is lost to a screen reader), the two split-button carets, "View live",
+   * and the "Connect an agent" nudge. Everything behind those carets — share links, choosing a target,
+   * Download .zip — is reachable from the gear menu's Publish & Deploy Options.
+   */
+  compact?: boolean;
 }) {
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
@@ -265,16 +279,30 @@ export function PublishBar({
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
   // `whitespace-nowrap`: same reason as the agent pill above it — these live in a shrinking header
   // row, and a two-word label ("View live") that wraps turns a button into a two-line box.
+  /**
+   * LONG-PRESS OPENS WHAT THE CARET USED TO.
+   *
+   * Compact mode drops both split-button carets — they cost ~88px of a 412px header for two actions
+   * that are configuration, not the primary verb. Dropping a control is only acceptable if what it
+   * opened is still reachable, so the button it was attached to takes over: hold Preview for share
+   * links, hold Deploy to choose a target or download the .zip. Same gesture the pages list already
+   * teaches for its row menu, and the same helper, so the movement/scroll cancellation is identical.
+   */
+  const previewHold = useLongPress(() => setPreviewMenuOpen(true));
+  const deployHold = useLongPress(() => setMenuOpen(true));
+
   const btnBase =
     'inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400';
 
   return (
-    <div className="flex items-center gap-2">
-      <AgentIndicator
-        state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
-        count={connectionCount}
-        onClick={() => setAgentModalOpen(true)}
-      />
+    <div className={`flex items-center ${compact ? 'gap-1' : 'gap-2'}`}>
+      {!(compact && !agentActive && connectionCount === 0) && (
+        <AgentIndicator
+          state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
+          count={connectionCount}
+          onClick={() => setAgentModalOpen(true)}
+        />
+      )}
       {/* Always-on Preview: a SPLIT button — the main action browses the live site with the latest (saved)
           changes (no publish needed); the caret opens a menu with "Preview share links". */}
       <div className="relative" ref={previewMenuRef}>
@@ -285,11 +313,13 @@ export function PublishBar({
             }
             title="Preview the live site with your latest changes — no publish needed"
             aria-label="Preview the live site"
-            className={`${btnBase} rounded-r-none`}
+            {...(compact ? previewHold : {})}
+            className={`${btnBase} ${compact ? '' : 'rounded-r-none'}`}
           >
             <PreviewIcon />
-            Preview
+            {!compact && 'Preview'}
           </button>
+          {!compact && (
           <button
             aria-label="Preview options"
             aria-haspopup="menu"
@@ -299,6 +329,7 @@ export function PublishBar({
           >
             <ChevronDown className="h-4 w-4" />
           </button>
+          )}
         </div>
         {previewMenuOpen && (
           <div role="menu" className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
@@ -317,7 +348,7 @@ export function PublishBar({
         )}
       </div>
 
-      {showView && (
+      {showView && !compact && (
         <a href={viewUrl} target="_blank" rel="noreferrer" title="View your live (served) site" aria-label="View the live site" className={btnBase}>
           <ExternalLink className="h-4 w-4" />
           View live
@@ -336,7 +367,8 @@ export function PublishBar({
             disabled={busy}
             title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Set up where to deploy your site'}
             aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
+            {...(compact ? deployHold : {})}
+            className={`inline-flex cursor-pointer items-center gap-1.5 ${compact ? 'rounded-md' : 'rounded-l-md'} border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
               // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
               // label. -700 carries the same "there is something to deploy" green at 5.2:1.
               primaryStale
@@ -345,9 +377,10 @@ export function PublishBar({
             }`}
           >
             <DeployIcon />
-            {busy ? 'Deploying…' : 'Deploy'}
+            {!compact && (busy ? 'Deploying…' : 'Deploy')}
             {primaryStale && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
           </button>
+          {!compact && (
           <button
             aria-label="Choose a deploy target"
             aria-haspopup="menu"
@@ -361,6 +394,7 @@ export function PublishBar({
           >
             <ChevronDown className="h-4 w-4" />
           </button>
+          )}
         </div>
 
         {menuOpen && (

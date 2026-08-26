@@ -286,7 +286,7 @@ export function StockPicker({
             <img
               src={preview.previewUrl}
               alt={`Stock photo by ${preview.author}`}
-              className="max-h-[60vh] w-full rounded-xl bg-slate-100 object-contain dark:bg-slate-900"
+              className="max-h-[60dvh] w-full rounded-xl bg-slate-100 object-contain dark:bg-slate-900"
             />
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
               <span>

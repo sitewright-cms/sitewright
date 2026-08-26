@@ -271,7 +271,7 @@ export function FormEditorModal({ project, form, enabledModes: modesProp, captch
         </button>
       </fieldset>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Submit button label
           <input

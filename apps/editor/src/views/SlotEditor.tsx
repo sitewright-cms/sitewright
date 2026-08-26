@@ -508,7 +508,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
           className={`shrink-0 overflow-hidden rounded-2xl bg-[#0a0a0f] shadow-xl shadow-slate-900/10 transition-all duration-300 ease-out ${
             mode !== 'source'
               ? 'invisible h-0 opacity-0'
-              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45vh]' : 'h-36'}`
+              : `border border-white/50 dark:border-white/10 ${stripExpanded ? 'h-[45dvh]' : 'h-36'}`
           }`}
           onMouseEnter={() => setStripHover(true)}
           onMouseLeave={() => setStripHover(false)}

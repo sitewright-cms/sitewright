@@ -6,6 +6,7 @@ import { PreviewProgressPill } from './editor/PreviewProgressPill';
 import { api, eventsUrl, previewUrlFrom } from '../api';
 import { AgentDrawer } from './AgentDrawer';
 import type { PreviewTarget } from '../lib/preview-target';
+import { useIsMobile } from '../lib/use-is-mobile';
 
 /** Coalesce a burst of edits into one reload/navigate. */
 const CHANGE_DEBOUNCE_MS = 250;
@@ -14,7 +15,6 @@ const WORKING_LULL_MS = 12_000;
 /** Reconcile the connection count periodically (covers a connect/expiry with no edit event). */
 const PRESENCE_POLL_MS = 30_000;
 /** How long the copy-link button reads "Copied!" before reverting. */
-const COPIED_LABEL_MS = 1500;
 
 /**
  * The always-on whole-site PREVIEW shell (opened via `?preview=projectId`). A same-origin,
@@ -48,16 +48,12 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
   const [failuresDismissed, setFailuresDismissed] = useState(false);
   const [connectedCount, setConnectedCount] = useState(0);
   const [working, setWorking] = useState(false);
-  const [copied, setCopied] = useState(false);
   const workingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The "Copied!" label reverts on a timer. Held in a ref so it can be cancelled: a timer that outlives
-  // the component fires setCopied on a dead tree — harmless in the browser, but in jsdom it lands after
-  // the test environment is torn down and throws `window is not defined` as an UNHANDLED error, which
-  // fails the whole vitest run with every test still green (and no failing test named).
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The on-page AI assistant: available only when configured (platform or per-project) + the user can write.
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Phone-sized viewport: the drawer covers the FAB rather than sitting beside it (see the FAB below).
+  const isMobile = useIsMobile();
   // Live turn status lifted from the drawer, so the AI button animates while it thinks/works.
   const [agentActivity, setAgentActivity] = useState<'idle' | 'thinking' | 'working'>('idle');
 
@@ -252,29 +248,13 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     };
   }, [projectId]);
 
-  // The share-able preview URL (absolute) — resolve the iframe URL against this origin so it stays
-  // correct whether the API is same-origin (relative) or a separate origin (absolute via VITE_API_BASE).
-  const shareUrl = base ? new URL(previewUrlFrom(base, ''), window.location.origin).href : '';
-  const copyShareUrl = () => {
-    if (!shareUrl) return;
-    void navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopied(true);
-      if (copiedTimer.current) clearTimeout(copiedTimer.current);
-      copiedTimer.current = setTimeout(() => setCopied(false), COPIED_LABEL_MS);
-    });
-  };
-  // Cancel a pending "Copied!" revert on unmount (see the ref's note).
-  useEffect(() => () => {
-    if (copiedTimer.current) clearTimeout(copiedTimer.current);
-  }, []);
-
   const showPill = working || connectedCount > 0;
 
   // The failure banner owns the top strip while it is up, so the two chips step down out of its way.
   const bannerUp = pageFailures.length > 0 && !failuresDismissed;
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-white">
+    <div className="relative h-dvh w-screen overflow-hidden bg-white">
       {/* Opening a project and going straight to the preview can take a while: the shell first fetches
           the signed base (which brings the draft build up to date — a whole-site render on a cold
           project), and only then does the iframe start fetching a page. Both steps used to sit behind
@@ -333,15 +313,6 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
           </div>
         </div>
       )}
-      {base && (
-        <button
-          onClick={copyShareUrl}
-          title={shareUrl}
-          className={`absolute left-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-white opacity-60 shadow-sm backdrop-blur transition hover:opacity-100 ${bannerUp ? 'top-24' : 'top-3'}`}
-        >
-          {copied ? 'Link copied' : 'Copy preview link'}
-        </button>
-      )}
       {showPill && (
         // pointer-events-none so the indicator never intercepts clicks meant for the preview.
         <div className={`pointer-events-none absolute right-3 z-10 ${bannerUp ? 'top-24' : 'top-3'}`}>
@@ -361,8 +332,14 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
       {/* ONE persistent, prominent bottom-LEFT FAB: always shown when the assistant is available
           (click toggles the drawer), and it doubles as the live status indicator during a turn —
           with a pulsing halo while the agent is thinking/working, VISIBLE even with the drawer
-          closed (closing no longer stops the turn). Bottom-left so it never sits under the drawer. */}
-      {agentEnabled && (
+          closed (closing no longer stops the turn). Bottom-left so it never sits under the drawer.
+
+          ON MOBILE it hides while the drawer is OPEN. The "never sits under the drawer" geometry is a
+          desktop fact: the drawer is 26rem beside a wide page, but on a phone it covers 92vw, so the
+          FAB would be buried under it — a control you cannot see, pulsing a status you cannot read.
+          The status it carries is not lost: AgentDrawer's own header shows the same live state, which
+          is the surface actually in front of the user once the drawer is up. */}
+      {agentEnabled && !(isMobile && drawerOpen) && (
         <div className="absolute bottom-6 left-6 z-[62]">
           {/* Pulsing halo — only while a turn is active (thinking/working). */}
           {agentActivity !== 'idle' && (

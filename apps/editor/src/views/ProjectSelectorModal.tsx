@@ -89,7 +89,7 @@ export function ProjectSelectorModal({ projects, currentId, openingId = null, br
             if (first) onOpen(first);
           }}
         />
-        <ul className="flex max-h-[55vh] flex-col gap-2 overflow-auto">
+        <ul className="flex max-h-[55dvh] flex-col gap-2 overflow-auto">
           {filtered.map((p) => {
             const active = p.id === currentId;
             const isOpening = p.id === openingId;

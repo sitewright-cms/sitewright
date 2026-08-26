@@ -792,7 +792,7 @@ export function InstanceSettings() {
         {smtpEnabled && (
           /* Any edit invalidates the last test: the endpoint checks what is STORED, so a leftover
              ✓ would assert something nobody has verified. */
-          <div className="mt-3 grid grid-cols-2 gap-3" onChange={() => setSmtpTest(null)}>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2" onChange={() => setSmtpTest(null)}>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Host
               <input className={field} aria-label="SMTP host" value={host} onChange={(e) => setHost(e.target.value)} required />
@@ -911,7 +911,7 @@ export function InstanceSettings() {
           Configure Unsplash / Pexels API keys
         </label>
         {stockEnabled && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Unsplash access key
               <input
@@ -971,7 +971,7 @@ export function InstanceSettings() {
           Enable the AI assistant platform-wide
         </label>
         {aiEnabled && (
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
               Provider
               <select className={field} aria-label="AI provider" value={aiProvider} onChange={(e) => setAiProvider(e.target.value as AiProviderKind)}>

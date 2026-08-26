@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.39.0] — 2026-08-26
+
 ### Changed
 
 - **Iframes now defer via the platform lazy runtime (`data-src`) everywhere the platform authors them.**

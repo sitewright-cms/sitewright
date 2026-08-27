@@ -5,6 +5,7 @@ export * from './lazyload.js';
 export * from './fixed-bg-preview.js';
 export * from './ripple.js';
 export * from './nav-effects.js';
+export * from './nav-active.js';
 export * from './button-effects.js';
 export { baseStyles } from './base-css.js';
 export * from './cart.js';

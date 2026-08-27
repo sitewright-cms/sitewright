@@ -90,7 +90,6 @@ import {
   componentAssets,
   renderImageMapMarkup,
   systemI18nData,
-  usesDialog,
   usesParallax,
   usesFixedBackground,
   FIXED_BG_PREVIEW_CSS,
@@ -98,13 +97,7 @@ import {
   parallaxPreviewDoc,
   svgAnimPreviewDoc,
   svgStudioPreviewDoc,
-  usesNavEffects,
-  NAV_EFFECTS_JS,
-  STICKY_HEADER_JS,
   usesScrollSpy,
-  SCROLLSPY_JS,
-  usesButtonEffects,
-  BUTTON_EFFECTS_JS,
   usesThemeToggle,
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
@@ -116,7 +109,6 @@ import {
   TemplateError,
   mediaForRender,
   decorateNav,
-  NAV_LINK_JS,
   searchIcons,
   renderIconSvg,
   PHOSPHOR_NAMES,
@@ -126,6 +118,7 @@ import {
   RICH_CONTENT_SAFELIST,
   ciRichClasses,
 } from '@sitewright/blocks';
+import { previewChromeScripts } from '../publish/chrome-runtimes.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import {
   storeOriginal,
@@ -1084,16 +1077,11 @@ async function styledSourceDocument(
   // for them here (the block tree is an empty stub for code-first), mirroring the publish path.
   const componentTypes = componentTypesInSource(scanHtml);
   const { css: componentCss, js: componentJs } = componentAssets(componentTypes);
-  // The nav-link runtime opens a <dialog> (global modal) / smooth-scrolls a #section. Ship it for the
-  // preview when the rendered body or slots embed a <dialog> — WYSIWYG parity, so an authored modal
-  // (incl. a global modal in the bottom slot) actually opens when its trigger is clicked.
-  const dialog = usesDialog(scanHtml);
-  // JS-backed nav schemes (sliding indicator / cursor-following spotlight) — the body effect class is
-  // in scanHtml, so run their runtime live in the preview for WYSIWYG parity (harmless: it only injects
-  // an indicator span + reads pointer position).
-  const navRuntime = usesNavEffects(scanHtml);
-  // Button-effects runtime — ripple on every .btn (+ magnetic / spotlight); inline it live for preview parity.
-  const btnRuntime = usesButtonEffects(scanHtml);
+  // The CHROME runtimes this page inlines (nav-link, nav-effects, nav-active, button-effects,
+  // sticky-header, scrollspy) come from the SHARED registry the publish path uses — chrome-runtimes.ts
+  // — so the canvas can't run a different set than the deployed page. The preloader overlay and the
+  // back-to-top FAB are declared there with no preview gate: this shell never renders that chrome, so
+  // it ships no runtime for it either.
   // STICKY top-header — the caller passes the validated mode via `shell.stickyHeader` (carried into
   // renderDocument by the `...shell` spread below, so the fixed `#main-nav` + offset token render in
   // the preview — WYSIWYG layout). Inline the scroll-state runtime for the JS-backed modes (hide/shrink).
@@ -1148,13 +1136,9 @@ async function styledSourceDocument(
         // Shared registry: the 'run' body-effect runtimes' JS (animation, parallax, svg-anim, lazyload,
         // ripple). cart/consent are 'style-only' (excluded) — styled but inert in the editor canvas.
         ...previewBodyEffectScripts(scanHtml),
-        ...(navRuntime ? [NAV_EFFECTS_JS] : []),
-        ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
-        ...(stickyHeaderRuntime ? [STICKY_HEADER_JS] : []),
-        ...(scrollSpyRuntime ? [SCROLLSPY_JS] : []),
-        // NAV_LINK_JS smooth-scrolls #section links + opens <dialog> modals; ship it for a <dialog> OR for
-        // scrollspy (its nav is in-page section navigation, so the links must smooth-scroll in the preview too).
-        ...(dialog || scrollSpyRuntime ? [NAV_LINK_JS] : []),
+        // Shared registry: every chrome runtime whose preview gate this page's rendered HTML trips,
+        // in the same order the published page links them.
+        ...previewChromeScripts(scanHtml),
         // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
         // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
         PREVIEW_BRIDGE_JS,

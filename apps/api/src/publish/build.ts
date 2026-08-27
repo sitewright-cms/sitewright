@@ -43,21 +43,19 @@ import {
   type ProjectBundle,
 } from '@sitewright/core';
 import {
-  type CaptchaRenderConfig, isLinkPage, type Page, type Template } from '@sitewright/schema';
+  type CaptchaRenderConfig, type Page, type Template } from '@sitewright/schema';
 import {
   renderDocument,
   renderTemplate,
   TemplateError,
   type TemplateContext,
   decorateNav,
-  NAV_LINK_JS,
   resolveInternalUrl,
   relativizeInternalLinks,
   componentTypesInSource,
   formHasPickerField,
   componentAssets,
   systemI18nData,
-  usesDialog,
   usesConsent,
   consentMountMarkup,
   usesThemeToggle,
@@ -65,18 +63,9 @@ import {
   THEME_TOGGLE_JS,
   preloaderHtml,
   PRELOADER_CSS,
-  PRELOADER_JS,
   customPreloaderHtml,
   backToTopHtml,
   BACK_TO_TOP_CSS,
-  BACK_TO_TOP_JS,
-  STICKY_HEADER_JS,
-  SCROLLSPY_JS,
-  usesScrollSpy,
-  NAV_EFFECTS_JS,
-  usesNavEffects,
-  BUTTON_EFFECTS_JS,
-  usesButtonEffects,
   resolveShopChannels,
   resolveFormEndpoints,
   type RenderImageMap,
@@ -86,6 +75,15 @@ import {
   escapeHtml,
 } from '@sitewright/blocks';
 import { minifyJs, minifyCss, MINIFIER_VERSION } from './minify.js';
+import {
+  CORE_SCRIPT,
+  CHROME_RUNTIME_SOURCES,
+  backToTopUsesRuntime,
+  coreBundleJs,
+  coreRuntimes,
+  standaloneRuntimes,
+  type ChromeContext,
+} from './chrome-runtimes.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
 import { companyToOrganization } from './company-seo.js';
@@ -110,10 +108,6 @@ import {
   toPublicForm,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
-  navEffectUsesRuntime,
-  buttonEffectUsesRuntime,
-  stickyHeaderUsesRuntime,
-  scrollSpyUsesRuntime,
   buildConsentMetaCsp,
   authorContentCspOrigins,
   platformInjectedCspOrigins,
@@ -134,20 +128,9 @@ const UTILITY_STYLESHEET = 'styles.css';
 const componentChunkName = (type: string): string => `c-${type.toLowerCase()}.js`;
 /** The color-scheme toggle + no-flash runtime, written at the site root and linked SYNC in <head>. */
 const THEME_SCRIPT = 'theme.js';
-/** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
-const NAV_LINK_SCRIPT = 'nav-link.js';
-/** The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge), linked per page. */
-const PRELOADER_SCRIPT = 'preloader.js';
-/** The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top), linked per page. */
-const BACK_TO_TOP_SCRIPT = 'back-to-top.js';
-/** The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink), linked per page. */
-const STICKY_HEADER_SCRIPT = 'sticky-header.js';
-/** The SCROLLSPY runtime (highlight the nav link whose in-page section is in view), linked per page. */
-const SCROLLSPY_SCRIPT = 'scrollspy.js';
-/** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
-const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
-/** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
-const BUTTON_EFFECTS_SCRIPT = 'button-effects.js';
+// The CHROME runtimes (nav-link, preloader, nav-effects, nav-active, button-effects, back-to-top,
+// sticky-header, scrollspy) own their own filenames in the shared registry — chrome-runtimes.ts — which
+// also decides which of them are site-wide (concatenated into core.js) and which stay standalone.
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -718,7 +701,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         custom: buildNav(pagesIn, 'custom'),
       }));
     }
-    // `usesNavLink` (the <dialog>/smooth-scroll runtime) is computed below, once the source/slot/
+    // The CHROME runtime set (chrome-runtimes.ts) is computed below, once the source/slot/
     // snippet surfaces it scans for an authored <dialog> are in scope (see `usesMarker`).
     // Index for computing each page's full route (`{root}/{parent slugs}/{slug}`) — a
     // page's `path` is only its own slug segment.
@@ -871,7 +854,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       .update('\x00')
       .update(usedBodyEffects.map((r) => r.js ?? '').join('\x00'))
       .update('\x00')
-      .update([THEME_TOGGLE_JS, NAV_LINK_JS, PRELOADER_JS, BACK_TO_TOP_JS, STICKY_HEADER_JS, SCROLLSPY_JS, NAV_EFFECTS_JS, BUTTON_EFFECTS_JS].join('\x00'))
+      .update([THEME_TOGGLE_JS, ...CHROME_RUNTIME_SOURCES].join('\x00'))
       .digest('hex')
       .slice(0, 16);
     // No-JS un-hide for the runtimes a page ships that hide content from first paint (svg-anim's no-FOUC
@@ -893,46 +876,21 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
     // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
     const usesThemeToggleRuntime = !!website?.enableThemes && usesMarker(usesThemeToggle);
-    // PRELOADER runtime — ships when the site shows an overlay AT ALL: a built-in effect, or CUSTOM
-    // code. ★ Gating on the built-in effect alone was a page-killer, because the two conditions are
-    // exactly opposite: custom code only applies when the effect is 'none', which was precisely when
-    // the runtime did NOT ship. The one configuration that emitted an overlay was the one with
-    // nothing to clear it, so every page sat behind it forever.
-    const usesPreloaderRuntime =
-      (website?.effects?.preloaderEffect ?? 'none') !== 'none' || Boolean(website?.effects?.preloaderCode?.trim());
-    // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
-    // The platform injects the button markup (renderDocument), so this is gated on the setting only.
-    const usesBackToTopRuntime = website?.effects?.backToTop !== false;
-    // STICKY-HEADER runtime — ships only for the JS-backed fixed-header modes (hide-on-scroll /
-    // shrink), which toggle scroll-state classes. 'pinned' is pure CSS (no runtime); the fixed
-    // positioning + offset token are emitted by renderDocument (gated on the mode) for every mode.
-    const usesStickyHeaderRuntime = stickyHeaderUsesRuntime();
-    // SCROLLSPY runtime — ships when the site-wide toggle is on (effects.scrollSpy, governs #main-nav)
-    // OR a page/slot/snippet uses a per-element `data-sw-scrollspy` (same only-used-ships discipline as
-    // cart/nav-effects). The marker substring `sw-scrollspy` matches BOTH the attribute and the body
-    // class, so the source scan can't drift from the runtime.
-    const usesScrollSpyRuntime =
-      scrollSpyUsesRuntime(website?.effects?.scrollSpy) || usesMarker(usesScrollSpy);
-    // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
-    // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
-    // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
-    // discipline as cart/ripple), else a one-off `sw-nav-sliding-pill` would preview but ship broken.
-    const usesNavRuntime =
-      navEffectUsesRuntime(website?.effects?.navEffect) || usesMarker(usesNavEffects);
-    // BUTTON-EFFECTS runtime — ripple is the always-on .btn baseline, so this ships whenever the page has
-    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`; the
-    // back-to-top button is a platform-injected `.btn` no scan sees, so OR it in for its ripple.
-    const usesBtnRuntime =
-      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects) || usesBackToTopRuntime;
-    // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
-    // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
-    // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
-    // actually opens. ALSO ship it whenever SCROLLSPY is used: a scrollspy nav is in-page section
-    // navigation by definition, so its links (`#about`, `/#about`) must smooth-scroll on click.
-    const usesNavLink =
-      pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
-      usesMarker(usesDialog) ||
-      usesScrollSpyRuntime;
+    // --- CHROME runtimes -------------------------------------------------------------------------
+    // Every gate below comes from the SHARED registry (chrome-runtimes.ts), which the editor preview
+    // reads too — so preview and deploy cannot disagree about which chrome runtime a page gets, the same
+    // guarantee effect-runtimes.ts gives the body effects. `core` is the site-wide set, concatenated
+    // into ONE core.js linked by every page; `standalone` is the rest — runtimes only SOME pages need,
+    // which keep their own file and their own per-page gate.
+    const chromeCtx: ChromeContext = { website, pages: pubBundle.pages, slotSources };
+    const core = coreRuntimes(chromeCtx);
+    const standalone = standaloneRuntimes(chromeCtx, usesMarker);
+    const inCore = (key: string): boolean => core.some((r) => r.key === key);
+    // Flags read by the non-script half of a runtime — the markup it injects (preloader overlay,
+    // back-to-top button) and the CSS it inlines. Same registry, so the script and the thing it drives
+    // can never be gated differently.
+    const usesPreloaderRuntime = inCore('preloader');
+    const usesBackToTopRuntime = backToTopUsesRuntime(chromeCtx);
     // --- PER-PAGE runtime shipping ---------------------------------------------------------------
     // The *Runtime flags above are the SITE-WIDE union: they decide which runtime files get WRITTEN
     // (a file must exist if ANY page links it). LINKING, however, is per-PAGE (below, in the render
@@ -944,10 +902,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // site-wide sub-conditions are the "applies to every page" half of the mixed runtimes; the per-page
     // loop OR's each with a per-PAGE marker scan. Every per-page set is a SUBSET of the union above, so
     // each linked asset was written.
-    const scrollSpySiteWide = scrollSpyUsesRuntime(website?.effects?.scrollSpy);
-    const navSiteWide = navEffectUsesRuntime(website?.effects?.navEffect);
-    const btnSiteWide = buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesBackToTopRuntime;
-    const navLinkSiteWide = pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#'));
     const themesEnabled = !!website?.enableThemes;
     // Public form definitions (recipient stripped) + the submission endpoint per form — consumed
     // by the form-embed pass in renderTemplate ({{sw-form}} / data-sw-form) and the cart's form
@@ -1282,10 +1236,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageEffectNoscriptHtml = effectNoscriptHtmlFor(pageBodyEffects);
         // Mixed chrome runtimes: the site-wide (settings/shell) half OR a per-page authored marker.
         const pageThemeToggle = themesEnabled && pageUsesMarker(usesThemeToggle);
-        const pageScrollSpy = scrollSpySiteWide || pageUsesMarker(usesScrollSpy);
-        const pageNavRuntime = navSiteWide || pageUsesMarker(usesNavEffects);
-        const pageBtnRuntime = btnSiteWide || pageUsesMarker(usesButtonEffects);
-        const pageNavLink = navLinkSiteWide || pageUsesMarker(usesDialog) || pageScrollSpy;
+        // Chrome: core.js on every page, plus the standalone runtimes THIS page's own markup asks for.
+        const pageStandalone = standalone.filter((r) => pageUsesMarker(r.perPage!));
         const pageInlineStyles = [
           ...(pageUsesComponents && pageComponents.css ? [pageComponents.css] : []),
           // Shared registry: the inline CSS for every body-effect runtime THIS page uses (animation,
@@ -1303,13 +1255,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared registry: link each body-effect runtime THIS page uses (marquee is CSS-only → no
           // script). Same set as the inline CSS above + the editor preview's inline JS for this page.
           ...pageBodyEffects.flatMap((r) => (r.script ? [`${siteRoot}${SCRIPT_DIR}/${r.script}`] : [])),
-          ...(pageNavLink ? [`${siteRoot}${SCRIPT_DIR}/${NAV_LINK_SCRIPT}`] : []),
-          ...(usesPreloaderRuntime ? [`${siteRoot}${SCRIPT_DIR}/${PRELOADER_SCRIPT}`] : []),
-          ...(pageNavRuntime ? [`${siteRoot}${SCRIPT_DIR}/${NAV_EFFECTS_SCRIPT}`] : []),
-          ...(pageBtnRuntime ? [`${siteRoot}${SCRIPT_DIR}/${BUTTON_EFFECTS_SCRIPT}`] : []),
-          ...(usesBackToTopRuntime ? [`${siteRoot}${SCRIPT_DIR}/${BACK_TO_TOP_SCRIPT}`] : []),
-          ...(usesStickyHeaderRuntime ? [`${siteRoot}${SCRIPT_DIR}/${STICKY_HEADER_SCRIPT}`] : []),
-          ...(pageScrollSpy ? [`${siteRoot}${SCRIPT_DIR}/${SCROLLSPY_SCRIPT}`] : []),
+          `${siteRoot}${SCRIPT_DIR}/${CORE_SCRIPT}`,
+          ...pageStandalone.map((r) => `${siteRoot}${SCRIPT_DIR}/${r.script}`),
         ];
         // Author-content CSP origins for THIS page: every cross-origin `<iframe>` (body / chrome slots /
         // head) → frame-src, and every gated `<script type="text/plain" data-sw-consent>` → script+connect.
@@ -1653,33 +1600,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (usesThemeToggleRuntime) {
       await writeJs(THEME_SCRIPT, THEME_TOGGLE_JS);
     }
-    // The nav-placeholder runtime (open a <dialog> / smooth-scroll a #section; only-used-ships).
-    if (usesNavLink) {
-      await writeJs(NAV_LINK_SCRIPT, NAV_LINK_JS);
-    }
-    // The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge; only-used-ships).
-    if (usesPreloaderRuntime) {
-      await writeJs(PRELOADER_SCRIPT, PRELOADER_JS);
-    }
-    // The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top; only-used-ships).
-    if (usesBackToTopRuntime) {
-      await writeJs(BACK_TO_TOP_SCRIPT, BACK_TO_TOP_JS);
-    }
-    // The STICKY-HEADER runtime (scroll-state classes for hide-on-scroll / shrink; only-used-ships).
-    if (usesStickyHeaderRuntime) {
-      await writeJs(STICKY_HEADER_SCRIPT, STICKY_HEADER_JS);
-    }
-    // The SCROLLSPY runtime (highlight the nav link whose in-page section is in view; only-used-ships).
-    if (usesScrollSpyRuntime) {
-      await writeJs(SCROLLSPY_SCRIPT, SCROLLSPY_JS);
-    }
-    // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
-    if (usesNavRuntime) {
-      await writeJs(NAV_EFFECTS_SCRIPT, NAV_EFFECTS_JS);
-    }
-    // The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight; only-used-ships).
-    if (usesBtnRuntime) {
-      await writeJs(BUTTON_EFFECTS_SCRIPT, BUTTON_EFFECTS_JS);
+    // The site-wide CHROME bundle — one request for the runtimes every page needs, instead of the four
+    // to six separate fetches they used to be. Never empty (sticky-header is unconditional).
+    await writeJs(CORE_SCRIPT, coreBundleJs(chromeCtx));
+    // …and a file each for the chrome runtimes only SOME pages need (only-used-ships, still per-page).
+    for (const r of standalone) {
+      await writeJs(r.script, r.js);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

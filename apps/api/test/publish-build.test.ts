@@ -34,6 +34,23 @@ function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
   } as ProjectBundle;
 }
 
+/**
+ * The SITE-WIDE chrome runtimes no longer ship as one file each — they are concatenated into a single
+ * core.js (chrome-runtimes.ts), so "did this runtime ship" is a question about the BUNDLE's contents,
+ * not about a filename in the page. Each token below is a stable identifier that survives minification
+ * and appears in exactly one runtime. A runtime only SOME pages need still gets its own file, and those
+ * assertions stay filename-based.
+ */
+const coreJs = (): Promise<string> => readFile(join(outDir, '_assets/_sw/core.js'), 'utf8');
+const IN_CORE = {
+  navEffects: 'sw-nav-indicator',
+  navActive: '.menu a.active',
+  preloader: 'sw-loading',
+  backToTop: 'data-sw-back-to-top',
+  stickyHeader: 'sw-nav-hidden',
+  scrollspy: 'sw-scrollspy',
+} as const;
+
 describe('buildSite', () => {
   it('renders a code-first source-page (Handlebars) to static HTML + feeds its classes to the shared sheet', async () => {
     await buildSite({
@@ -671,7 +688,7 @@ describe('buildSite', () => {
     // The chosen schemes become <body> classes (cascade to the nav landmarks + .btn).
     expect(home).toContain('<body class="sw-nav-box-solid sw-btn-fx-lift">');
     // A pure-CSS nav scheme ships NO nav runtime.
-    expect(home).not.toContain('nav-effects.js');
+    expect(await coreJs()).not.toContain(IN_CORE.navEffects);
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     // Only the chosen schemes ship, scoped to the .menu nav links, themed by the brand.
     expect(sheet).toContain('.sw-nav-box-solid');
@@ -703,9 +720,8 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<body class="sw-nav-sliding-pill">');
-    expect(home).toContain('nav-effects.js'); // the runtime is linked
-    const runtime = await readFile(join(outDir, '_assets/_sw/nav-effects.js'), 'utf8'); // … and the asset exists
-    expect(runtime).toContain('sw-nav-indicator');
+    expect(home).toContain('core.js'); // the site-wide chrome bundle is linked
+    expect(await coreJs()).toContain(IN_CORE.navEffects); // … and the nav-effects runtime is inside it
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     expect(sheet).toContain('.sw-nav-indicator'); // the indicator CSS shipped with the scheme
     expect(sheet).toContain('--sw-ind-left');
@@ -791,6 +807,53 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, '_assets/_sw/nav-effects.js'), 'utf8')).toContain('sw-nav-indicator');
   });
 
+  it('ships the nav active-on-click runtime wherever a nav menu exists — and nothing without one', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            mainNav:
+              '<ul class="menu menu-horizontal">{{#each nav.header}}' +
+              '<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<p>Hi</p>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: 'about', title: 'About', source: '<p>Us</p>', nav: { slots: ['header'], order: 2 } },
+        ],
+      }),
+    });
+    // The nav is CHROME — every page gets the runtime, and the asset it links exists.
+    for (const file of ['index.html', 'about/index.html']) {
+      expect(await readFile(join(outDir, file), 'utf8')).toContain('core.js');
+    }
+    const runtime = await coreJs();
+    expect(runtime).toContain(IN_CORE.navActive);
+    expect(runtime).toContain('pathname'); // the same-page (in-page anchor) guard survived minification
+  });
+
+  it('ships no nav active-on-click runtime for a site with no menu', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<p>Hi</p><a href="/about">About</a>' }],
+      }),
+    });
+    expect(await coreJs()).not.toContain(IN_CORE.navActive);
+    await expect(readFile(join(outDir, '_assets/_sw/nav-active.js'), 'utf8')).rejects.toThrow();
+  });
+
   it('ships the preloader overlay + runtime when effects.preloaderEffect is set (and nothing when not)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
@@ -811,9 +874,9 @@ describe('buildSite', () => {
     expect(home).toContain('sw-preloader-logo-pulse');
     expect(home).toContain('class="sw-loading sw-preloader-logo-pulse"');
     expect(home).toContain('[data-sw-preloader]{display:none!important}'); // noscript no-JS safety
-    expect(home).toContain('preloader.js'); // runtime linked
+    expect(home).toContain('core.js'); // runtime linked (inside the chrome bundle)
     // The runtime file is emitted at the site root.
-    expect(await readFile(join(outDir, '_assets/_sw/preloader.js'), 'utf8')).toContain('sw-loading'); // minified — assert the stable class token
+    expect(await coreJs()).toContain(IN_CORE.preloader); // minified — assert the stable class token
   });
 
   it('says WHY a chrome slot with a snippet fails, instead of just "partial not found"', async () => {
@@ -860,8 +923,8 @@ describe('buildSite', () => {
     expect(home).toContain('<div class="mine">…</div>'); // the author's markup, verbatim
     expect(home).toContain('data-sw-preloader'); // …inside the platform's overlay
     expect(home).toContain('sw-preloader-custom');
-    expect(home).toContain('preloader.js'); // ← the whole point: something now clears it
-    expect(await readFile(join(outDir, '_assets/_sw/preloader.js'), 'utf8')).toContain('sw-loading');
+    expect(home).toContain('core.js'); // ← the whole point: something now clears it
+    expect(await coreJs()).toContain(IN_CORE.preloader);
   });
 
   it('materializes the preloader logo thumbnail into the export (no dangling original ref)', async () => {
@@ -936,11 +999,11 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-back-to-top'); // platform-injected button at body-end
     expect(home).toContain('class="btn btn-primary sw-btn-shape-square"'); // the requested classes (solid primary FAB)
-    expect(home).toContain('back-to-top.js'); // runtime linked
+    expect(home).toContain('core.js'); // runtime linked (inside the chrome bundle)
     expect(home).toContain('position:fixed'); // BACK_TO_TOP_CSS inlined
     // The square-shape utility (tree-shaken) compiles into the sheet because build feeds the injected classes in.
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('sw-btn-shape-square');
-    expect(await readFile(join(outDir, '_assets/_sw/back-to-top.js'), 'utf8')).toContain('scrollTo');
+    expect(await coreJs()).toContain(IN_CORE.backToTop);
   });
 
   it('omits the back-to-top button entirely when effects.backToTop is explicitly false', async () => {
@@ -959,7 +1022,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).not.toContain('data-sw-back-to-top');
-    expect(home).not.toContain('back-to-top.js');
+    expect(await coreJs()).not.toContain(IN_CORE.backToTop);
   });
 
   it('sticky header (hide-on-scroll): fixes #main-nav, emits the offset token + ships the runtime', async () => {
@@ -982,8 +1045,8 @@ describe('buildSite', () => {
     expect(home).toContain('.sw-top-padding{padding-top:var(--sw-header-h)}'); // the opt-in spacer
     expect(home).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}'); // hide-on-scroll rule
     expect(home).toContain('sw-header-hide-on-scroll'); // the <body> mode class (runtime reads it)
-    expect(home).toContain('sticky-header.js'); // runtime linked
-    expect(await readFile(join(outDir, '_assets/_sw/sticky-header.js'), 'utf8')).toContain('sw-nav-hidden');
+    expect(home).toContain('core.js'); // runtime linked (inside the chrome bundle)
+    expect(await coreJs()).toContain(IN_CORE.stickyHeader);
   });
 
   it('sticky header (pinned): fixed + offset CSS, but NO runtime (pure CSS); none = static', async () => {
@@ -1005,7 +1068,7 @@ describe('buildSite', () => {
     // The runtime ships for EVERY mode now — `html.sw-scrolled` is a universal authoring hook, not a
     // private detail of hide-on-scroll/shrink. `pinned` contributes no scroll-state CSS of its own,
     // but a pinned site's author CSS can still key off the class.
-    expect(home).toContain('sticky-header.js');
+    expect(await coreJs()).toContain(IN_CORE.stickyHeader);
     expect(home).not.toContain('sw-nav-hidden'); // no scroll-state rules of the platform's own
   });
 
@@ -1026,14 +1089,14 @@ describe('buildSite', () => {
     // The offset TOKEN and the scroll-state runtime ship even for a static header: `--sw-header-h` is
     // the published "how tall is the bar" number and `html.sw-scrolled` is a universal authoring hook.
     expect(home).toContain('--sw-header-h');
-    expect(home).toContain('sticky-header.js');
+    expect(await coreJs()).toContain(IN_CORE.stickyHeader);
     // …but nothing CONSUMES the token on a header that scrolls away, so the fixed positioning, the
     // spacer utility and the anchor offset stay out — emitting them would push every page carrying
     // `.sw-top-padding` down by a phantom header height.
     expect(home).not.toContain('#main-nav{position:fixed');
     expect(home).not.toContain('.sw-top-padding');
     expect(home).not.toContain('scroll-padding-top');
-    expect(home).not.toContain('scrollspy.js');
+    expect(await coreJs()).not.toContain(IN_CORE.scrollspy);
   });
 
   it('scrollspy (site-wide toggle): emits the sw-scrollspy body class + ships the runtime', async () => {
@@ -1052,9 +1115,10 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('sw-scrollspy'); // the <body> flag class (runtime governs #main-nav menus)
-    expect(home).toContain('scrollspy.js'); // runtime linked
-    expect(home).toContain('nav-link.js'); // smooth-scroll runtime ships with scrollspy (in-page anchors)
-    expect(await readFile(join(outDir, '_assets/_sw/scrollspy.js'), 'utf8')).toContain('main-nav'); // minified — assert the stable id token
+    expect(home).toContain('core.js'); // runtime linked (inside the chrome bundle)
+    // Site-wide scrollspy makes the smooth-scroll runtime site-wide too, so it rides in the bundle.
+    expect(await coreJs()).toContain('scrollIntoView');
+    expect(await coreJs()).toContain(IN_CORE.scrollspy); // minified — assert the stable class token
   });
 
   it('scrollspy (per-element attribute): source scan ships the runtime without the site-wide flag', async () => {
@@ -1096,9 +1160,10 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).not.toContain('scrollspy.js');
+    expect(await coreJs()).not.toContain(IN_CORE.scrollspy);
     expect(home).not.toContain('sw-scrollspy');
     expect(home).not.toContain('nav-link.js'); // no scrollspy / dialog / link-placeholder → no smooth-scroll runtime
+    expect(await coreJs()).not.toContain('scrollIntoView'); // …and it is not hiding in the bundle either
   });
 
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
@@ -1161,7 +1226,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).not.toContain('data-sw-preloader');
-    expect(home).not.toContain('preloader.js');
+    expect(await coreJs()).not.toContain(IN_CORE.preloader);
   });
 
   it('composes {{> snippet}} Handlebars partials into a published source page', async () => {

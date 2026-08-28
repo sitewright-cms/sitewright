@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** Project scope a preview token is bound to (so a token can't be used cross-project). */
@@ -103,7 +103,7 @@ export class PreviewStore {
     const interval = opts.sweepIntervalMs ?? DEFAULT_SWEEP_INTERVAL_MS;
     if (interval > 0) {
       // unref: a cache timer must never be the reason the process stays alive.
-      this.sweepTimer = setInterval(() => void this.sweep(), interval);
+      this.sweepTimer = setInterval(() => void this.maintain(), interval);
       this.sweepTimer.unref?.();
     }
   }
@@ -124,6 +124,11 @@ export class PreviewStore {
     const token = randomUUID();
     const bytes = Buffer.byteLength(html, 'utf8');
     const entry: PreviewEntry = { ...scope, bytes, spilled: false, expiresAt: this.now() + this.ttlMs };
+    // REGISTERED BEFORE THE WRITE. `reconcileSpill` deletes any file whose token it does not know, so
+    // a file written before its entry existed would be a deletion race. The token is not returned to
+    // the caller until this method resolves, so no `get` can observe the gap.
+    this.entries.set(token, entry);
+    this.bytes += bytes;
     if (this.spillDir) {
       try {
         await this.ensureSpillDir();
@@ -137,8 +142,6 @@ export class PreviewStore {
     } else {
       entry.html = html;
     }
-    this.entries.set(token, entry);
-    this.bytes += bytes;
     await this.evictDown();
     return token;
   }
@@ -168,6 +171,42 @@ export class PreviewStore {
   /** Stops the background sweep. Call on shutdown; also keeps test processes from lingering. */
   close(): void {
     if (this.sweepTimer) clearInterval(this.sweepTimer);
+  }
+
+  /**
+   * What the timer runs: expiry, then a reconcile of the spill directory. Kept separate from
+   * {@link sweep} so a preview request pays only for expiry, never for a readdir.
+   */
+  async maintain(): Promise<void> {
+    await this.sweep();
+    await this.reconcileSpill();
+  }
+
+  /**
+   * Deletes every spilled file this store does not have a live entry for. Without it, a file can
+   * outlive its entry for good:
+   *   · `drop` swallows a failed unlink (a transient EIO, a busy file) and then forgets the token,
+   *     so nothing would ever retry it;
+   *   · a crash between writing a file and registering its entry leaves an unowned file;
+   *   · files from a PREVIOUS process are unreachable — their tokens died with that map — and were
+   *     otherwise only cleared by the next `put`, so an instance that restarted and was never
+   *     previewed again kept them indefinitely.
+   * Runs on the timer, so reaping does not depend on traffic arriving.
+   */
+  private async reconcileSpill(): Promise<void> {
+    const dir = this.spillDir;
+    if (!dir) return;
+    let files: string[];
+    try {
+      files = await readdir(dir);
+    } catch {
+      return; // not created yet, or removed underneath us — nothing of ours to reap
+    }
+    for (const file of files) {
+      if (!file.endsWith('.html')) continue;
+      if (this.entries.has(file.slice(0, -'.html'.length))) continue;
+      await rm(join(dir, file), { force: true }).catch(() => {});
+    }
   }
 
   /** Drops expired entries. Runs on write AND on the timer, so an idle instance still releases. */

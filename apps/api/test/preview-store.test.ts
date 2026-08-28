@@ -187,6 +187,51 @@ describe('PreviewStore — spill to disk', () => {
     }
   });
 
+  it('reaps a file whose unlink failed and was forgotten', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sw-spill-'));
+    try {
+      const store = make({ spillDir: dir });
+      await store.put('doomed', scope);
+      // Stand in for `drop` swallowing a failed unlink: the entry goes, the file stays. Nothing in
+      // the store would ever retry that token, so only a reconcile can reclaim it.
+      // @ts-expect-error -- reaching into the private map is the point of this test
+      store.entries.clear();
+      expect(await spilled()).toHaveLength(1);
+      await store.maintain();
+      expect(await spilled()).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reaps documents left by a previous process WITHOUT waiting for a put', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sw-spill-'));
+    try {
+      // The gap this closes: clearing on first `put` meant an instance that restarted and was never
+      // previewed again held the old generation of files forever.
+      await writeFile(join(dir, 'from-the-last-run.html'), '<p>orphan</p>', 'utf8');
+      const store = make({ spillDir: dir });
+      await store.maintain(); // no put() anywhere
+      expect(await spilled()).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('never reaps a live entry, and leaves foreign files alone', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sw-spill-'));
+    try {
+      const store = make({ spillDir: dir });
+      const token = await store.put('keep me', scope);
+      await writeFile(join(dir, 'notes.txt'), 'not ours', 'utf8'); // only *.html is ours to delete
+      await store.maintain();
+      expect(await store.get(token, scope)).toBe('keep me');
+      expect((await readdir(dir)).sort()).toEqual([`${token}.html`, 'notes.txt'].sort());
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('falls back to memory when the spill directory cannot be written', async () => {
     // A read-only mount must not break previews — the byte cap still bounds what memory can cost.
     // `/dev/null/...` gives a fast, deterministic ENOTDIR; a path under /proc HANGS in mkdir rather

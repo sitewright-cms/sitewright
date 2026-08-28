@@ -25,9 +25,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   - a **timed sweep** on an unref'd interval, so an idle instance actually releases instead of waiting
     for the next render to trigger a sweep;
   - **spill to disk** (`<previewRoot>/_tokens/`), so the resident cost is metadata regardless of
-    document size. The directory is cleared on first use — tokens die with the process, so anything on
-    disk belongs to a previous run — and a write failure falls back to memory rather than breaking
-    previews.
+    document size. A write failure falls back to memory rather than breaking previews, and a
+    reconciling pass on the sweep timer deletes any spilled file the store has no live entry for — a
+    unlink that failed and was forgotten, a file whose process died before it could be served, or the
+    previous run's generation after a restart. Reaping therefore never depends on traffic arriving.
   Verified in a container: the post-idle floor is flat at 299 MB across 126 renders (previously +45 MB
   per 42 renders, never returned), and the byte cap binds at exactly 64 MB with no orphaned files.
 - `/health` now reports `previews: { count, retainedMB }`, so what the store holds is observable from

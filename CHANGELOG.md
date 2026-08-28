@@ -9,6 +9,43 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **A nav link takes its `.active` highlight the moment it is clicked**, instead of waiting for the next
+  document to load and render its server-side `{{sw-active}}` state. On a slow connection that gap was
+  the whole perceived latency of the click: the visitor taps "Services" and nothing in the nav
+  acknowledges it. The server render still owns the final state — this only fills the interval.
+  - Scoped to links inside a `.menu`, so the brand mark and the header CTA (which live in the nav
+    landmark but are not menu items) are never lit as if they were routes.
+  - Only for clicks that actually LEAVE the page, using the same predicate as the preloader's
+    internal-link bridge: primary button, no modifier keys, no `download`/`target`/`rel="external"`,
+    same origin, different path. In-page `#section` links are excluded — their highlight belongs to
+    scrollspy, which tracks the section actually in view.
+  - Moves the `.active` CLASS only. `aria-current` is left alone: it states which page the visitor is
+    ON, and mid-click they are still on the old one. A bfcache Back undoes the swap, so returning to a
+    page never shows the nav pointing at the page you just left.
+
+### Changed
+
+- **The site-wide chrome runtimes ship as one `core.js` instead of four to six separate fetches.**
+  Chrome is on every page by definition — `sticky-header` is unconditional, back-to-top defaults on,
+  `button-effects` follows it (the FAB is a `.btn`), and `nav-active` follows any nav — so four small
+  `<script defer>` files landed on essentially every page of every site, each one small enough that
+  per-file compression overhead was a real fraction of it. Concatenating the site-wide ones saves 22–32%
+  of their compressed bytes and 3–5 requests on the measured cases. It costs nothing in cache
+  granularity, because the `?v=` token was already a single digest over every runtime source: changing
+  any one of them already busted all of their URLs.
+  - A runtime only SOME pages need (a page-local `<dialog>`, a one-off nav-effect class on a page's own
+    `<ul>`) keeps its own file and its own per-page gate, so only-used-ships survives where it means
+    something. Slot-authored markers now count as site-wide, since a chrome slot renders on every page.
+  - `theme.js` stays a separate synchronous head script — bundling or deferring it would reintroduce
+    the flash it exists to prevent.
+  - The eight chrome runtimes now come from a shared registry (`chrome-runtimes.ts`), read by both the
+    publish path and the editor preview, the same way `effect-runtimes.ts` already governs the body
+    effects. They were previously hand-wired in both places, which is the setup that let the body
+    effects drift before that registry existed. The `?v=` digest derives from the registry too, so a
+    new runtime cannot be left out of it.
+
 ## [0.39.1] — 2026-08-26
 
 ### Changed

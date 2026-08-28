@@ -153,8 +153,10 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('>Contact<');
     expect(home).toContain('href="https://docs.example.com"'); // external target
     expect(home).toContain('target="_blank"'); // newTab
-    expect(home).toContain('nav-link.js'); // runtime shipped (a placeholder targets a #fragment)
-    expect((await client.get(`/sites/${slug}/_assets/_sw/nav-link.js`)).statusCode).toBe(200);
+    // A placeholder targeting a #fragment is a site-wide fact (the nav is on every page), so the
+    // smooth-scroll/modal runtime rides in the core chrome bundle instead of its own file.
+    expect(home).toContain('core.js');
+    expect((await client.get(`/sites/${slug}/_assets/_sw/core.js`)).body).toContain('scrollIntoView');
     // The slugless link placeholders produce NO HTML page of their own.
     expect((await client.get(`/sites/${slug}/nav-contact/index.html`)).statusCode).toBe(404);
   });

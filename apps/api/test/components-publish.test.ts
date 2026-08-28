@@ -445,7 +445,10 @@ describe('interactive component + dialog runtimes → code-first publish + previ
 
     const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('<dialog id="newsletter"');
-    expect(index.body).toContain('<script defer src="_assets/_sw/nav-link.js?v=');
+    // The modal lives in a SKELETON SLOT, so it renders on every page — which makes the runtime that
+    // opens it site-wide chrome, delivered in the core bundle rather than as its own fetch.
+    expect(index.body).toContain('<script defer src="_assets/_sw/core.js?v=');
+    expect((await client.get(`/sites/${slug}/_assets/_sw/core.js`)).body).toContain('showModal');
   });
 
   it('ships NOTHING extra for a plain code-first page (no component, no dialog)', async () => {

@@ -1536,7 +1536,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewPageFailures = new Map<string, PageBuildFailure[]>();
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
-  const previewStore = new PreviewStore();
+  // SPILLED to disk when a data dir is configured: a rendered document is ~1MB and the editor mints
+  // one per preview, so holding them resident is what made this store the instance's largest
+  // consumer. `_tokens` is its OWN subdirectory — previewRoot itself is the whole-site draft
+  // PublishStore, and the two must not share a namespace.
+  const previewStore = new PreviewStore(
+    opts.previewRoot ? { spillDir: join(opts.previewRoot, '_tokens') } : {},
+  );
   // Short-lived, single-use tickets that let an AGENT hand a LOCAL file to the media library — see
   // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
   const uploadTickets = new UploadTicketStore();
@@ -4712,7 +4718,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
-        const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
+        const sourceToken = await previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
         const shotResult = await previewScreenshots(req, sourceHtml);
         const screenshots = shotResult?.shots;
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
@@ -4772,7 +4778,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const role = await resolveProjectRole(db, userId, project.id);
       if (!role) return expired();
-      const html = previewStore.get(req.params.token, { projectId: project.id, userId });
+      const html = await previewStore.get(req.params.token, { projectId: project.id, userId });
       if (html === null) return expired();
       // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
       // SAMEORIGIN framing lets the editor embed it; no third party. `allow-forms` lets a form's
@@ -8742,7 +8748,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // an operator the difference between a spike and a stuck instance.
   app.get('/health', { config: { rateLimit: false } }, async () => {
     const mb = (n: number): number => Math.round(n / 1024 / 1024);
-    if (!memoryBudgetReady) return { ok: true };
+    // The preview stat is NOT gated on the memory budget: they are separate subsystems, and hiding it
+    // until an unrelated flag flips made it absent in every embedding that never calls
+    // initMemoryBudget() — including this project's own test harness.
+    const previews = { count: previewStore.size, retainedMB: mb(previewStore.retainedBytes) };
+    if (!memoryBudgetReady) return { ok: true, previews };
     const snap = await memoryBudget.snapshot();
     return {
       ok: true,
@@ -8754,6 +8764,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         derivedFromHost: snap.derivedFromHost,
         admissionFailingForMs: _admissionFailingForMs(),
       },
+      // The preview store was the instance's largest single consumer before it grew a byte budget —
+      // surfacing what it holds is what makes that verifiable from outside the process.
+      previews,
     };
   });
 
@@ -9294,7 +9307,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
-        const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
+        const token = await previewStore.put(html, { projectId: project.id, userId: ctx.userId });
         return reply.send({ html, token });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.
@@ -9421,6 +9434,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Close the shared screenshot browser too (no-op if it was never launched).
   app.addHook('onClose', async () => closeScreenshotBrowser());
+  // Stop the preview store's sweep timer with the app. The timer is unref'd so it never held the
+  // process open, but the class documents a shutdown contract and every other long-lived resource
+  // here honours one.
+  app.addHook('onClose', async () => previewStore.close());
 
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close

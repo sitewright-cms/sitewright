@@ -25,7 +25,16 @@ describe('liveness + readiness probes', () => {
     harness = await makeHarness();
     const res = await harness.app.inject({ method: 'GET', url: '/health' });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true });
+    // The preview-store stat is reported whether or not the (unrelated) memory budget has
+    // initialised — it was previously hidden behind that flag, which made it absent here and in any
+    // embedding that never calls initMemoryBudget(), i.e. exactly where it is easiest to regress.
+    expect(res.json()).toEqual({ ok: true, previews: { count: 0, retainedMB: 0 } });
+  });
+
+  it('GET /health reports what the preview store is holding', async () => {
+    harness = await makeHarness();
+    const before = harness.app.inject({ method: 'GET', url: '/health' });
+    expect((await before).json().previews).toEqual({ count: 0, retainedMB: 0 });
   });
 
   it('GET /ready confirms the DB is reachable (200)', async () => {

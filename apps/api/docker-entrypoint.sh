@@ -6,9 +6,12 @@
 # exit 137, every in-flight request lost) instead of V8 raising a catchable allocation failure.
 # The render workers have carried a ceiling for a long time; the main process never did.
 #
-# ~65% of the limit: the rest is native code (libvips/libsql/lightningcss ~40MB), Chromium when a
-# screenshot runs, the render workers, and page cache. An explicit NODE_OPTIONS from the operator
-# always wins.
+# The ceiling comes from src/runtime/process-sizing.ts, which divides the limit between the processes
+# that SHARE this cgroup — the main process and the render workers. Deriving it here independently is
+# what over-subscribed a small container: 65% of 512MB for the main heap plus a 128MB worker is 458MB
+# of ceilings in a 512MB budget, and the kernel enforces the sum (measured: SIGKILL at cgroup anon
+# 416MB, main 407MB, worker 126MB). The shell keeps the old 65% only as a FALLBACK for a derived image
+# where dist/ is absent. An explicit NODE_OPTIONS from the operator always wins.
 set -e
 
 # Bound glibc's per-thread malloc arenas.
@@ -64,7 +67,10 @@ if [ -z "$NODE_OPTIONS" ]; then
     ''|max) ;;
     *)
       if [ "$limit" -gt 134217728 ] && [ "$limit" -lt 1099511627776 ]; then
-        mb=$(( limit / 1024 / 1024 * 65 / 100 ))
+        # One source of truth (process-sizing.ts), so the heap ceiling and the render-pool size can
+        # never be sized against the same limit in ignorance of each other again.
+        mb=$(node /app/dist/runtime/process-sizing.js --main-heap-mb 2>/dev/null || true)
+        case "$mb" in *[!0-9]*|'') mb=$(( limit / 1024 / 1024 * 65 / 100 ));; esac
         NODE_OPTIONS="--max-old-space-size=${mb}"
         export NODE_OPTIONS
         echo "[sitewright/api] container limit $(( limit / 1024 / 1024 ))MB → NODE_OPTIONS=${NODE_OPTIONS}"

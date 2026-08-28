@@ -9,6 +9,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A memory-limited container no longer over-subscribes itself into an OOM kill.** The main process's
+  heap ceiling (`docker-entrypoint.sh`, 65% of the limit) and the render-pool size (`server.ts`) were
+  derived from the container limit INDEPENDENTLY, each as though it were the only consumer of the
+  cgroup. The render workers are separate processes in the SAME cgroup, so the ceilings SUM to more
+  than the limit — and the kernel enforces the sum. Measured on a 512 MB container at the moment it was
+  SIGKILLed running the API E2E suite: cgroup anon 416 MB, main process 407 MB (a 332 MB heap ceiling
+  plus ~75 MB native), render worker 126 MB. 332 + 126 = 458 MB of ceilings promised inside a 512 MB
+  budget, before native allocation or page cache.
+  - This is also why the admission ledger appeared to shed for no reason. It was working correctly —
+    it refused a 12 MB image optimize with `availableMB: 1`, because there genuinely was no room — but
+    nothing it refuses can shrink a heap ceiling that was already promised at boot, so the refusals
+    produced 503s without preventing the kill.
+  - Both halves now read one `processSizing()` module, so they cannot be sized in ignorance of each
+    other again: the main heap is what remains after the workers' worst case and the main process's own
+    native allocation, capped at the previous 65% so this can only ever TIGHTEN the old figure
+    (512 MB: 332 → 248; 1 GB: 665 → 576; 2 GB and above unchanged). The entrypoint keeps its old
+    arithmetic as a fallback for a derived image with no `dist/`, and an uncapped container is
+    untouched — V8 keeps its own default, as before.
+  - Result at 512 MB, where both 0.39.1 and 0.40.0 were SIGKILLed on the second consecutive suite run:
+    three consecutive runs, 37 passed each, container alive throughout, 354–381 MB used instead of
+    405–410 MB. The spurious 503s are gone because the headroom is real.
+  - The boot line now reports the whole division (`render workers max N × M MB, warm W · main heap
+    H MB`), so an over-subscribed container is visible at boot rather than at the OOM kill — and the
+    heap figure is omitted when no limit is enforced, since nothing sets one in that case.
+
 ## [0.40.0] — 2026-08-28
 
 ### Fixed

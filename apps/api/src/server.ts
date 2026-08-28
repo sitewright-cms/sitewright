@@ -9,6 +9,7 @@ import { MediaStorage } from './media/storage.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { detectMemoryLimit } from './runtime/memory-budget.js';
+import { processSizing } from './runtime/process-sizing.js';
 import { configureImagePipeline, imagePipelineLimitsFor } from '@sitewright/image-pipeline';
 import { createDb, runMigrations } from './db/client.js';
 import { backupBeforeMigrations, snapshotDatabase } from './db/backup.js';
@@ -147,31 +148,22 @@ const renderEnvInt = (v: string | undefined, fallback: number, allowZero = false
   return n > 0 || (allowZero && n === 0) ? n : fallback;
 };
 
-/**
- * Size the pool from the memory this instance actually has, so one image serves a 512 MiB box and a
- * 8 GiB one without hand-tuning. A worker costs ~81 MB resident (measured), so on a small container
- * two of them are a large slice of the budget for something that may never be asked to render.
- * `minSize` stays 0 everywhere except roomy instances: with lazy spawning the only cost of 0 is one
- * fork on the first render.
- */
-function renderPoolSizing(limitBytes: number): { size: number; minSize: number } {
-  const gib = limitBytes / 1024 ** 3;
-  if (gib < 1) return { size: 1, minSize: 0 };
-  if (gib < 4) return { size: 2, minSize: 0 };
-  return { size: 3, minSize: 1 };
-}
-
 const { limitBytes: detectedMemoryLimit, derivedFromHost } = await detectMemoryLimit();
 // The byte ledger every heavy path admits against. Must run before the first request.
 await initMemoryBudget();
-const sizing = renderPoolSizing(detectedMemoryLimit);
+const sizing = processSizing(detectedMemoryLimit);
 // Say which memory ceiling everything below was sized from, and whether it was actually ENFORCED.
 // `derivedFromHost` means no cgroup limit was set, so the figure is a conservative guess from host
 // RAM — an operator seeing an unexpected pool size or heap ceiling needs to know which it was.
 process.stdout.write(
   `[sitewright/api] memory ceiling ${Math.round(detectedMemoryLimit / 1024 / 1024)}MB` +
     `${derivedFromHost ? ' (no container limit set — derived from host RAM)' : ' (container limit)'}` +
-    ` → render workers max ${sizing.size}, warm ${sizing.minSize}\n`,
+    ` → render workers max ${sizing.poolSize} × ${sizing.workerHeapMb}MB, warm ${sizing.poolMinSize}` +
+    // The main heap ceiling is part of the SAME division of the cgroup; printing it next to the pool
+    // is what makes an over-subscribed container visible at boot instead of at the OOM kill. Only
+    // reported when a real limit is ENFORCED: with none, the entrypoint sets no --max-old-space-size
+    // and V8 keeps its own default, so naming a figure here would describe a ceiling nothing applied.
+    `${derivedFromHost ? '' : ` · main heap ${sizing.mainHeapMb}MB`}\n`,
 );
 // libvips keeps a 50MB operation cache by default and never gave it back; size it to the
 // container instead. The on-disk thumbnail cache already covers the real access pattern.
@@ -182,9 +174,9 @@ const renderPool = new RenderPool({
   // attached (timers are set in assign()), so every render would hang forever instead of failing.
   // Zero is only meaningful for the WARM FLOOR below, which is the knob an operator shrinking an
   // instance actually wants.
-  size: Math.max(1, renderEnvInt(process.env.SW_RENDER_WORKERS, sizing.size)),
-  minSize: renderEnvInt(process.env.SW_RENDER_MIN_WORKERS, sizing.minSize, true),
-  memoryLimitMb: renderEnvInt(process.env.SW_RENDER_MEMORY_MB, 128),
+  size: Math.max(1, renderEnvInt(process.env.SW_RENDER_WORKERS, sizing.poolSize)),
+  minSize: renderEnvInt(process.env.SW_RENDER_MIN_WORKERS, sizing.poolMinSize, true),
+  memoryLimitMb: renderEnvInt(process.env.SW_RENDER_MEMORY_MB, sizing.workerHeapMb),
   renderTimeoutMs: renderEnvInt(process.env.SW_RENDER_TIMEOUT_MS, 5000),
   maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
   idleMs: renderEnvInt(process.env.SW_RENDER_IDLE_MS, 60_000, true),

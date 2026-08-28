@@ -137,12 +137,16 @@ export class PreviewStore {
       } catch {
         // Disk is unavailable (read-only mount, no space). Falling back to memory keeps the preview
         // WORKING — the byte cap below still bounds what that can cost.
+        // A write can fail PART WAY (ENOSPC after the file was created and partly flushed), and
+        // `spilled` stays false, so `drop` would never unlink it. Clear it here; the reconcile pass
+        // is the backstop if even this fails.
+        await rm(this.spillPath(token), { force: true }).catch(() => {});
         entry.html = html;
       }
     } else {
       entry.html = html;
     }
-    await this.evictDown();
+    await this.evictDown(token);
     return token;
   }
 
@@ -220,16 +224,27 @@ export class PreviewStore {
   /**
    * Evicts oldest-first until BOTH caps are satisfied (Map preserves insertion order).
    *
-   * Never empties the map: a document larger than the WHOLE budget would otherwise evict itself the
-   * instant it was stored, so the token the caller just minted would 404 on first use. One
-   * over-budget document resident is the lesser evil, and the next put() displaces it.
+   * `keep` is the token the calling `put` is about to return, and it is NEVER evicted. That used to
+   * be implicit — the old `put` was fully synchronous, so the newest entry was always last in
+   * insertion order and the "stop at size 1" guard was enough. `put` now awaits (the spill write), so
+   * two concurrent calls can interleave their `entries.set`, and the second caller's entry is no
+   * longer guaranteed to be the newest by the time the first caller evicts. Naming the token removes
+   * the reliance on ordering entirely: a caller can never be handed a token that is already gone.
+   *
+   * Never empties the map either: a document larger than the WHOLE budget would otherwise evict
+   * itself the instant it was stored. One over-budget document resident is the lesser evil.
    */
-  private async evictDown(): Promise<void> {
+  private async evictDown(keep?: string): Promise<void> {
     while (this.entries.size > 1 && (this.entries.size > this.maxEntries || this.bytes > this.maxBytes)) {
-      const oldest = this.entries.entries().next().value;
-      if (!oldest) break;
-      const [token, entry] = oldest;
-      await this.drop(token, entry);
+      let victim: [string, PreviewEntry] | undefined;
+      for (const candidate of this.entries) {
+        if (candidate[0] !== keep) {
+          victim = candidate;
+          break;
+        }
+      }
+      if (!victim) break; // only `keep` is left
+      await this.drop(victim[0], victim[1]);
     }
   }
 

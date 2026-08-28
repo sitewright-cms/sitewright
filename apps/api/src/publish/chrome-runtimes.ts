@@ -185,10 +185,21 @@ export function coreRuntimes(ctx: ChromeContext): readonly ChromeRuntime[] {
   return CHROME_RUNTIMES.filter((r) => r.siteWide(ctx));
 }
 
-/** The concatenated core bundle source. */
+/**
+ * The concatenated core bundle source.
+ *
+ * Each runtime is wrapped in its own try/catch. As separate `<script defer>` tags these had FAULT
+ * ISOLATION for free — an uncaught throw in one aborted only that tag. Concatenated, a single throw
+ * would abort the rest of the file, silently killing every runtime after it in registry order on
+ * every page of the site. The wrapper buys that isolation back; the error is still reported, so a
+ * broken runtime is loud in the console rather than a mystery about missing behaviour.
+ */
 export function coreBundleJs(ctx: ChromeContext): string {
   return coreRuntimes(ctx)
-    .map((r) => r.js)
+    .map(
+      (r) =>
+        `try{\n${r.js}\n}catch(e){if(typeof console!=='undefined'&&console.error)console.error('[sitewright] runtime failed:',${JSON.stringify(r.key)},e);}`,
+    )
     .join('\n');
 }
 

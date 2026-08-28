@@ -29,6 +29,24 @@ describe('chrome-runtime registry — self-consistency', () => {
     }
   });
 
+  it('isolates each runtime in the bundle, so one throw cannot kill the rest', () => {
+    // As separate <script defer> tags these had fault isolation for free. Concatenated, an uncaught
+    // throw would abort every runtime after it in the file, on every page of the site.
+    const js = coreBundleJs(ctx());
+    // Count the WRAPPER's catch, not `try{` — the runtimes contain their own try blocks
+    // (nav-active guards `new URL`), so a bare `try{` count is not the wrapper count.
+    const wrappers = js.match(/\}catch\(e\)\{if\(typeof console/g) ?? [];
+    expect(wrappers).toHaveLength(coreRuntimes(ctx()).length);
+    expect(js).toContain('console.error');
+    // and it actually holds when one of them throws
+    const bundle = ['(function(){throw new Error("boom")})();', '(function(){globalThis.__swReached=true})();']
+      .map((r) => `try{\n${r}\n}catch(e){}`)
+      .join('\n');
+    (globalThis as Record<string, unknown>).__swReached = false;
+    new Function(bundle)();
+    expect((globalThis as Record<string, unknown>).__swReached).toBe(true);
+  });
+
   it('feeds the cache-bust digest from the registry, so a new entry can never be forgotten', () => {
     expect(CHROME_RUNTIME_SOURCES).toHaveLength(CHROME_RUNTIMES.length);
     // The ?v= token is one digest over ALL of these — the reason bundling costs no cache granularity.

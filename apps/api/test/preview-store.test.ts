@@ -105,6 +105,28 @@ describe('PreviewStore — byte budget', () => {
   });
 });
 
+describe('PreviewStore — concurrent writers', () => {
+  it('never hands back a token that eviction already removed', async () => {
+    // put() awaits (the spill write), so concurrent calls interleave their entries.set(). The old
+    // "newest is last in insertion order" assumption held only while put() was synchronous; this
+    // pins the guarantee that actually matters — a returned token is always live.
+    const doc = 'x'.repeat(1000);
+    const store = make({ maxBytes: 1500, maxEntries: 100 });
+    const tokens = await Promise.all(Array.from({ length: 8 }, () => store.put(doc, scope)));
+    // The last writer to finish must still be readable; over budget, everything older may be gone.
+    const last = tokens[tokens.length - 1]!;
+    expect(await store.get(last, scope)).toBe(doc);
+    expect(store.size).toBeGreaterThanOrEqual(1);
+  });
+
+  it('keeps the byte ledger exact under concurrent puts', async () => {
+    const store = make({ maxEntries: 100, maxBytes: 10 * 1024 * 1024 });
+    await Promise.all(Array.from({ length: 20 }, () => store.put('y'.repeat(500), scope)));
+    expect(store.size).toBe(20);
+    expect(store.retainedBytes).toBe(20 * 500); // no double-count, no lost subtraction
+  });
+});
+
 describe('PreviewStore — timed sweep', () => {
   it('releases expired entries with no write to trigger it', async () => {
     // The bug this closes: sweep ran ONLY from put(), so an instance that stopped rendering held

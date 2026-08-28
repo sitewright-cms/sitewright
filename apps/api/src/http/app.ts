@@ -8748,7 +8748,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // an operator the difference between a spike and a stuck instance.
   app.get('/health', { config: { rateLimit: false } }, async () => {
     const mb = (n: number): number => Math.round(n / 1024 / 1024);
-    if (!memoryBudgetReady) return { ok: true };
+    // The preview stat is NOT gated on the memory budget: they are separate subsystems, and hiding it
+    // until an unrelated flag flips made it absent in every embedding that never calls
+    // initMemoryBudget() — including this project's own test harness.
+    const previews = { count: previewStore.size, retainedMB: mb(previewStore.retainedBytes) };
+    if (!memoryBudgetReady) return { ok: true, previews };
     const snap = await memoryBudget.snapshot();
     return {
       ok: true,
@@ -8762,7 +8766,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
       // The preview store was the instance's largest single consumer before it grew a byte budget —
       // surfacing what it holds is what makes that verifiable from outside the process.
-      previews: { count: previewStore.size, retainedMB: mb(previewStore.retainedBytes) },
+      previews,
     };
   });
 
@@ -9430,6 +9434,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
   // Close the shared screenshot browser too (no-op if it was never launched).
   app.addHook('onClose', async () => closeScreenshotBrowser());
+  // Stop the preview store's sweep timer with the app. The timer is unref'd so it never held the
+  // process open, but the class documents a shutdown contract and every other long-lived resource
+  // here honours one.
+  app.addHook('onClose', async () => previewStore.close());
 
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close

@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.40.1] — 2026-08-28
+
 ### Fixed
 
 - **A memory-limited container no longer over-subscribes itself into an OOM kill.** The main process's

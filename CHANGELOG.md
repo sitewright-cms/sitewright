@@ -9,6 +9,30 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The preview store no longer holds every rendered document in memory.** The editor mints a preview
+  token per render and the store kept the whole document for 15 minutes, capped only by a COUNT (512)
+  and swept only when written to. So an instance released nothing while idle, and the cap bounded
+  nothing in the unit that actually runs out: measured on a live instance, the API process grew ~1.1 MB
+  per preview, linearly, 331 MB → 607 MB over 252 renders, with a full Mark-Compact unable to reclaim
+  any of it. A heap snapshot found exactly one retained document per render, held by this store's Map.
+  Three guards close it, each covering a different half of the failure:
+  - a **byte budget** (64 MB default) alongside the entry cap — the same lesson `memory-budget.ts`
+    already records ("every guard counts REQUESTS, never bytes"), applied to the last place still
+    counting the wrong unit. Eviction keeps one entry even when it exceeds the whole budget, so a very
+    large document does not evict itself and 404 the token just minted;
+  - a **timed sweep** on an unref'd interval, so an idle instance actually releases instead of waiting
+    for the next render to trigger a sweep;
+  - **spill to disk** (`<previewRoot>/_tokens/`), so the resident cost is metadata regardless of
+    document size. The directory is cleared on first use — tokens die with the process, so anything on
+    disk belongs to a previous run — and a write failure falls back to memory rather than breaking
+    previews.
+  Verified in a container: the post-idle floor is flat at 299 MB across 126 renders (previously +45 MB
+  per 42 renders, never returned), and the byte cap binds at exactly 64 MB with no orphaned files.
+- `/health` now reports `previews: { count, retainedMB }`, so what the store holds is observable from
+  outside the process.
+
 ### Added
 
 - **A nav link takes its `.active` highlight the moment it is clicked**, instead of waiting for the next

@@ -1536,7 +1536,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewPageFailures = new Map<string, PageBuildFailure[]>();
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
-  const previewStore = new PreviewStore();
+  // SPILLED to disk when a data dir is configured: a rendered document is ~1MB and the editor mints
+  // one per preview, so holding them resident is what made this store the instance's largest
+  // consumer. `_tokens` is its OWN subdirectory — previewRoot itself is the whole-site draft
+  // PublishStore, and the two must not share a namespace.
+  const previewStore = new PreviewStore(
+    opts.previewRoot ? { spillDir: join(opts.previewRoot, '_tokens') } : {},
+  );
   // Short-lived, single-use tickets that let an AGENT hand a LOCAL file to the media library — see
   // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
   const uploadTickets = new UploadTicketStore();
@@ -4712,7 +4718,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
-        const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
+        const sourceToken = await previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
         const shotResult = await previewScreenshots(req, sourceHtml);
         const screenshots = shotResult?.shots;
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
@@ -4772,7 +4778,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const role = await resolveProjectRole(db, userId, project.id);
       if (!role) return expired();
-      const html = previewStore.get(req.params.token, { projectId: project.id, userId });
+      const html = await previewStore.get(req.params.token, { projectId: project.id, userId });
       if (html === null) return expired();
       // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
       // SAMEORIGIN framing lets the editor embed it; no third party. `allow-forms` lets a form's
@@ -8754,6 +8760,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         derivedFromHost: snap.derivedFromHost,
         admissionFailingForMs: _admissionFailingForMs(),
       },
+      // The preview store was the instance's largest single consumer before it grew a byte budget —
+      // surfacing what it holds is what makes that verifiable from outside the process.
+      previews: { count: previewStore.size, retainedMB: mb(previewStore.retainedBytes) },
     };
   });
 
@@ -9294,7 +9303,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
-        const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
+        const token = await previewStore.put(html, { projectId: project.id, userId: ctx.userId });
         return reply.send({ html, token });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.

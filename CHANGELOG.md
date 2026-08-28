@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.40.0] — 2026-08-28
+
 ### Fixed
 
 - **The preview store no longer holds every rendered document in memory.** The editor mints a preview

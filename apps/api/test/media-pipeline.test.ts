@@ -7,6 +7,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { makePng } from './png.js';
+import { THUMB_SIZES, DEFAULT_SIZE } from '@sitewright/image-pipeline';
 
 function multipart(filename: string, mime: string, content: Buffer) {
   const boundary = 'SWPIPELINEBOUNDARY';
@@ -348,6 +349,49 @@ describe('media pipeline (HTTP layer)', () => {
     expect(asset.width).toBe(600); // capped from 1600, never upscaled
     expect(asset.format).toBe('webp'); // cap bit → re-encoded to webp
     expect(asset.original.endsWith('.webp')).toBe(true);
+  });
+
+  // (6b) A NEW project is seeded with the cap already set, so an oversized upload is bounded with no
+  // configuration at all. This is the case that actually protects a disk: nobody visits Settings before
+  // dropping in a phone photo.
+  it('applies the DEFAULT cap on a brand-new project, with no settings touched', async () => {
+    const { t, base } = await setup('defaultcap@acme.test');
+    const up = await upload(base, t, 'huge.png', 'image/png', makePng(3000, 1500, [4, 5, 6]));
+    expect(up.statusCode).toBe(201);
+    const asset = (up.json() as { item: MediaAsset }).item;
+    expect(asset.width).toBe(THUMB_SIZES[DEFAULT_SIZE]); // 3000 → the xl width
+    expect(asset.height).toBe(THUMB_SIZES[DEFAULT_SIZE] / 2); // aspect preserved
+    expect(asset.format).toBe('webp'); // the cap bit → re-encoded, exactly as an explicit cap does
+  });
+
+  // …and an upload UNDER the cap is untouched: the default must not re-encode everything it sees.
+  it('leaves an image narrower than the default cap in its original format', async () => {
+    const { t, base } = await setup('undercap@acme.test');
+    const up = await upload(base, t, 'small.png', 'image/png', makePng(800, 400, [7, 8, 9]));
+    const asset = (up.json() as { item: MediaAsset }).item;
+    expect(asset.width).toBe(800); // never upscaled
+    expect(asset.format).toBe('png'); // cap did not bite → stored verbatim
+  });
+
+  // ★ The default is SEEDED STATE, not a schema/runtime default. An existing project whose settings
+  // carry no cap stays uncapped — upgrading the platform must not silently start downscaling the
+  // originals of every project that predates this.
+  it('does not cap a project whose settings carry no cap (seed-only, never retroactive)', async () => {
+    const { t, base } = await setup('nocap@acme.test');
+    const cookies = { sw_session: t };
+    const cur = (await app.inject({ method: 'GET', url: `${base}/content/settings/settings`, cookies })).json() as {
+      item: { website?: Record<string, unknown> };
+    };
+    const item = cur.item;
+    const withoutCap = { ...(item.website ?? {}) };
+    delete withoutCap.imageUploadCap;
+    item.website = withoutCap;
+    expect((await app.inject({ method: 'PUT', url: `${base}/content/settings/settings`, cookies, payload: item })).statusCode).toBe(200);
+
+    const up = await upload(base, t, 'uncapped.png', 'image/png', makePng(3000, 1500, [1, 1, 1]));
+    const asset = (up.json() as { item: MediaAsset }).item;
+    expect(asset.width).toBe(3000); // full resolution retained
+    expect(asset.format).toBe('png');
   });
 
   // (7) Prune clears the on-demand thumbnail cache (regenerable) but keeps every retained original.

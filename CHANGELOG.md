@@ -35,6 +35,25 @@ The running version of an instance is reported at `GET /version` (baked into the
     ratio reflows every page using the asset, and a same-URL swap gives no other signal; the editor
     raises a notice, and the agent tools tell the model to read it.
 
+### Changed
+
+- **A new project now starts with an image upload cap of 2400px** (`website.imageUploadCap`), the width
+  of the `xl` delivery variant. Uncapped, the retained original of a phone photograph is a 4000px+ file
+  that nothing ever serves — delivery tops out at `xl`, so every pixel past that is disk footprint and
+  publish-time decode cost with no visible benefit. Capping at exactly `xl` is the widest value that
+  costs a delivered image nothing: the largest variant the site can produce still comes from a
+  same-width original. The value is derived from `THUMB_SIZES` rather than written as a literal, so
+  raising `xl` cannot silently leave the cap behind.
+  - **New projects only.** This is seeded state, not a schema default, so every existing project is
+    untouched — an upgrade never starts downscaling originals for a project that predates it. An owner
+    can raise, lower or clear it in Settings → Website; clearing restores full-resolution originals for
+    later uploads.
+  - Where a cap already applied (the site importer's 2400, `STOCK_IMPORT_CAP`) the smaller of the two
+    still wins, so those paths are unchanged.
+  - Note the interaction with replace: when the cap bites, the original is re-encoded to WebP, and a
+    replacement whose result would change the stored extension is refused. On a capped project, resize
+    an oversized photo before replacing a `.jpg`, or upload it as a new asset.
+
 ### Fixed
 
 - **An in-place image edit is no longer invisible for up to a year.** Media delivery promised

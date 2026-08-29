@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { THUMB_SIZES, DEFAULT_SIZE } from '@sitewright/image-pipeline';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
@@ -80,6 +81,10 @@ describe('locale management API', () => {
     expect(website?.mainNav).toContain('id="sw-nav-drawer"'); // the nav-header's pure-CSS mobile drawer
     expect(website?.mainNav).toContain('{{#each nav.header}}'); // data-driven from the page tree
     expect(website?.footer).toContain('{{#each nav.footer}}'); // the nav-footer's legal column
+    // …and the default image cap, at exactly the `xl` delivery width: the widest value that costs a
+    // delivered image nothing, while stopping a 4000px phone photo being retained at a size the site
+    // can never serve. Asserted against THUMB_SIZES so raising `xl` cannot leave the seed behind.
+    expect((website as { imageUploadCap?: number } | undefined)?.imageUploadCap).toBe(THUMB_SIZES[DEFAULT_SIZE]);
   });
 
   it('POST /locales scaffolds an inherit-mode variant of every default page under /<locale>', async () => {

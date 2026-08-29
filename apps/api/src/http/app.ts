@@ -3279,7 +3279,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       settings: { defaultLocale: newProjectLocale, locales: [newProjectLocale] },
       // Ship the platform DEFAULT navigation + footer (the nav-header / nav-footer recipes) so a fresh
       // project has a working, data-driven Main Navigation (desktop bar + mobile drawer) out of the box.
-      website: { mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '', footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' },
+      //
+      // …and a DEFAULT IMAGE CAP. Uncapped, the retained original of a phone photograph is a 4000px+
+      // file that nothing ever serves: delivery tops out at the `xl` thumbnail, so every pixel past
+      // that width is disk footprint and publish-time decode cost with no visible benefit. Capping at
+      // exactly `xl` is the widest value that costs nothing — the largest variant the site can deliver
+      // is still generated from a same-size original, so no delivered image loses a pixel. Derived from
+      // THUMB_SIZES rather than written as 2400, so raising `xl` cannot silently leave the cap behind.
+      //
+      // NEW projects only: this is seeded state, not a schema default, so every EXISTING project stays
+      // exactly as it was (unset ⇒ uncapped). An owner can raise, lower or clear it in Settings →
+      // Website at any time; clearing it restores full-resolution originals for later uploads.
+      website: {
+        mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '',
+        footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '',
+        imageUploadCap: THUMB_SIZES[DEFAULT_SIZE],
+      },
     });
     // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
     // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold

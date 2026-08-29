@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.42.0] — 2026-08-29
+
 ### Changed
 
 - **File Manager toolbar and drop zone.** The native `<input type=file>` was the one control a browser

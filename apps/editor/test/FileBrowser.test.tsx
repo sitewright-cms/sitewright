@@ -12,6 +12,7 @@ const deleteMediaFolder = vi.fn();
 const patchMedia = vi.fn();
 const copyMedia = vi.fn();
 const deleteMedia = vi.fn();
+const replaceMediaContent = vi.fn();
 
 vi.mock('../src/api', () => ({
   api: {
@@ -19,6 +20,7 @@ vi.mock('../src/api', () => ({
     listMediaFolders: () => listMediaFolders(),
     uploadMedia: vi.fn(),
     deleteMedia: (...a: unknown[]) => deleteMedia(...a),
+    replaceMediaContent: (...a: unknown[]) => replaceMediaContent(...a),
     patchMedia: (...a: unknown[]) => patchMedia(...a),
     copyMedia: (...a: unknown[]) => copyMedia(...a),
     createMediaFolder: (...a: unknown[]) => createMediaFolder(...a),
@@ -74,6 +76,7 @@ beforeEach(() => {
   patchMedia.mockResolvedValue({ item: image });
   copyMedia.mockResolvedValue({ item: image });
   deleteMedia.mockResolvedValue(undefined);
+  replaceMediaContent.mockResolvedValue({ item: image, previous: { bytes: 2048, width: 100, height: 100 }, snapshotId: 'snap1' });
 });
 
 describe('FileBrowser (Assets)', () => {
@@ -375,5 +378,86 @@ describe('navigating back to the Assets root', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
     await waitFor(() => expect(screen.getByText('gallery')).toBeTruthy());
     expect(screen.getByText('crest.png')).toBeTruthy();
+  });
+});
+
+/**
+ * "Replace file" swaps the bytes BEHIND an asset, keeping its id and URL. It is deliberately a
+ * different thing from the page editor's "Replace image" picker, which repoints one `<img>` at a
+ * different asset — hence the distinct label, and hence the aspect-ratio warning: nothing else tells
+ * the author that every page using this asset is about to reflow.
+ */
+describe('FileBrowser — replace a file in place', () => {
+  it('sends the picked file to replaceMediaContent, filtered to the asset’s own extension', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace hero.png' }));
+    const input = screen.getByLabelText('Replace file') as HTMLInputElement;
+    // The server refuses a format change, so the picker never offers one.
+    await waitFor(() => expect(input).toHaveAttribute('accept', '.png'));
+
+    const png = new File([new Uint8Array([1, 2, 3])], 'new-hero.png', { type: 'image/png' });
+    Object.defineProperty(input, 'files', { value: [png], configurable: true });
+    fireEvent.change(input);
+
+    await waitFor(() => expect(replaceMediaContent).toHaveBeenCalledWith('p', 'img1', png));
+  });
+
+  it('warns when the replacement has a different aspect ratio', async () => {
+    replaceMediaContent.mockResolvedValue({
+      item: { ...image, width: 100, height: 300 },
+      previous: { bytes: 2048, width: 100, height: 100 },
+      snapshotId: 'snap1',
+    });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace hero.png' }));
+    const input = screen.getByLabelText('Replace file') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      value: [new File([new Uint8Array([1])], 'tall.png', { type: 'image/png' })],
+      configurable: true,
+    });
+    fireEvent.change(input);
+
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent('100×300');
+    expect(note).toHaveTextContent('reflow');
+  });
+
+  it('surfaces the server’s refusal instead of failing silently', async () => {
+    replaceMediaContent.mockRejectedValue(new Error('a replacement must keep the .png extension (got .jpg)'));
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace hero.png' }));
+    const input = screen.getByLabelText('Replace file') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      value: [new File([new Uint8Array([1])], 'wrong.jpg', { type: 'image/jpeg' })],
+      configurable: true,
+    });
+    fireEvent.change(input);
+
+    expect(await screen.findByText(/must keep the \.png extension/)).toBeInTheDocument();
+  });
+
+  it('offers no Replace action for a FONT — a family is many files', async () => {
+    const font = {
+      kind: 'font' as const,
+      id: 'f1',
+      filename: 'Inter',
+      folder: '',
+      bytes: 1000,
+      family: 'Inter',
+      fallback: 'sans-serif' as const,
+      source: { kind: 'upload' as const },
+      files: [{ file: 'inter-400.woff2', weight: 400, style: 'normal' as const, format: 'woff2' as const }],
+      url: '/media/p/f1/inter-400.woff2',
+    } as unknown as MediaAsset;
+    listMedia.mockResolvedValue({ items: [font] });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'Inter' });
+    expect(screen.queryByRole('button', { name: 'Replace Inter' })).toBeNull();
   });
 });

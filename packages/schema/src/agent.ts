@@ -445,6 +445,17 @@ media url in \`source\`:
   The ticket is single-use and expires in 10 minutes: mint one per file, right before sending it.
 - EXISTING: list_media to find assets already in the project and reuse their url.
 
+SWAPPING AN IMAGE THAT IS ALREADY IN USE — use replace_media (or create_media_replace past 256KB),
+NOT a fresh upload. An upload always mints a NEW id, so the old url keeps serving the old picture and
+you are left to find and repoint every reference — page \`source\`, page \`data\` (a card_image rendered
+by the PARENT), dataset entries, and the \`website.mainNav\`/\`footer\`/\`bottom\` chrome slots, which is
+why an asset can appear on pages that never mention it. Miss one and that page silently keeps the old
+image. replace_media overwrites the bytes behind the SAME id and url, so there is nothing to repoint.
+Two rules: the extension cannot change (it is part of the url — a .jpg cannot become a .png, and on a
+project with an image cap an oversized photo would be re-encoded to WebP and is refused, so resize it
+first), and a font cannot be replaced. The old bytes go to the Recycle Bin, so it is undoable. READ
+the receipt's \`previous\`: a replacement with a different aspect ratio reflows every page using it.
+
 VIDEO / AUDIO / PDF FROM A URL — self-host it too, and expect TWO steps. import_image is the only
 URL-based import: it takes an image up to 15MB and a playable video/audio URL up to 200MB, and
 answers 413 for anything larger. A 413 is NOT a dead end and NOT a reason to hotlink — download the
@@ -1907,6 +1918,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted). The ONLY URL-based import: images up to 15MB, playable video/audio URLs up to 200MB. A 413 is not a dead end — download the file and use create_media_upload. Never leave an asset hotlinked because an import failed.", capability: 'content:write' },
   { name: 'create_media_upload', description: "Upload a LARGE local file (on YOUR disk): returns a one-shot uploadUrl to send the file to yourself (curl -T), so the bytes never enter the conversation. Use import_image when the file is already at a public URL; upload_media for something small.", capability: 'content:write' },
   { name: 'upload_media', description: "Upload a SMALL local file (<=256KB) by sending its bytes inline as base64 — one call, no shell. Anything bigger: create_media_upload.", capability: 'content:write' },
+  { name: 'replace_media', description: "REPLACE an existing asset's bytes IN PLACE (<=256KB inline base64), keeping its id and URL — so every page, entry and chrome slot pointing at it shows the new file with nothing to repoint. Use this for \"swap this logo/photo/PDF\", NOT a fresh upload (which mints a new id and leaves every reference behind). Same extension only; fonts cannot be replaced. The old bytes go to the Recycle Bin; the receipt's `previous` shows whether the aspect ratio changed. Anything bigger: create_media_replace.", capability: 'content:write' },
+  { name: 'create_media_replace', description: "Replace a LARGE local file in place: returns a one-shot uploadUrl, pinned to that asset, which you send the file to yourself (curl -T). The ticket lane for replace_media.", capability: 'content:write' },
   { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },
   { name: 'import_status', description: "Poll a website import started by import_website: running | done | failed, the latest progress line, and the report once finished. Never start a second import while one is running.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },

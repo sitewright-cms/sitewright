@@ -9,6 +9,45 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Replace a media file in place, keeping its id and URL.** "Swap this logo for the new one" had no
+  answer: every upload path mints a NEW asset id, so changing what a URL served meant uploading, then
+  finding and repointing every reference — page `source`, page `data` (a `card_image` rendered by the
+  PARENT), dataset entries, and the `website.mainNav`/`footer`/`bottom` chrome slots, which is why an
+  asset can appear on pages that never mention it — and then deleting the old asset. That is a
+  site-wide migration for what an author experiences as replacing a file, and one missed reference
+  leaves a page silently showing the old picture.
+  - Operators: a **Replace file** action on every row of the File Manager, and in the image preview.
+    Deliberately named apart from the page editor's existing "Replace image" picker, which repoints one
+    `<img>` at a DIFFERENT asset and leaves the file alone.
+  - Agents: `replace_media` (inline base64, small files) and `create_media_replace` (a one-shot ticket
+    for large ones), mirroring the `upload_media` / `create_media_upload` split. Over HTTP:
+    `PUT /projects/:projectId/media/:id/content`.
+  - The **extension cannot change** — it is part of every URL referencing the asset — so a `.jpg` cannot
+    become a `.png`, and on a project with an image cap an oversized photo (which would be re-encoded to
+    WebP) is refused rather than silently breaking every reference. A **font** cannot be replaced: a
+    family is many files, so "replace the file" has no single meaning.
+  - The outgoing bytes are **snapshotted to the Recycle Bin**, so a replace is undoable through the
+    flow operators already know — media is deliberately outside `REVISIONED_KINDS`, so this was
+    otherwise the one destructive write with no way back.
+  - The receipt carries `previous` (the old bytes/width/height). A replacement with a different aspect
+    ratio reflows every page using the asset, and a same-URL swap gives no other signal; the editor
+    raises a notice, and the agent tools tell the model to read it.
+
+### Fixed
+
+- **An in-place image edit is no longer invisible for up to a year.** Media delivery promised
+  `max-age=31536000, immutable` on the strength of "a new upload = a new asset id" — an invariant three
+  features had already broken: the SVG Studio's save-to-the-same-file, `transform_image`'s rotate/crop,
+  and now replace. All three keep the asset id, so the URL is mutable and the browser was entitled to
+  keep the pre-edit bytes. The SVG branch had been fixed alone; the raster case was papered over in the
+  editor with a client-side nonce that only ever fixed its own modal, leaving the preview iframe and
+  every live `<img>` stale. Anything replaceable now revalidates with a content ETag (304 while
+  unchanged, a fresh 200 the moment it is not). A **font** keeps the long cache — it is the one kind
+  replace refuses, so its bytes genuinely cannot change. Published sites are unaffected and keep their
+  year: they serve from the flat `_assets/` bundle behind a per-publish `?v=` token, not this route.
+
 ## [0.40.1] — 2026-08-28
 
 ### Fixed

@@ -542,6 +542,43 @@ describe('SitewrightClient — inline base64 upload', () => {
     expect(Buffer.from(put.init!.body as Uint8Array).equals(png)).toBe(true);
   });
 
+  it('replaceMediaBase64 pins the ticket to the ASSET, not a folder, and returns the whole receipt', async () => {
+    const png = Buffer.from('iVBORw0KGgo=', 'base64');
+    const { client, calls } = await introspected((input: string) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      if (input.endsWith('/media/upload-ticket')) {
+        return { status: 201, body: JSON.stringify({ uploadPath: '/media-upload/tok-9', expiresInSeconds: 600, maxBytes: 999 }) };
+      }
+      if (input.includes('/media-upload/tok-9')) {
+        return {
+          status: 200,
+          body: JSON.stringify({
+            item: { id: 'm9', kind: 'image', url: '/media/p/m9-logo.png', width: 64, height: 64 },
+            previous: { bytes: 120, width: 128, height: 64 },
+            snapshotId: 'm10',
+          }),
+        };
+      }
+      return { status: 404, body: '{}' };
+    });
+
+    const receipt = await client.replaceMediaBase64('m9', 'logo.png', png.toString('base64'));
+    // NOT unwrapped to `item` like the upload path: `previous` is the reason to call this tool.
+    expect(receipt).toMatchObject({ previous: { width: 128 }, snapshotId: 'm10' });
+
+    const mint = calls.find((c) => c.input.endsWith('/media/upload-ticket'))!;
+    expect(JSON.parse(String(mint.init?.body))).toEqual({ replaceAssetId: 'm9' });
+    const put = calls.find((c) => c.input.includes('/media-upload/tok-9'))!;
+    expect(put.input).toContain('?filename=logo.png');
+    expect(Buffer.from(put.init!.body as Uint8Array).equals(png)).toBe(true);
+  });
+
+  it('replaceMediaBase64 points an oversized payload at create_media_replace, not create_media_upload', async () => {
+    const { client } = await introspected(uploadHandler);
+    const big = Buffer.alloc(300 * 1024, 7).toString('base64');
+    await expect(client.replaceMediaBase64('m1', 'big.png', big)).rejects.toThrow(/create_media_replace/);
+  });
+
   it('accepts a data: URI and wrapped/whitespaced base64 — both are things an agent actually produces', async () => {
     const png = Buffer.from('iVBORw0KGgo=', 'base64');
     for (const payload of [`data:image/png;base64,${png.toString('base64')}`, `${png.toString('base64').slice(0, 8)}\n  ${png.toString('base64').slice(8)}`]) {

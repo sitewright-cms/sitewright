@@ -9,6 +9,13 @@ export interface UploadTicketScope {
   userId: string;
   /** The virtual media folder the upload lands in (already validated at mint time). */
   folder: string;
+  /**
+   * When set, redeeming REPLACES this existing asset's bytes instead of creating a new one — the
+   * large-file lane for `replace_media`, mirroring how `create_media_upload` is the large-file lane
+   * for `upload_media`. Pinned at mint time like every other dimension, so the ticket holder chooses
+   * the bytes and nothing else: it cannot be re-pointed at a different asset.
+   */
+  replaceAssetId?: string;
 }
 
 interface UploadTicket extends UploadTicketScope {
@@ -96,7 +103,13 @@ export class UploadTicketStore {
     if (!found) return undefined;
     this.tickets.delete(token);
     if (found.expiresAt <= this.now()) return undefined;
-    return { projectId: found.projectId, projectSlug: found.projectSlug, userId: found.userId, folder: found.folder };
+    return {
+      projectId: found.projectId,
+      projectSlug: found.projectSlug,
+      userId: found.userId,
+      folder: found.folder,
+      ...(found.replaceAssetId ? { replaceAssetId: found.replaceAssetId } : {}),
+    };
   }
 
   /** Live ticket count (tests + the maintenance sweep). */

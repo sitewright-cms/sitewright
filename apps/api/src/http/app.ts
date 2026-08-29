@@ -212,7 +212,7 @@ import { buildAgentProvider } from '../ai/build-provider.js';
 import { isActiveAgentToken } from '../ai/agent-token.js';
 import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
-import { PublishStore, PDF_MEDIA_CSP } from '../publish/store.js';
+import { PublishStore, PDF_MEDIA_CSP, SVG_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
@@ -5402,13 +5402,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
-        const parsed = z.object({ folder: MediaFolderSchema.optional() }).safeParse(req.body ?? {});
+        const parsed = z
+          .object({ folder: MediaFolderSchema.optional(), replaceAssetId: z.string().min(1).max(64).optional() })
+          .safeParse(req.body ?? {});
         if (!parsed.success) return reply.code(400).send({ error: 'invalid folder' });
+        // A REPLACE ticket names its target now, so the holder cannot re-point it. Checking the asset
+        // here as well as at redeem time is what makes a typo'd id fail on the tool call the agent can
+        // see, rather than on a curl it has already spent the bytes on.
+        if (parsed.data.replaceAssetId !== undefined) {
+          try {
+            const target = await contentRepo.getLiveMedia(ctx, parsed.data.replaceAssetId);
+            if (target.kind === 'font') {
+              return reply.code(400).send({ error: 'a font family is stored as many files — upload a new font instead' });
+            }
+          } catch {
+            return reply.code(404).send({ error: 'media not found' });
+          }
+        }
         const token = uploadTickets.put({
           projectId: project.id,
           projectSlug: project.slug,
           userId: ctx.userId,
           folder: parsed.data.folder ?? '',
+          ...(parsed.data.replaceAssetId ? { replaceAssetId: parsed.data.replaceAssetId } : {}),
         });
         return reply.code(201).send({
           uploadPath: `/media-upload/${token}`,
@@ -5490,6 +5506,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(404).send({ error: 'upload ticket is unknown, expired or already used' });
         }
         const ctx: ProjectContext = { userId: scope.userId, projectId: scope.projectId, role, actor: 'agent' };
+
+        // A REPLACE ticket overwrites the asset it was minted for; everything else creates a new one.
+        // 200 rather than 201: nothing was created, and the receipt carries the previous dimensions.
+        if (scope.replaceAssetId) {
+          try {
+            const replaced = await replaceAssetBytes(ctx, scope.projectSlug, scope.replaceAssetId, tmpPath, filename);
+            if (!replaced.ok) return reply.code(replaced.status).send({ error: replaced.error });
+            return reply.send({ item: replaced.item, previous: replaced.previous, snapshotId: replaced.snapshotId });
+          } finally {
+            // Only the verbatim path RENAMES the staged file into place; the image paths re-encode from
+            // it and leave it behind. Without this a raster replace leaks a temp file per redemption.
+            await discard();
+          }
+        }
 
         const stored = await storeUploadFromPath(ctx, scope.projectSlug, tmpPath, {
           filename,
@@ -6323,6 +6353,235 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 
+    // --- REPLACE an asset's BYTES in place ---------------------------------------------------------
+    //
+    // The general form of the SVG overwrite above, for any single-file asset. It exists because
+    // "swap this picture for a better one" had no answer: every upload path mints a NEW id, so the only
+    // way to change what a URL serves was to upload, hunt down every reference — page source, page data,
+    // dataset entries, the settings chrome slots — repoint them all, and delete the old asset. That is a
+    // site-wide migration for what an author experiences as replacing a file, and missing one reference
+    // leaves a page silently pointing at the old picture.
+    //
+    // Here the asset id, the stored file name and therefore every URL survive, so nothing needs
+    // repointing. Three things make that honest, and each is enforced below:
+    //   · the EXTENSION cannot change — it is baked into every URL, so a format change is refused
+    //     rather than silently breaking references (the same rule the in-place image edit already has);
+    //   · the cached thumbnails, all derived from the OLD pixels, are dropped;
+    //   · the outgoing bytes are SNAPSHOTTED to the Recycle Bin, because this is otherwise the one
+    //     destructive write with no undo (media is deliberately outside REVISIONED_KINDS).
+    //
+    // A FONT is the one kind refused: a family is many files (weight × style), so "replace the file"
+    // has no single meaning. Its URL is correspondingly the one that keeps a year-long immutable cache.
+
+    /** Any asset whose stored bytes are ONE file, and can therefore be replaced wholesale. */
+    type ReplaceableAsset = Exclude<MediaAsset, { kind: 'font' }>;
+
+    /** The single stored file behind an asset — the name every URL to it ends in. */
+    const storedFileOf = (asset: ReplaceableAsset): string =>
+      asset.kind === 'image' ? asset.original : asset.storedName;
+
+    const extensionOf = (name: string): string => (name.split('.').pop() ?? '').toLowerCase();
+
+    interface ReplaceOk {
+      ok: true;
+      item: MediaAsset;
+      /** What it was, so a caller can notice a changed aspect ratio that will reflow its pages. */
+      previous: { bytes: number; width?: number; height?: number };
+      /** The binned copy of the outgoing bytes (restore it to undo). */
+      snapshotId: string;
+    }
+    type ReplaceResult = ReplaceOk | { ok: false; status: number; error: string };
+
+    /** SVG is re-sanitized on the way in, exactly like the upload path; cap matches sanitizeSvg. */
+    const MAX_SVG_REPLACE_BYTES = 4 * 1024 * 1024;
+
+    async function replaceAssetBytes(
+      ctx: ProjectContext,
+      projectSlug: string,
+      assetId: string,
+      tmpPath: string,
+      filename: string,
+    ): Promise<ReplaceResult> {
+      // getLiveMedia refuses a BINNED asset — replacing one would write bytes into a Recycle-Bin row
+      // and resurrect it outside the restore flow.
+      let asset: MediaAsset;
+      try {
+        asset = await contentRepo.getLiveMedia(ctx, assetId);
+      } catch {
+        return { ok: false, status: 404, error: 'media not found' };
+      }
+      if (asset.kind === 'font') {
+        return {
+          ok: false,
+          status: 400,
+          error: 'a font family is stored as many files (weight × style) — upload a new font instead of replacing one face',
+        };
+      }
+      const current = asset as ReplaceableAsset;
+      const stored = storedFileOf(current);
+      const want = extensionOf(stored);
+      const got = extensionOf(filename);
+      if (!got || got !== want) {
+        return {
+          ok: false,
+          status: 400,
+          error: `a replacement must keep the .${want} extension (got .${got || 'none'}) — it is part of every URL that references this asset`,
+        };
+      }
+
+      const previous = {
+        bytes: current.bytes,
+        ...('width' in current && current.width !== undefined ? { width: current.width } : {}),
+        ...('height' in current && current.height !== undefined ? { height: current.height } : {}),
+      };
+
+      // ★ UNDO. Copy the OUTGOING asset to a fresh id and bin it, so the old bytes land in the Recycle
+      // Bin the operator already knows — same 90-day window, same restore flow, no new machinery. Called
+      // only AFTER the replacement has been validated, so a refused replace leaves no bin litter.
+      const snapshotOutgoing = async (): Promise<string> => {
+        const stamp = new Date().toISOString().slice(0, 10);
+        const snapshot = await duplicateAsset(
+          ctx,
+          projectSlug,
+          { ...current, filename: `${current.filename} (replaced ${stamp})`.slice(0, 255) } as MediaAsset,
+          current.folder,
+        );
+        await contentRepo.softDeleteMedia(ctx, snapshot.id);
+        return snapshot.id;
+      };
+
+      // A RASTER image goes through the same ingest as an upload — optimize gate, project upload cap,
+      // LQIP placeholder, intrinsic dimensions — so a replaced photo is stored exactly like a new one.
+      // `isSvgFile` as well as the format flag, matching editImageAsset's guard: sharp will happily
+      // RASTERIZE an SVG, so an asset whose record and stored name disagree must not reach storeOriginal
+      // — that would write raster bytes under a `.svg` name and serve them inline as markup.
+      if (current.kind === 'image' && current.format !== 'svg' && !isSvgFile(stored)) {
+        const image = current;
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as
+          | Settings
+          | undefined;
+        const cap = settings?.website?.imageUploadCap;
+        // Encode into a SCRATCH dir, not over the live asset: nothing touches the stored original until
+        // the result is known to keep the same extension, so a refused replace cannot half-apply.
+        const workDir = await mkdtemp(join(tmpdir(), 'sw-replace-'));
+        try {
+          let out: Awaited<ReturnType<typeof storeOriginal>>;
+          try {
+            out = await withOptimizeSlot(ctx.projectId, () =>
+              storeOriginal(tmpPath, workDir, { storedName: stored, ...(cap ? { cap } : {}) }),
+            );
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : '';
+            if (/format|pixel|dimension|size limit/i.test(msg)) {
+              return { ok: false, status: 400, error: 'unsupported or invalid image' };
+            }
+            throw err;
+          }
+          // storeOriginal normalises the stored name to the DETECTED format, and re-encodes to WebP when
+          // the project's image cap bites. Either would change the extension, and with it every URL —
+          // the one thing this route exists to avoid. Refuse, and say which way it went.
+          if (out.storedName !== stored) {
+            const asExt = extensionOf(out.storedName);
+            const why =
+              cap !== undefined && out.width <= cap && asExt === 'webp'
+                ? `this project re-encodes images wider than ${cap}px to WebP`
+                : `these bytes are a .${asExt}`;
+            return {
+              ok: false,
+              status: 400,
+              error: `${why}, but the asset is stored as .${want} and that extension is part of every URL referencing it — convert or resize it first, or upload it as a new asset`,
+            };
+          }
+          const snapshotId = await snapshotOutgoing();
+          await storage.storeFileFromPath(projectSlug, image.id, stored, join(workDir, out.storedName));
+          // Every cached variant came from the OLD pixels; dropping them is what makes the replacement
+          // visible everywhere at once. They regenerate on the next request.
+          await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
+          const next = {
+            ...image,
+            bytes: out.bytes,
+            width: out.width,
+            height: out.height,
+            placeholder: out.placeholder,
+            hasAlpha: out.hasAlpha,
+            animated: out.animated,
+          };
+          return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+        } finally {
+          await rm(workDir, { recursive: true, force: true }).catch(() => {});
+        }
+      }
+
+      // A VECTOR image is re-sanitized and kept verbatim, exactly as the upload and Studio paths do.
+      // Re-sanitizing is not optional: these bytes are served INLINE as image/svg+xml, so a replace that
+      // trusted them would be a stored-XSS vector that the original upload path refuses.
+      if (current.kind === 'image') {
+        const image = current;
+        const { size } = await stat(tmpPath);
+        if (size > MAX_SVG_REPLACE_BYTES) return { ok: false, status: 413, error: 'svg exceeds size limit' };
+        const clean = sanitizeSvg(await readFile(tmpPath, 'utf8'));
+        if (!clean) return { ok: false, status: 400, error: 'svg failed sanitization' };
+        const buffer = Buffer.from(clean, 'utf8');
+        const snapshotId = await snapshotOutgoing();
+        await storage.storeFile(projectSlug, image.id, stored, buffer);
+        // An SVG is never thumbnailed, but a replaced asset may have been a raster before the migration
+        // — sweeping is cheap and leaves nothing stale behind either way.
+        await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
+        const dims = svgIntrinsicSize(clean) ?? { width: image.width, height: image.height };
+        const next = { ...image, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
+        return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+      }
+
+      // Everything else (file, video, stylesheet, script) is stored VERBATIM, so the replacement is a
+      // move into place. `contentType` is derived from the extension, which cannot have changed.
+      //
+      // A video's `width`/`height` are carried over untouched: nothing on the write path probes them
+      // (the importer supplies them when it knows them), so recomputing here is not possible and
+      // clearing them would throw away a good value whenever the replacement is the same size.
+      const snapshotId = await snapshotOutgoing();
+      const bytes = await storage.storeFileFromPath(projectSlug, current.id, stored, tmpPath);
+      const next = { ...current, bytes };
+      return { ok: true, item: (await contentRepo.put(ctx, 'media', current.id, next)) as MediaAsset, previous, snapshotId };
+    }
+
+    app.put<{ Params: { projectId: string; id: string } }>(
+      '/projects/:projectId/media/:id/content',
+      // On the AGENT LANE with the other ingress routes: this is what `replace_media` calls, and a
+      // rebrand sweep replaces a batch of logos in one run. The work is bounded by the same optimize
+      // gate and memory ledger the upload route relies on, not by this counter.
+      { config: rlAgent(60) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:write');
+        // Reject before reading the (potentially large) upload for non-writers.
+        if (!WRITE_ROLES.has(ctx.role)) {
+          return reply.code(403).send({ error: 'insufficient role for this operation' });
+        }
+        const file = await req.file();
+        if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+
+        // STREAMED to disk, not buffered — a replacement is as large as an upload.
+        let tmpPath: string;
+        try {
+          tmpPath = await stageUploadToTempFile(file.file);
+        } catch {
+          return reply.code(413).send({ error: 'file exceeds size limit' });
+        }
+        if (file.file.truncated) {
+          await rm(tmpPath, { force: true }).catch(() => {});
+          return reply.code(413).send({ error: 'file exceeds size limit' });
+        }
+        try {
+          const res = await replaceAssetBytes(ctx, project.slug, req.params.id, tmpPath, file.filename || 'upload');
+          if (!res.ok) return reply.code(res.status).send({ error: res.error });
+          return reply.send({ item: res.item, previous: res.previous, snapshotId: res.snapshotId });
+        } finally {
+          // The verbatim path RENAMES the temp file into place, so this is a no-op there and a cleanup
+          // on every other exit — including the refused ones.
+          await rm(tmpPath, { force: true }).catch(() => {});
+        }
+      },
+    );
+
     // Turn a photograph a quarter at a time, IN PLACE.
     //
     // ★ EXIF orientation only helps when the tag is there. A library will hold photographs whose pixels
@@ -6487,8 +6746,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // On-demand thumbnail cache: the FIRST request for a named-size variant generates a WebP/AVIF from
     // the retained original, persists it in the asset dir, and serves it; later requests hit the cached
     // file. Concurrent misses for the same variant are COALESCED so a burst encodes exactly once. The
-    // bounded named-size set (sm/md/lg/xl) is the anti-abuse boundary for this generate-on-request path;
-    // thumbnails are immutable (a new upload = a new asset id).
+    // bounded named-size set (sm/md/lg/xl) is the anti-abuse boundary for this generate-on-request path.
+    // A cached thumbnail is derived from the CURRENT original and is dropped whenever that original is
+    // rewritten (`pruneAssetThumbnails`) — it is not immutable, and the delivery route says so.
     const inflightThumbs = new Map<string, Promise<Buffer>>();
     const ensureThumb = async (
       slug: string,
@@ -6535,6 +6795,57 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return pending;
     };
 
+    /**
+     * Cache policy for stored asset bytes served under a STABLE URL.
+     *
+     * Media used to be write-once — "a new upload = a new asset id" — and that is what justified a
+     * year of `immutable`. It stopped being true in three steps: the SVG Studio overwrites an SVG in
+     * place, `transform_image` rewrites a photograph's pixels, and `PUT /media/:id/content` replaces
+     * any asset's bytes outright. All three keep the asset id, and therefore the URL. An `immutable`
+     * response to a URL whose bytes can change freezes the PRE-edit picture in every browser that
+     * already holds it, for a year, with no way to reach it — the SVG branch hit exactly this and was
+     * fixed alone, and the editor was papering over the raster case with a client-side nonce that only
+     * ever fixed its own modal.
+     *
+     * So anything replaceable revalidates with a content ETag: a re-fetch is a cheap conditional
+     * request — 304 while nothing changed, a fresh 200 the moment it does.
+     *
+     * A FONT keeps `immutable`: it is the one kind replace refuses (a family is many files, so
+     * "replace the file" has no single meaning), so its bytes genuinely cannot change under its URL.
+     *
+     * The PUBLISHED site is unaffected either way and keeps its long cache — it serves from the flat
+     * `_assets/` bundle behind a per-publish `?v=` token, not from these routes.
+     */
+    const IMMUTABLE_ASSET = 'public, max-age=31536000, immutable';
+    const assetEtag = (bytes: Buffer): string => `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
+
+    /** RFC 9110 §13.1.2 — `If-None-Match` may carry a comma-separated list of validators. */
+    const etagSatisfied = (req: { headers: FastifyRequest['headers'] }, etag: string): boolean => {
+      const raw = req.headers['if-none-match'];
+      const inm = Array.isArray(raw) ? raw.join(',') : raw;
+      return typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag);
+    };
+
+    /**
+     * Send stored asset BYTES revalidating, answering 304 when the client already holds them.
+     *
+     * `decorate` stamps the per-kind headers (content type, CSP, CORS…) and is applied to the 304 as
+     * well as the 200 — deliberately. A 304 that omitted them would let the global onSend hook stamp
+     * the weaker default policy, which the browser then merges into its cached 200, silently
+     * downgrading (for the SVG branch) a sandboxed `default-src 'none'`.
+     */
+    const sendAssetBytes = <R extends FastifyReply>(
+      req: { headers: FastifyRequest['headers'] },
+      reply: R,
+      bytes: Buffer,
+      decorate: (r: R) => R,
+    ): R => {
+      const etag = assetEtag(bytes);
+      const headers = (r: R): R => decorate(r).header('etag', etag).header('cache-control', 'no-cache') as R;
+      if (etagSatisfied(req, etag)) return headers(reply).code(304).send() as R;
+      return headers(reply).send(bytes) as R;
+    };
+
     // Public serving of IMAGE assets (published sites are public). The storage layer validates every
     // segment and confines the path to the asset dir, so traversal is impossible. `?size` (default xl)
     // selects an on-demand responsive thumbnail; `?size=original` serves the raw original inline;
@@ -6561,7 +6872,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             return reply.code(404).send({ error: 'not found' });
           }
           return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('cache-control', IMMUTABLE_ASSET)
             .header('x-content-type-options', 'nosniff')
             .header('access-control-allow-origin', '*')
             .header('cross-origin-resource-policy', 'cross-origin')
@@ -6578,13 +6889,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           } catch {
             return reply.code(404).send({ error: 'not found' });
           }
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .header('access-control-allow-origin', '*')
-            .header('cross-origin-resource-policy', 'cross-origin')
-            .type('text/css; charset=utf-8')
-            .send(bytes);
+          return sendAssetBytes(req, reply, bytes, (r) =>
+            r
+              .header('x-content-type-options', 'nosniff')
+              .header('access-control-allow-origin', '*')
+              .header('cross-origin-resource-policy', 'cross-origin')
+              .type('text/css; charset=utf-8'),
+          );
         }
         // A `kind:'script'` (imported site JS) served INLINE as text/javascript (+ nosniff + CORS) so a
         // page can `<script src>`-link it. @security Owner-only import choice; the published site is the
@@ -6596,13 +6907,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           } catch {
             return reply.code(404).send({ error: 'not found' });
           }
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .header('access-control-allow-origin', '*')
-            .header('cross-origin-resource-policy', 'cross-origin')
-            .type('text/javascript; charset=utf-8')
-            .send(bytes);
+          return sendAssetBytes(req, reply, bytes, (r) =>
+            r
+              .header('x-content-type-options', 'nosniff')
+              .header('access-control-allow-origin', '*')
+              .header('cross-origin-resource-policy', 'cross-origin')
+              .type('text/javascript; charset=utf-8'),
+          );
         }
         // An SVG (kind:'image', format:'svg') is served INLINE as image/svg+xml so a cloned <img src>
         // renders — but under a LOCKED-DOWN CSP (no scripts, no external fetches) that neutralizes any
@@ -6610,11 +6921,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // is secure-static anyway). `?size`/`?format` are ignored — a vector scales natively. + nosniff +
         // CORS so the sandboxed (opaque-origin) preview iframe can load it too.
         //
-        // CACHE: SVG is the ONE media kind that can be OVERWRITTEN in place (the Studio's "save to the same
-        // file" → PUT …/svg keeps the asset id + URL), so its URL is MUTABLE. Serving it `immutable` froze
-        // the pre-edit bytes in the browser for a year → an overwrite never reached an open editor (re-import
-        // showed the un-animated original) or a live `<img>`. Serve it revalidating (`no-cache`) with a
-        // content ETag so a re-fetch is a cheap conditional request: 304 while unchanged, fresh 200 after a save.
+        // CACHE: see IMMUTABLE_ASSET/sendAssetBytes above — an SVG's URL is mutable (the Studio's "save
+        // to the same file" and now `PUT …/content` both keep the asset id), so it revalidates.
         if (isSvgFile(file)) {
           let bytes: Buffer;
           try {
@@ -6622,25 +6930,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           } catch {
             return reply.code(404).send({ error: 'not found' });
           }
-          const etag = `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
-          // The strict SVG headers are repeated on BOTH branches: a 304 that omitted the CSP would let the
-          // global onSend hook stamp the weaker default policy, which the browser then merges into its cached
-          // 200 — silently downgrading the sandboxed `default-src 'none'` policy. If-None-Match may carry a
-          // comma list (RFC 9110 §13.1.2), so match against any listed validator.
-          const svgHeaders = (r: typeof reply) =>
+          return sendAssetBytes(req, reply, bytes, (r) =>
             r
-              .header('etag', etag)
-              .header('cache-control', 'no-cache')
               .header('x-content-type-options', 'nosniff')
-              .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
+              .header('content-security-policy', SVG_MEDIA_CSP)
               .header('access-control-allow-origin', '*')
-              .header('cross-origin-resource-policy', 'cross-origin');
-          const inmRaw = req.headers['if-none-match'];
-          const inm = Array.isArray(inmRaw) ? inmRaw.join(',') : inmRaw;
-          if (typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag)) {
-            return svgHeaders(reply).code(304).send();
-          }
-          return svgHeaders(reply).type('image/svg+xml; charset=utf-8').send(bytes);
+              .header('cross-origin-resource-policy', 'cross-origin')
+              .type('image/svg+xml; charset=utf-8'),
+          );
         }
         // IMAGE delivery. `file` is the stored ORIGINAL name (any raster ext). `?size` (default xl)
         // selects a responsive thumbnail generated on demand + cached; `?size=original` serves the raw
@@ -6654,11 +6951,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             } catch {
               return reply.code(404).send({ error: 'not found' });
             }
-            return reply
-              .header('cache-control', 'public, max-age=31536000, immutable')
-              .header('x-content-type-options', 'nosniff')
-              .type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream')
-              .send(original);
+            return sendAssetBytes(req, reply, original, (r) =>
+              r
+                .header('x-content-type-options', 'nosniff')
+                .type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream'),
+            );
           }
           const size: SizeToken = q.size && isSizeToken(q.size) ? q.size : DEFAULT_SIZE;
           const format: ThumbFormat = q.format && isThumbFormat(q.format) ? q.format : 'webp';
@@ -6673,11 +6970,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             }
             return reply.code(404).send({ error: 'not found' });
           }
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .type(format === 'avif' ? 'image/avif' : 'image/webp')
-            .send(bytes);
+          return sendAssetBytes(req, reply, bytes, (r) =>
+            r.header('x-content-type-options', 'nosniff').type(format === 'avif' ? 'image/avif' : 'image/webp'),
+          );
         }
         return reply.code(404).send({ error: 'not found' });
       },
@@ -6709,22 +7004,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // <iframe> show the doc instead of forcing a download. Everything else stays download-only
         // (octet-stream + attachment) so an uploaded HTML/SVG/script can never render on this origin.
         if (file.toLowerCase().endsWith('.pdf')) {
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .header('content-security-policy', PDF_MEDIA_CSP)
-            // frame-ancestors 'self' is the real guard; SAMEORIGIN mirrors it for legacy browsers that
-            // don't implement frame-ancestors (defence-in-depth parity with the HTML page path).
-            .header('x-frame-options', 'SAMEORIGIN')
-            .type('application/pdf')
-            .send(bytes);
+          return sendAssetBytes(req, reply, bytes, (r) =>
+            r
+              .header('x-content-type-options', 'nosniff')
+              .header('content-security-policy', PDF_MEDIA_CSP)
+              // frame-ancestors 'self' is the real guard; SAMEORIGIN mirrors it for legacy browsers that
+              // don't implement frame-ancestors (defence-in-depth parity with the HTML page path).
+              .header('x-frame-options', 'SAMEORIGIN')
+              .type('application/pdf'),
+          );
         }
-        return reply
-          .header('cache-control', 'public, max-age=31536000, immutable')
-          .header('x-content-type-options', 'nosniff')
-          .header('content-disposition', `attachment; filename="${file}"`)
-          .type('application/octet-stream')
-          .send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) =>
+          r
+            .header('x-content-type-options', 'nosniff')
+            .header('content-disposition', `attachment; filename="${file}"`)
+            .type('application/octet-stream'),
+        );
       },
     );
 
@@ -6749,9 +7044,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!asset) return reply.code(404).send({ error: 'not found' });
       const ext = (name.split('.').pop() ?? '').toLowerCase();
       const read = (): Promise<Buffer | null> => storage.readStored(projectSlug, assetId, name).catch(() => null);
+      // The cross-origin trio only — the CACHE header is per-kind and is added by the caller, because
+      // only a font is genuinely immutable here (see IMMUTABLE_ASSET above); everything else this
+      // route serves can be replaced in place under the same URL and must revalidate.
       const CORS = (r: typeof reply): typeof reply =>
         r
-          .header('cache-control', 'public, max-age=31536000, immutable')
           .header('x-content-type-options', 'nosniff')
           .header('access-control-allow-origin', '*')
           .header('cross-origin-resource-policy', 'cross-origin');
@@ -6783,13 +7080,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // the serve path has no business being more credulous than the store path. A genuine imported
         // webfont passes; anything else falls through to the download-only branch below.
         if (asset.kind === 'font' || detectFontFormat(bytes)) {
-          return CORS(reply).type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2').send(bytes);
+          // A font family is many files, so `PUT …/content` refuses it — its bytes really cannot
+          // change under this URL, and it is the one kind that keeps the year-long cache.
+          return CORS(reply).header('cache-control', IMMUTABLE_ASSET).type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2').send(bytes);
         }
       }
       if (asset.kind === 'stylesheet') {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        return CORS(reply).type('text/css; charset=utf-8').send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) => CORS(r).type('text/css; charset=utf-8'));
       }
       if (asset.kind === 'script') {
         // @security Inline foreign JS is served ONLY for a genuine imported `kind:'script'` (owner-only
@@ -6797,7 +7096,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // is `kind:'file'` and falls through to download-only below.
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        return CORS(reply).type('text/javascript; charset=utf-8').send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) => CORS(r).type('text/javascript; charset=utf-8'));
       }
       if (asset.kind === 'video') {
         // INLINE with its real type — a background video has to play, not download. nosniff still
@@ -6810,12 +7109,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // seek, asks for a byte window, gets the whole file with a 200, and SNAPS BACK TO 0. Measured
         // on the first cut of this route — `video.currentTime = 6` landed at 0. It also means a 16 MB
         // background video downloads in full before it can start.
+        // The validator is over the WHOLE file, not the slice, so a client that cached a range and one
+        // that cached the body agree on when the video has been replaced. A partial response never
+        // short-circuits to 304 — the client asked for bytes it does not have.
+        const videoEtag = assetEtag(bytes);
+        const videoHeaders = (r: typeof reply): typeof reply =>
+          CORS(r).header('etag', videoEtag).header('cache-control', 'no-cache');
         const ranged = partialContent(bytes, req.headers.range);
         if (ranged === 'unsatisfiable') {
-          return CORS(reply).code(416).header('content-range', `bytes */${bytes.length}`).send();
+          return videoHeaders(reply).code(416).header('content-range', `bytes */${bytes.length}`).send();
         }
         if (ranged) {
-          return CORS(reply)
+          return videoHeaders(reply)
             .code(206)
             .header('accept-ranges', 'bytes')
             .header('content-range', ranged.contentRange)
@@ -6823,7 +7128,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .type(type)
             .send(ranged.body);
         }
-        return CORS(reply).header('accept-ranges', 'bytes').type(type).send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) => CORS(r).header('accept-ranges', 'bytes').type(type));
       }
       if (asset.kind === 'file') {
         // ALWAYS download-only (octet-stream + attachment + nosniff) so an uploaded HTML/SVG/script can
@@ -6832,42 +7137,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
         if (ext === 'pdf') {
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .header('content-security-policy', PDF_MEDIA_CSP)
-            .header('x-frame-options', 'SAMEORIGIN')
-            .type('application/pdf')
-            .send(bytes);
+          return sendAssetBytes(req, reply, bytes, (r) =>
+            r
+              .header('x-content-type-options', 'nosniff')
+              .header('content-security-policy', PDF_MEDIA_CSP)
+              .header('x-frame-options', 'SAMEORIGIN')
+              .type('application/pdf'),
+          );
         }
-        return reply
-          .header('cache-control', 'public, max-age=31536000, immutable')
-          .header('x-content-type-options', 'nosniff')
-          // `name` is STORED_FILE-validated (no quotes/CRLF/Unicode) — safe in the header.
-          .header('content-disposition', `attachment; filename="${name}"`)
-          .type('application/octet-stream')
-          .send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) =>
+          r
+            .header('x-content-type-options', 'nosniff')
+            // `name` is STORED_FILE-validated (no quotes/CRLF/Unicode) — safe in the header.
+            .header('content-disposition', `attachment; filename="${name}"`)
+            .type('application/octet-stream'),
+        );
       }
       // kind:'image'. An SVG (format:'svg') is served inline under a locked-down CSP + a revalidating
-      // ETag (it can be overwritten in place via the Studio, so its URL is mutable — never `immutable`).
+      // ETag (it can be overwritten in place via the Studio or `PUT …/content`, so its URL is mutable).
       if (asset.format === 'svg' || isSvgFile(name)) {
         const bytes = await read();
         if (!bytes) return reply.code(404).send({ error: 'not found' });
-        const etag = `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"`;
-        const svgHeaders = (r: typeof reply): typeof reply =>
-          r
-            .header('etag', etag)
-            .header('cache-control', 'no-cache')
-            .header('x-content-type-options', 'nosniff')
-            .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox")
-            .header('access-control-allow-origin', '*')
-            .header('cross-origin-resource-policy', 'cross-origin');
-        const inmRaw = req.headers['if-none-match'];
-        const inm = Array.isArray(inmRaw) ? inmRaw.join(',') : inmRaw;
-        if (typeof inm === 'string' && inm.split(',').some((v) => v.trim() === etag)) {
-          return svgHeaders(reply).code(304).send();
-        }
-        return svgHeaders(reply).type('image/svg+xml; charset=utf-8').send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) =>
+          CORS(r).header('content-security-policy', SVG_MEDIA_CSP).type('image/svg+xml; charset=utf-8'),
+        );
       }
       // Raster image: `?size` (default xl) picks an on-demand thumbnail; `?size=original` serves the raw
       // original inline; `?format=avif` opts into AVIF.
@@ -6876,11 +7169,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (q.size === 'original') {
           const original = await read();
           if (!original) return reply.code(404).send({ error: 'not found' });
-          return reply
-            .header('cache-control', 'public, max-age=31536000, immutable')
-            .header('x-content-type-options', 'nosniff')
-            .type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream')
-            .send(original);
+          return sendAssetBytes(req, reply, original, (r) =>
+            r.header('x-content-type-options', 'nosniff').type(MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream'),
+          );
         }
         const size: SizeToken = q.size && isSizeToken(q.size) ? q.size : DEFAULT_SIZE;
         const format: ThumbFormat = q.format && isThumbFormat(q.format) ? q.format : 'webp';
@@ -6893,11 +7184,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           return reply.code(404).send({ error: 'not found' });
         }
-        return reply
-          .header('cache-control', 'public, max-age=31536000, immutable')
-          .header('x-content-type-options', 'nosniff')
-          .type(format === 'avif' ? 'image/avif' : 'image/webp')
-          .send(bytes);
+        return sendAssetBytes(req, reply, bytes, (r) =>
+          r.header('x-content-type-options', 'nosniff').type(format === 'avif' ? 'image/avif' : 'image/webp'),
+        );
       }
       return reply.code(404).send({ error: 'not found' });
     });

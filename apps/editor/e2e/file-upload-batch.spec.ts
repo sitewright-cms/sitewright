@@ -40,7 +40,7 @@ async function openFileManager(page: import('@playwright/test').Page, baseURL: s
   await page.goto(baseURL);
   await page.getByText(`Drop ${stamp}`, { exact: true }).first().click();
   await page.getByRole('button', { name: /File Manager/i }).first().click();
-  await expect(page.getByLabel('Upload files')).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: 'Upload files' })).toBeVisible({ timeout: 60_000 });
 }
 
 test('a plain multi-file drop lands in full', async ({ page, baseURL }) => {

@@ -42,7 +42,7 @@ test('side panels: Library + Assets tabs click open as drawers; backdrop + Escap
   await assetsTab.click();
   const assets = page.locator('[role="region"][aria-label="File Manager"]');
   await expect(assets).toHaveAttribute('aria-hidden', 'false');
-  await expect(assets.getByLabel('Upload files')).toBeVisible();
+  await expect(assets.getByRole('button', { name: 'Upload files' })).toBeVisible();
 
   // Clicking the dim backdrop (away from the right-edge panel) closes it.
   await page.mouse.click(200, 400);
@@ -58,5 +58,5 @@ test('side panels: Library + Assets tabs click open as drawers; backdrop + Escap
   });
   await assetsTab.dispatchEvent('dragenter', { dataTransfer: fileDrag });
   await expect(assets).toHaveAttribute('aria-hidden', 'false');
-  await expect(assets.getByLabel('Upload files')).toBeVisible();
+  await expect(assets.getByRole('button', { name: 'Upload files' })).toBeVisible();
 });

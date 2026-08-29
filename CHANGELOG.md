@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.41.0] — 2026-08-29
+
 ### Added
 
 - **Replace a media file in place, keeping its id and URL.** "Swap this logo for the new one" had no

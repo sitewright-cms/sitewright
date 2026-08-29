@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/tailwind-reference",
-  "version": "0.40.1",
+  "version": "0.41.0",
   "description": "The searchable Tailwind CSS reference dataset: every utility class, the CSS it generates, and its theme value — derived from the installed Tailwind, with authored per-topic prose.",
   "license": "Apache-2.0",
   "type": "module",

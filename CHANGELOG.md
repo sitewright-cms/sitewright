@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **File Manager toolbar and drop zone.** The native `<input type=file>` was the one control a browser
+  will not let us style, so its "Choose files" button was the only unbranded chrome in the manager. It
+  is now hidden — still the accessible control, still what drives an upload — behind a branded button
+  (brand gradient + ripple), and Upload files / Search stock images / Search for unused files / Recycle
+  Bin sit on one row instead of a column beside three strays.
+- **Dragging files anywhere over the File Manager now shows a dashed outline.** The pane was already a
+  drop target for the open folder; nothing said so until the drop landed. The outline appears only for a
+  DESKTOP-FILE drag (`dataTransfer.types` contains `Files`) — an internal asset/folder move keeps its
+  per-row highlight, because outlining the whole manager would say "drop anywhere" when a move needs a
+  specific target folder. Enter/leave are depth-counted so crossing a child row does not flicker it off.
+
+### Added
+
+- **An upload progress modal.** A batch can run for minutes (`uploadBatch` waits out 429s) and the only
+  signal was one line of small print in the toolbar, which scrolled out of view. The modal shows a
+  determinate bar for a batch, an indeterminate stripe for a single file (which finishes before a
+  percentage could be read), and says WHY it paused when the server asks it to wait. It auto-closes on
+  success, so a clean run costs no click, and is held open only when files failed — the one case with
+  something to read: the names of what did not land.
+
 ## [0.41.0] — 2026-08-29
 
 ### Added

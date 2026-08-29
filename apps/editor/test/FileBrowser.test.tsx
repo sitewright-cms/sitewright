@@ -13,12 +13,13 @@ const patchMedia = vi.fn();
 const copyMedia = vi.fn();
 const deleteMedia = vi.fn();
 const replaceMediaContent = vi.fn();
+const uploadMedia = vi.fn();
 
 vi.mock('../src/api', () => ({
   api: {
     listMedia: () => listMedia(),
     listMediaFolders: () => listMediaFolders(),
-    uploadMedia: vi.fn(),
+    uploadMedia: (...a: unknown[]) => uploadMedia(...a),
     deleteMedia: (...a: unknown[]) => deleteMedia(...a),
     replaceMediaContent: (...a: unknown[]) => replaceMediaContent(...a),
     patchMedia: (...a: unknown[]) => patchMedia(...a),
@@ -76,6 +77,7 @@ beforeEach(() => {
   patchMedia.mockResolvedValue({ item: image });
   copyMedia.mockResolvedValue({ item: image });
   deleteMedia.mockResolvedValue(undefined);
+  uploadMedia.mockResolvedValue(undefined);
   replaceMediaContent.mockResolvedValue({ item: image, previous: { bytes: 2048, width: 100, height: 100 }, snapshotId: 'snap1' });
 });
 
@@ -83,6 +85,9 @@ describe('FileBrowser (Assets)', () => {
   it('defaults to LIST view and shows assets + folders (incl. a persisted empty folder)', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     expect(screen.getByLabelText('Upload files')).toHaveAttribute('multiple');
+    // …but the native control is hidden: the visible affordance is the branded button.
+    expect(screen.getByLabelText('Upload files')).toHaveClass('hidden');
+    expect(screen.getByRole('button', { name: 'Upload files' })).toBeInTheDocument();
     // List view is the default → a table with a Size column.
     expect(await screen.findByRole('columnheader', { name: 'Size' })).toBeInTheDocument();
     // Await the asset row itself: the table shell (and its 'Size' header) can render before
@@ -405,7 +410,8 @@ describe('FileBrowser — replace a file in place', () => {
   });
 
   it('warns when the replacement has a different aspect ratio', async () => {
-    replaceMediaContent.mockResolvedValue({
+    uploadMedia.mockResolvedValue(undefined);
+  replaceMediaContent.mockResolvedValue({
       item: { ...image, width: 100, height: 300 },
       previous: { bytes: 2048, width: 100, height: 100 },
       snapshotId: 'snap1',
@@ -459,5 +465,127 @@ describe('FileBrowser — replace a file in place', () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     await screen.findByRole('button', { name: 'Inter' });
     expect(screen.queryByRole('button', { name: 'Replace Inter' })).toBeNull();
+  });
+});
+
+/**
+ * File Manager toolbar + drop-zone UX.
+ *
+ * The native `<input type=file>` cannot be styled — its browser-drawn "Choose files" control was the
+ * one piece of unbranded chrome in the manager. It stays in the DOM (hidden) so it remains the
+ * accessible control and still what a test drives; a branded button forwards the click.
+ */
+describe('FileBrowser — upload affordance and drop zone', () => {
+  it('hides the native input behind a branded button that forwards the click', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    const input = screen.getByLabelText('Upload files') as HTMLInputElement;
+    expect(input).toHaveClass('hidden');
+
+    const btn = screen.getByRole('button', { name: 'Upload files' });
+    // The platform's primary styling: brand gradient + the waves ripple.
+    expect(btn.className).toContain('sw-brand-gradient');
+    expect(btn.className).toContain('waves-effect');
+
+    const clicked = vi.fn();
+    input.addEventListener('click', clicked);
+    fireEvent.click(btn);
+    expect(clicked).toHaveBeenCalled();
+  });
+
+  it('puts Upload / Search stock / Search unused on one row', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    const upload = screen.getByRole('button', { name: 'Upload files' });
+    const stock = screen.getByRole('button', { name: 'Search stock images' });
+    const unused = screen.getByRole('button', { name: 'Search for unused files' });
+    // Same flex row ⇒ same parent element.
+    expect(stock.parentElement).toBe(upload.parentElement);
+    expect(unused.parentElement).toBe(upload.parentElement);
+    expect(upload.parentElement?.className).toContain('flex');
+  });
+
+  it('outlines the whole manager while FILES are dragged over it, and clears on drop', async () => {
+    const { container } = render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    const pane = container.firstElementChild as HTMLElement;
+    expect(pane.getAttribute('data-file-drag')).toBeNull();
+
+    fireEvent.dragEnter(pane, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(pane.getAttribute('data-file-drag')).toBe('over');
+    expect(pane.className).toContain('outline-dashed');
+
+    fireEvent.drop(pane, { dataTransfer: { types: ['Files'], files: [] } });
+    expect(pane.getAttribute('data-file-drag')).toBeNull();
+  });
+
+  it('does NOT outline the pane for an internal asset move (that has its own row highlight)', async () => {
+    const { container } = render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    const pane = container.firstElementChild as HTMLElement;
+    // An internal drag carries no 'Files' type — outlining the whole pane would wrongly say
+    // "drop anywhere", when a move needs a specific target folder.
+    fireEvent.dragEnter(pane, { dataTransfer: { types: ['text/plain'], files: [] } });
+    expect(pane.getAttribute('data-file-drag')).toBeNull();
+  });
+
+  it('keeps the outline while the pointer crosses child rows (enter/leave depth)', async () => {
+    const { container } = render(<FileBrowser projectId={project.id} mode="manage" />);
+    const row = await screen.findByRole('button', { name: 'hero.png' });
+    const pane = container.firstElementChild as HTMLElement;
+    const dt = { types: ['Files'], files: [] };
+
+    fireEvent.dragEnter(pane, { dataTransfer: dt });
+    fireEvent.dragEnter(row, { dataTransfer: dt }); // moving onto a descendant…
+    fireEvent.dragLeave(pane, { dataTransfer: dt }); // …fires leave for the ancestor
+    // Naive boolean tracking would drop the outline here, mid-drag.
+    expect(pane.getAttribute('data-file-drag')).toBe('over');
+
+    fireEvent.dragLeave(row, { dataTransfer: dt });
+    expect(pane.getAttribute('data-file-drag')).toBeNull();
+  });
+});
+
+/**
+ * Upload progress. A batch can take minutes (uploadBatch waits out 429s), and the previous signal was
+ * one line of small print that scrolled away. The modal auto-closes on success so a clean run costs no
+ * click, and is held open ONLY on failure — the one case with something to read.
+ */
+describe('FileBrowser — upload progress modal', () => {
+  const pick = (name = 'a.png') =>
+    new File([new Uint8Array([1, 2, 3])], name, { type: 'image/png' });
+
+  function drop(files: File[]) {
+    const input = screen.getByLabelText('Upload files') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: files, configurable: true });
+    fireEvent.change(input);
+  }
+
+  it('shows progress while uploading and auto-closes on success', async () => {
+    let release!: () => void;
+    uploadMedia.mockImplementation(() => new Promise<void>((res) => { release = () => res(); }));
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    drop([pick()]);
+    expect(await screen.findByRole('dialog', { name: /Uploading files/i })).toBeInTheDocument();
+
+    release();
+    // Success ⇒ unmounted without any interaction.
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Uploading files/i })).toBeNull());
+  });
+
+  it('stays open naming what failed, and closes on demand', async () => {
+    uploadMedia.mockRejectedValue(new Error('nope')); // non-transient ⇒ no retry wait
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+
+    drop([pick('broken.png')]);
+
+    const dialog = await screen.findByRole('dialog', { name: /errors/i });
+    expect(dialog).toHaveTextContent('broken.png'); // the NAME, not just a count
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /errors/i })).toBeNull());
   });
 });

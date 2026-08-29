@@ -15,7 +15,7 @@ import { SkeletonImage } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { useIsMobile } from '../../lib/use-is-mobile';
-import { glassCard, glassPanel, ghostButton, toggleInput } from '../../theme';
+import { glassCard, glassPanel, ghostButton, primaryButton, toggleInput } from '../../theme';
 import { cleanSvgFile } from '../library/svg-studio-helpers';
 import { ImageEditorStudio } from '../library/ImageEditorStudio';
 import { assetEmbedUrls } from './media-embed';
@@ -205,6 +205,20 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   /** Cache-buster for the preview <img> after an IN-PLACE save, which leaves the URL unchanged. */
   const [previewNonce, setPreviewNonce] = useState(0);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
+  /**
+   * Whether a DESKTOP-FILE drag is currently over the manager (⇒ dashed outline). Kept apart from
+   * `dropTarget`, which also lights up for an INTERNAL asset/folder move — dragging a file row between
+   * folders should not make the whole pane look like an upload target.
+   */
+  const [fileDragOver, setFileDragOver] = useState(false);
+  /**
+   * dragenter/dragleave fire for every DESCENDANT the pointer crosses, so a naive boolean flickers off
+   * the moment the cursor moves from the pane onto a row inside it. Counting enters vs leaves is the
+   * standard fix: the drag has really left only when the depth returns to zero.
+   */
+  const dragDepth = useRef(0);
+  /** A finished batch that had FAILURES — keeps the progress modal open so the names can be read. */
+  const [uploadReport, setUploadReport] = useState<{ stored: number; total: number; failed: string[] } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
   const dragItem = useRef<DragItem | null>(null);
@@ -353,6 +367,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
     setUploading(true);
     setProgress(null);
     setError(null);
+    setUploadReport(null);
     try {
       const { stored, failed } = await uploadBatch(list, {
         upload: async (file) => {
@@ -372,6 +387,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
         const names = failed.slice(0, 3).join(', ');
         const rest = failed.length > 3 ? ` and ${failed.length - 3} more` : '';
         setError(`${stored} of ${list.length} uploaded — ${failed.length} failed (${names}${rest}).`);
+        // Hold the progress modal open on a PARTIAL failure. Auto-closing it would take the only place
+        // the failed names are listed off screen at the exact moment they became relevant.
+        setUploadReport({ stored, total: list.length, failed });
       }
     } catch (err) {
       // uploadBatch does not throw; this covers a failure of the reload itself.
@@ -549,12 +567,32 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
     e.preventDefault();
     e.stopPropagation();
     setDropTarget(null);
+    paneDragEnd();
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) void uploadFiles(e.dataTransfer.files, target);
     else void moveDraggedInto(target);
   }
   const allowDrop = (target: string) => (e: DragEvent) => {
     e.preventDefault();
     setDropTarget(target);
+  };
+
+  /** A drag carrying DESKTOP FILES (rather than an internal asset/folder move). */
+  const isFileDrag = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+
+  /** Whole-manager drop zone: track enter/leave depth so the dashed outline does not flicker. */
+  const paneDragEnter = (e: DragEvent) => {
+    if (!isFileDrag(e)) return;
+    dragDepth.current += 1;
+    setFileDragOver(true);
+  };
+  const paneDragLeave = (e: DragEvent) => {
+    if (!isFileDrag(e)) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setFileDragOver(false);
+  };
+  const paneDragEnd = () => {
+    dragDepth.current = 0;
+    setFileDragOver(false);
   };
 
   const emptyMsg = query.trim()
@@ -565,51 +603,65 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
 
   return (
     <div
-      // The whole pane is a drop zone for the CURRENT folder (upload here / move here).
+      // The whole pane is a drop zone for the CURRENT folder (upload here / move here). The dashed
+      // outline appears only for a DESKTOP-FILE drag: an internal asset/folder move already has its own
+      // per-row highlight, and outlining the whole manager for one would say "drop anywhere", which is
+      // wrong — a move needs a specific target folder.
+      onDragEnter={paneDragEnter}
       onDragOver={allowDrop(folder)}
       onDragLeave={(e) => {
+        paneDragLeave(e);
         if (e.currentTarget === e.target) setDropTarget(null);
       }}
       onDrop={(e) => onDropInto(folder, e)}
+      data-file-drag={fileDragOver ? 'over' : undefined}
+      className={
+        fileDragOver
+          ? 'rounded-2xl outline-2 outline-offset-4 outline-dashed outline-indigo-400 dark:outline-indigo-300'
+          : undefined
+      }
     >
       {dialog}
       {intro && <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{intro}</p>}
 
-      {/* Upload + stock toolbar */}
-      <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'sw-brand-ring' : ''}`}>
-        <div className="flex flex-col gap-1">
-          <label htmlFor={uploadId} className="text-xs font-bold text-slate-700 dark:text-slate-200">
-            Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
-          </label>
-          <input id={uploadId} ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Any file type. Images become AVIF/WebP; other files are stored as downloads.
-            {folder && <> Filing into <strong>{folder}</strong>.</>}
-            {uploading && (
-              <span className="ml-1 text-indigo-500 dark:text-indigo-300" role="status">
-                {progress === null
-                  ? 'uploading…'
-                  : progress.waitingFor > 0
-                    ? // Say WHY it paused. Silence here is indistinguishable from a hang.
-                      `uploaded ${progress.done} of ${progress.total} — busy, resuming in ${progress.waitingFor}s`
-                    : `uploading ${progress.done} of ${progress.total}…`}
-              </span>
-            )}
-          </p>
-          <label className="mt-0.5 flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
-            <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
-            Clean up SVG code on upload
-          </label>
+      {/* Upload + stock toolbar — every action on ONE row, the primary one carrying the brand gradient. */}
+      <div className={`mb-4 ${glassCard} p-4 ${dropTarget === folder ? 'sw-brand-ring' : ''}`}>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The native file input is the thing that actually opens the picker, but its browser-drawn
+              "Choose files" control cannot be styled and looked nothing like the rest of the editor. It
+              stays in the DOM (hidden) and keeps its label, so it is still the accessible control and
+              still what a test drives; this button is the visible affordance and forwards the click. */}
+          <input
+            id={uploadId}
+            ref={fileInput}
+            aria-label="Upload files"
+            type="file"
+            multiple
+            disabled={uploading}
+            onChange={onUpload}
+            className="hidden"
+          />
+          <button type="button" onClick={() => fileInput.current?.click()} disabled={uploading} className={primaryButton}>
+            {uploading ? 'Uploading…' : 'Upload files'}
+          </button>
+          <button type="button" onClick={() => setStockOpen(true)} className={ghostButton}>
+            Search stock images
+          </button>
+          <button type="button" onClick={() => setUnusedOpen(true)} className={ghostButton}>
+            Search for unused files
+          </button>
+          <button type="button" onClick={() => setRecycleOpen(true)} className={ghostButton}>
+            Recycle Bin
+          </button>
         </div>
-        <button type="button" onClick={() => setStockOpen(true)} className={ghostButton}>
-          Search stock images
-        </button>
-        <button type="button" onClick={() => setUnusedOpen(true)} className={ghostButton}>
-          Search for unused files
-        </button>
-        <button type="button" onClick={() => setRecycleOpen(true)} className={ghostButton}>
-          Recycle Bin
-        </button>
+        <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+          Any file type, or drag &amp; drop onto this panel. Images become AVIF/WebP; other files are stored as downloads.
+          {folder && <> Filing into <strong>{folder}</strong>.</>}
+        </p>
+        <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
+          <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
+          Clean up SVG code on upload
+        </label>
       </div>
 
       {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -910,6 +962,65 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
           {virt.padBottom > 0 && <div data-virtual-spacer aria-hidden style={{ gridColumn: '1 / -1', height: virt.padBottom }} />}
           {rowCount === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">{emptyMsg}</p>}
         </div>
+      )}
+
+      {/* UPLOAD PROGRESS.
+          A batch can take minutes (uploadBatch waits out 429s), and the only previous signal was one
+          line of small print in the toolbar — easy to miss, and invisible once the pane scrolled. The
+          modal auto-closes on success: it is unmounted the moment `uploading` goes false, so a clean
+          run costs no click. It is HELD OPEN only when files failed, because that is the one case with
+          something to read — the names of what did not land. */}
+      {(uploading || uploadReport) && (
+        <Modal
+          title={uploadReport ? 'Upload finished with errors' : 'Uploading files'}
+          size="md"
+          onClose={() => {
+            // No dismissing mid-flight: closing would suggest the upload stopped, and it has not.
+            if (!uploading) setUploadReport(null);
+          }}
+        >
+          <div className="flex flex-col gap-3 p-4" role="status" aria-live="polite">
+            {uploading && (
+              <>
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  {progress === null
+                    ? 'Uploading…'
+                    : progress.waitingFor > 0
+                      ? // Say WHY it paused. Silence here is indistinguishable from a hang.
+                        `Uploaded ${progress.done} of ${progress.total} — server busy, resuming in ${progress.waitingFor}s`
+                      : `Uploading ${progress.done} of ${progress.total}…`}
+                </p>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
+                  {/* A single file finishes before a determinate bar could be read, so that case gets a
+                      moving stripe rather than a percentage that only ever shows 0 then 100. */}
+                  <div
+                    className={progress === null ? 'h-full w-1/3 animate-pulse sw-brand-gradient' : 'h-full sw-brand-gradient transition-[width]'}
+                    style={progress === null ? undefined : { width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
+                    aria-hidden
+                  />
+                </div>
+              </>
+            )}
+            {uploadReport && !uploading && (
+              <>
+                <p className="text-sm text-slate-700 dark:text-slate-200">
+                  {uploadReport.stored} of {uploadReport.total} uploaded — {uploadReport.failed.length} failed:
+                </p>
+                <ul className="max-h-48 overflow-auto text-xs text-red-600 dark:text-red-400">
+                  {uploadReport.failed.slice(0, 12).map((name) => (
+                    <li key={name} className="truncate">{name}</li>
+                  ))}
+                  {uploadReport.failed.length > 12 && <li>…and {uploadReport.failed.length - 12} more</li>}
+                </ul>
+                <div className="flex justify-end">
+                  <button type="button" onClick={() => setUploadReport(null)} className={ghostButton}>
+                    Dismiss
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
       )}
 
       {stockOpen && (

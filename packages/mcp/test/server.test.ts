@@ -138,6 +138,12 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     createMediaUpload: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-1', expiresInSeconds: 600, maxBytes: 209715200 })),
     uploadMediaBase64: vi.fn(async () => ({ id: 'm3', kind: 'image', url: '/media/p/m3/icon.svg' })),
+    createMediaReplace: vi.fn(async () => ({ uploadUrl: 'https://sw.test/media-upload/tok-2', expiresInSeconds: 600, maxBytes: 209715200 })),
+    replaceMediaBase64: vi.fn(async () => ({
+      item: { id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', width: 800, height: 800 },
+      previous: { bytes: 4096, width: 1200, height: 800 },
+      snapshotId: 'm9',
+    })),
     listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
     createMediaFolder: vi.fn(async () => ({ ok: true })),
     renameMediaFolder: vi.fn(async () => ({ ok: true })),
@@ -490,6 +496,42 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(denied.isError).toBe(true);
     expect(text(denied)).toMatch(/content:write/);
     expect(callsOf(reader).uploadMediaBase64).not.toHaveBeenCalled();
+  });
+
+  it('replace_media overwrites in place and hands back the PREVIOUS dimensions, gated on content:write', async () => {
+    // The receipt is the whole point of the tool over upload_media: the id and URL do not move, so an
+    // agent gets no other signal that the asset it just swapped is now a different shape — and every
+    // page referencing it will reflow.
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const b64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
+    const res = await w.callTool({ name: 'replace_media', arguments: { id: 'm1', filename: 'x.webp', content_base64: b64 } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).replaceMediaBase64).toHaveBeenCalledWith('m1', 'x.webp', b64);
+    expect(text(res)).toContain('1200'); // the previous width reaches the agent
+    expect(text(res)).toContain('m9'); // …as does the snapshot it can restore to undo
+
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const denied = await r.callTool({ name: 'replace_media', arguments: { id: 'm1', filename: 'x.webp', content_base64: b64 } });
+    expect(denied.isError).toBe(true);
+    expect(text(denied)).toMatch(/content:write/);
+    expect(callsOf(reader).replaceMediaBase64).not.toHaveBeenCalled();
+  });
+
+  it('create_media_replace mints a ticket pinned to ONE asset, gated on content:write', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'create_media_replace', arguments: { id: 'm1' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).createMediaReplace).toHaveBeenCalledWith('m1');
+    expect(text(res)).toContain('https://sw.test/media-upload/tok-2');
+
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const denied = await r.callTool({ name: 'create_media_replace', arguments: { id: 'm1' } });
+    expect(denied.isError).toBe(true);
+    expect(callsOf(reader).createMediaReplace).not.toHaveBeenCalled();
   });
 
   it('★ upload_media REFUSES an oversized payload at the schema, before it is ever decoded', async () => {

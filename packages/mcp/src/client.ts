@@ -733,10 +733,25 @@ export class SitewrightClient {
    * container talking to a host port).
    */
   async createMediaUpload(folder?: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
+    return this.mintUploadTicket(folder ? { folder } : {});
+  }
+
+  /**
+   * Mint a one-shot ticket that REPLACES an existing asset's bytes when redeemed, instead of creating
+   * a new asset. Same mechanism, one more dimension pinned at mint time — the holder still chooses
+   * only the bytes, and cannot re-point the ticket at another asset.
+   */
+  async createMediaReplace(assetId: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
+    return this.mintUploadTicket({ replaceAssetId: assetId });
+  }
+
+  private async mintUploadTicket(
+    body: { folder?: string; replaceAssetId?: string },
+  ): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
     const res = await this.request<{ uploadPath: string; expiresInSeconds: number; maxBytes: number }>(
       'POST',
       this.projectPath('/media/upload-ticket'),
-      folder ? { folder } : {},
+      body,
     );
     return { uploadUrl: `${this.baseUrl}${res.uploadPath}`, expiresInSeconds: res.expiresInSeconds, maxBytes: res.maxBytes };
   }
@@ -750,16 +765,39 @@ export class SitewrightClient {
    * `create_media_upload`. A second server route would have been a second thing to keep in step.
    */
   async uploadMediaBase64(filename: string, contentBase64: string, folder?: string): Promise<unknown> {
+    const bytes = this.decodeInline(contentBase64, 'upload_media', 'create_media_upload');
+    const ticket = await this.createMediaUpload(folder);
+    const sent = await this.redeemTicket(ticket.uploadUrl, filename, bytes, 'upload');
+    return (sent as { item?: unknown } | undefined)?.item ?? sent;
+  }
+
+  /**
+   * REPLACE a small asset's bytes inline, the counterpart to `uploadMediaBase64`. Returns the whole
+   * receipt (not just `item`): the previous dimensions are the point — an agent that swaps a 3:2 hero
+   * for a square one needs to see that the pages referencing it will reflow.
+   */
+  async replaceMediaBase64(assetId: string, filename: string, contentBase64: string): Promise<unknown> {
+    const bytes = this.decodeInline(contentBase64, 'replace_media', 'create_media_replace');
+    const ticket = await this.createMediaReplace(assetId);
+    return this.redeemTicket(ticket.uploadUrl, filename, bytes, 'replace');
+  }
+
+  /** Decode inline base64 and hold it to the inline cap, naming the ticket tool to use instead. */
+  private decodeInline(contentBase64: string, tool: string, ticketTool: string): Buffer {
     const bytes = decodeBase64(contentBase64);
     if (bytes.length === 0) throw new SitewrightApiError(400, 'content_base64 decoded to no bytes — is it valid base64?');
     if (bytes.length > MCP_INLINE_UPLOAD_MAX_BYTES) {
       throw new SitewrightApiError(
         413,
-        `file is ${bytes.length} bytes; upload_media is capped at ${MCP_INLINE_UPLOAD_MAX_BYTES}. Use create_media_upload for anything larger — it does not send the bytes through the conversation.`,
+        `file is ${bytes.length} bytes; ${tool} is capped at ${MCP_INLINE_UPLOAD_MAX_BYTES}. Use ${ticketTool} for anything larger — it does not send the bytes through the conversation.`,
       );
     }
-    const ticket = await this.createMediaUpload(folder);
-    const res = await this.fetchImpl(`${ticket.uploadUrl}?filename=${encodeURIComponent(filename)}`, {
+    return bytes;
+  }
+
+  /** PUT bytes to a one-shot ticket URL. The ticket IS the credential, so this is a plain fetch. */
+  private async redeemTicket(uploadUrl: string, filename: string, bytes: Buffer, verb: string): Promise<unknown> {
+    const res = await this.fetchImpl(`${uploadUrl}?filename=${encodeURIComponent(filename)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/octet-stream' },
       body: bytes,
@@ -772,10 +810,10 @@ export class SitewrightClient {
       parsed = undefined;
     }
     if (!res.ok) {
-      const message = (parsed as { error?: string } | undefined)?.error ?? `upload failed (${res.status})`;
+      const message = (parsed as { error?: string } | undefined)?.error ?? `${verb} failed (${res.status})`;
       throw new SitewrightApiError(res.status, message);
     }
-    return (parsed as { item?: unknown } | undefined)?.item ?? parsed;
+    return parsed;
   }
 
   /** List the project's virtual media FOLDERS (grouping labels for the media library). */

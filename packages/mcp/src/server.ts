@@ -1392,6 +1392,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:write', ({ filename, content_base64, folder }) => client.uploadMediaBase64(filename, content_base64, folder)),
   );
 
+  // REPLACE, in the same two lanes as upload: inline for a small file, a ticket for a large one. The
+  // reason it exists is that "swap this picture" used to be a site-wide migration — a new upload mints
+  // a NEW id, so every reference (page source, page data, dataset entries, the settings chrome slots)
+  // had to be found and repointed, and a missed one left a page on the old picture.
+  server.registerTool(
+    'replace_media',
+    {
+      description:
+        `REPLACE an existing asset's BYTES in place, keeping its id and URL — so every page, entry and chrome slot already pointing at it shows the new file with NOTHING to repoint. This is what you want for "swap this logo/photo/PDF"; a fresh upload_media would mint a NEW id and leave you to hunt down every reference. Send the bytes INLINE as base64 (up to ${Math.round(MCP_INLINE_UPLOAD_MAX_BYTES / 1024)} KB); for anything larger use create_media_replace, which keeps them out of this conversation. TWO RULES: the replacement must keep the SAME FILE EXTENSION (it is part of every URL — a .jpg cannot become a .png, and on a project with an image cap an oversized photo would be re-encoded to WebP and is refused, so resize it first); and a FONT cannot be replaced (a family is many files). The outgoing bytes are snapshotted to the Recycle Bin, so a replace is undoable — the receipt's \`snapshotId\` is that copy. The receipt also carries \`previous\` (the old bytes/width/height): CHECK IT — a replacement with a different aspect ratio will reflow every page using the asset, and nothing else will warn you.`,
+      inputSchema: {
+        id: z.string().describe('Asset id to overwrite (from list_media).'),
+        filename: z.string().min(1).max(200).describe('Name of the incoming file — its extension must match the asset it replaces.'),
+        content_base64: z.string().min(1).max(MCP_INLINE_UPLOAD_MAX_B64_CHARS),
+      },
+    },
+    gate('content:write', ({ id, filename, content_base64 }) => client.replaceMediaBase64(id, filename, content_base64)),
+  );
+
+  server.registerTool(
+    'create_media_replace',
+    {
+      description:
+        'REPLACE a LARGE local file in place (the ticket lane for replace_media — a photo, a video, a PDF). TWO STEPS: (1) call this with the asset `id` to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./hero.jpg "<uploadUrl>?filename=hero.jpg"` — always pass ?filename=, since a raw upload carries no name and the extension is checked against the asset it replaces. The response of THAT request is the receipt ({ item, previous, snapshotId }); read `previous` to see whether the aspect ratio changed. The ticket is single-use, expires (see expiresInSeconds) and is pinned to THIS asset, so mint one per replacement immediately before sending it. Same rules as replace_media: the extension cannot change, and a font cannot be replaced.',
+      inputSchema: { id: z.string().describe('Asset id whose bytes this ticket will overwrite.') },
+    },
+    gate('content:write', ({ id }) => client.createMediaReplace(id)),
+  );
+
   // Media organization — give the agent control over the per-page folder structure (a gallery in
   // its own folder, one-per-page heroes under "Header Images", loose singletons under "Main", …).
   server.registerTool(

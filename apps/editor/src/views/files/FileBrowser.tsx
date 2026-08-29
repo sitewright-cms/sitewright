@@ -97,6 +97,18 @@ const icon = (paths: ReactNode) => (
   </svg>
 );
 const RENAME_ICON = icon(<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />);
+/** Two arrows chasing each other — swap THIS file's contents, as distinct from the pencil (rename). */
+const REPLACE_ICON = icon(<path d="M21 8a9 9 0 0 0-15.5-4.5L3 6M3 4v4h4M3 16a9 9 0 0 0 15.5 4.5L21 18M21 20v-4h-4" />);
+
+/** The single stored file behind an asset — its extension is what a replacement has to match. */
+function assetStoredName(m: MediaAsset): string {
+  if (m.kind === 'image') return m.original;
+  if (m.kind === 'font') return m.files[0]?.file ?? m.filename;
+  return m.storedName;
+}
+
+/** A font family is many files (weight × style), so "replace the file" has no single meaning. */
+const canReplace = (m: MediaAsset): boolean => m.kind !== 'font';
 const LINK_ICON = icon(
   <>
     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -167,6 +179,15 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [folderRecords, setFolderRecords] = useState<MediaFolderRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  /** A non-error note the author still has to see — currently "the replacement is a different shape". */
+  const [notice, setNotice] = useState<string | null>(null);
+  /**
+   * The asset a pending "Replace file" picker is aimed at (the input itself carries no target).
+   * A REF, not state: `replaceAsset` opens the file dialog synchronously, so a state update made in
+   * the same tick would not have re-rendered yet — the picker would still carry the PREVIOUS asset's
+   * `accept` filter, and on the first use none at all.
+   */
+  const replaceTarget = useRef<MediaAsset | null>(null);
   const [uploading, setUploading] = useState(false);
   /** Where a multi-file drop has got to, and whether it is currently waiting out a rate limit. */
   const [progress, setProgress] = useState<{ done: number; total: number; waitingFor: number } | null>(null);
@@ -185,6 +206,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   const [previewNonce, setPreviewNonce] = useState(0);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
   const fileInput = useRef<HTMLInputElement>(null);
+  const replaceInput = useRef<HTMLInputElement>(null);
   const dragItem = useRef<DragItem | null>(null);
   // Unique per instance — a FilePicker can render a second FileBrowser over the manager drawer.
   const uploadId = useId();
@@ -445,6 +467,56 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
     await run(() => api.deleteMedia(projectId, m.id));
   }
 
+  /**
+   * REPLACE this asset's bytes, keeping its id and URL — so every page, entry and chrome slot already
+   * pointing at it shows the new file with nothing to repoint. Distinct from the "Replace image" picker
+   * in the page editor, which points one `<img>` at a DIFFERENT asset and leaves this one alone.
+   *
+   * The picker is filtered to the SAME EXTENSION, because that is the server's rule (the extension is
+   * part of every URL) and letting someone choose a .png for a .jpg only to be refused afterwards is a
+   * worse way to learn it.
+   */
+  function replaceAsset(m: MediaAsset) {
+    const input = replaceInput.current;
+    if (!input) return;
+    replaceTarget.current = m;
+    // Reset first: picking the same path twice in a row fires no change event otherwise.
+    input.value = '';
+    // Set `accept` IMPERATIVELY, for the timing reason on the ref above — the dialog opens on the
+    // click below. The server refuses a format change, so the picker must not offer one.
+    input.accept = `.${(assetStoredName(m).split('.').pop() ?? '').toLowerCase()}`;
+    input.click();
+  }
+
+  async function onReplacePicked(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    const target = replaceTarget.current;
+    replaceTarget.current = null;
+    if (!file || !target) return;
+    setError(null);
+    try {
+      const res = await api.replaceMediaContent(projectId, target.id, file);
+      await load();
+      // The URL did not change, so the browser would keep showing the old picture in an open preview.
+      setPreviewNonce((n) => n + 1);
+      if (res.item.kind === 'image' && preview?.id === target.id) setPreview(res.item);
+      // ★ A same-URL swap gives the author NO other signal that the shape changed — and a different
+      // aspect ratio reflows every page using the asset. Say so; it is not an error, so it is a note.
+      const before = res.previous;
+      const after = res.item as MediaAsset & { width?: number; height?: number };
+      if (before.width && before.height && after.width && after.height) {
+        const ratio = (w: number, h: number) => Math.round((w / h) * 100);
+        if (ratio(before.width, before.height) !== ratio(after.width, after.height)) {
+          setNotice(
+            `Replaced. The new file is ${after.width}×${after.height}, not ${before.width}×${before.height} — pages using it may reflow.`,
+          );
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'could not replace this file');
+    }
+  }
+
   /** Runs an op then reloads, surfacing any error inline. */
   async function run(op: () => Promise<unknown>) {
     setError(null);
@@ -541,6 +613,23 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       </div>
 
       {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {notice && (
+        <p role="status" className="mb-3 flex items-start gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <span className="flex-1">{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} className={`${ghostButton} px-2 py-0.5 text-xs`}>
+            Dismiss
+          </button>
+        </p>
+      )}
+      {/* The "Replace file" picker, shared by every row. `accept` is pinned to the target's extension
+          because the server refuses anything else — the extension is part of the asset's URL. */}
+      <input
+        ref={replaceInput}
+        type="file"
+        aria-label="Replace file"
+        className="hidden"
+        onChange={(e) => void onReplacePicked(e)}
+      />
 
       {/* Breadcrumb + new folder + view toggle */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -641,11 +730,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                   Size {sortArrow('size')}
                 </button>
               </th>
-              {/* A file row carries up to FIVE actions — Use, Copy URL, Download, Rename, Delete. At the
-                  desktop icon size they fit in 9rem; under the coarse-pointer 44px touch floor they need
-                  220px plus gaps, and in 9rem they spilled out of the column. The table already scrolls
-                  horizontally inside the rail, which is the accepted trade here. */}
-              <th className={`py-1 text-right font-medium ${isMobile ? 'w-64' : 'w-36'}`}>Actions</th>
+              {/* A file row carries up to SIX actions — Use, Copy URL, Download, Replace, Rename, Delete.
+                  At the desktop icon size they fit in 11rem; under the coarse-pointer 44px touch floor
+                  they need 264px plus gaps, which is why the mobile width is 18rem rather than 16. The
+                  table already scrolls horizontally inside the rail, which is the accepted trade here. */}
+              <th className={`py-1 text-right font-medium ${isMobile ? 'w-72' : 'w-44'}`}>Actions</th>
             </tr>
           </thead>
           <tbody ref={virt.listRef as (el: HTMLTableSectionElement | null) => void}>
@@ -724,6 +813,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                       <>
                         <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
                         <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                        {canReplace(m) && (
+                          <button aria-label={actLabel('Replace', m)} title="Replace file (keeps the URL)" className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                        )}
                         <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
                         <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                       </>
@@ -804,7 +896,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                     <>
                       <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
                       <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
-                      <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                      {canReplace(m) && (
+                          <button aria-label={actLabel('Replace', m)} title="Replace file (keeps the URL)" className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                        )}
+                        <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
                       <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                     </>
                   )}
@@ -831,7 +926,14 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       {/* In-app image preview (replaces opening images in a new tab) + copyable embed URLs. */}
       {preview && preview.kind === 'image' && (
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
-          <ImagePreview asset={preview} copiedId={copiedId} onCopy={copy} onEdit={() => setEditing(preview)} nonce={previewNonce} />
+          <ImagePreview
+            asset={preview}
+            copiedId={copiedId}
+            onCopy={copy}
+            onEdit={() => setEditing(preview)}
+            onReplace={() => replaceAsset(preview)}
+            nonce={previewNonce}
+          />
         </Modal>
       )}
 
@@ -869,6 +971,7 @@ function ImagePreview({
   copiedId,
   onCopy,
   onEdit,
+  onReplace,
   nonce,
 }: {
   asset: MediaAsset & { kind: 'image' };
@@ -876,6 +979,8 @@ function ImagePreview({
   onCopy: (text: string, id: string) => void;
   /** Open the Image Editor on this asset. Absent for a format that has no pixels to edit. */
   onEdit?: () => void;
+  /** Swap the FILE behind this asset, keeping its id and URL (not the same as repointing an <img>). */
+  onReplace?: () => void;
   /** Bumped after an in-place save; appended to the <img> src so the browser refetches. */
   nonce?: number;
 }) {
@@ -897,6 +1002,11 @@ function ImagePreview({
           {onEdit && asset.format !== 'svg' && (
             <button type="button" onClick={onEdit} className={`${ghostButton} px-3 py-1`}>
               Edit image
+            </button>
+          )}
+          {onReplace && (
+            <button type="button" onClick={onReplace} className={`${ghostButton} px-3 py-1`} title="Swap the file behind this asset — its URL does not change">
+              Replace file
             </button>
           )}
           <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>

@@ -1290,6 +1290,29 @@ export const api = {
     if (!res.ok) throw await errorFromResponse(res);
     return (await res.json()) as { item: MediaAsset };
   },
+  /**
+   * REPLACE an asset's bytes in place — the id, the stored name and every URL referencing it survive,
+   * so nothing has to be repointed. The receipt carries `previous` (what it was) so the caller can warn
+   * about an aspect-ratio change, and `snapshotId` — the outgoing bytes, binned and restorable.
+   *
+   * NOT to be confused with the "Replace image" picker, which repoints an <img> at a DIFFERENT asset
+   * and leaves this one alone. This one changes the file behind the asset.
+   */
+  replaceMediaContent: async (
+    projectId: string,
+    id: string,
+    file: File,
+  ): Promise<{ item: MediaAsset; previous: { bytes: number; width?: number; height?: number }; snapshotId: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE}/projects/${projectId}/media/${encodeURIComponent(id)}/content`, {
+      method: 'PUT',
+      credentials: 'include',
+      body: form, // the browser sets multipart/form-data with the boundary
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return (await res.json()) as { item: MediaAsset; previous: { bytes: number; width?: number; height?: number }; snapshotId: string };
+  },
   /** Download a remote URL into the library (self-host) — returns the new asset. */
   importMediaUrl: (projectId: string, url: string, folder = '') =>
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),

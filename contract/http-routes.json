@@ -224,6 +224,7 @@
   "PUT /projects/:projectId/content/:kind/:entityId",
   "PUT /projects/:projectId/deploy-targets/:id",
   "PUT /projects/:projectId/locales/default",
+  "PUT /projects/:projectId/media/:id/content",
   "PUT /projects/:projectId/media/:id/svg",
   "PUT /projects/:projectId/smtp",
   "PUT /projects/:projectId/translations",

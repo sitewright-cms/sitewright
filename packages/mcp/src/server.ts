@@ -31,7 +31,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView } from './client.js';
+import { SitewrightApiError, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -846,7 +846,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'pagespeed_audit',
     {
       description:
-        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. `formFactor` defaults to mobile; pass 'desktop' for the desktop profile.",
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. OMIT `formFactor` to get BOTH devices from one run, keyed `{ mobile, desktop }` — the expensive half is building and serving the site, which is shared, so both cost barely more than one and you should not call this twice. Pass 'mobile' or 'desktop' only when you genuinely need just that one.",
       inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop']).optional() },
     },
     async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
@@ -855,11 +855,21 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
       }
       try {
-        const r = await client.pagespeedAudit(pageId, formFactor);
+        const raw = await client.pagespeedAudit(pageId, formFactor);
         const pct = (n: number | null): string => (n === null ? '—' : String(n));
         const ms = (n?: number): string => (n === undefined ? '—' : `${Math.round(n)} ms`);
         const kib = (bytes: number): string => `${Math.round(bytes / 1024)} KiB`;
-        const lines = [
+        // ONE audit run now returns BOTH devices (keyed) unless a formFactor was asked for. Normalise
+        // to a list so the report renders one section per device either way.
+        const asPair = raw as Partial<Record<'mobile' | 'desktop', PagespeedAuditResult>>;
+        const runs: PagespeedAuditResult[] =
+          asPair && typeof asPair === 'object' && (asPair.mobile || asPair.desktop)
+            ? ([asPair.mobile, asPair.desktop].filter(Boolean) as PagespeedAuditResult[])
+            : [raw as PagespeedAuditResult];
+        const lines: string[] = [];
+        for (const r of runs) {
+        if (lines.length) lines.push('', '─────────────', '');
+        lines.push(
           `PAGE-SPEED + SEO AUDIT — page “${pageId}” · ${r.formFactor} · Lighthouse ${r.lighthouseVersion}`,
           '',
           `  Performance    ${pct(r.scores.performance)}`,
@@ -868,7 +878,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           `  SEO            ${pct(r.scores.seo)}`,
           '',
           `  Metrics: FCP ${ms(r.metrics.firstContentfulPaintMs)} · LCP ${ms(r.metrics.largestContentfulPaintMs)} · TBT ${ms(r.metrics.totalBlockingTimeMs)} · CLS ${(r.metrics.cumulativeLayoutShift ?? 0).toFixed(3)} · Speed Index ${ms(r.metrics.speedIndexMs)}`,
-        ];
+        );
         if (r.findings.length === 0) {
           lines.push('', 'No failing audits — every scored check passed. ✓');
         } else {
@@ -909,6 +919,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         if (r.runWarnings && r.runWarnings.length > 0) {
           lines.push('', 'Lighthouse environment notices (may explain a host-constrained score):');
           for (const w of r.runWarnings) lines.push(`  • ${w}`);
+        }
         }
         lines.push('', 'Note: performance is a throttled LAB score (directional); SEO / accessibility / best-practices are deterministic. No real-user field data.');
         return { content: [{ type: 'text', text: lines.join('\n') }] };

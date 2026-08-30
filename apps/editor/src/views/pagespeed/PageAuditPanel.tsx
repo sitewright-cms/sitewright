@@ -11,10 +11,12 @@ import {
 } from "lucide-react";
 import {
   api,
+  type PagespeedAuditPair,
   type PagespeedAuditResult,
   type PagespeedFinding,
   type HeadingOutline,
 } from "../../api";
+import { CapacityNotice } from "../ui/CapacityNotice";
 import { primaryButton, gradientSurface } from "../../theme";
 
 type FormFactor = "mobile" | "desktop";
@@ -557,9 +559,13 @@ export function PageAuditPanel({
   dirty?: boolean;
 }) {
   const [formFactor, setFormFactor] = useState<FormFactor>("mobile");
-  const [result, setResult] = useState<PagespeedAuditResult | null>(null);
+  /** BOTH devices from one run — switching the toggle now reads the other half, it does not re-audit. */
+  const [pair, setPair] = useState<PagespeedAuditPair | null>(null);
+  const result = pair?.[formFactor] ?? null;
   const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // The ERROR OBJECT, not its message: a capacity refusal (the instance is momentarily full) has to
+  // be told apart from a real failure, and only the object carries that.
+  const [error, setError] = useState<unknown>(null);
   const [imgOk, setImgOk] = useState(true);
 
   const mounted = useRef(true);
@@ -570,11 +576,9 @@ export function PageAuditPanel({
     [],
   );
 
-  // A prior result is stale the moment the device changes — clear it so nobody reads old numbers.
-  useEffect(() => {
-    setResult(null);
-    setError(null);
-  }, [formFactor]);
+  // Switching device no longer throws the numbers away: one run produced both, so the toggle is a
+  // VIEW change. It used to clear the result and re-run the whole audit — a second site build, a
+  // second ephemeral server and a second Chrome, for numbers the first run could have produced.
   useEffect(() => setImgOk(true), [seo.image]);
 
   async function runAudit() {
@@ -582,12 +586,12 @@ export function PageAuditPanel({
     setRunning(true);
     setError(null);
     try {
-      const r = await api.pagespeedAudit(projectId, pageId, formFactor);
-      if (mounted.current) setResult(r);
+      const r = await api.pagespeedAudit(projectId, pageId);
+      if (mounted.current) setPair(r);
     } catch (err) {
       if (!mounted.current) return;
-      setError(err instanceof Error ? err.message : "Audit failed.");
-      setResult(null);
+      setError(err);
+      setPair(null);
     } finally {
       if (mounted.current) setRunning(false);
     }
@@ -690,11 +694,7 @@ export function PageAuditPanel({
           </button>
         </div>
 
-        {error ? (
-          <p className="flex items-center gap-1.5 text-sm text-rose-500">
-            <AlertCircle className="h-4 w-4 shrink-0" /> {error}
-          </p>
-        ) : null}
+        {error ? <CapacityNotice error={error} onRetry={() => void runAudit()} /> : null}
 
         {running ? (
           <AuditSkeleton />

@@ -157,9 +157,23 @@ export class ApiError extends Error {
      * refused bulk upload from a lost batch into a slower one.
      */
     public readonly retryAfterSeconds?: number,
+    /**
+     * A machine-readable discriminator, when the server sent one. `capacity` means the request was
+     * SHED for lack of memory — the feature works, the instance is momentarily full. Status alone is
+     * not enough: a 503 is also returned when a feature is genuinely unavailable (no headless browser
+     * for an audit), and telling the author to "try again in a moment" would be a lie.
+     */
+    public readonly code?: string,
+    /** For a `capacity` refusal: whether retrying soon is actually worth it. */
+    public readonly transient?: boolean,
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+
+  /** The instance was momentarily full — distinct from the feature being broken or unavailable. */
+  get isCapacity(): boolean {
+    return this.status === 503 && this.code === 'capacity';
   }
 }
 
@@ -191,9 +205,13 @@ function notifyIfUnauthorized(status: number): void {
 async function errorFromResponse(res: Response): Promise<ApiError> {
   let message = res.statusText;
   let details: ApiErrorDetails | undefined;
+  let code: string | undefined;
+  let transient: boolean | undefined;
   try {
-    const json = (await res.json()) as { error?: string; details?: ApiErrorDetails };
+    const json = (await res.json()) as { error?: string; details?: ApiErrorDetails; code?: string; transient?: boolean };
     if (json.error) message = json.error;
+    if (json.code) code = json.code;
+    if (typeof json.transient === 'boolean') transient = json.transient;
     if (json.details) {
       details = json.details;
       // The server's generic "invalid request" (a Zod failure) is opaque on its own — surface the
@@ -207,7 +225,14 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   notifyIfUnauthorized(res.status);
   // `retry-after` is seconds here (the limiter never sends the HTTP-date form).
   const after = Number(res.headers.get('retry-after'));
-  return new ApiError(res.status, message, details, Number.isFinite(after) && after > 0 ? after : undefined);
+  return new ApiError(
+    res.status,
+    message,
+    details,
+    Number.isFinite(after) && after > 0 ? after : undefined,
+    code,
+    transient,
+  );
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -778,6 +803,16 @@ export interface HeadingOutline {
   truncated?: number;
 }
 /** Lighthouse page-speed + SEO audit of a page (GET /projects/:id/pagespeed-audit/:pageId). Lab-only. */
+/**
+ * Both devices from ONE audit run. The server builds and serves the site once and drives Lighthouse
+ * per device against it, so a pair costs barely more than a single result — and the panel no longer
+ * has to throw the numbers away and rebuild everything when the author switches device.
+ */
+export interface PagespeedAuditPair {
+  mobile?: PagespeedAuditResult;
+  desktop?: PagespeedAuditResult;
+}
+
 export interface PagespeedAuditResult {
   url: string;
   formFactor: 'mobile' | 'desktop';
@@ -944,10 +979,15 @@ export const api = {
   listPages: (projectId: string) =>
     request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
   /** Run a Lighthouse page-speed + SEO audit of one page (deploy-equivalent build). Defaults to mobile. */
-  pagespeedAudit: (projectId: string, pageId: string, formFactor?: 'mobile' | 'desktop') =>
-    request<PagespeedAuditResult>(
+  /**
+   * Audit a page. With no `formFactor` the server runs BOTH devices inside ONE build + serve and
+   * returns them keyed by device — the build is the expensive half, so asking for both costs barely
+   * more than asking for one, and the author gets both numbers without a second wait.
+   */
+  pagespeedAudit: (projectId: string, pageId: string) =>
+    request<PagespeedAuditPair>(
       'GET',
-      `/projects/${projectId}/pagespeed-audit/${encodeURIComponent(pageId)}${formFactor ? `?formFactor=${formFactor}` : ''}`,
+      `/projects/${projectId}/pagespeed-audit/${encodeURIComponent(pageId)}`,
     ),
   getPage: (projectId: string, id: string) =>
     request<{ item: Page }>('GET', `/projects/${projectId}/content/page/${encodeURIComponent(id)}`),

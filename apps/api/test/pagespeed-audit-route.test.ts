@@ -88,3 +88,41 @@ test('404s an unknown page id', async () => {
   const res = await auth({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/does-not-exist` });
   expect(res.statusCode).toBe(404);
 });
+
+test('with no formFactor, ONE run returns BOTH devices', async () => {
+  const { auth, projectId } = await adminClient();
+  const pages = (await auth({ method: 'GET', url: `/projects/${projectId}/content/page` })).json() as {
+    items: Array<{ id: string; kind?: string }>;
+  };
+  const home = pages.items.find((p) => p.kind !== 'link')!;
+
+  const res = await auth({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/${home.id}` });
+  expect([200, 503], `unexpected ${res.statusCode}: ${res.body}`).toContain(res.statusCode);
+  if (res.statusCode !== 200) return; // browserless environment — covered by the test above
+
+  // The build + ephemeral server are the expensive half and are SHARED; the panel used to pay for
+  // them twice because switching device re-ran the whole audit.
+  const pair = res.json() as Record<string, { formFactor: string; scores: Record<string, number | null> }>;
+  expect(Object.keys(pair).sort()).toEqual(['desktop', 'mobile']);
+  expect(pair.mobile!.formFactor).toBe('mobile');
+  expect(pair.desktop!.formFactor).toBe('desktop');
+  for (const device of ['mobile', 'desktop'] as const) {
+    expect(typeof pair[device]!.scores.performance, `${device} performance`).toBe('number');
+  }
+}, 480_000);
+
+test('an explicit formFactor still returns that ONE result, unwrapped', async () => {
+  const { auth, projectId } = await adminClient();
+  const pages = (await auth({ method: 'GET', url: `/projects/${projectId}/content/page` })).json() as {
+    items: Array<{ id: string; kind?: string }>;
+  };
+  const home = pages.items.find((p) => p.kind !== 'link')!;
+
+  const res = await auth({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/${home.id}?formFactor=desktop` });
+  if (res.statusCode !== 200) return;
+  const r = res.json() as { formFactor?: string; mobile?: unknown; desktop?: unknown };
+  // Unwrapped — an existing caller asking for one device keeps the shape it had.
+  expect(r.formFactor).toBe('desktop');
+  expect(r.mobile).toBeUndefined();
+  expect(r.desktop).toBeUndefined();
+}, 240_000);

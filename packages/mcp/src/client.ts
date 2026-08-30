@@ -641,7 +641,8 @@ export class SitewrightClient {
   }
 
   /** Lighthouse page-speed + SEO audit of a page (deploy-equivalent build). `formFactor` defaults to mobile. */
-  async pagespeedAudit(pageId: string, formFactor?: 'mobile' | 'desktop'): Promise<PagespeedAuditResult> {
+  /** Omit `formFactor` for BOTH devices from one build+serve (returned keyed by device). */
+  async pagespeedAudit(pageId: string, formFactor?: 'mobile' | 'desktop'): Promise<unknown> {
     const suffix = formFactor ? `?formFactor=${formFactor}` : '';
     return this.request('GET', this.projectPath(`/pagespeed-audit/${encodeURIComponent(pageId)}${suffix}`));
   }

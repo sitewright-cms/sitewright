@@ -51,6 +51,37 @@ if [ -z "$LD_PRELOAD" ]; then
   done
 fi
 
+# Make jemalloc hand pages back WHILE IDLE.
+#
+# Preloading jemalloc (above) stopped the monotonic ratchet glibc had, but it did not make an idle
+# instance shrink — because jemalloc's decay-based purging is driven by ALLOCATION. A process that
+# has stopped working never calls the allocator, so the decay timer is never advanced and dirty pages
+# are held indefinitely.
+#
+# MEASURED on a 768MB container (v0.42.0): idle floor 238MB; 120 AVIF encodes peaked at 682MB; three
+# minutes of idle afterwards sat FLAT at 308MB and returned nothing. The reclaim only happened when
+# the NEXT batch started (578 -> 390 -> 278MB mid-load) — allocation, not time, was doing the work.
+# That is the reported "memory never returns to baseline after churn", and on a 1GiB instance it
+# rests proportionally higher because the heap ceiling is higher (576MB vs 491MB).
+#
+# ⚠️ `background_thread:true` is the OBVIOUS fix and it is NOT SAFE HERE. jemalloc's background thread
+# and fork() interact badly: a child forked while that thread holds an internal lock can stall between
+# fork and exec. This process forks constantly — render workers, and Chrome for screenshots and
+# Lighthouse. MEASURED on an idle 1GiB slot: with background_thread the pagespeed audit failed 3/3
+# with `could not launch a headless browser: connect ECONNREFUSED` after a 25s launch timeout, while
+# the identical image without it passed 3/3 in 6s. Chrome launched fine by hand under the same
+# MALLOC_CONF — only the fork FROM THE API PROCESS broke — which is why this needs saying out loud.
+#
+# So: shorten the decay windows only. Purging stays allocation-driven, but this instance is never
+# truly idle (timers, health checks, session sweeps), so decay does advance — it just held pages ~5x
+# longer than needed at the 10s default.
+#
+# Only set when the operator has not chosen a value.
+if [ -z "$MALLOC_CONF" ]; then
+  MALLOC_CONF="dirty_decay_ms:2000,muzzy_decay_ms:2000"
+  export MALLOC_CONF
+fi
+
 if [ -z "$NODE_OPTIONS" ]; then
   limit=""
   if [ -r /sys/fs/cgroup/memory.max ]; then
@@ -77,6 +108,24 @@ if [ -z "$NODE_OPTIONS" ]; then
       fi
       ;;
   esac
+fi
+
+# OPT-IN heap snapshots, for telling allocator retention apart from a real leak.
+#
+# The two look identical from outside: RSS that does not come down. Only a snapshot says whether the
+# bytes are reachable JS objects (a leak) or freed memory the allocator is holding (not one). Enable
+# with SW_HEAPSNAPSHOT=1, then, after the churn you want to inspect:
+#
+#   docker kill -s SIGUSR2 <container>        # writes Heap.<pid>.<seq>.heapsnapshot into the CWD
+#   docker cp <container>:/app/<file> .       # open it in Chrome DevTools → Memory
+#
+# Off by default: writing one pauses the process and the file is roughly heap-sized, which is not
+# something to do to a live instance unasked. It is deliberately NOT the inspector (--inspect opens a
+# port that is a remote-code-execution surface on a running instance).
+if [ -n "$SW_HEAPSNAPSHOT" ] && [ "$SW_HEAPSNAPSHOT" != "0" ]; then
+  NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--heapsnapshot-signal=SIGUSR2"
+  export NODE_OPTIONS
+  echo "[sitewright/api] heap snapshots ARMED: docker kill -s SIGUSR2 <container>"
 fi
 
 exec "$@"

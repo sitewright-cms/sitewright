@@ -589,3 +589,88 @@ describe('FileBrowser — upload progress modal', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /errors/i })).toBeNull());
   });
 });
+
+/**
+ * Stepping through a folder from the preview.
+ *
+ * The sibling list is the SAME one the rows are built from, so it carries the active folder, the
+ * search filter and the chosen sort — stepping in any other order would move through a sequence the
+ * author cannot see.
+ */
+describe('FileBrowser — image preview navigation', () => {
+  const img = (id: string, filename: string): MediaAsset => ({
+    ...(image as MediaAsset & { kind: 'image' }),
+    id,
+    filename,
+    original: filename,
+    url: `/media/p/${id}/${filename}`,
+  });
+
+  const three = [img('i1', 'a.png'), img('i2', 'b.png'), img('i3', 'c.png')];
+
+  async function openFirst(items: MediaAsset[] = three) {
+    listMedia.mockResolvedValue({ items });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'a.png' }));
+    return screen.findByRole('dialog');
+  }
+
+  it('shows chevrons and a position counter, with prev disabled on the first image', async () => {
+    const dialog = await openFirst();
+    expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Next image' })).toBeEnabled();
+    expect(dialog).toHaveTextContent('1 of 3');
+  });
+
+  it('steps forward and back with the chevrons', async () => {
+    const dialog = await openFirst();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('2 of 3');
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Previous image' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('1 of 3');
+  });
+
+  it('disables next on the last image (ends do not wrap — the counter says where you are)', async () => {
+    const dialog = await openFirst();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Next image' }));
+    const last = screen.getByRole('dialog');
+    expect(last).toHaveTextContent('3 of 3');
+    expect(within(last).getByRole('button', { name: 'Next image' })).toBeDisabled();
+  });
+
+  it('navigates with the arrow keys wherever focus is', async () => {
+    await openFirst();
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(await screen.findByRole('dialog')).toHaveTextContent('2 of 3');
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(await screen.findByRole('dialog')).toHaveTextContent('1 of 3');
+  });
+
+  it('ignores arrows aimed at a text field, and modified arrows', async () => {
+    await openFirst();
+    const typing = document.createElement('input');
+    document.body.appendChild(typing);
+    fireEvent.keyDown(typing, { key: 'ArrowRight' }); // caret movement, not navigation
+    expect(screen.getByRole('dialog')).toHaveTextContent('1 of 3');
+    fireEvent.keyDown(window, { key: 'ArrowRight', metaKey: true }); // a browser/OS shortcut
+    expect(screen.getByRole('dialog')).toHaveTextContent('1 of 3');
+    typing.remove();
+  });
+
+  it('steps past non-images: a PDF between two pictures is skipped', async () => {
+    const dialog = await openFirst([three[0]!, file, three[1]!]);
+    // The preview cannot render a PDF (clicking one downloads it), so it is not a stop on the way.
+    expect(dialog).toHaveTextContent('1 of 2');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('b.png');
+  });
+
+  it('offers no counter when the folder holds a single image', async () => {
+    const dialog = await openFirst([three[0]!]);
+    expect(dialog).not.toHaveTextContent('1 of 1');
+    expect(within(dialog).getByRole('button', { name: 'Next image' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeDisabled();
+  });
+});

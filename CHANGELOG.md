@@ -9,6 +9,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.44.0] — 2026-08-30
+
+### Changed
+
+- **A page audit now measures BOTH devices in one run.** The expensive half is not Lighthouse — it is
+  building and serving a deploy-equivalent copy of the site — and the panel used to re-run all of it
+  when the author switched device: a second build, a second ephemeral server and a second browser, for
+  numbers the first run could have produced. The route now builds and serves once and drives Lighthouse
+  per device against it, returning both keyed by device, and the toggle became a view change. The two
+  passes run sequentially on purpose: two concurrent Chrome instances is the shape that pushes a 1 GiB
+  instance into shedding work. `?formFactor=` still returns a single unwrapped result, so existing
+  callers are unaffected; `pagespeed_audit` now tells agents to omit it rather than call the tool twice.
+
+### Added
+
+- **Work that is shed for lack of memory now says so, instead of reading as a broken feature.** The
+  server already refused correctly — a retryable 503, a `Retry-After`, and it stops calling itself
+  transient once refusals persist — but the editor rendered that in the same red "it failed" alert as a
+  genuine error, hiding the one useful fact: come back in a moment. The refusal now carries
+  `code: 'capacity'`, and a shared notice distinguishes three cases: momentarily busy (with the real
+  retry interval and a Try again button), sustained pressure (which says plainly that retrying will not
+  help, rather than offering a button that would lie), and everything else as an ordinary failure.
+  - That last distinction is why the server change was needed: the SAME 503 is returned when a feature
+    is genuinely unavailable (no headless browser for an audit), and presenting that as "busy, try
+    again" would be wrong.
+
+
 ## [0.43.0] — 2026-08-30
 
 ### Fixed

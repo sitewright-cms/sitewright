@@ -116,6 +116,8 @@ const LINK_ICON = icon(
   </>,
 );
 const CHECK_ICON = icon(<path d="M20 6 9 17l-5-5" />);
+const CHEVRON_LEFT = icon(<path d="m15 18-6-6 6-6" />);
+const CHEVRON_RIGHT = icon(<path d="m9 18 6-6-6-6" />);
 const DOWNLOAD_ICON = icon(<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />);
 const TRASH_ICON = icon(<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />);
 
@@ -595,6 +597,42 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
     setFileDragOver(false);
   };
 
+  /**
+   * The images the preview can step through: `here` is exactly the list the rows are built from, so it
+   * already carries the active FOLDER, the search filter and the chosen sort — stepping through
+   * anything else would move in an order the author cannot see. Non-images are skipped because the
+   * preview cannot render them (clicking a PDF downloads it; it never opens this modal).
+   */
+  const previewSiblings = useMemo(() => here.filter((a): a is MediaAsset & { kind: 'image' } => a.kind === 'image'), [here]);
+  const previewIndex = preview ? previewSiblings.findIndex((a) => a.id === preview.id) : -1;
+  const goPreview = (delta: number) => {
+    if (previewIndex < 0) return;
+    const next = previewSiblings[previewIndex + delta];
+    if (next) setPreview(next);
+  };
+
+  /**
+   * ←/→ step through the folder while the preview is open.
+   *
+   * Bound on the window rather than the modal so it works wherever focus landed (the close button, a
+   * copy row, the image itself). Two guards: the Image Editor stacks OVER the preview and owns the
+   * arrows for its own crop/rotate controls, and a keystroke aimed at a text field is never navigation.
+   */
+  useEffect(() => {
+    if (!preview || editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
+      e.preventDefault();
+      goPreview(e.key === 'ArrowRight' ? 1 : -1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   const emptyMsg = query.trim()
     ? 'No files or folders match your search.'
     : pick
@@ -1044,6 +1082,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
             onEdit={() => setEditing(preview)}
             onReplace={() => replaceAsset(preview)}
             nonce={previewNonce}
+            position={previewIndex >= 0 ? { index: previewIndex, total: previewSiblings.length } : undefined}
+            onPrev={previewIndex > 0 ? () => goPreview(-1) : undefined}
+            onNext={previewIndex >= 0 && previewIndex < previewSiblings.length - 1 ? () => goPreview(1) : undefined}
           />
         </Modal>
       )}
@@ -1084,6 +1125,9 @@ function ImagePreview({
   onEdit,
   onReplace,
   nonce,
+  position,
+  onPrev,
+  onNext,
 }: {
   asset: MediaAsset & { kind: 'image' };
   copiedId: string | null;
@@ -1094,16 +1138,56 @@ function ImagePreview({
   onReplace?: () => void;
   /** Bumped after an in-place save; appended to the <img> src so the browser refetches. */
   nonce?: number;
+  /** Where this image sits among the folder's images, for the "3 of 12" counter. */
+  position?: { index: number; total: number };
+  /** Step to the previous / next image. ABSENT at the ends — see the disabled-vs-wrap note below. */
+  onPrev?: () => void;
+  onNext?: () => void;
 }) {
   const urls = assetEmbedUrls(asset);
   const original = urls.find((u) => u.label === 'Original')?.url ?? asset.url;
+  // Chevrons FLANK the image rather than overlaying it: a media library is full of pictures with light
+  // edges, and an overlaid control on one of those is invisible exactly when it is needed.
+  //
+  // They are DISABLED at the ends rather than wrapping. Wrapping saves a click but costs the author
+  // their place — with no visible list position, "back to the first" and "no more images" look
+  // identical. The counter below states the position outright, so the ends are legible.
+  const navButton =
+    'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 dark:text-slate-300 transition hover:bg-white/70 dark:hover:bg-white/10 disabled:opacity-25 disabled:hover:bg-transparent';
   return (
     <div className="flex flex-col items-center gap-3 p-4">
-      <img
-        src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
-        alt={asset.alt ?? asset.filename}
-        className="max-h-[40dvh] w-auto rounded-lg shadow-lg"
-      />
+      <div className="flex w-full items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onPrev}
+          disabled={!onPrev}
+          aria-label="Previous image"
+          title="Previous image (←)"
+          className={navButton}
+        >
+          {CHEVRON_LEFT}
+        </button>
+        <img
+          src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
+          alt={asset.alt ?? asset.filename}
+          className="max-h-[40dvh] w-auto rounded-lg shadow-lg"
+        />
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!onNext}
+          aria-label="Next image"
+          title="Next image (→)"
+          className={navButton}
+        >
+          {CHEVRON_RIGHT}
+        </button>
+      </div>
+      {position && position.total > 1 && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400" role="status">
+          {position.index + 1} of {position.total} in this folder · use ← → to step through
+        </p>
+      )}
       <div className="flex w-full items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span>
           {asset.format} · {asset.width}×{asset.height} · {formatBytes(asset.bytes)}

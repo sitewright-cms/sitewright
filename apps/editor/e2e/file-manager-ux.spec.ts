@@ -107,3 +107,32 @@ test('a slow upload shows a progress modal that closes itself when it succeeds',
   await expect(dialog).toBeHidden({ timeout: 30_000 });
   await expect(panel.getByRole('button', { name: 'Delete slow.png' })).toBeVisible();
 });
+
+test('the image preview steps through the folder with chevrons and arrow keys', async ({ page }) => {
+  const panel = await openManager(page, 'fmnav');
+
+  // Three images so there is a middle to land on, and the ends are meaningful.
+  for (const name of ['a.png', 'b.png', 'c.png']) {
+    await panel.getByLabel('Upload files').setInputFiles({ name, mimeType: 'image/png', buffer: PNG_1X1 });
+    await expect(panel.getByRole('button', { name: `Delete ${name}` })).toBeVisible();
+  }
+
+  await panel.getByRole('button', { name: 'a.png', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('1 of 3');
+  // At the first image there is nowhere back to go.
+  await expect(dialog.getByRole('button', { name: 'Previous image' })).toBeDisabled();
+
+  // Chevron forward…
+  await dialog.getByRole('button', { name: 'Next image' }).click();
+  await expect(page.getByRole('dialog')).toContainText('2 of 3');
+
+  // …keyboard forward, wherever focus happens to be.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('dialog')).toContainText('3 of 3');
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Next image' })).toBeDisabled();
+
+  // …and keyboard back.
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('dialog')).toContainText('2 of 3');
+});

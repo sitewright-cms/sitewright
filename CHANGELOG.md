@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.43.0] — 2026-08-30
+
 ### Fixed
 
 - **Memory comes back sooner after a burst of work.** jemalloc holds freed pages for 10 seconds by

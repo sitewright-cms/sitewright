@@ -1914,7 +1914,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const after = (err as { retryAfterSeconds?: number }).retryAfterSeconds;
       if (typeof after === 'number' && after > 0) reply.header('retry-after', String(Math.ceil(after)));
       const transient = (err as { retryable?: boolean }).retryable !== false;
+      // A machine-readable discriminator, because 503 alone is ambiguous: the SAME status is returned
+      // when a feature is genuinely unavailable (no headless browser for an audit), which is not
+      // transient and must not be presented to the author as "busy, try again".
       return reply.code(503).send({
+        code: 'capacity',
+        transient,
         error: transient
           ? 'temporarily out of capacity — this is transient, retry shortly'
           : 'out of capacity — this instance has been refusing for a while; retrying immediately will not help',
@@ -8308,7 +8313,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (isLinkPage(targetPage)) {
           return reply.code(400).send({ error: 'this page has no rendered route to audit' });
         }
-        const formFactor: FormFactor = req.query.formFactor === 'desktop' ? 'desktop' : 'mobile';
+        // BOTH form factors by default, in ONE build + serve.
+        //
+        // The expensive part of an audit is not Lighthouse — it is `buildToDir` + `serveBuiltSite`,
+        // which the route used to do ONCE PER DEVICE because the panel re-ran the whole thing when the
+        // author flipped the toggle. Two devices therefore cost two builds, two ephemeral servers and
+        // two render slots, on an instance that sheds work at ~870MB of a 1GiB budget. Running both
+        // passes against the same served output halves the setup and gives the author both numbers
+        // without a second wait. `?formFactor=` still asks for one, for a caller that only wants one.
+        const only: FormFactor | undefined =
+          req.query.formFactor === 'desktop' ? 'desktop' : req.query.formFactor === 'mobile' ? 'mobile' : undefined;
+        const wanted: FormFactor[] = only ? [only] : ['mobile', 'desktop'];
         const route = pathToSlug(pagePath(targetPage, byId)) ?? '';
         const publicPath = route ? `/${route}/` : '/';
 
@@ -8327,15 +8342,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
-            const audit = await runPagespeedAudit(pageUrl, { formFactor });
-            // Report the LOGICAL page path, never the internal ephemeral loopback URL/port — and the same
-            // for any Lighthouse run-warning (e.g. a redirect warning interpolates the navigated URL) or
-            // per-resource finding URL, so scrub the loopback origin out of every one before it leaves the server.
+            // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
             const origin = new URL(served.url).origin;
-            const runWarnings = redactOrigin(audit.runWarnings, origin);
-            const findings = rebaseFindingUrls(audit.findings, origin);
-            // Heading-structure outline (SEO): best-effort — parse the served static HTML. A fetch failure
-            // (e.g. client disconnect) just omits the outline rather than failing the whole audit.
+            // Heading-structure outline (SEO): best-effort — parse the served static HTML. Hoisted OUT
+            // of the device loop: the heading structure is a property of the markup, identical on both
+            // passes, so fetching it per device would just be a second request for the same answer.
             let outline: HeadingOutline | undefined;
             try {
               const res = await fetch(pageUrl, { signal: abort.signal });
@@ -8343,13 +8354,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             } catch {
               /* best-effort — outline stays undefined */
             }
-            return {
-              ...audit,
-              url: publicPath,
-              findings,
-              ...(runWarnings ? { runWarnings } : {}),
-              ...(outline ? { outline } : {}),
-            };
+
+            const runs: Partial<Record<FormFactor, unknown>> = {};
+            for (const formFactor of wanted) {
+              // SEQUENTIAL, not concurrent: two Chrome instances at once is the shape that pushed this
+              // container into shedding in the first place. The build is shared; the browsers are not.
+              if (abort.signal.aborted) break;
+              const audit = await runPagespeedAudit(pageUrl, { formFactor });
+              // Scrub the loopback origin from every run-warning (a redirect warning interpolates the
+              // navigated URL) and per-resource finding URL before it leaves the server.
+              const runWarnings = redactOrigin(audit.runWarnings, origin);
+              const findings = rebaseFindingUrls(audit.findings, origin);
+              runs[formFactor] = {
+                ...audit,
+                url: publicPath,
+                findings,
+                ...(runWarnings ? { runWarnings } : {}),
+                ...(outline ? { outline } : {}),
+              };
+            }
+            // One device asked for ⇒ that result verbatim (unchanged shape for existing callers).
+            // Otherwise the pair, keyed by device.
+            return only ? runs[only] : runs;
           });
           if (abort.signal.aborted) return reply; // client disconnected mid-run — the response is moot
           return reply.send(result);

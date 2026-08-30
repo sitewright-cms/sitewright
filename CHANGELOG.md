@@ -9,6 +9,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Memory comes back sooner after a burst of work.** jemalloc holds freed pages for 10 seconds by
+  default before returning them to the OS; on an instance whose work arrives in bursts seconds long and
+  minutes apart, that leaves the resting floor well above where it started. MEASURED on a 1 GiB
+  container running the real mix (six complex page renders, 16 image encodes, screenshots, two
+  Lighthouse audits, an export): the idle floor settled 89 MB above baseline before, 62 MB after — a
+  ~30% reduction, with the audit path unaffected.
+  - ⚠️ `background_thread:true`, the obvious way to make purging happen while *fully* idle, is
+    deliberately NOT used and the entrypoint says why. jemalloc's background thread and `fork()`
+    interact badly, and this process forks constantly — render workers, and Chrome for screenshots and
+    Lighthouse. With it enabled, the pagespeed audit failed 3/3 on an idle instance with
+    `could not launch a headless browser: connect ECONNREFUSED` after a 25s launch timeout; the same
+    image without it passed 3/3 in 6s. Chrome launched fine by hand under the identical setting — only
+    a fork from the API process broke — so this is easy to "fix" back in and must not be.
+
+### Added
+
+- **`SW_HEAPSNAPSHOT=1`** arms `--heapsnapshot-signal=SIGUSR2`, so `docker kill -s SIGUSR2 <container>`
+  writes a heap snapshot for Chrome DevTools. This is how you tell a real leak (reachable JS objects)
+  from allocator retention (freed memory the allocator has not returned) — from outside they look
+  identical, which is what made "memory never returns to baseline" hard to attribute. Off by default:
+  writing one pauses the process and costs a heap-sized file. Deliberately not `--inspect`, which would
+  open a remote-code-execution surface on a running instance.
+- First tests for `docker-entrypoint.sh`, which had none — it decides the allocator, the heap ceiling
+  and the diagnostics, and its last two defects were both settings that looked active and were inert.
+
 ## [0.42.0] — 2026-08-29
 
 ### Changed

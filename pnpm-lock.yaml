@@ -326,8 +326,8 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3
       domutils:
-        specifier: ^3.2.2
-        version: 3.2.2
+        specifier: ^4.0.2
+        version: 4.0.2
       handlebars:
         specifier: ^4.7.9
         version: 4.7.9
@@ -521,8 +521,8 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3
       domutils:
-        specifier: ^3.2.2
-        version: 3.2.2
+        specifier: ^4.0.2
+        version: 4.0.2
       htmlparser2:
         specifier: ^12.0.0
         version: 12.0.0

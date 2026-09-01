@@ -29,11 +29,11 @@
     "@sitewright/schema": "workspace:*",
     "@sitewright/tailwind-reference": "workspace:*",
     "codemirror": "^6.0.1",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.34.0",
     "motion": "^12.43.0",
     "qrcode": "^1.5.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.62",
@@ -42,16 +42,16 @@
     "@testing-library/react": "^16.1",
     "@testing-library/user-event": "^14.6",
     "@types/qrcode": "^1.5.6",
-    "@types/react": "^18.3",
-    "@types/react-dom": "^18.3",
+    "@types/react": "^19.2",
+    "@types/react-dom": "^19.2",
     "@vitejs/plugin-react": "^4.7",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "daisyui": "~5.7",
     "jsdom": "^25.0",
     "otplib": "^12.0.1",
     "tailwindcss": "^4",
     "typescript": "^5.7.2",
     "vite": "^6.4.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

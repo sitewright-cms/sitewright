@@ -51,7 +51,7 @@
     "@sitewright/schema": "workspace:*",
     "dom-serializer": "^3.1.1",
     "domhandler": "^5.0.3",
-    "domutils": "^3.2.2",
+    "domutils": "^4.0.2",
     "handlebars": "^4.7.9",
     "htmlparser2": "^12.0.0",
     "sanitize-html": "^2.17.7"
@@ -60,7 +60,7 @@
     "@phosphor-icons/core": "^2.1.1",
     "@types/node": "^22.10.2",
     "@types/sanitize-html": "^2.13.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "circle-flags": "^2.8.3",
     "embla-carousel": "8.6.0",
     "embla-carousel-auto-height": "8.6.0",
@@ -71,11 +71,11 @@
     "esbuild": "^0.28.2",
     "flag-icons": "^7.5.0",
     "glightbox": "3.3.1",
-    "lucide-static": "^1.31.0",
+    "lucide-static": "^1.34.0",
     "simple-icons": "^16.27.1",
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",
-    "vanilla-calendar-pro": "3.2.0",
-    "vitest": "^4.1.10"
+    "vanilla-calendar-pro": "3.3.1",
+    "vitest": "^4.1.11"
   }
 }

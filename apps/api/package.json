@@ -35,11 +35,11 @@
     "drizzle-orm": "^0.45.2",
     "fastify": "^5",
     "html-minifier-terser": "^7",
-    "isomorphic-git": "^1.41.4",
+    "isomorphic-git": "^1.41.9",
     "jszip": "^3",
     "lighthouse": "^13.4.1",
     "nodemailer": "^9.0.5",
-    "openid-client": "^6.8.5",
+    "openid-client": "^6.8.7",
     "otplib": "^12.0.1",
     "playwright-core": "1.62.1",
     "secure-json-parse": "^4",
@@ -55,10 +55,10 @@
     "@types/nodemailer": "^8.0.1",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/yauzl": "^2.10.3",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31",
-    "jose": "^6.2.9",
+    "jose": "^6.2.10",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

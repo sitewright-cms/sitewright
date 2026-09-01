@@ -16,7 +16,7 @@ Coding agents can build and edit your sites too, over MCP.
 
 </div>
 
-> **Status:** actively developed and self-hostable today (`v0.1.0`). Pre-1.0 — APIs and on-disk formats may
+> **Status:** actively developed and self-hostable today (`v0.44.0`). Pre-1.0 — APIs and on-disk formats may
 > change between minor versions; see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
@@ -67,14 +67,17 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
 - **First-party components** — carousel/slider (Embla), tabs, lightbox gallery, native `<dialog>` modals,
   dismissible banners, forms, a date/time/range picker, and **WebGL shader backgrounds** (30 presets). All
   accessible and degrade to usable HTML without JS.
+- **Mini shop** — a front-end cart (`{{sw-cart}}` / `{{sw-add-to-cart}}`) with freely definable buyer fields
+  and order hand-off to a form; off site-wide until explicitly enabled, so the helpers render nothing by default.
 - **Motion & effects** — scroll/entrance animations, multi-layer parallax, **SVG draw-on + morph animation**
   (with a visual studio), curated nav & button effect libraries, sticky-header modes, scrollspy, a page
   preloader, click ripples, back-to-top, and opt-in light/dark themes.
 
 ### 🗂️ Built-in CMS
-- **Typed datasets** — collections with 15 field types (incl. nested list/object, references, media), edited
-  in a data panel and **click-to-edit in the preview**.
-- **Dynamic pages** — a `[param]` route over a dataset expands into one static detail page per entry at build.
+- **Typed datasets** — collections with 17 field types (incl. nested list/object, references, media, icons,
+  page refs), edited in a data panel and **click-to-edit in the preview**.
+- **Detail pages** — one real page per item, sharing a single `template:` ref, so every URL is a first-class
+  page you can override individually.
 - **Safe by design** — rename a dataset and the slug cascades across every loop and reference in one
   transaction.
 
@@ -101,6 +104,8 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
   key) — via a wizard, with **encrypted** secrets, SSRF guards, and **live streamed progress**.
 - **Incremental delta deploys** — a content-hash manifest uploads only what changed, with a tar-over-SSH fast
   path, transport compression, and immutable `?v=` cache-busting.
+- **Site search** — a static search index emitted at publish (per-locale), with a Unicode-aware tokenizer
+  and a delta format, so full-site search runs client-side with no server.
 - **Always-on preview** — a whole-site draft preview rebuilt on change, plus revocable share links for
   stakeholders.
 - **Self-host client sites** — serve them in-container at `<slug>.<your-domain>` (origin-isolated so author JS
@@ -114,8 +119,8 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
   derives a **tight per-site Content-Security-Policy** (never `unsafe-inline`/`*`) — GDPR-friendly by construction.
 
 ### 🤖 AI & agents
-- **On-page AI assistant** — a server-side agent loop drives ~45 authoring tools to build and edit the site
-  live (bring the platform key, or a per-project key).
+- **On-page AI assistant** — a server-side agent loop drives ~50 authoring tools to build and edit the site
+  live (bring the platform key, or a per-project key). Anthropic or any OpenAI-compatible endpoint.
 - **MCP, everywhere** — a remote OAuth MCP endpoint (`/mcp`) lets coding agents edit a project over a scoped
   key. *(The local `sitewright-mcp` stdio bridge is **deprecated** — retired in favour of the HTTP endpoint.
   It still runs and its code remains in the repo, but it is no longer developed.)*
@@ -142,7 +147,7 @@ to npm).
 | [`apps/api`](./apps/api) | Fastify backend — REST API, serves the editor SPA, the render/build/publish pipeline, and the MCP endpoint. |
 | [`apps/editor`](./apps/editor) | The React visual + code editor (single-page app). |
 | [`@sitewright/schema`](./packages/schema) | Zod schemas + authoring contracts (pages, datasets, brand tokens, instance settings, the component catalog + agent guides). |
-| [`@sitewright/core`](./packages/core) | Pure domain logic — immutable content-tree ops, partial + binding resolution, collection-page expansion, project validation. |
+| [`@sitewright/core`](./packages/core) | Pure domain logic — immutable content-tree ops, partial + binding resolution, route resolution, project validation. |
 | [`@sitewright/blocks`](./packages/blocks) | Framework-free renderer + component/effect runtimes — the XSS-safe HTML that the live preview and the published site share. |
 | [`@sitewright/image-pipeline`](./packages/image-pipeline) | Image optimization — AVIF/WebP variants, LQIP, SVG sanitization, favicon/PWA sets (sharp). |
 | [`@sitewright/tailwind`](./packages/tailwind) | Publish-time Tailwind v4 compiler — scans rendered HTML, emits a minimal brand-mapped stylesheet. |

@@ -11,7 +11,12 @@ interface PreviewPaneProps {
    *  source editor vs "Live preview" for the client/live panes). Defaults to "Live preview". */
   title?: string;
   /** Exposes the iframe element so the parent can reach `contentWindow` (the editor↔preview
-   *  postMessage bridge: validate `event.source`, post scrollTo/setMode). */
+   *  postMessage bridge: validate `event.source`, post scrollTo/setMode).
+   *
+   *  NOTE for the React 19 bump: this must become `RefObject<HTMLIFrameElement | null>` at that
+   *  point, because `useRef<T>(null)` starts returning the nullable form. It cannot be widened
+   *  ahead of time — under the React 18 types `<iframe ref>` is a `LegacyRef<T>`, which rejects
+   *  the nullable object — so the two generations are mutually exclusive here. */
   iframeRef?: RefObject<HTMLIFrameElement>;
   /** Drop the frosted card frame (border + 1-unit gutter + the iframe's own hairline) so the
    *  document meets the pane edge. The page editor wants this: there the preview IS the surface,

@@ -77,7 +77,9 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
   useUnsavedWork(dirty, 'Code editor');
 
   // Clear the "Saved" flash on a timer, and on unmount so a late tick never touches a dead component.
-  const flash = useRef<ReturnType<typeof setTimeout>>();
+  // Explicit `undefined` initial value: the React 19 types drop the zero-argument `useRef` overload.
+  // Harmless under 18, where the argument was already optional.
+  const flash = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(flash.current), []);
 
   return (

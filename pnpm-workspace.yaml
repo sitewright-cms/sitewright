@@ -82,6 +82,12 @@ overrides:
   "@hono/node-server@<2.0.5": ^2.0.5
   "body-parser@<2.3.0": ^2.3.0
   "brace-expansion@<5.0.9": ^5.0.9
+  # GHSA-c83g-rgw3-j3cx (unbounded memory growth → OOM) + GHSA-73wf-gq98-2v4g (uncaught crash /
+  # prototype write via an untrusted browserslist-stats.json). Reached only through the BUILD
+  # toolchain (@vitejs/plugin-react → babel, plus update-browserslist-db), so it is not in the
+  # runtime container — pinned rather than accepted because a fix exists and an override keeps
+  # `pnpm audit` honest.
+  "browserslist@<4.28.7": ^4.28.7
   "fast-uri@<3.1.5": ^3.1.5
   "find-my-way@<9.7.0": ^9.7.0
   "form-data@<4.0.6": ^4.0.6

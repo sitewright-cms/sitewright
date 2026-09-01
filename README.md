@@ -16,9 +16,6 @@ Coding agents can build and edit your sites too, over MCP.
 
 </div>
 
-> **Status:** actively developed and self-hostable today (`v0.44.0`). Pre-1.0 — APIs and on-disk formats may
-> change between minor versions; see [CHANGELOG.md](./CHANGELOG.md).
-
 ---
 
 ## Why Sitewright

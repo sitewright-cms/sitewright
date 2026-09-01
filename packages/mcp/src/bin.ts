@@ -12,7 +12,17 @@ function arg(name: string, env: string): string | undefined {
   return process.env[env];
 }
 
+/**
+ * @deprecated RETIRED — this bin runs the stdio bridge, which is superseded by the remote HTTP MCP
+ * endpoint. Emitted on every start so the deprecation is visible where the bridge is actually used.
+ */
+const DEPRECATION =
+  'sitewright-mcp: DEPRECATED — the stdio bridge is retired in favour of the remote HTTP MCP endpoint.\n' +
+  'sitewright-mcp: point your agent at <instance>/mcp with an "Authorization: Bearer <project API key>" header.\n' +
+  'sitewright-mcp: this bridge still works but is no longer developed.\n';
+
 async function main(): Promise<void> {
+  process.stderr.write(DEPRECATION);
   const url = arg('url', 'SITEWRIGHT_URL');
   const token = arg('token', 'SITEWRIGHT_TOKEN');
   if (!url || !token) {

@@ -4,6 +4,10 @@ import { createSitewrightMcpServer } from './server.js';
 import { staticAuth, type BridgeAuth, type ScopeHolder } from './auth.js';
 
 /**
+ * @deprecated RETIRED — the stdio bridge is retired in favour of the remote HTTP MCP endpoint (`POST /mcp`). Kept, not deleted, so existing local installs keep working; it is
+ * no longer developed and gets no new tool surface. New setups should point their agent at the
+ * instance's `/mcp` URL with an `Authorization: Bearer <project API key>` header instead.
+ *
  * Builds the capability-gated MCP server over a Sitewright instance and connects it over stdio.
  * Two modes:
  *  - `{ token }` — a fixed bearer token (the `@sitewright/mcp` bin / a PAT). Introspects up-front and

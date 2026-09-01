@@ -97,6 +97,14 @@ async function main(): Promise<void> {
       return;
     }
     case 'mcp': {
+      // DEPRECATED: the stdio bridge is retired in favour of the remote HTTP MCP endpoint. Kept
+      // working for existing installs; warn on every start so the retirement is visible at the
+      // point of use rather than only in the docs.
+      process.stderr.write(
+        'sitewright mcp: DEPRECATED — the stdio bridge is retired in favour of the remote HTTP MCP endpoint.\n' +
+          'sitewright mcp: point your agent at <instance>/mcp with an "Authorization: Bearer <project API key>" header.\n' +
+          'sitewright mcp: this bridge still works but is no longer developed.\n',
+      );
       const url = requireUrl();
       // Lazy auth: the bridge boots on the URL alone — it does NOT require a prior `login`. If there
       // are no (valid) credentials yet, it starts unauthenticated and the agent triggers a device-flow
@@ -127,7 +135,10 @@ async function main(): Promise<void> {
       return;
     }
     default:
-      process.stderr.write('Usage: sitewright <login|logout|whoami|mcp|config> --url <instance>\n');
+      process.stderr.write(
+        'Usage: sitewright <login|logout|whoami|mcp|config> --url <instance>\n' +
+          '  mcp, config   DEPRECATED (stdio bridge) — prefer the remote HTTP MCP endpoint at <instance>/mcp\n',
+      );
       process.exit(command ? 1 : 0);
   }
 }

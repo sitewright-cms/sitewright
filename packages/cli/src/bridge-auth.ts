@@ -6,6 +6,9 @@ import { beginDeviceLogin } from './device.js';
 const DEFAULT_SCOPE = 'content:read content:write publish';
 
 /**
+ * @deprecated RETIRED — the stdio bridge is retired in favour of the remote HTTP MCP endpoint (`POST /mcp`). This controller exists only to serve `sitewright mcp`; the HTTP
+ * endpoint authenticates with a bearer token supplied by the client, so it never uses it.
+ *
  * The interactive `BridgeAuth` used by `sitewright mcp`: tokens come from the stored OAuth
  * credentials (refreshed as needed), and a login is a DEVICE-FLOW grant — the agent's environment
  * is not the user's authenticated browser, so we never auto-open one; the `login` tool hands the

@@ -116,8 +116,9 @@ Put a TLS reverse proxy in front and you're live. Full guide → **[docs/deploym
 ### 🤖 AI & agents
 - **On-page AI assistant** — a server-side agent loop drives ~45 authoring tools to build and edit the site
   live (bring the platform key, or a per-project key).
-- **MCP, everywhere** — a remote OAuth MCP endpoint (ChatGPT, Claude.ai) *and* a local `sitewright-mcp` stdio
-  bridge (Claude Code, Cursor, Cline, Windsurf, Gemini CLI) let coding agents edit a project over a scoped key.
+- **MCP, everywhere** — a remote OAuth MCP endpoint (`/mcp`) lets coding agents edit a project over a scoped
+  key. *(The local `sitewright-mcp` stdio bridge is **deprecated** — retired in favour of the HTTP endpoint.
+  It still runs and its code remains in the repo, but it is no longer developed.)*
 - **Import & clone** — crawl or upload an existing site into an editable project (self-hosting its images +
   fonts, extracting brand identity); AI-assisted nativize with objective fidelity audits.
 
@@ -146,8 +147,8 @@ to npm).
 | [`@sitewright/image-pipeline`](./packages/image-pipeline) | Image optimization — AVIF/WebP variants, LQIP, SVG sanitization, favicon/PWA sets (sharp). |
 | [`@sitewright/tailwind`](./packages/tailwind) | Publish-time Tailwind v4 compiler — scans rendered HTML, emits a minimal brand-mapped stylesheet. |
 | [`@sitewright/site-import`](./packages/site-import) | Turns a captured external site (crawl or upload) into an editable Sitewright import bundle. |
-| [`@sitewright/mcp`](./packages/mcp) | MCP stdio bridge — exposes a project's authoring tools to local coding agents over a scoped key. |
-| [`@sitewright/cli`](./packages/cli) | The `sitewright` CLI — OAuth login + `sitewright mcp` to run the bridge from stored credentials. |
+| [`@sitewright/mcp`](./packages/mcp) | The MCP tool surface — a project's authoring tools, shared by the API's remote `/mcp` endpoint. Also ships the **deprecated** `sitewright-mcp` stdio bridge. |
+| [`@sitewright/cli`](./packages/cli) | The `sitewright` CLI — OAuth login + credential store. `sitewright mcp` (stdio bridge) is **deprecated**. |
 
 Deeper design docs: **[architecture](./docs/architecture.md)** · **[authoring model](./docs/authoring-model.md)**.
 

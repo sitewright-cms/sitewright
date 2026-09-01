@@ -38,8 +38,8 @@ packages/
   image-pipeline  # sharp: AVIF/WebP variants, LQIP, SVG sanitization, favicon/PWA sets
   tailwind        # publish-time Tailwind v4 compiler (minimal, brand-mapped CSS)
   site-import     # a captured external site -> an editable import bundle
-  mcp             # MCP stdio bridge for local coding agents
-  cli             # `sitewright` CLI (OAuth login + run the MCP bridge)
+  mcp             # MCP tool surface (shared by the API's remote /mcp); + DEPRECATED stdio bridge
+  cli             # `sitewright` CLI (OAuth login); `sitewright mcp` bridge is DEPRECATED
 apps/
   api             # Fastify backend (auth, projects, datasets, media, AI, MCP, render/build/publish)
   editor          # React + Vite editor SPA (code + content editing, live preview, managers)

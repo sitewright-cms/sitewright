@@ -54,9 +54,13 @@ describe('renderClientConfig', () => {
     expect(renderClientConfig('nope', INSTANCE)).toBeNull();
   });
 
-  it('always names the client in the header', () => {
+  // The bridge is deprecated, so every rendered config leads with the retirement notice — a
+  // trailing note gets missed when someone copies the block. The header still names the client.
+  it('leads with the deprecation notice, then names the client in the header', () => {
     for (const id of clientIds()) {
-      expect(renderClientConfig(id, INSTANCE)).toMatch(/^Sitewright MCP — /);
+      const out = renderClientConfig(id, INSTANCE)!;
+      expect(out).toMatch(/^DEPRECATED: the stdio bridge is retired/);
+      expect(out).toMatch(/\nSitewright MCP — /);
     }
   });
 });

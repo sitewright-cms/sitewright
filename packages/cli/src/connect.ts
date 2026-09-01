@@ -1,4 +1,8 @@
 /**
+ * @deprecated RETIRED — every config rendered here launches the stdio bridge, and the stdio bridge is retired in favour of the remote HTTP MCP endpoint (`POST /mcp`).
+ * Kept so existing installs can still be reproduced; new setups should configure the remote HTTP
+ * endpoint instead. Rendered output carries the same notice (see `DEPRECATION_NOTICE`).
+ *
  * Ready-to-paste MCP client configs for `sitewright config <client>`.
  *
  * The local bridge (`sitewright mcp --url <instance>`) is a stdio MCP server. Most coding agents
@@ -31,6 +35,15 @@ function mcpServersBlock(url: string): string {
 function vscodeBlock(url: string): string {
   return JSON.stringify({ servers: { sitewright: { type: 'stdio', command: 'sitewright', args: bridgeArgs(url) } } }, null, 2);
 }
+
+/**
+ * Printed above every rendered config. Deliberately brace-free: the Claude Code entry is a shell
+ * one-liner and its test asserts the rendered output contains no `{`.
+ */
+const DEPRECATION_NOTICE =
+  'DEPRECATED: the stdio bridge is retired in favour of the remote HTTP MCP endpoint.\n' +
+  'Prefer pointing your agent at <instance>/mcp with an "Authorization: Bearer <project API key>" header.\n' +
+  'Configs printed here still work but are no longer developed.\n';
 
 interface McpClient {
   id: string;
@@ -117,7 +130,7 @@ export function hasClient(id: string): boolean {
 export function renderClientConfig(clientId: string, url: string): string | null {
   const client = find(clientId);
   if (!client) return null;
-  return `Sitewright MCP — ${client.label}\n${client.location(url)}\n\n${client.body(url)}\n`;
+  return `${DEPRECATION_NOTICE}\nSitewright MCP — ${client.label}\n${client.location(url)}\n\n${client.body(url)}\n`;
 }
 
 /** A one-screen listing of supported clients (and their aliases) for `sitewright config` with no client. */
@@ -132,5 +145,5 @@ export function listClients(): string {
     const also = aliasesFor.get(c.id);
     return `  ${c.id.padEnd(10)} ${c.label}${also ? `  (also: ${also.join(', ')})` : ''}`;
   }).join('\n');
-  return `Print a ready-to-paste MCP config for your agent:\n\n  sitewright config <client> --url <instance>\n\nClients:\n${rows}\n`;
+  return `${DEPRECATION_NOTICE}\nPrint a ready-to-paste MCP config for your agent:\n\n  sitewright config <client> --url <instance>\n\nClients:\n${rows}\n`;
 }

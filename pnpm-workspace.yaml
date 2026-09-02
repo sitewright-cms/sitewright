@@ -88,7 +88,11 @@ overrides:
   # runtime container — pinned rather than accepted because a fix exists and an override keeps
   # `pnpm audit` honest.
   "browserslist@<4.28.7": ^4.28.7
-  "fast-uri@<3.1.5": ^3.1.5
+  # ★ Widened range, the same way nanoid's did below: 3.1.5 was the fix, then four more advisories
+  # (GHSA-5jgf-p345-68v8, -f65p-4m7j-42xc, -fph4-wmhf-6fwf, -jqff-g426-hqxp — host confusion and SSRF
+  # via IDN/percent-decoding handling) landed with 3.1.6 as the fix, so the old pin started failing
+  # the gate with no change on our side. It is in the RUNTIME tree (ajv → fastify).
+  "fast-uri@<3.1.6": ^3.1.6
   "find-my-way@<9.7.0": ^9.7.0
   "form-data@<4.0.6": ^4.0.6
   "hono@<4.12.34": ">=4.12.34"
@@ -103,6 +107,10 @@ overrides:
   "nanoid@<3.3.18": ^3.3.18
   "nodemailer@<9.0.1": ">=9.0.1"
   "postcss@<8.5.18": ^8.5.18
+  # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing) + GHSA-4mjr-xmp4-gh2g
+  # (DoS via an attacker-controlled isBuffer). Reached through body-parser/express in the deploy
+  # tooling; 6.16.0 covers both ranges.
+  "qs@<6.16.0": ^6.16.0
   "shell-quote@<1.9.0": ^1.9.0
 
 # Deliberately EMPTY and it should stay that way — advisory acceptances live in scripts/audit-gate.mjs,

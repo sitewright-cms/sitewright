@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.45.0] — 2026-09-02
+
 ### Added
 
 - **Tables are editable, not just insertable.** Both rich-text surfaces — the dataset `richtext` field
@@ -58,6 +60,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   box tinted a step off the surface behind it, so a long form reads as rows rather than a stack of
   loose controls. The Key field is deliberately left unboxed: it is the entry's identity, not one of
   its fields.
+
+### Fixed
+
+- **`pnpm verify` passes again.** It had been failing at its FIRST gate — which short-circuits every
+  gate after it, so a red audit said nothing about the code under test. `fast-uri` is re-pinned to
+  3.1.6 (its advisory range widened after we pinned 3.1.5, the same way `nanoid`'s did — four further
+  host-confusion/SSRF advisories landed with 3.1.6 as the fix) and `qs` is pinned to 6.16.0 for an
+  array-limit bypass and a DoS. `fast-uri` is in the runtime tree, via ajv → fastify.
 
 ## [0.44.0] — 2026-08-30
 

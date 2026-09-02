@@ -21,6 +21,13 @@ export const glassInput =
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 
+/** A label+input pair boxed as its own row: 10px radius, 10px padding, and a background one step off the
+ *  surface behind it — darkened in light mode, lightened in dark. A long entry form is otherwise an
+ *  undifferentiated stack of controls where it is not obvious which label belongs to which input; the
+ *  tint does the grouping without adding a heavyweight card per field. */
+export const fieldShell =
+  'rounded-[10px] border border-slate-200/70 bg-slate-500/5 p-[10px] dark:border-white/10 dark:bg-white/5';
+
 /** A DaisyUI switch for boolean on/off settings, brand-tinted when on (`sw-toggle` → --sw-brand-1).
  *  The standard control for booleans across the editor — pair with a `<span>` label in a flex row. */
 export const toggleInput = 'toggle toggle-sm sw-toggle';

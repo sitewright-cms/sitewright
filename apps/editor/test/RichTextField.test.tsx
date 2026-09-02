@@ -213,3 +213,128 @@ describe('RichTextField', () => {
     });
   });
 });
+
+/** Put the caret inside the first element matching `sel` within the editable. */
+function caretIn(editable: HTMLElement, sel: string): void {
+  const target = editable.querySelector(sel)!;
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  range.collapse(true);
+  const s = window.getSelection()!;
+  s.removeAllRanges();
+  s.addRange(range);
+}
+
+const TABLE = '<table><tbody><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table>';
+
+describe('RichTextField — table editing', () => {
+  it('shows the table button as inactive outside a table', () => {
+    render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    expect(screen.getByRole('button', { name: 'Insert table' }).className).not.toContain('bg-indigo-100');
+  });
+
+  it('activates the table button and opens the ops menu when the caret is inside a table', async () => {
+    render(<RichTextField value={TABLE} onChange={() => {}} ariaLabel="body" />);
+    const editable = screen.getByRole('textbox', { name: 'body' });
+    await act(async () => {
+      caretIn(editable, 'td');
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    // The NAME follows the behaviour, not just the highlight: it opens a menu now, so it must not
+    // still announce itself as "Insert table".
+    const button = screen.getByRole('button', { name: 'Table options' });
+    expect(button.className).toContain('bg-indigo-100');
+    expect(screen.queryByRole('button', { name: 'Insert table' })).toBeNull();
+
+    fireEvent.click(button);
+    for (const label of [
+      'Insert row above', 'Insert row below', 'Insert column left', 'Insert column right',
+      'Delete row', 'Delete column', 'Toggle header row', 'Merge cells', 'Split cell',
+      'Reset sizes', 'Delete table',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it('runs a table op and emits the changed HTML', async () => {
+    const onChange = vi.fn();
+    render(<RichTextField value={TABLE} onChange={onChange} ariaLabel="body" />);
+    const editable = screen.getByRole('textbox', { name: 'body' });
+    await act(async () => {
+      caretIn(editable, 'td');
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table options' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Insert row below' }));
+    expect(editable.querySelectorAll('tr')).toHaveLength(3);
+    expect(onChange).toHaveBeenCalledWith(expect.stringContaining('<tr>'));
+  });
+
+  it('does not emit for a no-op table command', async () => {
+    const onChange = vi.fn();
+    render(<RichTextField value={TABLE} onChange={onChange} ariaLabel="body" />);
+    const editable = screen.getByRole('textbox', { name: 'body' });
+    await act(async () => {
+      caretIn(editable, 'td');
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Table options' }));
+    onChange.mockClear();
+    // One cell selected → nothing to merge. The menu closes, but the value must not be pushed again
+    // (an identical write would mark the entry dirty for nothing).
+    fireEvent.click(screen.getByRole('button', { name: 'Merge cells' }));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('RichTextField — expand to a modal', () => {
+  it('moves the editor into a large modal and back, keeping the content', () => {
+    render(<RichTextField value="<p>Hello</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand editor' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit body' });
+    expect(dialog).toContainElement(screen.getByRole('textbox', { name: 'body' }));
+    expect(screen.getByRole('textbox', { name: 'body' }).innerHTML).toContain('Hello');
+    // The field's place in the form is held, so closing does not jump the page.
+    expect(screen.getByText(/Editing in the expanded view/)).toBeInTheDocument();
+    // No second "expand" inside the modal — Close is that control there.
+    expect(screen.queryByRole('button', { name: 'Expand editor' })).toBeNull();
+  });
+});
+
+describe('RichTextField — pasting from a word processor', () => {
+  /** Fire a paste carrying `html` as text/html. */
+  function paste(editable: HTMLElement, html: string, text = '') {
+    const event = new Event('paste', { bubbles: true, cancelable: true }) as Event & { clipboardData: unknown };
+    event.clipboardData = { getData: (t: string) => (t === 'text/html' ? html : text) };
+    fireEvent(editable, event);
+    return event;
+  }
+
+  it('asks before touching a Word paste', async () => {
+    render(<RichTextField value="<p></p>" onChange={() => {}} ariaLabel="body" />);
+    await act(async () => {
+      paste(screen.getByRole('textbox', { name: 'body' }), '<p class=MsoNormal>Hi</p>');
+    });
+    expect(await screen.findByText('Clean up pasted formatting?')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Clean up' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Keep original formatting' })).toBeInTheDocument();
+  });
+
+  it('leaves an ordinary paste to the browser (no prompt, not prevented)', async () => {
+    render(<RichTextField value="<p></p>" onChange={() => {}} ariaLabel="body" />);
+    let event!: Event;
+    await act(async () => {
+      event = paste(screen.getByRole('textbox', { name: 'body' }), '<p><strong>Hi</strong></p>');
+    });
+    expect(screen.queryByText('Clean up pasted formatting?')).toBeNull();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('does not prompt when the clipboard carries no HTML at all', async () => {
+    render(<RichTextField value="<p></p>" onChange={() => {}} ariaLabel="body" />);
+    await act(async () => {
+      paste(screen.getByRole('textbox', { name: 'body' }), '', 'just text');
+    });
+    expect(screen.queryByText('Clean up pasted formatting?')).toBeNull();
+  });
+});

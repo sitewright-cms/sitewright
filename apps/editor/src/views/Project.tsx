@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Settings } from 'lucide-react';
-import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
+import { isLinkPage, NAV_SLOTS, type JsonValue, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { hasOwnSource } from '../page-summary';
@@ -18,6 +18,7 @@ import { SearchField } from './ui/SearchField';
 import { PlaceholderLabel } from './PlaceholderLabel';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
+import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
@@ -221,6 +222,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   const [error, setError] = useState<string | null>(null);
   // Settings opened FROM THE LIST (persist-on-save); the editor stacks its own instance.
   const [settingsFor, setSettingsFor] = useState<Page | null>(null);
+  /** "Edit page data" from the row context menu: the FULLY loaded page whose `data` is being edited.
+   *  Loaded rather than taken from the list row — a listed page carries no `source`/`data`, and putPage
+   *  is a whole-entity write, so saving a trimmed row would delete the page's body. */
+  const [dataFor, setDataFor] = useState<Page | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   // The project's configured locales (Website Settings) — drives the i18n actions.
@@ -724,6 +729,8 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     }
     rows.push({ kind: 'item', label: isLink ? 'Edit placeholder settings' : 'Edit page settings', onSelect: () => void openSettings(p) });
     if (!isLink) {
+      // A placeholder has no template to read page.data, so the store would have nothing to bind to.
+      rows.push({ kind: 'item', label: 'Edit page data', onSelect: () => void openPageData(p) });
       rows.push({ kind: 'item', label: 'Preview in new tab', onSelect: () => void previewInTab(p) });
     }
     rows.push({ kind: 'divider' });
@@ -808,6 +815,30 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
       setEditing((await api.getPage(project.id, p.id)).item);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to open the page');
+    }
+  }
+
+  /** Open the page-data tree editor on a page from the LIST. Reads the full page first: the list rows
+   *  are summaries, and `putPage` replaces the whole entity — saving from a summary would drop the body. */
+  async function openPageData(p: Page) {
+    setError(null);
+    try {
+      setDataFor((await api.getPage(project.id, p.id)).item);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to open the page data');
+    }
+  }
+
+  /** Persist an edited page.data. `{}` is stored as undefined so a page that never used the store stays
+   *  minimal, matching what the page editor writes (pageDataObject). */
+  async function savePageData(page: Page, data: JsonValue) {
+    setError(null);
+    const empty = !data || typeof data !== 'object' || Array.isArray(data) || Object.keys(data).length === 0;
+    try {
+      await api.putPage(project.id, { ...page, data: empty ? undefined : data });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to save the page data');
     }
   }
 
@@ -1286,6 +1317,17 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
           )}
           {menu && (
             <ContextMenu at={menu.at} label={`Actions for ${menu.page.title}`} rows={menuRowsFor(menu.page)} onClose={() => setMenu(null)} />
+          )}
+          {/* "Edit page data" from a row: the SAME tree/JSON store editor the page editor opens, on a
+              freshly loaded page so the write carries the whole entity. */}
+          {dataFor && (
+            <WebsiteDataModal
+              title={`Page data — ${dataFor.title}`}
+              namespace="page.data"
+              value={dataFor.data ?? {}}
+              onSave={(v) => void savePageData(dataFor, v)}
+              onClose={() => setDataFor(null)}
+            />
           )}
           {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
           <div role="status" aria-live="polite" className="sr-only">

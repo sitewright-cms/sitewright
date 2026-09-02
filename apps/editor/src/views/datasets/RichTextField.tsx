@@ -24,6 +24,7 @@ import {
   Minus,
   Eraser,
   Code2,
+  Maximize2,
 } from 'lucide-react';
 import {
   RICH_TOOLBAR,
@@ -36,12 +37,21 @@ import {
   RICH_HIGHLIGHT_CLASSES,
   RICH_SIZE_CLASSES,
   RICH_ALIGN_CLASSES,
+  RICH_TABLE_OPS,
+  RICH_PASTE_PROMPT,
   sanitizeRichHtml,
+  isForeignRichHtml,
+  cleanPastedHtml,
+  plainTextToHtml,
   type RichCmd,
   type RichSwatch,
   type CiSwatch,
 } from '@sitewright/blocks';
 import { useCiPalette } from '../../lib/ci-palette';
+import { Modal } from '../ui/Modal';
+import { useDialogs } from '../ui/Dialogs';
+import { runTableOp, tableContext, insertStarterTable } from '../../lib/rich-table-dom';
+import { attachTableResize } from '../../lib/rich-table-resize';
 import {
   runExec,
   applyInlineClass,
@@ -52,7 +62,6 @@ import {
   currentAnchor,
   insertImage,
   updateImage,
-  insertStarterTable,
 } from '../../lib/rich-dom';
 import { ImageDialog } from '../files/ImageDialog';
 import { attachImageResize } from '../../lib/image-resize';
@@ -138,6 +147,9 @@ export function RichTextField({
   const valueRef = useRef(value);
   valueRef.current = value;
   const [source, setSource] = useState(false);
+  // Expanded = the same editor, re-parented into a large modal. A dataset richtext field is a ~6-line box
+  // inside another modal, which is not a surface anyone wants to write a page of copy in.
+  const [expanded, setExpanded] = useState(false);
   const [menu, setMenu] = useState<OpenMenu>(null);
   const [linkUrl, setLinkUrl] = useState('');
   const [linkNewTab, setLinkNewTab] = useState(false);
@@ -151,6 +163,7 @@ export function RichTextField({
   // URL input moves the selection OUT of the editable (else edit-in-place/unlink/wrap would misfire).
   const savedLinkRangeRef = useRef<Range | null>(null);
   const ci = useCiPalette();
+  const { confirm, dialog } = useDialogs();
 
   // Dismiss an open popover (colour/highlight/font/size/align/link) on a mousedown outside the toolbar — the
   // popovers are children of the toolbar container, so a click on a swatch/menu item stays open (its own
@@ -172,10 +185,12 @@ export function RichTextField({
   // re-set innerHTML when `value` changes: `value` only ever changes via this editor's own onChange (its
   // keystroke echo), and re-setting innerHTML mid-edit would reset the caret. Reading the latest value
   // through a ref keeps the dependency on `source` alone.
+  // `expanded` is a dependency because expanding re-parents the editable into the modal — React builds a
+  // NEW div there, so without a refill the expanded editor would open blank.
   useEffect(() => {
     const el = ref.current;
     if (el && !source) el.innerHTML = sanitizeRichHtml(valueRef.current ?? '');
-  }, [source]);
+  }, [source, expanded]);
 
   const emit = () => {
     const el = ref.current;
@@ -191,7 +206,15 @@ export function RichTextField({
     const el = ref.current;
     if (!el || source) return;
     return attachImageResize(el, () => emitRef.current(), resizeCtl);
-  }, [source]);
+  }, [source, expanded]);
+
+  // Table resize: drag a column boundary, a row boundary, or the table's right edge. Imperative for the
+  // same reason as the image resizer — a drag writes the DOM directly and only re-emits on release.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || source) return;
+    return attachTableResize(el, () => emitRef.current());
+  }, [source, expanded]);
 
   // Reflect the selection's formatting in the toolbar (Bold shows active over bold text, etc.) so an active
   // mark can be clicked to reverse it (execCommand toggles). Recomputed as the selection moves; CLEARED when
@@ -202,12 +225,12 @@ export function RichTextField({
     setActive(new Set()); // reset on (re)entering WYSIWYG until a selection lands
     const onSel = () => {
       const sel = window.getSelection();
-      if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer)) setActive(computeActive());
+      if (sel && sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer)) setActive(computeActive(el));
       else setActive((prev) => (prev.size ? new Set() : prev));
     };
     document.addEventListener('selectionchange', onSel);
     return () => document.removeEventListener('selectionchange', onSel);
-  }, [source]);
+  }, [source, expanded]);
 
   // Group class-sets for the toggle math: the STANDARD palette classes ∪ the project's CI classes, so a
   // re-colour/re-font replaces whichever kind is currently applied.
@@ -233,6 +256,12 @@ export function RichTextField({
         setSource((v) => !v);
         return; // no content mutation
       case 'table':
+        // Outside a table the button INSERTS one; inside a table it opens the row/column/merge menu, which
+        // is where an author looks for those commands once a table exists.
+        if (tableContext(el)) {
+          setMenu((m) => (m?.id === cmd.id ? null : { id: cmd.id, kind: cmd.kind, at }));
+          return;
+        }
         insertStarterTable(el);
         break;
       case 'media': {
@@ -267,7 +296,7 @@ export function RichTextField({
     }
     setMenu(null);
     emit();
-    setActive(computeActive()); // refresh the active-state after a toggle
+    setActive(computeActive(el)); // refresh the active-state after a toggle
   };
 
   // Apply a chosen swatch/class then emit + close the popover.
@@ -283,6 +312,56 @@ export function RichTextField({
     else if (kind === 'font') applyInlineClass(el, fontGroup, cls, owned);
     else if (kind === 'align') applyBlockClass(el, RICH_ALIGN_CLASSES, cls, owned);
     setMenu(null);
+    emit();
+  };
+
+  // Run one entry of the table menu. A no-op result (merge with one cell selected, split on an unmerged
+  // cell) still closes the menu but must NOT emit — an emit would push an identical value and mark the
+  // entry dirty for nothing.
+  const applyTableOp = (opId: string) => {
+    const el = ref.current;
+    if (!el) return;
+    const changed = runTableOp(el, opId);
+    setMenu(null);
+    if (!changed) return;
+    emit();
+    setActive(computeActive(el));
+  };
+
+  /**
+   * Paste interception. Only a WORD-PROCESSOR paste is intercepted (`isForeignRichHtml`); anything else —
+   * including a copy from this editor — takes the browser's own path, unchanged. On a match the author
+   * chooses: clean (snap to the platform's primitives) or keep the original formatting.
+   */
+  const onPaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    const html = e.clipboardData.getData('text/html');
+    if (!html || !isForeignRichHtml(html)) return; // native paste
+    e.preventDefault();
+    const text = e.clipboardData.getData('text/plain');
+    // Capture the caret NOW: awaiting the dialog blurs the editable and loses the live selection.
+    const sel = window.getSelection();
+    const saved = sel && sel.rangeCount && el.contains(sel.getRangeAt(0).commonAncestorContainer) ? sel.getRangeAt(0).cloneRange() : null;
+    const clean = await confirm({
+      title: RICH_PASTE_PROMPT.title,
+      message: RICH_PASTE_PROMPT.body,
+      confirmLabel: RICH_PASTE_PROMPT.clean,
+      cancelLabel: RICH_PASTE_PROMPT.keep,
+      danger: false,
+    });
+    const insert = clean ? cleanPastedHtml(html, ci.colors) : sanitizeRichHtml(html);
+    el.focus();
+    if (saved) {
+      const s = window.getSelection();
+      s?.removeAllRanges();
+      s?.addRange(saved);
+    }
+    try {
+      document.execCommand('insertHTML', false, insert || plainTextToHtml(text));
+    } catch {
+      /* execCommand unsupported (e.g. jsdom) */
+    }
     emit();
   };
 
@@ -313,7 +392,16 @@ export function RichTextField({
           c === null ? (
             <span key={`sep${i}`} aria-hidden className="mx-0.5 h-4 w-px bg-slate-200 dark:bg-white/10" />
           ) : c.id === 'source' || (c.id === 'media' && !projectId) ? null : (
-            <ToolbarButton key={c.id} cmd={c} active={menu?.id === c.id || active.has(c.id)} onClick={(at) => run(c, at)} />
+            <ToolbarButton
+              key={c.id}
+              cmd={c}
+              // Inside a table the button opens the row/column MENU rather than inserting a second
+              // table, so its accessible name has to say so — "Insert table" would be a lie to anyone
+              // who cannot see that the caret is in a table.
+              label={c.id === 'table' && active.has('table') ? 'Table options' : undefined}
+              active={menu?.id === c.id || active.has(c.id)}
+              onClick={(at) => run(c, at)}
+            />
           ),
         )}
       <button
@@ -330,6 +418,23 @@ export function RichTextField({
       >
         <Code2 className="h-4 w-4" />
       </button>
+      {/* Only offered on the inline field — inside the expanded modal the same control is the header's
+          Close, and a second "expand" there would have nothing left to expand into. */}
+      {!expanded && (
+        <button
+          type="button"
+          aria-label="Expand editor"
+          title="Expand editor"
+          className={`${btnClass} ${hoverClass}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => {
+            setMenu(null);
+            setExpanded(true);
+          }}
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
+      )}
 
       {menu?.kind === 'color' && (
         <SwatchPopover
@@ -358,6 +463,7 @@ export function RichTextField({
           onPick={(cls) => applySwatch('font', cls)}
         />
       )}
+      {menu?.kind === 'table' && <TableMenuPopover at={menu.at} onPick={applyTableOp} />}
       {menu?.kind === 'size' && <MenuPopover title="Text size" items={RICH_SIZES} at={menu.at} preview onPick={(cls) => applySwatch('size', cls)} />}
       {menu?.kind === 'align' && <MenuPopover title="Alignment" items={RICH_ALIGNS} at={menu.at} onPick={(cls) => applySwatch('align', cls)} />}
       {menu?.kind === 'link' && (
@@ -398,14 +504,14 @@ export function RichTextField({
     </div>
   );
 
-  return (
+  const body = (
     <div className="overflow-visible rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 shadow-sm focus-within:border-[var(--sw-brand-1)]">
       {toolbar}
       {source ? (
         <textarea
           id={id}
           aria-label={ariaLabel ? `${ariaLabel} (HTML source)` : 'HTML source'}
-          className="block min-h-28 w-full resize-y bg-transparent px-3 py-2 font-mono text-xs text-slate-800 dark:text-slate-100 outline-none"
+          className={`block w-full resize-y bg-transparent px-3 py-2 font-mono text-xs text-slate-800 dark:text-slate-100 outline-none ${expanded ? 'min-h-[60dvh]' : 'min-h-28'}`}
           value={value}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -420,9 +526,10 @@ export function RichTextField({
           contentEditable
           suppressContentEditableWarning
           spellCheck
-          className="sw-rich-edit min-h-24 max-w-none px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none"
+          className={`sw-rich-edit max-w-none px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none ${expanded ? 'min-h-[60dvh]' : 'min-h-24'}`}
           onInput={emit}
           onBlur={emit}
+          onPaste={(e) => void onPaste(e)}
           onDoubleClick={(e) => {
             const t = e.target as HTMLElement;
             if (t.tagName === 'IMG' && projectId) {
@@ -470,6 +577,29 @@ export function RichTextField({
       )}
     </div>
   );
+
+  return (
+    <>
+      {expanded ? (
+        // The SAME component, re-parented: one editor, one piece of state, so what the author typed in the
+        // modal is already in the field behind it when they close. `elevate` puts it above the entry-editor
+        // modal this field usually lives inside. No Save button — edits are live, as they are inline.
+        <>
+          {/* Hold the field's place in the form, so closing the modal doesn't drop the page back to a
+              different scroll position than the author left it at. */}
+          <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+            Editing in the expanded view…
+          </div>
+          <Modal title={ariaLabel ? `Edit ${ariaLabel}` : 'Edit rich text'} size="full" elevate onClose={() => setExpanded(false)}>
+            <div className="p-5">{body}</div>
+          </Modal>
+        </>
+      ) : (
+        body
+      )}
+      {dialog}
+    </>
+  );
 }
 
 const EXEC_STATE: Record<string, string> = {
@@ -493,8 +623,9 @@ function blockIs(tag: string): boolean {
 }
 
 /** The set of toolbar command ids currently ACTIVE for the selection (marks/lists via queryCommandState,
- *  blocks via queryCommandValue('formatBlock')) — drives the toolbar's on/off highlighting. */
-function computeActive(): Set<string> {
+ *  blocks via queryCommandValue('formatBlock')) — drives the toolbar's on/off highlighting. `table` is
+ *  active whenever the caret is inside a table, which is also what turns its button into a MENU. */
+function computeActive(editable: HTMLElement): Set<string> {
   const s = new Set<string>();
   try {
     for (const [id, cmd] of Object.entries(EXEC_STATE)) if (document.queryCommandState(cmd)) s.add(id);
@@ -504,16 +635,18 @@ function computeActive(): Set<string> {
   } catch {
     /* execCommand/query unsupported (e.g. jsdom) */
   }
+  if (tableContext(editable)) s.add('table');
   return s;
 }
 
-function ToolbarButton({ cmd, active, onClick }: { cmd: RichCmd; active: boolean; onClick: (at: DOMRect) => void }) {
+function ToolbarButton({ cmd, active, onClick, label }: { cmd: RichCmd; active: boolean; onClick: (at: DOMRect) => void; label?: string }) {
   const Icon = ICONS[cmd.id] ?? Pilcrow;
+  const name = label ?? cmd.label;
   return (
     <button
       type="button"
-      aria-label={cmd.label}
-      title={cmd.label}
+      aria-label={name}
+      title={name}
       className={`${btnClass} ${active ? activeClass : hoverClass}`}
       onMouseDown={(e) => e.preventDefault() /* keep the editable's selection */}
       onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())}
@@ -659,3 +792,51 @@ function MenuPopover({
   );
 }
 
+
+/** The table row/column/merge menu, shown when the caret is inside a table. Portalled + `fixed` for the
+ *  same reason as {@link MenuPopover}: the dataset entry modal's own overflow clips an absolute popover,
+ *  and this list is longer than the alignment one. Destructive entries are red and sit at the end, so
+ *  "Delete table" is never adjacent to the insert commands an author is clicking repeatedly. */
+function TableMenuPopover({ at, onPick }: { at?: DOMRect; onPick: (opId: string) => void }) {
+  const GAP = 6;
+  const MAX = 340;
+  const anchor = at ?? new DOMRect(16, 16, 0, 0);
+  const below = window.innerHeight - anchor.bottom - GAP * 2;
+  const above = anchor.top - GAP * 2;
+  const flip = below < Math.min(MAX, 200) && above > below;
+  const style: CSSProperties = {
+    position: 'fixed',
+    left: Math.max(GAP, Math.min(anchor.left, window.innerWidth - 200)),
+    ...(flip ? { bottom: window.innerHeight - anchor.top + GAP } : { top: anchor.bottom + GAP }),
+    maxHeight: Math.max(140, Math.min(MAX, flip ? above : below)),
+  };
+  return createPortal(
+    <div
+      data-sw-rich-menu
+      style={style}
+      className="z-[80] flex w-max min-w-[11rem] flex-col overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1 shadow-lg"
+    >
+      <p className="px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">Table</p>
+      {RICH_TABLE_OPS.map((op, i) =>
+        op === null ? (
+          <span key={`sep${i}`} aria-hidden className="my-1 h-px shrink-0 bg-slate-200 dark:bg-white/10" />
+        ) : (
+          <button
+            key={op.id}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onPick(op.id)}
+            className={`block w-full shrink-0 rounded px-2 py-1 text-left text-sm leading-snug ${
+              op.danger
+                ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10'
+                : 'text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'
+            }`}
+          >
+            {op.label}
+          </button>
+        ),
+      )}
+    </div>,
+    document.body,
+  );
+}

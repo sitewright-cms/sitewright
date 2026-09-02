@@ -15,7 +15,7 @@ import {
 } from '../../lib/entry-form';
 import { api } from '../../api';
 import { RevisionHistoryModal } from '../RevisionHistoryModal';
-import { ghostButton, glassInput, gradientSurface, toggleInput } from '../../theme';
+import { fieldShell, ghostButton, glassInput, gradientSurface, toggleInput } from '../../theme';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { useToast } from '../ui/Toast';
@@ -754,7 +754,10 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
           {dataset.fields.map((field) => {
             const group = isGroupFieldType(field.type);
             return (
-              <div key={field.name} className="flex flex-col gap-1">
+              // Every field is boxed (10px radius/padding + a one-step-off background) so a long form reads
+              // as rows rather than a stack of loose controls. The KEY field above is deliberately NOT
+              // boxed: it is the entry's identity, not one of its fields.
+              <div key={field.name} className={`flex flex-col gap-1 ${fieldShell}`}>
                 {group ? null : (
                   <label htmlFor={`entry-${field.name}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
                     {field.name}

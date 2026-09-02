@@ -75,9 +75,13 @@ describe('WebsiteDataModal — JSON source view', () => {
     expect(JSON.parse(ta.value)).toEqual({ a: 1 }); // serialized current draft
     fireEvent.change(ta, { target: { value: '{"hero":{"headline":"X"},"tags":["a","b"]}' } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply JSON' }));
-    // Back in the tree: the new keys are present (incl. the nested "headline" under hero).
-    const keys = screen.getAllByLabelText('Key').map((i) => (i as HTMLInputElement).value);
-    expect(keys).toEqual(expect.arrayContaining(['hero', 'tags', 'headline']));
+    // Back in the tree: the new top-level keys are present. Branches start COLLAPSED, so the nested
+    // "headline" only appears once its parent is expanded.
+    expect(screen.getAllByLabelText('Key').map((i) => (i as HTMLInputElement).value)).toEqual(['hero', 'tags']);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand hero' }));
+    expect(screen.getAllByLabelText('Key').map((i) => (i as HTMLInputElement).value)).toEqual(
+      expect.arrayContaining(['hero', 'tags', 'headline']),
+    );
     save();
     expect(onSave).toHaveBeenCalledWith({ hero: { headline: 'X' }, tags: ['a', 'b'] });
   });
@@ -108,5 +112,89 @@ describe('WebsiteDataModal — JSON source view', () => {
     save();
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByText(/reserved/)).toBeInTheDocument();
+  });
+});
+
+describe('WebsiteDataModal — tree shape, collapsing and reordering', () => {
+  it('shows the name and the type on one row', () => {
+    setup({ my_array: [1, 2] });
+    const row = screen.getByLabelText('Key').closest('div')!;
+    expect((screen.getByLabelText('Key') as HTMLInputElement).value).toBe('my_array');
+    // The type select reads "[array]" and lives on the same row as the key and the remove button.
+    expect((screen.getByLabelText('Value type') as HTMLSelectElement).value).toBe('array');
+    expect(row).toContainElement(screen.getByLabelText('Value type'));
+    expect(row).toContainElement(screen.getByRole('button', { name: 'Remove my_array' }));
+    expect(screen.getByRole('option', { name: '[array]' })).toBeInTheDocument();
+  });
+
+  it('starts every branch collapsed and toggles it', () => {
+    setup({ hero: { headline: 'X' } });
+    expect(screen.getAllByLabelText('Key')).toHaveLength(1); // just `hero`
+    fireEvent.click(screen.getByRole('button', { name: 'Expand hero' }));
+    expect(screen.getAllByLabelText('Key')).toHaveLength(2); // + `headline`
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse hero' }));
+    expect(screen.getAllByLabelText('Key')).toHaveLength(1);
+  });
+
+  it('summarises a collapsed branch by its size', () => {
+    setup({ tags: ['a', 'b', 'c'], hero: { headline: 'X' } });
+    expect(screen.getByText('3 items')).toBeInTheDocument();
+    expect(screen.getByText('1 key')).toBeInTheDocument();
+  });
+
+  it('offers no expander for a scalar', () => {
+    setup({ title: 'Hi' });
+    expect(screen.queryByRole('button', { name: /Expand/ })).toBeNull();
+  });
+
+  it('reorders object keys with the move buttons', () => {
+    const { onSave } = setup({ a: 1, b: 2, c: 3 });
+    fireEvent.click(screen.getByRole('button', { name: 'Move c up' }));
+    save();
+    expect(Object.keys(onSave.mock.calls[0]![0] as object)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('disables the move buttons at the ends of a list', () => {
+    setup({ a: 1, b: 2 });
+    expect(screen.getByRole('button', { name: 'Move a up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move b down' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move a down' })).toBeEnabled();
+  });
+
+  it('reorders array items and keeps their values with them', () => {
+    const { onSave } = setup({ tags: ['x', 'y', 'z'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Expand tags' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move item 1 down' }));
+    save();
+    expect(onSave).toHaveBeenCalledWith({ tags: ['y', 'x', 'z'] });
+  });
+
+  it('reorders by drag and drop, dropping after the row when released on its lower half', () => {
+    const { onSave } = setup({ a: 1, b: 2, c: 3 });
+    const rows = screen.getAllByTitle('Drag to reorder').map((g) => g.closest('[draggable]')!.parentElement!.parentElement!);
+    const dt = { effectAllowed: '', setData: vi.fn() };
+    fireEvent.dragStart(screen.getAllByTitle('Drag to reorder')[0]!, { dataTransfer: dt });
+    // Release over the LOWER half of row `c` → land after it.
+    rows[2]!.getBoundingClientRect = () => ({ top: 0, height: 20, bottom: 20, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    fireEvent.dragOver(rows[2]!, { clientY: 18 });
+    fireEvent.drop(rows[2]!);
+    save();
+    expect(Object.keys(onSave.mock.calls[0]![0] as object)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('removes an array item without shifting the others’ values', () => {
+    const { onSave } = setup({ tags: ['x', 'y', 'z'] });
+    fireEvent.click(screen.getByRole('button', { name: 'Expand tags' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove item 2' }));
+    save();
+    expect(onSave).toHaveBeenCalledWith({ tags: ['x', 'z'] });
+  });
+
+  it('expands a node the moment its type becomes a branch', () => {
+    setup({ thing: 'text' });
+    fireEvent.change(screen.getByLabelText('Value type'), { target: { value: 'object' } });
+    // Newly a branch, shown open (not collapsed like a pre-existing one) so "+ Add key" is reachable.
+    expect(screen.getByRole('button', { name: 'Collapse thing' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '+ Add key' })).toHaveLength(2);
   });
 });

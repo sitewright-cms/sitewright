@@ -15,6 +15,11 @@ pnpm -F @sitewright/editor exec playwright test       # the browser suite, ~10 m
 scripts/e2e-deploy.sh down --port "$SW_E2E_PORT"      # always clean up
 ```
 
+★ **`up` BAKES THE EDITOR SPA INTO THE IMAGE.** The slot serves the bundle built at `up` time, so a
+source change made afterwards is not in the browser no matter how many times you re-run Playwright — the
+spec fails against the OLD build and reads as "the fix didn't work". After touching `apps/editor` or
+`apps/api`, tear the slot down and bring it back up.
+
 Both suites are **re-runnable against the same slot** — that is a property worth keeping. A spec that
 writes instance-global state must put it back (see *Instance-global state* below), or the second run
 fails on the first run's leftovers and the gate becomes single-shot.
@@ -84,6 +89,14 @@ state rather than rewriting from scratch.
   Delete. (`api.copyMedia` still exists for agents/MCP; it has no UI caller.)
 - **Side panels are DRAWERS with a backdrop**, and the backdrop covers the preview. A panel that sends
   you into the preview must dismiss itself — the Regions rail does, via `SidePanelClose`.
+- **The entry editor stays OPEN after Save** (it resets its baseline in place). Dismiss it with `Escape`
+  before clicking anything on the list behind it — asserting the dialog is hidden will just time out.
+- **An entry row is named by the dataset's first `text` field** (`entryLabel`), falling back to the
+  entry's generated id. A dataset made only of `richtext`/asset fields therefore has rows a spec cannot
+  name — add a `text` field to the fixture if you need to reopen a row.
+- **A dragged column width clamps to a 32px floor** (`RICH_TABLE_MIN_COL`). A table whose cells hold one
+  character starts NARROWER than that, so "drag it thinner" is unreachable and the assertion silently
+  measures the clamp. Give fixture tables real column text, or drag to widen.
 - **The Library's brand/flag grids page in on scroll**, so a specific logo has to be SEARCHED for.
   Each tab owns its own search box, labelled `Search <tab label>`.
 - **The Account modal's header tabs include a button named "Account"**, so the header's account button

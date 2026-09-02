@@ -259,3 +259,67 @@ test('re-typing after clearing formatted text does not strand an inline style ov
   expect(parseFloat(await computed(page, 'text-4xl', 'font-size'))).toBeCloseTo(36, 1);
   expect(await editable(page).evaluate((el) => el.innerHTML)).not.toContain('font-size');
 });
+
+test('the field expands into a large modal and what is typed there is already in the field', async ({ page }) => {
+  await openRichTextEntry(page, `rtexpand-${stamp}`);
+  await typeAndSelectAll(page, 'small box');
+
+  const inline = await editable(page).boundingBox();
+  await page.getByRole('button', { name: 'Expand editor' }).click();
+
+  // The SAME editor, re-parented — not a copy fed by a round trip, which is what makes "close and the
+  // field is already up to date" true rather than something that has to be synced.
+  const modal = page.getByRole('dialog', { name: 'Edit body' });
+  await expect(modal).toBeVisible();
+  await expect(modal.getByRole('textbox', { name: 'body' })).toBeVisible();
+  await expect(editable(page)).toContainText('small box'); // the content came with it
+  const expanded = await editable(page).boundingBox();
+  expect(expanded!.height, 'the expanded editor should be markedly taller').toBeGreaterThan(inline!.height * 2);
+
+  // No second expand inside the modal — Close is that control there.
+  await expect(page.getByRole('button', { name: 'Expand editor' })).toHaveCount(0);
+  // The field's place in the form is held, so closing does not jump the page under the author.
+  await expect(page.getByText(/Editing in the expanded view/)).toBeVisible();
+
+  await editable(page).click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('written large');
+  await modal.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(modal).toBeHidden();
+
+  // Back inline, carrying the edit — and it saves from there. (The entry editor deliberately stays
+  // OPEN after Save, resetting its baseline, so the proof is the STORED value, not a closed dialog.)
+  await expect(editable(page)).toContainText('written large');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect
+    .poll(async () =>
+      page.evaluate(async () => {
+        const projects = await (await fetch('/projects', { credentials: 'include' })).json();
+        const id = projects.projects[0].id as string;
+        const res = await fetch(`/projects/${id}/content/entry?dataset=posts`, { credentials: 'include' });
+        return JSON.stringify((await res.json()).items?.[0]?.values ?? {});
+      }),
+    )
+    .toContain('written large');
+});
+
+test('every entry field except the Key is boxed as its own row', async ({ page }) => {
+  await openRichTextEntry(page, `rtbox-${stamp}`);
+
+  // The richtext field's wrapper carries the shell: a 10px radius, 10px padding, and a background a
+  // step off the surface behind it. A long form was otherwise an undifferentiated stack of controls.
+  const shell = page.locator('.flex.flex-col.gap-1').filter({ has: page.getByRole('textbox', { name: 'body' }) }).last();
+  const box = await shell.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { radius: s.borderTopLeftRadius, padding: s.paddingTop, bg: s.backgroundColor };
+  });
+  expect(box.radius).toBe('10px');
+  expect(box.padding).toBe('10px');
+  expect(box.bg).not.toBe('rgba(0, 0, 0, 0)'); // it is actually tinted, not just spaced
+
+  // The Key field is deliberately NOT boxed — it is the entry's identity, not one of its fields. On a
+  // NEW entry its input is already open, so there is no "Edit key" button to press first.
+  const keyShell = page.locator('label').filter({ has: page.getByLabel('Entry key') }).first();
+  expect(await keyShell.evaluate((el) => getComputedStyle(el).paddingTop)).toBe('0px');
+  expect(await keyShell.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+});

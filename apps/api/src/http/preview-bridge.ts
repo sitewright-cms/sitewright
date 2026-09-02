@@ -10,6 +10,12 @@ import {
   RICH_SIZE_CLASSES,
   RICH_ALIGN_CLASSES,
   RICH_INDENT_STEPS,
+  RICH_TABLE_OPS,
+  RICH_TABLE_STARTER,
+  RICH_TABLE_GRIP,
+  RICH_TABLE_MIN_COL,
+  RICH_TABLE_MIN_ROW,
+  RICH_TABLE_MAX,
 } from '@sitewright/blocks';
 
 // The shared rich-text toolbar vocabulary + palettes, serialised into the injected bridge so the on-page
@@ -28,6 +34,15 @@ const RICH_TB_DATA = {
   sizeClasses: [...RICH_SIZE_CLASSES],
   alignClasses: [...RICH_ALIGN_CLASSES],
   indentSteps: RICH_INDENT_STEPS,
+  // Table editing: the same ordered menu the dataset toolbar renders, plus the starter markup and the
+  // drag bounds. Data only — the ops themselves are re-implemented in vanilla JS below (mirroring
+  // apps/editor/src/lib/rich-table-dom.ts), since a function cannot cross into the injected string.
+  tableOps: RICH_TABLE_OPS,
+  tableStarter: RICH_TABLE_STARTER,
+  tableGrip: RICH_TABLE_GRIP,
+  tableMinCol: RICH_TABLE_MIN_COL,
+  tableMinRow: RICH_TABLE_MIN_ROW,
+  tableMax: RICH_TABLE_MAX,
 };
 
 /**
@@ -51,6 +66,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-preview', type:'open-imagemap', id }                     (data-sw-imagemap → Studio)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *                     { source:'sitewright-preview', type:'pick-media' }                            (rich toolbar → open media picker)
+ *                     { source:'sitewright-preview', type:'paste-cleanup', html, text }              (word-processor paste → ask the editor to clean it)
  *                     { source:'sitewright-preview', type:'edit-media', url, alt, width, height }     (dbl-click img → edit dialog)
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
@@ -64,6 +80,7 @@ const RICH_TB_DATA = {
  *                     { source:'sitewright-editor', type:'ci-palette', colors, fonts } (brand colours/font slots → rich toolbar)
  *                     { source:'sitewright-editor', type:'insert-media', url, alt, width, height }  (media dialog → <img>)
  *                     { source:'sitewright-editor', type:'update-media', url, alt, width, height }  (image-settings → update <img>)
+ *                     { source:'sitewright-editor', type:'insert-paste', html }                      (paste-cleanup answer → insert at the saved caret)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
@@ -524,7 +541,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-rz{position:fixed;z-index:2147483646;box-sizing:border-box;display:none;border:1.5px solid #6366f1;pointer-events:none}' +
       '.sw-rz-h{position:absolute;width:11px;height:11px;background:#fff;border:1.5px solid #6366f1;border-radius:2px;pointer-events:auto}' +
       '.sw-rz-se{right:-6px;bottom:-6px;cursor:nwse-resize}' +
-      '.sw-rz-dim{position:absolute;right:0;bottom:-21px;background:#0f172a;color:#fff;font:600 10px system-ui,sans-serif;padding:1px 6px;border-radius:4px;white-space:nowrap;pointer-events:none}';
+      '.sw-rz-dim{position:absolute;right:0;bottom:-21px;background:#0f172a;color:#fff;font:600 10px system-ui,sans-serif;padding:1px 6px;border-radius:4px;white-space:nowrap;pointer-events:none}' +
+      // Table resize: the grip indicator drawn along the column/row edge under the cursor, plus the
+      // table menu's own separator + destructive-entry colour.
+      '.sw-tz-line{position:fixed;z-index:2147483646;display:none;background:#6366f1;border-radius:1px;pointer-events:none}' +
+      '.sw-tb-pop .sw-tb-msep{display:block;height:1px;margin:4px 0;background:#e2e8f0}' +
+      '.sw-tb-item.sw-tb-danger{color:#e11d48}' +
+      '.sw-tb-item.sw-tb-danger:hover{background:#fff1f2;color:#be123c}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -617,7 +640,318 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function tbApplyBlock(rich, group, cls, props) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbSetGroup(bs[i].getAttribute('class'), group, cls || undefined); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); tbClearStyle(bs[i], props); } }
   function tbStepBlockIndent(rich, dir) { var bs = tbBlocks(rich); for (var i = 0; i < bs.length; i++) { var c = tbStepIndent(bs[i].getAttribute('class'), dir); if (c) bs[i].setAttribute('class', c); else bs[i].removeAttribute('class'); tbClearStyle(bs[i], TB_STYLE_PROPS.indent); } }
-  function tbInsertTable() { try { document.execCommand('insertHTML', false, '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead><tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>'); } catch (e) {} }
+  function tbInsertTable() { try { document.execCommand('insertHTML', false, RTB.tableStarter); } catch (e) {} }
+
+  // ---- Table structure editing (mirrors apps/editor/src/lib/rich-table-dom.ts) ----------------------
+  // Every op addresses (row, column) GRID coordinates, not the raw tr/td tree: with colspan/rowspan the
+  // third <td> of a row is not the third COLUMN, and an op that ignores that tears merged cells in half.
+  function tbIsCell(n) { return n && n.nodeType === 1 && (n.tagName === 'TD' || n.tagName === 'TH'); }
+  function tbSpan(cell, attr) { var n = parseInt(cell.getAttribute(attr) || '1', 10); return (isFinite(n) && n > 0) ? n : 1; }
+  function tbSetSpan(cell, attr, n) { if (n > 1) cell.setAttribute(attr, String(n)); else cell.removeAttribute(attr); }
+  function tbTableRows(table) {
+    var all = table.querySelectorAll('tr'), out = [];
+    for (var i = 0; i < all.length; i++) if (all[i].closest('table') === table) out.push(all[i]);
+    return out;
+  }
+  // slots[r][c] = the cell occupying that coordinate; anchors keeps each cell's own top-left coordinate.
+  function tbGrid(table) {
+    var rows = tbTableRows(table), slots = [], anchors = [], cells = [], width = 0;
+    for (var i = 0; i < rows.length; i++) slots.push([]);
+    for (var r = 0; r < rows.length; r++) {
+      var c = 0, kids = rows[r].children;
+      for (var k = 0; k < kids.length; k++) {
+        var cell = kids[k]; if (!tbIsCell(cell)) continue;
+        while (slots[r][c]) c++;
+        var cs = tbSpan(cell, 'colspan'), rs = tbSpan(cell, 'rowspan');
+        cells.push(cell); anchors.push({ r: r, c: c });
+        for (var dr = 0; dr < rs && r + dr < rows.length; dr++) for (var dc = 0; dc < cs; dc++) slots[r + dr][c + dc] = cell;
+        c += cs;
+      }
+    }
+    for (var s = 0; s < slots.length; s++) if (slots[s].length > width) width = slots[s].length;
+    return {
+      rows: rows, slots: slots, width: width, height: rows.length,
+      anchorOf: function (cell) { var i = cells.indexOf(cell); return i < 0 ? null : anchors[i]; }
+    };
+  }
+  // startContainer FIRST: dragging across cells puts the common ancestor on the <tr>, which is in no cell
+  // at all — keying off it would report "not in a table" exactly when cells are selected for a merge.
+  function tbCellAbove(node, rich) {
+    if (!node || !rich.contains(node)) return null;
+    var n = node.nodeType === 1 ? node : node.parentNode;
+    while (n && n !== rich) { if (tbIsCell(n)) return n; n = n.parentNode; }
+    return null;
+  }
+  function tbCurrentCell(rich) {
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null;
+    var r = sel.getRangeAt(0);
+    return tbCellAbove(r.startContainer, rich) || tbCellAbove(r.commonAncestorContainer, rich);
+  }
+  function tbTableCtx(rich) {
+    if (!rich) return null;
+    var cell = tbCurrentCell(rich); if (!cell) return null;
+    var table = cell.closest('table'); if (!table || !rich.contains(table)) return null;
+    var grid = tbGrid(table), at = grid.anchorOf(cell); if (!at) return null;
+    var row = cell.closest('tr'); if (!row) return null;
+    return { table: table, cell: cell, row: row, grid: grid, r: at.r, c: at.c };
+  }
+  function tbRetagCell(cell, tag) {
+    if (cell.tagName.toLowerCase() === tag) return cell;
+    var next = document.createElement(tag), a = cell.attributes;
+    for (var i = 0; i < a.length; i++) next.setAttribute(a[i].name, a[i].value);
+    while (cell.firstChild) next.appendChild(cell.firstChild);
+    cell.parentNode.replaceChild(next, cell);
+    return next;
+  }
+  function tbNewCell(like) {
+    var cell = document.createElement(like.tagName.toLowerCase());
+    if (like.tagName === 'TH' && like.hasAttribute('scope')) cell.setAttribute('scope', like.getAttribute('scope'));
+    cell.appendChild(document.createElement('br'));
+    return cell;
+  }
+  // Insert at a GRID column — the row's own cells are not in column order once anything above it spans.
+  function tbInsertAtColumn(row, grid, col, cell) {
+    var kids = row.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (!tbIsCell(kids[i])) continue;
+      var at = grid.anchorOf(kids[i]);
+      if (at && at.c >= col) { row.insertBefore(cell, kids[i]); return; }
+    }
+    row.appendChild(cell);
+  }
+  function tbSectionOf(row) { return row.parentNode || row; }
+  function tbInsertRow(ctx, side) {
+    var grid = ctx.grid, r = ctx.r;
+    var upper = side === 'above' ? r - 1 : r, lower = upper + 1;
+    var tr = document.createElement('tr'), stretched = [];
+    for (var c = 0; c < grid.width; c++) {
+      var above = upper >= 0 ? grid.slots[upper][c] : null;
+      var below = lower < grid.height ? grid.slots[lower][c] : null;
+      // A cell spanning ACROSS the new boundary is stretched by one instead of being cut.
+      if (above && above === below) {
+        if (stretched.indexOf(above) < 0) { stretched.push(above); tbSetSpan(above, 'rowspan', tbSpan(above, 'rowspan') + 1); }
+        continue;
+      }
+      tr.appendChild(tbNewCell(grid.slots[r][c] || ctx.cell));
+    }
+    var ref = grid.rows[r];
+    if (side === 'above') tbSectionOf(ref).insertBefore(tr, ref);
+    else tbSectionOf(ref).insertBefore(tr, ref.nextSibling);
+  }
+  function tbInsertColumn(ctx, side) {
+    var grid = ctx.grid;
+    var boundary = side === 'left' ? ctx.c : ctx.c + tbSpan(ctx.cell, 'colspan');
+    var stretched = [];
+    for (var r = 0; r < grid.rows.length; r++) {
+      var left = boundary > 0 ? grid.slots[r][boundary - 1] : null;
+      var right = boundary < grid.width ? grid.slots[r][boundary] : null;
+      if (left && left === right) {
+        if (stretched.indexOf(left) < 0) { stretched.push(left); tbSetSpan(left, 'colspan', tbSpan(left, 'colspan') + 1); }
+        continue;
+      }
+      var model = grid.slots[r][Math.min(boundary, grid.width - 1)] || grid.slots[r][0];
+      if (!model) continue; // a row entirely covered by rowspans owns no cell to model or insert before
+      tbInsertAtColumn(grid.rows[r], grid, boundary, tbNewCell(model));
+    }
+  }
+  function tbDeleteRow(ctx) {
+    var grid = ctx.grid, r = ctx.r;
+    if (grid.height <= 1) { ctx.table.remove(); return; }
+    var row = grid.rows[r], next = grid.rows[r + 1], handled = [];
+    for (var c = 0; c < grid.width; c++) {
+      var cell = grid.slots[r][c]; if (!cell || handled.indexOf(cell) >= 0) continue;
+      handled.push(cell);
+      var at = grid.anchorOf(cell), rs = tbSpan(cell, 'rowspan');
+      // Anchored in the row being removed but still spanning below it → re-anchor one row down rather
+      // than taking its content with the row.
+      if (at.r === r && rs > 1 && next) { tbSetSpan(cell, 'rowspan', rs - 1); tbInsertAtColumn(next, grid, at.c, cell); }
+      else if (at.r < r) tbSetSpan(cell, 'rowspan', rs - 1);
+    }
+    var section = tbSectionOf(row);
+    row.remove();
+    if (section !== ctx.table && section.children.length === 0) section.remove();
+  }
+  function tbDeleteColumn(ctx) {
+    var grid = ctx.grid, c = ctx.c;
+    if (grid.width <= 1) { ctx.table.remove(); return; }
+    var handled = [];
+    for (var r = 0; r < grid.height; r++) {
+      var cell = grid.slots[r][c]; if (!cell || handled.indexOf(cell) >= 0) continue;
+      handled.push(cell);
+      var cs = tbSpan(cell, 'colspan');
+      if (cs > 1) tbSetSpan(cell, 'colspan', cs - 1); else cell.remove();
+    }
+    var cols = ctx.table.querySelectorAll('colgroup > col');
+    if (cols[c]) cols[c].remove();
+    var rows = tbTableRows(ctx.table), empty = true;
+    for (var i = 0; i < rows.length; i++) if (rows[i].children.length) { empty = false; break; }
+    if (empty) ctx.table.remove();
+  }
+  function tbToggleHeaderRow(ctx) {
+    var table = ctx.table, first = ctx.grid.rows[0]; if (!first) return;
+    var cells = [], kids = first.children, i;
+    for (i = 0; i < kids.length; i++) if (tbIsCell(kids[i])) cells.push(kids[i]);
+    var isHeader = cells.length > 0;
+    for (i = 0; i < cells.length; i++) if (cells[i].tagName !== 'TH') isHeader = false;
+    if (isHeader) {
+      for (i = 0; i < cells.length; i++) tbRetagCell(cells[i], 'td').removeAttribute('scope');
+      var body = table.querySelector(':scope > tbody');
+      if (!body) { body = document.createElement('tbody'); table.insertBefore(body, table.firstChild); }
+      var head = first.parentNode;
+      body.insertBefore(first, body.firstChild);
+      if (head && head !== body && head.tagName === 'THEAD' && head.children.length === 0) head.remove();
+    } else {
+      for (i = 0; i < cells.length; i++) tbRetagCell(cells[i], 'th').setAttribute('scope', 'col');
+      var thead = table.querySelector(':scope > thead');
+      if (!thead) { thead = document.createElement('thead'); table.insertBefore(thead, table.firstChild); }
+      var tbody = first.parentNode;
+      thead.appendChild(first);
+      if (tbody && tbody !== thead && tbody.children.length === 0) tbody.remove();
+    }
+  }
+  function tbSelectedCells(rich, table) {
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return [];
+    var range = sel.getRangeAt(0), all = table.querySelectorAll('td, th'), hit = [];
+    for (var i = 0; i < all.length; i++) if (all[i].closest('table') === table && range.intersectsNode(all[i])) hit.push(all[i]);
+    if (hit.length > 1) return hit;
+    var one = tbCurrentCell(rich);
+    return one ? [one] : [];
+  }
+  // Grow the selection rectangle until every overlapping cell is fully inside — a merge that cut a
+  // spanning cell in half would produce a table no browser can lay out.
+  function tbClosedRect(grid, cells) {
+    var r0 = Infinity, c0 = Infinity, r1 = -1, c1 = -1, i, at;
+    for (i = 0; i < cells.length; i++) {
+      at = grid.anchorOf(cells[i]); if (!at) continue;
+      r0 = Math.min(r0, at.r); c0 = Math.min(c0, at.c);
+      r1 = Math.max(r1, at.r + tbSpan(cells[i], 'rowspan') - 1);
+      c1 = Math.max(c1, at.c + tbSpan(cells[i], 'colspan') - 1);
+    }
+    if (r1 < 0) return null;
+    for (var pass = 0; pass < grid.width + grid.height; pass++) {
+      var grew = false;
+      for (var r = r0; r <= r1; r++) for (var c = c0; c <= c1; c++) {
+        var cell = grid.slots[r] && grid.slots[r][c]; if (!cell) continue;
+        at = grid.anchorOf(cell); if (!at) continue;
+        var nr1 = at.r + tbSpan(cell, 'rowspan') - 1, nc1 = at.c + tbSpan(cell, 'colspan') - 1;
+        if (at.r < r0) { r0 = at.r; grew = true; }
+        if (at.c < c0) { c0 = at.c; grew = true; }
+        if (nr1 > r1) { r1 = nr1; grew = true; }
+        if (nc1 > c1) { c1 = nc1; grew = true; }
+      }
+      if (!grew) break;
+    }
+    return { r0: r0, c0: c0, r1: r1, c1: c1 };
+  }
+  function tbMergeCells(rich, ctx) {
+    var picked = tbSelectedCells(rich, ctx.table); if (picked.length < 2) return false;
+    var rect = tbClosedRect(ctx.grid, picked); if (!rect) return false;
+    var anchor = ctx.grid.slots[rect.r0][rect.c0]; if (!anchor) return false;
+    var absorbed = [];
+    for (var r = rect.r0; r <= rect.r1; r++) for (var c = rect.c0; c <= rect.c1; c++) {
+      var cell = ctx.grid.slots[r][c];
+      if (cell && cell !== anchor && absorbed.indexOf(cell) < 0) absorbed.push(cell);
+    }
+    if (!absorbed.length) return false;
+    for (var i = 0; i < absorbed.length; i++) {
+      // Keep the words — a merge that discarded the other cells' content would be data loss dressed up
+      // as a formatting command.
+      while (absorbed[i].firstChild) {
+        var node = absorbed[i].firstChild;
+        if (node.nodeType === 3 && !(node.textContent || '').replace(/^\\s+|\\s+$/g, '')) absorbed[i].removeChild(node);
+        else { anchor.appendChild(document.createTextNode(' ')); anchor.appendChild(node); }
+      }
+      absorbed[i].remove();
+    }
+    tbSetSpan(anchor, 'colspan', rect.c1 - rect.c0 + 1);
+    tbSetSpan(anchor, 'rowspan', rect.r1 - rect.r0 + 1);
+    return true;
+  }
+  function tbSplitCell(ctx) {
+    var cs = tbSpan(ctx.cell, 'colspan'), rs = tbSpan(ctx.cell, 'rowspan');
+    if (cs === 1 && rs === 1) return false;
+    tbSetSpan(ctx.cell, 'colspan', 1); tbSetSpan(ctx.cell, 'rowspan', 1);
+    for (var dr = 0; dr < rs; dr++) {
+      var row = ctx.grid.rows[ctx.r + dr]; if (!row) continue;
+      for (var dc = 0; dc < cs; dc++) {
+        if (dr === 0 && dc === 0) continue; // the cell itself keeps the top-left slot
+        tbInsertAtColumn(row, ctx.grid, ctx.c + dc, tbNewCell(ctx.cell));
+      }
+    }
+    return true;
+  }
+  // ---- inline style declaration helpers (mirror setStyleDecl/getStyleDecl in @sitewright/blocks) ----
+  function tbSetDecl(style, prop, value) {
+    var parts = (style || '').split(';'), kept = [];
+    for (var i = 0; i < parts.length; i++) {
+      var t = parts[i].replace(/^\\s+|\\s+$/g, ''); if (!t) continue;
+      var colon = t.indexOf(':'); if (colon < 0) continue;
+      if (t.slice(0, colon).replace(/^\\s+|\\s+$/g, '').toLowerCase() === prop) continue;
+      kept.push(t.slice(0, colon).replace(/^\\s+|\\s+$/g, '') + ': ' + t.slice(colon + 1).replace(/^\\s+|\\s+$/g, ''));
+    }
+    if (value) kept.push(prop + ': ' + value);
+    return kept.join('; ');
+  }
+  function tbGetDecl(style, prop) {
+    var parts = (style || '').split(';');
+    for (var i = 0; i < parts.length; i++) {
+      var colon = parts[i].indexOf(':'); if (colon < 0) continue;
+      if (parts[i].slice(0, colon).replace(/^\\s+|\\s+$/g, '').toLowerCase() === prop) return parts[i].slice(colon + 1).replace(/^\\s+|\\s+$/g, '');
+    }
+    return '';
+  }
+  function tbWriteDecl(el, prop, value) {
+    var s = tbSetDecl(el.getAttribute('style'), prop, value);
+    if (s) el.setAttribute('style', s); else el.removeAttribute('style');
+  }
+  function tbResetSizes(table) {
+    var targets = [table], more = table.querySelectorAll('col, tr, td, th'), i, p;
+    for (i = 0; i < more.length; i++) targets.push(more[i]);
+    for (i = 0; i < targets.length; i++) for (p = 0; p < 3; p++) tbWriteDecl(targets[i], ['width', 'height', 'table-layout'][p], null);
+  }
+  // Put the caret back into the table after an op removed the cell it was in. Without it the toolbar
+  // silently reverts to "insert a table" the moment you delete the row or column you were standing in:
+  // the caret points at detached nodes, so the next op is unreachable and clicking the same spot does
+  // not recover it (the selection never CHANGES, so nothing recomputes). A surviving caret is left alone.
+  function tbPlaceCaret(rich, cell) {
+    var sel = window.getSelection(); if (!sel) return;
+    try { rich.focus(); } catch (e) {}
+    var range = document.createRange();
+    range.selectNodeContents(cell); range.collapse(true);
+    sel.removeAllRanges(); sel.addRange(range);
+  }
+  function tbRestoreCaret(rich, table, r, c) {
+    if (!table.isConnected || tbTableCtx(rich)) return;
+    var grid = tbGrid(table);
+    if (!grid.height || !grid.width) return;
+    var row = grid.slots[Math.min(r, grid.height - 1)] || grid.slots[0];
+    var cell = (row && row[Math.min(c, grid.width - 1)]) || (grid.slots[0] && grid.slots[0][0]);
+    if (cell) tbPlaceCaret(rich, cell);
+  }
+  // Run one entry of the table menu; returns true when the document actually changed (a no-op must not
+  // emit, or an identical value is pushed and the page is marked dirty for nothing).
+  function tbRunTableOp(rich, opId) {
+    var ctx = tbTableCtx(rich); if (!ctx) return false;
+    var changed = tbApplyTableOp(rich, ctx, opId);
+    // 'table-delete' has nowhere to put a caret; every other op keeps the author inside the table so
+    // the menu stays usable for a second command.
+    if (changed && opId !== 'table-delete') tbRestoreCaret(rich, ctx.table, ctx.r, ctx.c);
+    return changed;
+  }
+  function tbApplyTableOp(rich, ctx, opId) {
+    if (opId === 'row-above') { tbInsertRow(ctx, 'above'); return true; }
+    if (opId === 'row-below') { tbInsertRow(ctx, 'below'); return true; }
+    if (opId === 'col-left') { tbInsertColumn(ctx, 'left'); return true; }
+    if (opId === 'col-right') { tbInsertColumn(ctx, 'right'); return true; }
+    if (opId === 'row-delete') { tbDeleteRow(ctx); return true; }
+    if (opId === 'col-delete') { tbDeleteColumn(ctx); return true; }
+    if (opId === 'header-row') { tbToggleHeaderRow(ctx); return true; }
+    if (opId === 'merge-cells') return tbMergeCells(rich, ctx);
+    if (opId === 'split-cell') return tbSplitCell(ctx);
+    if (opId === 'reset-sizes') { tbResetSizes(ctx.table); return true; }
+    if (opId === 'table-delete') { ctx.table.remove(); return true; }
+    return false;
+  }
   // The <a> enclosing the current selection within the rich region (for edit-in-place / pre-fill), or null.
   function tbCurrentAnchor(rich) {
     var sel = window.getSelection(); if (!sel || !sel.rangeCount) return null;
@@ -699,7 +1033,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
         if (TB_STATE[id]) on = document.queryCommandState(TB_STATE[id]);
         else if (id === 'quote') on = block === 'blockquote';
         else if (id === 'paragraph') on = block === 'p' || block === 'div';
+        // 'table' lights up whenever the caret is inside a table — the same signal that turns its button
+        // from "insert a table" into the row/column/merge menu.
+        else if (id === 'table') on = !!tbTableCtx(currentRich());
       } catch (e) {}
+      // …and the name follows the behaviour: a button that opens the row/column menu must not still
+      // announce itself as "Insert table" to anyone who cannot see where the caret is.
+      if (id === 'table') {
+        var tblName = on ? 'Table options' : 'Insert table';
+        bs[i].setAttribute('aria-label', tblName);
+        bs[i].title = tblName;
+      }
       bs[i].classList.toggle('sw-tb-active', !!on);
     }
   }
@@ -757,6 +1101,154 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (t && t.tagName === 'IMG' && closestAttr(t, 'data-sw-html') && !(t.closest && t.closest('[data-sw-entry]'))) rzSelect(t);
     else if (!(rzBox && rzBox.contains(t))) rzHide();
   }
+  // ---- Table drag-to-resize (mirrors apps/editor/src/lib/rich-table-resize.ts) ----------------------
+  // Column boundaries, row boundaries, and the table's own right edge. Sizes are written as inline
+  // width/height, which the sanitizer allows on TABLE elements only and gates to a bounded px/% literal —
+  // a dragged width is an arbitrary number, the one thing the toolbar cannot express as a utility class.
+  var tzLine = null, tzHover = null, tzDrag = null;
+  function tzEnsure() {
+    if (tzLine) return tzLine;
+    tzLine = document.createElement('div'); tzLine.className = 'sw-tz-line';
+    document.body.appendChild(tzLine);
+    return tzLine;
+  }
+  function tzShow(t) {
+    var l = tzEnsure(); l.style.display = 'block';
+    if (t.kind === 'row') { l.style.left = t.left + 'px'; l.style.top = (t.y - 1) + 'px'; l.style.width = t.width + 'px'; l.style.height = '2px'; }
+    else { l.style.left = (t.x - 1) + 'px'; l.style.top = t.top + 'px'; l.style.width = '2px'; l.style.height = t.height + 'px'; }
+  }
+  function tzHide() { if (tzLine) tzLine.style.display = 'none'; }
+  function tzClamp(px, min) { var n = Math.round(px); return isFinite(n) ? Math.min(RTB.tableMax, Math.max(min, n)) : null; }
+  // With table-layout:fixed a column with no declared width shares the leftovers, so dragging ONE column
+  // silently reflows every other. Pinning the measured widths once makes a drag change only that column.
+  function tzPin(table) {
+    var grid = tbGrid(table), first = grid.slots[0]; if (!first) return;
+    var seen = [];
+    for (var c = 0; c < grid.width; c++) {
+      var cell = first[c]; if (!cell || seen.indexOf(cell) >= 0) continue;
+      seen.push(cell);
+      if (tbGetDecl(cell.getAttribute('style'), 'width')) continue;
+      var w = Math.round(cell.getBoundingClientRect().width);
+      if (w > 0) tbWriteDecl(cell, 'width', w + 'px');
+    }
+    tbWriteDecl(table, 'table-layout', 'fixed');
+  }
+  function tzSetCol(table, index, px) {
+    var grid = tbGrid(table), cell = grid.slots[0] && grid.slots[0][index], w = tzClamp(px, RTB.tableMinCol);
+    if (!cell || w === null) return;
+    tbWriteDecl(table, 'table-layout', 'fixed');
+    tbWriteDecl(cell, 'width', w + 'px');
+  }
+  function tzSetRow(table, index, px) {
+    var row = tbTableRows(table)[index], h = tzClamp(px, RTB.tableMinRow);
+    if (!row || h === null) return;
+    tbWriteDecl(row, 'height', h + 'px');
+  }
+  function tzSetTable(table, px) { var w = tzClamp(px, RTB.tableMinCol * 2); if (w !== null) tbWriteDecl(table, 'width', w + 'px'); }
+  function tzColWidth(table, index) {
+    var grid = tbGrid(table), cell = grid.slots[0] && grid.slots[0][index];
+    if (!cell) return RTB.tableMinCol;
+    var declared = parseFloat(tbGetDecl(cell.getAttribute('style'), 'width'));
+    return (isFinite(declared) && declared > 0) ? declared : (cell.getBoundingClientRect().width || RTB.tableMinCol);
+  }
+  // The vertical grip lines: the right edge of each column. The LAST one is the table's own right border,
+  // which resizes the whole table rather than a column.
+  function tzGrip(x, y) {
+    if (!editing) return null;
+    var el = document.elementFromPoint(x, y), table = el && el.closest ? el.closest('table') : null;
+    if (!table || !closestAttr(table, 'data-sw-html')) return null;
+    if (table.closest('[data-sw-entry]')) return null; // dataset-loop content is edited via its entry form
+    var tr = table.getBoundingClientRect();
+    if (y < tr.top - RTB.tableGrip || y > tr.bottom + RTB.tableGrip) return null;
+    var grid = tbGrid(table), first = grid.rows[0], edges = [], col = 0, i;
+    if (first) for (i = 0; i < first.children.length; i++) {
+      var cell = first.children[i]; if (!tbIsCell(cell)) continue;
+      col += tbSpan(cell, 'colspan');
+      edges.push({ x: cell.getBoundingClientRect().right, index: col - 1 });
+    }
+    for (i = 0; i < edges.length; i++) {
+      if (Math.abs(x - edges[i].x) > RTB.tableGrip) continue;
+      if (i === edges.length - 1 && Math.abs(edges[i].x - tr.right) <= RTB.tableGrip) return { kind: 'table', table: table, x: edges[i].x, top: tr.top, height: tr.height };
+      return { kind: 'col', table: table, index: edges[i].index, x: edges[i].x, top: tr.top, height: tr.height };
+    }
+    var rows = tbTableRows(table);
+    for (i = 0; i < rows.length; i++) {
+      var rr = rows[i].getBoundingClientRect();
+      if (Math.abs(y - rr.bottom) <= RTB.tableGrip) return { kind: 'row', table: table, index: i, y: rr.bottom, left: tr.left, width: tr.width };
+    }
+    return null;
+  }
+  function tzMove(e) {
+    if (tzDrag) {
+      var t = tzDrag.target, delta = (t.kind === 'row' ? e.clientY : e.clientX) - tzDrag.from;
+      if (t.kind === 'col') tzSetCol(t.table, t.index, tzDrag.start + delta);
+      else if (t.kind === 'row') tzSetRow(t.table, t.index, tzDrag.start + delta);
+      else tzSetTable(t.table, tzDrag.start + delta);
+      if (t.kind === 'row') t.y = e.clientY; else t.x = e.clientX;
+      tzShow(t);
+      e.preventDefault();
+      return;
+    }
+    tzHover = tzGrip(e.clientX, e.clientY);
+    if (tzHover) { tzShow(tzHover); document.body.style.cursor = tzHover.kind === 'row' ? 'row-resize' : 'col-resize'; }
+    else { tzHide(); document.body.style.cursor = ''; }
+  }
+  function tzDown(e) {
+    var t = tzGrip(e.clientX, e.clientY); if (!t) return;
+    // Swallow the mousedown, or the browser starts a text selection from the cell border and the drag
+    // paints a selection across the table instead of resizing it.
+    e.preventDefault(); e.stopPropagation();
+    if (t.kind === 'col') tzPin(t.table);
+    var start = t.kind === 'col' ? tzColWidth(t.table, t.index)
+      : t.kind === 'row' ? Math.max(RTB.tableMinRow, tbTableRows(t.table)[t.index] ? tbTableRows(t.table)[t.index].getBoundingClientRect().height : RTB.tableMinRow)
+      : Math.max(RTB.tableMinCol * 2, t.table.getBoundingClientRect().width);
+    tzDrag = { target: t, from: t.kind === 'row' ? e.clientY : e.clientX, start: start };
+    document.addEventListener('mousemove', tzMove, true);
+    document.addEventListener('mouseup', tzUp, true);
+  }
+  function tzUp() {
+    document.removeEventListener('mousemove', tzMove, true);
+    document.removeEventListener('mouseup', tzUp, true);
+    if (tzDrag) {
+      var rich = closestAttr(tzDrag.target.table, 'data-sw-html');
+      tzDrag = null;
+      if (rich) post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+    }
+    tzHide(); document.body.style.cursor = '';
+  }
+
+  // ---- Paste hygiene: a word-processor paste is offered to the EDITOR to clean --------------------
+  // The detection + the cleaner live in @sitewright/blocks (rich-paste.ts) and cannot be imported into
+  // this injected string, so the bridge does the cheap detection here and round-trips the clipboard HTML
+  // through the parent — the same borrow-the-parent pattern the media picker and source modal use.
+  var tzPasteRange = null;
+  var TB_FOREIGN = [/mso-/i, /class=["']?Mso/i, /<\\/?o:p\\b/i, /xmlns:(?:o|w|m|v)=/i, /urn:schemas-microsoft-com/i, /docs-internal-guid/i, /<font\\b/i, /style=["'][^"']*font-(?:family|size)\\s*:/i];
+  function tbIsForeign(html) {
+    if (!html) return false;
+    for (var i = 0; i < TB_FOREIGN.length; i++) if (TB_FOREIGN[i].test(html)) return true;
+    return false;
+  }
+  function onRichPaste(e) {
+    if (!editing) return;
+    var data = e.clipboardData; if (!data) return;
+    var html = data.getData('text/html');
+    if (!tbIsForeign(html)) return; // ordinary paste → the browser's own path, unchanged
+    e.preventDefault();
+    var sel = window.getSelection();
+    tzPasteRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    post({ type: 'paste-cleanup', html: html, text: data.getData('text/plain') });
+  }
+  // The editor's answer: HTML it has already sanitized (and, if the author agreed, cleaned).
+  function tbInsertPaste(html) {
+    var rich = tzPasteRange ? closestAttr(tzPasteRange.commonAncestorContainer, 'data-sw-html') : currentRich();
+    if (!rich) { tzPasteRange = null; return; }
+    try { rich.focus(); } catch (e) {}
+    if (tzPasteRange) { var s = window.getSelection(); if (s) { s.removeAllRanges(); s.addRange(tzPasteRange); } }
+    tzPasteRange = null;
+    try { document.execCommand('insertHTML', false, html); } catch (e) {}
+    post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });
+  }
+
   function tbColorGroup() { var g = RTB.colorClasses.slice(); for (var i = 0; i < ciColors.length; i++) g.push(ciColors[i].cls); return g; }
   function tbFontGroup() { var g = []; for (var i = 0; i < ciFonts.length; i++) g.push(ciFonts[i].cls); return g; }
   // Scheme-gate a link URL — the SAME allowlist as the editor's safeUrl (SAFE_URL in @sitewright/blocks/url,
@@ -815,6 +1307,21 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     for (var i = 0; i < items.length; i++) (function (it) { p.appendChild(tbItemBtn(it.label, null, function () { applyFn(it.cls); tbFinish(); }, cmd.kind === 'size' ? it.value : null)); })(items[i]);
     tbShowPop(anchor); setTbActive(cmd.id);
   }
+  // The table row/column/merge menu. A null in the manifest is a separator; destructive entries are red
+  // and sit at the end, so "Delete table" is never next to the insert commands.
+  function tbOpenTableMenu(rich, cmd, anchor) {
+    var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
+    p.appendChild(tbHeading('Table'));
+    for (var i = 0; i < RTB.tableOps.length; i++) (function (op) {
+      if (op === null) { var sep = document.createElement('span'); sep.className = 'sw-tb-msep'; sep.setAttribute('aria-hidden', 'true'); p.appendChild(sep); return; }
+      var b = tbItemBtn(op.label, null, function () {
+        if (tbRunTableOp(rich, op.id)) tbFinish(); else tbClosePop();
+      });
+      if (op.danger) b.className += ' sw-tb-danger';
+      p.appendChild(b);
+    })(RTB.tableOps[i]);
+    tbShowPop(anchor); setTbActive(cmd.id);
+  }
   function tbOpenLink(rich, cmd, anchor) {
     var p = tbEnsurePop(); while (p.firstChild) p.removeChild(p.firstChild);
     // Capture the caret NOW (before the input steals focus) so Apply acts on the ORIGINAL selection.
@@ -869,7 +1376,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       tbFinish(); return;
     }
     if (cmd.kind === 'indent') { tbStepBlockIndent(rich, cmd.cmd === '-1' ? -1 : 1); tbFinish(); return; }
-    if (cmd.kind === 'table') { tbInsertTable(); tbFinish(); return; }
+    if (cmd.kind === 'table') {
+      // Outside a table the button INSERTS one; inside a table it opens the row/column/merge menu, which
+      // is where an author looks for those commands once a table exists.
+      if (!tbTableCtx(rich)) { tbInsertTable(); tbFinish(); return; }
+      if (tbPop && tbPop.style.display !== 'none' && tbActiveId === cmd.id) { tbClosePop(); return; }
+      tbOpenTableMenu(rich, cmd, anchor); return;
+    }
     if (cmd.kind === 'media') { tbPickMedia(); return; } // hands off to the editor's media picker
     // Popover commands: a second click on the open control closes it (toggle).
     if (tbPop && tbPop.style.display !== 'none' && tbActiveId === cmd.id) { tbClosePop(); return; }
@@ -1618,8 +2131,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     // Rich
     eachEl('[data-sw-html]', function (el) {
       if (inEntry(el) || inForeignSlot(el)) return;
-      if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); restPush(el, 'text'); }
-      else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
+      if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); el.addEventListener('paste', onRichPaste); restPush(el, 'text'); }
+      else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); el.removeEventListener('paste', onRichPaste); }
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
@@ -1668,6 +2181,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.addEventListener('click', onFormClick, true);
       document.addEventListener('click', rzClick, true); // image-resize handle select / dismiss
       document.addEventListener('dblclick', tbImgDblClick, true); // double-click an image → edit dialog
+      // Table resize grips. Bubble phase for the move (the HUD's capture-phase tracker must still see it)
+      // and CAPTURE for the mousedown, so the grip claims the press before a text selection can start.
+      document.addEventListener('mousemove', tzMove);
+      document.addEventListener('mousedown', tzDown, true);
       // The overlay HUD: track the editable element(s) under the pointer (capture so it sees every move).
       ensureOverlay();
       document.addEventListener('mousemove', onOvMove, true);
@@ -1708,6 +2225,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.removeEventListener('dblclick', tbImgDblClick, true);
       document.removeEventListener('mousemove', rzMove, true); // clear any in-flight drag listeners
       document.removeEventListener('mouseup', rzEnd, true);
+      document.removeEventListener('mousemove', tzMove);
+      document.removeEventListener('mousedown', tzDown, true);
+      document.removeEventListener('mousemove', tzMove, true); // …and any in-flight table drag
+      document.removeEventListener('mouseup', tzUp, true);
+      tzDrag = null; tzHide(); document.body.style.cursor = '';
       document.removeEventListener('mousemove', onOvMove, true);
       document.removeEventListener('mouseleave', onOvLeave, true);
       window.removeEventListener('resize', repositionHud);
@@ -1748,6 +2270,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     }
     else if (d.type === 'insert-media' && typeof d.url === 'string') tbInsertImage(d.url, d.alt, d.width, d.height); // media dialog → <img> at the saved caret
     else if (d.type === 'update-media' && typeof d.url === 'string') tbUpdateImage(d.url, d.alt, d.width, d.height); // image-settings dialog → update the double-clicked <img>
+    else if (d.type === 'insert-paste' && typeof d.html === 'string') tbInsertPaste(d.html); // paste-cleanup answer → insert at the saved caret
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

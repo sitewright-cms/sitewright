@@ -314,19 +314,6 @@ export function updateImage(img: HTMLImageElement, opts: ImageAttrs): void {
   else img.removeAttribute('height');
 }
 
-/** Insert a starter 2×2 table (a header row + a body row) at the caret. Cells are edited in place. */
-export function insertStarterTable(editable: HTMLElement): void {
-  editable.focus();
-  const table =
-    '<table><thead><tr><th>Heading</th><th>Heading</th></tr></thead>' +
-    '<tbody><tr><td>Cell</td><td>Cell</td></tr><tr><td>Cell</td><td>Cell</td></tr></tbody></table><p><br></p>';
-  try {
-    document.execCommand('insertHTML', false, table);
-  } catch {
-    /* jsdom / unsupported — no-op */
-  }
-}
-
 /** Convenience: run an `exec`-kind command from the shared manifest. */
 export function runCmd(editable: HTMLElement, cmd: RichCmd): void {
   if (cmd.kind === 'exec' && cmd.cmd) runExec(editable, cmd.cmd, cmd.arg);

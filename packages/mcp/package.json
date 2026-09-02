@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/mcp",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "description": "Sitewright MCP tool surface: a project's content operations as MCP tools, shared by the API's remote HTTP /mcp endpoint. Also ships the DEPRECATED sitewright-mcp stdio bridge bin (retired, kept for existing installs).",
   "license": "Apache-2.0",
   "type": "module",

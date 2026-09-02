@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Script } from 'node:vm';
 import { PREVIEW_BRIDGE_JS } from '../src/http/preview-bridge.js';
+import { RICH_TABLE_OPS, RICH_TABLE_STARTER, RICH_TABLE_MAX, RICH_TABLE_MIN_COL } from '@sitewright/blocks';
 
 /**
  * The bridge is a STRING of browser JS injected into the editor's preview iframe, so it cannot be
@@ -340,5 +341,64 @@ describe('preview bridge — markers TRACK an animating element', () => {
     // A region that changes size while the document does not — an accordion opening, a textarea
     // growing — is invisible to a body-level observer.
     expect(PREVIEW_BRIDGE_JS).toMatch(/for \(var ri = 0; ri < restList\.length; ri\+\+\) \{ try \{ restRO\.observe\(restList\[ri\]\.el\); \}/);
+  });
+});
+
+describe('preview bridge — table editing and paste hygiene are wired into the on-page toolbar', () => {
+  it('serialises the SHARED table manifest, so both toolbars offer the same menu', () => {
+    // The ops come from @sitewright/blocks; the bridge embeds them as data because a function cannot
+    // cross into the injected string. If the two lists ever drift, one surface silently loses commands.
+    for (const op of RICH_TABLE_OPS) {
+      if (op === null) continue;
+      expect(PREVIEW_BRIDGE_JS).toContain(`"id":"${op.id}"`);
+      expect(PREVIEW_BRIDGE_JS).toContain(`"label":"${op.label}"`);
+    }
+    expect(PREVIEW_BRIDGE_JS).toContain('tbRunTableOp');
+    expect(PREVIEW_BRIDGE_JS).toContain('tbOpenTableMenu');
+  });
+
+  it('embeds the shared starter table rather than a second copy of the markup', () => {
+    expect(PREVIEW_BRIDGE_JS).toContain(JSON.stringify(RICH_TABLE_STARTER));
+    expect(PREVIEW_BRIDGE_JS).toContain('RTB.tableStarter');
+  });
+
+  it('lights the table button up from the caret, not from a click', () => {
+    // `table` joins the active set via tbTableCtx — the same signal that switches the button from
+    // "insert" to the ops menu, so the two can never disagree.
+    expect(PREVIEW_BRIDGE_JS).toMatch(/id === 'table'\) on = !!tbTableCtx\(currentRich\(\)\)/);
+  });
+
+  it('addresses table ops through a GRID model, so spans are not torn', () => {
+    // A colspan/rowspan-blind implementation would cut merged cells in half on insert/delete.
+    for (const fn of ['tbGrid', 'tbInsertAtColumn', 'tbClosedRect', 'tbMergeCells', 'tbSplitCell']) {
+      expect(PREVIEW_BRIDGE_JS).toContain(`function ${fn}`);
+    }
+  });
+
+  it('resizes columns/rows/tables and clamps to the shared bounds', () => {
+    for (const fn of ['tzGrip', 'tzSetCol', 'tzSetRow', 'tzSetTable', 'tzPin']) {
+      expect(PREVIEW_BRIDGE_JS).toContain(`function ${fn}`);
+    }
+    expect(PREVIEW_BRIDGE_JS).toContain(`"tableMax":${RICH_TABLE_MAX}`);
+    expect(PREVIEW_BRIDGE_JS).toContain(`"tableMinCol":${RICH_TABLE_MIN_COL}`);
+    // The drag writes only the sanitizer-allowed sizing declarations.
+    expect(PREVIEW_BRIDGE_JS).toContain("tbWriteDecl(table, 'table-layout', 'fixed')");
+  });
+
+  it('hands a word-processor paste to the EDITOR instead of cleaning it in the sandbox', () => {
+    // The cleaner lives in @sitewright/blocks and cannot be imported here, so the bridge only detects
+    // the dialect and round-trips through the parent — one implementation, both surfaces.
+    expect(PREVIEW_BRIDGE_JS).toContain("post({ type: 'paste-cleanup'");
+    expect(PREVIEW_BRIDGE_JS).toContain("d.type === 'insert-paste'");
+    expect(PREVIEW_BRIDGE_JS).toContain('function tbInsertPaste');
+    // …and only for a foreign paste: an ordinary one keeps the browser's own path.
+    expect(PREVIEW_BRIDGE_JS).toContain('if (!tbIsForeign(html)) return;');
+  });
+
+  it('attaches and detaches the paste + resize listeners with content mode', () => {
+    expect(PREVIEW_BRIDGE_JS).toContain("el.addEventListener('paste', onRichPaste)");
+    expect(PREVIEW_BRIDGE_JS).toContain("el.removeEventListener('paste', onRichPaste)");
+    expect(PREVIEW_BRIDGE_JS).toContain("document.addEventListener('mousedown', tzDown, true)");
+    expect(PREVIEW_BRIDGE_JS).toContain("document.removeEventListener('mousedown', tzDown, true)");
   });
 });

@@ -6,6 +6,7 @@ import { findEachBlock, findElementRange, narrowToText } from '../lib/source-loc
 import { DANGEROUS_KEYS, isTranslationKey, websiteDataPathOf } from '../lib/page-data';
 import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
 import { safeUrl } from '@sitewright/blocks/url';
+import { RICH_PASTE_PROMPT, cleanPastedHtml, plainTextToHtml, sanitizeRichHtml } from '@sitewright/blocks';
 import { useCiPalette } from '../lib/ci-palette';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { FormEditorModal } from './FormEditorModal';
@@ -16,6 +17,7 @@ import { ACCEPT } from './files/FileBrowser';
 import { ImageMapStudio } from './library/imagemap/ImageMapStudio';
 import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
 import type { Form } from '@sitewright/schema';
+import { useDialogs } from './ui/Dialogs';
 import { PreviewPane } from './editor/PreviewPane';
 import { DEVICE_ICONS, DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -210,6 +212,27 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   const ci = useCiPalette();
   const ciRef = useRef(ci);
   ciRef.current = ci;
+  const { confirm, dialog } = useDialogs();
+
+  /** Ask whether to snap a word-processor paste onto the platform's primitives, then post the answer back
+   *  to the bridge for insertion at the caret it saved. Sanitized either way — the payload came out of an
+   *  untrusted iframe. Reached through a ref so the message listener does not re-subscribe. */
+  async function askPasteCleanup(html: string, text: string): Promise<void> {
+    const clean = await confirm({
+      title: RICH_PASTE_PROMPT.title,
+      message: RICH_PASTE_PROMPT.body,
+      confirmLabel: RICH_PASTE_PROMPT.clean,
+      cancelLabel: RICH_PASTE_PROMPT.keep,
+      danger: false,
+    });
+    const out = clean ? cleanPastedHtml(html, ciRef.current.colors) : sanitizeRichHtml(html);
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'sitewright-editor', type: 'insert-paste', html: out || plainTextToHtml(text) },
+      '*',
+    );
+  }
+  const askPasteCleanupRef = useRef(askPasteCleanup);
+  askPasteCleanupRef.current = askPasteCleanup;
   const mounted = useRef(true);
   useEffect(() => () => { mounted.current = false; }, []);
 
@@ -364,6 +387,10 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         // Rich toolbar "insert image" — a free insertion, no key: the pick is posted BACK to the bridge,
         // which inserts the <img> at the caret it saved, and the resulting rich-edit persists it.
         setMediaInsert(true);
+      } else if (d.type === 'paste-cleanup' && typeof d.html === 'string') {
+        // A word-processor paste in a slot's rich region. Same round-trip as the page editor: the bridge
+        // detects the dialect, the CLEANER lives here (it cannot be imported into the injected string).
+        void askPasteCleanupRef.current(d.html, typeof d.text === 'string' ? d.text : '');
       } else if (d.type === 'edit-media' && typeof d.url === 'string') {
         setMediaEdit({
           url: d.url,
@@ -691,6 +718,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
           }
         />
       )}
+      {dialog}
     </Modal>
   );
 }

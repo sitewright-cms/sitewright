@@ -58,7 +58,7 @@ test('right-click opens the menu with every row action, and Move to reaches both
 
   const menu = page.getByRole('menu', { name: /Actions for/ });
   await expect(menu).toBeVisible();
-  for (const label of ['Open page editor', 'Edit page settings', 'Preview in new tab', 'Duplicate page', 'Move to', 'Delete page']) {
+  for (const label of ['Open page editor', 'Edit page settings', 'Edit page data', 'Preview in new tab', 'Duplicate page', 'Move to', 'Delete page']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }
 
@@ -182,4 +182,36 @@ test.describe('touch', () => {
     await page.touchscreen.tap(10, 10);
     await expect(menu).toBeHidden();
   });
+});
+
+// "Edit page data" from the LIST. The store used to be reachable only from inside the page editor,
+// which meant opening the whole editor (and its preview) to change one string.
+test('Edit page data opens the store from the row menu and writes it without losing the page body', async ({ page, baseURL }) => {
+  const { projectId, name } = await seed(page, 'ctxdata');
+  await page.goto(baseURL!);
+  await page.getByText(name, { exact: true }).first().click();
+  await expect(page.locator('li[data-virtual-row]').first()).toBeVisible();
+
+  const row = page.locator('li[data-virtual-row]').filter({ hasText: 'Page 03' }).first();
+  await row.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: /Actions for/ });
+  await menu.getByRole('menuitem', { name: 'Edit page data' }).click();
+
+  const dialog = page.getByRole('dialog', { name: /Page data/ });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /JSON source/ }).click();
+  await dialog.getByLabel('JSON source').fill('{"headline":"From the list"}');
+  await dialog.getByRole('button', { name: 'Apply JSON' }).click();
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  // The store landed AND the page's own source survived — `putPage` replaces the whole entity, so
+  // saving from the trimmed list row would have deleted the body.
+  await expect
+    .poll(async () => {
+      const res = await page.request.get(`/projects/${projectId}/content/page/p-03`);
+      const item = (await res.json()).item as { data?: Record<string, unknown>; source?: string };
+      return { headline: item.data?.headline, source: item.source };
+    }, { timeout: 20_000 })
+    .toEqual({ headline: 'From the list', source: '<p>body</p>' });
 });

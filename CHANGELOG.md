@@ -9,6 +9,66 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.45.0] — 2026-09-02
+
+### Added
+
+- **Tables are editable, not just insertable.** Both rich-text surfaces — the dataset `richtext` field
+  and the on-page `data-sw-html` toolbar — now light the table button up when the caret is inside a
+  table and open a row/column menu there instead of inserting a second one: insert row above/below,
+  insert column left/right, delete row/column, toggle the header row, merge and split cells, reset
+  sizes, delete table. Every op addresses a GRID model rather than the raw `tr`/`td` tree, so a
+  `colspan`/`rowspan` is stretched or narrowed rather than torn in half. The ordered menu itself lives
+  in `@sitewright/blocks` (`RICH_TABLE_OPS`), so the two toolbars cannot drift apart.
+  - The caret stays in the table across an op, so a second command is one click away. Deleting the row
+    or column you were standing in left the caret on detached nodes, which quietly reverted the button
+    to "insert a table" — and clicking the same cell did not recover it, because the selection never
+    CHANGED and so nothing recomputed. A caret that survived the op is left exactly where it was.
+- **Columns, rows and whole tables can be dragged to size.** Hovering a column boundary, a row
+  boundary or the table's right edge arms a grip; dragging writes an inline `width`/`height`. Dragging
+  a column pins the other columns' measured widths first, so one drag changes one column instead of
+  silently reflowing the rest. `sanitize-rich` now allows `width`/`height`/`table-layout` on table
+  elements ONLY, gated to a bounded px/% literal — an arbitrary dragged number is the one thing the
+  toolbars cannot express as a utility class, and scoping it per-tag keeps authored HTML from resizing
+  arbitrary page elements.
+- **A paste from Word, Google Docs or Pages offers to clean itself up.** Those editors put a private
+  dialect on the clipboard (`class="MsoNormal"`, `<o:p>`, a font stack on every run) that renders
+  "right" in the editor and then fights the site's typography forever after. A paste carrying that
+  dialect now asks; cleaning keeps the text, links, lists, tables and images and snaps the rest onto
+  the platform's own primitives — foreign classes and ids dropped, an inline `font-weight`/`font-style`
+  turned into the `<strong>`/`<em>` the toolbar emits, colours and alignment snapped to the nearest
+  palette class (the project's brand colours included), and Word's `&nbsp;` spacer paragraphs turned
+  into the platform's own empty line. An ordinary paste — including a copy from this editor — is
+  untouched. The cleaner lives in `@sitewright/blocks`; the sandboxed preview bridge round-trips its
+  clipboard HTML through the editor rather than carrying a second implementation.
+- **A dataset `richtext` field can be expanded into a large modal.** It is the same editor re-parented,
+  not a copy, so what is typed in the modal is already in the field behind it on close.
+- **"Edit page data" on the Pages tab.** The page-data store was reachable only from inside the page
+  editor; it is now a right-click action on any page row, opening the same tree/JSON editor. The page
+  is re-read before the write, because `putPage` replaces the whole entity and a list row carries no
+  source.
+
+### Changed
+
+- **The page/site data editor reads as a tree instead of a form.** Each node puts its name (or index)
+  and type on one row (`my_array [array] ✕`), branches collapse and start collapsed with a count of
+  what they hold, and every key and array item can be reordered by drag (with a drop indicator) or by
+  the keyboard. The top-level rail and its indent are gone — the panel IS the object — top-level rows
+  are tinted apart from each other, and a nested rail turns brand-coloured on hover so it is obvious
+  how far a group reaches.
+- **Dataset entry fields are boxed.** Every label+input pair now sits in its own 10px-radius, 10px-padded
+  box tinted a step off the surface behind it, so a long form reads as rows rather than a stack of
+  loose controls. The Key field is deliberately left unboxed: it is the entry's identity, not one of
+  its fields.
+
+### Fixed
+
+- **`pnpm verify` passes again.** It had been failing at its FIRST gate — which short-circuits every
+  gate after it, so a red audit said nothing about the code under test. `fast-uri` is re-pinned to
+  3.1.6 (its advisory range widened after we pinned 3.1.5, the same way `nanoid`'s did — four further
+  host-confusion/SSRF advisories landed with 3.1.6 as the fix) and `qs` is pinned to 6.16.0 for an
+  array-limit bypass and a DoS. `fast-uri` is in the runtime tree, via ajv → fastify.
+
 ## [0.44.0] — 2026-08-30
 
 ### Changed

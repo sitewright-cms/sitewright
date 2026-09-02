@@ -14,6 +14,7 @@ import {
 } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
 import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
+import { RICH_PASTE_PROMPT, cleanPastedHtml, plainTextToHtml, sanitizeRichHtml } from '@sitewright/blocks';
 import { api, previewDocUrl, type Project } from '../api';
 import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
@@ -370,6 +371,31 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
   const applyControlEditRef = useRef(applyControlEdit);
   applyControlEditRef.current = applyControlEdit;
+
+  /**
+   * A word-processor paste arrived from the preview's rich toolbar. Ask the author whether to snap it onto
+   * the platform's WYSIWYG primitives, then post the result back for the bridge to insert at the caret it
+   * saved. The bridge can only detect the dialect (a few regexes inline); the CLEANER lives in
+   * @sitewright/blocks and runs here, so there is exactly one implementation for both surfaces.
+   *
+   * The reply is sanitized either way — the payload came out of an untrusted iframe.
+   */
+  async function askPasteCleanup(html: string, text: string): Promise<void> {
+    const clean = await confirm({
+      title: RICH_PASTE_PROMPT.title,
+      message: RICH_PASTE_PROMPT.body,
+      confirmLabel: RICH_PASTE_PROMPT.clean,
+      cancelLabel: RICH_PASTE_PROMPT.keep,
+      danger: false,
+    });
+    const out = clean ? cleanPastedHtml(html, ciRef.current.colors) : sanitizeRichHtml(html);
+    iframeRef.current?.contentWindow?.postMessage(
+      { source: 'sitewright-editor', type: 'insert-paste', html: out || plainTextToHtml(text) },
+      '*',
+    );
+  }
+  const askPasteCleanupRef = useRef(askPasteCleanup);
+  askPasteCleanupRef.current = askPasteCleanup;
   // A click on an internal site link in the preview → open THAT page's editor. Resolve the clicked
   // route to a page (full path via pagePath), warn (naming the page change) if there are unsaved
   // edits, then ask the parent to switch. Unknown routes / a link to the page already open → no-op.
@@ -587,6 +613,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // The rich-text toolbar's "insert image" button → open the media picker; the pick is posted back as
         // 'insert-media' and the bridge inserts the <img> at its saved caret. No key: it's a free insertion.
         setMediaInsert(true);
+      } else if (d.type === 'paste-cleanup' && typeof d.html === 'string') {
+        // A word-processor paste landed in a rich region. The bridge cannot import the cleaner (it is an
+        // injected string in a sandboxed realm), so it hands the clipboard HTML here: ask the author, then
+        // post the result back for insertion at the caret the bridge saved.
+        void askPasteCleanupRef.current(d.html, typeof d.text === 'string' ? d.text : '');
       } else if (d.type === 'edit-media' && typeof d.url === 'string') {
         // Double-clicked a rich-content image → open the image-settings dialog pre-filled; Apply posts
         // 'update-media' and the bridge rewrites that same <img>.

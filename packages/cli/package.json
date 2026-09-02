@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/cli",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "description": "The `sitewright` CLI: OAuth login (loopback PKCE + device grant) + credential store. `sitewright mcp` runs the DEPRECATED stdio bridge (retired in favour of the remote HTTP /mcp endpoint; kept for existing installs).",
   "license": "Apache-2.0",
   "type": "module",

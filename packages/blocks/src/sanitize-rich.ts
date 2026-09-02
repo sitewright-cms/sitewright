@@ -14,6 +14,7 @@
 // `sandbox` (no `allow-same-origin`) + `referrerpolicy=no-referrer`; an iframe without a valid https
 // src is dropped entirely. `<form>`/`<input>` are NOT allowed (no embedded credential-harvest forms).
 import sanitizeHtml from 'sanitize-html';
+import { RICH_TABLE_SIZE_RE } from './rich-table.js';
 
 // Safe colour values: hex, rgb()/rgba() (digits/commas/dots/space only — can't carry url()/expression()
 // since those need letters+parens), or a CSS named colour. Split into simple regexes (no nested
@@ -73,6 +74,17 @@ const RICH_OPTIONS: sanitizeHtml.IOptions = {
       'font-style': [/^(?:normal|italic|oblique)$/],
       'text-decoration': [/^(?:none|underline|line-through|overline)$/],
     },
+    // TABLE SIZING ONLY. A dragged column width is the one thing the toolbars cannot express as a
+    // utility class — the author picks an arbitrary number — so `width`/`height` are allowed here and
+    // NOWHERE else, gated to a bounded px/% literal (RICH_TABLE_SIZE_RE: no calc(), var(), or url()).
+    // Scoped per-tag rather than on `*` so authored HTML still cannot resize arbitrary page elements;
+    // sanitize-html merges each tag's entry with the `*` entry above.
+    ...Object.fromEntries(
+      (['table', 'colgroup', 'col', 'tr', 'th', 'td'] as const).map((tag) => [
+        tag,
+        { width: [RICH_TABLE_SIZE_RE], height: [RICH_TABLE_SIZE_RE], 'table-layout': [/^(?:auto|fixed)$/] },
+      ]),
+    ),
   },
   // Schemes for href/src. `data:`/`javascript:`/`vbscript:` are absent → discarded; iframe is further
   // gated to https only. Relative URLs (no scheme, e.g. `/media/…`) are permitted by sanitize-html.

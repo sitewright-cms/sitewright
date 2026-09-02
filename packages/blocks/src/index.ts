@@ -23,6 +23,8 @@ export * from './escape.js';
 export * from './url.js';
 export * from './sanitize-rich.js';
 export * from './rich-toolbar.js';
+export * from './rich-table.js';
+export * from './rich-paste.js';
 export * from './directives.js';
 export * from './entry-marker.js';
 export * from './form-embed.js';

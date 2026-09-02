@@ -341,3 +341,89 @@ test('undo/redo: header buttons revert and reapply an inline edit', async ({ pag
   await page.getByRole('button', { name: 'Redo' }).click();
   await expect(region).toHaveText('Changed');
 });
+
+// The on-page toolbar's TABLE control mirrors the dataset field's: insert when the caret is outside a
+// table, a row/column menu when it is inside one. The two are driven from the same manifest in
+// @sitewright/blocks, so what this really guards is that the bridge's vanilla-JS half is wired up —
+// the half no unit test can execute.
+test('data-sw-html: the table button becomes an ops menu inside a table, and its ops apply', async ({ page }) => {
+  await setup(page, 'swtable');
+  await setSource(page, '<section data-sw-html="body"><p>Before</p></section>');
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await expect(region).toHaveAttribute('contenteditable', 'true');
+
+  await region.locator('p').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+
+  // Outside a table the control inserts one.
+  await tbClick(preview, 'table', 'Insert table');
+  await expect(region.locator('table')).toHaveCount(1);
+  await expect(region.locator('table tr')).toHaveCount(3);
+
+  // Put the caret in a body cell → the SAME button renames itself and opens the menu.
+  await region.locator('tbody td').first().click();
+  await expect(preview.locator('.sw-tb button[data-tbid="table"][aria-label="Table options"]')).toBeVisible();
+  await tbClick(preview, 'table', 'Table options');
+  await expect(preview.locator('.sw-tb-pop')).toBeVisible();
+  for (const label of ['Insert row below', 'Delete column', 'Toggle header row', 'Merge cells', 'Delete table']) {
+    await expect(preview.locator(`.sw-tb-pop button[aria-label="${label}"]`)).toBeVisible();
+  }
+
+  // …and an op actually mutates the rendered table.
+  await preview.locator('.sw-tb-pop button[aria-label="Insert row below"]').click();
+  await expect(region.locator('table tr')).toHaveCount(4);
+
+  await region.locator('tbody td').first().click();
+  await tbClick(preview, 'table', 'Table options');
+  await preview.locator('.sw-tb-pop button[aria-label="Delete table"]').click();
+  await expect(region.locator('table')).toHaveCount(0);
+
+  // The whole sequence persisted through the normal rich-edit path.
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+});
+
+test('data-sw-html: dragging a column boundary resizes it and the width persists', async ({ page }) => {
+  await setup(page, 'swtblsize');
+  // Real column content: with one-letter cells the columns start ~28px wide, i.e. already under the
+  // 32px floor a drag clamps to — "narrower" is then unreachable and the assertion is meaningless.
+  await setSource(
+    page,
+    '<section data-sw-html="body"><table><thead><tr><th>First column</th><th>Second column</th></tr></thead>' +
+      '<tbody><tr><td>one</td><td>two</td></tr></tbody></table></section>',
+  );
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await expect(region).toHaveAttribute('contenteditable', 'true');
+
+  const firstCol = region.locator('thead th').first();
+  const before = (await firstCol.boundingBox())!;
+  const edgeX = before.x + before.width;
+  const midY = before.y + before.height / 2;
+  // Hovering the boundary arms the grip; the drag then writes the width. Dragging RIGHT (widen) keeps
+  // the assertion clear of the minimum-width clamp entirely.
+  await page.mouse.move(edgeX, midY);
+  await page.mouse.down();
+  await page.mouse.move(edgeX + 60, midY, { steps: 10 });
+  await page.mouse.up();
+
+  await expect
+    .poll(async () => (await firstCol.boundingBox())!.width, { message: 'the column never widened' })
+    .toBeGreaterThan(before.width + 30);
+  await expect(firstCol).toHaveAttribute('style', /width:\s*\d+px/);
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
+  // The size crossed the save-side sanitizer, which allows width on table elements only.
+  await expect(
+    page.frameLocator('iframe[title="Preview"]').locator('[data-sw-html="body"] thead th').first(),
+  ).toHaveAttribute('style', /width:\s*\d+px/);
+});

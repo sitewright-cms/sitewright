@@ -20,6 +20,8 @@ import { useCiPalette } from '../lib/ci-palette';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { registerCodeInsertSink } from '../lib/code-insert-sink';
 import { useProjectEvents } from '../lib/use-project-events';
+import { useExternalEdit } from '../lib/use-external-edit';
+import { ExternalChangeBanner } from './ui/ExternalChangeBanner';
 import { useIsMobile } from '../lib/use-is-mobile';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
@@ -857,8 +859,22 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   );
 
   useProjectEvents(project.id, (c) => {
+    // THIS page is handled by useExternalEdit below; another page never affects this view.
     if (c.kind === 'page') return;
     if (PREVIEW_AFFECTING_KINDS.has(c.kind)) armPreviewRefresh();
+  });
+
+  /**
+   * The page open in this editor changing underneath the operator — the clobber case. Clean buffer
+   * reloads silently; a dirty one raises a banner instead of discarding either side's work. This used
+   * to be dropped on the floor (the `kind === 'page'` early-return above covered it too), so an agent
+   * rewrite was invisible until the operator's next save overwrote it.
+   */
+  const externalEdit = useExternalEdit({
+    projectId: project.id,
+    match: (c) => c.kind === 'page' && c.entityId === page.id,
+    isDirty: () => dirty,
+    onRefresh: () => void reload(),
   });
 
   /** Copies the referenced template's source AND its declared default data INTO the page, then drops
@@ -1156,6 +1172,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       titleExtra={titleExtra}
       headerExtra={headerExtra}
     >
+      {externalEdit.pending && (
+        <ExternalChangeBanner
+          change={externalEdit.pending}
+          label="This page"
+          onReload={externalEdit.reload}
+          onDismiss={externalEdit.dismiss}
+        />
+      )}
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 dark:bg-white/5 p-2">
         {/* Row 1 — the authoring strip (SOURCE MODE): the CodeMirror source editor, or the
             template / inherited-code LOCK panel. Collapsed on open (a contentbase-style peek),

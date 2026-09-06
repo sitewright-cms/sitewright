@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useUnsavedWork } from '../../lib/unsaved-work';
+import { useExternalEdit } from '../../lib/use-external-edit';
+import { ExternalChangeBanner } from '../ui/ExternalChangeBanner';
 import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical, History } from 'lucide-react';
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
 import { compareEntryOrder, hasPageField } from '@sitewright/core';
@@ -614,6 +616,42 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const dirty = status !== base.status || JSON.stringify(values) !== JSON.stringify(base.values) || idChanged;
   // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
   useUnsavedWork(dirty, 'Dataset entry');
+
+  /**
+   * This row changing underneath the operator. Dataset entries are the most machine-written content on
+   * the platform (catalogue syncs, agent imports), so an open row is a live clobber target: the modal
+   * saves the whole row, reverting any field the other writer touched.
+   *
+   * There is nothing to silently refresh onto — the modal IS the buffer — so a clean modal just takes
+   * the new values, and a dirty one asks. `onSaved` is the parent's re-read hook.
+   */
+  /**
+   * Re-read THIS row and reseat the modal's own state. `onSaved` is not a substitute: it is a
+   * post-save notification to the parent, and its two implementations do the wrong thing here — one
+   * CLOSES the modal (jarring when the operator was only reading), the other refreshes the background
+   * list while the open modal keeps showing pre-change values, which later surfaces as an unexplained
+   * 409 on save. The modal IS the buffer, so it has to refresh itself.
+   */
+  const reloadEntry = useCallback(async () => {
+    try {
+      const fresh = (await api.getEntry(projectId, base.id, dataset.slug)).item;
+      setValues(fresh.values);
+      setStatus(fresh.status);
+      setBase({ id: fresh.id, status: fresh.status, values: fresh.values }); // baseline = reloaded → clean
+      setExistsServer(true);
+    } catch {
+      /* the row may have just been deleted — leave the buffer alone rather than blanking it */
+    }
+  }, [projectId, base.id, dataset.slug]);
+
+  const externalEdit = useExternalEdit({
+    projectId,
+    // The dataset must match too: entry ids are unique only WITHIN a dataset, so `products/row_1`
+    // and `team/row_1` are different rows and the id alone would cross-trigger between them.
+    match: (c) => c.kind === 'entry' && c.entityId === entry.id && (c.scope ?? '') === dataset.slug,
+    isDirty: () => dirty,
+    onRefresh: () => void reloadEntry(),
+  });
   // Save is live when there is something to persist (a change, or an as-yet-uncreated new entry) AND
   // the key + every json field are valid.
   const canSave = (dirty || !existsServer) && !keyTaken && !keyInvalid && !hasInvalidJson;
@@ -705,6 +743,14 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   return (
     <>
     <Modal title={title} titleBelow={datasetLink} size="lg" onClose={onClose} onBeforeClose={confirmClose} onSave={() => void submit()} saving={saving} saveDisabled={!canSave} headerExtra={statusSwitch}>
+      {externalEdit.pending && (
+        <ExternalChangeBanner
+          change={externalEdit.pending}
+          label="This entry"
+          onReload={externalEdit.reload}
+          onDismiss={externalEdit.dismiss}
+        />
+      )}
       <EntryFormContext.Provider value={ctx}>
         <div className="flex flex-col gap-3 p-5">
           {keyFieldOpen ? (

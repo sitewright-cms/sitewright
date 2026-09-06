@@ -3,6 +3,8 @@ import { useUnsavedWork } from '../../lib/unsaved-work';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import { History } from 'lucide-react';
 import { ApiError, api, type Project, type SettingsBundle } from '../../api';
+import { useExternalEdit } from '../../lib/use-external-edit';
+import { ExternalChangeBanner } from '../ui/ExternalChangeBanner';
 import { RevisionHistoryModal } from '../RevisionHistoryModal';
 import { toForm, toBundle, type SettingsForm } from './model';
 import { IdentitySection } from './IdentitySection';
@@ -175,6 +177,26 @@ export function SettingsView({
   // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
   useUnsavedWork(dirty, 'Website settings');
 
+  /**
+   * Settings changing underneath the operator. This is the WORST clobber on the platform: `putSettings`
+   * replaces the whole singleton, so one stale save reverts the nav, footer, skeleton slots,
+   * translations, identity AND criticalCss in a single write — every field the form happens to be
+   * holding an older copy of, including ones this operator never looked at.
+   *
+   * Dirtiness is checked across BOTH sections, not just the visible one: an unsaved edit in the tab
+   * you are not looking at is exactly as losable, and reloading would discard it silently.
+   */
+  const anyDirty = useMemo(
+    () => form != null && baseline != null && SECTIONS.some((s) => sectionSnapshot(form, s.key) !== sectionSnapshot(baseline, s.key)),
+    [form, baseline],
+  );
+  const externalEdit = useExternalEdit({
+    projectId: project.id,
+    match: (c) => c.kind === 'settings',
+    isDirty: () => anyDirty,
+    onRefresh: () => void reloadSettings(),
+  });
+
   function patch(p: Partial<SettingsForm>) {
     setForm((f) => (f ? { ...f, ...p } : f));
   }
@@ -244,6 +266,16 @@ export function SettingsView({
       {/* No own chrome/background or extra padding: the cards sit flush on the page
           surface that `<main>` already pads — settings match the other tabs. */}
       <div>
+        {externalEdit.pending && (
+          <div className="mb-4 overflow-hidden rounded-2xl">
+            <ExternalChangeBanner
+              change={externalEdit.pending}
+              label="Website settings"
+              onReload={externalEdit.reload}
+              onDismiss={externalEdit.dismiss}
+            />
+          </div>
+        )}
         {showSwitcher && (
           // Legacy self-switching surface (the project's top tabs drive the fixed-section case).
           <div className="mb-4 flex">

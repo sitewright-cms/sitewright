@@ -7,6 +7,8 @@ import { useCopy } from '../ui/useCopy';
 import { primaryButton, ghostButton, glassPanel } from '../../theme';
 import { SnippetPreviewButton } from './SnippetPreviewButton';
 import { HoverTip } from '../ui/HoverTip';
+import { useProjectEvents } from '../../lib/use-project-events';
+import { isCurrentContentVersion } from '../../api';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -102,6 +104,16 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     [globalAdapters, load, save, remove],
   );
 
+  // Bumped by the project change-stream so an agent's snippet/template write shows up here instead of
+  // leaving the rail on a pre-agent list until a full SPA reload.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  useProjectEvents(projectId, (c) => {
+    if (c.kind !== noun) return;
+    // Skip the echo of our OWN save (we already hold that version) — it would re-fetch what we wrote.
+    if (isCurrentContentVersion(projectId, c.kind, c.entityId, c.version, c.scope ?? '')) return;
+    setReloadNonce((n) => n + 1);
+  });
+
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -117,7 +129,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     return () => {
       alive = false;
     };
-  }, [projectId, noun, load, globalAdapters]);
+  }, [projectId, noun, load, globalAdapters, reloadNonce]);
 
   const create = useCallback(
     async (scope: Scope) => {
@@ -280,8 +292,28 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
 
   return (
     <div className="p-3">
+      {/* THE PROJECT'S OWN RECORDS COME FIRST. They are what an author works in day to day; the shared
+          global library is reference material and is much longer, so leading with it pushed the thing
+          people actually came for below the fold. */}
       {globalAdapters && (
-        <div className="mb-3">
+        <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Your {noun}s</p>
+      )}
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={() => void create('project')}>
+          + New {noun}
+        </button>
+        {nameHint && <span className="text-[11px] text-slate-500 dark:text-slate-400">{nameHint}</span>}
+      </div>
+      {error && <p className="mb-2 text-xs text-rose-500">{error}</p>}
+      {loading ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">Loading…</p>
+      ) : records.length === 0 ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">No {noun}s yet — create one to get started.</p>
+      ) : (
+        <ul className={grid}>{records.map((r) => chip(r, 'project', true))}</ul>
+      )}
+      {globalAdapters && (
+        <div className="mt-4">
           <div className="mb-1.5 flex items-center gap-2">
             <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Global {noun}s {isAdmin ? '· editable' : '· built-in, read-only'}
@@ -297,22 +329,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           ) : (
             globalChips()
           )}
-          <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Your {noun}s</p>
         </div>
-      )}
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        <button className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={() => void create('project')}>
-          + New {noun}
-        </button>
-        {nameHint && <span className="text-[11px] text-slate-500 dark:text-slate-400">{nameHint}</span>}
-      </div>
-      {error && <p className="mb-2 text-xs text-rose-500">{error}</p>}
-      {loading ? (
-        <p className="text-xs text-slate-500 dark:text-slate-400">Loading…</p>
-      ) : records.length === 0 ? (
-        <p className="text-xs text-slate-500 dark:text-slate-400">No {noun}s yet — create one to get started.</p>
-      ) : (
-        <ul className={grid}>{records.map((r) => chip(r, 'project', true))}</ul>
       )}
       {editing && (
         <CodeEditorModal

@@ -323,6 +323,8 @@ import {
   CONTENT_KINDS,
   MAX_SEARCH_QUERY,
   SETTINGS_ENTITY_ID,
+  contentVersion,
+  VersionConflictError,
   type Settings,
 } from '../repo/content.js';
 import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
@@ -1904,6 +1906,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (err instanceof UnauthorizedError) return reply.code(401).send({ error: err.message });
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message });
+    // A LOST-UPDATE refusal carries a machine-readable shape so a client can react rather than just
+    // surface prose: the editor re-reads and offers reload/keep-mine, and an MCP agent can re-apply on
+    // top and retry. Must precede the generic ConflictError branch (it is a subclass).
+    if (err instanceof VersionConflictError) {
+      return reply.code(409).send({
+        error: err.message,
+        code: 'version_conflict',
+        kind: err.kind,
+        entityId: err.entityId,
+        expected: err.expected,
+        actual: err.actual,
+      });
+    }
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message });
     // Recoverable MFA-management errors (wrong enrolment code, no setup in progress) → 400.
     if (err instanceof MfaError) return reply.code(400).send({ error: err.message });
@@ -3624,7 +3639,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // arrives as `?dataset=`; it is required so the right dataset's entry is returned unambiguously.
       const scope = entryScope(kind, req.query.dataset, reply);
       if (scope === undefined) return reply; // 400 already sent
-      const item = await contentRepo.get(ctx, kind, req.params.entityId, scope);
+      // `version` is the optimistic-concurrency token: send it back as `If-Match` on the write and the
+      // server refuses to let a stale buffer overwrite a change made in between. Also emitted as an
+      // `etag` header so ordinary HTTP clients can use the standard mechanism.
+      const { item, version } = await contentRepo.getWithVersion(ctx, kind, req.params.entityId, scope);
+      reply.header('etag', `"${version}"`);
       // A page comes back with the signed DRAFT-preview URL that renders it — the reliable way to SEE a
       // page, and for a project with no deploy target the only one. Same base as the list route.
       if (kind === 'page' && item && typeof item === 'object') {
@@ -3638,10 +3657,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             : pagesById([page]);
           const previewUrl = pagePreviewUrl(base, page, byId);
           // null for a `kind:"link"` nav placeholder — omit the field rather than advertise the site root.
-          if (previewUrl) return reply.send({ item, previewUrl });
+          if (previewUrl) return reply.send({ item, previewUrl, version });
         }
       }
-      return reply.send({ item });
+      return reply.send({ item, version });
     },
   );
 
@@ -3834,7 +3853,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
       // A receipt reports what actually CHANGED, so the prior value must be read before the write.
       if (wantReceipt) await loadPrior();
-      const item = await contentRepo.put(ctx, kind, req.params.entityId, body, { merged: wantMerge });
+      // `If-Match` (the `version` from the GET) makes this write LOSE rather than clobber if the entity
+      // moved in between — see ContentRepository.put's `expectedVersion`. Absent header = no check, so
+      // existing clients are unaffected. `*` is the HTTP idiom for "any existing version": accepted and
+      // treated as no check, so the guard is never half-on.
+      const ifMatch = req.headers['if-match'];
+      const expectedVersion =
+        typeof ifMatch === 'string' && ifMatch.trim() !== '' && ifMatch.trim() !== '*'
+          ? ifMatch.trim().replace(/^W\//, '').replace(/^"|"$/g, '')
+          : undefined;
+      const item = await contentRepo.put(ctx, kind, req.params.entityId, body, {
+        merged: wantMerge,
+        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+      });
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
       if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
       // Saving SETTINGS provisions the mini-shop's order Forms — same pattern, same reason: the config
@@ -3842,8 +3873,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (kind === 'settings') {
         await ensureShopOrderForms(contentRepo, ctx, item as Settings, await instanceSettingsRepo.getFormModes(), app.log);
       }
-      if (wantReceipt) return reply.send(writeReceipt(kind, req.params.entityId, prior, item));
-      return reply.send({ item });
+      // Hand back the NEW version so a client can chain writes without a re-read between them, and so
+      // the editor's buffer stays armed with a current token after every save.
+      const version = contentVersion(item);
+      reply.header('etag', `"${version}"`);
+      if (wantReceipt) return reply.send({ ...writeReceipt(kind, req.params.entityId, prior, item), version });
+      return reply.send({ item, version });
     },
   );
 

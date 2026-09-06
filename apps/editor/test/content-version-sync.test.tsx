@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { api, isCurrentContentVersion } from '../src/api';
+import { api, isOwnContentChange } from '../src/api';
 import { useExternalEdit } from '../src/lib/use-external-edit';
 import { ExternalChangeBanner } from '../src/views/ui/ExternalChangeBanner';
 import type { ContentChange } from '../src/lib/use-project-events';
@@ -52,9 +52,9 @@ describe('content version tracking (If-Match)', () => {
   it('recognises our OWN version and not someone else’s', async () => {
     stubFetch('v-mine');
     await api.getPage('p2', 'home');
-    expect(isCurrentContentVersion('p2', 'page', 'home', 'v-mine')).toBe(true);
-    expect(isCurrentContentVersion('p2', 'page', 'home', 'v-theirs')).toBe(false);
-    expect(isCurrentContentVersion('p2', 'page', 'home', undefined)).toBe(false);
+    expect(isOwnContentChange('p2', 'page', 'home', 'v-mine')).toBe(true);
+    expect(isOwnContentChange('p2', 'page', 'home', 'v-theirs')).toBe(false);
+    expect(isOwnContentChange('p2', 'page', 'home', undefined)).toBe(false);
   });
 
   it('drops the remembered version on a 409 so the next attempt is not judged against a dead token', async () => {
@@ -146,6 +146,38 @@ describe('useExternalEdit', () => {
     fireEvent.click(screen.getByRole('button', { name: /Keep mine/ }));
     expect(onRefresh).toHaveBeenCalledTimes(1); // unchanged — the local buffer is kept
     expect(screen.getByText('no notice')).toBeInTheDocument();
+  });
+
+  it('ignores our own write whose SSE echo BEATS the HTTP response — the ordering a real browser has', async () => {
+    // The server emits the change event while handling the PUT, so the event routinely lands before
+    // fetch() resolves and the new version is recorded. Before this was handled, every editor save
+    // raised a "someone changed this" banner about the operator themselves (25 browser specs failed).
+    let resolveResponse!: (r: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((r) => {
+            resolveResponse = r;
+          }),
+      ),
+    );
+    const onRefresh = vi.fn();
+    render(<Harness dirty onRefresh={onRefresh} />);
+
+    const saving = api.putPage('p9', { id: 'home', path: '', title: 'Home' } as never);
+    // …event arrives FIRST, carrying a version this client has never seen.
+    act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-brand-new' }));
+    expect(screen.getByText('no notice')).toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
+
+    resolveResponse(
+      new Response(JSON.stringify({ item: {}, version: 'v-brand-new' }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    await saving;
+    // A LATER event from someone else must still get through.
+    act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-someone-else' }));
+    expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
   it('ignores changes to OTHER entities', () => {

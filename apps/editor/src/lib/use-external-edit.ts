@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { isCurrentContentVersion } from '../api';
+import { isOwnContentChange } from '../api';
 import { useProjectEvents, type ContentChange } from './use-project-events';
 
 /**
@@ -48,7 +48,7 @@ export function useExternalEdit(opts: {
     // The echo of OUR OWN save carries the version we already hold — ignore it, or every save would
     // re-fetch what it just wrote (and, when the operator saves from a dirty buffer, immediately raise
     // a "someone changed this" banner about themselves).
-    if (isCurrentContentVersion(opts.projectId, change.kind, change.entityId, change.version, change.scope ?? '')) return;
+    if (isOwnContentChange(opts.projectId, change.kind, change.entityId, change.version, change.scope ?? '')) return;
     if (dirtyRef.current()) setPending(change);
     else refreshRef.current();
   });

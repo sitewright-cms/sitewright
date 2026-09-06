@@ -30,8 +30,8 @@ export function ExternalChangeBanner({
       className="flex flex-wrap items-center gap-3 border-b border-amber-300/70 dark:border-amber-500/25 bg-amber-100/80 dark:bg-amber-500/15 px-4 py-2 text-sm text-amber-950 dark:text-amber-100"
     >
       <span>
-        {label} was {what} by {who} while you were editing. Your unsaved changes are still here — saving
-        them as-is would be refused rather than overwrite that work.
+        {label} was {what} by {who} while you were editing. Your edits are still here — writing them
+        as-is would be refused rather than overwrite that work.
       </span>
       <div className="ml-auto flex items-center gap-2">
         <button

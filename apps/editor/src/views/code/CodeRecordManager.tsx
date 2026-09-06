@@ -8,7 +8,7 @@ import { primaryButton, ghostButton, glassPanel } from '../../theme';
 import { SnippetPreviewButton } from './SnippetPreviewButton';
 import { HoverTip } from '../ui/HoverTip';
 import { useProjectEvents } from '../../lib/use-project-events';
-import { isCurrentContentVersion } from '../../api';
+import { isOwnContentChange } from '../../api';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -110,7 +110,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
   useProjectEvents(projectId, (c) => {
     if (c.kind !== noun) return;
     // Skip the echo of our OWN save (we already hold that version) — it would re-fetch what we wrote.
-    if (isCurrentContentVersion(projectId, c.kind, c.entityId, c.version, c.scope ?? '')) return;
+    if (isOwnContentChange(projectId, c.kind, c.entityId, c.version, c.scope ?? '')) return;
     setReloadNonce((n) => n + 1);
   });
 

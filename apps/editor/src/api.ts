@@ -276,18 +276,38 @@ function contentKey(path: string, body?: unknown): string | null {
   return `${m[1]}:${m[2]}:${scope}:${decodeURIComponent(m[3])}`;
 }
 /**
- * Is this the version we already hold? A change event carrying it is the ECHO OF OUR OWN WRITE, so a
- * view can ignore it instead of re-fetching what it just saved. Any other writer produces a version we
- * have never seen, which is exactly the case a view must react to.
+ * Writes this SPA currently has in flight, per entity key (counted, so rapid saves nest).
+ *
+ * ★ Needed because the SSE echo can BEAT the HTTP response. The server emits the change event while
+ * handling the PUT, so the event routinely arrives before `fetch` resolves and we record the new
+ * version — leaving the client unable to recognise its own write. Every editor save then raised a
+ * "someone changed this while you were editing" banner about the operator themselves. (Found by the
+ * browser E2E suite: 25 specs failed on a banner appearing over their own save. Unit tests missed it
+ * because they resolve the write before delivering the event, which is precisely the ordering that
+ * does not hold in a real browser.)
  */
-export function isCurrentContentVersion(
+const inFlightWrites = new Map<string, number>();
+function releaseInFlight(key: string): void {
+  const n = (inFlightWrites.get(key) ?? 0) - 1;
+  if (n > 0) inFlightWrites.set(key, n);
+  else inFlightWrites.delete(key);
+}
+
+/**
+ * Is this change OURS? True while our own write to that entity is still in flight, and true once we
+ * hold the version it carries. Any other writer produces a version we have never seen with nothing in
+ * flight — exactly the case a view must react to.
+ */
+export function isOwnContentChange(
   projectId: string,
   kind: string,
   entityId: string,
   version?: string,
   scope = '',
 ): boolean {
-  return version !== undefined && contentVersions.get(`${projectId}:${kind}:${scope}:${entityId}`) === version;
+  const key = `${projectId}:${kind}:${scope}:${entityId}`;
+  if ((inFlightWrites.get(key) ?? 0) > 0) return true;
+  return version !== undefined && contentVersions.get(key) === version;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -302,13 +322,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const known = contentVersions.get(key);
     if (known) headers['if-match'] = known;
   }
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    credentials: 'include',
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  // Mark our own write as in flight BEFORE it goes out, so the change event it triggers is
+  // recognisable as ours even if it beats the response back (see inFlightWrites).
+  const tracked = key !== null && method === 'PUT';
+  if (tracked) inFlightWrites.set(key, (inFlightWrites.get(key) ?? 0) + 1);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      credentials: 'include',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (err) {
+    if (tracked) releaseInFlight(key);
+    throw err;
+  }
   if (!res.ok) {
+    if (tracked) releaseInFlight(key);
     // A LOST-UPDATE refusal means our remembered version is provably stale. Drop it so the caller's
     // re-read (or the reload the conflict banner offers) re-arms from the server rather than
     // 409-looping on the same dead token.
@@ -317,6 +348,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (res.status === 204) {
     if (key && method === 'DELETE') contentVersions.delete(key);
+    if (tracked) releaseInFlight(key);
     return undefined as T;
   }
   const json = (await res.json()) as T;
@@ -325,6 +357,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const v = (json as { version?: unknown }).version;
     if (typeof v === 'string') contentVersions.set(key, v);
   }
+  // Released only AFTER the new version is recorded, so there is never a gap where the write is
+  // neither in flight nor recognisable by version.
+  if (tracked) releaseInFlight(key);
   return json;
 }
 

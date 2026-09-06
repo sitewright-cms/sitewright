@@ -620,3 +620,109 @@ describe('SitewrightClient — inline base64 upload', () => {
     await expect(client.uploadMediaBase64('bad.svg', Buffer.from('<svg/>').toString('base64'))).rejects.toThrow(/invalid or unsafe SVG/);
   });
 });
+
+/**
+ * An agent's write is a FULL REPLACE, so writing from a copy read before a human edited the entity
+ * silently reverts them. The client remembers the `version` every read/write reports and sends it as
+ * `If-Match`, so the server refuses rather than losing the other change.
+ */
+describe('SitewrightClient optimistic concurrency', () => {
+  const ifMatchOf = (calls: Array<{ init?: { headers?: Record<string, string> } }>): string | undefined =>
+    calls.at(-1)?.init?.headers?.['if-match'];
+
+  it('sends the version it read back as If-Match on the next full replace', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ item: { id: 'home' }, version: 'v1' }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.getContent('page', 'home');
+    expect(ifMatchOf(fake.calls)).toBeUndefined(); // the read itself carries none
+    await client.putContent('page', 'home', { id: 'home' });
+    expect(ifMatchOf(fake.calls)).toBe('v1');
+  });
+
+  it('re-arms from the WRITE response, so a chain of writes needs no re-read', async () => {
+    let n = 0;
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ item: {}, version: `v${++n}` }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.getContent('page', 'home'); // v1
+    await client.putContent('page', 'home', { id: 'home' }); // sends v1, returns v2
+    expect(ifMatchOf(fake.calls)).toBe('v1');
+    await client.putContent('page', 'home', { id: 'home' });
+    expect(ifMatchOf(fake.calls)).toBe('v2');
+  });
+
+  it('does NOT guard a merge patch — it is applied to whatever is current', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ item: {}, version: 'v1' }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.getContent('settings', 'settings');
+    await client.putContent('settings', 'settings', { website: {} }, { merge: true });
+    expect(fake.calls.at(-1)?.input).toContain('merge=1');
+    expect(ifMatchOf(fake.calls)).toBeUndefined();
+  });
+
+  it('scopes an ENTRY by its dataset — two datasets may share a row id', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ item: {}, version: 'v-products' }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.getContent('entry', 'row_1', 'products');
+    // The same id in ANOTHER dataset is a different row and must not inherit that version.
+    await client.putContent('entry', 'row_1', { id: 'row_1', dataset: 'team' });
+    expect(ifMatchOf(fake.calls)).toBeUndefined();
+    await client.putContent('entry', 'row_1', { id: 'row_1', dataset: 'products' });
+    expect(ifMatchOf(fake.calls)).toBe('v-products');
+  });
+
+  it('on a 409 it KEEPS the version, so a blind retry is refused again instead of clobbering', async () => {
+    let phase: 'read' | 'conflict' = 'read';
+    const fake = fakeFetch(() =>
+      phase === 'read'
+        ? { status: 200, body: JSON.stringify({ item: {}, version: 'v1' }) }
+        : { status: 409, body: JSON.stringify({ error: 'changed since you loaded it', code: 'version_conflict' }) },
+    );
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.getContent('page', 'home');
+    phase = 'conflict';
+    await expect(client.putContent('page', 'home', { id: 'home' })).rejects.toThrow(SitewrightApiError);
+    // ★ The retry still carries v1. Dropping it would fall through unguarded and overwrite the other
+    //   write — the exact loss this exists to prevent, and an agent retries far more readily than a human.
+    await expect(client.putContent('page', 'home', { id: 'home' })).rejects.toThrow(SitewrightApiError);
+    expect(ifMatchOf(fake.calls)).toBe('v1');
+  });
+
+  it('names the recovery in the 409 message so the agent re-reads instead of retrying blindly', async () => {
+    const fake = fakeFetch(() => ({ status: 409, body: JSON.stringify({ error: 'changed since you loaded it', code: 'version_conflict' }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await expect(client.putContent('page', 'home', { id: 'home' })).rejects.toThrow(/get_content \(or get_page\)/);
+  });
+
+  it('carries If-Match through the 401 token-refresh RETRY (the retry is a fresh request)', async () => {
+    let phase: 'read' | 'expired' | 'ok' = 'read';
+    const fake = fakeFetch(() => {
+      if (phase === 'read') return { status: 200, body: JSON.stringify({ item: {}, version: 'v1' }) };
+      if (phase === 'expired') {
+        phase = 'ok'; // the next attempt (the retry) succeeds
+        return { status: 401, body: JSON.stringify({ error: 'expired' }) };
+      }
+      return { status: 200, body: JSON.stringify({ item: {}, version: 'v2' }) };
+    });
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_old', fake.impl, async () => 'swk_new');
+    client.primeScope(scope);
+    await client.getContent('page', 'home');
+    phase = 'expired';
+    await client.putContent('page', 'home', { id: 'home' });
+    const retry = fake.calls.at(-1);
+    expect(retry?.init?.headers?.authorization).toBe('Bearer swk_new'); // it IS the retry
+    expect(retry?.init?.headers?.['if-match']).toBe('v1'); // …and it is still guarded
+  });
+
+  it('leaves an ordinary 409 (e.g. a duplicate dataset slug) unadorned', async () => {
+    const fake = fakeFetch(() => ({ status: 409, body: JSON.stringify({ error: 'a dataset with slug "x" already exists' }) }));
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await expect(client.putContent('dataset', 'x', { id: 'x', slug: 'x' })).rejects.toThrow(/already exists$/);
+  });
+});

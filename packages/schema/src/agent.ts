@@ -967,7 +967,7 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
   {{> folder-gallery}} ({{#sw-folder}} media reads), {{> i18n}} (sw-translate +
   data-sw-translate + sw-flag switcher), {{> page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
-- Chrome & effects → {{> navbar}}, {{> banner-bar}}, {{> logo-marquee}}, {{> rotating-tiles}},
+- Chrome & effects → {{> navbar}}, {{> banner-bar}}, {{> logo-marquee-snippet}}, {{> rotating-tiles}},
   {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).
 
 SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (edit it freely); a

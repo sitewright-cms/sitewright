@@ -9,6 +9,51 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.46.0] — 2026-09-06
+
+### Added
+
+- **A stale editor tab can no longer overwrite an agent's work.** Content writes were last-write-wins
+  with no conflict check, and both the editor and the MCP tools do FULL REPLACES — so an operator who
+  left the editor open while an agent edited the same project silently reverted it on their next save.
+  No error, no diff; the only recovery was revision history.
+  - Every content read now returns a `version` (and an `etag`); a write may send it back as `If-Match`,
+    and the server refuses with `409 { code: "version_conflict" }` rather than losing the earlier write.
+    Enforced at the single write chokepoint, so any channel that sends a token is covered by the same
+    code. The editor sends it on every full replace; internal writers (seeding, imports, revision
+    restore) pass none and are unaffected.
+  - NOT sent on a `?merge=1` patch: a merge is applied to whatever is current server-side, so it is
+    already concurrency-safe and guarding it would only produce conflicts that lose nothing.
+  - The compare and the write are serialized per entity. A DB transaction cannot do this job here —
+    libsql runs the local file over one connection, so a second concurrent `BEGIN IMMEDIATE` fails
+    with `SQLITE_BUSY` instead of waiting, which turned genuine losers into opaque 500s.
+- **The editor reacts to the change stream instead of finding out at save time.** The page editor had
+  explicitly dropped page events on the floor; website settings (the worst blast radius — one stale
+  save reverts nav, footer, skeleton slots, translations and criticalCss together), the snippet /
+  template rail and the dataset entry editor never subscribed at all. A clean buffer refreshes
+  silently; a dirty one raises a banner rather than discarding either side's work.
+  - Change events now carry the post-write `version` and an entry's dataset `scope`, so a client can
+    ignore the echo of its own save and tell `products/row_1` from `team/row_1`.
+
+### Changed
+
+- The rich-text toolbar stays pinned while a long value is scrolled, in both the inline dataset field
+  and the expanded editor.
+- The snippet and template rails list the project's own records ABOVE the global library — the shared
+  library is longer reference material and pushed what authors came for below the fold.
+
+### Fixed
+
+- **A snippet named after a built-in Widget is refused at save.** Widget bodies are spread last into
+  the partials map in every render path, so such a snippet stored fine, previewed its new source in
+  the snippet editor, and never rendered on any page — an edit that saved and changed nothing, with no
+  error anywhere. The built-in global `logo-marquee` snippet, unreachable since the widget of that name
+  shipped, is renamed to `logo-marquee-snippet` (migration `0027` renames the stored row on container
+  update). The WIDGET keeps `logo-marquee`, so every existing `{{> logo-marquee}}` renders exactly what
+  it already rendered.
+- An `imagemap` is sanitized at rest, so the version reported for one described the submitted bytes
+  rather than the stored ones — its next `If-Match` save would have conflicted with itself.
+
 ## [0.45.0] — 2026-09-02
 
 ### Added

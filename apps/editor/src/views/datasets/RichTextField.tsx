@@ -384,7 +384,15 @@ export function RichTextField({
   };
 
   const toolbar = (
-    <div ref={toolbarRef} data-sw-rich-toolbar className="relative flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-white/60 dark:bg-slate-900/60 px-1.5 py-1">
+    // STICKY so the formatting controls stay reachable while the author scrolls a long value — in the
+    // inline field (the entry-editor modal is the scroller) and in the expanded view (the full-screen
+    // modal body is) alike, because `top-0` pins to whichever ancestor actually scrolls. `sticky` also
+    // still establishes the containing block the popovers below are positioned against, so it replaces
+    // `relative` rather than joining it. The wrapper is `overflow-visible`, which is what lets this work
+    // at all — an `overflow-hidden` ancestor would silently disable sticky.
+    // The background goes near-opaque + blurred only because a translucent bar shows the text it is
+    // meant to be floating over once it actually starts floating.
+    <div ref={toolbarRef} data-sw-rich-toolbar className="sticky top-0 z-20 flex flex-wrap items-center gap-0.5 border-b border-slate-200/70 dark:border-slate-700/70 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm px-1.5 py-1">
       {/* The `source` command is rendered as the always-visible ml-auto toggle below (it must stay reachable
           in source mode, when the rest of the toolbar is hidden), so skip it here to avoid a duplicate. */}
       {!source &&

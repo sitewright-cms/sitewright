@@ -338,3 +338,37 @@ describe('RichTextField — pasting from a word processor', () => {
     expect(screen.queryByText('Clean up pasted formatting?')).toBeNull();
   });
 });
+
+describe('RichTextField sticky toolbar', () => {
+  /** The toolbar element itself (marked for the on-page bridge with `data-sw-rich-toolbar`). */
+  const toolbarOf = (container: HTMLElement): HTMLElement => {
+    const el = container.querySelector('[data-sw-rich-toolbar]');
+    if (!(el instanceof HTMLElement)) throw new Error('no toolbar');
+    return el;
+  };
+
+  it('pins the toolbar to the top of the scroller in the INLINE field', () => {
+    const { container } = render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    const toolbar = toolbarOf(container);
+    expect(toolbar.className).toContain('sticky');
+    expect(toolbar.className).toContain('top-0');
+    // A translucent bar would show the text it floats over once it starts floating.
+    expect(toolbar.className).toMatch(/bg-white\/9\d/);
+  });
+
+  it('keeps it pinned in the EXPANDED view too', () => {
+    const { container } = render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Expand editor' }));
+    const toolbar = toolbarOf(document.body);
+    expect(toolbar.className).toContain('sticky');
+    expect(toolbar.className).toContain('top-0');
+    expect(container).toBeTruthy();
+  });
+
+  it('does not sit inside an overflow-hidden ancestor, which would silently disable sticky', () => {
+    const { container } = render(<RichTextField value="<p>x</p>" onChange={() => {}} ariaLabel="body" />);
+    const wrapper = toolbarOf(container).parentElement;
+    expect(wrapper?.className).toContain('overflow-visible');
+    expect(wrapper?.className).not.toContain('overflow-hidden');
+  });
+});

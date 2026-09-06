@@ -8,6 +8,10 @@ export interface ContentChange {
   op: 'put' | 'delete';
   /** Who made the change; absent is treated as a user edit. */
   actor?: 'user' | 'agent';
+  /** The owning DATASET SLUG for an `entry`, `''`/absent otherwise — an entry id alone is ambiguous. */
+  scope?: string;
+  /** The entity's version after the write (absent on delete) — matches ours when WE made the change. */
+  version?: string;
 }
 
 type Listener = (change: ContentChange) => void;

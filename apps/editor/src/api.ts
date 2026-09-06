@@ -235,16 +235,132 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   );
 }
 
+/**
+ * OPTIMISTIC CONCURRENCY — the last version this SPA saw for each content entity.
+ *
+ * ★ The clobber this exists to stop: an operator leaves the editor open, an agent rewrites a page /
+ * the settings singleton / a snippet, and the operator's next save — a FULL REPLACE built from the
+ * buffer they loaded before the agent ran — silently overwrites it. No error, no diff; the only
+ * recovery was revision history. Every content GET now returns a `version`; we remember it and send
+ * it back as `If-Match`, so the server refuses that write with a 409 instead of losing the work.
+ *
+ * Keyed per (project, kind, entityId) and threaded automatically in {@link request}, so every
+ * existing caller is covered without touching its call site.
+ */
+const contentVersions = new Map<string, string>();
+/**
+ * `/projects/<id>/content/<kind>/<entityId>` — the one shape every content read/write uses.
+ *
+ * ANCHORED to end-of-string-or-query on purpose: unanchored it also matched sub-resources like
+ * `…/content/page/home/revisions/<id>/restore`. That is harmless only by accident today (those are
+ * POSTs and carry no `version`), but the day one of them gains a `version` field it would start
+ * writing under a content entity's key and arm a wrong If-Match. Cheaper to close now.
+ */
+const CONTENT_PATH = /^\/projects\/([^/?]+)\/content\/([^/?]+)\/([^/?]+)(?:\?|$)/;
+/**
+ * The version-store key. It must carry an ENTRY's dataset: an entry id is only unique WITHIN its
+ * dataset, so `products/row_1` and `team/row_1` are different rows — keyed on the id alone they would
+ * share a version, and reading one then saving the other would 409 a write that loses nothing.
+ *
+ * Where the dataset lives differs by verb, exactly as it does server side: `?dataset=` on a GET/DELETE,
+ * and the body on a PUT (which is why `body` is a parameter here).
+ */
+function contentKey(path: string, body?: unknown): string | null {
+  const m = CONTENT_PATH.exec(path);
+  if (!m?.[1] || !m[2] || !m[3]) return null;
+  let scope = '';
+  if (m[2] === 'entry') {
+    const q = /[?&]dataset=([^&]*)/.exec(path);
+    scope = q?.[1] !== undefined ? decodeURIComponent(q[1]) : String((body as { dataset?: unknown } | null | undefined)?.dataset ?? '');
+  }
+  return `${m[1]}:${m[2]}:${scope}:${decodeURIComponent(m[3])}`;
+}
+/**
+ * Writes this SPA currently has in flight, per entity key (counted, so rapid saves nest).
+ *
+ * ★ Needed because the SSE echo can BEAT the HTTP response. The server emits the change event while
+ * handling the PUT, so the event routinely arrives before `fetch` resolves and we record the new
+ * version — leaving the client unable to recognise its own write. Every editor save then raised a
+ * "someone changed this while you were editing" banner about the operator themselves. (Found by the
+ * browser E2E suite: 25 specs failed on a banner appearing over their own save. Unit tests missed it
+ * because they resolve the write before delivering the event, which is precisely the ordering that
+ * does not hold in a real browser.)
+ */
+const inFlightWrites = new Map<string, number>();
+function releaseInFlight(key: string): void {
+  const n = (inFlightWrites.get(key) ?? 0) - 1;
+  if (n > 0) inFlightWrites.set(key, n);
+  else inFlightWrites.delete(key);
+}
+
+/**
+ * Is this change OURS? True while our own write to that entity is still in flight, and true once we
+ * hold the version it carries. Any other writer produces a version we have never seen with nothing in
+ * flight — exactly the case a view must react to.
+ */
+export function isOwnContentChange(
+  projectId: string,
+  kind: string,
+  entityId: string,
+  version?: string,
+  scope = '',
+): boolean {
+  const key = `${projectId}:${kind}:${scope}:${entityId}`;
+  if ((inFlightWrites.get(key) ?? 0) > 0) return true;
+  return version !== undefined && contentVersions.get(key) === version;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    credentials: 'include',
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  if (!res.ok) throw await errorFromResponse(res);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const key = contentKey(path, body);
+  const headers: Record<string, string> = body === undefined ? {} : { 'content-type': 'application/json' };
+  // Guard FULL REPLACES only. A `?merge=1` PATCH is deep-merged onto whatever is current server side,
+  // so it is already concurrency-safe and applying it to a newer base is CORRECT — sending If-Match
+  // there would 409 writes that lose nothing (and callers like the Critical CSS shortcut never read
+  // the entity at all, so they hold no version to send).
+  const isMerge = /[?&]merge=(1|true)\b/.test(path);
+  if (key && method === 'PUT' && !isMerge) {
+    const known = contentVersions.get(key);
+    if (known) headers['if-match'] = known;
+  }
+  // Mark our own write as in flight BEFORE it goes out, so the change event it triggers is
+  // recognisable as ours even if it beats the response back (see inFlightWrites).
+  const tracked = key !== null && method === 'PUT';
+  if (tracked) inFlightWrites.set(key, (inFlightWrites.get(key) ?? 0) + 1);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      credentials: 'include',
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch (err) {
+    if (tracked) releaseInFlight(key);
+    throw err;
+  }
+  if (!res.ok) {
+    if (tracked) releaseInFlight(key);
+    // A LOST-UPDATE refusal means our remembered version is provably stale. Drop it so the caller's
+    // re-read (or the reload the conflict banner offers) re-arms from the server rather than
+    // 409-looping on the same dead token.
+    if (res.status === 409 && key) contentVersions.delete(key);
+    throw await errorFromResponse(res);
+  }
+  if (res.status === 204) {
+    if (key && method === 'DELETE') contentVersions.delete(key);
+    if (tracked) releaseInFlight(key);
+    return undefined as T;
+  }
+  const json = (await res.json()) as T;
+  // Both GET and PUT return the CURRENT version, so a save re-arms the buffer without a re-read.
+  if (key) {
+    const v = (json as { version?: unknown }).version;
+    if (typeof v === 'string') contentVersions.set(key, v);
+  }
+  // Released only AFTER the new version is recorded, so there is never a gap where the write is
+  // neither in flight nor recognisable by version.
+  if (tracked) releaseInFlight(key);
+  return json;
 }
 
 /**

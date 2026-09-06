@@ -125,3 +125,52 @@ describe('global snippet/template library', () => {
     expect(navbar?.source).not.toContain('smuggled');
   });
 });
+
+describe('reserved widget names', () => {
+  it('rejects a PROJECT snippet named after a managed widget, and still allows other names', async () => {
+    const t = await register('dev-widget@e2e.test', 'developer');
+    const id = await project(t, 'widget-collision');
+    // A widget name is spread LAST into every render map, so a snippet taking one would store fine and
+    // never render. It must fail at save instead.
+    const clash = await app.inject({
+      method: 'PUT',
+      url: `/projects/${id}/content/snippet/logo-marquee`,
+      cookies: { sw_session: t },
+      payload: { id: 'logo-marquee', name: 'logo-marquee', source: '<p>mine</p>' },
+    });
+    expect(clash.statusCode).toBe(400);
+    expect(clash.json().error).toMatch(/built-in Widget/i);
+    expect(clash.json().error).toMatch(/never appear on a page/i);
+    // The id is irrelevant — the render map keys on `name`, so that is what the guard checks.
+    const clashByName = await app.inject({
+      method: 'PUT',
+      url: `/projects/${id}/content/snippet/my-own-id`,
+      cookies: { sw_session: t },
+      payload: { id: 'my-own-id', name: 'hero-slider', source: '<p>mine</p>' },
+    });
+    expect(clashByName.statusCode).toBe(400);
+    // A free name is unaffected.
+    const ok = await app.inject({
+      method: 'PUT',
+      url: `/projects/${id}/content/snippet/offer-band`,
+      cookies: { sw_session: t },
+      payload: { id: 'offer-band', name: 'offer-band', source: '<p>mine</p>' },
+    });
+    expect(ok.statusCode).toBe(200);
+  });
+
+  it('rejects a GLOBAL snippet named after a managed widget, but boot-seeding is unaffected', async () => {
+    const t = await registerAdmin('admin-widget@e2e.test');
+    const clash = await app.inject({
+      method: 'PUT',
+      url: '/admin/global/snippet/hero-slider',
+      cookies: { sw_session: t },
+      payload: { id: 'hero-slider', name: 'hero-slider', source: '<p>mine</p>' },
+    });
+    expect(clash.statusCode).toBe(400);
+    // seedGlobalLibrary writes via the repo, not this route, so seeding is never blocked by the guard.
+    // The built-in that used to collide now seeds under its renamed, reachable name.
+    const snips = await app.inject({ method: 'GET', url: '/global/snippet', cookies: { sw_session: t } });
+    expect((snips.json().items as { name: string }[]).map((s) => s.name)).toContain('logo-marquee-snippet');
+  });
+});

@@ -776,7 +776,10 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 
   // ── Effects (pure-CSS motion, no JS) ────────────────────────────────────────────────────────────
   {
-    name: 'logo-marquee',
+    // NOT `logo-marquee` — that is a managed Widget's name, and widget bodies are spread LAST into
+    // every render map, so this snippet was shadowed and could never render. Renamed 2026-09-03;
+    // drizzle migration 0027 renames the stored row on container update.
+    name: 'logo-marquee-snippet',
     label: 'Logo marquee',
     category: 'effects',
     description: 'A CSS-only auto-scrolling logo strip fed from a media folder (no JavaScript).',

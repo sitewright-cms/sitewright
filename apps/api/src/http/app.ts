@@ -852,7 +852,38 @@ function rejectUnknownHelpers(source: string, label?: string): void {
   );
 }
 
+/**
+ * Reject a snippet whose `name` is a MANAGED WIDGET's name — at SAVE, where the author can still
+ * choose another one.
+ *
+ * Widget bodies are spread LAST into the partials map in every render path
+ * (`{ ...globals, ...projectSnippets, ...WIDGET_PARTIALS }` — preview, render-template, snippet
+ * preview, clone audit and publish), so a widget name is effectively reserved. A snippet that takes
+ * one is not overridden loudly: it stores fine, the snippet editor previews the NEW source (that
+ * route reads the project map directly), and every PAGE keeps rendering the widget. The author sees
+ * an edit that saves and changes nothing, with no error anywhere — so the write is the only place
+ * this is catchable.
+ *
+ * Only user-facing writes reach this (the project + admin-global content routes, which is also how
+ * MCP writes arrive). `seedGlobalLibrary` calls `contentRepo.put` directly and is deliberately NOT
+ * gated — a system path must never fail boot on a name a future built-in happens to take. The one
+ * built-in that DID collide (a global `logo-marquee` snippet, shadowed by the widget of the same
+ * name) is now `logo-marquee-snippet`; drizzle migration 0027 renames the stored row on upgrade.
+ */
+function rejectReservedWidgetName(body: unknown): void {
+  const name = (body as { name?: unknown } | null | undefined)?.name;
+  if (typeof name !== 'string' || !Object.hasOwn(WIDGET_PARTIALS, name)) return;
+  const alternatives = Object.keys(WIDGET_PARTIALS).sort().join(', ');
+  throw new TemplateError(
+    `"${name}" is the name of a built-in Widget, so a snippet cannot use it — the widget body wins in ` +
+      'every render path, and your snippet would save successfully but never appear on a page. ' +
+      `Choose a different name (reserved widget names: ${alternatives}), and update each {{> ${name}}} ` +
+      'that should point at your snippet.',
+  );
+}
+
 function validateSourceOnSave(kind: string, body: unknown): void {
+  if (kind === 'snippet') rejectReservedWidgetName(body);
   if (SOURCE_KINDS.has(kind)) {
     const source = (body as { source?: unknown } | null | undefined)?.source;
     if (typeof source === 'string' && source.trim() !== '') {

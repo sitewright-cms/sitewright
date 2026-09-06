@@ -20,7 +20,7 @@ describe('reference cookbook — catalog shape', () => {
       'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
       'form-embed', 'form-custom', 'datetimepicker-field', 'banner-bar', 'banner-card', 'banner-modal', 'shop-product', 'parallax-hero', 'shader-hero',
       'dataset-grid', 'folder-gallery', 'i18n', 'page-vars',
-      'nav-header', 'nav-footer', 'navbar', 'logo-marquee', 'rotating-tiles',
+      'nav-header', 'nav-footer', 'navbar', 'logo-marquee-snippet', 'rotating-tiles',
     ]) {
       expect(names.has(want), `expected recipe "${want}"`).toBe(true);
     }

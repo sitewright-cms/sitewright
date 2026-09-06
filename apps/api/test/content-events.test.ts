@@ -29,7 +29,13 @@ describe('ContentRepository change events', () => {
     const events: ContentChange[] = [];
     bus.subscribe(ctx.projectId, (e) => events.push(e));
     await content.put(ctx, 'page', 'home', page);
-    expect(events).toEqual([{ kind: 'page', entityId: 'home', op: 'put' }]);
+    expect(events).toEqual([
+      { kind: 'page', entityId: 'home', op: 'put', actor: undefined, scope: '', version: expect.any(String) },
+    ]);
+    // The event carries the version the entity now HAS, so a client that just wrote can recognise the
+    // echo of its own change instead of re-fetching (and, when its buffer is dirty, warning the author
+    // about themselves). It must therefore equal what a read returns.
+    expect(events[0]?.version).toBe(await content.versionOf(ctx, 'page', 'home'));
   });
 
   it('emits a delete event on removal', async () => {
@@ -37,7 +43,17 @@ describe('ContentRepository change events', () => {
     const events: ContentChange[] = [];
     bus.subscribe(ctx.projectId, (e) => events.push(e));
     await content.remove(ctx, 'page', 'home');
-    expect(events).toEqual([{ kind: 'page', entityId: 'home', op: 'delete' }]);
+    // No version on a delete — there is no post-write state to name.
+    expect(events).toEqual([{ kind: 'page', entityId: 'home', op: 'delete', actor: undefined, scope: '' }]);
+  });
+
+  it('carries the DATASET as scope for an entry — an entry id alone is ambiguous across datasets', async () => {
+    await content.put(ctx, 'dataset', 'products', { id: 'products', slug: 'products', name: 'Products', fields: [] });
+    const events: ContentChange[] = [];
+    bus.subscribe(ctx.projectId, (e) => events.push(e));
+    await content.put(ctx, 'entry', 'row_1', { id: 'row_1', dataset: 'products', values: {} });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: 'entry', entityId: 'row_1', scope: 'products' });
   });
 
   it('does not emit when the write fails validation', async () => {

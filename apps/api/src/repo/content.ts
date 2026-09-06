@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { newId } from '../id.js';
 import { sanitizeImageMapConfig } from '@sitewright/blocks';
 import { and, count, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
@@ -46,6 +47,35 @@ import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
+
+/**
+ * The optimistic-concurrency token for one stored entity: a short hash of its persisted JSON.
+ *
+ * Read it with {@link ContentRepository.getWithVersion}, send it back as `If-Match`, and
+ * {@link ContentRepository.put} refuses the write if the entity moved in between. Stable for
+ * unchanged content and independent of the clock, so a same-millisecond pair of writes is still
+ * ordered correctly and rewriting identical bytes is never a false conflict.
+ */
+export function contentVersion(data: unknown): string {
+  return createHash('sha256').update(JSON.stringify(data ?? null)).digest('hex').slice(0, 32);
+}
+
+/** Thrown when an `If-Match` write loses a race. Carries both versions so a client can explain itself. */
+export class VersionConflictError extends ConflictError {
+  constructor(
+    readonly kind: string,
+    readonly entityId: string,
+    readonly expected: string,
+    readonly actual: string | null,
+  ) {
+    super(
+      actual === null
+        ? `${kind} "${entityId}" was DELETED since you loaded it — your copy is based on a version that no longer exists. Re-read it before writing.`
+        : `${kind} "${entityId}" changed since you loaded it (you based this write on ${expected}, current is ${actual}). ` +
+            'Re-read it, re-apply your change on top, and write again — saving as-is would silently discard the other write.',
+    );
+  }
+}
 import { rewriteDatasetRefsInSource, sourceReferencesDataset, rewriteReferenceTargets } from './dataset-rename.js';
 
 /**
@@ -408,6 +438,37 @@ export class ContentRepository {
   }
 
   /**
+   * Same as {@link get}, plus the entity's current VERSION — the token a caller sends back as
+   * `If-Match` on the next write so a stale buffer cannot silently overwrite someone else's work.
+   *
+   * ★ Content writes are last-write-wins by default, and both the editor and the MCP tools do FULL
+   * REPLACES. So an operator with the editor open while an agent edits the same project saves their
+   * pre-agent buffer over the agent's work, with no error and no diff — the loss is silent and the
+   * only recovery is the revision history. Handing the reader a version is what makes the write side
+   * able to refuse. See {@link put}'s `expectedVersion`.
+   *
+   * The version is a hash of the STORED row (not `updatedAt`): two writes inside the same millisecond
+   * would share a timestamp, and an idempotent re-write of identical content correctly keeps the same
+   * version rather than inventing a conflict.
+   */
+  async getWithVersion(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    entityId: string,
+    scope = '',
+  ): Promise<{ item: unknown; version: string }> {
+    const row = await this.row(this.db, ctx, kind, entityId, scope);
+    if (!row) throw new NotFoundError(`${kind} not found`);
+    return { item: this.normalizeOnRead(kind, row.data), version: contentVersion(row.data) };
+  }
+
+  /** The current version of one entity, or `null` when it does not exist. */
+  async versionOf(ctx: ProjectContext, kind: ContentKind, entityId: string, scope = ''): Promise<string | null> {
+    const row = await this.row(this.db, ctx, kind, entityId, scope);
+    return row ? contentVersion(row.data) : null;
+  }
+
+  /**
    * Validates `raw` against the kind's schema, then upserts. Returns the parsed value. Any user with
    * project access (owner or member) may write any content kind — the source⇄content distinction is
    * a UI default (toggle), not a write restriction. Project administration (delete project, manage
@@ -428,6 +489,26 @@ export class ContentRepository {
        * un-nest. A full replace omits it for the opposite reason (it just wasn't sent).
        */
       merged?: boolean;
+      /**
+       * OPTIMISTIC CONCURRENCY. The version the caller based this write on (from
+       * {@link ContentRepository.getWithVersion} / the `If-Match` header). When present, the write is
+       * refused with {@link VersionConflictError} if the stored entity has moved since — which is the
+       * only thing that actually stops a stale editor buffer or an agent's full replace from silently
+       * discarding the other one's work.
+       *
+       * ABSENT means "no check", deliberately: every internal caller (seeding, imports, revision
+       * restore, locale backfill) writes without a base version, and making the check mandatory would
+       * break them all. It is therefore opt-IN per caller, enforced HERE so any channel that sends a
+       * token is covered by the same code.
+       *
+       * Sending it today: the EDITOR, on every content save (the reported clobber — an operator's stale
+       * buffer landing on top of an agent's work). NOT yet the MCP write tools: threading a token
+       * through `put_content` / `put_page` / `patch_page` means an extra tool argument and passing
+       * `If-Match` down the client's 401-refresh retry path, so an AGENT can still overwrite an
+       * operator edit made moments earlier. That direction is the follow-up; the mechanism it needs is
+       * already here.
+       */
+      expectedVersion?: string;
     },
   ): Promise<unknown> {
     const parsed = schemaFor(kind).parse(raw);
@@ -458,11 +539,39 @@ export class ContentRepository {
     const value = kind === 'page' ? await this.withPageParent(ctx, parsed as Page, opts?.merged === true) : parsed;
     // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
     const scope = this.scopeForData(kind, value);
-    await this.writeRow(this.db, ctx, kind, key, value);
+    // OPTIMISTIC CONCURRENCY — checked here, at the single write chokepoint, so it covers EVERY channel
+    // (editor, MCP agent, CLI, webchat) rather than one route.
+    //
+    // ★ The compare and the write MUST be ATOMIC. As two bare awaits they are a check-then-act race:
+    // two writers both read version V0, both pass the check, and the second silently overwrites the
+    // first — the exact lost update this feature exists to prevent.
+    //
+    // A DB transaction is NOT the tool here: libsql runs this local file over one connection, so a
+    // second concurrent `BEGIN IMMEDIATE` fails outright with SQLITE_BUSY (measured — the losers got an
+    // opaque 500 instead of a 409, and `busy_timeout` does not help because the contention is
+    // same-connection, not cross-connection). Instead every write to ONE entity is serialized
+    // in-process, which makes the read-compare-write indivisible and lets a genuine loser fall out as a
+    // clean VersionConflictError. Same single-container boundary the event bus already declares; a
+    // multi-instance deployment would need the check pushed into SQL (a conditional UPDATE).
+    // `content-version-race.test.ts` races real concurrent writes and is the evidence for this.
+    // What gets STORED is not always what was passed in — an `imagemap` is sanitized at rest inside
+    // writeRow. Everything downstream (the revision, the emitted version, the echoed entity and its
+    // etag) must describe the persisted bytes: hashing the pre-sanitize value hands the client a
+    // version the store never had, so its very next If-Match save 409s against itself.
+    const persisted = await this.withEntityLock(`${ctx.projectId}:${kind}:${scope}:${key}`, async () => {
+      if (opts?.expectedVersion !== undefined) {
+        const existing = await this.row(this.db, ctx, kind, key, scope);
+        const current = existing ? contentVersion(existing.data) : null;
+        if (current !== opts.expectedVersion) {
+          throw new VersionConflictError(kind, key, opts.expectedVersion as string, current);
+        }
+      }
+      return this.writeRow(this.db, ctx, kind, key, value);
+    });
     // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
-    await this.recordRevision(ctx, kind, key, scope, value, opts?.op ?? 'put', opts?.note);
-    this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor });
-    return value;
+    await this.recordRevision(ctx, kind, key, scope, persisted, opts?.op ?? 'put', opts?.note);
+    this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor, scope, version: contentVersion(persisted) });
+    return persisted;
   }
 
   /**
@@ -604,7 +713,7 @@ export class ContentRepository {
       }
       await tx.delete(content).where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
     });
-    this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor });
+    this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor, scope });
   }
 
   /**
@@ -1131,6 +1240,28 @@ export class ContentRepository {
     return kind === 'entry' ? String((data as { dataset?: string }).dataset ?? '') : '';
   }
 
+  /**
+   * Serializes writes to ONE entity (different entities still run in parallel). Callers chain onto the
+   * previous write's tail, so a read-compare-write inside `fn` cannot be interleaved by another writer.
+   *
+   * The stored tail never rejects, so one failed write cannot poison the queue for the next caller, and
+   * the key is dropped once nothing is queued behind it so the map does not grow with the project.
+   */
+  private readonly writeLocks = new Map<string, Promise<void>>();
+  private withEntityLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(lockKey) ?? Promise.resolve();
+    const next = prev.then(fn, fn); // run regardless of how the predecessor settled
+    const tail = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.writeLocks.set(lockKey, tail);
+    void tail.then(() => {
+      if (this.writeLocks.get(lockKey) === tail) this.writeLocks.delete(lockKey);
+    });
+    return next;
+  }
+
   private async writeRow(
     exec: Executor,
     ctx: ProjectContext,
@@ -1139,7 +1270,9 @@ export class ContentRepository {
     data: unknown,
     /** The row, when the caller has ALREADY read it — saves a redundant SELECT in a batch. */
     knownRow?: Awaited<ReturnType<ContentRepository['row']>>,
-  ): Promise<void> {
+    /** Returns what was ACTUALLY PERSISTED, which is not always `data` — see `clean` below. Callers
+     *  that hash, echo or record the write must use this, or they describe bytes that were never stored. */
+  ): Promise<unknown> {
     const now = new Date();
     // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
     // tooltip block's `text`, a YouTube block's `embedCode`, and an SVG region's `svg.html` — and
@@ -1168,6 +1301,7 @@ export class ContentRepository {
         updatedAt: now,
       });
     }
+    return clean;
   }
 
   /**

@@ -6,6 +6,20 @@ export interface ContentChange {
   /** Who made the change: `agent` (a bearer/MCP write) or `user` (an interactive session). Lets the
    *  editor flag "an agent is editing"; absent → treated as `user`. */
   actor?: 'agent' | 'user';
+  /**
+   * The uniqueness SCOPE of the (kind, entityId) key — the owning DATASET SLUG for an `entry`, `''`
+   * for every other kind. Without it a subscriber cannot tell `products/row_1` from `team/row_1`:
+   * entry ids are only unique within their dataset, so the id alone is ambiguous.
+   */
+  scope?: string;
+  /**
+   * The entity's version AFTER the write (absent on a delete) — the same token `If-Match` uses.
+   *
+   * It is what lets a client tell its OWN write apart from someone else's: after saving, the client
+   * already holds this version, so an event carrying it is an echo to ignore. Without it every view
+   * would re-fetch on its own save, and self-suppression would need a timing hack.
+   */
+  version?: string;
 }
 
 type Listener = (change: ContentChange) => void;

@@ -235,16 +235,97 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   );
 }
 
+/**
+ * OPTIMISTIC CONCURRENCY — the last version this SPA saw for each content entity.
+ *
+ * ★ The clobber this exists to stop: an operator leaves the editor open, an agent rewrites a page /
+ * the settings singleton / a snippet, and the operator's next save — a FULL REPLACE built from the
+ * buffer they loaded before the agent ran — silently overwrites it. No error, no diff; the only
+ * recovery was revision history. Every content GET now returns a `version`; we remember it and send
+ * it back as `If-Match`, so the server refuses that write with a 409 instead of losing the work.
+ *
+ * Keyed per (project, kind, entityId) and threaded automatically in {@link request}, so every
+ * existing caller is covered without touching its call site.
+ */
+const contentVersions = new Map<string, string>();
+/**
+ * `/projects/<id>/content/<kind>/<entityId>` — the one shape every content read/write uses.
+ *
+ * ANCHORED to end-of-string-or-query on purpose: unanchored it also matched sub-resources like
+ * `…/content/page/home/revisions/<id>/restore`. That is harmless only by accident today (those are
+ * POSTs and carry no `version`), but the day one of them gains a `version` field it would start
+ * writing under a content entity's key and arm a wrong If-Match. Cheaper to close now.
+ */
+const CONTENT_PATH = /^\/projects\/([^/?]+)\/content\/([^/?]+)\/([^/?]+)(?:\?|$)/;
+/**
+ * The version-store key. It must carry an ENTRY's dataset: an entry id is only unique WITHIN its
+ * dataset, so `products/row_1` and `team/row_1` are different rows — keyed on the id alone they would
+ * share a version, and reading one then saving the other would 409 a write that loses nothing.
+ *
+ * Where the dataset lives differs by verb, exactly as it does server side: `?dataset=` on a GET/DELETE,
+ * and the body on a PUT (which is why `body` is a parameter here).
+ */
+function contentKey(path: string, body?: unknown): string | null {
+  const m = CONTENT_PATH.exec(path);
+  if (!m?.[1] || !m[2] || !m[3]) return null;
+  let scope = '';
+  if (m[2] === 'entry') {
+    const q = /[?&]dataset=([^&]*)/.exec(path);
+    scope = q?.[1] !== undefined ? decodeURIComponent(q[1]) : String((body as { dataset?: unknown } | null | undefined)?.dataset ?? '');
+  }
+  return `${m[1]}:${m[2]}:${scope}:${decodeURIComponent(m[3])}`;
+}
+/**
+ * Is this the version we already hold? A change event carrying it is the ECHO OF OUR OWN WRITE, so a
+ * view can ignore it instead of re-fetching what it just saved. Any other writer produces a version we
+ * have never seen, which is exactly the case a view must react to.
+ */
+export function isCurrentContentVersion(
+  projectId: string,
+  kind: string,
+  entityId: string,
+  version?: string,
+  scope = '',
+): boolean {
+  return version !== undefined && contentVersions.get(`${projectId}:${kind}:${scope}:${entityId}`) === version;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const key = contentKey(path, body);
+  const headers: Record<string, string> = body === undefined ? {} : { 'content-type': 'application/json' };
+  // Guard FULL REPLACES only. A `?merge=1` PATCH is deep-merged onto whatever is current server side,
+  // so it is already concurrency-safe and applying it to a newer base is CORRECT — sending If-Match
+  // there would 409 writes that lose nothing (and callers like the Critical CSS shortcut never read
+  // the entity at all, so they hold no version to send).
+  const isMerge = /[?&]merge=(1|true)\b/.test(path);
+  if (key && method === 'PUT' && !isMerge) {
+    const known = contentVersions.get(key);
+    if (known) headers['if-match'] = known;
+  }
   const res = await fetch(`${BASE}${path}`, {
     method,
     credentials: 'include',
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw await errorFromResponse(res);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  if (!res.ok) {
+    // A LOST-UPDATE refusal means our remembered version is provably stale. Drop it so the caller's
+    // re-read (or the reload the conflict banner offers) re-arms from the server rather than
+    // 409-looping on the same dead token.
+    if (res.status === 409 && key) contentVersions.delete(key);
+    throw await errorFromResponse(res);
+  }
+  if (res.status === 204) {
+    if (key && method === 'DELETE') contentVersions.delete(key);
+    return undefined as T;
+  }
+  const json = (await res.json()) as T;
+  // Both GET and PUT return the CURRENT version, so a save re-arms the buffer without a re-read.
+  if (key) {
+    const v = (json as { version?: unknown }).version;
+    if (typeof v === 'string') contentVersions.set(key, v);
+  }
+  return json;
 }
 
 /**

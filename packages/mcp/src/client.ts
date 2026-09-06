@@ -19,6 +19,28 @@ export interface Scope {
 
 /** `?dataset=<slug>` suffix for entry-scoped routes (an entry id is only unique within its dataset); ''
  *  when no dataset is supplied (every non-entry kind is project-global and ignores it). */
+/**
+ * The version-store key for a content path, or null when the path is not a single content entity.
+ *
+ * ANCHORED so sub-resources (`…/revisions/<id>/restore`) never collide with the entity itself, and
+ * scoped by an ENTRY's dataset because an entry id is only unique within its dataset — `products/row_1`
+ * and `team/row_1` are different rows. The dataset arrives as `?dataset=` on a read and in the BODY on
+ * a write, exactly as the server keys it.
+ */
+function contentKeyOf(path: string, body?: unknown): string | null {
+  const m = /^\/projects\/([^/?]+)\/content\/([^/?]+)\/([^/?]+)(?:\?|$)/.exec(path);
+  if (!m?.[1] || !m[2] || !m[3]) return null;
+  let scope = '';
+  if (m[2] === 'entry') {
+    const q = /[?&]dataset=([^&]*)/.exec(path);
+    scope =
+      q?.[1] !== undefined
+        ? decodeURIComponent(q[1])
+        : String((body as { dataset?: unknown } | null | undefined)?.dataset ?? '');
+  }
+  return `${m[1]}:${m[2]}:${scope}:${decodeURIComponent(m[3])}`;
+}
+
 function datasetQuery(dataset: string | undefined): string {
   return dataset ? `?dataset=${encodeURIComponent(dataset)}` : '';
 }
@@ -386,6 +408,11 @@ export class SitewrightClient {
   private readonly onUnauthorized?: () => Promise<string | null>;
   /** In-flight refresh, so concurrent 401s share ONE refresh (no double rotation). */
   private refreshPromise: Promise<string | null> | null = null;
+  /**
+   * The last version this client saw per content entity — the optimistic-concurrency token sent back
+   * as `If-Match`. Per client instance, so one agent's session cannot arm another's writes.
+   */
+  private readonly contentVersions = new Map<string, string>();
 
   /**
    * @param tokenProvider returns the current access token, or null when the bridge is not yet
@@ -417,6 +444,17 @@ export class SitewrightClient {
     }
     const headers: Record<string, string> = { authorization: `Bearer ${token}` };
     if (body !== undefined) headers['content-type'] = 'application/json';
+    // OPTIMISTIC CONCURRENCY. An agent's write is a FULL REPLACE, so writing from a copy read before
+    // a human touched the entity silently reverts their edit. Every content read hands back a
+    // `version`; we remember it and send it as `If-Match`, and the server refuses the write (409)
+    // rather than losing the other change. Skips `?merge=1`, which is deep-merged onto whatever is
+    // current server-side and so is already safe to apply to a newer base.
+    const key = contentKeyOf(path, body);
+    const guarded = key !== null && method === 'PUT' && !/[?&]merge=(1|true)\b/.test(path);
+    if (guarded) {
+      const known = this.contentVersions.get(key);
+      if (known) headers['if-match'] = known;
+    }
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers,
@@ -436,7 +474,10 @@ export class SitewrightClient {
         return this.request<T>(method, path, body, fresh);
       }
     }
-    if (res.status === 204) return undefined as T;
+    if (res.status === 204) {
+      if (key !== null && method === 'DELETE') this.contentVersions.delete(key);
+      return undefined as T;
+    }
     const text = await res.text();
     let parsed: unknown;
     try {
@@ -456,7 +497,24 @@ export class SitewrightClient {
       // A schema (zod) rejection sends `details: { fieldErrors, formErrors }`. Fold that into the
       // message so a caller (esp. the agent) SEES which field is wrong + self-corrects, instead of
       // retrying blindly against a bare "invalid request".
-      throw new SitewrightApiError(res.status, base + formatZodDetails(parsed));
+      // A LOST-UPDATE refusal. The remembered version is deliberately KEPT: a blind retry must fail
+      // the same way rather than fall through unguarded and clobber the other write. Re-reading is
+      // what clears it, so the message names the tool that does that.
+      const conflict =
+        res.status === 409 &&
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        'code' in parsed &&
+        parsed.code === 'version_conflict';
+      const hint = conflict
+        ? ' — call get_content (or get_page) to read the current entity, re-apply your change on top of it, then write again. Retrying this exact body will be refused again.'
+        : '';
+      throw new SitewrightApiError(res.status, base + formatZodDetails(parsed) + hint);
+    }
+    // Both reads and writes report the entity's CURRENT version, so a write re-arms the guard for the
+    // next one without an extra read.
+    if (key !== null && parsed !== null && typeof parsed === 'object' && 'version' in parsed && typeof parsed.version === 'string') {
+      this.contentVersions.set(key, parsed.version);
     }
     return parsed as T;
   }

@@ -9,6 +9,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.47.0] — 2026-09-06
+
+### Added
+
+- **Agent writes are guarded too — the other half of 0.46.0.** The MCP client now remembers the
+  `version` every content read and write reports and sends it back as `If-Match`, so an agent writing
+  from a copy it read before an operator edited the entity is refused with a 409 instead of silently
+  reverting them. `put_content` / `put_page` (full replaces) are guarded; `patch_page` and any
+  `merge:true` write are exempt, being deep-merged onto whatever is current. Carried through the
+  401 token-refresh retry, and scoped per entity — an entry by its dataset, since a row id is only
+  unique within one.
+  - On a conflict the remembered version is deliberately KEPT, so a blind retry is refused the same
+    way rather than falling through unguarded and clobbering. Re-reading is what clears it, and the
+    error names the tool to call.
+  - `put_content` / `put_page` descriptions now state the refusal and the recovery, so an agent that
+    hits one re-reads and re-applies instead of retrying blindly.
+
 ## [0.46.0] — 2026-09-06
 
 ### Added

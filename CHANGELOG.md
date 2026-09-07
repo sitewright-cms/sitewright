@@ -9,6 +9,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency refresh** — batches the three green Dependabot PRs (#1000, #1001, #1002) onto current
+  main with a regenerated lockfile, since their branches conflicted with each other: production
+  `@simplewebauthn/server`, `nodemailer`, `terser`, `zod`, `lucide-react`, `sharp`; development
+  `@testing-library/react`, `simple-icons`; and `@types/node` 22 → 26.
+
 ### Fixed
 
 - **The pages list and the schema-field list no longer refuse a drop released between two rows.** Both

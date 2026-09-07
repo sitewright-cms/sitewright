@@ -26,7 +26,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "sharp": "^0.35.0"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

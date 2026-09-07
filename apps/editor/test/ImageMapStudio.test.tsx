@@ -9,6 +9,7 @@ import { ObjectDetails } from '../src/views/library/imagemap/ObjectDetails';
 import { TooltipBuilder } from '../src/views/library/imagemap/TooltipBuilder';
 import { Canvas } from '../src/views/library/imagemap/Canvas';
 import { api } from '../src/api';
+import { byTip } from './tooltip-helpers';
 
 // The Studio's own surface. The canvas positions everything in PERCENT inside an aspect-ratio box,
 // which jsdom lays out as zero-sized — so these tests assert the authored markup and the state
@@ -102,7 +103,7 @@ describe('ImageMapStudio — the map list', () => {
   it('offers the embed code for a page', async () => {
     studio();
     await screen.findByText('Ground floor');
-    expect(screen.getByTitle('Copy the embed code for a page')).toBeTruthy();
+    expect(byTip('Copy the embed code for a page')).toBeTruthy();
   });
 
   it('opens a demo as a PREVIEW and writes nothing into the project', async () => {

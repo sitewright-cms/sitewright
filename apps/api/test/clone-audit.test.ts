@@ -280,11 +280,17 @@ describe('behaviouralChecks', () => {
     //     drawer. The visitor sees nothing, so there is no visual defect to report.
     expect(CLIP_PROBE.toString()).toContain('.embla');
     expect(CLIP_PROBE.toString()).toContain('.slick-list');
-    expect(CLIP_PROBE.toString()).toContain('data-sw-part="container"');
+    // ★ Quote style belongs to the TRANSFORM, not to the source: esbuild (vite 6) kept this literal
+    // single-quoted, oxc (vite 8) re-prints it double-quoted with the inner quotes ESCAPED, so a raw
+    // `data-sw-part="container"` no longer appears in the text. What this line guards is that the
+    // slider exemption is still there — not how the bundler spells it.
+    expect(CLIP_PROBE.toString().replace(/\\"/g, '"')).toContain('data-sw-part="container"');
     expect(CLIP_PROBE.toString()).toContain('if (bySlider) continue;');
-    expect(CLIP_PROBE.toString()).toMatch(/>\s*0\.95\)\s*continue/);
+    // ★ `0?\.` — the transform decides whether a numeric literal keeps its leading zero. esbuild
+    // (vite 6) emitted `0.95`; oxc (vite 8) emits `.95`. The THRESHOLD is what matters here.
+    expect(CLIP_PROBE.toString()).toMatch(/>\s*0?\.95\)\s*continue/);
     // and the partial-cut threshold that makes a REAL defect report must still be there
-    expect(CLIP_PROBE.toString()).toMatch(/lostH > 0\.1 \|\| lostW > 0\.1/);
+    expect(CLIP_PROBE.toString()).toMatch(/lostH > 0?\.1 \|\| lostW > 0?\.1/);
   });
 
   it('a check with NOTHING to check is N/A, not a pass — it must not pad the score', () => {

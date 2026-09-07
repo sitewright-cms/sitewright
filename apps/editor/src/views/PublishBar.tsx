@@ -95,6 +95,8 @@ export function PublishBar({
   const menuRef = useRef<HTMLDivElement>(null);
   const previewMenuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Coalesces a burst of content events into ONE status re-read (see the `content` listener). */
+  const contentPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const agentActiveRef = useRef(false);
 
   // The most-recently-deployed target (per project), so the split button's primary action repeats it.
@@ -153,17 +155,34 @@ export function PublishBar({
       });
   }, [project.id]);
 
-  useEffect(() => {
-    let active = true;
-    loadStatus();
+  /**
+   * ★ Targets are re-read, not just read once. `targetStale()` compares against each target's
+   * `lastDeployedAt`, which the SERVER moves on every successful deploy — so a client that loads the
+   * targets only on mount believes forever that the target is behind, and the dot never clears.
+   */
+  const loadTargets = useCallback(() => {
     api
       .listDeployTargets(project.id)
-      .then((res) => active && setTargets(res.items))
-      .catch(() => active && setTargets([]));
-    return () => {
-      active = false;
-    };
-  }, [project.id, refreshSignal, loadStatus]);
+      .then((res) => mountedRef.current && setTargets(res.items))
+      .catch(() => {
+        /* transient — keep the last known targets rather than blanking the split button */
+      });
+  }, [project.id]);
+  const loadTargetsRef = useRef(loadTargets);
+  loadTargetsRef.current = loadTargets;
+  const loadStatusRef = useRef(loadStatus);
+  loadStatusRef.current = loadStatus;
+
+  useEffect(() => {
+    loadStatus();
+    loadTargets();
+  }, [project.id, refreshSignal, loadStatus, loadTargets]);
+
+  /** Re-read status + targets together — what every successful deploy invalidates. */
+  const refreshDeployState = useCallback(() => {
+    loadStatusRef.current();
+    loadTargetsRef.current();
+  }, []);
 
   useEffect(() => {
     loadConnections();
@@ -176,6 +195,16 @@ export function PublishBar({
     const source = new EventSource(eventsUrl(project.id), { withCredentials: true });
     source.addEventListener('content', (e) => {
       setDirty(true);
+      // ★ `dirty` alone cannot raise the dot: with a deploy target the button asks the per-DESTINATION
+      // question, and that compares `latestContentAt` to the target's `lastDeployedAt`. Without a
+      // re-read the timestamp stays at its mount value and a save shows NOTHING. Debounced so a burst
+      // of writes (or an agent editing in a loop) costs one request, and so the read lands after the
+      // write it is reacting to — the event is emitted while the write is still being handled.
+      if (contentPollTimer.current) clearTimeout(contentPollTimer.current);
+      contentPollTimer.current = setTimeout(() => {
+        contentPollTimer.current = null;
+        loadStatusRef.current();
+      }, 300);
       let actor: string | undefined;
       try {
         actor = (JSON.parse((e as MessageEvent).data) as { actor?: string }).actor;
@@ -198,6 +227,7 @@ export function PublishBar({
     return () => {
       source.close();
       if (agentTimer.current) clearTimeout(agentTimer.current);
+      if (contentPollTimer.current) clearTimeout(contentPollTimer.current);
     };
   }, [project.id]);
 
@@ -230,6 +260,9 @@ export function PublishBar({
       setUrl(res.url ?? '');
       setDirty(res.dirty);
       setLocalHosting(true);
+      // The deploy just moved this target's `lastDeployedAt`; re-read both so the dot clears here
+      // rather than on the next full page load.
+      refreshDeployState();
       toast.show(`Published to Local Hosting · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
     } catch (err) {
       toast.show(err instanceof Error ? err.message : 'publish failed', 'error');
@@ -494,7 +527,7 @@ export function PublishBar({
           target={deploying}
           onClose={() => {
             setDeploying(null);
-            loadStatus();
+            refreshDeployState();
           }}
         />
       )}

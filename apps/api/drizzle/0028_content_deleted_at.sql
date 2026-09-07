@@ -1,0 +1,14 @@
+-- Record WHEN a project last had publishable content DELETED.
+--
+-- WHY: the publish "dirty" signal is `max(content.updated_at) > release.published_at`, and a DELETE
+-- removes the row rather than touching it — so the maximum stays wherever it was (usually on some
+-- other, newer row) and the signal never moves. Measured on a live instance: publish, delete a page,
+-- ask again → `dirty:false`, with the deleted page still being served. The same blind spot hits the
+-- per-target Deploy dot, which compares that timestamp against each target's last deploy.
+--
+-- `previewContentVersion` already solved this for the DRAFT PREVIEW by counting rows as well as
+-- timestamping them. The publish signal cannot borrow that trick (it compares against a stored
+-- publish TIME, not a version string), so the deletion time is recorded instead and folded into the
+-- maximum. NULL = this project has never deleted anything, which is the pre-migration state and
+-- behaves exactly as before.
+ALTER TABLE `projects` ADD `content_deleted_at` integer;

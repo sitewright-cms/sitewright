@@ -107,6 +107,73 @@ describe('PublishBar — deploy split button', () => {
     expect(primary.querySelector('span[aria-hidden]')).not.toBeNull();
   });
 
+  /**
+   * ★ The two halves of the REPORTED bug. `targetStale()` compares `latestContentAt` against the
+   * target's `lastDeployedAt` — and NEITHER was refreshed by the event that changes it:
+   *   · a content save fires the SSE `content` event, which only set the project-wide `dirty`; that
+   *     flag is consulted ONLY when there is no target, so with a target the dot never appeared;
+   *   · a deploy moves `lastDeployedAt` server-side, but the client never re-fetched the targets, so
+   *     the dot never cleared.
+   */
+  it('★ a content change AFTER load makes the target stale again', async () => {
+    const deployed = { ...remote, lastDeployedAt: '2026-01-02T00:00:00.000Z' };
+    listDeployTargets.mockResolvedValue({ items: [deployed] });
+    // Clean at load: the deploy is NEWER than the content.
+    publishStatus.mockResolvedValue({
+      release: null, url: '', dirty: false,
+      latestContentAt: '2026-01-01T00:00:00.000Z',
+      localHosting: false,
+    });
+    const listeners: Array<(e: { data: string }) => void> = [];
+    class CtrlEventSource {
+      addEventListener(_t: string, cb: (e: { data: string }) => void) { listeners.push(cb); }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', CtrlEventSource);
+
+    render(<PublishBar project={project} />);
+    const primary = await screen.findByRole('button', { name: 'Deploy to Production' });
+    await waitFor(() => expect(primary.className).not.toContain('emerald')); // clean to begin with
+
+    // A save lands. The server now reports content NEWER than the deploy.
+    publishStatus.mockResolvedValue({
+      release: null, url: '', dirty: true,
+      latestContentAt: '2026-01-03T00:00:00.000Z',
+      localHosting: false,
+    });
+    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ actor: 'user' }) })));
+
+    await waitFor(() => expect(primary.className).toContain('emerald'));
+    expect(primary.querySelector('span[aria-hidden]')).not.toBeNull();
+  });
+
+  it('★ deploying CLEARS the dot without a reload — the targets are re-read', async () => {
+    const stale = { ...local, lastDeployedAt: '2026-01-01T00:00:00.000Z' };
+    const fresh = { ...local, lastDeployedAt: '2026-01-03T00:00:00.000Z' };
+    // First read: behind. Every read after the deploy: up to date.
+    listDeployTargets.mockResolvedValueOnce({ items: [stale] }).mockResolvedValue({ items: [fresh] });
+    publishStatus.mockResolvedValueOnce({
+      release: null, url: '', dirty: true,
+      latestContentAt: '2026-01-02T00:00:00.000Z',
+      localHosting: false,
+    }).mockResolvedValue({
+      release, url: '/sites/acme/', dirty: false,
+      latestContentAt: '2026-01-02T00:00:00.000Z',
+      localHosting: true,
+    });
+    publish.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+
+    render(<PublishBar project={project} />);
+    const primary = await screen.findByRole('button', { name: 'Deploy to Local Hosting' });
+    await waitFor(() => expect(primary.className).toContain('emerald')); // behind at first
+
+    primary.click();
+    await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
+    // The deploy moved lastDeployedAt past the content — the dot must go without a page reload.
+    await waitFor(() => expect(primary.className).not.toContain('emerald'));
+    expect(primary.querySelector('span[aria-hidden]')).toBeNull();
+  });
+
   it('a target that has NEVER been deployed always has something to send', async () => {
     listDeployTargets.mockResolvedValue({ items: [remote] }); // no lastDeployedAt
     publishStatus.mockResolvedValue({ release: null, url: '', dirty: false, latestContentAt: '2026-01-01T00:00:00.000Z', localHosting: false });

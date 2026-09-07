@@ -9,6 +9,27 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Deploy button's "changes to deploy" dot is honest again — it was wrong in BOTH directions.**
+  The button asks a per-DESTINATION question: it compares the newest content timestamp against that
+  target's `lastDeployedAt`. Neither side was refreshed by the event that invalidates it.
+  - *A save showed nothing.* The content event only set the project-wide `dirty` flag, which the
+    button consults ONLY when no deploy target exists. With a target configured the content timestamp
+    stayed at its page-load value, so the comparison kept answering "clean". The status is now
+    re-read when content changes (debounced, which also coalesces a burst of writes and lets the read
+    land after the write it is reacting to — the event is emitted while the write is still in flight).
+  - *A deploy left the dot lit.* A successful deploy moves `lastDeployedAt` on the SERVER, but the
+    client never re-read its deploy targets, so it went on believing the target was behind. Both a
+    local publish and a remote deploy now re-read status and targets.
+- **Deleting a page now marks the site as having changes to deploy.** The publish signal was
+  `max(content.updated_at) > publishedAt`, and a delete REMOVES the row rather than touching it — so
+  the maximum never moved and the site read clean while the deleted page was still being served
+  (measured on a live instance). `previewContentVersion` already counted rows for exactly this
+  reason; the publish signal compares against a stored publish TIME instead, so deletions of
+  publishable content are now recorded and folded into that maximum. Deleting a credential (a deploy
+  target, SMTP or captcha config) still leaves the site clean — nothing a visitor can see changed.
+
 ### Changed
 
 - **Dependency refresh** — batches the three green Dependabot PRs (#1000, #1001, #1002) onto current

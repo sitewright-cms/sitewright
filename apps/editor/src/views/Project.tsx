@@ -22,6 +22,7 @@ import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
+import { dropTargetForEvent } from '../lib/drag-drop';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 
@@ -1048,6 +1049,29 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               listElRef.current = el;
               virt.listRef(el);
             }}
+            /* ★ The LIST is the drop surface, not each row. HTML5 DnD only permits a drop where the
+               last `dragover` called preventDefault(), so with the handlers on the rows the `gap-2`
+               between them, the virtualiser's spacers and the space past the last row were all dead
+               zones: releasing there fired no `drop` at all and the browser snapped the page back to
+               where it started. Only rows this drag may legally land on are considered (see
+               `canReorder`), so the nearest LEGAL row wins rather than a refused one. */
+            onDragOver={(e) => {
+              if (!dragId) return;
+              const next = dropTargetForEvent(e.currentTarget, e.clientY, (id) => canReorder(pages, dragId, id, defaultLocale));
+              if (!next) return; // nothing legal under the pointer — leave the drop disallowed
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              setDrop((d) => (d && d.id === next.id && d.pos === next.pos ? d : next));
+            }}
+            onDrop={(e) => {
+              if (!dragId) return;
+              e.preventDefault();
+              // From the drop event's OWN coordinates: the indicator is a render behind the pointer.
+              const target = dropTargetForEvent(e.currentTarget, e.clientY, (id) => canReorder(pages, dragId, id, defaultLocale)) ?? drop;
+              if (target) void persistReorder(dragId, target.id, target.pos);
+              setDragId(null);
+              setDrop(null);
+            }}
           >
             {search.trim() !== '' && visiblePages.length === 0 && (
               <li className="rounded-lg border border-dashed border-slate-300 bg-slate-100 px-3 py-6 text-center text-sm text-slate-600 dark:border-slate-600 dark:bg-white/5 dark:text-slate-300">
@@ -1075,6 +1099,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     key={p.id}
                     // Marks a real row (not a spacer) so the virtualiser can measure one.
                     data-virtual-row=""
+                    // The LIST owns dragover/drop (see the <ul>); this is how it resolves a pointer.
+                    // ★ The datasets panel marks its rows with this attribute too, so a test selector
+                    // must be SCOPED to one list — a bare `[data-drag-row]` spans both.
+                    data-drag-row={p.id}
                     // Right-click anywhere on the row. Suppressed only here — a link inside the row
                     // keeps the browser's own menu, so "open in new tab" is never taken away.
                     onContextMenu={(e) => {
@@ -1106,26 +1134,6 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       setDragId(p.id);
                       e.dataTransfer.effectAllowed = 'move';
                       e.dataTransfer.setData('text/plain', p.id);
-                    }}
-                    onDragOver={(e) => {
-                      if (!dragId || !canReorder(pages, dragId, p.id, defaultLocale)) return;
-                      e.preventDefault(); // mark this row a valid drop target
-                      const r = e.currentTarget.getBoundingClientRect();
-                      const pos = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
-                      setDrop((d) => (d && d.id === p.id && d.pos === pos ? d : { id: p.id, pos }));
-                    }}
-                    onDragLeave={(e) => {
-                      // Clear this row's gap only when the pointer leaves the row entirely (not
-                      // when crossing onto a child element), so the indicator never lingers.
-                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-                        setDrop((d) => (d?.id === p.id ? null : d));
-                      }
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (dragId && drop) void persistReorder(dragId, drop.id, drop.pos);
-                      setDragId(null);
-                      setDrop(null);
                     }}
                     onDragEnd={() => {
                       setDragId(null);

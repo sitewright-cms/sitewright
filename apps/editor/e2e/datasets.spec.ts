@@ -329,3 +329,48 @@ test('the entry filter is inline with the Entries heading, not wrapped below it'
   expect(h!.x).toBeLessThan(f!.x);
   expect(f!.x + f!.width).toBeLessThanOrEqual(n!.x + 1);
 });
+
+/**
+ * ★ The schema-field list had the same dead zone as the pages and entries lists: `gap-1.5` between
+ * rows belongs to no row, and while the ROWS owned `dragover` a release there was refused outright
+ * (HTML5 DnD permits a drop only where the last dragover called preventDefault()). The field snapped
+ * back with nothing logged. The LIST owns the handlers now.
+ */
+test('drag-reorder schema fields by releasing in the GAP between rows', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signUp(page, `fieldgap-${stamp}@e2e.test`);
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Field Gap');
+  await page.getByLabel('Project slug').fill(`fieldgap-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
+  await page.getByLabel('Dataset name').fill('Notes');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('button', { name: /schema/ }).click();
+  for (const name of ['alpha', 'bravo', 'charlie']) {
+    await page.getByRole('button', { name: 'Add field' }).click();
+    await page.getByLabel('New field name').fill(name);
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
+  }
+
+  // ★ Scoped to the Datasets panel: the PAGES list marks its rows `data-drag-row` too.
+  const dataPanel = page.getByRole('region', { name: 'Datasets' });
+  const fieldRows = dataPanel.locator('li[data-drag-row]');
+  const names = async () => (await fieldRows.evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.dragRow ?? '')));
+  expect(await names()).toEqual(['alpha', 'bravo', 'charlie']);
+
+  // Release charlie in the gap between alpha and bravo — inside NO row.
+  const list = dataPanel.locator('ul:has(> li[data-drag-row])').first();
+  const listBox = (await list.boundingBox())!;
+  const alphaBox = (await fieldRows.nth(0).boundingBox())!;
+  const bravoBox = (await fieldRows.nth(1).boundingBox())!;
+  expect(bravoBox.y).toBeGreaterThan(alphaBox.y + alphaBox.height); // there IS a gap
+  const gapY = (alphaBox.y + alphaBox.height + bravoBox.y) / 2;
+
+  const charlieGrip = fieldRows.nth(2).locator('[data-tip="Drag to reorder"]');
+  await charlieGrip.dragTo(list, { targetPosition: { x: 40, y: gapY - listBox.y } });
+
+  await expect.poll(names).toEqual(['alpha', 'charlie', 'bravo']);
+});

@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.49.0] — 2026-09-07
+
 ### Fixed
 
 - **Dragging a dataset entry to a new position no longer fails at random.** HTML5 drag and drop only
@@ -41,6 +43,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   Three controls take the tooltip classes directly instead of a wrapper because a wrapper would become
   their containing block (the Image Map vertex handles) or shrink a stretched link's hit area (the
   preview share links).
+- **Hover hints no longer bleed into a control's accessible name.** DaisyUI renders `data-tip` as CSS
+  generated content, which the browser folds into the accessible NAME of the element containing it —
+  a pages-list row announced as "Home page Home /". The seven hints that sit INSIDE an interactive
+  control keep a native `title`, which a descendant may carry without affecting its ancestor's name.
+- **The File Manager windows its rows again, and the phone layout no longer scrolls sideways.** The
+  DaisyUI tooltip bubble is laid out at all times (it only fades in), is absolutely positioned and
+  `width: max-content` — and an absolutely-positioned descendant contributes to its scroll container's
+  overflow. That gave the asset table's `overflow-x-auto` wrapper a horizontal scrollbar, which shrank
+  its `clientHeight` below its `scrollHeight`, so the virtualiser mistook it for the vertical scroll
+  host and sized the window by the whole table: 900 rows mounted instead of ~30. The bubble is now out
+  of layout until hover/focus.
+
 
 ## [0.48.0] — 2026-09-07
 

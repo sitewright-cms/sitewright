@@ -9,6 +9,21 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A locally-hosted site no longer shows "changes to deploy" forever.** `lastDeployedAt` was written
+  in exactly one place — the REMOTE deploy path. For a Local Hosting target `POST /publish` **is** the
+  deploy (there is no separate upload step), so nothing ever stamped it and the field stayed null for
+  the life of the target. The editor reads null as "never deployed anywhere → there is certainly
+  something to send", so every locally-hosted project showed the dot permanently, seconds after a
+  successful publish. Publishing now records itself on the project's local target.
+  - This is the last of the three faults behind one report. 0.50.0 fixed the two that were visible on
+    a project with no target (the client never re-read the state each event invalidated) and on any
+    project (a delete could not move a MAX(updated_at) signal). This one only appears when a LOCAL
+    target exists, which is why it survived: every throwaway project used to reproduce the others had
+    no deploy target at all. It was found by exercising the fix on a real instance, where all four
+    client sites are locally hosted.
+
 ## [0.50.0] — 2026-09-07
 
 ### Fixed

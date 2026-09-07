@@ -138,6 +138,42 @@ describe('publish API', () => {
     expect((await statusDirty()).dirty).toBe(false);
   });
 
+  it('★ publishing STAMPS the local deploy target — otherwise its dot never clears', async () => {
+    // For a Local Hosting target, POST /publish IS the deploy: there is no separate upload step. But
+    // only the remote deploy path recorded `lastDeployedAt`, so a local target kept a null timestamp
+    // forever — and the editor reads "never deployed" as "there is certainly something to send". Every
+    // locally-hosted project therefore showed "changes to deploy" permanently, seconds after publishing.
+    // Reproduced on the live :2003 instance, where all four client sites are locally hosted.
+    await app.close();
+    app = await createApp({ db, publishRoot, encryptionKey: randomBytes(32) });
+    await app.ready();
+    const { t, projectId } = await setup('localstamp@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    const made = await app.inject({
+      method: 'POST',
+      url: `${base}/deploy-targets`,
+      cookies,
+      payload: { name: 'Local Hosting', protocol: 'local' },
+    });
+    expect(made.statusCode).toBeLessThan(300);
+    const targetId = (made.json() as { target: { id: string } }).target.id;
+
+    const targetNow = async () => {
+      const res = await app.inject({ method: 'GET', url: `${base}/deploy-targets`, cookies });
+      const items = (res.json() as { items: Array<{ id: string; lastDeployedAt?: string | null }> }).items;
+      return items.find((x) => x.id === targetId)!;
+    };
+    expect((await targetNow()).lastDeployedAt ?? null).toBeNull(); // never deployed yet
+
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    const after = (await targetNow()).lastDeployedAt ?? null;
+    expect(after, 'a local publish must record itself on the target').not.toBeNull();
+    expect(Date.parse(after!)).toBeGreaterThan(0);
+  });
+
   it('exports the published site as a zip (409 before publishing)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;

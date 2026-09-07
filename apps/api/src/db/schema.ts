@@ -69,6 +69,16 @@ export const projects = sqliteTable(
      */
     deletedAt: integer('deleted_at', { mode: 'timestamp_ms' }),
     deletedBy: text('deleted_by'),
+    /**
+     * When publishable content was last DELETED from this project. NULL = never.
+     *
+     * ★ The publish "dirty" signal is a MAXIMUM over `content.updated_at`, and a delete removes the
+     * row instead of touching it — so the maximum does not move and the site reads clean with a
+     * deleted page still being served. Recording the deletion time lets {@link latestContentUpdate}
+     * fold it into that maximum. Only publishable kinds bump it: dropping a deploy target or an SMTP
+     * credential changes nothing a visitor can see.
+     */
+    contentDeletedAt: integer('content_deleted_at', { mode: 'timestamp_ms' }),
   },
   () => [],
 );

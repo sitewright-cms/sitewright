@@ -43,7 +43,7 @@ import {
 } from '@sitewright/schema';
 import { validateProject, withResolvedParent, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
-import { content, type ContentKind } from '../db/schema.js';
+import { content, projects, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
@@ -234,6 +234,14 @@ function searchClause(q: string) {
  * the caller verified belongs to `ctx.orgId`); writes require owner/admin and
  * validate the payload against the content schema for its kind.
  */
+/**
+ * Kinds that are NOT publishable site content — credentials and machine config. Excluded from every
+ * "has the site changed?" question. ★ One constant because there are now three call sites
+ * (`latestContentUpdate`, `previewContentVersion`, and the delete marker) and they must agree: a kind
+ * counted by one and not the others is a signal that fires or misses at random.
+ */
+const NON_PUBLISHABLE_KINDS: ContentKind[] = ['deploy_target', 'project_smtp', 'project_captcha', 'ai_config'];
+
 export class ContentRepository {
   /**
    * @param events optional change bus — when present, successful writes publish a
@@ -390,12 +398,36 @@ export class ContentRepository {
       .where(
         and(
           eq(content.projectId, ctx.projectId),
-          notInArray(content.kind, ['deploy_target', 'project_smtp', 'project_captcha', 'ai_config']),
+          notInArray(content.kind, NON_PUBLISHABLE_KINDS),
         ),
       )
       .orderBy(desc(content.updatedAt))
       .limit(1);
-    return row?.updatedAt ?? null;
+    // ★ A MAXIMUM OVER SURVIVING ROWS CANNOT SEE A DELETE. The row is gone, so the maximum stays
+    // wherever it was and the site reads clean while still serving the page that was removed —
+    // measured on a live instance. `contentDeletedAt` records the removal so it counts as a change.
+    const [proj] = await this.db
+      .select({ deletedAt: projects.contentDeletedAt })
+      .from(projects)
+      .where(eq(projects.id, ctx.projectId))
+      .limit(1);
+    const updated = row?.updatedAt ?? null;
+    const removed = proj?.deletedAt ?? null;
+    if (updated === null) return removed;
+    if (removed === null) return updated;
+    return removed.getTime() > updated.getTime() ? removed : updated;
+  }
+
+  /**
+   * Mark that publishable content was deleted, so {@link latestContentUpdate} can see it.
+   *
+   * Silent for the non-publishable kinds: removing a deploy target or an SMTP credential changes
+   * nothing a visitor could see, and marking the site dirty for it would be a lie the author cannot
+   * clear except by publishing.
+   */
+  private async markContentDeleted(exec: Executor, ctx: ProjectContext, kinds: readonly ContentKind[]): Promise<void> {
+    if (!kinds.some((k) => !NON_PUBLISHABLE_KINDS.includes(k))) return;
+    await exec.update(projects).set({ contentDeletedAt: new Date() }).where(eq(projects.id, ctx.projectId));
   }
 
   /**
@@ -419,7 +451,7 @@ export class ContentRepository {
       .where(
         and(
           eq(content.projectId, ctx.projectId),
-          notInArray(content.kind, ['deploy_target', 'project_smtp', 'project_captcha', 'ai_config']),
+          notInArray(content.kind, NON_PUBLISHABLE_KINDS),
         ),
       );
     const rows = Number(row?.rows ?? 0);
@@ -712,6 +744,7 @@ export class ContentRepository {
           .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'entry'), eq(content.scope, cascadeSlug)));
       }
       await tx.delete(content).where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
+      await this.markContentDeleted(tx as unknown as Executor, ctx, [kind]);
     });
     this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor, scope });
   }
@@ -1052,6 +1085,7 @@ export class ContentRepository {
           deleted.push(id);
         }
       }
+      if (deleted.length > 0) await this.markContentDeleted(exec, ctx, ['page']);
     });
 
     if (settings !== undefined) {

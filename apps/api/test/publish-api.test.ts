@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,6 +73,68 @@ describe('publish API', () => {
 
     // …and re-publishing clears it once more.
     await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((await statusDirty()).dirty).toBe(false);
+  });
+
+  it('★ DELETING a page makes the site dirty — a maximum over surviving rows cannot see a delete', async () => {
+    // The signal was `max(content.updated_at) > release.published_at`. A delete REMOVES the row, so
+    // the maximum stays wherever it was and the site read CLEAN with the deleted page still being
+    // served — measured on a live instance before this fix. `previewContentVersion` already counted
+    // rows for exactly this reason; the publish signal records the deletion time instead.
+    const { t, projectId } = await setup('deldirty@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const statusDirty = async () =>
+      (await app.inject({ method: 'GET', url: `${base}/publish`, cookies })).json() as { dirty: boolean };
+
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    await app.inject({
+      method: 'PUT',
+      url: `${base}/content/page/about`,
+      cookies,
+      payload: { ...homePage, id: 'about', path: 'about', title: 'About' },
+    });
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((await statusDirty()).dirty).toBe(false);
+
+    // Remove a page. Nothing was UPDATED, so the old signal saw nothing at all.
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/page/about`, cookies });
+    expect(del.statusCode).toBe(204);
+    expect((await statusDirty()).dirty).toBe(true);
+
+    // Publishing clears it again, so the marker cannot latch the site dirty forever.
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((await statusDirty()).dirty).toBe(false);
+  });
+
+  it('deleting a NON-publishable kind leaves the site clean', async () => {
+    // A deploy target is a credential, not something a visitor can see. Marking the site dirty for it
+    // would be a claim the author cannot clear except by publishing something that did not change.
+    //
+    // Its routes only exist when the instance has an encryption key (credentials are encrypted at
+    // rest), so this test needs its own app — the shared one is built without one.
+    await app.close();
+    app = await createApp({ db, publishRoot, encryptionKey: randomBytes(32) });
+    await app.ready();
+    const { t, projectId } = await setup('deltarget@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const statusDirty = async () =>
+      (await app.inject({ method: 'GET', url: `${base}/publish`, cookies })).json() as { dirty: boolean };
+
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    const made = await app.inject({
+      method: 'POST',
+      url: `${base}/deploy-targets`,
+      cookies,
+      payload: { name: 'Local Hosting', protocol: 'local' },
+    });
+    expect(made.statusCode).toBeLessThan(300);
+    const targetId = (made.json() as { target: { id: string } }).target.id;
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((await statusDirty()).dirty).toBe(false);
+
+    await app.inject({ method: 'DELETE', url: `${base}/deploy-targets/${targetId}`, cookies });
     expect((await statusDirty()).dirty).toBe(false);
   });
 

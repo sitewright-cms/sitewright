@@ -135,9 +135,12 @@ export function FolderPicker({
                   >
                     <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <Tooltip tip={path}>
-                        <span className="truncate text-sm text-slate-700 dark:text-slate-200">{path}</span>
-                      </Tooltip>
+                      {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                          renders `data-tip` as generated content, which the browser folds into that control's
+                          ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                          does not. */}
+                      <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={path}>{path}</span>
+                    
                       <span className="text-[11px] text-slate-500 dark:text-slate-400">{count} file{count === 1 ? '' : 's'}</span>
                     </span>
                   </button>

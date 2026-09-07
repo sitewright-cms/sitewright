@@ -86,11 +86,12 @@ function ClassRow({
           <code className="block truncate font-mono text-[12.5px] font-semibold text-indigo-700 dark:text-indigo-300">
             {copied ? 'Copied!' : name}
             {modifiers === 1 && (
-              <Tooltip tip="Accepts a modifier, e.g. text-sm/relaxed">
-                <span className="ml-1 font-normal text-slate-400 dark:text-slate-500">
-                  /…
-                </span>
-              </Tooltip>
+              // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+              // renders `data-tip` as generated content, which the browser folds into that control's
+              // ACCESSIBLE NAME. A descendant `title` does not.
+              <span className="ml-1 font-normal text-slate-400 dark:text-slate-500" title="Accepts a modifier, e.g. text-sm/relaxed">
+                /…
+              </span>
             )}
           </code>
           {/* The class's OWN declarations, not the topic's deduped `props` zipped against them — a

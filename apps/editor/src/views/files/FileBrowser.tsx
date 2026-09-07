@@ -970,9 +970,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
             >
               <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
                 <FolderIcon className="h-10 w-10 text-indigo-400" />
-                <Tooltip tip={seg}>
-                  <span className="truncate text-sm text-slate-700 dark:text-slate-200">{seg}</span>
-                </Tooltip>
+                {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                    renders `data-tip` as generated content, which the browser folds into that control's
+                    ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                    does not. */}
+                <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={seg}>{seg}</span>
+              
                 <span className="text-[10px] text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</span>
               </button>
               {!pick && !searching && (
@@ -1004,9 +1007,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                     <FileTypeIcon asset={m} className="h-10 w-10" />
                   </div>
                 )}
-                <Tooltip tip={m.filename}>
-                  <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200">{m.filename}</figcaption>
-                </Tooltip>
+                {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                    renders `data-tip` as generated content, which the browser folds into that control's
+                    ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                    does not. */}
+                <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>{m.filename}</figcaption>
+              
                 {searching && <span className="block truncate text-[10px] text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
               </button>
               <div className="flex items-center justify-between">

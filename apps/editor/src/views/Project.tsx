@@ -1190,14 +1190,17 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       void (isLink ? openSettings(p) : openEditor(p));
                     }}
                   >
-                    <Tooltip tip={isLink ? 'Menu item' : isHome ? 'Home page' : 'Page'}>
-                      <span
-                        aria-hidden
-                        className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} group-hover:text-white`}
-                      >
-                        {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
-                      </span>
-                    </Tooltip>
+                    {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                        renders `data-tip` as generated content, which the browser folds into that control's
+                        ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                        does not. */}
+                    <span
+                      aria-hidden
+                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} group-hover:text-white`}
+                     title={isLink ? 'Menu item' : isHome ? 'Home page' : 'Page'}>
+                      {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
+                    </span>
+                  
                     {/* The MENU label (nav title falls back to the page title), rendered clean — icon/flag
                         + text for a rich label (placeholder or a page with a rich menu title), never raw markup. */}
                     <span className="truncate font-medium"><PlaceholderLabel name={p.nav?.title || p.title} /></span>
@@ -1217,18 +1220,20 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
                     {multilingual && p.locale && !isLink && !hasOwnSource(p) && !p.template && (
-                      <Tooltip tip="Layout inherited from the main language">
-                        <span className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white">
-                          inherited
-                        </span>
-                      </Tooltip>
+                      // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                      // renders `data-tip` as generated content, which the browser folds into that
+                      // control's ACCESSIBLE NAME. A descendant `title` does not.
+                      <span className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white" title="Layout inherited from the main language">
+                        inherited
+                      </span>
                     )}
                     {multilingual && p.locale && !isLink && hasOwnSource(p) && (
-                      <Tooltip tip="This language has its own forked code">
-                        <span className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white">
-                          custom code
-                        </span>
-                      </Tooltip>
+                      // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                      // renders `data-tip` as generated content, which the browser folds into that
+                      // control's ACCESSIBLE NAME. A descendant `title` does not.
+                      <span className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white" title="This language has its own forked code">
+                        custom code
+                      </span>
                     )}
                   </button>
                   {/* The per-row action toolbar. NOT MOUNTED ON MOBILE: seven icon buttons on a phone row

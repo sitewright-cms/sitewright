@@ -15,6 +15,19 @@ The running version of an instance is reported at `GET /version` (baked into the
   main with a regenerated lockfile, since their branches conflicted with each other: production
   `@simplewebauthn/server`, `nodemailer`, `terser`, `zod`, `lucide-react`, `sharp`; development
   `@testing-library/react`, `simple-icons`; and `@types/node` 22 → 26.
+- **vite 6 → 8 and @vitejs/plugin-react 4 → 6, together.** Dependabot raised these as two PRs (#1003,
+  #1004) and neither could ever pass alone: `@vitejs/plugin-react@6` requires peer `vite: ^8`, while
+  `@vitejs/plugin-react@4.7` supports only `^4 || ^5 || ^6 || ^7`. Each PR therefore broke the peer the
+  other satisfies. Bumped together they are clean — `vitest@4.1.11` already declares
+  `vite: ^6 || ^7 || ^8`, plugin-react 6's three new peers are all optional, and vite 8's Node floor
+  (`^20.19 || >=22.12`) is below the repo's own `>=22.13`. The editor bundles on Rolldown now (2796
+  modules in ~3.5s).
+  - One test needed loosening, not the code: `clone-audit.test.ts` asserts on `CLIP_PROBE.toString()` —
+    the function's SOURCE — because the probe is pure layout geometry that jsdom cannot exercise. The
+    transform decides how literals are printed, and oxc differs from esbuild: `'…"container"…'` becomes
+    `"…\"container\"…"`, and `0.95`/`0.1` become `.95`/`.1`. The assertions now normalise escaped
+    quotes and accept an optional leading zero, so they test the exemptions and thresholds rather than
+    the bundler's spelling.
 
 ### Fixed
 

@@ -129,7 +129,7 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
               className="flex items-center gap-0.5 rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm dark:border-white/10 dark:bg-white/5"
             >
               {COLOR_MODES.map(({ value, label, Icon }, ri) => (
-                <Tooltip key={value} tip={`${label} appearance`}>
+                <Tooltip key={value} tip={`${label} appearance`} className="flex-1">
                   <button
                     type="button"
                     role="menuitemradio"

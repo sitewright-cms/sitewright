@@ -286,7 +286,7 @@ function ListField({
             <span aria-hidden className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`} />
           ) : null}
           <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-white/10 px-2 py-1">
-            <Tooltip tip="Drag to reorder">
+            <Tooltip tip="Drag to reorder" className="shrink-0">
               <span
                 aria-hidden
                 draggable

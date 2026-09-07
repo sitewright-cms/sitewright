@@ -35,7 +35,7 @@ function Row({ item, display, onEdit }: { item: RegionItem; display: string; onE
   // popover you can't click is worse than no popover at all.
   const closePanel = useContext(SidePanelClose);
   return (
-    <Tooltip tip={`Edit ${display}`}>
+    <Tooltip tip={`Edit ${display}`} className="w-full">
       <button
         type="button"
         onClick={() => {

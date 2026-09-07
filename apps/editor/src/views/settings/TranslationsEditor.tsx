@@ -214,7 +214,7 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
               aria-label="Translation key"
             />
             {row.key.trim() !== '' && (
-              <Tooltip tip={locked ? 'Edit key (renaming may break references)' : 'Lock key'}>
+              <Tooltip tip={locked ? 'Edit key (renaming may break references)' : 'Lock key'} className="shrink-0">
                 <button
                   type="button"
                   aria-label={locked ? 'Edit key' : 'Lock key'}

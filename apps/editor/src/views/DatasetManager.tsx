@@ -749,7 +749,7 @@ export function DatasetManager({
                     )}
                     <div className="flex items-center gap-2">
                     {/* Only the handle is draggable, so the type <select> stays freely operable. */}
-                    <Tooltip tip="Drag to reorder">
+                    <Tooltip tip="Drag to reorder" className="shrink-0">
                       <span
                         aria-hidden
                         draggable

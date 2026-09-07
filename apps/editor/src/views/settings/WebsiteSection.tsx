@@ -237,7 +237,7 @@ export function WebsiteSection({
                 ))}
               </select>
               {form.navEffect === 'none' && (
-                <Tooltip tip="Edit the custom nav effect code">
+                <Tooltip tip="Edit the custom nav effect code" className="shrink-0">
                   <button
                     type="button"
                     onClick={() => setEditing('nav')}
@@ -252,7 +252,7 @@ export function WebsiteSection({
           <div className="flex flex-col">
             <span className={fieldLabel}>Buttons</span>
             <div className="flex items-center gap-2">
-              <Tooltip tip="Configure button effect, hover accent + shape with a live preview">
+              <Tooltip tip="Configure button effect, hover accent + shape with a live preview" className="min-w-0 flex-1">
                 <button
                   type="button"
                   onClick={() => setBtnModalOpen(true)}
@@ -269,7 +269,7 @@ export function WebsiteSection({
                 </button>
               </Tooltip>
               {form.buttonEffect === 'none' && (
-                <Tooltip tip="Edit the custom button effect code">
+                <Tooltip tip="Edit the custom button effect code" className="shrink-0">
                   <button
                     type="button"
                     onClick={() => setEditing('button')}
@@ -300,7 +300,7 @@ export function WebsiteSection({
                 ))}
               </select>
               {form.preloaderEffect === 'none' && (
-                <Tooltip tip="Edit the custom preloader code">
+                <Tooltip tip="Edit the custom preloader code" className="shrink-0">
                   <button
                     type="button"
                     onClick={() => setEditing('preloader')}

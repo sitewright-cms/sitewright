@@ -644,3 +644,30 @@ button:disabled,
     animation: none;
   }
 }
+
+/*
+ * ★ Keep the DaisyUI tooltip bubble OUT OF LAYOUT until it is actually shown.
+ *
+ * DaisyUI renders the bubble at all times and merely fades it in (`opacity: 0` → `1` on hover). It is
+ * absolutely positioned with `width: max-content`, and an absolutely-positioned descendant still
+ * CONTRIBUTES TO THE SCROLL OVERFLOW of its scroll container. In the File Manager that was enough to
+ * give the table's `overflow-x-auto` wrapper a horizontal scrollbar; the scrollbar shrank the wrapper's
+ * clientHeight below its scrollHeight, so `scrollHostOf` mistook it for the VERTICAL scroll host, sized
+ * the window by the whole table and stopped virtualising — 900 rows mounted instead of ~30. The same
+ * stray width pushed the phone layout into a sideways scroll.
+ *
+ * `display: none` until hover/focus removes the bubble from layout entirely, so it can never widen an
+ * ancestor. The cost is the fade-in, which is not worth a broken virtualiser.
+ */
+.tooltip:before,
+.tooltip:after {
+  display: none;
+}
+.tooltip:hover:before,
+.tooltip:hover:after,
+.tooltip:focus-visible:before,
+.tooltip:focus-visible:after,
+.tooltip:focus-within:before,
+.tooltip:focus-within:after {
+  display: block;
+}

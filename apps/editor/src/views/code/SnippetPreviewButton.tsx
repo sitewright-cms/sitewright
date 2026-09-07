@@ -119,7 +119,7 @@ export function SnippetPreviewButton({ url, label }: { url: string; label: strin
 
   return (
     <>
-      <Tooltip tip={`Preview ${label}`}>
+      <Tooltip tip={`Preview ${label}`} className="shrink-0">
         <button
           ref={btnRef}
           type="button"

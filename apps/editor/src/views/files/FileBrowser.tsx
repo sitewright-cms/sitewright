@@ -850,7 +850,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className={`border-t border-white/40 dark:border-white/10 ${dropTarget === path ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}
               >
                 <td className="py-2">
-                  <Tooltip tip={seg}>
+                  <Tooltip tip={seg} className="w-full min-w-0">
                     <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
                       <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
                     </button>
@@ -882,7 +882,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className="border-t border-white/40 dark:border-white/10"
               >
                 <td className="py-2">
-                  <Tooltip tip={m.filename}>
+                  <Tooltip tip={m.filename} className="w-full min-w-0">
                     <button
                       type="button"
                       onClick={() => activate(m)}
@@ -905,7 +905,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 </td>
                 {/* Classes ON the cell: only <td>/<th> may be a child of <tr>, so a wrapper span
                     would be hoisted out of the table and take the column with it. */}
-                <td data-tip={typeLabel(m)} className="tooltip truncate py-2 text-slate-500 dark:text-slate-400">{typeLabel(m)}</td>
+                <td className="truncate py-2 text-slate-500 dark:text-slate-400">
+                  {/* On a SPAN inside the cell, never on the <td>: `.tooltip` is display:inline-block,
+                      and a <td> that is not a table-cell breaks the row geometry the virtualiser reads. */}
+                  <span className="tooltip" data-tip={typeLabel(m)}>{typeLabel(m)}</span>
+                </td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">

@@ -714,31 +714,41 @@ export function DatasetManager({
 
               {schemaOpen && (
                 <div className="mt-3">
-              <ul className="mb-3 flex flex-col gap-1.5">
+              <ul
+                className="mb-3 flex flex-col gap-1.5"
+                /* ★ The LIST is the drop surface — see the entries list below for the whole story: a
+                   drop is only permitted where the last `dragover` called preventDefault(), so with
+                   the handlers on the rows the `gap-1.5` between them was a dead zone that silently
+                   snapped the field back. */
+                onDragOver={(ev) => {
+                  if (!fieldDrag) return;
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                  const next = dropTargetForEvent(ev.currentTarget, ev.clientY, (name) => name !== fieldDrag);
+                  setFieldDrop((d) => {
+                    if (!next) return d;
+                    return d && d.name === next.id && d.pos === next.pos ? d : { name: next.id, pos: next.pos };
+                  });
+                }}
+                onDrop={(ev) => {
+                  if (!fieldDrag) return;
+                  ev.preventDefault();
+                  // Source name from the drag payload (set in onDragStart) so we don't depend on the
+                  // rendered-closure `fieldDrag`; the target comes from the drop's OWN coordinates.
+                  const src = ev.dataTransfer.getData('text/plain') || fieldDrag;
+                  const target = dropTargetForEvent(ev.currentTarget, ev.clientY, (name) => name !== src) ?? (fieldDrop && { id: fieldDrop.name, pos: fieldDrop.pos });
+                  if (src && target) {
+                    setDraftFields((fs) => reorderByKey(fs, (f) => f.name, src, target.id, target.pos));
+                  }
+                  setFieldDrag(null);
+                  setFieldDrop(null);
+                }}
+              >
                 {draftFields.map((field) => (
                   <li
                     key={field.name}
-                    onDragOver={(ev) => {
-                      if (!fieldDrag || fieldDrag === field.name) return;
-                      ev.preventDefault();
-                      const r = ev.currentTarget.getBoundingClientRect();
-                      const pos = ev.clientY < r.top + r.height / 2 ? 'before' : 'after';
-                      setFieldDrop((d) => (d && d.name === field.name && d.pos === pos ? d : { name: field.name, pos }));
-                    }}
-                    onDragLeave={(ev) => {
-                      if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setFieldDrop((d) => (d?.name === field.name ? null : d));
-                    }}
-                    onDrop={(ev) => {
-                      ev.preventDefault();
-                      // Source name from the drag payload (set in onDragStart) so we don't depend on
-                      // the rendered-closure `fieldDrag`; functional updater keeps draftFields current.
-                      const src = ev.dataTransfer.getData('text/plain') || fieldDrag;
-                      if (src && fieldDrop) {
-                        setDraftFields((fs) => reorderByKey(fs, (f) => f.name, src, fieldDrop.name, fieldDrop.pos));
-                      }
-                      setFieldDrag(null);
-                      setFieldDrop(null);
-                    }}
+                    // The LIST owns dragover/drop; this is how it resolves a pointer to a field.
+                    data-drag-row={field.name}
                     className={`relative text-sm transition ${fieldDrag === field.name ? 'opacity-40' : ''}`}
                   >
                     {fieldDrop?.name === field.name && (

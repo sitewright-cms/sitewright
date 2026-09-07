@@ -17,9 +17,16 @@ const stamp = Date.now();
  * never reached the server.
  */
 
+/**
+ * The Datasets panel. ★ Scope every `[data-drag-row]` query to it: the PAGES list marks its rows with
+ * the same attribute, so a bare selector counts both lists and quietly measures the wrong one (the
+ * same trap `file-manager-scale.spec.ts` calls out for `data-virtual-row`).
+ */
+const panel = (page: Page) => page.getByRole('region', { name: 'Datasets' });
+
 /** The entry labels, top to bottom. */
 async function order(page: Page): Promise<string[]> {
-  const rows = page.locator('li[data-drag-row]');
+  const rows = panel(page).locator('li[data-drag-row]');
   await expect(rows.first()).toBeVisible();
   return (await rows.allInnerTexts()).map((t) => t.trim().split('\n')[0]!.trim());
 }
@@ -36,7 +43,7 @@ async function reopenEntries(page: Page, baseURL: string, project: string, datas
   await page.getByText(project, { exact: true }).first().click();
   await page.getByRole('button', { name: 'Open Datasets' }).click();
   await page.getByText(dataset, { exact: true }).first().click();
-  await expect(page.locator('li[data-drag-row]').first()).toBeVisible();
+  await expect(panel(page).locator('li[data-drag-row]').first()).toBeVisible();
 }
 
 async function addEntry(page: Page, title: string): Promise<void> {
@@ -72,8 +79,8 @@ test('drag-reorder entries by releasing in the dead zones (gap between rows, pas
   await addEntry(page, 'Charlie');
   expect(await order(page)).toEqual(['Alpha', 'Bravo', 'Charlie']);
 
-  const rows = page.locator('li[data-drag-row]');
-  const list = page.locator('ul').filter({ has: page.locator('li[data-drag-row]') }).first();
+  const rows = panel(page).locator('li[data-drag-row]');
+  const list = panel(page).locator('ul:has(> li[data-drag-row])').first();
 
   // --- 1. Release in the GAP between Bravo and Charlie. Belongs to no row; used to be a dead zone.
   const listBox = (await list.boundingBox())!;

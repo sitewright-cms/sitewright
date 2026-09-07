@@ -99,3 +99,50 @@ test('drag reorder: dropping a page on the upper half of a sibling places it bef
   await reloadIntoProject(page);
   await expect.poll(() => titles(page)).toEqual(['Home', 'Contact', 'About']);
 });
+
+/**
+ * ★ The GAP between rows. `flex flex-col gap-2` leaves 8px belonging to no row, and the virtualiser's
+ * spacers and the space past the last row are the same story. While each ROW carried the dragover
+ * handler those pixels were dead: HTML5 DnD permits a drop only where the last dragover called
+ * preventDefault(), so releasing there fired no `drop` at all — the browser played its snap-back and
+ * the page returned to where it started, silently. The LIST owns the handlers now, so a release
+ * anywhere over it resolves to the nearest row.
+ */
+test('drag reorder: releasing in the GAP between rows still lands, and persists', async ({ page }) => {
+  await setup(page, 'gap');
+  await expect.poll(() => titles(page)).toEqual(['Home', 'About', 'Contact']);
+
+  const pick = () =>
+    page.evaluate(() => {
+      const rows = [...document.querySelectorAll('ul > li')] as HTMLElement[];
+      const src = rows.find((li) => li.draggable && li.textContent?.includes('Contact'))!;
+      const home = rows.find((li) => li.textContent?.includes('Home'))!;
+      const about = rows.find((li) => li.draggable && li.textContent?.includes('About'))!;
+      const list = src.closest('ul') as HTMLElement;
+      // Dead centre of the gap between Home and About — inside NO row.
+      const gapY = (home.getBoundingClientRect().bottom + about.getBoundingClientRect().top) / 2;
+      if (gapY <= home.getBoundingClientRect().bottom) throw new Error('no gap between rows to aim at');
+      const w = window as unknown as { __dnd: { src: HTMLElement; list: HTMLElement; gapY: number; dt: DataTransfer } };
+      w.__dnd = { src, list, gapY, dt: new DataTransfer() };
+    });
+  await pick();
+  await page.evaluate(() => {
+    const { src, dt } = (window as unknown as { __dnd: { src: HTMLElement; dt: DataTransfer } }).__dnd;
+    src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+  });
+  await page.evaluate(() => {
+    const { list, gapY, dt } = (window as unknown as { __dnd: { list: HTMLElement; gapY: number; dt: DataTransfer } }).__dnd;
+    const r = list.getBoundingClientRect();
+    list.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt, clientX: r.left + 8, clientY: gapY }));
+  });
+  await page.evaluate(() => {
+    const { src, list, gapY, dt } = (window as unknown as { __dnd: { src: HTMLElement; list: HTMLElement; gapY: number; dt: DataTransfer } }).__dnd;
+    const r = list.getBoundingClientRect();
+    list.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: dt, clientX: r.left + 8, clientY: gapY }));
+    src.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+  });
+
+  await expect.poll(() => titles(page)).toEqual(['Home', 'Contact', 'About']);
+  await reloadIntoProject(page);
+  await expect.poll(() => titles(page)).toEqual(['Home', 'Contact', 'About']);
+});

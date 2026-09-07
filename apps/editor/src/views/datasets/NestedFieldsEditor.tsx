@@ -5,6 +5,7 @@ import { MAX_FIELD_DEPTH } from '@sitewright/schema';
 import { identifierize } from '../../lib/entry-form';
 import { glassInput, toggleInput } from '../../theme';
 import { FieldConfigEditor, type DatasetRef } from './FieldConfigEditor';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Scalar (leaf) field types — every type except the two structural group types. */
 /** The non-structural types, ALPHABETICAL — same order as the top-level picker (see DatasetManager). */
@@ -92,7 +93,9 @@ export function NestedFieldsEditor({
         {value.map((field, i) => (
           <li key={field.name} className="space-y-1.5">
             <div className="flex items-center gap-2 text-sm">
-              <span className="w-32 truncate font-mono text-xs" title={field.name}>{field.name}</span>
+              <Tooltip tip={field.name}>
+                <span className="w-32 truncate font-mono text-xs">{field.name}</span>
+              </Tooltip>
               <select
                 aria-label={`Type of ${field.name}`}
                 className={`${glassInput} w-auto px-2 py-1 text-xs`}

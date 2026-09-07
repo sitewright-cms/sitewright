@@ -29,6 +29,7 @@ import { ACCEPT } from '../files/FileBrowser';
 import { CodeEditor } from '../../lib/code-editor';
 import { IconField } from '../ui/IconPicker';
 import { SearchSelect, type SearchOption } from '../ui/SearchSelect';
+import { Tooltip } from '../ui/Tooltip';
 
 // Monotonic key source for list items (stable React keys that travel with an item across reorder,
 // without polluting the saved data shape). See ListField.
@@ -285,37 +286,46 @@ function ListField({
             <span aria-hidden className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`} />
           ) : null}
           <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-white/10 px-2 py-1">
-            <span
-              aria-hidden
-              draggable
-              onDragStart={(ev) => {
-                setDragIdx(i);
-                ev.dataTransfer.effectAllowed = 'move';
-                ev.dataTransfer.setData('text/plain', String(i));
-              }}
-              onDragEnd={() => {
-                setDragIdx(null);
-                setDrop(null);
-              }}
-              title="Drag to reorder"
-              className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
-            >
-              <GripVertical className="h-4 w-4" />
-            </span>
+            <Tooltip tip="Drag to reorder" className="shrink-0">
+              <span
+                aria-hidden
+                draggable
+                onDragStart={(ev) => {
+                  setDragIdx(i);
+                  ev.dataTransfer.effectAllowed = 'move';
+                  ev.dataTransfer.setData('text/plain', String(i));
+                }}
+                onDragEnd={() => {
+                  setDragIdx(null);
+                  setDrop(null);
+                }}
+                className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
+            </Tooltip>
             <span className="shrink-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400">#{i + 1}</span>
             <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{itemSummary(sub, item)}</span>
-            <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} up`} title="Move up" disabled={i === 0} onClick={() => move(i, -1)}>
-              <ChevronUp className="h-3.5 w-3.5" />
-            </button>
-            <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} down`} title="Move down" disabled={i === items.length - 1} onClick={() => move(i, 1)}>
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-            <button type="button" className={iconBtn} aria-label={`Duplicate item ${i + 1}`} title="Duplicate" onClick={() => duplicate(i)}>
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            <button type="button" className={`${iconBtn} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`} aria-label={`Remove item ${i + 1}`} title="Remove" onClick={() => remove(i)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip tip="Move up">
+              <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                <ChevronUp className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Move down">
+              <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} down`} disabled={i === items.length - 1} onClick={() => move(i, 1)}>
+                <ChevronDown className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Duplicate">
+              <button type="button" className={iconBtn} aria-label={`Duplicate item ${i + 1}`} onClick={() => duplicate(i)}>
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Remove">
+              <button type="button" className={`${iconBtn} hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400`} aria-label={`Remove item ${i + 1}`} onClick={() => remove(i)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           </div>
           <div className="p-2.5">
             <FieldGroup fields={sub} values={item} projectId={projectId} path={`${path}.${i}`} itemIndex={i} onChange={(name, v) => setItem(i, name, v)} />
@@ -707,15 +717,16 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const statusSwitch = (
     <div className="flex items-center gap-2">
       {existsServer && (
-        <button
-          type="button"
-          aria-label="Revision history"
-          title="Revision history"
-          onClick={() => setHistoryOpen(true)}
-          className={`${ghostButton} px-2 py-1`}
-        >
-          <History className="h-4 w-4" aria-hidden />
-        </button>
+        <Tooltip tip="Revision history">
+          <button
+            type="button"
+            aria-label="Revision history"
+            onClick={() => setHistoryOpen(true)}
+            className={`${ghostButton} px-2 py-1`}
+          >
+            <History className="h-4 w-4" aria-hidden />
+          </button>
+        </Tooltip>
       )}
       <div role="group" aria-label="Status" className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
       {(['draft', 'published'] as const).map((s) => (

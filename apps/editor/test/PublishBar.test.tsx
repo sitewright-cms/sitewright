@@ -26,6 +26,7 @@ vi.mock('../src/views/publish/DeployModal', () => ({
 
 import { PublishBar } from '../src/views/PublishBar';
 import { LONG_PRESS_MS } from '../src/lib/use-long-press';
+import { tipOf } from './tooltip-helpers';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100 };
@@ -158,7 +159,7 @@ describe('PublishBar — deploy split button', () => {
     const download = await screen.findByRole('menuitem', { name: /Download/ });
     expect(download).toHaveAttribute('aria-disabled', 'true');
     expect(download).not.toHaveAttribute('href');
-    expect(download.getAttribute('title')).toMatch(/publish the site first/i);
+    expect(tipOf(download)).toMatch(/publish the site first/i);
   });
 
   it('deploying a remote target from the dropdown opens the streaming deploy modal', async () => {

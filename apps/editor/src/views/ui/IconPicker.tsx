@@ -13,6 +13,7 @@ import {
 import { Modal } from './Modal';
 import { fieldLabel, ghostButton, glassInput } from '../../theme';
 import { FLAG_PREFIX, iconSvg } from '../library/imagemap/icon-svg';
+import { Tooltip } from './Tooltip';
 
 /**
  * Pick the artwork an Icon hotspot draws.
@@ -173,21 +174,23 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
             narrow search returns stretch to the full height and each tile becomes a tall empty box. */}
         <div className="grid min-h-0 flex-1 auto-rows-min content-start grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-auto pr-1">
           {names.map((name: string) => (
-            <button
-              key={name}
-              type="button"
-              title={`${tileLabel(name)} — ${name}`}
-              onClick={() => {
-                onPick(name);
-                onClose();
-              }}
-              className={`waves-effect flex h-[4.5rem] flex-col items-center justify-center gap-1 rounded-xl border p-2 transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
-                name === value ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40' : 'border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              <span className="block h-7 w-7 shrink-0 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name) }} />
-              <span className="w-full truncate text-[10px] text-slate-500 dark:text-slate-400">{tileLabel(name)}</span>
-            </button>
+            // `w-full` on BOTH: the tooltip span is the grid ITEM now, so without it the span fills
+            // the cell and the tile inside shrinks to its own content.
+            <Tooltip key={name} tip={`${tileLabel(name)} — ${name}`} className="w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  onPick(name);
+                  onClose();
+                }}
+                className={`waves-effect flex h-[4.5rem] w-full flex-col items-center justify-center gap-1 rounded-xl border p-2 transition hover:-translate-y-0.5 hover:border-slate-400 hover:shadow-md ${
+                  name === value ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40' : 'border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                <span className="block h-7 w-7 shrink-0 [&>svg]:h-full [&>svg]:w-full" aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name) }} />
+                <span className="w-full truncate text-[10px] text-slate-500 dark:text-slate-400">{tileLabel(name)}</span>
+              </button>
+            </Tooltip>
           ))}
           {names.length === 0 && <p className="col-span-full p-6 text-center text-sm text-slate-500 dark:text-slate-400">Nothing matched “{query}”.</p>}
         </div>

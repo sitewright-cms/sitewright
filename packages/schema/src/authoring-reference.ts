@@ -333,7 +333,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'nav',
     keywords: 'menu navigation header footer mobile custom',
     description:
-      'Auto-built menus from the page tree, one per nav slot: nav.header, nav.footer, nav.mobile, and nav.custom — an AUTHOR-ONLY slot the default chrome never renders (put a page in the “Custom” nav slot in its settings, then loop {{#each nav.custom}} yourself for a bespoke menu/list anywhere). Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
+      'Auto-built menus from the page tree, one per nav slot: nav.header, nav.footer, nav.mobile, and nav.custom — an AUTHOR-ONLY slot the default chrome never renders (put a page in the “Custom” nav slot in its settings, then loop {{#each nav.custom}} yourself for a bespoke menu/list anywhere). Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a menu item’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "menu items" (pages-list entries with no page of their own) that link out or group children.',
     example:
       '{{#each nav.custom}}\n' +
       '  <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>\n' +

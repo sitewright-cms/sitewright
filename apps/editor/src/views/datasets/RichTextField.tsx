@@ -65,6 +65,7 @@ import {
 } from '../../lib/rich-dom';
 import { ImageDialog } from '../files/ImageDialog';
 import { attachImageResize } from '../../lib/image-resize';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Lucide icon per toolbar command id — the on-page bridge maps the SAME ids to inline SVG paths. */
 const ICONS: Record<string, ComponentType<{ className?: string }>> = {
@@ -412,36 +413,38 @@ export function RichTextField({
             />
           ),
         )}
-      <button
-        type="button"
-        aria-label="Edit HTML source"
-        aria-pressed={source}
-        title="Edit HTML source"
-        className={`${btnClass} ml-auto ${source ? activeClass : hoverClass}`}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          setMenu(null);
-          setSource((v) => !v);
-        }}
-      >
-        <Code2 className="h-4 w-4" />
-      </button>
-      {/* Only offered on the inline field — inside the expanded modal the same control is the header's
-          Close, and a second "expand" there would have nothing left to expand into. */}
-      {!expanded && (
+      <Tooltip tip="Edit HTML source">
         <button
           type="button"
-          aria-label="Expand editor"
-          title="Expand editor"
-          className={`${btnClass} ${hoverClass}`}
+          aria-label="Edit HTML source"
+          aria-pressed={source}
+          className={`${btnClass} ml-auto ${source ? activeClass : hoverClass}`}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => {
             setMenu(null);
-            setExpanded(true);
+            setSource((v) => !v);
           }}
         >
-          <Maximize2 className="h-4 w-4" />
+          <Code2 className="h-4 w-4" />
         </button>
+      </Tooltip>
+      {/* Only offered on the inline field — inside the expanded modal the same control is the header's
+          Close, and a second "expand" there would have nothing left to expand into. */}
+      {!expanded && (
+        <Tooltip tip="Expand editor">
+          <button
+            type="button"
+            aria-label="Expand editor"
+            className={`${btnClass} ${hoverClass}`}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setMenu(null);
+              setExpanded(true);
+            }}
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+        </Tooltip>
       )}
 
       {menu?.kind === 'color' && (
@@ -654,8 +657,8 @@ function ToolbarButton({ cmd, active, onClick, label }: { cmd: RichCmd; active: 
     <button
       type="button"
       aria-label={name}
-      title={name}
-      className={`${btnClass} ${active ? activeClass : hoverClass}`}
+      data-tip={name}
+      className={`tooltip ${btnClass} ${active ? activeClass : hoverClass}`}
       onMouseDown={(e) => e.preventDefault() /* keep the editable's selection */}
       onClick={(e) => onClick(e.currentTarget.getBoundingClientRect())}
     >
@@ -724,17 +727,18 @@ function Swatch({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
-      className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 dark:border-slate-600 text-xs font-bold hover:ring-2 hover:ring-indigo-300"
-      style={style}
-    >
-      {clear ? '⊘' : char}
-    </button>
+    <Tooltip tip={label}>
+      <button
+        type="button"
+        aria-label={label}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 dark:border-slate-600 text-xs font-bold hover:ring-2 hover:ring-indigo-300"
+        style={style}
+      >
+        {clear ? '⊘' : char}
+      </button>
+    </Tooltip>
   );
 }
 

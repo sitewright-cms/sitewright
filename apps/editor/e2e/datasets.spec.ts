@@ -279,7 +279,7 @@ test('drag-reorder schema fields to change which field is the entry title', asyn
   // Drag `heading` above `blurb` so heading becomes the first text field, then save.
   const headingHandle = page
     .locator('li', { has: page.getByText('heading', { exact: true }) })
-    .locator('[title="Drag to reorder"]');
+    .locator('[data-tip="Drag to reorder"]');
   const blurbRow = page.locator('li', { has: page.getByText('blurb', { exact: true }) });
   await headingHandle.dragTo(blurbRow, { targetPosition: { x: 20, y: 1 } });
   await page.getByRole('button', { name: 'Save schema' }).click();

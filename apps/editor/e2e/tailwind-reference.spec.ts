@@ -59,7 +59,7 @@ test('library: tailwind reference — search by property, by class, and copy', a
   await expect(ref.getByRole('heading', { name: 'Border Radius', exact: true })).toBeVisible();
 
   // ── Clicking a class copies it. The toast is portalled at app level, not inside the dialog.
-  await ref.getByTitle('Copy rounded-full', { exact: true }).click();
+  await ref.getByRole('button', { name: 'Copy rounded-full', exact: true }).click();
   await expect(page.getByText('Copied to clipboard')).toBeVisible();
 });
 

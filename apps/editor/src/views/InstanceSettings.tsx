@@ -38,6 +38,7 @@ import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 import { secretFieldProps } from '../lib/secret-field';
+import { Tooltip } from './ui/Tooltip';
 
 /** System-settings sections grouped into tabs (declared before the component so the id union is stable). */
 const SETTINGS_TABS = [
@@ -927,7 +928,9 @@ export function InstanceSettings() {
                 <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('unsplash', unsplashKey)} disabled={stockTesting === 'unsplash' || (!unsplashKey && !hasUnsplash)}>
                   {stockTesting === 'unsplash' ? 'Testing…' : 'Test'}
                 </button>
-                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <span className="text-xs text-red-600 dark:text-red-400" title={unsplashTest.error}>✗ {unsplashTest.error}</span>)}
+                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <Tooltip tip={unsplashTest.error}>
+  <span className="text-xs text-red-600 dark:text-red-400">✗ {unsplashTest.error}</span>
+</Tooltip>)}
               </span>
             </label>
             <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
@@ -945,7 +948,9 @@ export function InstanceSettings() {
                 <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('pexels', pexelsKey)} disabled={stockTesting === 'pexels' || (!pexelsKey && !hasPexels)}>
                   {stockTesting === 'pexels' ? 'Testing…' : 'Test'}
                 </button>
-                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <span className="text-xs text-red-600 dark:text-red-400" title={pexelsTest.error}>✗ {pexelsTest.error}</span>)}
+                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <Tooltip tip={pexelsTest.error}>
+  <span className="text-xs text-red-600 dark:text-red-400">✗ {pexelsTest.error}</span>
+</Tooltip>)}
               </span>
             </label>
           </div>
@@ -1044,7 +1049,9 @@ export function InstanceSettings() {
                 (aiTest.ok ? (
                   <span className="text-sm text-green-600 dark:text-green-400">✓ Connected{aiTest.model ? ` (${aiTest.model})` : ''}</span>
                 ) : (
-                  <span className="text-sm text-red-600 dark:text-red-400" title={aiTest.error}>✗ {aiTest.error}</span>
+                  <Tooltip tip={aiTest.error}>
+                    <span className="text-sm text-red-600 dark:text-red-400">✗ {aiTest.error}</span>
+                  </Tooltip>
                 ))}
             </div>
           </div>

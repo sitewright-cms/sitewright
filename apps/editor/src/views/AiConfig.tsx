@@ -3,6 +3,7 @@ import type { AiProviderKind } from '@sitewright/schema';
 import { api, type AiConfigInput, type AiTestResult } from '../api';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { secretFieldProps } from '../lib/secret-field';
+import { Tooltip } from './ui/Tooltip';
 
 /** A representative model id for each provider (OpenRouter uses `vendor/model`). */
 export function modelPlaceholder(p: AiProviderKind): string {
@@ -183,7 +184,9 @@ export function AiConfig({ projectId, flat = false }: { projectId: string; flat?
             (testResult.ok ? (
               <span className="text-sm text-green-600 dark:text-green-400">✓ Connected{testResult.model ? ` (${testResult.model})` : ''}</span>
             ) : (
-              <span className="text-sm text-red-600 dark:text-red-400" title={testResult.error}>✗ {testResult.error}</span>
+              <Tooltip tip={testResult.error}>
+                <span className="text-sm text-red-600 dark:text-red-400">✗ {testResult.error}</span>
+              </Tooltip>
             ))}
         </div>
       </form>

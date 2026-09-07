@@ -8,6 +8,7 @@ import { useCopy } from '../ui/useCopy';
 import { ghostButton } from '../../theme';
 import { useScrollPaging } from '../../lib/useScrollPaging';
 import { BrandColorField } from '../ui/ColorPicker';
+import { Tooltip } from '../ui/Tooltip';
 
 // A background-colour choice: `preview` is the swatch/thumbnail colour shown in the editor (the CI
 // tokens aren't defined on the editor document, so we preview with their default palette value); `css`
@@ -87,18 +88,18 @@ export function TexturePicker({ onClose }: { onClose: () => void; projectId?: st
           <div className="flex items-center gap-1.5">
             <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Background</span>
             {BG_CHOICES.map((c) => (
-              <button
-                key={c.label}
-                type="button"
-                title={`${c.label} — ${c.css}`}
-                aria-pressed={!custom && bg.label === c.label}
-                onClick={() => {
-                  setCustom(null);
-                  setBg(c);
-                }}
-                className={`h-6 w-6 rounded-md border transition ${!custom && bg.label === c.label ? 'ring-2 ring-indigo-400' : 'border-slate-300 dark:border-slate-600'}`}
-                style={{ background: c.preview }}
-              />
+              <Tooltip key={c.label} tip={`${c.label} — ${c.css}`}>
+                <button aria-label={`${c.label} — ${c.css}`}
+                  type="button"
+                  aria-pressed={!custom && bg.label === c.label}
+                  onClick={() => {
+                    setCustom(null);
+                    setBg(c);
+                  }}
+                  className={`h-6 w-6 rounded-md border transition ${!custom && bg.label === c.label ? 'ring-2 ring-indigo-400' : 'border-slate-300 dark:border-slate-600'}`}
+                  style={{ background: c.preview }}
+                />
+              </Tooltip>
             ))}
             {/* The platform picker, not the browser's — and it offers the project's brand colours
                 first, which is what a texture tint usually wants. */}
@@ -123,24 +124,26 @@ export function TexturePicker({ onClose }: { onClose: () => void; projectId?: st
           ) : (
             <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(148px,1fr))]">
               {shown.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setSelected(name)}
-                  aria-pressed={selected === name}
-                  title={name}
-                  className={`overflow-hidden rounded-lg border text-left transition ${
-                    selected === name ? 'border-indigo-500 ring-2 ring-indigo-400/60' : 'border-slate-200 hover:border-indigo-300 dark:border-slate-700'
-                  }`}
-                >
-                  <span
-                    className="block h-24"
-                    style={{ backgroundColor: previewColor, backgroundImage: `url("${textureUrl(name)}")`, backgroundRepeat: 'repeat' }}
-                  />
-                  <span className="block truncate border-t border-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:text-slate-300">
-                    {name.replace(/-/g, ' ')}
-                  </span>
-                </button>
+                // `w-full` on both: the tooltip span is the grid item, the tile fills it.
+                <Tooltip key={name} tip={name} className="w-full">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(name)}
+                    aria-pressed={selected === name}
+                    aria-label={name}
+                    className={`w-full overflow-hidden rounded-lg border text-left transition ${
+                      selected === name ? 'border-indigo-500 ring-2 ring-indigo-400/60' : 'border-slate-200 hover:border-indigo-300 dark:border-slate-700'
+                    }`}
+                  >
+                    <span
+                      className="block h-24"
+                      style={{ backgroundColor: previewColor, backgroundImage: `url("${textureUrl(name)}")`, backgroundRepeat: 'repeat' }}
+                    />
+                    <span className="block truncate border-t border-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                      {name.replace(/-/g, ' ')}
+                    </span>
+                  </button>
+                </Tooltip>
               ))}
             </div>
           )}

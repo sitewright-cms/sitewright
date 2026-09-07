@@ -28,6 +28,7 @@ import {
   type SortState,
   type FolderEntry,
 } from './sort';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Human-readable byte size (1 KB = 1024 B). */
 export function formatBytes(bytes: number): string {
@@ -696,10 +697,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
           Any file type, or drag &amp; drop onto this panel. Images become AVIF/WebP; other files are stored as downloads.
           {folder && <> Filing into <strong>{folder}</strong>.</>}
         </p>
-        <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400" title="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
-          <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
-          Clean up SVG code on upload
-        </label>
+        <Tooltip tip="Strip editor cruft (comments, metadata, Inkscape/Illustrator junk) from uploaded SVGs and pretty-print them. CSS, ids and animation are kept.">
+          <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <input type="checkbox" checked={cleanSvg} onChange={(e) => setCleanSvg(e.target.checked)} className={toggleInput} aria-label="Clean up SVG code on upload" />
+            Clean up SVG code on upload
+          </label>
+        </Tooltip>
       </div>
 
       {error && <p className="mb-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -847,17 +850,23 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className={`border-t border-white/40 dark:border-white/10 ${dropTarget === path ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}
               >
                 <td className="py-2">
-                  <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400" title={seg}>
-                    <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
-                  </button>
+                  <Tooltip tip={seg} className="w-full min-w-0">
+                    <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
+                      <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
+                    </button>
+                  </Tooltip>
                 </td>
                 <td className="py-2 text-slate-500 dark:text-slate-400">folder</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</td>
                 <td className="py-2">
                   {!pick && !searching && (
                     <div className="flex justify-end gap-0.5">
-                      <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
-                      <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                      <Tooltip tip="Rename">
+                        <button aria-label={`Rename ${seg}`} className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
+                      </Tooltip>
+                      <Tooltip tip="Delete">
+                        <button aria-label={`Delete ${seg}`} className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                      </Tooltip>
                     </div>
                   )}
                 </td>
@@ -873,41 +882,60 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className="border-t border-white/40 dark:border-white/10"
               >
                 <td className="py-2">
-                  <button
-                    type="button"
-                    onClick={() => activate(m)}
-                    className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
-                    title={m.filename}
-                  >
-                    {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
-                        fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
-                        below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
-                    {m.kind === 'image' ? (
-                      <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
-                    ) : (
-                      <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
-                    )}
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{m.filename}</span>
-                      {searching && <span className="truncate text-xs text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
-                    </span>
-                  </button>
+                  <Tooltip tip={m.filename} className="w-full min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => activate(m)}
+                      className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    >
+                      {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
+                          fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
+                          below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
+                      {m.kind === 'image' ? (
+                        <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
+                      ) : (
+                        <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
+                      )}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{m.filename}</span>
+                        {searching && <span className="truncate text-xs text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
+                      </span>
+                    </button>
+                  </Tooltip>
                 </td>
-                <td className="truncate py-2 text-slate-500 dark:text-slate-400" title={typeLabel(m)}>{typeLabel(m)}</td>
+                {/* Classes ON the cell: only <td>/<th> may be a child of <tr>, so a wrapper span
+                    would be hoisted out of the table and take the column with it. */}
+                <td className="truncate py-2 text-slate-500 dark:text-slate-400">
+                  {/* On a SPAN inside the cell, never on the <td>: `.tooltip` is display:inline-block,
+                      and a <td> that is not a table-cell breaks the row geometry the virtualiser reads. */}
+                  <span className="tooltip" data-tip={typeLabel(m)}>{typeLabel(m)}</span>
+                </td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">
                     {pick ? (
-                      <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                      <Tooltip tip="Use this file">
+                        <button aria-label={actLabel('Use', m)} className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                      </Tooltip>
                     ) : (
                       <>
-                        <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
-                        <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                        <Tooltip tip={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'}>
+                          <button aria-label={actLabel('Copy URL of', m)} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
+                        </Tooltip>
+                        <Tooltip tip="Download">
+                          <button aria-label={actLabel('Download', m)} className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                        </Tooltip>
                         {canReplace(m) && (
-                          <button aria-label={actLabel('Replace', m)} title="Replace file (keeps the URL)" className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                          <Tooltip tip="Replace file (keeps the URL)">
+                            <button aria-label={actLabel('Replace', m)} className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                          </Tooltip>
                         )}
-                        <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                        <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                        <Tooltip tip="Rename">
+                          <button aria-label={actLabel('Rename', m)} className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                        </Tooltip>
+                        <Tooltip tip="Delete">
+                          <button aria-label={actLabel('Delete', m)} className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                        </Tooltip>
                       </>
                     )}
                   </div>
@@ -946,13 +974,22 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
             >
               <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
                 <FolderIcon className="h-10 w-10 text-indigo-400" />
+                {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                    renders `data-tip` as generated content, which the browser folds into that control's
+                    ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                    does not. */}
                 <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={seg}>{seg}</span>
+              
                 <span className="text-[10px] text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</span>
               </button>
               {!pick && !searching && (
                 <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 dark:bg-slate-900/90 p-0.5 shadow group-hover:flex">
-                  <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
-                  <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                  <Tooltip tip="Rename">
+                    <button aria-label={`Rename ${seg}`} className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
+                  </Tooltip>
+                  <Tooltip tip="Delete">
+                    <button aria-label={`Delete ${seg}`} className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                  </Tooltip>
                 </div>
               )}
             </div>
@@ -974,23 +1011,40 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                     <FileTypeIcon asset={m} className="h-10 w-10" />
                   </div>
                 )}
+                {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                    renders `data-tip` as generated content, which the browser folds into that control's
+                    ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                    does not. */}
                 <figcaption className="mt-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>{m.filename}</figcaption>
+              
                 {searching && <span className="block truncate text-[10px] text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
               </button>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</span>
                 <div className="hidden gap-0.5 group-hover:flex">
                   {pick ? (
-                    <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                    <Tooltip tip="Use this file">
+                      <button aria-label={actLabel('Use', m)} className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                    </Tooltip>
                   ) : (
                     <>
-                      <button aria-label={actLabel('Copy URL of', m)} title={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
-                      <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                      <Tooltip tip={m.kind === 'image' ? 'Copy URL (more sizes in preview)' : 'Copy URL'}>
+                        <button aria-label={actLabel('Copy URL of', m)} className={ACT} onClick={() => copyUrl(m)}>{copiedId === m.id ? CHECK_ICON : LINK_ICON}</button>
+                      </Tooltip>
+                      <Tooltip tip="Download">
+                        <button aria-label={actLabel('Download', m)} className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                      </Tooltip>
                       {canReplace(m) && (
-                          <button aria-label={actLabel('Replace', m)} title="Replace file (keeps the URL)" className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                          <Tooltip tip="Replace file (keeps the URL)">
+                            <button aria-label={actLabel('Replace', m)} className={ACT} onClick={() => replaceAsset(m)}>{REPLACE_ICON}</button>
+                          </Tooltip>
                         )}
-                        <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                      <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                        <Tooltip tip="Rename">
+                          <button aria-label={actLabel('Rename', m)} className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                        </Tooltip>
+                      <Tooltip tip="Delete">
+                        <button aria-label={actLabel('Delete', m)} className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                      </Tooltip>
                     </>
                   )}
                 </div>
@@ -1157,31 +1211,33 @@ function ImagePreview({
   return (
     <div className="flex flex-col items-center gap-3 p-4">
       <div className="flex w-full items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={onPrev}
-          disabled={!onPrev}
-          aria-label="Previous image"
-          title="Previous image (←)"
-          className={navButton}
-        >
-          {CHEVRON_LEFT}
-        </button>
+        <Tooltip tip="Previous image (←)">
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={!onPrev}
+            aria-label="Previous image"
+            className={navButton}
+          >
+            {CHEVRON_LEFT}
+          </button>
+        </Tooltip>
         <img
           src={nonce ? `${asset.url}${asset.url.includes('?') ? '&' : '?'}v=${nonce}` : asset.url}
           alt={asset.alt ?? asset.filename}
           className="max-h-[40dvh] w-auto rounded-lg shadow-lg"
         />
-        <button
-          type="button"
-          onClick={onNext}
-          disabled={!onNext}
-          aria-label="Next image"
-          title="Next image (→)"
-          className={navButton}
-        >
-          {CHEVRON_RIGHT}
-        </button>
+        <Tooltip tip="Next image (→)">
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={!onNext}
+            aria-label="Next image"
+            className={navButton}
+          >
+            {CHEVRON_RIGHT}
+          </button>
+        </Tooltip>
       </div>
       {position && position.total > 1 && (
         <p className="text-[11px] text-slate-500 dark:text-slate-400" role="status">
@@ -1200,9 +1256,11 @@ function ImagePreview({
             </button>
           )}
           {onReplace && (
-            <button type="button" onClick={onReplace} className={`${ghostButton} px-3 py-1`} title="Swap the file behind this asset — its URL does not change">
-              Replace file
-            </button>
+            <Tooltip tip="Swap the file behind this asset — its URL does not change">
+              <button type="button" onClick={onReplace} className={`${ghostButton} px-3 py-1`}>
+                Replace file
+              </button>
+            </Tooltip>
           )}
           <a href={original} target="_blank" rel="noreferrer" className={`${ghostButton} px-3 py-1`}>
             Open original

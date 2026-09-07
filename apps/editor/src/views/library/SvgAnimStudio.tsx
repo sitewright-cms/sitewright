@@ -9,6 +9,7 @@ import { FilePicker } from '../files/FilePicker';
 import { parseSvg, cleanupSvg, prettySvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
 import { SnippetShelf } from './SnippetShelf';
 import { SVG_ANIM_ITEMS } from './catalog';
+import { Tooltip } from '../ui/Tooltip';
 
 interface SvgAnimStudioProps {
   onClose: () => void;
@@ -250,13 +251,15 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
             className={`${glassInput} w-full font-mono text-xs`}
           />
           {importError && <p className="text-xs font-semibold text-red-600 dark:text-red-400">{importError}</p>}
-          <label className="flex cursor-pointer items-start gap-2.5" title="Strip comments, <metadata>, Inkscape/Illustrator/Sodipodi cruft & layer names on import — CSS, ids and animation directives are kept.">
-            <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} aria-label="Clean up code on import" />
-            <span className="leading-tight">
-              <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Clean up code</span>
-              <span className="block text-[11px] text-slate-500 dark:text-slate-400">Remove editor cruft (comments, metadata, Inkscape/Illustrator junk). Keeps CSS, ids &amp; animation.</span>
-            </span>
-          </label>
+          <Tooltip tip="Strip comments, <metadata>, Inkscape/Illustrator/Sodipodi cruft & layer names on import — CSS, ids and animation directives are kept.">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input type="checkbox" className={`${toggleInput} mt-0.5`} checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} aria-label="Clean up code on import" />
+              <span className="leading-tight">
+                <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Clean up code</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Remove editor cruft (comments, metadata, Inkscape/Illustrator junk). Keeps CSS, ids &amp; animation.</span>
+              </span>
+            </label>
+          </Tooltip>
           <div className="flex items-center gap-3">
             <button type="button" className={primaryButton} onClick={() => doImport(pasteText)}>
               Import markup
@@ -297,10 +300,12 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
               <button type="button" className={primaryButton} onClick={() => send({ type: 'sw-studio-play' })}>
                 ▶ Play
               </button>
-              <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400" title="Replay the animation on a loop so you can review edits without pressing Play">
-                <input type="checkbox" className={toggleInput} checked={autoLoop} onChange={(e) => setAutoLoop(e.target.checked)} aria-label="Auto-loop preview" />
-                Auto-loop
-              </label>
+              <Tooltip tip="Replay the animation on a loop so you can review edits without pressing Play">
+                <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <input type="checkbox" className={toggleInput} checked={autoLoop} onChange={(e) => setAutoLoop(e.target.checked)} aria-label="Auto-loop preview" />
+                  Auto-loop
+                </label>
+              </Tooltip>
               <span className="text-xs text-slate-500 dark:text-slate-400">{selectedId ? `selected: ${selectedId}` : 'click an element to select it'}</span>
             </div>
             <iframe ref={iframeRef} title="SVG studio canvas" src={previewSrc} sandbox="allow-scripts" className="min-h-0 flex-1 border-y border-slate-200 bg-white" />

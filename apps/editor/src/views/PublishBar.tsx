@@ -10,6 +10,7 @@ import { PreviewShareLinks } from './settings/PreviewShareLinks';
 import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
 import { localSiteLabel } from '../lib/local-site-url';
+import { Tooltip } from './ui/Tooltip';
 
 /** Eye glyph for the "Preview" (browse the live draft site). */
 function PreviewIcon() {
@@ -307,18 +308,19 @@ export function PublishBar({
           changes (no publish needed); the caret opens a menu with "Preview share links". */}
       <div className="relative" ref={previewMenuRef}>
         <div className="inline-flex">
-          <button
-            onClick={() =>
-              window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
-            }
-            title="Preview the live site with your latest changes — no publish needed"
-            aria-label="Preview the live site"
-            {...(compact ? previewHold : {})}
-            className={`${btnBase} ${compact ? '' : 'rounded-r-none'}`}
-          >
-            <PreviewIcon />
-            {!compact && 'Preview'}
-          </button>
+          <Tooltip tip="Preview the live site with your latest changes — no publish needed">
+            <button
+              onClick={() =>
+                window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
+              }
+              aria-label="Preview the live site"
+              {...(compact ? previewHold : {})}
+              className={`${btnBase} ${compact ? '' : 'rounded-r-none'}`}
+            >
+              <PreviewIcon />
+              {!compact && 'Preview'}
+            </button>
+          </Tooltip>
           {!compact && (
           <button
             aria-label="Preview options"
@@ -355,24 +357,25 @@ export function PublishBar({
           feature from the only people who need it. */}
       <div className="relative" ref={menuRef}>
         <div className="inline-flex">
-          <button
-            onClick={() => (defaultTarget ? deployTo(defaultTarget) : onOpenDeploy?.())}
-            disabled={busy}
-            title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Set up where to deploy your site'}
-            aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
-            {...(compact ? deployHold : {})}
-            className={`inline-flex cursor-pointer items-center gap-1.5 ${compact ? 'rounded-md' : 'rounded-l-md'} border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
-              // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
-              // label. -700 carries the same "there is something to deploy" green at 5.2:1.
-              primaryStale
-                ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
-                : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
-            }`}
-          >
-            <DeployIcon />
-            {!compact && (busy ? 'Deploying…' : 'Deploy')}
-            {primaryStale && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
-          </button>
+          <Tooltip tip={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Set up where to deploy your site'}>
+            <button
+              onClick={() => (defaultTarget ? deployTo(defaultTarget) : onOpenDeploy?.())}
+              disabled={busy}
+              aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
+              {...(compact ? deployHold : {})}
+              className={`inline-flex cursor-pointer items-center gap-1.5 ${compact ? 'rounded-md' : 'rounded-l-md'} border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
+                // emerald-700, not -600: white on emerald-600 measured 3.61:1 — under AA for a button
+                // label. -700 carries the same "there is something to deploy" green at 5.2:1.
+                primaryStale
+                  ? 'border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800'
+                  : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400'
+              }`}
+            >
+              <DeployIcon />
+              {!compact && (busy ? 'Deploying…' : 'Deploy')}
+              {primaryStale && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
+            </button>
+          </Tooltip>
           {!compact && (
           <button
             aria-label="Choose a deploy target"
@@ -460,15 +463,16 @@ export function PublishBar({
                 Download .zip
               </a>
             ) : (
-              <span
-                role="menuitem"
-                aria-disabled="true"
-                title="Publish the site first — the archive is the site as published"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download .zip
-              </span>
+              <Tooltip tip="Publish the site first — the archive is the site as published">
+                <span
+                  role="menuitem"
+                  aria-disabled="true"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download .zip
+                </span>
+              </Tooltip>
             )}
           </div>
         )}

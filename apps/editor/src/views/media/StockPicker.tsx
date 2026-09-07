@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type StockProviderName, type StockProvidersStatus, type StockSearchProvider, type StockSearchResult } from '../../api';
 import { glassCard, glassPanel, glassInput, primaryButton, ghostButton } from '../../theme';
 import { Modal } from '../ui/Modal';
+import { Tooltip } from '../ui/Tooltip';
 
 const PROVIDER_LABELS: Record<StockProviderName, string> = {
   openverse: 'Openverse (CC)',
@@ -229,19 +230,22 @@ export function StockPicker({
           <figure key={resultKey(r)} className={`flex flex-col ${glassPanel} p-2`}>
             {/* The tile itself opens the full-size preview — a 96px thumbnail is not enough to
                 judge a photo you are about to import. */}
-            <button
-              type="button"
-              onClick={() => setPreview(r)}
-              title="Preview full size"
-              aria-label={`Preview stock photo by ${r.author}`}
-              className="group relative block cursor-zoom-in overflow-hidden rounded"
-            >
-              <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="sw-zoom-thumb h-24 w-full rounded object-cover" loading="lazy" />
-              <span className="pointer-events-none absolute inset-0 rounded bg-slate-900/0 transition group-hover:bg-slate-900/20" />
-            </button>
-            <figcaption className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400" title={`${r.author} · ${r.license} · ${PROVIDER_LABELS[r.provider]}`}>
-              {r.author} · {r.license}
-            </figcaption>
+            <Tooltip tip="Preview full size">
+              <button
+                type="button"
+                onClick={() => setPreview(r)}
+                aria-label={`Preview stock photo by ${r.author}`}
+                className="group relative block cursor-zoom-in overflow-hidden rounded"
+              >
+                <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="sw-zoom-thumb h-24 w-full rounded object-cover" loading="lazy" />
+                <span className="pointer-events-none absolute inset-0 rounded bg-slate-900/0 transition group-hover:bg-slate-900/20" />
+              </button>
+            </Tooltip>
+            <Tooltip tip={`${r.author} · ${r.license} · ${PROVIDER_LABELS[r.provider]}`}>
+              <figcaption className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                {r.author} · {r.license}
+              </figcaption>
+            </Tooltip>
             {/* In a fan-out the tiles are mixed, so each one has to say where it came from. Keyed off
                 the search that PRODUCED these tiles, not the select's current value. */}
             {lastSearch?.provider === 'all' && (

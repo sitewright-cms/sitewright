@@ -28,6 +28,7 @@ vi.mock('../src/api', () => ({
 }));
 
 import { FormsManager } from '../src/views/FormsManager';
+import { tipOf } from './tooltip-helpers';
 
 const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' as const };
 
@@ -248,10 +249,10 @@ describe('filtered counter', () => {
     });
     render(<FormsManager project={project} />);
     const badge = await screen.findByText('5 filtered');
-    expect(badge.getAttribute('title')).toContain('4 honeypot');
-    expect(badge.getAttribute('title')).toContain('1 too-fast');
+    expect(tipOf(badge)).toContain('4 honeypot');
+    expect(tipOf(badge)).toContain('1 too-fast');
     // Says plainly that these were never leads, so nobody hunts the inbox for them.
-    expect(badge.getAttribute('title')).toContain('never became submissions');
+    expect(tipOf(badge)).toContain('never became submissions');
   });
 
   it('shows NOTHING when nothing was filtered — no zero-badge noise on a healthy form', async () => {

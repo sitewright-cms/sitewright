@@ -242,7 +242,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
   // When multilingual, a new page is either created in ALL languages (default) or only the
   // currently-selected one (a locale-only page).
   const [newPageScope, setNewPageScope] = useState<'all' | 'current'>('all');
-  // "Add nav placeholder" modal — a kind:'link' entry (no page of its own): a menu item that
+  // "New Menu Item" modal — a kind:'link' entry (no page of its own): a menu item that
   // links somewhere or groups child pages in a dropdown.
   const [phOpen, setPhOpen] = useState(false);
   const [phName, setPhName] = useState('');
@@ -598,7 +598,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     try {
       await api.putPage(project.id, placeholder);
     } catch (err) {
-      setPhError(err instanceof Error ? err.message : 'failed to create placeholder');
+      setPhError(err instanceof Error ? err.message : 'failed to create menu item');
       return;
     }
     setPhName('');
@@ -727,7 +727,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
     if (!isLink) {
       rows.push({ kind: 'item', label: 'Open page editor', onSelect: () => void openEditor(p) });
     }
-    rows.push({ kind: 'item', label: isLink ? 'Edit placeholder settings' : 'Edit page settings', onSelect: () => void openSettings(p) });
+    rows.push({ kind: 'item', label: isLink ? 'Edit menu item settings' : 'Edit page settings', onSelect: () => void openSettings(p) });
     if (!isLink) {
       // A placeholder has no template to read page.data, so the store would have nothing to bind to.
       rows.push({ kind: 'item', label: 'Edit page data', onSelect: () => void openPageData(p) });
@@ -959,20 +959,20 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
               {multilingual && (
                 <div role="tablist" aria-label="Language" className="flex items-center gap-1 rounded-xl bg-slate-100 dark:bg-white/10 p-1">
                   {locales.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      role="tab"
-                      aria-selected={loc === currentLocale}
-                      title={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}
-                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
-                        loc === currentLocale ? gradientSurface : `text-slate-600 dark:text-slate-300 ${gradientHover}`
-                      }`}
-                      onClick={() => setCurrentLocale(loc)}
-                    >
-                      <span aria-hidden>{localeFlag(loc)}</span>
-                      <span className="uppercase">{loc}</span>
-                    </button>
+                    <Tooltip key={loc} tip={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={loc === currentLocale}
+                        className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
+                          loc === currentLocale ? gradientSurface : `text-slate-600 dark:text-slate-300 ${gradientHover}`
+                        }`}
+                        onClick={() => setCurrentLocale(loc)}
+                      >
+                        <span aria-hidden>{localeFlag(loc)}</span>
+                        <span className="uppercase">{loc}</span>
+                      </button>
+                    </Tooltip>
                   ))}
                 </div>
               )}
@@ -1012,22 +1012,23 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                 + Add translation
               </button>
               )}
-              <button
-                type="button"
-                className={ghostButton}
-                onClick={() => {
-                  setPhError(null);
-                  setPhName('');
-                  setPhTarget('');
-                  setPhNewTab(false);
-                  setPhSlots(['header']);
-                  setPhDropdown(false);
-                  setPhOpen(true);
-                }}
-                title="A menu item with no page of its own — links somewhere or groups child pages in a dropdown"
-              >
-                + {isMobile ? 'Placeholder' : 'New Placeholder'}
-              </button>
+              <Tooltip tip="A menu item with no page of its own — links somewhere or groups child pages in a dropdown">
+                <button
+                  type="button"
+                  className={ghostButton}
+                  onClick={() => {
+                    setPhError(null);
+                    setPhName('');
+                    setPhTarget('');
+                    setPhNewTab(false);
+                    setPhSlots(['header']);
+                    setPhDropdown(false);
+                    setPhOpen(true);
+                  }}
+                >
+                  + {isMobile ? 'Menu Item' : 'New Menu Item'}
+                </button>
+              </Tooltip>
               <button
                 type="button"
                 className={primaryButton}
@@ -1151,7 +1152,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       subset, so "drop below the row above" would move the page next to a sibling the
                       author cannot see. Clear the search to reorder. */}
                   {!isHome && search.trim() === '' && (
-                    <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right">
+                    <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right" className="shrink-0">
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}
@@ -1189,13 +1190,17 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       void (isLink ? openSettings(p) : openEditor(p));
                     }}
                   >
+                    {/* A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                        renders `data-tip` as generated content, which the browser folds into that control's
+                        ACCESSIBLE NAME (the pages-list row became "Home page Home /"). A descendant `title`
+                        does not. */}
                     <span
                       aria-hidden
                       className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} group-hover:text-white`}
-                      title={isLink ? 'Navigation placeholder' : isHome ? 'Home page' : 'Page'}
-                    >
+                     title={isLink ? 'Menu item' : isHome ? 'Home page' : 'Page'}>
                       {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
                     </span>
+                  
                     {/* The MENU label (nav title falls back to the page title), rendered clean — icon/flag
                         + text for a rich label (placeholder or a page with a rich menu title), never raw markup. */}
                     <span className="truncate font-medium"><PlaceholderLabel name={p.nav?.title || p.title} /></span>
@@ -1203,7 +1208,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
                     </span>
                     {isLink && (
-                      <span className="rounded-full bg-violet-100/80 px-2 py-0.5 text-[11px] font-medium text-violet-700 group-hover:bg-white/25 group-hover:text-white dark:bg-violet-500/15 dark:text-violet-300">placeholder</span>
+                      <span className="rounded-full bg-violet-100/80 px-2 py-0.5 text-[11px] font-medium text-violet-700 group-hover:bg-white/25 group-hover:text-white dark:bg-violet-500/15 dark:text-violet-300">menu item</span>
                     )}
                     {p.status === 'draft' && (
                       <span className="rounded-full bg-slate-200/80 dark:bg-white/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300 group-hover:bg-white/25 group-hover:text-white">draft</span>
@@ -1215,12 +1220,18 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
                     {multilingual && p.locale && !isLink && !hasOwnSource(p) && !p.template && (
-                      <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white">
+                      // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                      // renders `data-tip` as generated content, which the browser folds into that
+                      // control's ACCESSIBLE NAME. A descendant `title` does not.
+                      <span className="rounded-full bg-emerald-100/80 dark:bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300 group-hover:bg-white/25 group-hover:text-white" title="Layout inherited from the main language">
                         inherited
                       </span>
                     )}
                     {multilingual && p.locale && !isLink && hasOwnSource(p) && (
-                      <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white">
+                      // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+                      // renders `data-tip` as generated content, which the browser folds into that
+                      // control's ACCESSIBLE NAME. A descendant `title` does not.
+                      <span className="rounded-full bg-amber-100/80 dark:bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white" title="This language has its own forked code">
                         custom code
                       </span>
                     )}
@@ -1247,7 +1258,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                         </Tooltip>
                       </>
                     )}
-                    <Tooltip tip={isLink ? 'Edit placeholder settings' : 'Edit page settings'} side="top">
+                    <Tooltip tip={isLink ? 'Edit menu item settings' : 'Edit page settings'} side="top">
                       <button aria-label={`Settings for ${p.title}`} className={ROW_ACTION} onClick={() => void openSettings(p)}>
                         <Settings className="h-4 w-4" />
                       </button>
@@ -1337,12 +1348,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
           {/* List-level errors (reorder/delete) — the add-page error lives inside its own modal. */}
           {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
           {phOpen && (
-            <Modal title="New Placeholder" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
+            <Modal title="New Menu Item" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
               <form onSubmit={createPlaceholder} className="flex flex-col gap-4 p-5">
                 <div className="flex flex-col">
                   <label className={fieldLabel}>Name (menu label)</label>
                   <input
-                    aria-label="Placeholder name"
+                    aria-label="Menu item name"
                     className={glassInput}
                     value={phName}
                     onChange={(e) => setPhName(e.target.value)}
@@ -1400,7 +1411,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                 </fieldset>
                 {phError && <p className="text-sm text-red-600 dark:text-red-400">{phError}</p>}
                 <div className="flex justify-end">
-                  <button type="submit" className={primaryButton}>Add placeholder</button>
+                  <button type="submit" className={primaryButton}>Add menu item</button>
                 </div>
               </form>
             </Modal>

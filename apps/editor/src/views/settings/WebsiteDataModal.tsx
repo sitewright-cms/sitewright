@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, ChevronRight, GripVertical, X } from 'lucide-re
 import type { JsonValue } from '@sitewright/schema';
 import { Modal } from '../ui/Modal';
 import { ghostButton, glassInput, primaryButton, toggleInput } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 type JsonType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 const TYPES: readonly JsonType[] = ['string', 'number', 'boolean', 'null', 'object', 'array'];
@@ -208,8 +209,8 @@ function DataNode({
             e.dataTransfer.setData('text/plain', String(drag.index));
           }}
           onDragEnd={drag.onDragEnd}
-          title="Drag to reorder"
-          className="shrink-0 cursor-grab text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200 active:cursor-grabbing"
+          data-tip="Drag to reorder"
+          className="tooltip shrink-0 cursor-grab text-slate-400 transition hover:text-slate-600 dark:hover:text-slate-200 active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" />
         </span>
@@ -269,15 +270,21 @@ function DataNode({
             {count} {t === 'array' ? (count === 1 ? 'item' : 'items') : count === 1 ? 'key' : 'keys'}
           </span>
         )}
-        <button type="button" className={iconBtn} aria-label={`Move ${label} up`} title="Move up" disabled={!drag.canUp} onClick={() => drag.onMove(-1)}>
-          <ChevronUp className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" className={iconBtn} aria-label={`Move ${label} down`} title="Move down" disabled={!drag.canDown} onClick={() => drag.onMove(1)}>
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-        <button type="button" aria-label={`Remove ${label}`} title="Remove" onClick={onRemove} className={removeBtn}>
-          <X className="h-4 w-4" />
-        </button>
+        <Tooltip tip="Move up">
+          <button type="button" className={iconBtn} aria-label={`Move ${label} up`} disabled={!drag.canUp} onClick={() => drag.onMove(-1)}>
+            <ChevronUp className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
+        <Tooltip tip="Move down">
+          <button type="button" className={iconBtn} aria-label={`Move ${label} down`} disabled={!drag.canDown} onClick={() => drag.onMove(1)}>
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
+        <Tooltip tip="Remove">
+          <button type="button" aria-label={`Remove ${label}`} onClick={onRemove} className={removeBtn}>
+            <X className="h-4 w-4" />
+          </button>
+        </Tooltip>
       </div>
       {branch && open && (
         <div className="mt-1.5">

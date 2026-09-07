@@ -3,6 +3,7 @@ import { X, GripVertical } from 'lucide-react';
 import { detectSocial } from '@sitewright/schema';
 import { glassInput, ghostButton } from '../../theme';
 import { newSocial, type KeyedSocial } from './model';
+import { Tooltip } from '../ui/Tooltip';
 
 /**
  * Sortable list of social profiles. Each row is a link + display name + icon; entering a URL
@@ -54,9 +55,11 @@ export function SocialProfilesEditor({ rows, onChange }: { rows: KeyedSocial[]; 
           }}
           className={`flex items-center gap-2 rounded-lg ${dragId === r.id ? 'opacity-50' : ''}`}
         >
-          <span aria-hidden className="cursor-grab select-none px-1 text-slate-500 dark:text-slate-400" title="Drag to reorder">
-            <GripVertical className="h-4 w-4" />
-          </span>
+          <Tooltip tip="Drag to reorder">
+            <span aria-hidden className="cursor-grab select-none px-1 text-slate-500 dark:text-slate-400">
+              <GripVertical className="h-4 w-4" />
+            </span>
+          </Tooltip>
           <input
             aria-label={`Social URL ${i + 1}`}
             className={glassInput}

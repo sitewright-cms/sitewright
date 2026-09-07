@@ -4,6 +4,7 @@ import { SidePanel } from '../ui/SidePanel';
 import { useCopy } from '../ui/useCopy';
 import { api, type WidgetCatalogEntry } from '../../api';
 import { glassPanel, ghostButton } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Stacked-blocks glyph for the Widgets bottom-rail tab. */
 function WidgetsIcon() {
@@ -49,17 +50,20 @@ function WidgetGallery() {
           return (
             <li key={w.name} className={`${glassPanel} flex flex-col gap-1.5 rounded-xl px-3 py-2.5`}>
               <div className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200" title={w.label}>
-                  {w.label}
-                </span>
-                <button
-                  className={`${ghostButton} px-2 py-1 font-mono text-[11px]`}
-                  aria-label={`Copy ${ref}`}
-                  title={`Copy ${ref}`}
-                  onClick={() => copy(ref, w.name)}
-                >
-                  {copiedId === w.name ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
-                </button>
+                <Tooltip tip={w.label} className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
+                    {w.label}
+                  </span>
+                </Tooltip>
+                <Tooltip tip={`Copy ${ref}`}>
+                  <button
+                    className={`${ghostButton} px-2 py-1 font-mono text-[11px]`}
+                    aria-label={`Copy ${ref}`}
+                    onClick={() => copy(ref, w.name)}
+                  >
+                    {copiedId === w.name ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
+                  </button>
+                </Tooltip>
               </div>
               <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{w.description}</p>
               {w.datasets.length > 0 && (

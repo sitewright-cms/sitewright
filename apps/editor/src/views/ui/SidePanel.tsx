@@ -4,6 +4,7 @@ import { createContext, useCallback, useEffect, useId, useMemo, useRef, useState
 import { X } from 'lucide-react';
 import { OVERLAY_STACK } from './overlay';
 import { useIsMobile } from '../../lib/use-is-mobile';
+import { Tooltip } from './Tooltip';
 
 /**
  * True for any subtree rendered inside a {@link SidePanel}'s content. {@link Modal} reads it to
@@ -305,15 +306,16 @@ export function SidePanel({ side, label, icon, headerExtra, size, width, align =
         <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 dark:border-white/10 ${edgeInset}`}>
           <span className="text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-300">{label}</span>
           <span className="flex-1">{headerExtra}</span>
-          <button
-            type="button"
-            aria-label={`Close ${label}`}
-            title="Close"
-            onClick={() => setOpen(false)}
-            className="waves-effect rounded-lg px-2 py-0.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-200"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <Tooltip tip="Close">
+            <button
+              type="button"
+              aria-label={`Close ${label}`}
+              onClick={() => setOpen(false)}
+              className="waves-effect rounded-lg px-2 py-0.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-slate-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </Tooltip>
         </header>
         <div className={`min-h-0 flex-1 overflow-auto ${edgeInset}`}>
           <InSidePanel.Provider value={true}>

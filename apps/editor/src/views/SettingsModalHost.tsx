@@ -4,6 +4,7 @@ import { Modal } from './ui/Modal';
 import { InstanceSettings } from './InstanceSettings';
 import { ClientsManager } from './ClientsManager';
 import { TeamManager } from './TeamManager';
+import { Tooltip } from './ui/Tooltip';
 
 /** The settings surfaces opened (as modals) from the header gear menu. */
 export type SettingsView = 'system' | 'clients' | 'team';
@@ -36,16 +37,17 @@ function VersionBadge() {
   );
   if (info.updateAvailable && info.releaseUrl) {
     return (
-      <a
-        href={info.releaseUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="A newer version is available — view the release notes"
-        className="inline-flex items-center gap-1.5 text-xs text-amber-600 transition hover:text-amber-700 dark:text-amber-400"
-      >
-        {badge}
-        <span className="font-medium">update available</span>
-      </a>
+      <Tooltip tip="A newer version is available — view the release notes">
+        <a
+          href={info.releaseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs text-amber-600 transition hover:text-amber-700 dark:text-amber-400"
+        >
+          {badge}
+          <span className="font-medium">update available</span>
+        </a>
+      </Tooltip>
     );
   }
   return badge;

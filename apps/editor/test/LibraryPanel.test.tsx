@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { LibraryPanel } from '../src/views/library/LibraryPanel';
+import { byTip, findByTip } from './tooltip-helpers';
 
 beforeEach(() => {
   // jsdom has no clipboard by default.
@@ -51,9 +52,9 @@ describe('LibraryPanel', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Textures' });
     // A texture thumbnail (fetched from /authoring/textures) is clickable.
-    fireEvent.click(await within(dialog).findByTitle('cartographer'));
+    fireEvent.click(await findByTip('cartographer', dialog));
     // Choose the Primary CI colour → the snippet emits a var(--sw-color-*) token (re-tints on the site).
-    fireEvent.click(within(dialog).getByTitle(/Primary Color — var\(--sw-color-primary\)/));
+    fireEvent.click(byTip(/Primary Color — var\(--sw-color-primary\)/, dialog));
     const code = dialog.querySelector('pre code');
     expect(code?.textContent).toContain('background-color: var(--sw-color-primary);');
     expect(code?.textContent).toContain('url("/authoring/textures/cartographer.png")');
@@ -194,12 +195,12 @@ describe('LibraryPanel', () => {
     // Matched on the TITLE (which carries the snippet), not the accessible name: both shapes of a flag
     // are called "European Union", so a name-only query would happily return the tile from before the
     // switch and the assertion below would pass without the pill having done anything.
-    fireEvent.click(await within(dialog).findByTitle(/"eu"/, {}, { timeout: 15000 }));
+    fireEvent.click(await findByTip(/"eu"/, dialog, 15000));
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-flag "eu" "h-4"}}');
 
     // Switching to Round re-cuts the SAME flag — the snippet must follow the pill, not stay rectangular.
     fireEvent.click(within(shapes).getByRole('radio', { name: /Round/ }));
-    fireEvent.click(await within(dialog).findByTitle(/"eu-circle"/, {}, { timeout: 15000 }));
+    fireEvent.click(await findByTip(/"eu-circle"/, dialog, 15000));
     expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith('{{sw-flag "eu-circle" "h-5 w-5"}}');
   }, 20000);
 });

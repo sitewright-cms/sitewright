@@ -9,6 +9,7 @@ import { SnippetPreviewButton } from './SnippetPreviewButton';
 import { HoverTip } from '../ui/HoverTip';
 import { useProjectEvents } from '../../lib/use-project-events';
 import { isOwnContentChange } from '../../api';
+import { Tooltip } from '../ui/Tooltip';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -237,9 +238,11 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           <span className="block w-full truncate text-left text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
         </HoverTip>
       ) : (
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200" title={r.name}>
-          {r.name}
-        </span>
+        <Tooltip tip={r.name} className="min-w-0 flex-1">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+            {r.name}
+          </span>
+        </Tooltip>
       )}
       {previewUrl && <SnippetPreviewButton url={previewUrl(r, scope)} label={r.name} />}
       {editable ? (
@@ -254,13 +257,17 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       ) : (
         <>
           {includeRef && (
-            <button className={`${ghostButton} px-2 py-1 font-mono text-[11px]`} aria-label={`Copy ${includeRef(r)}`} title={`Copy ${includeRef(r)}`} onClick={() => copy(includeRef(r), `inc-${r.id}`)}>
-              {copiedId === `inc-${r.id}` ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
-            </button>
+            <Tooltip tip={`Copy ${includeRef(r)}`}>
+              <button className={`${ghostButton} px-2 py-1 font-mono text-[11px]`} aria-label={`Copy ${includeRef(r)}`} onClick={() => copy(includeRef(r), `inc-${r.id}`)}>
+                {copiedId === `inc-${r.id}` ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
+              </button>
+            </Tooltip>
           )}
-          <button className={`${ghostButton} px-2 py-1 text-[11px]`} aria-label={`Copy ${r.name} source`} title="Copy source" onClick={() => copy(r.source, `src-${r.id}`)}>
-            {copiedId === `src-${r.id}` ? <Check className="h-3.5 w-3.5" /> : 'Source'}
-          </button>
+          <Tooltip tip="Copy source">
+            <button className={`${ghostButton} px-2 py-1 text-[11px]`} aria-label={`Copy ${r.name} source`} onClick={() => copy(r.source, `src-${r.id}`)}>
+              {copiedId === `src-${r.id}` ? <Check className="h-3.5 w-3.5" /> : 'Source'}
+            </button>
+          </Tooltip>
         </>
       )}
     </li>

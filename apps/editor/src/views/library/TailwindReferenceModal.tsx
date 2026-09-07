@@ -77,26 +77,30 @@ function ClassRow({
       }`}
     >
       <TailwindPreview kind={topic.preview} decls={decls} name={name} />
-      <button
-        type="button"
-        onClick={onCopy}
-        title={`Copy ${name}`}
-        className="min-w-0 flex-1 text-left"
-      >
-        <code className="block truncate font-mono text-[12.5px] font-semibold text-indigo-700 dark:text-indigo-300">
-          {copied ? 'Copied!' : name}
-          {modifiers === 1 && (
-            <span className="ml-1 font-normal text-slate-400 dark:text-slate-500" title="Accepts a modifier, e.g. text-sm/relaxed">
-              /…
-            </span>
-          )}
-        </code>
-        {/* The class's OWN declarations, not the topic's deduped `props` zipped against them — a
-            `container` row has 6 declarations under a 2-property signature, and the zip showed 2. */}
-        <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
-          {decls.map(formatDecl).join('; ')}
-        </span>
-      </button>
+      <Tooltip tip={`Copy ${name}`} className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={onCopy}
+          className="min-w-0 flex-1 text-left"
+        >
+          <code className="block truncate font-mono text-[12.5px] font-semibold text-indigo-700 dark:text-indigo-300">
+            {copied ? 'Copied!' : name}
+            {modifiers === 1 && (
+              // A native `title`, deliberately: this sits INSIDE an interactive control, and DaisyUI
+              // renders `data-tip` as generated content, which the browser folds into that control's
+              // ACCESSIBLE NAME. A descendant `title` does not.
+              <span className="ml-1 font-normal text-slate-400 dark:text-slate-500" title="Accepts a modifier, e.g. text-sm/relaxed">
+                /…
+              </span>
+            )}
+          </code>
+          {/* The class's OWN declarations, not the topic's deduped `props` zipped against them — a
+              `container` row has 6 declarations under a 2-property signature, and the zip showed 2. */}
+          <span className="block truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
+            {decls.map(formatDecl).join('; ')}
+          </span>
+        </button>
+      </Tooltip>
       <span className="flex shrink-0 items-center gap-0.5">
         <Tooltip tip="Copy class name" side="left">
           <button

@@ -1,4 +1,5 @@
 import { GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
+import { Tooltip } from '../ui/Tooltip';
 
 /**
  * The grab handle for a sortable row: a drag grip plus ↑/↓ buttons.
@@ -26,9 +27,11 @@ export function ReorderHandle({
     'rounded p-0.5 text-slate-500 dark:text-slate-400 transition hover:bg-slate-200/60 dark:hover:bg-white/10 disabled:pointer-events-none disabled:opacity-25';
   return (
     <span className="flex shrink-0 items-center gap-0.5">
-      <span aria-hidden className="cursor-grab select-none text-slate-500 dark:text-slate-400" title="Drag to reorder">
-        <GripVertical className="h-4 w-4" />
-      </span>
+      <Tooltip tip="Drag to reorder">
+        <span aria-hidden className="cursor-grab select-none text-slate-500 dark:text-slate-400">
+          <GripVertical className="h-4 w-4" />
+        </span>
+      </Tooltip>
       <span className="flex flex-col">
         <button type="button" className={btn} aria-label={`Move ${label} up`} disabled={!canUp} onClick={onUp}>
           <ChevronUp className="h-3 w-3" />

@@ -23,11 +23,13 @@ export function Tooltip({
   className = '',
   children,
 }: {
-  tip: string;
+  /** Absent/empty renders the child bare — a conditional hint must not leave an empty bubble. */
+  tip?: string | undefined;
   side?: Side;
   className?: string;
   children: ReactNode;
 }) {
+  if (!tip) return <>{children}</>;
   return (
     // eslint-disable-next-line security/detect-object-injection -- side is a typed Side literal
     <span className={`tooltip ${SIDE_CLASS[side]} inline-flex ${className}`} data-tip={tip}>

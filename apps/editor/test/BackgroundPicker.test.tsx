@@ -5,6 +5,7 @@ import { ToastProvider } from '../src/views/ui/Toast';
 import { BackgroundPicker } from '../src/views/library/BackgroundPicker';
 import { api } from '../src/api';
 import { CiPaletteProvider } from '../src/lib/ci-palette';
+import { byTip } from './tooltip-helpers';
 
 // WebGL is unavailable in jsdom, so shaderRenderer() returns null and the canvas RAF loops bail — the
 // settings + markup surface (what these tests exercise) still renders. Tests focus on the authored
@@ -92,7 +93,7 @@ describe('BackgroundPicker — minimal markup, AUTO color slots + knobs', () => 
 
   it('a quick palette sets all three to custom literal colors', () => {
     open();
-    fireEvent.click(screen.getByTitle('Sunset'));
+    fireEvent.click(byTip('Sunset'));
     expect(markup()).toContain('data-colors="#fb7185,#fbbf24,#1e1b4b"');
   });
 

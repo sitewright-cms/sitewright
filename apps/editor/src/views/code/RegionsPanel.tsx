@@ -4,6 +4,7 @@ import type { Dataset, Entry } from '@sitewright/schema';
 import { SidePanel, SidePanelClose } from '../ui/SidePanel';
 import { api } from '../../api';
 import { entryLabel } from '../../lib/entry-form';
+import { Tooltip } from '../ui/Tooltip';
 
 /** One editable region in the page, as enumerated by the preview bridge (rendered DOM). */
 export interface RegionItem {
@@ -34,18 +35,19 @@ function Row({ item, display, onEdit }: { item: RegionItem; display: string; onE
   // popover you can't click is worse than no popover at all.
   const closePanel = useContext(SidePanelClose);
   return (
-    <button
-      type="button"
-      onClick={() => {
-        onEdit(item.rid);
-        closePanel?.();
-      }}
-      title={`Edit ${display}`}
-      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400"
-    >
-      <span className="shrink-0 text-slate-500 dark:text-slate-400">{KIND_ICON[item.kind] ?? <Type className="h-3.5 w-3.5" />}</span>
-      <span className="min-w-0 flex-1 truncate">{display}</span>
-    </button>
+    <Tooltip tip={`Edit ${display}`} className="w-full">
+      <button
+        type="button"
+        onClick={() => {
+          onEdit(item.rid);
+          closePanel?.();
+        }}
+        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 transition hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-700 dark:hover:text-indigo-400"
+      >
+        <span className="shrink-0 text-slate-500 dark:text-slate-400">{KIND_ICON[item.kind] ?? <Type className="h-3.5 w-3.5" />}</span>
+        <span className="min-w-0 flex-1 truncate">{display}</span>
+      </button>
+    </Tooltip>
   );
 }
 

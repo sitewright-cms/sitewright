@@ -159,7 +159,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
       'sw-add-to-cart', // shop
       'global:landing', // templates
       'sw-flag', // icons
-      'NAV PLACEHOLDERS', // nav
+      'MENU ITEMS', // nav
       'sw-active', // nav
       'sw-control', // core
       'SET THE BRAND', // core

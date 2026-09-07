@@ -79,7 +79,7 @@ export function TokenEditor({
               // `border-white/60` (equal specificity, so a plain `border-red-400` loses on sheet order
               // and the marker never shows), and `sw-invalid-focus` reddens the focus ring too — without
               // it `sw-brand-focus` repaints the border brand-indigo exactly while you are typing.
-              className={`${glassInput}${picker ? ' cursor-default text-slate-500 dark:text-slate-400' : ''}${
+              className={`${glassInput}${picker ? ' tooltip cursor-default text-slate-500 dark:text-slate-400' : ''}${
                 errorFor(r.value) ? ' !border-red-400 sw-invalid-focus' : ''
               }`}
               value={r.value}
@@ -87,7 +87,7 @@ export function TokenEditor({
               readOnly={picker}
               aria-invalid={errorFor(r.value) ? true : undefined}
               aria-describedby={errorFor(r.value) ? `${r.id}-error` : undefined}
-              title={picker ? 'Use the color picker to set this color' : undefined}
+              data-tip={picker ? 'Use the color picker to set this color' : undefined}
               onChange={picker ? undefined : (e) => setCell(r.id, { value: e.target.value })}
             />
             <button

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { gradientHover, gradientSurface } from '../theme';
 import { useColorMode, type ColorMode } from '../lib/color-mode';
+import { Tooltip } from './ui/Tooltip';
 
 /** The Appearance segmented-control options (light / dark / follow-OS). */
 const COLOR_MODES: { value: ColorMode; label: string; Icon: typeof Sun }[] = [
@@ -98,17 +99,18 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        aria-label="Account"
-        title="Account"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-      >
-        <UserIcon />
-      </button>
+      <Tooltip tip="Account">
+        <button
+          type="button"
+          aria-label="Account"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          <UserIcon />
+        </button>
+      </Tooltip>
       {open && (
         <div
           role="menu"
@@ -127,27 +129,27 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
               className="flex items-center gap-0.5 rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm dark:border-white/10 dark:bg-white/5"
             >
               {COLOR_MODES.map(({ value, label, Icon }, ri) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="menuitemradio"
-                  aria-checked={mode === value}
-                  tabIndex={-1}
-                  ref={(el) => {
-                    // eslint-disable-next-line security/detect-object-injection -- ri is the map index
-                    focusRefs.current[ri] = el;
-                  }}
-                  title={`${label} appearance`}
-                  onClick={() => setMode(value)}
-                  className={`waves-effect flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1 outline-none transition sw-brand-focus-visible-inset ${
-                    mode === value
-                      ? `${gradientSurface} font-bold`
-                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
-                  }`}
-                >
-                  <Icon aria-hidden className="h-3.5 w-3.5" />
-                  {label}
-                </button>
+                <Tooltip key={value} tip={`${label} appearance`} className="flex-1">
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={mode === value}
+                    tabIndex={-1}
+                    ref={(el) => {
+                      // eslint-disable-next-line security/detect-object-injection -- ri is the map index
+                      focusRefs.current[ri] = el;
+                    }}
+                    onClick={() => setMode(value)}
+                    className={`waves-effect flex flex-1 items-center justify-center gap-1 rounded-lg px-2 py-1 outline-none transition sw-brand-focus-visible-inset ${
+                      mode === value
+                        ? `${gradientSurface} font-bold`
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    <Icon aria-hidden className="h-3.5 w-3.5" />
+                    {label}
+                  </button>
+                </Tooltip>
               ))}
             </div>
           </div>

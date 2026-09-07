@@ -37,6 +37,7 @@ import { parsePreviewTarget } from './lib/preview-target';
 import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
+import { Tooltip } from './views/ui/Tooltip';
 
 /**
  * A `?next=` value that is safe to navigate to after signing in.
@@ -400,29 +401,30 @@ function MainApp({
           row is tight — which is the whole story on a phone, where 285px plus the action nav is more
           than the screen. The project name truncates into whatever it actually gets. */}
       <div className={`flex w-[285px] min-w-0 items-center ${isMobile ? 'gap-1' : 'gap-3'}`}>
-        <button
-          className={`flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300 ${
-            // The mark is scaled 1.7×, so it overhangs its 22px box by ~7.7px per side. On desktop the
-            // padding absorbs the RIGHT overhang, keeping the selector pill clear. On a phone the pill
-            // sits nearly flush against it (gap-1) and the screen edge is the tighter constraint, so the
-            // same allowance moves to the LEFT — the overhang itself then does most of the separating.
-            isMobile ? 'pl-2' : 'pr-2'
-          }`}
-          onClick={() => setSelectorOpen(true)}
-          aria-label={inProject ? `${inProject.name} — switch project` : `${branding.name} — switch project`}
-          title="Switch project"
-        >
-          <span className="inline-flex" style={{ scale: '1.7' }}>
-            {inProject ? (
-              <ProjectIcon
-                src={inProject.iconUrl}
-                boxClassName="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-[5px]"
-              />
-            ) : (
-              <BrandLogo logoUrl={branding.logoUrl} name={branding.name} />
-            )}
-          </span>
-        </button>
+        <Tooltip tip="Switch project" className="shrink-0">
+          <button
+            className={`flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300 ${
+              // The mark is scaled 1.7×, so it overhangs its 22px box by ~7.7px per side. On desktop the
+              // padding absorbs the RIGHT overhang, keeping the selector pill clear. On a phone the pill
+              // sits nearly flush against it (gap-1) and the screen edge is the tighter constraint, so the
+              // same allowance moves to the LEFT — the overhang itself then does most of the separating.
+              isMobile ? 'pl-2' : 'pr-2'
+            }`}
+            onClick={() => setSelectorOpen(true)}
+            aria-label={inProject ? `${inProject.name} — switch project` : `${branding.name} — switch project`}
+          >
+            <span className="inline-flex" style={{ scale: '1.7' }}>
+              {inProject ? (
+                <ProjectIcon
+                  src={inProject.iconUrl}
+                  boxClassName="flex h-[22px] w-[22px] items-center justify-center overflow-hidden rounded-[5px]"
+                />
+              ) : (
+                <BrandLogo logoUrl={branding.logoUrl} name={branding.name} />
+              )}
+            </span>
+          </button>
+        </Tooltip>
         {inProject && (
           <button
             aria-label="Switch project"

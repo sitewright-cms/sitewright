@@ -11,6 +11,10 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Dependency refresh** — batches the three green Dependabot PRs (#1000, #1001, #1002) onto current
+  main with a regenerated lockfile, since their branches conflicted with each other: production
+  `@simplewebauthn/server`, `nodemailer`, `terser`, `zod`, `lucide-react`, `sharp`; development
+  `@testing-library/react`, `simple-icons`; and `@types/node` 22 → 26.
 - **vite 6 → 8 and @vitejs/plugin-react 4 → 6, together.** Dependabot raised these as two PRs (#1003,
   #1004) and neither could ever pass alone: `@vitejs/plugin-react@6` requires peer `vite: ^8`, while
   `@vitejs/plugin-react@4.7` supports only `^4 || ^5 || ^6 || ^7`. Each PR therefore broke the peer the

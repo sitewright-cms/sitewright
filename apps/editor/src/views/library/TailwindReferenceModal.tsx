@@ -77,7 +77,7 @@ function ClassRow({
       }`}
     >
       <TailwindPreview kind={topic.preview} decls={decls} name={name} />
-      <Tooltip tip={`Copy ${name}`}>
+      <Tooltip tip={`Copy ${name}`} className="min-w-0 flex-1">
         <button
           type="button"
           onClick={onCopy}

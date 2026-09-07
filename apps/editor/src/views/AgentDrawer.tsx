@@ -377,7 +377,7 @@ export function AgentDrawer({
             <StatusPill status={status} label={statusLabel} />
           </div>
           {sessionTokens > 0 && (
-            <Tooltip tip="Total tokens used this session">
+            <Tooltip tip="Total tokens used this session" className="shrink-0">
               <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 {sessionTokens.toLocaleString()} tok
               </span>

@@ -328,7 +328,7 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
             <ul className="flex flex-col gap-1">
               {items.map((it, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-xs">
-                  <Tooltip tip={it.url ?? it.label ?? ""}>
+                  <Tooltip tip={it.url ?? it.label ?? ""} className="min-w-0 flex-1">
                     <span
                       className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-300"
                     >

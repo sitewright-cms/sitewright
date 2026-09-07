@@ -50,7 +50,7 @@ function WidgetGallery() {
           return (
             <li key={w.name} className={`${glassPanel} flex flex-col gap-1.5 rounded-xl px-3 py-2.5`}>
               <div className="flex items-center gap-2">
-                <Tooltip tip={w.label}>
+                <Tooltip tip={w.label} className="min-w-0 flex-1">
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 dark:text-slate-200">
                     {w.label}
                   </span>

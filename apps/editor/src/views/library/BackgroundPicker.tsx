@@ -87,7 +87,7 @@ function PresetCard({ presetKey, palette, intensity, active, onSelect }: {
   }, [presetKey, palette, intensity]);
   const preset = SHADER_BG_PRESETS.find((p) => p.key === presetKey)!;
   return (
-    <Tooltip tip={preset.name}>
+    <Tooltip tip={preset.name} className="shrink-0">
       <button
         type="button"
         onClick={onSelect}
@@ -262,24 +262,26 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
       headerExtra={
         isInstanceAdmin ? (
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={savingPlatform}
-              onClick={() => void setPlatform({ preset, angle, colors: tokens })}
-              title="Use this background platform-wide — behind the whole editor and the login screen (admins only)"
-              className={`${ghostButton} px-3 py-1.5 text-xs font-semibold disabled:opacity-50`}
-            >
-              Use as platform background
-            </button>
-            <button
-              type="button"
-              disabled={savingPlatform}
-              onClick={() => void setPlatform(null)}
-              title="Remove the platform-wide background"
-              className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50"
-            >
-              Clear platform background
-            </button>
+            <Tooltip tip="Use this background platform-wide — behind the whole editor and the login screen (admins only)">
+              <button
+                type="button"
+                disabled={savingPlatform}
+                onClick={() => void setPlatform({ preset, angle, colors: tokens })}
+                className={`${ghostButton} px-3 py-1.5 text-xs font-semibold disabled:opacity-50`}
+              >
+                Use as platform background
+              </button>
+            </Tooltip>
+            <Tooltip tip="Remove the platform-wide background">
+              <button
+                type="button"
+                disabled={savingPlatform}
+                onClick={() => void setPlatform(null)}
+                className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50"
+              >
+                Clear platform background
+              </button>
+            </Tooltip>
           </div>
         ) : undefined
       }

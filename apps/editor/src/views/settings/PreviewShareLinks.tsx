@@ -116,7 +116,7 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
                 </a>
               </Tooltip>
               <Tooltip tip="Copy link">
-                <button className={`${ghostButton} relative`} onClick={() => flashCopied(s.id, s.url)}>
+                <button aria-label="Copy link" className={`${ghostButton} relative`} onClick={() => flashCopied(s.id, s.url)}>
                   {copied === s.id ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
                 </button>
               </Tooltip>

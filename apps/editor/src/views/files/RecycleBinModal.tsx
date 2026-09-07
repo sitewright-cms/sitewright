@@ -100,7 +100,7 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
                     <FileTypeIcon asset={m} className="h-5 w-5" />
                   </span>
                 )}
-                <Tooltip tip={m.filename}>
+                <Tooltip tip={m.filename} className="min-w-0 flex-1">
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200">
                     {m.filename}
                   </span>

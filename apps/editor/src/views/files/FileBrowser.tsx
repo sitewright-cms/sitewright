@@ -850,9 +850,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className={`border-t border-white/40 dark:border-white/10 ${dropTarget === path ? 'bg-indigo-50 dark:bg-indigo-500/10' : ''}`}
               >
                 <td className="py-2">
-                  <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400" title={seg}>
-                    <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
-                  </button>
+                  <Tooltip tip={seg}>
+                    <button type="button" onClick={() => goTo(path)} className="flex w-full min-w-0 items-center gap-2.5 text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400">
+                      <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> <span className="truncate">{seg}</span>
+                    </button>
+                  </Tooltip>
                 </td>
                 <td className="py-2 text-slate-500 dark:text-slate-400">folder</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(bytes)}</td>
@@ -880,29 +882,30 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                 className="border-t border-white/40 dark:border-white/10"
               >
                 <td className="py-2">
-                  <button
-                    type="button"
-                    onClick={() => activate(m)}
-                    className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
-                    title={m.filename}
-                  >
-                    {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
-                        fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
-                        below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
-                    {m.kind === 'image' ? (
-                      <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
-                    ) : (
-                      <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
-                    )}
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{m.filename}</span>
-                      {searching && <span className="truncate text-xs text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
-                    </span>
-                  </button>
+                  <Tooltip tip={m.filename}>
+                    <button
+                      type="button"
+                      onClick={() => activate(m)}
+                      className="flex w-full min-w-0 items-center gap-2.5 text-left text-base text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    >
+                      {/* LIST: a 32px icon, so `xs` (150px) — still ample for the 4x hover zoom, and a
+                          fraction of `sm`'s 500px, which was itself 15x the painted size. The GRID tile
+                          below keeps `sm`: it paints at 96px and the zoom takes it to ~384px. */}
+                      {m.kind === 'image' ? (
+                        <SkeletonImage src={thumbnailUrl(m, 'xs')} alt="" className="h-8 w-8 shrink-0 rounded" />
+                      ) : (
+                        <FileTypeIcon asset={m} className="h-6 w-6 shrink-0" />
+                      )}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{m.filename}</span>
+                        {searching && <span className="truncate text-xs text-slate-500 dark:text-slate-400">in {m.folder || 'Assets'}</span>}
+                      </span>
+                    </button>
+                  </Tooltip>
                 </td>
-                <Tooltip tip={typeLabel(m)}>
-                  <td className="truncate py-2 text-slate-500 dark:text-slate-400">{typeLabel(m)}</td>
-                </Tooltip>
+                {/* Classes ON the cell: only <td>/<th> may be a child of <tr>, so a wrapper span
+                    would be hoisted out of the table and take the column with it. */}
+                <td data-tip={typeLabel(m)} className="tooltip truncate py-2 text-slate-500 dark:text-slate-400">{typeLabel(m)}</td>
                 <td className="py-2 text-right text-slate-500 dark:text-slate-400">{formatBytes(m.bytes)}</td>
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">

@@ -355,3 +355,77 @@ describe('DatasetManager — filtering entries', () => {
     });
   });
 });
+
+/**
+ * Entry drag-reorder. The GEOMETRY (which row a release lands on) is covered by drag-drop.test.ts;
+ * these cover what the component does with the answer — the parts that used to make a working
+ * reorder look broken.
+ */
+describe('DatasetManager — entry reorder', () => {
+  /** jsdom gives every element a zero rect, so the rows need real bands to resolve a drop. */
+  function bandRows(): HTMLElement[] {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('li[data-drag-row]'));
+    rows.forEach((li, i) => {
+      const top = i * 24;
+      li.getBoundingClientRect = () =>
+        ({ top, bottom: top + 20, height: 20, left: 0, right: 0, width: 100, x: 0, y: top, toJSON: () => ({}) }) as DOMRect;
+    });
+    return rows;
+  }
+  const dt = () => ({ effectAllowed: '', dropEffect: '', setData: vi.fn(), getData: () => '' });
+  const labels = () =>
+    Array.from(document.querySelectorAll('li[data-drag-row]')).map((li) => (li.textContent ?? '').trim());
+  const list = () => document.querySelector('li[data-drag-row]')!.closest('ul')!;
+
+  it('★ paints the new order IMMEDIATELY, before the write resolves', async () => {
+    let settle!: () => void;
+    putEntry.mockImplementation(() => new Promise<unknown>((res) => { settle = () => res({}); }));
+    await renderAndSelectAlpha();
+    await waitFor(() => expect(document.querySelectorAll('li[data-drag-row]').length).toBe(2));
+    const rows = bandRows();
+
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt() });
+    fireEvent.drop(list(), { clientY: 100, dataTransfer: dt() }); // released past the last row
+
+    // The write has NOT resolved, yet the row has already moved — without this the entry sits back
+    // where it started until a full refetch lands, which reads as a failed drop.
+    await waitFor(() => expect(labels()[0]).toContain('Second post'));
+    expect(putEntry).toHaveBeenCalledTimes(1);
+    settle();
+  });
+
+  it('puts the old order back, with the reason, when the WRITE is refused', async () => {
+    putEntry.mockRejectedValue(new Error('stale write refused'));
+    await renderAndSelectAlpha();
+    await waitFor(() => expect(document.querySelectorAll('li[data-drag-row]').length).toBe(2));
+    const rows = bandRows();
+
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt() });
+    fireEvent.drop(list(), { clientY: 100, dataTransfer: dt() });
+
+    await screen.findByText('stale write refused');
+    expect(labels()[0]).toContain('First post'); // reverted
+  });
+
+  it('★ QUEUES a drag that arrives while one is still saving instead of discarding it', async () => {
+    const settles: Array<() => void> = [];
+    putEntry.mockImplementation(() => new Promise<unknown>((res) => settles.push(() => res({}))));
+    await renderAndSelectAlpha();
+    await waitFor(() => expect(document.querySelectorAll('li[data-drag-row]').length).toBe(2));
+    const rows = bandRows();
+
+    fireEvent.dragStart(rows[0]!, { dataTransfer: dt() });
+    fireEvent.drop(list(), { clientY: 100, dataTransfer: dt() });
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(1));
+
+    // A second reorder while the first is still in flight. This used to hit a `reordering.current`
+    // guard and vanish without a trace — the drop simply "didn't work".
+    fireEvent.dragStart(bandRows()[0]!, { dataTransfer: dt() });
+    fireEvent.drop(list(), { clientY: 100, dataTransfer: dt() });
+    expect(putEntry).toHaveBeenCalledTimes(1); // serialized, not fired concurrently
+
+    settles.shift()!();
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(2)); // drained, not dropped
+    settles.forEach((f) => f());
+  });
+});

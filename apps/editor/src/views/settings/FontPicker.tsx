@@ -4,6 +4,7 @@ import { FileBrowser, ACCEPT } from '../files/FileBrowser';
 import { GoogleFontGallery, type GoogleFontMeta } from './GoogleFontGallery';
 import { api, type MediaAsset } from '../../api';
 import { glassInput, gradientSurface } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 const FALLBACKS = ['sans-serif', 'serif', 'monospace', 'cursive'];
@@ -95,16 +96,16 @@ export function FontPicker({
           intro="Search Google Fonts. Selecting a weight downloads it into your library — your site loads it locally (never from Google)."
           renderAction={(font) =>
             font.weights.map((w) => (
-              <button
-                key={w}
-                type="button"
-                disabled={busy === `${font.family}:${w}`}
-                onClick={() => void pickGoogle(font, w)}
-                className="waves-effect rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-400 disabled:opacity-50"
-                title={`Use ${font.family} ${w}`}
-              >
-                {busy === `${font.family}:${w}` ? '…' : w}
-              </button>
+              <Tooltip key={w} tip={`Use ${font.family} ${w}`}>
+                <button
+                  type="button"
+                  disabled={busy === `${font.family}:${w}`}
+                  onClick={() => void pickGoogle(font, w)}
+                  className="waves-effect rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-400 disabled:opacity-50"
+                >
+                  {busy === `${font.family}:${w}` ? '…' : w}
+                </button>
+              </Tooltip>
             ))
           }
         />

@@ -238,7 +238,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           <span className="block w-full truncate text-left text-sm font-medium text-slate-700 dark:text-slate-200">{r.name}</span>
         </HoverTip>
       ) : (
-        <Tooltip tip={r.name}>
+        <Tooltip tip={r.name} className="min-w-0 flex-1">
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 dark:text-slate-200">
             {r.name}
           </span>

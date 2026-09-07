@@ -208,6 +208,10 @@ export function DatasetManager({
       const slug = ds.items.find((d) => d.id === selectId)?.slug ?? null;
       const en = slug ? await api.listEntries(project.id, slug) : { items: [] as Entry[] };
       if (!isActive()) return;
+      // ★ The ref is updated HERE, not just on the next render. A reorder queued behind this one runs
+      // in a `finally` that resumes before React re-renders, so a render-time assignment alone would
+      // hand it the pre-reload list — the very staleness the ref exists to avoid.
+      entriesRef.current = en.items;
       setEntries(en.items);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load data');
@@ -479,9 +483,11 @@ export function DatasetManager({
     // write is refused, so a real failure still shows the truth rather than a lie that sticks.
     const previous = entriesRef.current;
     const moved = new Map(changed.map((c) => [c.id, c.order] as const));
-    setEntries((cur) =>
-      cur.map((e) => (e.dataset === selected.slug && moved.has(e.id) ? { ...e, order: moved.get(e.id) } : e)),
+    const optimistic = previous.map((e) =>
+      e.dataset === selected.slug && moved.has(e.id) ? { ...e, order: moved.get(e.id) } : e,
     );
+    entriesRef.current = optimistic;
+    setEntries(optimistic);
     try {
       try {
         if (changed.length === 1) {
@@ -495,6 +501,7 @@ export function DatasetManager({
           );
         }
       } catch (err) {
+        entriesRef.current = previous;
         setEntries(previous); // the WRITE was refused — put the old order back and say why
         setError(err instanceof Error ? err.message : 'failed to reorder entries');
         return;
@@ -655,7 +662,7 @@ export function DatasetManager({
                     <span className="font-medium">{d.name}</span>{' '}
                     <span className={`text-xs ${active ? 'text-white/70' : 'text-slate-500 dark:text-slate-400 group-hover:text-white/80'}`}>/{d.slug}</span>
                   </button>
-                  <Tooltip tip="Duplicate dataset" side="top">
+                  <Tooltip tip="Duplicate dataset" side="top" className="shrink-0">
                     <button
                       type="button"
                       aria-label={`Duplicate dataset ${d.name}`}
@@ -742,25 +749,26 @@ export function DatasetManager({
                     )}
                     <div className="flex items-center gap-2">
                     {/* Only the handle is draggable, so the type <select> stays freely operable. */}
-                    <span
-                      aria-hidden
-                      draggable
-                      onDragStart={(ev) => {
-                        setFieldDrag(field.name);
-                        holdPanel(); // keep the Data panel open for the whole drag
-                        ev.dataTransfer.effectAllowed = 'move';
-                        ev.dataTransfer.setData('text/plain', field.name);
-                      }}
-                      onDragEnd={() => {
-                        setFieldDrag(null);
-                        setFieldDrop(null);
-                        releasePanel();
-                      }}
-                      title="Drag to reorder"
-                      className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
-                    >
-                      <GripVertical className="h-4 w-4" />
-                    </span>
+                    <Tooltip tip="Drag to reorder">
+                      <span
+                        aria-hidden
+                        draggable
+                        onDragStart={(ev) => {
+                          setFieldDrag(field.name);
+                          holdPanel(); // keep the Data panel open for the whole drag
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData('text/plain', field.name);
+                        }}
+                        onDragEnd={() => {
+                          setFieldDrag(null);
+                          setFieldDrop(null);
+                          releasePanel();
+                        }}
+                        className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
+                      >
+                        <GripVertical className="h-4 w-4" />
+                      </span>
+                    </Tooltip>
                     {renamingField === field.name ? (
                       <input
                         autoFocus
@@ -785,7 +793,7 @@ export function DatasetManager({
                       </Tooltip>
                     )}
                     {field.name === titleFieldName && (
-                      <Tooltip tip="Used as the entry title in lists" side="top">
+                      <Tooltip tip="Used as the entry title in lists" side="top" className="shrink-0">
                         <span className="shrink-0 rounded bg-indigo-100 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
                           title
                         </span>

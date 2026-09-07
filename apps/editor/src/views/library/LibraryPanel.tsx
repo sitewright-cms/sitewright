@@ -312,14 +312,15 @@ function FontsLibraryModal({ onClose }: { onClose: () => void }) {
       <GoogleFontGallery
         intro="Browse + preview the full Google Fonts catalog. To USE a font, pick it per slot in Settings → Typography (it's downloaded + self-hosted then). Click a family here to copy its name."
         renderAction={(font) => (
-          <button
-            type="button"
-            onClick={() => copy(font.family, font.family)}
-            className="waves-effect rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-400"
-            title={`Copy "${font.family}"`}
-          >
-            {copiedId === font.family ? 'Copied!' : 'Copy name'}
-          </button>
+          <Tooltip tip={`Copy "${font.family}"`}>
+            <button
+              type="button"
+              onClick={() => copy(font.family, font.family)}
+              className="waves-effect rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-xs text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-400"
+            >
+              {copiedId === font.family ? 'Copied!' : 'Copy name'}
+            </button>
+          </Tooltip>
         )}
       />
     </Modal>

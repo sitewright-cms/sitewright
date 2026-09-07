@@ -286,23 +286,24 @@ function ListField({
             <span aria-hidden className={`pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`} />
           ) : null}
           <div className="flex items-center gap-1.5 border-b border-slate-100 dark:border-white/10 px-2 py-1">
-            <span
-              aria-hidden
-              draggable
-              onDragStart={(ev) => {
-                setDragIdx(i);
-                ev.dataTransfer.effectAllowed = 'move';
-                ev.dataTransfer.setData('text/plain', String(i));
-              }}
-              onDragEnd={() => {
-                setDragIdx(null);
-                setDrop(null);
-              }}
-              title="Drag to reorder"
-              className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
-            >
-              <GripVertical className="h-4 w-4" />
-            </span>
+            <Tooltip tip="Drag to reorder">
+              <span
+                aria-hidden
+                draggable
+                onDragStart={(ev) => {
+                  setDragIdx(i);
+                  ev.dataTransfer.effectAllowed = 'move';
+                  ev.dataTransfer.setData('text/plain', String(i));
+                }}
+                onDragEnd={() => {
+                  setDragIdx(null);
+                  setDrop(null);
+                }}
+                className="shrink-0 cursor-grab text-slate-500 transition dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 active:cursor-grabbing"
+              >
+                <GripVertical className="h-4 w-4" />
+              </span>
+            </Tooltip>
             <span className="shrink-0 text-[11px] font-semibold text-slate-500 dark:text-slate-400">#{i + 1}</span>
             <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500 dark:text-slate-400">{itemSummary(sub, item)}</span>
             <Tooltip tip="Move up">

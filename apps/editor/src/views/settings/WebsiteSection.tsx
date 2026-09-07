@@ -71,6 +71,7 @@ const CW_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
 import { CHROME_SLOTS, SlotEditor, type ChromeSlotKey } from '../SlotEditor';
 import type { Project } from '../../api';
+import { Tooltip } from '../ui/Tooltip';
 
 export function WebsiteSection({
   form,
@@ -236,44 +237,47 @@ export function WebsiteSection({
                 ))}
               </select>
               {form.navEffect === 'none' && (
-                <button
-                  type="button"
-                  onClick={() => setEditing('nav')}
-                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  title="Edit the custom nav effect code"
-                >
-                  <Code className="h-3.5 w-3.5" /> {form.navCode.trim() ? 'Edit code' : 'Add code'}
-                </button>
+                <Tooltip tip="Edit the custom nav effect code">
+                  <button
+                    type="button"
+                    onClick={() => setEditing('nav')}
+                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  >
+                    <Code className="h-3.5 w-3.5" /> {form.navCode.trim() ? 'Edit code' : 'Add code'}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </label>
           <div className="flex flex-col">
             <span className={fieldLabel}>Buttons</span>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setBtnModalOpen(true)}
-                className={`${glassInput} flex min-w-0 flex-1 items-center justify-between gap-2 text-left`}
-                title="Configure button effect, hover accent + shape with a live preview"
-              >
-                <span className="truncate">
-                  {form.buttonEffect === 'none' ? 'Baseline' : BUTTON_EFFECT_LABELS[form.buttonEffect]}
-                  {' · '}
-                  {(form.buttonAccent || 'secondary')[0]!.toUpperCase() + (form.buttonAccent || 'secondary').slice(1)}
-                  {' accent · '}
-                  {BUTTON_SHAPE_LABELS[form.buttonShape || 'rounded']}
-                </span>
-                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              </button>
-              {form.buttonEffect === 'none' && (
+              <Tooltip tip="Configure button effect, hover accent + shape with a live preview">
                 <button
                   type="button"
-                  onClick={() => setEditing('button')}
-                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  title="Edit the custom button effect code"
+                  onClick={() => setBtnModalOpen(true)}
+                  className={`${glassInput} flex min-w-0 flex-1 items-center justify-between gap-2 text-left`}
                 >
-                  <Code className="h-3.5 w-3.5" /> {form.buttonCode.trim() ? 'Edit code' : 'Add code'}
+                  <span className="truncate">
+                    {form.buttonEffect === 'none' ? 'Baseline' : BUTTON_EFFECT_LABELS[form.buttonEffect]}
+                    {' · '}
+                    {(form.buttonAccent || 'secondary')[0]!.toUpperCase() + (form.buttonAccent || 'secondary').slice(1)}
+                    {' accent · '}
+                    {BUTTON_SHAPE_LABELS[form.buttonShape || 'rounded']}
+                  </span>
+                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 opacity-70" />
                 </button>
+              </Tooltip>
+              {form.buttonEffect === 'none' && (
+                <Tooltip tip="Edit the custom button effect code">
+                  <button
+                    type="button"
+                    onClick={() => setEditing('button')}
+                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  >
+                    <Code className="h-3.5 w-3.5" /> {form.buttonCode.trim() ? 'Edit code' : 'Add code'}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </div>
@@ -296,14 +300,15 @@ export function WebsiteSection({
                 ))}
               </select>
               {form.preloaderEffect === 'none' && (
-                <button
-                  type="button"
-                  onClick={() => setEditing('preloader')}
-                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  title="Edit the custom preloader code"
-                >
-                  <Code className="h-3.5 w-3.5" /> {form.preloaderCode.trim() ? 'Edit code' : 'Add code'}
-                </button>
+                <Tooltip tip="Edit the custom preloader code">
+                  <button
+                    type="button"
+                    onClick={() => setEditing('preloader')}
+                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  >
+                    <Code className="h-3.5 w-3.5" /> {form.preloaderCode.trim() ? 'Edit code' : 'Add code'}
+                  </button>
+                </Tooltip>
               )}
             </div>
           </label>

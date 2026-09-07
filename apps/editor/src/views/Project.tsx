@@ -1012,22 +1012,23 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                 + Add translation
               </button>
               )}
-              <button
-                type="button"
-                className={ghostButton}
-                onClick={() => {
-                  setPhError(null);
-                  setPhName('');
-                  setPhTarget('');
-                  setPhNewTab(false);
-                  setPhSlots(['header']);
-                  setPhDropdown(false);
-                  setPhOpen(true);
-                }}
-                title="A menu item with no page of its own — links somewhere or groups child pages in a dropdown"
-              >
-                + {isMobile ? 'Menu Item' : 'New Menu Item'}
-              </button>
+              <Tooltip tip="A menu item with no page of its own — links somewhere or groups child pages in a dropdown">
+                <button
+                  type="button"
+                  className={ghostButton}
+                  onClick={() => {
+                    setPhError(null);
+                    setPhName('');
+                    setPhTarget('');
+                    setPhNewTab(false);
+                    setPhSlots(['header']);
+                    setPhDropdown(false);
+                    setPhOpen(true);
+                  }}
+                >
+                  + {isMobile ? 'Menu Item' : 'New Menu Item'}
+                </button>
+              </Tooltip>
               <button
                 type="button"
                 className={primaryButton}
@@ -1151,7 +1152,7 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                       subset, so "drop below the row above" would move the page next to a sibling the
                       author cannot see. Clear the search to reorder. */}
                   {!isHome && search.trim() === '' && (
-                    <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right">
+                    <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right" className="shrink-0">
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}

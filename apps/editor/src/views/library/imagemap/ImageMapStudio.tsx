@@ -30,6 +30,7 @@ import {
   type DrawableType,
   type HotspotPalette,
 } from './model';
+import { Tooltip } from '../../ui/Tooltip';
 
 /**
  * The IMAGE MAP STUDIO — build an interactive hotspot map: pick a background, draw regions over it,
@@ -326,14 +327,15 @@ function MapList({
                     </span>
                   </button>
                   <div className="mt-3 flex items-center gap-1 border-t border-slate-100 pt-2 dark:border-slate-700/60">
-                    <button
-                      type="button"
-                      className={`${ghostButton} px-2 py-1 text-[11px]`}
-                      onClick={() => copy(`{{sw-imagemap "${m.id}"}}`, m.id)}
-                      title="Copy the embed code for a page"
-                    >
-                      Copy embed
-                    </button>
+                    <Tooltip tip="Copy the embed code for a page">
+                      <button
+                        type="button"
+                        className={`${ghostButton} px-2 py-1 text-[11px]`}
+                        onClick={() => copy(`{{sw-imagemap "${m.id}"}}`, m.id)}
+                      >
+                        Copy embed
+                      </button>
+                    </Tooltip>
                     <button
                       type="button"
                       className={`${ghostButton} ml-auto px-2 py-1 text-[11px] text-rose-600 dark:text-rose-400`}

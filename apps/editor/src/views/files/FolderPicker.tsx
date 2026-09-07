@@ -6,7 +6,6 @@ import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
 import { matchesName } from './sort';
 import { glassCard } from '../../theme';
-import { Tooltip } from '../ui/Tooltip';
 
 /** Every folder PATH known to the project: explicit folder records + the ancestor path of each
  *  asset's folder (an asset can sit in a folder that was never recorded). Sorted, root ('') excluded

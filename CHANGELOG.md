@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.50.0] — 2026-09-07
+
 ### Fixed
 
 - **The Deploy button's "changes to deploy" dot is honest again — it was wrong in BOTH directions.**
@@ -22,6 +24,7 @@ The running version of an instance is reported at `GET /version` (baked into the
   - *A deploy left the dot lit.* A successful deploy moves `lastDeployedAt` on the SERVER, but the
     client never re-read its deploy targets, so it went on believing the target was behind. Both a
     local publish and a remote deploy now re-read status and targets.
+
 - **Deleting a page now marks the site as having changes to deploy.** The publish signal was
   `max(content.updated_at) > publishedAt`, and a delete REMOVES the row rather than touching it — so
   the maximum never moved and the site read clean while the deleted page was still being served
@@ -30,12 +33,22 @@ The running version of an instance is reported at `GET /version` (baked into the
   publishable content are now recorded and folded into that maximum. Deleting a credential (a deploy
   target, SMTP or captcha config) still leaves the site clean — nothing a visitor can see changed.
 
+- **The pages list and the schema-field list no longer refuse a drop released between two rows.** Both
+  carried the same defect the dataset entries list had in 0.49.0: HTML5 drag and drop permits a drop
+  only where the last `dragover` called `preventDefault()`, and only the ROWS did — so the gap between
+  rows, the virtualiser's padding spacers and the space past the last row were dead zones that fired no
+  `drop` at all and let the browser snap the row back, silently. Each list owns the handlers now and
+  resolves the pointer to the nearest row. For pages that means the nearest LEGAL row: a target the
+  move would be refused for (Home, another locale's subtree, the page's own descendant) is excluded
+  from resolution rather than merely rejected on drop.
+
 ### Changed
 
 - **Dependency refresh** — batches the three green Dependabot PRs (#1000, #1001, #1002) onto current
   main with a regenerated lockfile, since their branches conflicted with each other: production
   `@simplewebauthn/server`, `nodemailer`, `terser`, `zod`, `lucide-react`, `sharp`; development
   `@testing-library/react`, `simple-icons`; and `@types/node` 22 → 26.
+
 - **vite 6 → 8 and @vitejs/plugin-react 4 → 6, together.** Dependabot raised these as two PRs (#1003,
   #1004) and neither could ever pass alone: `@vitejs/plugin-react@6` requires peer `vite: ^8`, while
   `@vitejs/plugin-react@4.7` supports only `^4 || ^5 || ^6 || ^7`. Each PR therefore broke the peer the
@@ -49,17 +62,6 @@ The running version of an instance is reported at `GET /version` (baked into the
     `"…\"container\"…"`, and `0.95`/`0.1` become `.95`/`.1`. The assertions now normalise escaped
     quotes and accept an optional leading zero, so they test the exemptions and thresholds rather than
     the bundler's spelling.
-
-### Fixed
-
-- **The pages list and the schema-field list no longer refuse a drop released between two rows.** Both
-  carried the same defect the dataset entries list had in 0.49.0: HTML5 drag and drop permits a drop
-  only where the last `dragover` called `preventDefault()`, and only the ROWS did — so the gap between
-  rows, the virtualiser's padding spacers and the space past the last row were dead zones that fired no
-  `drop` at all and let the browser snap the row back, silently. Each list owns the handlers now and
-  resolves the pointer to the nearest row. For pages that means the nearest LEGAL row: a target the
-  move would be refused for (Home, another locale's subtree, the page's own descendant) is excluded
-  from resolution rather than merely rejected on drop.
 
 ## [0.49.0] — 2026-09-07
 

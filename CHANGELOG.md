@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.50.1] — 2026-09-07
+
 ### Fixed
 
 - **A locally-hosted site no longer shows "changes to deploy" forever.** `lastDeployedAt` was written

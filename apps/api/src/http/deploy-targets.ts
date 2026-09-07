@@ -246,7 +246,7 @@ export function startSseKeepAlive(
  * `secret` and every other field are carried through untouched — this runs on the success path of a
  * deploy, and losing a credential here would break the next one.
  */
-async function recordDeployed(
+export async function recordDeployed(
   contentRepo: DeployTargetDeps['contentRepo'],
   ctx: Parameters<DeployTargetDeps['contentRepo']['put']>[0],
   target: DeployTarget,

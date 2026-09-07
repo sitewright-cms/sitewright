@@ -225,7 +225,7 @@ import { deployRsync } from '../publish/rsync-deploy.js';
 import { assertRemoteFormEndpointsReachable } from '../publish/form-guard.js';
 import { writePhpSmtpConfig } from '../publish/php-smtp.js';
 import { isNewer } from '../version/checker.js';
-import { registerDeployTargetRoutes } from './deploy-targets.js';
+import { registerDeployTargetRoutes, recordDeployed } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
 import { registerWebsiteDataRoutes } from './website-data.js';
 import { buildEffectForks } from './effect-forks.js';
@@ -7473,6 +7473,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // build, so reaping the build (see the retention rule below) cannot destroy the answer to
           // "is the published site out of date?".
           await releasesRepo.record(project.id, release);
+
+          // ★ For a LOCAL Hosting target this route IS the deploy — there is no separate upload step,
+          // so nothing else was ever going to stamp it. Only the remote deploy path recorded
+          // `lastDeployedAt`, which left a local target null FOREVER; the editor reads null as "never
+          // deployed anywhere → there is certainly something to send", so every locally-hosted project
+          // showed "changes to deploy" permanently, seconds after a successful publish. Observed on the
+          // live instance, where all four client sites are locally hosted.
+          const localTarget = await findLocalTarget(ctx);
+          if (localTarget) await recordDeployed(contentRepo, ctx, localTarget);
 
           // ★ RETENTION IS THE SWEEP'S JOB, NOT THIS ROUTE'S. A build for a project with no Local
           // Hosting target serves nothing, but deleting it HERE would punish the ordinary sequence

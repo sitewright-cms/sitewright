@@ -246,6 +246,12 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
  *
  * Keyed per (project, kind, entityId) and threaded automatically in {@link request}, so every
  * existing caller is covered without touching its call site.
+ *
+ * ⚠️ It is SHARED BY THE WHOLE TAB, which makes it a fallback, not a substitute for a view's own base.
+ * A token is only meaningful for the buffer it describes; two views editing the same entity from
+ * different bases cannot both be represented here. Any view holding a long-lived form MUST capture the
+ * version it loaded and pass it explicitly on save (`WriteOpts.version`) — otherwise a sibling
+ * surface's write re-points this map and its stale save sails through the check.
  */
 const contentVersions = new Map<string, string>();
 /**
@@ -310,7 +316,18 @@ export function isOwnContentChange(
   return version !== undefined && contentVersions.get(key) === version;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/**
+ * Per-call optimistic-concurrency control.
+ *
+ * `version` is the base the CALLER's buffer was built from. A view that holds a long-lived form must
+ * pass its own — see the store's caveat below for why the shared one is not good enough. `null` means
+ * "deliberately unguarded"; omitted falls back to the shared store.
+ */
+interface WriteOpts {
+  version?: string | null;
+}
+
+async function request<T>(method: string, path: string, body?: unknown, opts?: WriteOpts): Promise<T> {
   const key = contentKey(path, body);
   const headers: Record<string, string> = body === undefined ? {} : { 'content-type': 'application/json' };
   // Guard FULL REPLACES only. A `?merge=1` PATCH is deep-merged onto whatever is current server side,
@@ -319,8 +336,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   // the entity at all, so they hold no version to send).
   const isMerge = /[?&]merge=(1|true)\b/.test(path);
   if (key && method === 'PUT' && !isMerge) {
-    const known = contentVersions.get(key);
-    if (known) headers['if-match'] = known;
+    // An explicit base wins over the shared store — including an explicit `null`, which disables the
+    // guard for this one call.
+    const explicit = opts?.version;
+    const chosen = explicit === undefined ? contentVersions.get(key) : explicit;
+    if (chosen) headers['if-match'] = chosen;
   }
   // Mark our own write as in flight BEFORE it goes out, so the change event it triggers is
   // recognisable as ours even if it beats the response back (see inFlightWrites).
@@ -352,8 +372,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     return undefined as T;
   }
   const json = (await res.json()) as T;
-  // Both GET and PUT return the CURRENT version, so a save re-arms the buffer without a re-read.
-  if (key) {
+  // Record the version from reads and FULL REPLACES only.
+  //
+  // ★ A `?merge=1` write must NOT re-arm the store. Its author never held the whole entity, so the
+  // version it produces describes no full-replace buffer — and letting it in is what reverted a
+  // customer's criticalCss: the Critical CSS shortcut merge-patched, the shared store jumped to the
+  // new version, and the Settings form (still holding the PREVIOUS state) then passed the If-Match
+  // check with a token that had nothing to do with what it was about to write. The guard rubber-
+  // stamped the clobber it exists to stop. See use-external-edit for the matching notify half.
+  if (key && !(method === 'PUT' && isMerge)) {
     const v = (json as { version?: unknown }).version;
     if (typeof v === 'string') contentVersions.set(key, v);
   }
@@ -1106,9 +1133,11 @@ export const api = {
       `/projects/${projectId}/pagespeed-audit/${encodeURIComponent(pageId)}`,
     ),
   getPage: (projectId: string, id: string) =>
-    request<{ item: Page }>('GET', `/projects/${projectId}/content/page/${encodeURIComponent(id)}`),
-  putPage: (projectId: string, page: Page) =>
-    request<{ item: Page }>('PUT', `/projects/${projectId}/content/page/${page.id}`, page),
+    request<{ item: Page; version?: string }>('GET', `/projects/${projectId}/content/page/${encodeURIComponent(id)}`),
+  /** `baseVersion` is the version the caller's buffer was built from — pass it from a long-lived editor
+   *  so a sibling surface's write cannot make a stale save look current. */
+  putPage: (projectId: string, page: Page, baseVersion?: string | null) =>
+    request<{ item: Page; version?: string }>('PUT', `/projects/${projectId}/content/page/${page.id}`, page, { version: baseVersion }),
   deletePage: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/page/${id}`),
 
@@ -1232,12 +1261,15 @@ export const api = {
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (projectId: string) =>
-    request<{ item: SettingsBundle }>('GET', `/projects/${projectId}/content/settings/settings`),
-  putSettings: (projectId: string, bundle: SettingsBundle) =>
-    request<{ item: SettingsBundle }>(
+    request<{ item: SettingsBundle; version?: string }>('GET', `/projects/${projectId}/content/settings/settings`),
+  /** `baseVersion` is the version the settings FORM was built from. Passing it is what stops the
+   *  Critical CSS shortcut's merge write from re-arming the guard under this form. */
+  putSettings: (projectId: string, bundle: SettingsBundle, baseVersion?: string | null) =>
+    request<{ item: SettingsBundle; version?: string }>(
       'PUT',
       `/projects/${projectId}/content/settings/settings`,
       bundle,
+      { version: baseVersion },
     ),
   /**
    * PATCH a few `website.*` fields, leaving every other setting alone (`?merge=1`, deep-merged server
@@ -1424,9 +1456,10 @@ export const api = {
   // An entry id is only unique WITHIN its dataset, so read/delete carry the owning dataset slug as
   // `?dataset=`; put derives it from the entry body (entry.dataset).
   getEntry: (projectId: string, id: string, dataset: string) =>
-    request<{ item: Entry }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}?dataset=${encodeURIComponent(dataset)}`),
-  putEntry: (projectId: string, entry: Entry) =>
-    request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${encodeURIComponent(entry.id)}`, entry),
+    request<{ item: Entry; version?: string }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}?dataset=${encodeURIComponent(dataset)}`),
+  /** `baseVersion` — the version this row was loaded at; see putSettings. */
+  putEntry: (projectId: string, entry: Entry, baseVersion?: string | null) =>
+    request<{ item: Entry; version?: string }>('PUT', `/projects/${projectId}/content/entry/${encodeURIComponent(entry.id)}`, entry, { version: baseVersion }),
   deleteEntry: (projectId: string, id: string, dataset: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}?dataset=${encodeURIComponent(dataset)}`),
 

@@ -4,11 +4,11 @@ import type { Dataset, Entry } from '@sitewright/schema';
 
 // Mock the API so submit() resolves without a backend.
 const { putEntry, listPages } = vi.hoisted(() => ({
-  putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>(),
+  putEntry: vi.fn<(pid: string, e: Entry, baseVersion?: string) => Promise<unknown>>(),
   listPages: vi.fn<(pid: string) => Promise<unknown>>(),
 }));
 vi.mock('../src/api', () => ({
-  api: { putEntry: (pid: string, e: Entry) => putEntry(pid, e), listPages: (pid: string) => listPages(pid) },
+  api: { putEntry: (pid: string, e: Entry, baseVersion?: string) => putEntry(pid, e, baseVersion), listPages: (pid: string) => listPages(pid) },
 }));
 
 // Swap CodeMirror for a plain textarea so the json edit→validate flow runs in jsdom; the real
@@ -46,6 +46,8 @@ const entry: Entry = {
 
 beforeEach(() => {
   putEntry.mockReset();
+  // The real helper resolves { item, version } — a bare undefined is not a shape the API can return.
+  putEntry.mockResolvedValue({ item: {}, version: 'v-saved' });
   putEntry.mockResolvedValue(undefined);
   listPages.mockReset();
   listPages.mockResolvedValue({ items: [] });

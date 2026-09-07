@@ -567,6 +567,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   // Has this entry been written to the server yet? A brand-new entry hasn't — so Save is enabled even
   // with no edits (you're creating it). After the first save it has, so Save then requires a change.
   const [existsServer, setExistsServer] = useState(!keyEditable);
+  /** The version this row was loaded at — per-view, for the reason SettingsView documents. */
+  const [baseVersion, setBaseVersion] = useState<string | undefined>(undefined);
   // Malformed-JSON paths reported by JsonField children — Save is blocked while any is invalid.
   const [invalidPaths, setInvalidPaths] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -634,10 +636,12 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
    */
   const reloadEntry = useCallback(async () => {
     try {
-      const fresh = (await api.getEntry(projectId, base.id, dataset.slug)).item;
+      const reloaded = await api.getEntry(projectId, base.id, dataset.slug);
+      const fresh = reloaded.item;
       setValues(fresh.values);
       setStatus(fresh.status);
       setBase({ id: fresh.id, status: fresh.status, values: fresh.values }); // baseline = reloaded → clean
+      setBaseVersion(reloaded.version);
       setExistsServer(true);
     } catch {
       /* the row may have just been deleted — leave the buffer alone rather than blanking it */
@@ -651,6 +655,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     match: (c) => c.kind === 'entry' && c.entityId === entry.id && (c.scope ?? '') === dataset.slug,
     isDirty: () => dirty,
     onRefresh: () => void reloadEntry(),
+    baseVersion: () => baseVersion,
+    isSaving: () => saving,
   });
   // Save is live when there is something to persist (a change, or an as-yet-uncreated new entry) AND
   // the key + every json field are valid.
@@ -671,7 +677,10 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     }
     setSaving(true);
     try {
-      await api.putEntry(projectId, { ...entry, id: computedId, status, values });
+      // Undefined until this row is reloaded (it opens from the parent's list) — which falls back to
+      // the shared store; every save re-arms it precisely.
+      const saved = await api.putEntry(projectId, { ...entry, id: computedId, status, values }, baseVersion);
+      setBaseVersion(saved?.version); // absent version just means "unguarded next time", never a failed save
       // An EXISTING entry whose key changed is recreated under the new id; drop the old row.
       // (PUT-then-DELETE: a failure leaves the new copy rather than losing the entry.)
       if (existsServer && idChanged) await api.deleteEntry(projectId, base.id, dataset.slug);

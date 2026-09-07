@@ -27,6 +27,24 @@ export function useExternalEdit(opts: {
   isDirty: () => boolean;
   /** Re-read from the server. Called directly when clean, or via `reload()` from the banner. */
   onRefresh: () => void;
+  /**
+   * The version THIS view's buffer was built from. Supply it whenever the view holds a form, and the
+   * check becomes "does this event describe a state I already have?" — which is the only question that
+   * has a correct answer per-view.
+   *
+   * ★ Without it the hook falls back to the tab-wide store, and that store is re-pointed by ANY write
+   * from ANY surface. That is how a criticalCss revert got through: the Critical CSS shortcut wrote,
+   * the shared store advanced to the new version, and Settings — still holding the previous state —
+   * matched it, concluded "that was us", and never refreshed. It then saved its stale form over the
+   * change. A view with its own base cannot be fooled that way.
+   */
+  baseVersion?: () => string | undefined;
+  /**
+   * True while THIS view's own save is in flight. Needed because the server emits the change event
+   * while handling the write, so the echo routinely arrives before the response updates `baseVersion`
+   * — without this the view would raise a banner about its own save.
+   */
+  isSaving?: () => boolean;
 }): {
   /** The change the operator still has to decide about; null when there is nothing pending. */
   pending: ContentChange | null;
@@ -39,16 +57,25 @@ export function useExternalEdit(opts: {
   const matchRef = useRef(opts.match);
   const dirtyRef = useRef(opts.isDirty);
   const refreshRef = useRef(opts.onRefresh);
+  const baseRef = useRef(opts.baseVersion);
+  const savingRef = useRef(opts.isSaving);
   matchRef.current = opts.match;
   dirtyRef.current = opts.isDirty;
   refreshRef.current = opts.onRefresh;
+  baseRef.current = opts.baseVersion;
+  savingRef.current = opts.isSaving;
 
   useProjectEvents(opts.projectId, (change) => {
     if (!matchRef.current(change)) return;
-    // The echo of OUR OWN save carries the version we already hold — ignore it, or every save would
-    // re-fetch what it just wrote (and, when the operator saves from a dirty buffer, immediately raise
-    // a "someone changed this" banner about themselves).
-    if (isOwnContentChange(opts.projectId, change.kind, change.entityId, change.version, change.scope ?? '')) return;
+    const ownBase = baseRef.current;
+    if (ownBase) {
+      // This view tracks its own base, so answer the question locally and IGNORE the shared store.
+      if (savingRef.current?.()) return; // our own write, whose echo may beat its response
+      if (change.version !== undefined && change.version === ownBase()) return; // already at that state
+    } else if (isOwnContentChange(opts.projectId, change.kind, change.entityId, change.version, change.scope ?? '')) {
+      // No buffer of its own — fall back to the tab-wide store (see the caveat on this option).
+      return;
+    }
     if (dirtyRef.current()) setPending(change);
     else refreshRef.current();
   });

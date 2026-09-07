@@ -151,6 +151,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [chosenMode, setMode] = useState<EditMode>(initialMode);
   const mode: EditMode = isMobile ? 'content' : chosenMode;
   const [source, setSource] = useState(page.source ?? '');
+  /** The version this editor's buffer was built from — see SettingsView for why it is per-view. */
+  const [baseVersion, setBaseVersion] = useState<string | undefined>(undefined);
   // Per-page data → the SINGLE editable store: ALL data-sw-* leaves (text/html/href/src/bg) live here
   // as page.data, plus {{ page.data.* }} structured data. Edited in-preview (the directives) and via
   // the "Edit page data" tree/JSON modal.
@@ -875,6 +877,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     match: (c) => c.kind === 'page' && c.entityId === page.id,
     isDirty: () => dirty,
     onRefresh: () => void reload(),
+    baseVersion: () => baseVersion,
+    isSaving: () => saving,
   });
 
   /** Copies the referenced template's source AND its declared default data INTO the page, then drops
@@ -974,8 +978,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSaving(true);
     setSaveError(null);
     try {
-      await api.putPage(project.id, draft);
+      // `baseVersion` is undefined until the first reload (the editor opens from a list, which carries
+      // no versions) — and undefined deliberately falls back to the shared store, which is safe here
+      // because nothing else writes a page by another route. Every save re-arms it precisely.
+      const res = await api.putPage(project.id, draft, baseVersion);
       if (!mounted.current) return;
+      setBaseVersion(res?.version); // absent version just means "unguarded next time", never a failed save
       setSavedKey(stateKey);
       setSaved(true);
     } catch (err) {
@@ -991,7 +999,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   async function reload() {
     setSaveError(null);
     try {
-      const fresh = (await api.getPage(project.id, page.id)).item;
+      const reloaded = await api.getPage(project.id, page.id);
+      const fresh = reloaded.item;
       if (!mounted.current) return;
       const freshData = (fresh.data ?? {}) as JsonValue;
       const freshSettings = pageSettingsFromPage(fresh);
@@ -1003,6 +1012,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       setPageData(freshData);
       setSettings(freshSettings);
       setSavedKey(keyOf(fresh.source ?? '', freshSettings, freshData)); // baseline = reloaded → not dirty
+      setBaseVersion(reloaded.version);
       setSaved(false);
       // ALWAYS force a fresh preview render: when the page wasn't dirty (or the server copy matches the
       // draft) `stateKey` doesn't change, so the stateKey-driven preview effect wouldn't re-run and the

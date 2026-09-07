@@ -20,7 +20,6 @@ import {
   type DrawableType,
   type Point,
 } from './model';
-import { Tooltip } from '../../ui/Tooltip';
 
 /**
  * The Studio canvas: the artboard background with every hotspot drawn over it, selectable, draggable

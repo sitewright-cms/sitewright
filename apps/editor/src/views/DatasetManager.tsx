@@ -483,20 +483,26 @@ export function DatasetManager({
       cur.map((e) => (e.dataset === selected.slug && moved.has(e.id) ? { ...e, order: moved.get(e.id) } : e)),
     );
     try {
-      if (changed.length === 1) {
-        await api.putEntry(project.id, changed[0]!);
-      } else {
-        await api.reorderContent(
-          project.id,
-          'entry',
-          changed.map((e) => ({ id: e.id, order: e.order ?? 0 })),
-          selected.slug,
-        );
+      try {
+        if (changed.length === 1) {
+          await api.putEntry(project.id, changed[0]!);
+        } else {
+          await api.reorderContent(
+            project.id,
+            'entry',
+            changed.map((e) => ({ id: e.id, order: e.order ?? 0 })),
+            selected.slug,
+          );
+        }
+      } catch (err) {
+        setEntries(previous); // the WRITE was refused — put the old order back and say why
+        setError(err instanceof Error ? err.message : 'failed to reorder entries');
+        return;
       }
+      // ★ The reload is deliberately OUTSIDE that catch. Reverting here would undo a move the server
+      // has already accepted — the optimistic order is the correct one, and a failed refresh is a
+      // stale-list problem, not a failed reorder.
       await load();
-    } catch (err) {
-      setEntries(previous); // the optimistic order was not accepted — put it back
-      setError(err instanceof Error ? err.message : 'failed to reorder entries');
     } finally {
       reordering.current = false;
       const next = pendingReorder.current;

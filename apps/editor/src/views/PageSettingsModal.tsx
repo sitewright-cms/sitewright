@@ -20,6 +20,7 @@ import { plainText } from './plain-text';
 import { AssetField } from './files/AssetField';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { glassInput, toggleInput, gradientSurface } from '../theme';
+import { Tooltip } from './ui/Tooltip';
 
 /** A labeled settings group inside the Page Settings modal: an uppercase heading + an optional (?)
  *  help tooltip (replacing the inline description paragraphs), then the fields. */
@@ -349,7 +350,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
 
   return (
     <Modal
-      title={isCreate ? 'New page' : `${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
+      title={isCreate ? 'New page' : `${isLink ? 'Menu item' : 'Page'} settings — ${initial.title}`}
       size="lg"
       onClose={onClose}
       // Coerce the parent: home stays parentless; a non-home page submits its chosen parent or
@@ -379,7 +380,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 {isLink && <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}}.'} />}
               </span>
               <input
-                aria-label={isLink ? 'Placeholder name' : 'Page title'}
+                aria-label={isLink ? 'Menu item name' : 'Page title'}
                 className={`mt-1.5 font-normal ${glassInput}`}
                 value={v.title}
                 onChange={(e) => {
@@ -392,22 +393,23 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             {!isLink && (
               <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
                 Page Slug
-                <input
-                  aria-label="Page path"
-                  className={`mt-1.5 font-mono font-normal ${glassInput}`}
-                  value={v.path}
-                  disabled={isHomeLike}
-                  placeholder="about"
-                  title={
+                <Tooltip tip={
                     isRootHome
                       ? 'The home page is the site root'
                       : isLocaleHome
                         ? 'The language home — its slug is the language code'
                         : 'One segment, no slashes — the URL is built from the parent chain'
-                  }
-                  // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
-                  onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
-                />
+                  }>
+                  <input
+                    aria-label="Page path"
+                    className={`mt-1.5 font-mono font-normal ${glassInput}`}
+                    value={v.path}
+                    disabled={isHomeLike}
+                    placeholder="about"
+                    // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
+                    onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
+                  />
+                </Tooltip>
                 <span className="mt-1 font-normal text-[11px] text-slate-500 dark:text-slate-400">
                   {isRootHome ? (
                     'The home page is the site root (/).'
@@ -597,7 +599,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           )}
           {isLink && v.navSlots.length === 0 && (
             <p className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
-              This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
+              This item isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
             </p>
           )}
           {/* The menu label is ALWAYS shown and required — every page in a menu needs a label. It

@@ -4,6 +4,7 @@ import { api, type AgentAttachment, type AgentGrantView, type ApiKeyCapability }
 import { glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { OVERLAY_STACK } from './ui/overlay';
 import { ChatMarkdown } from '../lib/chat-markdown';
+import { Tooltip } from './ui/Tooltip';
 
 /** Attachment MIME types the chat accepts (raster images anywhere; PDF is Anthropic-only). */
 const ACCEPT_MIME = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
@@ -376,14 +377,18 @@ export function AgentDrawer({
             <StatusPill status={status} label={statusLabel} />
           </div>
           {sessionTokens > 0 && (
-            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400" title="Total tokens used this session">
-              {sessionTokens.toLocaleString()} tok
-            </span>
+            <Tooltip tip="Total tokens used this session">
+              <span className="shrink-0 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {sessionTokens.toLocaleString()} tok
+              </span>
+            </Tooltip>
           )}
           {messages.length > 0 && (
-            <button type="button" aria-label="New chat" title="New chat" className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" onClick={newChat}>
-              <SquarePen className="h-4 w-4" />
-            </button>
+            <Tooltip tip="New chat">
+              <button type="button" aria-label="New chat" className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" onClick={newChat}>
+                <SquarePen className="h-4 w-4" />
+              </button>
+            </Tooltip>
           )}
           <button type="button" aria-label="Close" className="rounded-lg p-1.5 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -414,20 +419,20 @@ export function AgentDrawer({
                 // "project only", which refuses rather than falls back.
                 const active = opt.key === 'project' ? agentSource !== 'instance' : agentSource === opt.key;
                 return (
-                  <button
-                    key={opt.label}
-                    type="button"
-                    title={opt.tip}
-                    aria-pressed={active}
-                    onClick={() => setAgentSource(opt.key)}
-                    className={`rounded-md px-2 py-0.5 text-xs font-medium transition ${
-                      active
-                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
+                  <Tooltip key={opt.label} tip={opt.tip}>
+                    <button
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setAgentSource(opt.key)}
+                      className={`rounded-md px-2 py-0.5 text-xs font-medium transition ${
+                        active
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -517,16 +522,17 @@ export function AgentDrawer({
                     e.target.value = ''; // allow re-selecting the same file
                   }}
                 />
-                <button
-                  type="button"
-                  aria-label="Attach an image or PDF"
-                  title="Attach an image or PDF"
-                  className={`${ghostButton} px-2.5`}
-                  onClick={() => fileRef.current?.click()}
-                  disabled={attachments.length >= MAX_ATTACHMENTS}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </button>
+                <Tooltip tip="Attach an image or PDF">
+                  <button
+                    type="button"
+                    aria-label="Attach an image or PDF"
+                    className={`${ghostButton} px-2.5`}
+                    onClick={() => fileRef.current?.click()}
+                    disabled={attachments.length >= MAX_ATTACHMENTS}
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </button>
+                </Tooltip>
                 <textarea
                   ref={taRef}
                   className={`${glassInput} max-h-[50dvh] min-h-[2.5rem] flex-1 resize-none overflow-y-auto`}

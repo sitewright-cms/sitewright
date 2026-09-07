@@ -75,7 +75,7 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await expect(picker.getByLabel('Search Google Fonts')).toBeVisible();
   await picker.getByRole('button', { name: 'Google Fonts', exact: true }).click();
   await picker.getByLabel('Search Google Fonts').fill('Playfair Display');
-  await picker.getByTitle('Use Playfair Display 700').first().click();
+  await picker.locator('[data-tip="Use Playfair Display 700"]').first().click();
 
   // On select the slot becomes an `asset` slot (select value '__asset__') referencing the new font.
   await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__', { timeout: 30000 });

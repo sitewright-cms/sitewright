@@ -6,6 +6,7 @@ import { Modal } from '../ui/Modal';
 import { SearchField } from '../ui/SearchField';
 import { matchesName } from './sort';
 import { glassCard } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Every folder PATH known to the project: explicit folder records + the ancestor path of each
  *  asset's folder (an asset can sit in a folder that was never recorded). Sorted, root ('') excluded
@@ -134,7 +135,9 @@ export function FolderPicker({
                   >
                     <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" />
                     <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={path}>{path}</span>
+                      <Tooltip tip={path}>
+                        <span className="truncate text-sm text-slate-700 dark:text-slate-200">{path}</span>
+                      </Tooltip>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400">{count} file{count === 1 ? '' : 's'}</span>
                     </span>
                   </button>

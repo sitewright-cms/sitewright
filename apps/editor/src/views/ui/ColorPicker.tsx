@@ -14,6 +14,7 @@ import {
 } from './color';
 import { glassInput } from '../../theme';
 import { useCiBrandColors } from '../../lib/ci-palette';
+import { Tooltip } from './Tooltip';
 
 /** Swatch order: the tokens an author actually reaches for come first. */
 const BRAND_SWATCH_ORDER = ['primary', 'secondary', 'accent', 'neutral', 'base-100', 'base-content'];
@@ -391,20 +392,20 @@ export function BrandColorField({
           {swatches.map((token) => {
             const active = token.value.trim().toLowerCase() === current;
             return (
-              <button
-                key={token.key}
-                type="button"
-                title={`${token.key} — ${token.value}`}
-                // Named per FIELD: a panel can carry several colour controls, and "Use primary"
-                // three times over is ambiguous to a screen reader and to a test.
-                aria-label={`Use ${token.key} for ${label}`}
-                aria-pressed={active}
-                onClick={() => onChange(token.value)}
-                className={`h-5 w-5 rounded-full border transition hover:scale-110 ${
-                  active ? 'border-transparent ring-2 ring-offset-1 ring-sky-500 dark:ring-offset-slate-900' : 'border-black/15 dark:border-white/20'
-                }`}
-                style={{ background: token.value }}
-              />
+              <Tooltip key={token.key} tip={`${token.key} — ${token.value}`}>
+                <button
+                  type="button"
+                  // Named per FIELD: a panel can carry several colour controls, and "Use primary"
+                  // three times over is ambiguous to a screen reader and to a test.
+                  aria-label={`Use ${token.key} for ${label}`}
+                  aria-pressed={active}
+                  onClick={() => onChange(token.value)}
+                  className={`h-5 w-5 rounded-full border transition hover:scale-110 ${
+                    active ? 'border-transparent ring-2 ring-offset-1 ring-sky-500 dark:ring-offset-slate-900' : 'border-black/15 dark:border-white/20'
+                  }`}
+                  style={{ background: token.value }}
+                />
+              </Tooltip>
             );
           })}
         </div>

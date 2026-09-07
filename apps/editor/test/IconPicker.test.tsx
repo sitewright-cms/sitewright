@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, cleanup } from '@testing-library/react';
 import { IconField } from '../src/views/ui/IconPicker';
+import { byTip } from './tooltip-helpers';
 
 /**
  * The platform icon picker — Phosphor at every weight, brand logos, country flags in two shapes.
@@ -32,7 +33,7 @@ describe('IconPicker', () => {
     // …and the weight rides into the picked name. (Queried by TITLE: the tile's accessible name is its
     // visible label — "gear" — while the title carries the full platform spelling.)
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'gear' } });
-    expect(within(dialog).getByTitle('gear — gear:bold')).toBeInTheDocument();
+    expect(byTip('gear — gear:bold', dialog)).toBeInTheDocument();
   });
 
   it('finds a flag by COUNTRY NAME, and labels the tile with it', () => {
@@ -41,13 +42,13 @@ describe('IconPicker', () => {
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'netherlands' } });
     // Labelled by the country. A grid of two-letter codes is unreadable, and "nl" is the one thing the
     // author does not know — before this, searching "netherlands" matched nothing at all.
-    const tile = within(dialog).getByTitle('Netherlands — flag:nl');
+    const tile = byTip('Netherlands — flag:nl', dialog);
     expect(tile.textContent).toContain('Netherlands');
     expect(within(dialog).getByRole('button', { name: 'Netherlands' })).toBe(tile);
     // The CODE stays searchable — it is what a template author already has in front of them.
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'nl' } });
-    expect(within(dialog).getByTitle('Netherlands — flag:nl')).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByTitle('Netherlands — flag:nl'));
+    expect(byTip('Netherlands — flag:nl', dialog)).toBeInTheDocument();
+    fireEvent.click(byTip('Netherlands — flag:nl', dialog));
     expect(onChange).toHaveBeenCalledWith('flag:nl');
   });
 
@@ -58,7 +59,7 @@ describe('IconPicker', () => {
     expect(within(shapes).getByRole('radio', { name: 'Rectangular' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(within(shapes).getByRole('radio', { name: 'Round' }));
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'germany' } });
-    fireEvent.click(within(dialog).getByTitle('Germany — flag:de-circle'));
+    fireEvent.click(byTip('Germany — flag:de-circle', dialog));
     expect(onChange).toHaveBeenCalledWith('flag:de-circle');
   });
 
@@ -75,9 +76,9 @@ describe('IconPicker', () => {
     const { dialog } = openPicker();
     fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'gear' } });
     // `fill` is the default weight, so the platform spelling carries the suffix (only `regular` is bare).
-    const tile = within(dialog).getByTitle('gear — gear:fill');
+    const tile = byTip('gear — gear:fill', dialog);
     expect(tile.className).toContain('h-[4.5rem]');
     expect(tile.className).toContain('waves-effect'); // selecting an icon gives the same feedback as every other control
-    expect(tile.parentElement?.className).toContain('content-start');
+    expect(tile.closest('div')?.className).toContain('content-start'); // the tooltip span sits between
   });
 });

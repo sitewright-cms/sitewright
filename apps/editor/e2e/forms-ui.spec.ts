@@ -43,10 +43,10 @@ test('author a form in the editor and see a submission in its submissions list',
   await expect(page.getByText('1 submission', { exact: true })).toBeVisible();
   await expect(page.getByText('visitor@example.com')).toBeVisible();
   // Expanding the submission reveals the field breakdown. A field the definition KNOWS renders under
-  // its label ("Email" — a new form is seeded with that one field), keeping the raw key on `title`;
+  // its label ("Email" — a new form is seeded with that one field), keeping the raw key on its tooltip;
   // only keys the definition doesn't declare fall back to the raw name in monospace.
   await page.getByRole('button', { name: /Expand submission from contact/ }).click();
   const emailTerm = page.locator('dl').getByText('Email', { exact: true });
   await expect(emailTerm).toBeVisible();
-  await expect(emailTerm).toHaveAttribute('title', 'email');
+  await expect(emailTerm.locator('xpath=ancestor::span[@data-tip]')).toHaveAttribute('data-tip', 'email');
 });

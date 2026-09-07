@@ -10,6 +10,7 @@ import { PLATFORM_BG_EVENT } from '../PlatformBackground';
 import { shaderRenderer, paletteFromSlots, editorIsDark, type ShaderPalette } from '../../lib/shader-engine';
 import { useCiBrandColors } from '../../lib/ci-palette';
 import { BrandColorField } from '../ui/ColorPicker';
+import { Tooltip } from '../ui/Tooltip';
 
 const DPR = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 // Runtime defaults for the optional knobs — an attribute is emitted only when it DIFFERS from these, so
@@ -86,20 +87,21 @@ function PresetCard({ presetKey, palette, intensity, active, onSelect }: {
   }, [presetKey, palette, intensity]);
   const preset = SHADER_BG_PRESETS.find((p) => p.key === presetKey)!;
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={active}
-      title={preset.name}
-      className={`group relative shrink-0 overflow-hidden rounded-lg border text-left transition ${
-        active ? 'border-indigo-500 ring-2 ring-indigo-400/60' : 'border-slate-200/70 hover:border-indigo-300'
-      }`}
-    >
-      <canvas ref={ref} className="block h-[84px] w-full" />
-      <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] font-medium text-white">
-        {preset.name}
-      </span>
-    </button>
+    <Tooltip tip={preset.name}>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={active}
+        className={`group relative shrink-0 overflow-hidden rounded-lg border text-left transition ${
+          active ? 'border-indigo-500 ring-2 ring-indigo-400/60' : 'border-slate-200/70 hover:border-indigo-300'
+        }`}
+      >
+        <canvas ref={ref} className="block h-[84px] w-full" />
+        <span className="absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent px-2 py-1 text-[11px] font-medium text-white">
+          {preset.name}
+        </span>
+      </button>
+    </Tooltip>
   );
 }
 
@@ -325,25 +327,29 @@ export function BackgroundPicker({ onClose, isInstanceAdmin = false }: { onClose
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={overlay} onChange={(e) => setOverlay(e.target.checked)} />
-                <span className="text-slate-600 dark:text-slate-300" title="A scrim above the background, below your text, for legibility.">Add text-legibility overlay</span>
+                <Tooltip tip="A scrim above the background, below your text, for legibility.">
+                  <span className="text-slate-600 dark:text-slate-300">Add text-legibility overlay</span>
+                </Tooltip>
               </label>
             </div>
 
             {/* colors — three slots, each a CI brand token, a Custom color, or the theme-tracking Auto */}
             <div className="flex min-w-0 flex-col gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Colors</span>
-              <div className="flex flex-wrap gap-1.5" title="Quick palettes set all three to custom colors">
-                {QUICK_PALETTES.map((p) => (
-                  <button
-                    key={p.name}
-                    type="button"
-                    title={p.name}
-                    onClick={() => applyPalette(p.colors)}
-                    className="h-6 w-9 rounded border border-slate-200 dark:border-slate-700 transition hover:scale-105"
-                    style={{ background: `linear-gradient(135deg, ${p.colors[0]}, ${p.colors[1]} 55%, ${p.colors[2]})` }}
-                  />
-                ))}
-              </div>
+              <Tooltip tip="Quick palettes set all three to custom colors">
+                <div className="flex flex-wrap gap-1.5">
+                  {QUICK_PALETTES.map((p) => (
+                    <Tooltip key={p.name} tip={p.name}>
+                      <button aria-label={p.name}
+                        type="button"
+                        onClick={() => applyPalette(p.colors)}
+                        className="h-6 w-9 rounded border border-slate-200 dark:border-slate-700 transition hover:scale-105"
+                        style={{ background: `linear-gradient(135deg, ${p.colors[0]}, ${p.colors[1]} 55%, ${p.colors[2]})` }}
+                      />
+                    </Tooltip>
+                  ))}
+                </div>
+              </Tooltip>
               <div className="flex flex-col gap-1.5">
                 {(['Color 1', 'Color 2', 'Color 3'] as const).map((label, i) => (
                   <div key={label} className="flex items-center gap-2">

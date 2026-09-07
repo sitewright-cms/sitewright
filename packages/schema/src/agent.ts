@@ -1092,7 +1092,7 @@ the label. "custom" is an AUTHOR-ONLY slot the default chrome NEVER renders — 
 secondary menu / link list anywhere (pages opt in via the "Custom" nav slot in their settings; you then
 loop {{#each nav.custom}} yourself).
 
-ONE MENU ITEM: output the label with {{sw-label}} (renders a placeholder's rich name; a page title is
+ONE MENU ITEM: output the label with {{sw-label}} (renders a menu item's rich name; a page title is
 escaped — never use {{{ }}}), the link with {{sw-url path}}, honor {{#if newTab}} target/rel, and mark the
 active item with {{sw-active path}} (boolean, no JS, root-relative). Active matches the TRAIL by default (a
 parent stays active on its children — except home "/" or a locale home "/es", which match only themselves);
@@ -1131,10 +1131,10 @@ AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}
 {{sw-flag (lookup @root.website.data.locale_flags locale)}} — set website.data.locale_flags = {"en":"gb",…});
 add {{sw-theme-toggle}} (renders nothing unless themes are enabled). Both auto-appear.
 
-NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own — set link.target
+MENU ITEMS: a page with kind:"link" is a menu item with NO page of its own — set link.target
 ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a <dialog> in website.bottom) +
 optional link.newTab, and nav.slots/nav.dropdown as usual; its title is the menu name (may include
-{{sw-icon}}/basic HTML, output via {{sw-label}}). put_page STILL REQUIRES a path field — a placeholder has
+{{sw-icon}}/basic HTML, output via {{sw-label}}). put_page STILL REQUIRES a path field — a menu item has
 no route of its own, so pass path:"" (empty string; NOT omitted — the schema rejects a missing path).
 A "#dialog-id" target opens a GLOBAL modal you author as <dialog id="dialog-id"> in website.bottom; because
 website.bottom is a validated chrome slot (below), that <dialog>'s markup must follow the SAME slot rules —
@@ -1359,9 +1359,9 @@ that padding on mobile/tablet too (a flush-to-edge header is a common miss). (c)
 slide-in DRAWER (the nav-header pure-CSS drawer pattern), NOT a dropdown — default to the drawer on small
 screens.
 IN-PAGE ANCHOR MENUS (a one-pager whose menu scrolls to sections — e.g. Home / Why eTaxi / How To Use / FAQ):
-do NOT hard-code href="#why". Create a LINK-PLACEHOLDER page per anchor — put_page { kind:"link", title,
+do NOT hard-code href="#why". Create a MENU ITEM page per anchor — put_page { kind:"link", title,
 nav:{ slots:["header"], order }, link:{ target:"#why" } } — so it appears in {{#each nav.header}} as a
-smooth-scroll item, and give the matching home section id="why". (get_guide("nav") → NAV PLACEHOLDERS.)
+smooth-scroll item, and give the matching home section id="why". (get_guide("nav") → MENU ITEMS.)
 STANDARDIZE THE CHROME: the slots are SITE-WIDE — author ONE header + ONE footer that every page shares.
 When the original site styles its chrome INCONSISTENTLY across pages (e.g. a white header on one page, the
 brand-colour header on another), DO NOT copy the divergence — pick the treatment that reflects the brand's
@@ -1755,8 +1755,8 @@ SEEING fine chrome treatments (skew, weight, gradient stops) while you fix — n
 page at a time so conventions (theme tokens, datasets, chrome) carry across the site.
 
 The STRUCTURE + BEHAVIOUR facts clone_audit gates (self-verify these while authoring — they never show in a
-screenshot): header + footer menus DATA-DRIVEN ({{#each nav.*}} over nav-membership + link-placeholders), NOT
-a hard-coded <a> list; in-page section links are kind:"link" placeholders; pages sharing a layout render from
+screenshot): header + footer menus DATA-DRIVEN ({{#each nav.*}} over nav-membership + menu items), NOT
+a hard-coded <a> list; in-page section links are kind:"link" menu items; pages sharing a layout render from
 ONE shared template; repeated content is a NAMED dataset (not "List"/"items"); the imported/ media tree is
 reorganised; sliders/modals rebuilt as working components; a mobile drawer exists; content carries data-sw-*.
 

@@ -1,5 +1,6 @@
 import { RefreshCw, X } from 'lucide-react';
 import type { ContentChange } from '../../lib/use-project-events';
+import { Tooltip } from './Tooltip';
 
 /**
  * "This changed while you were editing" — shown by a view when {@link useExternalEdit} reports a
@@ -41,14 +42,15 @@ export function ExternalChangeBanner({
         >
           <RefreshCw className="h-3.5 w-3.5" /> Load their version
         </button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          title="Keep editing your version"
-          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/60 px-2.5 py-1 text-xs font-semibold transition hover:bg-amber-200/60 dark:hover:bg-amber-500/20"
-        >
-          <X className="h-3.5 w-3.5" /> Keep mine
-        </button>
+        <Tooltip tip="Keep editing your version">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-400/60 px-2.5 py-1 text-xs font-semibold transition hover:bg-amber-200/60 dark:hover:bg-amber-500/20"
+          >
+            <X className="h-3.5 w-3.5" /> Keep mine
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
 import { glassCard } from '../theme';
 import { when, OP_PILL, authorLabel } from './revision-format';
+import { Tooltip } from './ui/Tooltip';
 
 interface RevisionHistoryModalProps {
   projectId: string;
@@ -104,13 +105,15 @@ export function RevisionHistoryModal({ projectId, kind, entityId, dataset, label
               <li key={r.id} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-slate-700 dark:text-slate-200" title={new Date(r.revisionAt).toLocaleString()}>
-                    <span className="font-medium">{authorLabel(r)}</span>
-                    <span className="text-slate-500 dark:text-slate-400"> · {when(r.revisionAt)}</span>
-                    {isCurrent && (
-                      <span className="ml-2 rounded bg-indigo-100/80 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">current</span>
-                    )}
-                  </div>
+                  <Tooltip tip={new Date(r.revisionAt).toLocaleString()}>
+                    <div className="truncate text-slate-700 dark:text-slate-200">
+                      <span className="font-medium">{authorLabel(r)}</span>
+                      <span className="text-slate-500 dark:text-slate-400"> · {when(r.revisionAt)}</span>
+                      {isCurrent && (
+                        <span className="ml-2 rounded bg-indigo-100/80 dark:bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">current</span>
+                      )}
+                    </div>
+                  </Tooltip>
                   {r.note && <div className="truncate text-xs text-slate-500 dark:text-slate-400">{r.note}</div>}
                 </div>
                 <button

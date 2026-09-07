@@ -170,7 +170,7 @@ describe('TailwindReferenceModal', () => {
   it('copies the class name when the row is clicked', async () => {
     const dialog = await open();
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Layout' }));
-    fireEvent.click(within(dialog).getByTitle('Copy flex'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy flex' }));
     await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('flex'));
   });
 

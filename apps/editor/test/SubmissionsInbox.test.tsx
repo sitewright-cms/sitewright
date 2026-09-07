@@ -15,6 +15,7 @@ vi.mock('../src/api', () => ({
 }));
 
 import { SubmissionsInbox } from '../src/views/SubmissionsInbox';
+import { tipOf } from './tooltip-helpers';
 
 const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' as const };
 
@@ -61,7 +62,7 @@ describe('SubmissionsInbox', () => {
     const dt = await screen.findByText('Pickup Date in Windhoek');
     expect(dt).toBeInTheDocument();
     expect(screen.queryByText('arrival_date')).not.toBeInTheDocument();
-    expect(dt.getAttribute('title')).toBe('arrival_date'); // the raw name stays reachable
+    expect(tipOf(dt)).toBe('arrival_date'); // the raw name stays reachable
     expect(dt.className).not.toContain('font-mono');
     // a field the definition does not declare keeps its own name, in mono — it IS the raw key
     const extra = screen.getByText('Meal - Chilli Con Carne');

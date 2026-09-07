@@ -10,6 +10,7 @@ import { FormEditorModal } from './FormEditorModal';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
 import { glassCard, glassInput, primaryButton, ghostButton, dangerButton, gradientHover } from '../theme';
+import { Tooltip } from './ui/Tooltip';
 
 type EnabledModes = Record<FormMode, boolean>;
 
@@ -193,17 +194,18 @@ export function FormsManager({ project }: { project: Project }) {
                 }`}
                 onClick={f.managed ? undefined : () => openForm(f)}
               >
-                <button
-                  className="text-left font-medium group-hover:text-white disabled:cursor-default"
-                  disabled={f.managed !== undefined}
-                  title={f.managed ? 'Managed by the Shop — edit it in Website settings → Shop' : undefined}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openForm(f);
-                  }}
-                >
-                  {f.name}
-                </button>
+                <Tooltip tip={f.managed ? 'Managed by the Shop — edit it in Website settings → Shop' : undefined}>
+                  <button
+                    className="text-left font-medium group-hover:text-white disabled:cursor-default"
+                    disabled={f.managed !== undefined}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openForm(f);
+                    }}
+                  >
+                    {f.name}
+                  </button>
+                </Tooltip>
                 <code className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/80">{f.id}</code>
                 <span className="text-xs text-slate-500 dark:text-slate-400 group-hover:text-white/90">{f.fields.length} fields</span>
                 {f.pow && (
@@ -220,12 +222,13 @@ export function FormsManager({ project }: { project: Project }) {
                     to recognise them — but it is provisioned from the shop settings on every save, so
                     editing it here would be overwritten. The badge says where it is actually edited. */}
                 {f.managed === 'shop' && (
-                  <span
-                    title="Provisioned from Website settings → Shop → Checkout channels. Edit it there; changes made here would be overwritten on the next save."
-                    className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] uppercase text-indigo-700 transition dark:bg-indigo-400/15 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white"
-                  >
-                    Shop
-                  </span>
+                  <Tooltip tip="Provisioned from Website settings → Shop → Checkout channels. Edit it there; changes made here would be overwritten on the next save.">
+                    <span
+                      className="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] uppercase text-indigo-700 transition dark:bg-indigo-400/15 dark:text-indigo-300 group-hover:bg-white/25 group-hover:text-white"
+                    >
+                      Shop
+                    </span>
+                  </Tooltip>
                 )}
                 {(() => {
                   const rows = filtered.filter((r) => r.formId === f.id);
@@ -233,12 +236,13 @@ export function FormsManager({ project }: { project: Project }) {
                   if (total === 0) return null;
                   const breakdown = rows.map((r) => `${r.count} ${r.reason}`).join(', ');
                   return (
-                    <span
-                      title={`Filtered before storage: ${breakdown}. These never became submissions and nobody was emailed.`}
-                      className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 transition dark:bg-amber-400/15 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white"
-                    >
-                      {total} filtered
-                    </span>
+                    <Tooltip tip={`Filtered before storage: ${breakdown}. These never became submissions and nobody was emailed.`}>
+                      <span
+                        className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 transition dark:bg-amber-400/15 dark:text-amber-300 group-hover:bg-white/25 group-hover:text-white"
+                      >
+                        {total} filtered
+                      </span>
+                    </Tooltip>
                   );
                 })()}
                 <button

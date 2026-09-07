@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { JsonValue } from '@sitewright/schema';
 import { WebsiteDataModal } from '../src/views/settings/WebsiteDataModal';
+import { allByTip } from './tooltip-helpers';
 
 function setup(value: JsonValue) {
   const onSave = vi.fn();
@@ -171,9 +172,9 @@ describe('WebsiteDataModal — tree shape, collapsing and reordering', () => {
 
   it('reorders by drag and drop, dropping after the row when released on its lower half', () => {
     const { onSave } = setup({ a: 1, b: 2, c: 3 });
-    const rows = screen.getAllByTitle('Drag to reorder').map((g) => g.closest('[draggable]')!.parentElement!.parentElement!);
+    const rows = allByTip('Drag to reorder').map((g) => g.closest('[draggable]')!.parentElement!.parentElement!);
     const dt = { effectAllowed: '', setData: vi.fn() };
-    fireEvent.dragStart(screen.getAllByTitle('Drag to reorder')[0]!, { dataTransfer: dt });
+    fireEvent.dragStart(allByTip('Drag to reorder')[0]!, { dataTransfer: dt });
     // Release over the LOWER half of row `c` → land after it.
     rows[2]!.getBoundingClientRect = () => ({ top: 0, height: 20, bottom: 20, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
     fireEvent.dragOver(rows[2]!, { clientY: 18 });

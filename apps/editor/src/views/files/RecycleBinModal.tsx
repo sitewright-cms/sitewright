@@ -5,6 +5,7 @@ import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { FileTypeIcon } from '../media/file-icons';
 import { ghostButton, dangerButton } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 type Deleted = MediaAsset & { deletedAt: number };
 
@@ -99,9 +100,11 @@ export function RecycleBinModal({ projectId, onClose, onChanged }: { projectId: 
                     <FileTypeIcon asset={m} className="h-5 w-5" />
                   </span>
                 )}
-                <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200" title={m.filename}>
-                  {m.filename}
-                </span>
+                <Tooltip tip={m.filename}>
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-200">
+                    {m.filename}
+                  </span>
+                </Tooltip>
                 <button type="button" onClick={() => void restore(m)} className={`${ghostButton} px-2.5 py-1 text-xs`}>
                   <RotateCcw className="h-3.5 w-3.5" /> Restore
                 </button>

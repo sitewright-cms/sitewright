@@ -4,6 +4,7 @@ import { RESERVED_TRANSLATION_GROUPS, type ReservedTranslation } from '@sitewrig
 import { localeFlag, localeLabel } from '../i18n/locale-catalog';
 import { newTranslationRow, type TranslationRow } from './model';
 import { ghostButton, glassInput } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 interface TranslationsEditorProps {
   rows: TranslationRow[];
@@ -170,13 +171,15 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
     return (
       <tr key={`reserved-${k.key}`} className="bg-indigo-50/40 dark:bg-indigo-500/10">
         <td className="align-top">
-          <div className="flex items-center gap-1.5 px-1 py-2" title="Built-in key — cannot be renamed">
-            <Lock aria-hidden className="h-3 w-3 shrink-0 text-slate-500 dark:text-slate-400" />
-            <span className="min-w-0">
-              <code className="block truncate font-mono text-xs text-slate-600 dark:text-slate-300">{k.key}</code>
-              <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{k.label}</span>
-            </span>
-          </div>
+          <Tooltip tip="Built-in key — cannot be renamed">
+            <div className="flex items-center gap-1.5 px-1 py-2">
+              <Lock aria-hidden className="h-3 w-3 shrink-0 text-slate-500 dark:text-slate-400" />
+              <span className="min-w-0">
+                <code className="block truncate font-mono text-xs text-slate-600 dark:text-slate-300">{k.key}</code>
+                <span className="block truncate text-[11px] text-slate-500 dark:text-slate-400">{k.label}</span>
+              </span>
+            </div>
+          </Tooltip>
         </td>
         {localeCodes.map((loc) => (
           <td key={loc} className="align-top">
@@ -211,16 +214,17 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
               aria-label="Translation key"
             />
             {row.key.trim() !== '' && (
-              <button
-                type="button"
-                aria-label={locked ? 'Edit key' : 'Lock key'}
-                aria-pressed={!locked}
-                title={locked ? 'Edit key (renaming may break references)' : 'Lock key'}
-                onClick={() => toggleEditKey(row.id)}
-                className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'}`}
-              >
-                {locked ? <Pencil className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-              </button>
+              <Tooltip tip={locked ? 'Edit key (renaming may break references)' : 'Lock key'}>
+                <button
+                  type="button"
+                  aria-label={locked ? 'Edit key' : 'Lock key'}
+                  aria-pressed={!locked}
+                  onClick={() => toggleEditKey(row.id)}
+                  className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-600 dark:hover:text-slate-300' : 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10'}`}
+                >
+                  {locked ? <Pencil className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                </button>
+              </Tooltip>
             )}
           </div>
         </td>

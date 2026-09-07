@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { gradientHover } from '../theme';
+import { Tooltip } from './ui/Tooltip';
 
 /** Gear glyph for the header settings menu. */
 function GearIcon() {
@@ -152,17 +153,18 @@ export function HeaderSettingsMenu({
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        aria-label="Settings"
-        title="Settings"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-      >
-        <GearIcon />
-      </button>
+      <Tooltip tip="Settings">
+        <button
+          type="button"
+          aria-label="Settings"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          <GearIcon />
+        </button>
+      </Tooltip>
       {open && (
         <div
           role="menu"

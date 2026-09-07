@@ -23,6 +23,7 @@ import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
 import { TailwindReferenceModal } from './TailwindReferenceModal';
 import { shortcutLabel, useGlobalShortcut, type Shortcut } from '../../lib/use-global-shortcut';
+import { Tooltip } from '../ui/Tooltip';
 
 /**
  * Openers for the TailwindCSS Reference.
@@ -649,18 +650,18 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
       {items.map((it) => (
-        <button
-          key={it.id}
-          title={`${it.name} — click to copy ${it.example}`}
-          aria-label={`Copy ${it.name} icon snippet`}
-          onClick={() => copy(it.example, it.id)}
-          className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
-        >
-          {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
-          <span className="w-full truncate text-center text-[10px] text-slate-500 dark:text-slate-400">
-            {copiedId === it.id ? 'Copied!' : it.name}
-          </span>
-        </button>
+        <Tooltip key={it.id} tip={`${it.name} — click to copy ${it.example}`}>
+          <button
+            aria-label={`Copy ${it.name} icon snippet`}
+            onClick={() => copy(it.example, it.id)}
+            className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
+          >
+            {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
+            <span className="w-full truncate text-center text-[10px] text-slate-500 dark:text-slate-400">
+              {copiedId === it.id ? 'Copied!' : it.name}
+            </span>
+          </button>
+        </Tooltip>
       ))}
     </div>
   );

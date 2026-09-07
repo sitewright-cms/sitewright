@@ -10,6 +10,7 @@ import { PreviewShareLinks } from './settings/PreviewShareLinks';
 import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
 import { localSiteLabel } from '../lib/local-site-url';
+import { Tooltip } from './ui/Tooltip';
 
 /** Eye glyph for the "Preview" (browse the live draft site). */
 function PreviewIcon() {
@@ -460,15 +461,16 @@ export function PublishBar({
                 Download .zip
               </a>
             ) : (
-              <span
-                role="menuitem"
-                aria-disabled="true"
-                title="Publish the site first — the archive is the site as published"
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download .zip
-              </span>
+              <Tooltip tip="Publish the site first — the archive is the site as published">
+                <span
+                  role="menuitem"
+                  aria-disabled="true"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download .zip
+                </span>
+              </Tooltip>
             )}
           </div>
         )}

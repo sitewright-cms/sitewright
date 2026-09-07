@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Copy, Trash2, Plus, Check, ExternalLink } from 'lucide-react';
 import { api } from '../../api';
 import { ghostButton, glassInput } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 type Share = { id: string; label: string; createdAt: number; url: string };
 
@@ -89,33 +90,41 @@ export function PreviewShareLinks({ projectId }: { projectId: string }) {
             // buttons sit `relative` and later in DOM order, so they take their own clicks.
             <li
               key={s.id}
-              className="waves-effect group relative flex items-center gap-2 rounded-lg border border-base-300/40 px-3 py-2 text-sm transition hover:border-base-300 hover:bg-slate-50 dark:hover:bg-white/5"
+              // The tip rides on the ROW, not the link: the <a> is a stretched link
+              // (after:absolute inset-0) whose overlay must resolve against this `relative` <li>.
+              // Wrapping it — or making the <a> itself `relative` — shrinks the overlay to the link.
+              data-tip="Open this preview in a new tab"
+              className="tooltip waves-effect group relative flex items-center gap-2 rounded-lg border border-base-300/40 px-3 py-2 text-sm transition hover:border-base-300 hover:bg-slate-50 dark:hover:bg-white/5"
             >
               <a
                 href={fullUrl(s.url)}
                 target="_blank"
                 rel="noopener noreferrer"
-                title="Open this preview in a new tab"
                 className="min-w-0 flex-1 truncate after:absolute after:inset-0 after:content-['']"
               >
                 {s.label || 'Untitled'} <span className="opacity-50">· {new Date(s.createdAt).toLocaleDateString()}</span>
               </a>
-              <a
-                href={fullUrl(s.url)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`${ghostButton} relative`}
-                aria-label={`Open ${s.label || 'Untitled'} in a new tab`}
-                title="Open in new tab"
-              >
-                <ExternalLink className="h-4 w-4" />
-              </a>
-              <button className={`${ghostButton} relative`} title="Copy link" onClick={() => flashCopied(s.id, s.url)}>
-                {copied === s.id ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
-              </button>
-              <button className={`${ghostButton} relative`} title="Revoke" onClick={() => void revoke(s.id)}>
-                <Trash2 className="h-4 w-4 text-error" />
-              </button>
+              <Tooltip tip="Open in new tab">
+                <a
+                  href={fullUrl(s.url)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${ghostButton} relative`}
+                  aria-label={`Open ${s.label || 'Untitled'} in a new tab`}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Tooltip>
+              <Tooltip tip="Copy link">
+                <button className={`${ghostButton} relative`} onClick={() => flashCopied(s.id, s.url)}>
+                  {copied === s.id ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+                </button>
+              </Tooltip>
+              <Tooltip tip="Revoke">
+                <button aria-label="Revoke" className={`${ghostButton} relative`} onClick={() => void revoke(s.id)}>
+                  <Trash2 className="h-4 w-4 text-error" />
+                </button>
+              </Tooltip>
             </li>
           ))}
         </ul>

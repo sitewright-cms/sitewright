@@ -4,6 +4,7 @@ import { api, type Project } from '../api';
 import { glassCard, dangerButton, ghostButton } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
+import { Tooltip } from './ui/Tooltip';
 
 /**
  * Submissions inbox: the form submissions captured by the public endpoint, newest
@@ -157,12 +158,13 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                     const label = forms[s.formId]?.labels?.[k];
                     return (
                       <div key={k} className="contents">
-                        <dt
-                          className={`${label ? '' : 'font-mono '}text-slate-500 dark:text-slate-400`}
-                          title={label ? k : undefined}
-                        >
-                          {label ?? k}
-                        </dt>
+                        <Tooltip tip={label ? k : undefined}>
+                          <dt
+                            className={`${label ? '' : 'font-mono '}text-slate-500 dark:text-slate-400`}
+                          >
+                            {label ?? k}
+                          </dt>
+                        </Tooltip>
                         <dd className="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{v}</dd>
                       </div>
                     );

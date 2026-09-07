@@ -25,6 +25,7 @@ vi.mock('../src/api', () => ({
 }));
 
 import { DatasetManager } from '../src/views/DatasetManager';
+import { byTip } from './tooltip-helpers';
 
 const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' } as Project;
 const textField = { name: 'title', type: 'text', required: false, localized: false } as const;
@@ -253,7 +254,7 @@ describe('DatasetManager — schema editor UX', () => {
 
   it('★ renaming a field MOVES the entries’ values — the name IS the key they are stored under', async () => {
     await openSchema();
-    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.doubleClick(byTip('title — double-click to rename'));
     fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
     fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
 
@@ -272,10 +273,10 @@ describe('DatasetManager — schema editor UX', () => {
   it('a rename that does not survive to the save moves nothing', async () => {
     await openSchema();
     // Rename, then rename back: the chain resolves to a no-op rather than to two separate moves.
-    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.doubleClick(byTip('title — double-click to rename'));
     fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
     fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
-    fireEvent.doubleClick(screen.getByTitle('heading — double-click to rename'));
+    fireEvent.doubleClick(byTip('heading — double-click to rename'));
     fireEvent.change(screen.getByLabelText('Rename field heading'), { target: { value: 'title' } });
     fireEvent.keyDown(screen.getByLabelText('Rename field heading'), { key: 'Enter' });
 
@@ -286,20 +287,20 @@ describe('DatasetManager — schema editor UX', () => {
 
   it('Escape abandons a rename, and a duplicate name is refused', async () => {
     await openSchema();
-    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.doubleClick(byTip('title — double-click to rename'));
     fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'heading' } });
     fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Escape' });
-    expect(screen.getByTitle('title — double-click to rename')).toBeInTheDocument();
+    expect(byTip('title — double-click to rename')).toBeInTheDocument();
 
     // …and a name already taken is rejected rather than silently merging two fields' values.
     fireEvent.click(screen.getByRole('button', { name: /Add field/ }));
     fireEvent.change(screen.getByLabelText('New field name'), { target: { value: 'body' } });
     fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
-    fireEvent.doubleClick(screen.getByTitle('title — double-click to rename'));
+    fireEvent.doubleClick(byTip('title — double-click to rename'));
     fireEvent.change(screen.getByLabelText('Rename field title'), { target: { value: 'body' } });
     fireEvent.keyDown(screen.getByLabelText('Rename field title'), { key: 'Enter' });
     expect(screen.getByText(/field "body" already exists/)).toBeInTheDocument();
-    expect(screen.getByTitle('title — double-click to rename')).toBeInTheDocument();
+    expect(byTip('title — double-click to rename')).toBeInTheDocument();
   });
 });
 

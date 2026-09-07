@@ -18,6 +18,7 @@ import {
 } from "../../api";
 import { CapacityNotice } from "../ui/CapacityNotice";
 import { primaryButton, gradientSurface } from "../../theme";
+import { Tooltip } from '../ui/Tooltip';
 
 type FormFactor = "mobile" | "desktop";
 
@@ -327,12 +328,13 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
             <ul className="flex flex-col gap-1">
               {items.map((it, i) => (
                 <li key={i} className="flex items-baseline gap-2 text-xs">
-                  <span
-                    className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-300"
-                    title={it.url ?? it.label ?? ""}
-                  >
-                    {it.url ?? it.label ?? "—"}
-                  </span>
+                  <Tooltip tip={it.url ?? it.label ?? ""}>
+                    <span
+                      className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-300"
+                    >
+                      {it.url ?? it.label ?? "—"}
+                    </span>
+                  </Tooltip>
                   {it.totalBytes !== undefined ? (
                     <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
                       {fmtBytes(it.totalBytes)}

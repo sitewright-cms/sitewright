@@ -5,6 +5,7 @@ import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { FileTypeIcon } from '../media/file-icons';
 import { ghostButton, dangerButton, toggleInput } from '../../theme';
+import { Tooltip } from '../ui/Tooltip';
 
 type Unused = MediaAsset & { onlyInHistory?: boolean };
 
@@ -155,13 +156,14 @@ export function UnusedFilesModal({ projectId, onClose, onChanged }: { projectId:
                 <FileTypeIcon asset={m} />
                 <span className="min-w-0 flex-1 truncate text-sm">{m.filename}</span>
                 {m.onlyInHistory && (
-                  <span
-                    className="flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
-                    title="Only referenced by version history — deleting it would break a restore, not a page."
-                  >
-                    <History size={11} aria-hidden />
-                    in history
-                  </span>
+                  <Tooltip tip="Only referenced by version history — deleting it would break a restore, not a page.">
+                    <span
+                      className="flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] uppercase text-amber-900 dark:bg-amber-950/50 dark:text-amber-200"
+                    >
+                      <History size={11} aria-hidden />
+                      in history
+                    </span>
+                  </Tooltip>
                 )}
                 <span className="text-xs text-slate-500 dark:text-slate-400">{kb(m.bytes)}</span>
               </li>

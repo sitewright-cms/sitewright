@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { gradientHover, gradientSurface } from '../theme';
 import { useColorMode, type ColorMode } from '../lib/color-mode';
+import { Tooltip } from './ui/Tooltip';
 
 /** The Appearance segmented-control options (light / dark / follow-OS). */
 const COLOR_MODES: { value: ColorMode; label: string; Icon: typeof Sun }[] = [
@@ -98,17 +99,18 @@ export function UserDropdown({ onAccountSettings, onSignOut }: UserDropdownProps
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        type="button"
-        aria-label="Account"
-        title="Account"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-      >
-        <UserIcon />
-      </button>
+      <Tooltip tip="Account">
+        <button
+          type="button"
+          aria-label="Account"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="waves-effect flex items-center justify-center rounded-md p-1.5 text-slate-600 transition hover:bg-white/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          <UserIcon />
+        </button>
+      </Tooltip>
       {open && (
         <div
           role="menu"

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink } from 'lucide-react';
 import { api, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
+import { Tooltip } from '../ui/Tooltip';
 
 type Strategy = 'files' | 'rsync';
 
@@ -182,7 +183,9 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
                 : {})}
               aria-label="Deploy progress"
             />
-            {status.file && <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={status.file}>{status.file}</p>}
+            {status.file && <Tooltip tip={status.file}>
+  <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">{status.file}</p>
+</Tooltip>}
             {showRunningDiag && (
               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false)}</p>
             )}

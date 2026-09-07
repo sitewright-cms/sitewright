@@ -37,7 +37,7 @@ export function DeleteProjectModal({ project, onClose, onDeleted }: DeleteProjec
 
   return (
     <Modal title="Delete project" onClose={onClose} size="md">
-      <div className="space-y-4 p-1">
+      <div className="space-y-4 p-5">
         <div className="rounded-lg border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-800 dark:text-rose-300">
           <p className="font-semibold">This deletes the entire “{project.name}” project.</p>
           <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-rose-700 dark:text-rose-300">

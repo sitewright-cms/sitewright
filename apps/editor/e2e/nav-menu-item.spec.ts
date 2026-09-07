@@ -3,50 +3,50 @@ import { signUp } from './helpers.js';
 
 const stamp = Date.now();
 
-// Drives the "nav placeholder" (kind:'link') editor flow: create an external new-tab placeholder
-// and a dropdown placeholder, confirm the pages-list treatment, and round-trip the link settings.
+// Drives the "menu item" (kind:'link') editor flow: create an external new-tab menu item
+// and a dropdown menu item, confirm the pages-list treatment, and round-trip the link settings.
 
-test('create nav placeholders (external + dropdown) and round-trip their settings', async ({ page }) => {
+test('create menu items (external + dropdown) and round-trip their settings', async ({ page }) => {
   await signUp(page, `navph-${stamp}@e2e.test`);
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Nav PH Site');
   await page.getByLabel('Project slug').fill(`navph-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // --- An EXTERNAL placeholder that opens in a new tab. ---
-  await page.getByRole('button', { name: '+ New Placeholder' }).click();
-  const dialog = page.getByRole('dialog', { name: 'New Placeholder' });
-  await dialog.getByLabel('Placeholder name').fill('Docs');
+  // --- An EXTERNAL menu item that opens in a new tab. ---
+  await page.getByRole('button', { name: '+ New Menu Item' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New Menu Item' });
+  await dialog.getByLabel('Menu item name').fill('Docs');
   await dialog.getByLabel('Link target').fill('https://docs.example.com');
   await dialog.getByLabel('Open in new tab').check();
-  await dialog.getByRole('button', { name: 'Add placeholder' }).click();
+  await dialog.getByRole('button', { name: 'Add menu item' }).click();
   await expect(dialog).toBeHidden();
 
-  // The row shows the name, a "placeholder" chip, and the target (not a route).
+  // The row shows the name, a "menu item" chip, and the target (not a route).
   const row = page.locator('li', { hasText: 'Docs' }).first();
-  await expect(row.getByText('placeholder')).toBeVisible();
+  await expect(row.getByText('menu item')).toBeVisible();
   await expect(row.getByText('https://docs.example.com')).toBeVisible();
-  // No page editor / preview action on a placeholder row; settings + delete remain.
+  // No page editor / preview action on a menu-item row; settings + delete remain.
   await expect(row.getByRole('button', { name: 'Edit Docs' })).toHaveCount(0);
   await expect(row.getByRole('button', { name: 'Settings for Docs' })).toBeVisible();
 
   // Settings round-trips the target + new-tab; slug/meta are absent.
   await row.getByRole('button', { name: 'Settings for Docs' }).click();
-  const settings = page.getByRole('dialog', { name: /Nav placeholder settings/ });
+  const settings = page.getByRole('dialog', { name: /Menu item settings/ });
   await expect(settings.getByLabel('Link target')).toHaveValue('https://docs.example.com');
   await expect(settings.getByLabel('Open in new tab')).toBeChecked();
   await expect(settings.getByLabel('Page path')).toHaveCount(0);
   await settings.getByRole('button', { name: 'Save settings' }).click();
   await expect(settings).toBeHidden();
 
-  // --- A DROPDOWN-only placeholder (no target). ---
-  await page.getByRole('button', { name: '+ New Placeholder' }).click();
-  const d2 = page.getByRole('dialog', { name: 'New Placeholder' });
-  await d2.getByLabel('Placeholder name').fill('Services');
+  // --- A DROPDOWN-only menu item (no target). ---
+  await page.getByRole('button', { name: '+ New Menu Item' }).click();
+  const d2 = page.getByRole('dialog', { name: 'New Menu Item' });
+  await d2.getByLabel('Menu item name').fill('Services');
   await d2.getByLabel('Dropdown of child pages').check();
-  await d2.getByRole('button', { name: 'Add placeholder' }).click();
+  await d2.getByRole('button', { name: 'Add menu item' }).click();
   await expect(d2).toBeHidden();
   const grp = page.locator('li', { hasText: 'Services' }).first();
-  await expect(grp.getByText('placeholder')).toBeVisible();
+  await expect(grp.getByText('menu item')).toBeVisible();
   await expect(grp.getByText('— (dropdown)')).toBeVisible();
 });

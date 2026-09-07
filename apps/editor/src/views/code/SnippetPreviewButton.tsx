@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { Tooltip } from '../ui/Tooltip';
 
 /** Eye glyph — opens the rendered snippet preview on hover/focus. */
 function EyeIcon() {
@@ -118,21 +119,22 @@ export function SnippetPreviewButton({ url, label }: { url: string; label: strin
 
   return (
     <>
-      <button
-        ref={btnRef}
-        type="button"
-        aria-label={`Preview ${label}`}
-        title={`Preview ${label}`}
-        aria-expanded={open}
-        onMouseEnter={scheduleOpen}
-        onMouseLeave={scheduleClose}
-        onFocus={keepOpen}
-        onBlur={scheduleClose}
-        onClick={() => (open ? setOpen(false) : keepOpen())}
-        className="shrink-0 rounded-md px-1.5 py-1 text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400"
-      >
-        <EyeIcon />
-      </button>
+      <Tooltip tip={`Preview ${label}`}>
+        <button
+          ref={btnRef}
+          type="button"
+          aria-label={`Preview ${label}`}
+          aria-expanded={open}
+          onMouseEnter={scheduleOpen}
+          onMouseLeave={scheduleClose}
+          onFocus={keepOpen}
+          onBlur={scheduleClose}
+          onClick={() => (open ? setOpen(false) : keepOpen())}
+          className="shrink-0 rounded-md px-1.5 py-1 text-slate-500 dark:text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10 hover:text-indigo-600 dark:hover:text-indigo-400"
+        >
+          <EyeIcon />
+        </button>
+      </Tooltip>
       {open && btnRef.current && (
         <PreviewCard anchor={btnRef.current} url={url} label={label} onEnter={keepOpen} onLeave={scheduleClose} onClose={() => setOpen(false)} />
       )}

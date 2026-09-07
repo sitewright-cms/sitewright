@@ -5,6 +5,7 @@ import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
 import { glassCard } from '../theme';
 import { when, OP_PILL, authorLabel, KIND_LABEL } from './revision-format';
+import { Tooltip } from './ui/Tooltip';
 
 const PAGE = 50;
 const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'settings'];
@@ -129,10 +130,12 @@ export function HistoryView({ project }: { project: Project }) {
               <li key={r.id} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-slate-700 dark:text-slate-200" title={new Date(r.revisionAt).toLocaleString()}>
-                    <span className="text-slate-500 dark:text-slate-400">{KIND_LABEL[r.kind] ?? r.kind} · </span>
-                    <span className="font-medium">{r.label}</span>
-                  </div>
+                  <Tooltip tip={new Date(r.revisionAt).toLocaleString()}>
+                    <div className="truncate text-slate-700 dark:text-slate-200">
+                      <span className="text-slate-500 dark:text-slate-400">{KIND_LABEL[r.kind] ?? r.kind} · </span>
+                      <span className="font-medium">{r.label}</span>
+                    </div>
+                  </Tooltip>
                   <div className="truncate text-xs text-slate-500 dark:text-slate-400">
                     {authorLabel(r)} · {when(r.revisionAt)}
                     {r.note ? ` · ${r.note}` : ''}

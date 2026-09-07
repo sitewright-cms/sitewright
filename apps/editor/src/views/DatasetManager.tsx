@@ -6,6 +6,7 @@ import { useVirtualRows } from '../lib/virtual-rows';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
 import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
+import { dropTargetForEvent } from '../lib/drag-drop';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
@@ -124,6 +125,12 @@ export function DatasetManager({
   const [fieldDrop, setFieldDrop] = useState<{ name: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
   const reordering = useRef(false);
+  /** A reorder that arrived while one was in flight — run once the current write settles. */
+  const pendingReorder = useRef<{ sourceId: string; targetId: string; pos: 'before' | 'after' } | null>(null);
+  /** Mirrors `entries` so a queued reorder computes neighbours from the CURRENT order, not its
+   *  render's closure (which is one write behind by the time it runs). */
+  const entriesRef = useRef<Entry[]>(entries);
+  entriesRef.current = entries;
   const duplicatingDataset = useRef(false); // guards against a double-click cloning entries twice
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -450,12 +457,31 @@ export function DatasetManager({
    * collection in an order nobody chose. A re-space (the gap ran out) goes in ONE transactional request.
    */
   async function persistEntryReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
-    if (!selected || sourceId === targetId || reordering.current) return; // ignore a drag while one is in flight
-    const list = entries.filter((e) => e.dataset === selected.slug);
+    if (!selected || sourceId === targetId) return;
+    // ★ A reorder arriving while one is in flight is QUEUED, not dropped. Writes still serialize (two
+    // concurrent PUTs on one dataset race each other's If-Match version), but arranging a list means
+    // several drags in a row, and silently discarding every one that landed during the previous
+    // refetch is exactly the "the drop just doesn't work sometimes" the rest of this fix is about.
+    if (reordering.current) {
+      pendingReorder.current = { sourceId, targetId, pos };
+      return;
+    }
+    // The LATEST entries, not this render's closure: a queued reorder runs after the previous one has
+    // already changed them, and computing neighbours from the stale array would place the row wrongly.
+    const list = entriesRef.current.filter((e) => e.dataset === selected.slug);
     const changed = reorderList(list, sourceId, targetId, pos);
     if (changed.length === 0) return;
     reordering.current = true;
     setError(null);
+    // ★ Paint the new order NOW. The write is followed by a full refetch, and until that resolves the
+    // list still renders the OLD order — on a large dataset that is seconds of the row sitting back
+    // where it started, which is indistinguishable from a drop that failed. Reverted below if the
+    // write is refused, so a real failure still shows the truth rather than a lie that sticks.
+    const previous = entriesRef.current;
+    const moved = new Map(changed.map((c) => [c.id, c.order] as const));
+    setEntries((cur) =>
+      cur.map((e) => (e.dataset === selected.slug && moved.has(e.id) ? { ...e, order: moved.get(e.id) } : e)),
+    );
     try {
       if (changed.length === 1) {
         await api.putEntry(project.id, changed[0]!);
@@ -469,9 +495,13 @@ export function DatasetManager({
       }
       await load();
     } catch (err) {
+      setEntries(previous); // the optimistic order was not accepted — put it back
       setError(err instanceof Error ? err.message : 'failed to reorder entries');
     } finally {
       reordering.current = false;
+      const next = pendingReorder.current;
+      pendingReorder.current = null;
+      if (next) void persistEntryReorder(next.sourceId, next.targetId, next.pos);
     }
   }
 
@@ -739,13 +769,14 @@ export function DatasetManager({
                         }}
                       />
                     ) : (
-                      <span
-                        className="w-40 cursor-text truncate font-mono text-xs"
-                        title={`${field.name} — double-click to rename`}
-                        onDoubleClick={() => { setRenamingField(field.name); setRenameText(field.name); }}
-                      >
-                        {field.name}
-                      </span>
+                      <Tooltip tip={`${field.name} — double-click to rename`}>
+                        <span
+                          className="w-40 cursor-text truncate font-mono text-xs"
+                          onDoubleClick={() => { setRenamingField(field.name); setRenameText(field.name); }}
+                        >
+                          {field.name}
+                        </span>
+                      </Tooltip>
                     )}
                     {field.name === titleFieldName && (
                       <Tooltip tip="Used as the entry title in lists" side="top">
@@ -950,13 +981,41 @@ export function DatasetManager({
                 </button>
               </div>
 
-              <ul className="mb-3 flex flex-col gap-1" ref={virt.listRef as (el: HTMLUListElement | null) => void}>
+              <ul
+                className="mb-3 flex flex-col gap-1"
+                ref={virt.listRef as (el: HTMLUListElement | null) => void}
+                /* ★ The LIST is the drop surface, not the individual rows. HTML5 DnD only permits a
+                   drop where the last `dragover` called preventDefault(), so when only the rows did,
+                   the `gap-1` between them, the virtualiser's spacers and the space past the last row
+                   were all dead zones: releasing there fired no `drop` at all and the browser snapped
+                   the row back to its original position. */
+                onDragOver={(ev) => {
+                  if (!dragId) return;
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                  const next = dropTargetForEvent(ev.currentTarget, ev.clientY);
+                  setDrop((d) => (d && next && d.id === next.id && d.pos === next.pos ? d : next));
+                }}
+                onDrop={(ev) => {
+                  if (!dragId) return;
+                  ev.preventDefault();
+                  // Resolved from the drop event's OWN coordinates rather than the last hover state:
+                  // the indicator is a render behind the pointer, and a drop must land where the user
+                  // let go, not where the last dragover happened to paint.
+                  const target = dropTargetForEvent(ev.currentTarget, ev.clientY) ?? drop;
+                  if (target) void persistEntryReorder(dragId, target.id, target.pos);
+                  setDragId(null);
+                  setDrop(null);
+                }}
+              >
                 {virt.padTop > 0 && <li aria-hidden style={{ height: virt.padTop }} />}
                 {windowEntries.map((e, windowIndex) => (
                   <li
                     key={e.id}
                     // Marks a real row (not a spacer) so the virtualiser can measure one.
                     data-virtual-row=""
+                    // The LIST owns dragover/drop (see the <ul>); this is how it resolves a pointer to a row.
+                    data-drag-row={e.id}
                     aria-setsize={shownEntries.length}
                     aria-posinset={virt.start + windowIndex + 1}
                     draggable
@@ -965,22 +1024,6 @@ export function DatasetManager({
                       holdPanel(); // keep the Data panel open for the whole drag
                       ev.dataTransfer.effectAllowed = 'move';
                       ev.dataTransfer.setData('text/plain', e.id);
-                    }}
-                    onDragOver={(ev) => {
-                      if (!dragId || dragId === e.id) return;
-                      ev.preventDefault();
-                      const r = ev.currentTarget.getBoundingClientRect();
-                      const pos = ev.clientY < r.top + r.height / 2 ? 'before' : 'after';
-                      setDrop((d) => (d && d.id === e.id && d.pos === pos ? d : { id: e.id, pos }));
-                    }}
-                    onDragLeave={(ev) => {
-                      if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setDrop((d) => (d?.id === e.id ? null : d));
-                    }}
-                    onDrop={(ev) => {
-                      ev.preventDefault();
-                      if (dragId && drop) void persistEntryReorder(dragId, drop.id, drop.pos);
-                      setDragId(null);
-                      setDrop(null);
                     }}
                     onDragEnd={() => {
                       setDragId(null);

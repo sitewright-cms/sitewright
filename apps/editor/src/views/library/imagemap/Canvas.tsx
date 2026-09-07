@@ -20,6 +20,7 @@ import {
   type DrawableType,
   type Point,
 } from './model';
+import { Tooltip } from '../../ui/Tooltip';
 
 /**
  * The Studio canvas: the artboard background with every hotspot drawn over it, selectable, draggable
@@ -677,38 +678,42 @@ function Shape({
         {selected && !inert && (
           <>
             {midpoints.map((p, i) => (
+              // The tooltip classes go ON the handle: it is absolutely positioned against the
+              // canvas, and a wrapper (`.tooltip` is position:relative) would become its containing
+              // block and move every handle to the wrong place.
               <button
                 key={`mid-${i}`}
                 type="button"
                 aria-label={`Add a point on edge ${i + 1}`}
-                title="Drag to add a point here"
-                className="absolute z-20 h-2 w-2 -translate-x-1/2 -translate-y-1/2 cursor-copy rounded-full border border-sky-500 bg-white/90 opacity-70 hover:opacity-100 dark:bg-slate-900/90"
+                data-tip="Drag to add a point here"
+                className="tooltip absolute z-20 h-2 w-2 -translate-x-1/2 -translate-y-1/2 cursor-copy rounded-full border border-sky-500 bg-white/90 opacity-70 hover:opacity-100 dark:bg-slate-900/90"
                 style={{ left: `${p.x}%`, top: `${p.y}%` }}
                 onPointerDown={(e) => onInsertVertex(e, i)}
               />
             ))}
             {pts.map((p, i) => (
-              <button
-                key={i}
-                type="button"
-                aria-label={`Point ${i + 1}`}
-                title="Drag to move. Alt-click to remove."
-                className={`absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-move rounded-full border border-white shadow ${
-                  i === activeVertex ? 'h-3.5 w-3.5 bg-sky-400 ring-2 ring-sky-300' : 'h-2.5 w-2.5 bg-sky-500'
-                }`}
-                style={{ left: `${p.x}%`, top: `${p.y}%` }}
-                onPointerDown={(e) => {
-                  // Alt-click removes a vertex — the convention every vector editor uses, and the
-                  // only way to thin out an over-detailed trace without starting again.
-                  if (e.altKey) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onRemoveVertex(i);
-                    return;
-                  }
-                  onPointerDown(e, { vertex: i });
-                }}
-              />
+                // Tooltip classes ON the handle — see the midpoint handles above.
+                <button
+                  key={i}
+                  data-tip="Drag to move. Alt-click to remove."
+                  type="button"
+                  aria-label={`Point ${i + 1}`}
+                  className={`tooltip absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-move rounded-full border border-white shadow ${
+                    i === activeVertex ? 'h-3.5 w-3.5 bg-sky-400 ring-2 ring-sky-300' : 'h-2.5 w-2.5 bg-sky-500'
+                  }`}
+                  style={{ left: `${p.x}%`, top: `${p.y}%` }}
+                  onPointerDown={(e) => {
+                    // Alt-click removes a vertex — the convention every vector editor uses, and the
+                    // only way to thin out an over-detailed trace without starting again.
+                    if (e.altKey) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveVertex(i);
+                      return;
+                    }
+                    onPointerDown(e, { vertex: i });
+                  }}
+                />
             ))}
             {/* The box handles resize the whole polygon — its relative points ride along. */}
             <div className="pointer-events-none absolute" style={{ left: `${b.x}%`, top: `${b.y}%`, width: `${b.width}%`, height: `${b.height}%` }}>

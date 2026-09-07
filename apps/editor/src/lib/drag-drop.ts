@@ -48,15 +48,22 @@ export function dropTargetAt(rows: readonly RowBand[], clientY: number): DropTar
 /**
  * The row bands of a list element, in DOM order. Rows opt in by carrying their id in `data-drag-row`;
  * spacers and other children are ignored, so a virtualised list needs no special case.
+ *
+ * `eligible` filters to the rows this particular drag may land on — the pages list refuses some
+ * targets (Home is pinned, a page cannot be dropped into another locale's subtree or onto its own
+ * descendant). An ineligible row is not merely "no-op on drop": it must not be considered when
+ * resolving the pointer either, or the nearest legal row would never win.
  */
-export function rowBands(list: Element): RowBand[] {
-  return Array.from(list.querySelectorAll<HTMLElement>('[data-drag-row]')).map((el) => {
-    const r = el.getBoundingClientRect();
-    return { id: el.dataset.dragRow ?? '', top: r.top, bottom: r.bottom };
-  });
+export function rowBands(list: Element, eligible?: (id: string) => boolean): RowBand[] {
+  return Array.from(list.querySelectorAll<HTMLElement>('[data-drag-row]'))
+    .map((el) => {
+      const r = el.getBoundingClientRect();
+      return { id: el.dataset.dragRow ?? '', top: r.top, bottom: r.bottom };
+    })
+    .filter((b) => b.id !== '' && (eligible === undefined || eligible(b.id)));
 }
 
 /** The drop target for a drag event over `list`, resolved from the pointer's own position. */
-export function dropTargetForEvent(list: Element, clientY: number): DropTarget | null {
-  return dropTargetAt(rowBands(list), clientY);
+export function dropTargetForEvent(list: Element, clientY: number, eligible?: (id: string) => boolean): DropTarget | null {
+  return dropTargetAt(rowBands(list, eligible), clientY);
 }

@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The pages list and the schema-field list no longer refuse a drop released between two rows.** Both
+  carried the same defect the dataset entries list had in 0.49.0: HTML5 drag and drop permits a drop
+  only where the last `dragover` called `preventDefault()`, and only the ROWS did — so the gap between
+  rows, the virtualiser's padding spacers and the space past the last row were dead zones that fired no
+  `drop` at all and let the browser snap the row back, silently. Each list owns the handlers now and
+  resolves the pointer to the nearest row. For pages that means the nearest LEGAL row: a target the
+  move would be refused for (Home, another locale's subtree, the page's own descendant) is excluded
+  from resolution rather than merely rejected on drop.
+
 ## [0.49.0] — 2026-09-07
 
 ### Fixed

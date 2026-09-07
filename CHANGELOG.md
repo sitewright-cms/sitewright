@@ -9,6 +9,29 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.48.0] — 2026-09-07
+
+### Fixed
+
+- **Critical CSS no longer disappears when you then edit skeleton code or button effects.** All of
+  those live in the same settings singleton, but the Critical CSS shortcut writes it through
+  `?merge=1` while the Website Settings form does a FULL REPLACE. The 0.46.0 guard tracked versions in
+  ONE tab-wide store, so the shortcut's write re-pointed it — and the Settings form, still holding the
+  previous state, both missed the "this changed" notification (it looked like its own write) and then
+  passed the `If-Match` check with a token describing something it had never held. The guard
+  rubber-stamped the very clobber it exists to stop.
+  - A `?merge=1` write no longer re-arms the shared store: its author never held the whole entity, so
+    the version it produces describes no full-replace buffer.
+  - A view that holds a form now carries the version IT loaded and sends that on its own save, and
+    asks "does this event describe a state I already have?" instead of consulting the shared store.
+    Wired through Website Settings, the page editor and the dataset entry editor; the shared store
+    remains a fallback for views that hold no buffer.
+  - A save no longer fails outright if a response carries no `version` — an absent token just means
+    the next write is unguarded.
+
+  Covered by a browser regression test that drives BOTH surfaces in one session, which is the only way
+  the bug appears: the API alone is innocent, and each surface alone is fine.
+
 ## [0.47.0] — 2026-09-06
 
 ### Added

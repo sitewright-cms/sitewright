@@ -118,6 +118,13 @@ export function SettingsView({
   // save/discard, so each section's dirty state is tracked independently. Rows carry transient ids
   // and toForm/toBundle normalize, so snapshotting the form (not the assembled bundle) is precise.
   const [baseline, setBaseline] = useState<SettingsForm | null>(null);
+  /**
+   * The version THIS form was built from — the optimistic-concurrency token that actually describes
+   * what a save is about to overwrite. It is deliberately NOT the tab-wide one: the Critical CSS
+   * shortcut writes the same singleton by a different route, and letting its version stand in for this
+   * form's is what reverted a customer's criticalCss.
+   */
+  const [baseVersion, setBaseVersion] = useState<string | undefined>(undefined);
   const [internalSection, setSection] = useState<Section>('identity');
   // When the parent fixes the section (top-tab driven), use it and hide the switcher.
   const section = fixedSection ?? internalSection;
@@ -129,11 +136,12 @@ export function SettingsView({
   const toast = useToast();
 
   // Hydrate the editable form from a bundle and reset the dirty baseline to it (initial load).
-  const applyBundle = useCallback((bundle: SettingsBundle) => {
+  const applyBundle = useCallback((bundle: SettingsBundle, version?: string) => {
     const f = toForm(bundle);
     setBase(bundle);
     setForm(f);
     setBaseline(f);
+    setBaseVersion(version);
   }, []);
 
   // Re-fetch + re-hydrate the whole settings form from the server (form + baseline reset, so it's
@@ -143,7 +151,7 @@ export function SettingsView({
   const reloadSettings = useCallback(async () => {
     try {
       const res = await api.getSettings(project.id);
-      applyBundle(res.item);
+      applyBundle(res.item, res.version);
     } catch {
       /* keep the current form if the refetch fails */
     }
@@ -154,7 +162,7 @@ export function SettingsView({
     (async () => {
       try {
         const res = await api.getSettings(project.id);
-        if (active) applyBundle(res.item);
+        if (active) applyBundle(res.item, res.version);
       } catch (err) {
         // No settings singleton yet → start from sensible defaults rather than erroring.
         if (err instanceof ApiError && err.status === 404) {
@@ -195,6 +203,8 @@ export function SettingsView({
     match: (c) => c.kind === 'settings',
     isDirty: () => anyDirty,
     onRefresh: () => void reloadSettings(),
+    baseVersion: () => baseVersion,
+    isSaving: () => saving,
   });
 
   function patch(p: Partial<SettingsForm>) {
@@ -227,8 +237,9 @@ export function SettingsView({
         section === 'identity'
           ? { identity: assembled.identity, settings: base.settings, ...(base.website ? { website: base.website } : {}) }
           : { identity: base.identity, settings: assembled.settings, ...(assembled.website ? { website: assembled.website } : {}) };
-      const res = await api.putSettings(project.id, bundle);
+      const res = await api.putSettings(project.id, bundle, baseVersion);
       setBase(res.item);
+      setBaseVersion(res?.version); // re-arm from what was stored; absent just means the next save is unguarded
       // Clear ONLY this section's dirty state; the other section's pending edits remain dirty.
       setBaseline((b) => (b ? mergeSection(b, snapshot, section) : toForm(res.item)));
       toast.show('Settings saved', 'success');

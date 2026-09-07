@@ -88,6 +88,62 @@ describe('content version tracking (If-Match)', () => {
   });
 });
 
+describe('a sibling surface writing the same entity (the criticalCss revert)', () => {
+  /** One stub for the whole flow: the version it returns depends on the request, like the server. */
+  function versionedFetch(versionFor: (url: string, init: RequestInit) => string) {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init: RequestInit = {}) => {
+        calls.push({ url, init });
+        return Promise.resolve(
+          new Response(JSON.stringify({ item: {}, version: versionFor(url, init) }), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        );
+      }),
+    );
+    return calls;
+  }
+  const sent = (c: { init: RequestInit } | undefined): string | undefined =>
+    (c?.init.headers as Record<string, string> | undefined)?.['if-match'];
+
+  /**
+   * REGRESSION. Settings, the Critical CSS shortcut and the skeleton/button-effect fields all write the
+   * SAME settings singleton, but the shortcut goes through `?merge=1` while Settings does a full
+   * replace. Reported 2026-09-07: save CSS via the shortcut, then change skeleton code + button
+   * effects, and the CSS was gone — because the merge re-pointed the shared store and Settings' stale
+   * save then passed the check with a token describing something it had never held.
+   */
+  it('a ?merge=1 write does NOT re-arm the shared store', async () => {
+    const calls = versionedFetch((url) => (url.includes('merge=1') ? 'v1-from-merge' : 'v0'));
+    await api.getSettings('p1'); // the form is built from v0
+    await api.patchWebsiteSettings('p1', { criticalCss: '.hero{}' } as never);
+    expect(calls.at(-1)?.url).toContain('merge=1');
+    expect(sent(calls.at(-1))).toBeUndefined(); // a merge is never guarded
+    await api.putSettings('p1', {} as never);
+    // ★ Still v0 — the version the form actually holds — so the server can refuse the stale save.
+    expect(sent(calls.at(-1))).toBe('v0');
+  });
+
+  it('an explicit base beats the shared store, and null disables the guard for one call', async () => {
+    const calls = versionedFetch(() => 'v-shared');
+    await api.getSettings('p2');
+    await api.putSettings('p2', {} as never, 'v-my-own-form');
+    expect(sent(calls.at(-1))).toBe('v-my-own-form');
+    await api.putSettings('p2', {} as never, null);
+    expect(sent(calls.at(-1))).toBeUndefined();
+  });
+
+  it('reads still arm the store, so a view without its own base keeps working', async () => {
+    const calls = versionedFetch(() => 'v-read');
+    await api.getPage('p3', 'home');
+    await api.putPage('p3', { id: 'home' } as never);
+    expect(sent(calls.at(-1))).toBe('v-read');
+  });
+});
+
 /**
  * `useExternalEdit` drives the whole clean/dirty decision, so it is tested against a FAKE event
  * stream rather than through a view: the module that owns the EventSource is mocked and we push
@@ -100,12 +156,24 @@ vi.mock('../src/lib/use-project-events', () => ({
   },
 }));
 
-function Harness({ dirty, onRefresh }: { dirty: boolean; onRefresh: () => void }) {
+function Harness({
+  dirty,
+  onRefresh,
+  base,
+  saving,
+}: {
+  dirty: boolean;
+  onRefresh: () => void;
+  /** Present → the view tracks its own base and must ignore the tab-wide store. */
+  base?: string;
+  saving?: boolean;
+}) {
   const ext = useExternalEdit({
     projectId: 'p9',
     match: (c) => c.kind === 'page' && c.entityId === 'home',
     isDirty: () => dirty,
     onRefresh,
+    ...(base === undefined ? {} : { baseVersion: () => base, isSaving: () => saving ?? false }),
   });
   return ext.pending ? (
     <ExternalChangeBanner change={ext.pending} label="This page" onReload={ext.reload} onDismiss={ext.dismiss} />
@@ -178,6 +246,38 @@ describe('useExternalEdit', () => {
     // A LATER event from someone else must still get through.
     act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-someone-else' }));
     expect(screen.getByRole('status')).toBeInTheDocument();
+  });
+
+  it("a view with its OWN base is notified about a sibling surface's write", async () => {
+    // The half that let the criticalCss revert through unseen: the shared store had already jumped to
+    // the sibling's version, so the view concluded "that was us" and never refreshed. Judged against
+    // its own base, a version it has never held is someone else's change - which it is.
+    const onRefresh = vi.fn();
+    // Arm the TAB-WIDE store with the sibling's version, exactly as its write would. This is what made
+    // the old check answer "mine" — without it the test would pass even unfixed.
+    stubFetch('v-from-the-shortcut');
+    await api.getPage('p9', 'home');
+    expect(isOwnContentChange('p9', 'page', 'home', 'v-from-the-shortcut')).toBe(true); // the shared store says "ours"…
+    render(<Harness dirty={false} onRefresh={onRefresh} base="v-my-form" saving={false} />);
+    act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-from-the-shortcut' }));
+    expect(onRefresh).toHaveBeenCalledTimes(1); // …but THIS view never held it, so it refreshes anyway
+  });
+
+  it('ignores an event describing the state it already holds', () => {
+    const onRefresh = vi.fn();
+    render(<Harness dirty onRefresh={onRefresh} base="v-current" saving={false} />);
+    act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-current' }));
+    expect(screen.getByText('no notice')).toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet while ITS OWN save is in flight, whatever version the echo carries', () => {
+    // The echo beats the response, so `base` is still the pre-save version when the event lands.
+    const onRefresh = vi.fn();
+    render(<Harness dirty onRefresh={onRefresh} base="v-before-save" saving />);
+    act(() => emit?.({ kind: 'page', entityId: 'home', op: 'put', version: 'v-after-save' }));
+    expect(screen.getByText('no notice')).toBeInTheDocument();
+    expect(onRefresh).not.toHaveBeenCalled();
   });
 
   it('ignores changes to OTHER entities', () => {

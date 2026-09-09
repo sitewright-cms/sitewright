@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.51.0] — 2026-09-09
+
 ### Added
 
 - **A "Test connection" button on FTP, FTPS, SFTP and git deploy targets** (`POST
@@ -53,6 +55,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   tail of the control-channel conversation with passwords redacted — which is where the reason
   actually lives, since an FTP server refuses with a reply LINE (`421 Too many connections from this
   IP`, `530 Login incorrect`, `552 Quota exceeded`) that no other layer preserved.
+
+### Security
+
+- **Re-pinned `hono` (→ ≥4.13.5) and `js-yaml` (→ ≥4.3.2).** Both already had advisory overrides; both
+  advisories then had their affected ranges WIDENED, so pins that were correct when written began
+  failing the audit gate with no change on our side — the same pattern already documented for
+  `fast-uri` and `nanoid`. `hono` is in the runtime tree (via `@modelcontextprotocol/sdk` →
+  `@hono/node-server`), so this one ships in the image; `js-yaml` is dev-only, via eslint.
 
 ## [0.50.1] — 2026-09-07
 

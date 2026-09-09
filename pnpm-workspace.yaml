@@ -95,9 +95,17 @@ overrides:
   "fast-uri@<3.1.6": ^3.1.6
   "find-my-way@<9.7.0": ^9.7.0
   "form-data@<4.0.6": ^4.0.6
-  "hono@<4.12.34": ">=4.12.34"
+  # ★ Widened range, the same story as fast-uri and nanoid below: 4.12.34 was the fix, then three more
+  # advisories landed with 4.13.5 as the fix (GHSA-gqvv-2mrq-wpjv toSSG path traversal,
+  # GHSA-g6gw-c38x-mqfc parseBody memory exhaustion, GHSA-crvj-82cr-hjcx query-parser cache-key
+  # differential), so the old pin started failing the gate with no change on our side. It IS in the
+  # runtime tree (@modelcontextprotocol/sdk → @hono/node-server), so this is not toolchain-only.
+  "hono@<4.13.5": ">=4.13.5"
   "ip-address@<10.3.1": ^10.3.1
-  "js-yaml@>=4.0.0 <4.3.1": ^4.3.1
+  # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not bound CPU for empty merge sources. Same
+  # widened-range pattern: 4.3.1 was the fix for the previous advisory, 4.3.2 is the fix for this one.
+  # Dev-only (eslint → @eslint/eslintrc), pinned rather than accepted because a fix exists.
+  "js-yaml@>=4.0.0 <4.3.2": ^4.3.2
   # GHSA-2v37-7h3g-55p8 — a custom generator loops forever on size 0. Reached transitively through
   # postcss (sanitize-html → @sitewright/blocks), so it is in the RUNTIME tree, not just the toolchain.
   # ★ The advisory's affected RANGE was widened after we first pinned it: 3.3.17 was the fix, then was

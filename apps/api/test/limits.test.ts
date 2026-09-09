@@ -89,14 +89,27 @@ describe('project-scale limits', () => {
     });
 
     it('trips its cap mid-stream and leaves no temp directory behind', async () => {
+      // ★ RUN THIS IN A PRIVATE TMPDIR. The leak detector counts `sw-site-archive-*` directories, and
+      // that name is global: two other suites (publish-adapters, deploy-adapters-depth) call
+      // archiveSite too, and vitest runs test FILES concurrently. Counting the shared /tmp therefore
+      // measured their directories as well as ours, and the assertion failed whenever one of them
+      // happened to hold an archive open across this window — a real race in the test, not a flake to
+      // re-run. `os.tmpdir()` reads TMPDIR on each call, so redirecting it scopes both the archive
+      // this test creates AND the count that checks for it.
+      const sandbox = await mkdtemp(join(tmpdir(), 'sw-archive-sandbox-'));
+      const realTmp = process.env.TMPDIR;
       const site = await build();
-      const before = await tempEntryCount();
       try {
+        process.env.TMPDIR = sandbox;
+        const before = await tempEntryCount();
         await expect(archiveSite(site, 8)).rejects.toBeInstanceOf(SiteArchiveSizeError);
         // A refused build that leaves its partial archive on disk turns one failure into a slow leak.
         expect(await tempEntryCount()).toBe(before);
       } finally {
+        if (realTmp === undefined) delete process.env.TMPDIR;
+        else process.env.TMPDIR = realTmp;
         await rm(site, { recursive: true, force: true });
+        await rm(sandbox, { recursive: true, force: true });
       }
     });
   });

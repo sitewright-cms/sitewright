@@ -19,6 +19,8 @@ import {
   toPosixRel,
 } from './deploy/manifest.js';
 import { planDirLevels, remoteJoin } from './deploy/plan.js';
+import { captureTranscript, connectFtp, defaultFtpPort, type FtpConnectInfo, type FtpSecurity } from './ftp-connect.js';
+import { attachTranscript } from './deploy-errors.js';
 import { PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, assertDiskHeadroom } from '../limits.js';
 
@@ -28,11 +30,11 @@ export type { DeployManifest } from './deploy/manifest.js';
 /** SSH/SFTP handshake timeout (ssh2 `readyTimeout` — bounds ONLY the initial connect). Generous so a
  *  slow or distant SFTP server that takes a while to complete the handshake isn't dropped before the
  *  transfer begins. */
-const SFTP_CONNECT_TIMEOUT_MS = 60_000;
+export const SFTP_CONNECT_TIMEOUT_MS = 60_000;
 /** FTP/FTPS control-socket timeout. basic-ftp applies this per TASK (login, mkdir, each upload), not
  *  just the initial connect, so it's kept tighter than the SFTP handshake timeout to bound the
  *  worst-case per-operation hold against a stalled control connection. */
-const FTP_TIMEOUT_MS = 15_000;
+export const FTP_TIMEOUT_MS = 15_000;
 
 /** Concurrent fastPut operations over the single SSH connection (SFTP upload path).
  *  ssh2 multiplexes SFTP handles over one transport, so parallel puts overlap the round-trip
@@ -94,6 +96,18 @@ export const DeployConfigSchema = z
       // file when it carries a key line, so a newline could inject extra pre-trusted hosts.
       .refine((v) => !hasControlChars(v), 'hostFingerprint must not contain control characters')
       .optional(),
+    /** FTPS only: `explicit` (AUTH TLS on port 21, the default) or `implicit` (TLS from the first
+     *  byte, usually port 990). A plain `ftp` target upgrades opportunistically instead. */
+    ftpsMode: z.enum(['explicit', 'implicit']).optional(),
+    /** FTPS only: a pinned server certificate (SHA-256 of the leaf, hex), trusted INSTEAD of the
+     *  public CA set. See the field docs on DeployTargetSchema for why this exists. */
+    certFingerprint: z
+      .string()
+      .min(1)
+      .max(200)
+      .transform((v) => v.trim().toLowerCase().replace(/:/g, ''))
+      .refine((v) => /^[0-9a-f]{64}$/.test(v), 'certFingerprint must be a SHA-256 fingerprint (64 hex characters)')
+      .optional(),
     // Transfer with rsync-over-SSH instead of the per-file SFTP transport (SFTP-only).
     useRsync: z.boolean().optional(),
     /**
@@ -117,6 +131,15 @@ export const DeployConfigSchema = z
   .refine((c) => c.privateKey === undefined || c.protocol === 'sftp', {
     message: 'a private key requires the SFTP protocol',
     path: ['privateKey'],
+  })
+  // TLS negotiation and certificate pinning are FTPS concepts (parity with DeployTargetSchema).
+  .refine((c) => c.ftpsMode === undefined || c.protocol === 'ftps', {
+    message: 'a TLS mode is only meaningful for an FTPS target',
+    path: ['ftpsMode'],
+  })
+  .refine((c) => c.certFingerprint === undefined || c.protocol === 'ftps', {
+    message: 'a pinned certificate is only meaningful for an FTPS target',
+    path: ['certFingerprint'],
   })
   // rsync rides SSH — only meaningful for an SFTP target.
   .refine((c) => !c.useRsync || c.protocol === 'sftp', {
@@ -154,6 +177,11 @@ export interface SiteFile {
  *  path the SFTP/FTP transports use (concurrent fastPut on SFTP, sequential on FTP). */
 export type DeployStrategy = 'files' | 'rsync';
 
+/** How a deploy's connection was protected. `ssh` covers SFTP, rsync-over-SSH and a git SSH remote
+ *  (always encrypted and host-key checked); `https` a git HTTPS remote; the FTP values distinguish
+ *  plaintext from each of the ways TLS can be reached. */
+export type DeploySecurity = FtpSecurity | 'ssh' | 'https';
+
 /**
  * A pluggable upload transport (FTP/FTPS/SFTP), injectable for testing. The orchestrator
  * (`deploySite`) drives it: read the prior manifest, upload the changed files, prune the removed
@@ -161,6 +189,13 @@ export type DeployStrategy = 'files' | 'rsync';
  * deploy can report live progress.
  */
 export interface DeployTransport {
+  /** How the connection ended up being protected, once `connect()` has resolved. Optional because a
+   *  test double has no wire; read by deploySite so the result can SAY whether TLS was used — which
+   *  is otherwise invisible and was the thing nobody could answer about an FTP target. */
+  security?: DeploySecurity;
+  /** A rolling tail of the control-channel conversation, where the transport keeps one. Attached to a
+   *  failing deploy's error so the report can show what the server actually said before it dropped. */
+  transcript?: ReadonlyArray<string>;
   connect(): Promise<void>;
   /** Reads the previously-deployed manifest from remoteDir, or null when absent/unreadable. */
   readManifest(remoteDir: string): Promise<DeployManifest | null>;
@@ -204,6 +239,8 @@ export interface DeployProgress {
   /** `preparing` only: remote directories created so far, and how many there are. */
   dirs?: number;
   dirTotal?: number;
+  /** How the connection was protected (present from `checking` onward, once connect has resolved). */
+  security?: DeploySecurity;
 }
 
 /** The result of a completed deploy (returned + streamed as the `done` payload). */
@@ -223,6 +260,8 @@ export interface DeployResult {
   bytes: number;
   /** Upload-phase duration in milliseconds. */
   elapsedMs: number;
+  /** How the connection was protected — absent only for a transport that does not report it. */
+  security?: DeploySecurity;
 }
 
 /** Recursively lists the files of a built site, relative to its root (sorted, confined). */
@@ -331,15 +370,28 @@ function makeHostVerifier(fingerprint?: string): (hashedKey: string) => boolean 
 
 class FtpTransport implements DeployTransport {
   private readonly client = new FtpClientImpl(FTP_TIMEOUT_MS);
-  constructor(private readonly cfg: DeployConfig) {}
+  /** How the connection turned out to be secured — read by deploySite so the UI can SAY so. */
+  info?: FtpConnectInfo;
+  security?: DeploySecurity;
+  /** Rolling tail — see DeployTransport.transcript. Armed in the constructor so the server's greeting
+   *  and the TLS handshake are already in it by the time anything can fail. */
+  readonly transcript: string[] = [];
+  constructor(private readonly cfg: DeployConfig) {
+    captureTranscript(this.client, this.transcript, { keep: 'last' });
+  }
   async connect(): Promise<void> {
-    await this.client.access({
+    // Sequenced by connectFtp rather than client.access(): a pinned certificate has to be checked
+    // before the password is sent, and a plain-FTP target upgrades opportunistically. See ftp-connect.ts.
+    this.info = await connectFtp(this.client, {
+      protocol: this.cfg.protocol === 'ftps' ? 'ftps' : 'ftp',
       host: this.cfg.host,
-      port: this.cfg.port ?? 21,
+      port: this.cfg.port ?? defaultFtpPort(this.cfg.protocol === 'ftps' ? 'ftps' : 'ftp', this.cfg.ftpsMode),
       user: this.cfg.user,
       password: this.cfg.password ?? '', // FTP/FTPS always carry a password (schema-enforced)
-      secure: this.cfg.protocol === 'ftps', // explicit FTPS
+      ...(this.cfg.ftpsMode ? { ftpsMode: this.cfg.ftpsMode } : {}),
+      ...(this.cfg.certFingerprint ? { certFingerprint: this.cfg.certFingerprint } : {}),
     });
+    this.security = this.info.security;
   }
   async readManifest(remoteDir: string): Promise<DeployManifest | null> {
     const chunks: Buffer[] = [];
@@ -396,6 +448,7 @@ class FtpTransport implements DeployTransport {
 
 class SftpTransport implements DeployTransport {
   private readonly client = new SftpClientImpl();
+  readonly security: DeploySecurity = 'ssh';
   constructor(private readonly cfg: DeployConfig) {}
   async connect(): Promise<void> {
     const opts: Parameters<SftpClientImpl['connect']>[0] = {
@@ -571,9 +624,12 @@ export async function deploySite(
   try {
     onProgress?.({ phase: 'connecting', total, index });
     await transport.connect();
+    // Only known once the handshake is done, so it rides every event from here on rather than being
+    // reported once and missed by a UI that connected late.
+    const security = transport.security;
 
     // Read the prior manifest to diff against (skipped on a forced full re-upload).
-    onProgress?.({ phase: 'checking', total, index });
+    onProgress?.({ phase: 'checking', total, index, security });
     const prev = incremental ? await transport.readManifest(config.remoteDir) : null;
     const { upload, remove } = diffManifests(prev, nextManifest);
     const uploadSet = new Set(upload);
@@ -586,7 +642,7 @@ export async function deploySite(
     index = skipped;
     const startedAt = Date.now();
     let bytes = 0;
-    onProgress?.({ phase: 'uploading', total, index, skipped, strategy, bytes, elapsedMs: 0 });
+    onProgress?.({ phase: 'uploading', total, index, skipped, strategy, bytes, elapsedMs: 0, security });
 
     if (changed.length > 0) {
       await transport.upload(
@@ -595,11 +651,11 @@ export async function deploySite(
         (rel) => {
           index += 1;
           bytes += nextManifest[rel]?.size ?? 0;
-          onProgress?.({ phase: 'uploading', total, index, file: rel, skipped, strategy, bytes, elapsedMs: Date.now() - startedAt });
+          onProgress?.({ phase: 'uploading', total, index, file: rel, skipped, strategy, bytes, elapsedMs: Date.now() - startedAt, security });
         },
         // The remote directory tree, created before any file moves — reported against ITS OWN total so
         // the bar advances through a pass that is otherwise minutes of nothing.
-        (done, dirTotal) => onProgress?.({ phase: 'preparing', total, index, skipped, strategy, dirs: done, dirTotal }),
+        (done, dirTotal) => onProgress?.({ phase: 'preparing', total, index, skipped, strategy, dirs: done, dirTotal, security }),
       );
     }
     // True per-file transfer time, measured before the prune + manifest write (which the reported
@@ -612,8 +668,14 @@ export async function deploySite(
     await transport.writeManifest(config.remoteDir, nextManifest);
     if (remove.length > 0) await transport.remove(config.remoteDir, remove);
 
-    onProgress?.({ phase: 'done', total, index: total, skipped, removed: remove.length, strategy, bytes, elapsedMs });
-    return { protocol: config.protocol, files: total, uploaded: changed.length, skipped, removed: remove.length, strategy, bytes, elapsedMs };
+    onProgress?.({ phase: 'done', total, index: total, skipped, removed: remove.length, strategy, bytes, elapsedMs, security });
+    return { protocol: config.protocol, files: total, uploaded: changed.length, skipped, removed: remove.length, strategy, bytes, elapsedMs, security };
+  } catch (err) {
+    // Stamp the control-channel tail onto the error on its way out. The route describes the failure
+    // and has no transport to ask — and the last few server replies before a drop are usually the
+    // only place the reason exists at all.
+    if (transport.transcript?.length) attachTranscript(err, transport.transcript);
+    throw err;
   } finally {
     await transport.close().catch(() => {
       /* best-effort close */

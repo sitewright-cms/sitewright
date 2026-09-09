@@ -401,7 +401,9 @@ async function streamSse<P, D>(
     onProgress?: (e: P) => void;
     /** Receives the RAW parsed `done` payload (callers unwrap their own envelope, e.g. `.deployed`/`.report`). */
     onDone?: (raw: D) => void;
-    onError?: (message: string) => void;
+    /** `raw` is the whole parsed error frame — a caller that has a richer error shape (the deploy's
+     *  `failure`) reads it from there; everyone else keeps using `message` alone. */
+    onError?: (message: string, raw?: unknown) => void;
   },
   opts?: { signal?: AbortSignal; init?: Pick<RequestInit, 'headers' | 'body'> },
 ): Promise<void> {
@@ -455,7 +457,7 @@ async function streamSse<P, D>(
       else if (event === 'done') handlers.onDone?.(parsed as D);
       else if (event === 'error') {
         const msg = (parsed as { message?: unknown }).message;
-        handlers.onError?.(typeof msg === 'string' ? msg : 'request failed');
+        handlers.onError?.(typeof msg === 'string' ? msg : 'request failed', parsed);
       }
     }
   }
@@ -766,6 +768,11 @@ export interface DeployConfig {
   remoteDir?: string;
   /** Optional SFTP host-key fingerprint (SHA-256), OR a `known_hosts` line to pin the server. */
   hostFingerprint?: string;
+  /** FTPS only: `explicit` = AUTH TLS on the normal port (the default), `implicit` = TLS from the
+   *  first byte (usually port 990). A plain `ftp` target upgrades opportunistically instead. */
+  ftpsMode?: 'explicit' | 'implicit';
+  /** FTPS only: a pinned server certificate (SHA-256 of the leaf), trusted instead of a public CA. */
+  certFingerprint?: string;
   /** Minify each page's HTML at build — a serve option available for EVERY target type. */
   minifyHtml?: boolean;
   /** SFTP-only: transfer with rsync-over-SSH (delta + compression) instead of per-file SFTP. */
@@ -804,6 +811,10 @@ export interface UpdateDeployTargetConfig {
   passphrase?: string;
   remoteDir?: string;
   hostFingerprint?: string;
+  ftpsMode?: 'explicit' | 'implicit';
+  certFingerprint?: string;
+  /** Removes the pinned certificate (an omitted `certFingerprint` means "keep it"). */
+  clearCertFingerprint?: boolean;
   previewToken?: string;
   clearPreviewToken?: boolean;
   minifyHtml?: boolean;
@@ -812,6 +823,91 @@ export interface UpdateDeployTargetConfig {
   rsyncDelete?: boolean;
   /** Acknowledges rsync + prune + a ROOT remote directory (the API refuses it otherwise). */
   rsyncRootDeleteAck?: boolean;
+  repoUrl?: string;
+  branch?: string;
+  token?: string;
+}
+
+/** How a deploy's connection is protected. `none` is the one worth reacting to: a plain FTP target
+ *  whose server offered no way to encrypt, so credentials and files crossed the network in the clear. */
+export type DeploySecurity = 'none' | 'opportunistic' | 'explicit' | 'implicit' | 'ssh' | 'https';
+
+/** What went wrong, as a tag the UI branches on (mirrors DeployFailureKind on the server). */
+export type DeployFailureKind =
+  | 'dns' | 'refused' | 'unreachable' | 'timeout' | 'reset' | 'rate-limit'
+  | 'tls-required' | 'tls-unsupported' | 'tls-protocol' | 'tls-cert' | 'tls-cert-pin'
+  | 'auth' | 'key' | 'host-key' | 'permission' | 'quota' | 'path' | 'data-connection' | 'rsync' | 'unknown';
+
+/** A certificate a server offered, reported so it can be reviewed and (if recognised) pinned. */
+export interface OfferedCertificate {
+  subject: string;
+  issuer: string;
+  validFrom: string;
+  validTo: string;
+  fingerprint256: string;
+  altNames: string[];
+  expired: boolean;
+  selfSigned: boolean;
+}
+
+/** A described deploy failure: one actionable sentence, plus the raw truth underneath it. */
+export interface DeployFailure {
+  kind: DeployFailureKind;
+  message: string;
+  hint?: string;
+  detail?: string;
+  replyCode?: number;
+  certificate?: OfferedCertificate;
+  /** The tail of the FTP control-channel conversation before it broke, passwords redacted. */
+  transcript?: string[];
+}
+
+/** One step of a connection test. Which step failed is usually the whole diagnosis. */
+export interface DeployTestStep {
+  key: 'connect' | 'tls' | 'auth' | 'directory' | 'write' | 'rsync' | 'branch';
+  label: string;
+  status: 'ok' | 'failed' | 'skipped';
+  detail?: string;
+  ms?: number;
+}
+
+/** The result of testing a deploy target's connection. `ok: false` is a RESULT, not an error. */
+export interface DeployTestResult {
+  ok: boolean;
+  protocol: string;
+  host: string;
+  port: number;
+  steps: DeployTestStep[];
+  security?: DeploySecurity;
+  tls?: { protocol: string; cipher: string; certificate: OfferedCertificate; pinned: boolean; unverified: boolean };
+  hostKeyFingerprint?: string;
+  /** A git-SSH remote's `known_hosts` line — what a git target pins (it takes a line, not a hash). */
+  hostKeyLine?: string;
+  /** Present exactly when the UI should offer to pin a certificate. */
+  offeredCertificate?: OfferedCertificate;
+  features?: string[];
+  welcome?: string;
+  /** The control-channel conversation, passwords redacted (FTP/FTPS only). */
+  transcript?: string[];
+  failure?: DeployFailure;
+  elapsedMs: number;
+}
+
+/** Body for a connection test: a whole config, and/or an `id` supplying whatever is omitted. */
+export interface DeployTestRequest {
+  id?: string;
+  protocol?: 'ftp' | 'ftps' | 'sftp' | 'git';
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+  remoteDir?: string;
+  hostFingerprint?: string;
+  ftpsMode?: 'explicit' | 'implicit';
+  certFingerprint?: string;
+  useRsync?: boolean;
   repoUrl?: string;
   branch?: string;
   token?: string;
@@ -834,6 +930,8 @@ export interface DeployProgressEvent {
   /** `preparing` on an FTP/SFTP deploy: remote directories created so far, and how many there are. */
   dirs?: number;
   dirTotal?: number;
+  /** How the connection is protected. Present from `checking` onward, once the handshake is done. */
+  security?: DeploySecurity;
 }
 
 /** The `done` payload of a streamed deploy — FTP/SFTP report `files` + transfer diagnostics
@@ -849,6 +947,7 @@ export interface StreamDoneResult {
   elapsedMs?: number;
   branch?: string;
   commit?: string;
+  security?: DeploySecurity;
 }
 
 /** A streamed website-import progress event (crawl / transform / host-media / assemble phases). */
@@ -1627,6 +1726,11 @@ export const api = {
   /** Edit a saved target in place. Protocol is immutable; omitted credentials keep the stored secret. */
   updateDeployTarget: (projectId: string, id: string, config: UpdateDeployTargetConfig) =>
     request<{ target: DeployTargetView }>('PUT', `/projects/${projectId}/deploy-targets/${id}`, config),
+  /** Test a target's connection WITHOUT deploying — connect, secure, sign in, reach the directory,
+   *  write and remove one small file. Works for an unsaved config, or for a saved `id` whose stored
+   *  credentials fill in whatever the form left blank. */
+  testDeployTarget: (projectId: string, body: DeployTestRequest) =>
+    request<DeployTestResult>('POST', `/projects/${projectId}/deploy-targets/test`, body),
   deleteDeployTarget: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/deploy-targets/${id}`),
   deployToTarget: (projectId: string, id: string) =>
@@ -1644,7 +1748,9 @@ export const api = {
     handlers: {
       onProgress?: (e: DeployProgressEvent) => void;
       onDone?: (deployed: StreamDoneResult) => void;
-      onError?: (message: string) => void;
+      /** `failure` carries the described cause when the server sent one — the whole point of the
+       *  error frame now being more than a sentence. */
+      onError?: (message: string, failure?: DeployFailure) => void;
     },
     signal?: AbortSignal,
   ): Promise<void> =>
@@ -1653,7 +1759,9 @@ export const api = {
       {
         onProgress: handlers.onProgress,
         onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.deployed) : undefined,
-        onError: handlers.onError,
+        onError: handlers.onError
+          ? (message, raw) => handlers.onError!(message, (raw as { failure?: DeployFailure } | undefined)?.failure)
+          : undefined,
       },
       { signal },
     ),

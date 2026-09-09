@@ -178,6 +178,7 @@
   "POST /projects/:projectId/deploy-targets",
   "POST /projects/:projectId/deploy-targets/:id/deploy",
   "POST /projects/:projectId/deploy-targets/:id/deploy/stream",
+  "POST /projects/:projectId/deploy-targets/test",
   "POST /projects/:projectId/duplicate",
   "POST /projects/:projectId/fonts/select",
   "POST /projects/:projectId/imagemaps/from-template",

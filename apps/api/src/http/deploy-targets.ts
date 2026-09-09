@@ -4,7 +4,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { DeployTargetSchema, isSshRepoUrl, gitRepoHost, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
-import { deploySite, type DeployConfig } from '../publish/adapters.js';
+import { deploySite, DeployConfigSchema, type DeployConfig } from '../publish/adapters.js';
+import { defaultFtpPort } from '../publish/ftp-connect.js';
+import { testDeployTarget } from '../publish/deploy-test.js';
+import { testGitTarget } from '../publish/git-test.js';
+import { describeDeployError, type DeployEndpoint } from '../publish/deploy-errors.js';
 import { deployRsync } from '../publish/rsync-deploy.js';
 import { deployGit, type GitDeployConfig } from '../publish/git-deploy.js';
 import { deployGitSsh, type GitSshDeployConfig } from '../publish/git-ssh-deploy.js';
@@ -28,6 +32,9 @@ const CreateDeployTargetBody = z
     remoteDir: z.string().min(1).max(1024).optional(),
     // SFTP host-key fingerprint, OR a git-SSH `known_hosts` host-key line (for pinning).
     hostFingerprint: z.string().min(1).max(1024).optional(),
+    // FTPS only: how TLS is reached, and an optionally pinned server certificate.
+    ftpsMode: z.enum(['explicit', 'implicit']).optional(),
+    certFingerprint: z.string().min(1).max(200).optional(),
     useRsync: z.boolean().optional(), // SFTP-only: rsync-over-SSH transfer
     rsyncDelete: z.boolean().optional(), // prune remote files absent from the build (default true)
     rsyncRootDeleteAck: z.boolean().optional(), // required for rsync + prune + a ROOT remoteDir
@@ -79,6 +86,11 @@ const UpdateDeployTargetBody = z.object({
   passphrase: z.string().min(1).max(1024).optional(),
   remoteDir: z.string().min(1).max(1024).optional(),
   hostFingerprint: z.string().min(1).max(1024).optional(),
+  ftpsMode: z.enum(['explicit', 'implicit']).optional(),
+  certFingerprint: z.string().min(1).max(200).optional(),
+  /** Removes the pinned certificate (an omitted `certFingerprint` means "keep", so "unpin" needs its
+   *  own flag — same idiom as `clearPreviewToken`). */
+  clearCertFingerprint: z.boolean().optional(),
   previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
   clearPreviewToken: z.boolean().optional(),
   minifyHtml: z.boolean().optional(),
@@ -94,6 +106,34 @@ const UpdateDeployTargetBody = z.object({
     message: 'send either previewToken or clearPreviewToken, not both',
     path: ['clearPreviewToken'],
   });
+
+/**
+ * Body for the connection test. Every field is optional because the test has to work in BOTH places
+ * an operator needs it: on a target being typed for the first time (nothing saved yet, so everything
+ * arrives here), and on one being edited (where credential fields are deliberately blank because a
+ * stored secret is never shown back — `id` then supplies whatever was omitted). Testing only saved
+ * targets would leave the first-time case, which is exactly when configuration goes wrong, untestable.
+ */
+const TestDeployTargetBody = z.object({
+  /** A saved target to inherit from. Anything sent alongside it OVERRIDES the stored value. */
+  id: z.string().min(1).max(128).optional(),
+  protocol: z.enum(['ftp', 'ftps', 'sftp', 'git']).optional(),
+  host: z.string().min(1).max(255).optional(),
+  port: z.number().int().min(1).max(65535).optional(),
+  user: z.string().min(1).max(255).optional(),
+  password: z.string().min(1).max(1024).optional(),
+  privateKey: z.string().min(1).max(16384).optional(),
+  passphrase: z.string().min(1).max(1024).optional(),
+  remoteDir: z.string().min(1).max(1024).optional(),
+  hostFingerprint: z.string().min(1).max(1024).optional(),
+  ftpsMode: z.enum(['explicit', 'implicit']).optional(),
+  certFingerprint: z.string().min(1).max(200).optional(),
+  useRsync: z.boolean().optional(),
+  // git
+  repoUrl: z.string().min(1).max(2048).optional(),
+  branch: z.string().min(1).max(255).optional(),
+  token: z.string().min(1).max(1024).optional(),
+});
 
 /** The secret blob stored (encrypted) for a target — FTP/SFTP credentials, or a git token. */
 interface TargetCreds {
@@ -139,6 +179,10 @@ function targetToConfig(target: DeployTarget, key: Buffer): DeployConfig {
     ...(creds.passphrase ? { passphrase: creds.passphrase } : {}),
     remoteDir: target.remoteDir ?? '/',
     hostFingerprint: target.hostFingerprint,
+    // FTPS negotiation + pinning. Carried for the same reason as the rsync flags below: a setting the
+    // form saves and the deploy never reads is a setting that silently does nothing.
+    ...(target.ftpsMode ? { ftpsMode: target.ftpsMode } : {}),
+    ...(target.certFingerprint ? { certFingerprint: target.certFingerprint } : {}),
     // ★ These MUST be carried. buildRsyncArgs reads `rsyncDelete` off the config, so omitting it here
     // would leave the toggle saved, displayed, and completely inert — the deploy would keep pruning.
     ...(target.useRsync ? { useRsync: true } : {}),
@@ -172,6 +216,19 @@ function targetToGitSshConfig(target: DeployTarget, key: Buffer): GitSshDeployCo
 /** The host to SSRF-check for a target: the repo host for `git` (http(s) or ssh), the server host else. */
 function deployHostOf(target: DeployTarget): string {
   return target.protocol === 'git' ? gitRepoHost(target.repoUrl!) : target.host!;
+}
+
+/** The endpoint a failure message may name: the target's own host and the port actually dialled.
+ *  Both are values the caller supplied and can already see, so naming them discloses nothing. */
+function deployEndpointOf(target: DeployTarget): DeployEndpoint {
+  const host = deployHostOf(target);
+  if (target.protocol === 'git') return { protocol: 'git', host, port: target.port ?? (isSshRepoUrl(target.repoUrl!) ? 22 : 443) };
+  if (target.protocol === 'sftp') return { protocol: 'sftp', host, port: target.port ?? 22 };
+  return {
+    protocol: target.protocol,
+    host,
+    port: target.port ?? defaultFtpPort(target.protocol === 'ftps' ? 'ftps' : 'ftp', target.ftpsMode),
+  };
 }
 
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
@@ -264,7 +321,7 @@ export async function recordDeployed(
 async function streamDeploy(
   reply: { hijack: () => void; raw: import('node:http').ServerResponse },
   run: (onProgress: (e: unknown) => void) => Promise<unknown>,
-  logCtx: Record<string, unknown>,
+  endpoint: DeployEndpoint,
   log: { error: (obj: unknown, msg: string) => void },
   onSuccess?: () => Promise<void>,
 ): Promise<void> {
@@ -292,14 +349,20 @@ async function streamDeploy(
       } catch (err) {
         // A bookkeeping failure must not turn a SUCCESSFUL deploy into a reported failure — the files
         // are on the server either way. Worst case the button stays dirty, which is where it was.
-        log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
+        log.error({ ...endpoint, errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
       }
     }
     send('done', { deployed: result });
   } catch (err) {
-    log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming deploy failed');
-    // Generic message — never leak credentials/host internals (parity with the non-streaming route).
-    send('error', { message: 'deploy failed: could not connect or transfer to the target' });
+    // ★ The failure is DESCRIBED, not flattened. This used to send one constant sentence for every
+    // cause — a wrong password, a banned IP, a full disk and an unreachable host were indistinguishable
+    // — while the real reason went only to the server log, where an operator of a hosted instance
+    // cannot read it. What is disclosed is the caller's OWN host/port and the remote server's own reply
+    // line; no platform internals, and no credential (basic-ftp redacts PASS at source, and the
+    // describer only ever carries the error's message).
+    const failure = describeDeployError(err, endpoint);
+    log.error({ ...endpoint, kind: failure.kind, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming deploy failed');
+    send('error', { message: failure.message, failure });
   } finally {
     keepAlive.stop();
     raw.end();
@@ -386,6 +449,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               ...(body.rsyncDelete === undefined ? {} : { rsyncDelete: body.rsyncDelete }),
               ...(body.rsyncRootDeleteAck ? { rsyncRootDeleteAck: true } : {}),
               ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
+              ...(body.protocol === 'ftps' && body.ftpsMode ? { ftpsMode: body.ftpsMode } : {}),
+              ...(body.protocol === 'ftps' && body.certFingerprint ? { certFingerprint: body.certFingerprint } : {}),
               secret: encodeCreds(
                 {
                   ...(body.password ? { password: body.password } : {}),
@@ -521,6 +586,12 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           ...((body.rsyncDelete ?? existing.rsyncDelete) === undefined ? {} : { rsyncDelete: body.rsyncDelete ?? existing.rsyncDelete }),
           ...((body.rsyncRootDeleteAck ?? existing.rsyncRootDeleteAck) ? { rsyncRootDeleteAck: true } : {}),
           ...(hostFingerprint ? { hostFingerprint } : {}),
+          ...(protocol === 'ftps' && (body.ftpsMode ?? existing.ftpsMode) ? { ftpsMode: body.ftpsMode ?? existing.ftpsMode } : {}),
+          // Re-pinning is just sending a new fingerprint; UNpinning needs the explicit flag, because a
+          // blank field means "keep" everywhere else in this form and must not silently drop the pin.
+          ...(protocol === 'ftps' && !body.clearCertFingerprint && (body.certFingerprint ?? existing.certFingerprint)
+            ? { certFingerprint: body.certFingerprint ?? existing.certFingerprint }
+            : {}),
           secret: encodeCreds(merged, encryptionKey),
         };
       }
@@ -588,6 +659,109 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     },
   );
 
+  /**
+   * Tests a deploy target's connection WITHOUT deploying: connect, secure, sign in, reach the remote
+   * directory, write and remove one small file — reported step by step.
+   *
+   * ★ Why this is a route of its own rather than a dry-run of the deploy. A deploy first BUILDS the
+   * site, which on a large project is minutes of work before the first packet is sent to the target;
+   * an operator checking a password should not pay for that, and a build failure would mask the
+   * connection answer they came for. It also has to be callable for a target that has not been SAVED
+   * yet — see TestDeployTargetBody.
+   *
+   * Never 502s for a connection problem: a refused login is a successful test with a negative result.
+   * Reserved for writers (it dials an arbitrary host with stored credentials) and rate-limited like
+   * the SMTP test, which is the same shape of privilege.
+   */
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/deploy-targets/test',
+    { config: rl(10) }, // a real outbound connection per call
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'deploy');
+      if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = TestDeployTargetBody.parse(req.body ?? {});
+
+      // An `id` supplies the stored values (including the credentials, which are never re-typed);
+      // anything sent alongside overrides it, so the form can test what is ON SCREEN rather than what
+      // was last saved — otherwise "Test" would keep passing against the old host after an edit.
+      let stored: DeployTarget | undefined;
+      if (body.id) stored = (await contentRepo.get(ctx, 'deploy_target', body.id)) as DeployTarget;
+      const creds = stored?.secret ? decodeCreds(stored.secret, encryptionKey) : {};
+
+      const protocol = body.protocol ?? stored?.protocol;
+
+      // ── git ──
+      // A different shape entirely (a repository + a branch, not a host + a directory), so it gets its
+      // own tester rather than being bent into DeployConfig. Same result contract, so the UI is one panel.
+      if (protocol === 'git') {
+        const repoUrl = body.repoUrl ?? stored?.repoUrl;
+        const branch = body.branch ?? stored?.branch;
+        if (!repoUrl || !branch) return reply.code(400).send({ error: 'a repository URL and a branch are required to test a git target' });
+        let repoHost: string;
+        try {
+          repoHost = gitRepoHost(repoUrl);
+        } catch {
+          return reply.code(400).send({ error: 'repoUrl must be a valid http(s) or ssh URL' });
+        }
+        assertDeployHostAllowed(repoHost);
+        // The credential has to MATCH the remote's transport: an https remote takes a token, an ssh
+        // remote a key. Sending the wrong one produces a confusing auth failure at the remote instead
+        // of an answerable message here.
+        const ssh = isSshRepoUrl(repoUrl);
+        const token = body.token ?? creds.token;
+        const privateKey = body.privateKey ?? creds.privateKey;
+        if (ssh && !privateKey) return reply.code(400).send({ error: 'an SSH git remote needs a private key' });
+        if (!ssh && !token) return reply.code(400).send({ error: 'an HTTPS git remote needs an access token' });
+        const result = await testGitTarget({
+          repoUrl,
+          branch,
+          ...(ssh ? { privateKey: privateKey! } : { token: token! }),
+          ...(ssh && (body.passphrase ?? creds.passphrase) ? { passphrase: (body.passphrase ?? creds.passphrase)! } : {}),
+          ...(ssh && (body.hostFingerprint ?? stored?.hostFingerprint) ? { hostKey: (body.hostFingerprint ?? stored?.hostFingerprint)! } : {}),
+        });
+        app.log.info({ host: repoHost, protocol: 'git', ok: result.ok, kind: result.failure?.kind }, 'deploy target connection test');
+        return reply.send(result);
+      }
+
+      if (protocol !== 'ftp' && protocol !== 'ftps' && protocol !== 'sftp') {
+        return reply.code(400).send({
+          error:
+            protocol === 'local'
+              ? 'a Local Hosting target serves from this platform — there is no connection to test'
+              : 'this target type has no connection to test',
+        });
+      }
+      const host = body.host ?? stored?.host;
+      const user = body.user ?? stored?.user;
+      if (!host || !user) return reply.code(400).send({ error: 'host and user are required to test a connection' });
+      assertDeployHostAllowed(host);
+
+      // Assembled and re-validated through the SAME schema the deploy path uses, so a configuration
+      // the test accepts is one the deploy will accept too — a test that validated more loosely than
+      // the thing it predicts would be worse than no test.
+      const cfg = DeployConfigSchema.parse({
+        protocol,
+        host,
+        user,
+        remoteDir: body.remoteDir ?? stored?.remoteDir ?? '/',
+        ...(body.port ?? stored?.port ? { port: body.port ?? stored?.port } : {}),
+        ...(body.password ?? creds.password ? { password: body.password ?? creds.password } : {}),
+        ...(body.privateKey ?? creds.privateKey ? { privateKey: body.privateKey ?? creds.privateKey } : {}),
+        ...(body.passphrase ?? creds.passphrase ? { passphrase: body.passphrase ?? creds.passphrase } : {}),
+        ...(body.hostFingerprint ?? stored?.hostFingerprint ? { hostFingerprint: body.hostFingerprint ?? stored?.hostFingerprint } : {}),
+        ...(protocol === 'ftps' && (body.ftpsMode ?? stored?.ftpsMode) ? { ftpsMode: body.ftpsMode ?? stored?.ftpsMode } : {}),
+        ...(protocol === 'ftps' && (body.certFingerprint ?? stored?.certFingerprint)
+          ? { certFingerprint: body.certFingerprint ?? stored?.certFingerprint }
+          : {}),
+        ...(body.useRsync ?? stored?.useRsync ? { useRsync: true } : {}),
+      });
+
+      const result = await testDeployTarget(cfg);
+      app.log.info({ host, protocol, ok: result.ok, kind: result.failure?.kind }, 'deploy target connection test');
+      return reply.send(result);
+    },
+  );
+
   // Deploy the published site using a saved target (decrypt password at use).
   app.post<{ Params: { projectId: string; id: string } }>(
     '/projects/:projectId/deploy-targets/:id/deploy',
@@ -635,11 +809,13 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           });
           return reply.send({ deployed: result });
         } catch (err) {
+          // Same reasoning as the streaming route: report the cause, not a placeholder for it.
+          const failure = describeDeployError(err, deployEndpointOf(target));
           app.log.error(
-            { host: deployHostOf(target), protocol: target.protocol, errMsg: err instanceof Error ? err.message : String(err) },
+            { ...deployEndpointOf(target), kind: failure.kind, errMsg: err instanceof Error ? err.message : String(err) },
             'saved-target deploy failed',
           );
-          return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
+          return reply.code(502).send({ error: failure.message, failure });
         } finally {
           await rm(dir, { recursive: true, force: true });
         }
@@ -693,7 +869,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           await streamDeploy(
             reply,
             run,
-            { host: deployHostOf(target), protocol: target.protocol },
+            deployEndpointOf(target),
             app.log,
             // Only on success — a failed upload must not mark the target current.
             () => recordDeployed(contentRepo, ctx, target),

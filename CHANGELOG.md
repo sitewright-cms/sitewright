@@ -9,6 +9,61 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.51.0] — 2026-09-09
+
+### Added
+
+- **A "Test connection" button on FTP, FTPS, SFTP and git deploy targets** (`POST
+  /projects/:projectId/deploy-targets/test`). It walks the same code path a deploy uses — connect,
+  secure, sign in, reach the remote directory, write and remove one small file — and reports each
+  step separately, because *which* step fails is most of the diagnosis. It works on a target that has
+  not been saved yet (configuration goes wrong most often on the first attempt) and on one being
+  edited, where an `id` fills in the credential fields the form deliberately leaves blank. An SFTP
+  target with rsync enabled additionally runs a real, no-op rsync, since rsync fails for its own
+  reasons and calling it proven from an SFTP handshake would be a lie.
+  - **A git target's test answers the question git targets actually fail on: may this credential
+    PUSH?** A token scoped to read, or a deploy key added without "Allow write access", clones
+    perfectly and then fails at the last step of a deploy — after a full site build. The probe asks
+    for `git-receive-pack` rather than `git-upload-pack` (HTTPS) or runs a real `git push --dry-run`
+    (SSH), so push permission is confirmed without writing anything. It also reports whether the
+    target branch exists yet: a missing `gh-pages` is normal on a first deploy, so it is reported as
+    information, never as a failure. An un-pinned SSH remote reports the host key line it learned, so
+    it can be pinned.
+- **Implicit FTPS (TLS from the first byte, usually port 990)** is now selectable. It was previously
+  unreachable: such a target spoke plaintext FTP at a socket expecting a TLS ClientHello and hung
+  until the timeout.
+- **Plain `ftp` targets now upgrade opportunistically** when the server advertises `AUTH TLS`,
+  instead of always sending credentials in the clear. Best-effort by definition — the certificate is
+  not verified, and every failure path falls back to plaintext so a working target cannot break.
+- **FTPS certificate pinning.** Verification stays strict, but a certificate that fails it is now
+  reported (issuer, subject, validity, SAN list, SHA-256) instead of silently refused, and can be
+  pinned for that one target. This makes FTPS usable on shared hosting, where the control connection
+  presents the *hoster's* certificate rather than one for the customer's domain. A pin is checked
+  before the password is sent, and fails closed if the certificate later changes — reporting the new
+  one for review from either the test panel or a failed deploy.
+- **Deploys now report whether the transfer was actually encrypted** (`NOT encrypted` / `TLS (AUTH
+  TLS)` / `TLS (implicit)` / `TLS (unverified)` / `SSH`) in the progress and result lines. The
+  protocol name was never the answer to that question.
+
+### Fixed
+
+- **A failed deploy says what went wrong.** Every failure previously reached the UI as one constant
+  sentence — "deploy failed: could not connect or transfer to the target" — with the real cause going
+  only to the server log, where an operator of a hosted instance cannot read it. A wrong password, a
+  banned IP, a full disk, an unreachable host and a rejected certificate were indistinguishable. The
+  cause is now named, with what to do about it, the underlying error verbatim, and (for FTP/FTPS) the
+  tail of the control-channel conversation with passwords redacted — which is where the reason
+  actually lives, since an FTP server refuses with a reply LINE (`421 Too many connections from this
+  IP`, `530 Login incorrect`, `552 Quota exceeded`) that no other layer preserved.
+
+### Security
+
+- **Re-pinned `hono` (→ ≥4.13.5) and `js-yaml` (→ ≥4.3.2).** Both already had advisory overrides; both
+  advisories then had their affected ranges WIDENED, so pins that were correct when written began
+  failing the audit gate with no change on our side — the same pattern already documented for
+  `fast-uri` and `nanoid`. `hono` is in the runtime tree (via `@modelcontextprotocol/sdk` →
+  `@hono/node-server`), so this one ships in the image; `js-yaml` is dev-only, via eslint.
+
 ## [0.50.1] — 2026-09-07
 
 ### Fixed

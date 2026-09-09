@@ -25,6 +25,31 @@ export type EncryptedSecret = z.infer<typeof EncryptedSecretSchema>;
 export const DeployProtocolSchema = z.enum(['local', 'ftp', 'ftps', 'sftp', 'git']);
 export type DeployProtocol = z.infer<typeof DeployProtocolSchema>;
 
+/**
+ * How TLS is negotiated on an `ftps` target.
+ *
+ * - `explicit` (default, RFC 4217): connect in the clear on the normal FTP port, then send `AUTH TLS`
+ *   to upgrade the control connection before logging in. This is what "FTPS" means almost everywhere.
+ * - `implicit`: the connection is TLS from the very first byte, conventionally on port 990. Legacy,
+ *   but still what a number of hosting panels hand out — and previously unreachable here, so such a
+ *   target could not be configured at all: it would speak plaintext FTP at a socket expecting a TLS
+ *   ClientHello and hang until the timeout.
+ *
+ * A plain `ftp` target has no mode: it starts in the clear and OPPORTUNISTICALLY upgrades when the
+ * server advertises `AUTH TLS` in its FEAT list (see the FTP transport), falling back to plaintext if
+ * the upgrade fails.
+ */
+export const FtpsModeSchema = z.enum(['explicit', 'implicit']);
+export type FtpsMode = z.infer<typeof FtpsModeSchema>;
+
+/** A SHA-256 certificate fingerprint as 64 lowercase hex chars, colons/uppercase accepted on input. */
+export const CertFingerprintSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .transform((v) => v.trim().toLowerCase().replace(/:/g, ''))
+  .refine((v) => /^[0-9a-f]{64}$/.test(v), 'certFingerprint must be a SHA-256 fingerprint (64 hex characters)');
+
 /** Soft "unlisted preview" gate for a locally-hosted site: a url-safe token required as `?token=`. */
 const PreviewTokenSchema = z
   .string()
@@ -134,6 +159,25 @@ export const DeployTargetSchema = z
       // No control chars / newlines — a multi-line value would silently pre-trust extra SSH hosts.
       .refine((v) => !hasControlChars(v), 'hostFingerprint must not contain control characters')
       .optional(),
+    /** How TLS is negotiated on an `ftps` target — see {@link FtpsModeSchema}. Absent = `explicit`. */
+    ftpsMode: FtpsModeSchema.optional(),
+    /**
+     * A PINNED FTPS server certificate (SHA-256 of the leaf, hex). Not secret.
+     *
+     * ★ Why this exists. FTPS verification is strict — publicly-trusted chain AND a matching hostname
+     * — and shared hosting routinely fails both: the control connection presents the HOSTER's
+     * certificate (`*.hoster.tld`) while the customer connects to `ftp.theirdomain.tld`. That is not a
+     * misconfiguration anyone in the chain can fix, and it left FTPS simply unusable there, with a
+     * dropped connection and no stated reason as the only feedback.
+     *
+     * So: verification stays strict, and a certificate that fails it is REPORTED (issuer, subject,
+     * validity, fingerprint) rather than silently refused. Pinning this fingerprint accepts that ONE
+     * certificate for this ONE target. If the server later presents a different one — rotation, or an
+     * interception — the pin fails closed and the new certificate is reported the same way, to be
+     * confirmed again. This is deliberately NOT `rejectUnauthorized: false`, which would accept
+     * anything at all forever.
+     */
+    certFingerprint: CertFingerprintSchema.optional(),
     /** Encrypted credentials: FTP/SFTP `{password?, privateKey?, passphrase?}`, or git `{token}`. */
     secret: EncryptedSecretSchema.optional(),
     // ── Local Hosting serve options (only meaningful on a `local` target) ──
@@ -182,6 +226,18 @@ export const DeployTargetSchema = z
   .refine((t) => t.protocol !== 'local' || (!t.host && !t.user && !t.secret && !t.repoUrl && !t.branch), {
     message: 'a local hosting target has no host, credentials or repository',
     path: ['protocol'],
+  })
+  // TLS negotiation and a pinned certificate are FTPS concepts — a plain `ftp` target upgrades
+  // opportunistically (unverified by definition), and SFTP/git pin an SSH host key via
+  // `hostFingerprint` instead. Refusing them here keeps a saved target from carrying a setting that
+  // silently does nothing.
+  .refine((t) => t.ftpsMode === undefined || t.protocol === 'ftps', {
+    message: 'a TLS mode is only meaningful for an FTPS target',
+    path: ['ftpsMode'],
+  })
+  .refine((t) => t.certFingerprint === undefined || t.protocol === 'ftps', {
+    message: 'a pinned certificate is only meaningful for an FTPS target',
+    path: ['certFingerprint'],
   })
   // rsync rides SSH, so it's only meaningful for an SFTP target.
   .refine((t) => !t.useRsync || t.protocol === 'sftp', {

@@ -46,7 +46,10 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await wizard.getByLabel(/^Password/).fill('pw');
   await wizard.getByRole('button', { name: 'Save target' }).click();
   await wizard.getByRole('button', { name: 'Deploy to My Webspace' }).click();
-  await expect(page.getByText(/deploy failed/i)).toBeVisible({ timeout: 25_000 });
+  // ★ Assert the DESCRIBED cause, not a generic phrase. This used to look for "deploy failed", which
+  // was the one constant sentence every failure produced — a wrong password, a banned IP and an
+  // unreachable host were indistinguishable, and the assertion could not tell them apart either.
+  await expect(page.getByText(/Nothing accepted a connection on 127\.0\.0\.1:1/i)).toBeVisible({ timeout: 25_000 });
 
   // The published static page renders the code-authored content. Local hosting serves on a subdomain
   // the DinD host has no DNS for, so read it with an explicit Host header.

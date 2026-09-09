@@ -4,10 +4,12 @@ import {
   type Project,
   type DeployTargetView,
   type DeployConfig,
+  type DeployTestResult,
   type GitTargetConfig,
   type LocalTargetConfig,
   type UpdateDeployTargetConfig,
 } from '../../api';
+import { ConnectionTestPanel } from './ConnectionTestPanel';
 import { Field, TextArea } from '../settings/ui';
 import { toggleInput, primaryButton, ghostButton, fieldLabel } from '../../theme';
 import { localSiteUrl } from '../../lib/local-site-url';
@@ -83,6 +85,14 @@ export function TargetConfigForm({
 
   // FTP family — a TLS toggle selects ftp vs ftps (locked on edit; protocol is immutable).
   const [tls, setTls] = useState(protocol === 'ftps');
+  // How FTPS reaches TLS. `explicit` (AUTH TLS, port 21) is what almost every host means by FTPS;
+  // `implicit` (TLS from the first byte, port 990) is legacy but still handed out by some panels,
+  // and was previously impossible to configure — such a target simply hung.
+  const [ftpsMode, setFtpsMode] = useState<'explicit' | 'implicit'>(editing?.ftpsMode ?? 'explicit');
+  // A pinned FTPS certificate: accepted from the test panel, applied when the target is saved.
+  const [certFingerprint, setCertFingerprint] = useState<string | undefined>(editing?.certFingerprint);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<DeployTestResult | null>(null);
   // Remote transport (ftp/ftps/sftp) shared fields.
   const [host, setHost] = useState(editing?.host ?? '');
   const [port, setPort] = useState(editing?.port ? String(editing.port) : '');
@@ -118,6 +128,69 @@ export function TargetConfigForm({
     const t = v.trim();
     if (/^https?:\/\//i.test(t)) setGitAuth('token');
     else if (/^ssh:\/\//i.test(t) || /^[^@\s]+@[^:\s]+:/.test(t)) setGitAuth('key');
+  }
+
+  /** The protocol this form will actually save/test — the TLS toggle picks it within the FTP family. */
+  /** The protocol the FTP/SFTP branch of this form saves and tests. Not read on the git/local paths. */
+  const effectiveProtocol: 'ftp' | 'ftps' | 'sftp' = isFtpFamily ? (isEdit ? (protocol as 'ftp' | 'ftps') : tls ? 'ftps' : 'ftp') : 'sftp';
+  const isFtps = effectiveProtocol === 'ftps';
+  const canTest = isFtpFamily || protocol === 'sftp' || protocol === 'git';
+
+  /**
+   * Tests what is ON SCREEN, not what was last saved.
+   *
+   * ★ Deliberately callable before the target exists. Configuration goes wrong most often on the FIRST
+   * attempt, and a test that only worked on saved targets would miss exactly that moment. On an edit,
+   * `id` is sent too so the credential fields — which are blank because a stored secret is never shown
+   * back — fill themselves in from the stored secret instead of failing as "no password".
+   */
+  async function runTest() {
+    setTesting(true);
+    setTestResult(null);
+    setError(null);
+    try {
+      const portNum = port.trim() ? Number(port) : undefined;
+      if (portNum !== undefined && (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)) {
+        throw new Error('Port must be a whole number between 1 and 65535.');
+      }
+      // A git target is a repository + a branch, not a host + a directory — a different payload
+      // entirely, so it is assembled separately rather than threaded through the transport fields.
+      if (protocol === 'git') {
+        setTestResult(
+          await api.testDeployTarget(project.id, {
+            ...(editing ? { id: editing.id } : {}),
+            protocol: 'git',
+            ...(repoUrl.trim() ? { repoUrl: repoUrl.trim() } : {}),
+            ...(branch.trim() ? { branch: branch.trim() } : {}),
+            ...(gitAuth === 'token' && gitToken.trim() ? { token: gitToken.trim() } : {}),
+            ...(gitAuth === 'key' && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
+            ...(gitAuth === 'key' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
+          }),
+        );
+        return;
+      }
+      const useKey = protocol === 'sftp' && sftpAuth === 'key';
+      setTestResult(
+        await api.testDeployTarget(project.id, {
+          ...(editing ? { id: editing.id } : {}),
+          protocol: effectiveProtocol,
+          ...(host.trim() ? { host: host.trim() } : {}),
+          ...(portNum !== undefined ? { port: portNum } : {}),
+          ...(user.trim() ? { user: user.trim() } : {}),
+          ...(!useKey && password ? { password } : {}),
+          ...(useKey && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
+          ...(remoteDir ? { remoteDir } : {}),
+          ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
+          ...(isFtps ? { ftpsMode } : {}),
+          ...(isFtps && certFingerprint ? { certFingerprint } : {}),
+          ...(protocol === 'sftp' && useRsync ? { useRsync: true } : {}),
+        }),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The connection test could not be run.');
+    } finally {
+      setTesting(false);
+    }
   }
 
   async function submit() {
@@ -204,6 +277,9 @@ export function TargetConfigForm({
         ...(portNum !== undefined ? { port: portNum } : {}),
         ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
         ...(protocol === 'sftp' ? { useRsync, rsyncDelete, rsyncRootDeleteAck } : {}),
+        ...(isFtps ? { ftpsMode } : {}),
+        // A blank field means "keep" everywhere else here, so removing a pin needs its own flag.
+        ...(isFtps ? (certFingerprint ? { certFingerprint } : { clearCertFingerprint: true }) : {}),
         ...(useKey && privateKey.trim() ? { privateKey: privateKey.trim(), ...(passphrase ? { passphrase } : {}) } : {}),
         ...(!useKey && password ? { password } : {}),
       };
@@ -213,7 +289,6 @@ export function TargetConfigForm({
     if (useKey ? !privateKey.trim() : !password) {
       throw new Error(useKey ? 'Paste your SSH private key, or switch to password auth.' : 'A password is required.');
     }
-    const effectiveProtocol: DeployConfig['protocol'] = isFtpFamily ? (tls ? 'ftps' : 'ftp') : 'sftp';
     const cfg: DeployConfig & { name: string } = {
       name: name.trim(),
       protocol: effectiveProtocol,
@@ -224,6 +299,8 @@ export function TargetConfigForm({
       ...(portNum !== undefined ? { port: portNum } : {}),
       ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
       ...(protocol === 'sftp' && useRsync ? { useRsync: true, rsyncDelete, rsyncRootDeleteAck } : {}),
+      ...(isFtps ? { ftpsMode } : {}),
+      ...(isFtps && certFingerprint ? { certFingerprint } : {}),
       ...(minify ? { minifyHtml: true } : {}),
     };
     await api.createDeployTarget(project.id, cfg);
@@ -271,6 +348,36 @@ export function TargetConfigForm({
             <Field label="User" value={user} onChange={setUser} required />
             <Field label={`Password${isEdit ? ' (keep blank to keep)' : ''}`} value={password} onChange={setPassword} type="password" />
           </div>
+          {(isEdit ? protocol === 'ftps' : tls) && (
+            <>
+              <label className="block">
+                <span className={fieldLabel}>TLS mode</span>
+                <select
+                  aria-label="FTPS TLS mode"
+                  className="sw-brand-focus w-full rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-3 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none"
+                  value={ftpsMode}
+                  onChange={(e) => setFtpsMode(e.target.value as 'explicit' | 'implicit')}
+                >
+                  <option value="explicit">Explicit — AUTH TLS (standard FTPS, usually port 21)</option>
+                  <option value="implicit">Implicit — TLS from the first byte (legacy, usually port 990)</option>
+                </select>
+                <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
+                  Pick explicit unless your host documents port 990. The mode has to match the port — mismatching them
+                  looks exactly like a dropped connection.
+                </span>
+              </label>
+              {certFingerprint && (
+                <div className="flex items-start gap-2 rounded-lg bg-slate-50 dark:bg-white/5 p-2 text-[11px] text-slate-600 dark:text-slate-300">
+                  <span className="min-w-0 break-all">
+                    Pinned certificate: <span className="font-mono">{certFingerprint}</span>
+                  </span>
+                  <button type="button" className={`${ghostButton} shrink-0 px-2 py-0.5 text-xs`} onClick={() => setCertFingerprint(undefined)}>
+                    Remove pin
+                  </button>
+                </div>
+              )}
+            </>
+          )}
           <Field label="Remote directory" value={remoteDir} onChange={setRemoteDir} placeholder="/" />
         </>
       )}
@@ -368,10 +475,25 @@ export function TargetConfigForm({
       {keepHint && <p className="text-[11px] text-slate-500 dark:text-slate-400">Credential fields are blank — {keepHint} (the stored secret is never shown).</p>}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
+      {testResult && (
+        <ConnectionTestPanel
+          result={testResult}
+          {...(isFtps ? { onPin: setCertFingerprint } : {})}
+          {...(certFingerprint ? { pinnedFingerprint: certFingerprint } : {})}
+        />
+      )}
+
       <div className="flex items-center gap-2 pt-1">
         <button type="button" className={primaryButton} disabled={busy} onClick={submit}>
           {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Save target'}
         </button>
+        {/* Only the remote transports have a connection to test — Local Hosting serves from here, and
+            a git push is not a connection in the same sense. */}
+        {canTest && (
+          <button type="button" className={ghostButton} disabled={busy || testing} onClick={runTest}>
+            {testing ? 'Testing…' : 'Test connection'}
+          </button>
+        )}
         <button type="button" className={ghostButton} disabled={busy} onClick={onCancel}>
           Cancel
         </button>

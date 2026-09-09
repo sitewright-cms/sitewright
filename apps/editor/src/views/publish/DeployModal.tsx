@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ExternalLink } from 'lucide-react';
-import { api, type DeployTargetView, type Project } from '../../api';
+import { api, type DeployFailure, type DeploySecurity, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
+import { CertificateCard } from './ConnectionTestPanel';
 import { Tooltip } from '../ui/Tooltip';
 
 type Strategy = 'files' | 'rsync';
 
 type Status =
-  | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; dirs?: number; dirTotal?: number }
-  | { kind: 'done'; protocol: string; files?: number; uploaded?: number; skipped?: number; removed?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; branch?: string; commit?: string }
-  | { kind: 'error'; message: string };
+  | { kind: 'running'; phase: string; index: number; total: number; file?: string; skipped?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; dirs?: number; dirTotal?: number; security?: DeploySecurity }
+  | { kind: 'done'; protocol: string; files?: number; uploaded?: number; skipped?: number; removed?: number; strategy?: Strategy; bytes?: number; elapsedMs?: number; branch?: string; commit?: string; security?: DeploySecurity }
+  | { kind: 'error'; message: string; failure?: DeployFailure };
 
 /** Human label for a progress phase — FTP/SFTP per-file, or git's coarse phases. */
 function phaseLabel(s: Extract<Status, { kind: 'running' }>, target: DeployTargetView): string {
@@ -59,11 +60,24 @@ function formatRate(bytes: number, ms: number): string | null {
 }
 
 /** The transfer mode line: protocol + (for FTP/SFTP) the bulk strategy. */
-function transferMode(protocol: string, strategy?: Strategy): string {
+const SECURITY_LABEL: Record<DeploySecurity, string> = {
+  none: 'NOT encrypted',
+  opportunistic: 'TLS (unverified)',
+  explicit: 'TLS (AUTH TLS)',
+  implicit: 'TLS (implicit)',
+  ssh: 'SSH',
+  https: 'HTTPS',
+};
+
+function transferMode(protocol: string, strategy?: Strategy, security?: DeploySecurity): string {
   const proto = protocol.toUpperCase();
-  if (!strategy) return proto;
-  const label = strategy === 'rsync' ? 'rsync' : 'per-file';
-  return `${proto} · ${label}`;
+  const parts = [proto];
+  if (strategy) parts.push(strategy === 'rsync' ? 'rsync' : 'per-file');
+  // Whether the transfer was actually encrypted was previously invisible anywhere in the product —
+  // the protocol NAME is not the answer, since a plain `ftp` target may upgrade opportunistically and
+  // an `ftps` one may be the only thing that guarantees it.
+  if (security) parts.push(SECURITY_LABEL[security]);
+  return parts.join(' · ');
 }
 
 /** The success headline for an FTP/SFTP deploy — uploaded vs total + skipped/removed counts. */
@@ -77,8 +91,15 @@ function deployedSummary(s: Extract<Status, { kind: 'done' }>): string {
 }
 
 /** A one-line transfer diagnostics readout: mode · size · time · rate (only what's known). */
-function diagnosticsLine(protocol: string, strategy: Strategy | undefined, bytes: number, elapsedMs: number | undefined, withDuration: boolean): string {
-  const parts = [transferMode(protocol, strategy)];
+function diagnosticsLine(
+  protocol: string,
+  strategy: Strategy | undefined,
+  bytes: number,
+  elapsedMs: number | undefined,
+  withDuration: boolean,
+  security?: DeploySecurity,
+): string {
+  const parts = [transferMode(protocol, strategy, security)];
   if (bytes > 0) parts.push(formatBytes(bytes) + (withDuration && elapsedMs ? ` in ${formatDuration(elapsedMs)}` : ''));
   const rate = elapsedMs ? formatRate(bytes, elapsedMs) : null;
   if (rate) parts.push(rate);
@@ -94,6 +115,10 @@ function diagnosticsLine(protocol: string, strategy: Strategy | undefined, bytes
 export function DeployModal({ project, target, onClose }: { project: Project; target: DeployTargetView; onClose: () => void }) {
   const [status, setStatus] = useState<Status>({ kind: 'running', phase: target.protocol === 'git' ? 'preparing' : 'connecting', index: 0, total: 0 });
   const [siteUrl, setSiteUrl] = useState<string | undefined>(undefined);
+  // A rotated FTPS certificate fails the pin CLOSED, which is the point — but the fix then has to be
+  // reachable from where the operator actually is, which on a scheduled-looking failure is this modal
+  // and not the target's edit form.
+  const [pinState, setPinState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const abortRef = useRef<AbortController | null>(null);
   const isGit = target.protocol === 'git';
 
@@ -122,11 +147,11 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
       {
         onProgress: (e) =>
           alive &&
-          setStatus({ kind: 'running', phase: e.phase, index: e.index ?? 0, total: e.total ?? 0, file: e.file, skipped: e.skipped, strategy: e.strategy, bytes: e.bytes, elapsedMs: e.elapsedMs, dirs: e.dirs, dirTotal: e.dirTotal }),
+          setStatus({ kind: 'running', phase: e.phase, index: e.index ?? 0, total: e.total ?? 0, file: e.file, skipped: e.skipped, strategy: e.strategy, bytes: e.bytes, elapsedMs: e.elapsedMs, dirs: e.dirs, dirTotal: e.dirTotal, security: e.security }),
         onDone: (d) =>
           alive &&
-          setStatus({ kind: 'done', protocol: d.protocol, files: d.files, uploaded: d.uploaded, skipped: d.skipped, removed: d.removed, strategy: d.strategy, bytes: d.bytes, elapsedMs: d.elapsedMs, branch: d.branch, commit: d.commit }),
-        onError: (message) => alive && setStatus({ kind: 'error', message }),
+          setStatus({ kind: 'done', protocol: d.protocol, files: d.files, uploaded: d.uploaded, skipped: d.skipped, removed: d.removed, strategy: d.strategy, bytes: d.bytes, elapsedMs: d.elapsedMs, branch: d.branch, commit: d.commit, security: d.security }),
+        onError: (message, failure) => alive && setStatus({ kind: 'error', message, failure }),
       },
       ac.signal,
     );
@@ -187,7 +212,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
   <p className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">{status.file}</p>
 </Tooltip>}
             {showRunningDiag && (
-              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false)}</p>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{diagnosticsLine(target.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, false, status.security)}</p>
             )}
           </div>
         )}
@@ -222,7 +247,52 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
         )}
 
         {status.kind === 'error' && (
-          <p className="rounded-lg border border-rose-300 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">{status.message}</p>
+          <div className="rounded-lg border border-rose-300 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 p-3 text-sm text-rose-700 dark:text-rose-300">
+            <p className="font-medium">{status.message}</p>
+            {/* The hint and the server's own words. This used to be one constant sentence for every
+                cause, which is why nobody could tell a wrong password from a banned IP. */}
+            {status.failure?.hint && <p className="mt-2 text-xs text-rose-800/90 dark:text-rose-200/90">{status.failure.hint}</p>}
+            {status.failure?.detail && (
+              <p className="mt-2 break-all rounded bg-white/70 dark:bg-slate-900/50 px-2 py-1 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                {status.failure.detail}
+              </p>
+            )}
+            {status.failure?.certificate && (
+              <>
+                <CertificateCard
+                  cert={status.failure.certificate}
+                  pinned={pinState === 'saved'}
+                  onPin={(fingerprint) => {
+                    setPinState('saving');
+                    void api
+                      .updateDeployTarget(project.id, target.id, { certFingerprint: fingerprint })
+                      .then(() => setPinState('saved'))
+                      .catch(() => setPinState('error'));
+                  }}
+                />
+                {pinState === 'saved' && (
+                  <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">Certificate pinned — run the deploy again.</p>
+                )}
+                {pinState === 'error' && <p className="mt-1 text-xs text-rose-700 dark:text-rose-300">The certificate could not be saved.</p>}
+              </>
+            )}
+            {status.failure?.transcript && status.failure.transcript.length > 0 && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-rose-800/90 dark:text-rose-200/90">
+                  What the server said ({status.failure.transcript.length} lines)
+                </summary>
+                {/* The last control-channel replies before the drop. On the failures this feature
+                    exists for — a 421 connection cap, a policy refusal — the reason is HERE and
+                    nowhere else. */}
+                <pre className="mt-1 max-h-56 overflow-auto rounded bg-slate-900 p-2 font-mono text-[11px] leading-relaxed text-slate-200">
+                  {status.failure.transcript.join('\n')}
+                </pre>
+              </details>
+            )}
+            <p className="mt-2 text-xs text-rose-800/80 dark:text-rose-200/80">
+              Use <strong>Test connection</strong> on this target for a step-by-step check.
+            </p>
+          </div>
         )}
       </div>
     </Modal>

@@ -66,6 +66,8 @@ live page for you and creates the scaffold) — NEVER say you can't fetch a URL 
 HTML. Then run the pre-defined \`clone_site\` PROMPT (per-page: author → visual_audit + clone_audit →
 green → publish); if a task is "clone/nativize this site/URL", follow that workflow end-to-end.
 
+SAVE ALL CODE PRETTY-PRINTED (page \`source\`, chrome slots, criticalCss, templates) — never minified.
+
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
   menu, alert…) plus Tailwind utilities for layout. DaisyUI is OPTIONAL — plain Tailwind works too.

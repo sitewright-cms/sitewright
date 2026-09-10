@@ -19,8 +19,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   depends on them), and most emphatically in the `import` guide, where the scaffold being replaced is
   foreign HTML captured from a live page and very often arrives minified. Nothing is lost at delivery:
   compaction happens at build time via a target's `minifyHtml` option.
-  - Deliberately NOT added to the core MCP instructions, which carry a hard <21,000-character budget
-    (asserted in `agent.test.ts`) and had ~26 characters of headroom.
+  - The rule itself is one line in the ALWAYS-LOADED core instructions, because an agent that never
+    calls `get_guide` still writes code — and a minified blob fails nothing at write time, so it stays
+    invisible until someone tries to change one line. The core's size budget moved 21,000 → 21,200 to
+    fit it, logged with its reason in `agent.test.ts` alongside the previous bumps.
 
 ### Fixed
 

@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.51.1] — 2026-09-10
+
 ### Changed
 
 - **The agent guides now require code to be saved pretty-printed.** A page `source`, a template or

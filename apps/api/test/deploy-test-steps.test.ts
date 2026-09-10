@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { readdirSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { TLSSocket } from 'node:tls';
 import type { Client as FtpClient } from 'basic-ftp';
@@ -283,6 +284,30 @@ describe('connection test — SFTP', () => {
     });
     expect(ran).toBe(true);
     expect(stepMap(result).rsync).toBe('ok');
+  });
+
+  // ★ A TEST MUST NOT PRUNE. The user's `rsyncDelete` is deliberately NOT honoured here — the deploy
+  // schema's root+prune guard would otherwise refuse to test the default shape of a new rsync target,
+  // with an error about deleting files that a test never does.
+  it('runs rsync with pruning forced OFF and an empty source, whatever the target says', async () => {
+    const { make } = fakeSftp();
+    const pruning = { ...sftpCfg, remoteDir: '/', useRsync: true, rsyncDelete: true } as unknown as DeployConfig;
+    let seen: { cfg: DeployConfig; entries: string[]; opts: { dryRun?: boolean } } | undefined;
+    const result = await testDeployTarget(pruning, {
+      makeSftpClient: make,
+      // Read the source dir HERE: the tester removes it in `finally`, so it no longer exists by the
+      // time this call returns — which is itself the cleanup guarantee, just an awkward vantage point.
+      runRsync: async (dir: string, cfg: DeployConfig, opts: { dryRun?: boolean }) => {
+        seen = { cfg, entries: readdirSync(dir), opts };
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(seen?.cfg.rsyncDelete).toBe(false);
+    // The third guarantee, and the one that holds even if the other two were wrong.
+    expect(seen?.opts.dryRun).toBe(true);
+    // The source is a fresh temp dir with nothing in it — there is no file for rsync to send.
+    expect(seen?.entries).toEqual([]);
+    expect(result.steps.find((s) => s.key === 'rsync')?.detail).toMatch(/nothing was transferred or removed/);
   });
 
   it('reports an rsync failure without blaming the SFTP steps that passed', async () => {

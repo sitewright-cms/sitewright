@@ -53,7 +53,14 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // sw-flag reference entry) said outright that "a template cannot concatenate strings", and nothing
     // anywhere hinted a list could be filtered by value — so agents hard-coded hrefs and rendered
     // whatever happened to be first. Both are one line; the how-tos stayed in the templates guide.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_000);
+    // 21_000 -> 21_200 for ONE line: "SAVE ALL CODE PRETTY-PRINTED (…) — never minified." Not a how-to
+    // and not a capability boundary — a rule about how OUTPUT IS WRITTEN, which is why it cannot live
+    // only in a guide. An agent that never calls get_guide still writes a page source, a criticalCss and
+    // a footer slot, and a minified blob in any of them is stored verbatim as the file the OWNER opens:
+    // unreadable, undiffable in a revision, and re-derived from scratch on the next edit. It fails
+    // nothing at write time, so it is invisible until someone tries to change one line. The rationale
+    // and the per-surface detail stayed in the design / templates / import guides.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_200);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {
@@ -262,5 +269,44 @@ describe('get_capabilities index', () => {
   });
   it('the bootstrap advertises get_capabilities as the anti-"assume-missing" index', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_capabilities');
+  });
+});
+
+describe('AGENT_GUIDES — code is saved pretty-printed', () => {
+  /**
+   * ★ Pinned because it is a rule about HOW output is written, which is exactly the kind of guidance
+   * that evaporates in an edit: nothing breaks when it goes missing, and the cost shows up much later
+   * as a page, a criticalCss or a footer slot that the owner opens and cannot read.
+   */
+  it.each([
+    ['import', /pretty-print/i],
+    ['design', /pretty-print/i],
+    ['templates', /pretty-print/i],
+  ])('the %s guide tells the agent to save code pretty-printed', (topic, pattern) => {
+    expect(AGENT_GUIDES[topic as keyof typeof AGENT_GUIDES].body).toMatch(pattern);
+  });
+
+  // The one-liner is in the ALWAYS-LOADED core, because an agent that never calls get_guide still
+  // writes code. The reasoning and the per-surface detail stay in the guides.
+  it('states the rule in the core instructions, not only in the guides', () => {
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/SAVE ALL CODE PRETTY-PRINTED/);
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/criticalCss/);
+  });
+
+  it('names the surfaces beyond a page source — the shared ones nobody can safely edit', () => {
+    const templates = AGENT_GUIDES.templates.body;
+    expect(templates).toMatch(/criticalCss/);
+    expect(templates).toMatch(/mainNav/);
+  });
+
+  it('says minification happens at BUILD, so compact storage buys nothing', () => {
+    for (const topic of ['import', 'design', 'templates'] as const) {
+      expect(AGENT_GUIDES[topic].body).toMatch(/minif/i);
+    }
+  });
+
+  // The import guide is where minified foreign HTML actually arrives, so it gets the strongest form.
+  it('warns in the import guide that the imported scaffold is often minified', () => {
+    expect(AGENT_GUIDES.import.body).toMatch(/MINIFIED/);
   });
 });

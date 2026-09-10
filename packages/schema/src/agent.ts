@@ -66,6 +66,8 @@ live page for you and creates the scaffold) — NEVER say you can't fetch a URL 
 HTML. Then run the pre-defined \`clone_site\` PROMPT (per-page: author → visual_audit + clone_audit →
 green → publish); if a task is "clone/nativize this site/URL", follow that workflow end-to-end.
 
+SAVE ALL CODE PRETTY-PRINTED (page \`source\`, chrome slots, criticalCss, templates) — never minified.
+
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
   menu, alert…) plus Tailwind utilities for layout. DaisyUI is OPTIONAL — plain Tailwind works too.
@@ -234,6 +236,13 @@ export const AGENT_GUIDES = {
 DESIGN — read this BEFORE composing a page's layout. The other guides tell you HOW to wire a feature; this tells you what GOOD looks like. It is what separates a flagship site from a generic skeleton.
 
 THE BAR. Flagship = generous whitespace, a clear type scale, layered surfaces for depth, ONE accent colour used sparingly, real imagery, an alternating section rhythm, one tasteful motion accent per section, and a strong closing CTA. The #1 failure mode is the "hero + 3 cards + stop" skeleton — a real landing page has 6-9 distinct sections with a narrative arc (hook -> proof -> how it works -> depth -> social proof -> objection handling -> call to action).
+
+SAVE IT PRETTY-PRINTED. A page's \`source\` is stored VERBATIM and is exactly what the owner opens in the
+editor, so write it the way you would commit it: one element per line, children indented under their
+parent, a blank line between top-level sections. Never save a minified or single-line blob — it is
+unreadable in the editor, undiffable in a revision, and the next edit (yours or theirs) has to re-derive
+the whole file to change one line. It costs nothing to ship: a deploy target that wants compact HTML
+gets it from the build-time \`minifyHtml\` option, not from how you stored it.
 
 LAYOUT RHYTHM (use on every section):
 - Section shell: <section class="py-20 sm:py-28"><div class="sw-container"> ... </div></section>. Put the platform .sw-container on EVERY section's inner wrapper — it applies the SITE-WIDE content width (the Website "Content width" setting → the --sw-container CSS var, default 1200px) plus centering + a responsive gutter, so every section lines up edge-to-edge AND the owner can retune the whole site from one control. Vary only the vertical py. For a FULL-BLEED band (an edge-to-edge coloured/photo background), put the bg-* on the <section> and keep the .sw-container inside it (the background spans the viewport; the content stays aligned). (.sw-container replaces a hand-rolled mx-auto max-w-* px-* — use it so your pages match imported/nativized pages and respond to the Content width setting.)
@@ -845,6 +854,14 @@ The whole thing is also configurable no-code in Settings → Website → Consent
     title: "Templates, snippets & reuse",
     summary: "render a page from a template; PAGINATED ARCHIVES over long lists; reusable {{> snippets}} & widgets; ready-made global partials",
     body: `
+PRETTY-PRINT EVERY CODE SURFACE YOU SAVE — a template or snippet body, \`website.criticalCss\`, and the
+chrome slots (mainNav / footer / sidebarLeft / sidebarRight / bottom) are stored VERBATIM, exactly like a
+page's source, and are what the owner opens in the editor. Indent and line-break them: one element per
+line with children indented, CSS one declaration per line and one rule per block. These surfaces are the
+worst ones to minify, because they are SHARED — a single unreadable criticalCss or footer blob is a file
+every page depends on and nobody can safely edit. Compaction for delivery happens at build time
+(\`minifyHtml\`), so nothing is gained by storing it that way.
+
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset. Use it when
@@ -1182,6 +1199,15 @@ editable, and free of the foreign framework's CSS/JS. Compare your result agains
 design ideal.
 
 FIND THEM: list_pages, then get_page — an imported page has \`data.swImport\` with rewritten:false.
+
+PRETTY-PRINT WHAT YOU SAVE. This matters MORE here than anywhere else: the scaffold you are replacing
+is foreign HTML captured from a live page, so it very often arrives MINIFIED — one enormous line, or a
+few. Re-emitting it in that shape (or hand-editing it in place) leaves the owner a file no one can read
+and you a page you cannot revise without re-deriving it. Every page \`source\`, the folded-in
+\`website.criticalCss\`, and the hoisted mainNav/footer slots must be written back INDENTED and
+line-broken — one element per line, children indented, CSS one declaration per line. A nativized page
+that is byte-perfect on screen and unreadable in the editor is only half-ported. (Delivery is minified
+separately at build time when a target asks for it, so nothing is lost.)
 
 PORT CHECKLIST (per page — preserve the layout at every step):
 1. STRUCTURE: keep the page's existing sections/grid/spacing. Translate the foreign framework's classes

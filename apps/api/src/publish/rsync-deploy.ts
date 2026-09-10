@@ -36,6 +36,15 @@ export function buildRsyncArgs(
   srcDir: string,
   remoteDir: string,
   sshCommand: string,
+  opts: {
+    /**
+     * `--dry-run`: do everything except modify the destination — connect over SSH, start the remote
+     * rsync, build the file list, report what WOULD happen. Used by the connection test, where the
+     * question is "does rsync work over this SSH connection" and the answer must not cost the target
+     * a single changed byte. Never set on a real deploy.
+     */
+    dryRun?: boolean;
+  } = {},
 ): string[] {
   // Pruning is the default — a mirror that never removes anything is not a mirror, and a renamed page
   // would leave its old URL live forever. Opt OUT when the remote directory is shared with files the
@@ -63,6 +72,10 @@ export function buildRsyncArgs(
     // The SFTP transport's own state manifest: hidden AND protected (switching transports stays safe).
     `--exclude=/${MANIFEST_FILENAME}`,
     ...(prune ? ['--delete'] : []), // prune remote files absent from the build (see `rsyncDelete`)
+    // ★ Placed AFTER --delete deliberately: if both are ever set, --dry-run still wins (rsync reports
+    // the deletions it would make and performs none). The connection test relies on that, and belt +
+    // braces beats an ordering assumption in a destructive flag.
+    ...(opts.dryRun ? ['--dry-run'] : []),
     '--stats', // machine-parseable summary at the end
     '--info=progress2', // one aggregate progress line (bytes / % / xfr# / to-chk)
     '-e',
@@ -186,6 +199,7 @@ export async function deployRsync(
   siteDir: string,
   config: DeployConfig,
   onProgress?: (e: DeployProgress) => void,
+  opts: { dryRun?: boolean } = {},
 ): Promise<DeployResult> {
   const sshDir = await mkdtemp(join(tmpdir(), 'sw-rsync-')); // key + known_hosts + askpass (0700)
   // rsync's `-e` is word-split (NOT shell-parsed), so quoting can't rescue a temp path with spaces.
@@ -237,7 +251,7 @@ export async function deployRsync(
       await writeAskpass(sshDir, env, config.password ?? '');
     }
 
-    const args = buildRsyncArgs(config, siteDir, config.remoteDir, `ssh ${sshOpts.join(' ')}`);
+    const args = buildRsyncArgs(config, siteDir, config.remoteDir, `ssh ${sshOpts.join(' ')}`, opts);
 
     // rsync builds its file list + computes the delta before the first byte moves.
     onProgress?.({ phase: 'checking', total: 0, index: 0, strategy: 'rsync' });

@@ -9,6 +9,37 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.51.1] — 2026-09-10
+
+### Changed
+
+- **The agent guides now require code to be saved pretty-printed.** A page `source`, a template or
+  snippet body, `website.criticalCss` and the chrome slots are stored verbatim and are exactly what the
+  owner opens in the editor — a minified blob there is unreadable, undiffable in a revision, and forces
+  the next edit to re-derive the whole file to change one line. Stated in the `design` guide (page
+  source), the `templates` guide (the SHARED surfaces, which are the worst to minify because every page
+  depends on them), and most emphatically in the `import` guide, where the scaffold being replaced is
+  foreign HTML captured from a live page and very often arrives minified. Nothing is lost at delivery:
+  compaction happens at build time via a target's `minifyHtml` option.
+  - The rule itself is one line in the ALWAYS-LOADED core instructions, because an agent that never
+    calls `get_guide` still writes code — and a minified blob fails nothing at write time, so it stays
+    invisible until someone tries to change one line. The core's size budget moved 21,000 → 21,200 to
+    fit it, logged with its reason in `agent.test.ts` alongside the previous bumps.
+
+### Fixed
+
+- **An SFTP target with rsync enabled could not be connection-tested at all.** The test assembled its
+  config through the deploy schema, which refuses rsync + pruning + a ROOT remote directory without an
+  explicit acknowledgement — so the DEFAULT shape of a new rsync target (remote directory `/`, pruning
+  on, acknowledgement not yet ticked) was rejected before a packet moved, with an error about deleting
+  every remote file. That guard protects a *deploy*; a test transfers nothing and prunes nothing, so it
+  had no business applying. Pruning is now forced off for the test, and the rsync probe runs under
+  three independent guarantees that it cannot touch the target: an empty source, no `--delete`, and
+  `--dry-run`. (`buildRsyncArgs`/`deployRsync` gained an opt-in `dryRun`; it is never set on a deploy.)
+  - The one thing this costs: a green test no longer proves the target will SAVE, because root +
+    pruning still needs its acknowledgement. The form asks for that where the choice is made, and the
+    save re-validates.
+
 ## [0.51.0] — 2026-09-09
 
 ### Added

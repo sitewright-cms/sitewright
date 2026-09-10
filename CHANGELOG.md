@@ -9,6 +9,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent guides now require code to be saved pretty-printed.** A page `source`, a template or
+  snippet body, `website.criticalCss` and the chrome slots are stored verbatim and are exactly what the
+  owner opens in the editor — a minified blob there is unreadable, undiffable in a revision, and forces
+  the next edit to re-derive the whole file to change one line. Stated in the `design` guide (page
+  source), the `templates` guide (the SHARED surfaces, which are the worst to minify because every page
+  depends on them), and most emphatically in the `import` guide, where the scaffold being replaced is
+  foreign HTML captured from a live page and very often arrives minified. Nothing is lost at delivery:
+  compaction happens at build time via a target's `minifyHtml` option.
+  - Deliberately NOT added to the core MCP instructions, which carry a hard <21,000-character budget
+    (asserted in `agent.test.ts`) and had ~26 characters of headroom.
+
 ### Fixed
 
 - **An SFTP target with rsync enabled could not be connection-tested at all.** The test assembled its

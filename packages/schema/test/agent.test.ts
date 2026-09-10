@@ -264,3 +264,37 @@ describe('get_capabilities index', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_capabilities');
   });
 });
+
+describe('AGENT_GUIDES — code is saved pretty-printed', () => {
+  /**
+   * ★ Pinned because it is a rule about HOW output is written, which is exactly the kind of guidance
+   * that evaporates in an edit: nothing breaks when it goes missing, and the cost shows up much later
+   * as a page, a criticalCss or a footer slot that the owner opens and cannot read. It lives in the
+   * guides rather than the core instructions because the core has a hard <21k budget with ~26 chars
+   * of headroom — see the size test above.
+   */
+  it.each([
+    ['import', /pretty-print/i],
+    ['design', /pretty-print/i],
+    ['templates', /pretty-print/i],
+  ])('the %s guide tells the agent to save code pretty-printed', (topic, pattern) => {
+    expect(AGENT_GUIDES[topic as keyof typeof AGENT_GUIDES].body).toMatch(pattern);
+  });
+
+  it('names the surfaces beyond a page source — the shared ones nobody can safely edit', () => {
+    const templates = AGENT_GUIDES.templates.body;
+    expect(templates).toMatch(/criticalCss/);
+    expect(templates).toMatch(/mainNav/);
+  });
+
+  it('says minification happens at BUILD, so compact storage buys nothing', () => {
+    for (const topic of ['import', 'design', 'templates'] as const) {
+      expect(AGENT_GUIDES[topic].body).toMatch(/minif/i);
+    }
+  });
+
+  // The import guide is where minified foreign HTML actually arrives, so it gets the strongest form.
+  it('warns in the import guide that the imported scaffold is often minified', () => {
+    expect(AGENT_GUIDES.import.body).toMatch(/MINIFIED/);
+  });
+});

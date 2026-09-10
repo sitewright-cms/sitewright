@@ -84,8 +84,9 @@ export interface DeployTestResult {
 export interface DeployTestDeps {
   makeFtpClient?: () => FtpClientImpl;
   makeSftpClient?: () => SftpClientImpl;
-  /** Runs the real rsync transfer for the rsync step. */
-  runRsync?: (siteDir: string, cfg: DeployConfig) => Promise<unknown>;
+  /** Runs the real rsync probe for the rsync step. Takes the same `opts` the deploy path does, so a
+   *  test observes the ACTUAL flags the probe runs with rather than a stand-in for them. */
+  runRsync?: (siteDir: string, cfg: DeployConfig, opts: { dryRun?: boolean }) => Promise<unknown>;
 }
 
 /** Runs `fn`, recording it as a step. Rethrows so the caller stops at the first real failure.
@@ -248,8 +249,10 @@ async function testSftp(cfg: DeployConfig, deps: DeployTestDeps): Promise<Deploy
 
     // rsync is a SEPARATE transport riding the same SSH credentials, and it fails for its own reasons
     // (no rsync binary, a shell-less account). Testing SFTP and calling rsync proven would be a lie,
-    // so run the real thing against an empty source: a genuine ssh+rsync round trip that transfers
-    // nothing and, with pruning forced off, cannot remove anything either.
+    // so run the real thing — but under three independent guarantees that it cannot touch the target:
+    // an EMPTY source (nothing to send), pruning forced OFF (no --delete), and --dry-run (rsync
+    // modifies nothing regardless of the other two). Any one of them would do; a destructive flag is
+    // worth belt and braces.
     if (cfg.useRsync) {
       const emptyDir = await mkdtemp(join(tmpdir(), 'sw-rsync-test-'));
       try {
@@ -257,8 +260,11 @@ async function testSftp(cfg: DeployConfig, deps: DeployTestDeps): Promise<Deploy
           steps,
           'rsync',
           'Run rsync over the same SSH connection',
-          () => (deps.runRsync ?? deployRsync)(emptyDir, { ...cfg, rsyncDelete: false }),
-          () => 'rsync connected and completed a no-op transfer',
+          () => {
+            const run = deps.runRsync ?? ((dir, c, o) => deployRsync(dir, c, undefined, o));
+            return run(emptyDir, { ...cfg, rsyncDelete: false }, { dryRun: true });
+          },
+          () => 'rsync connected and completed a dry run — nothing was transferred or removed',
         );
       } finally {
         await rm(emptyDir, { recursive: true, force: true });

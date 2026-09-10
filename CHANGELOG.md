@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An SFTP target with rsync enabled could not be connection-tested at all.** The test assembled its
+  config through the deploy schema, which refuses rsync + pruning + a ROOT remote directory without an
+  explicit acknowledgement — so the DEFAULT shape of a new rsync target (remote directory `/`, pruning
+  on, acknowledgement not yet ticked) was rejected before a packet moved, with an error about deleting
+  every remote file. That guard protects a *deploy*; a test transfers nothing and prunes nothing, so it
+  had no business applying. Pruning is now forced off for the test, and the rsync probe runs under
+  three independent guarantees that it cannot touch the target: an empty source, no `--delete`, and
+  `--dry-run`. (`buildRsyncArgs`/`deployRsync` gained an opt-in `dryRun`; it is never set on a deploy.)
+  - The one thing this costs: a green test no longer proves the target will SAVE, because root +
+    pruning still needs its acknowledgement. The form asks for that where the choice is made, and the
+    save re-validates.
+
 ## [0.51.0] — 2026-09-09
 
 ### Added

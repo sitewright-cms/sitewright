@@ -753,7 +753,21 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         ...(protocol === 'ftps' && (body.certFingerprint ?? stored?.certFingerprint)
           ? { certFingerprint: body.certFingerprint ?? stored?.certFingerprint }
           : {}),
-        ...(body.useRsync ?? stored?.useRsync ? { useRsync: true } : {}),
+        // ★ PRUNING IS FORCED OFF FOR A TEST, and this is the one place the test config deliberately
+        // diverges from the deploy config.
+        //
+        // The schema refuses rsync + pruning + a ROOT remoteDir without an explicit acknowledgement,
+        // because that combination deletes every remote file the build does not contain. Parsing the
+        // test config with the user's `rsyncDelete` inherited that refusal — so the DEFAULT shape of a
+        // new rsync target (remoteDir "/", pruning on, ack not yet ticked) could not be tested at all,
+        // and the error it produced talked about deleting files, which is precisely the thing a test
+        // does not do. A guard against a destructive deploy has no business blocking a read-only probe.
+        //
+        // `false` here is not a convenient lie to satisfy the validator: the rsync step really does run
+        // with no `--delete`, an empty source, and `--dry-run`. What it costs is that a test can no
+        // longer prove the target will SAVE — root + prune still needs its acknowledgement, which the
+        // form asks for at the point the choice is made and the save re-validates.
+        ...(body.useRsync ?? stored?.useRsync ? { useRsync: true, rsyncDelete: false } : {}),
       });
 
       const result = await testDeployTarget(cfg);

@@ -290,3 +290,76 @@ describe('POST /deploy-targets/test — SSRF allow-list', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe('POST /deploy-targets/test — rsync targets', () => {
+  /**
+   * ★ A TEST MUST NEVER BE REFUSED ON DESTRUCTIVE-COMBINATION GROUNDS.
+   *
+   * The deploy schema refuses rsync + pruning + a ROOT remoteDir without an explicit acknowledgement,
+   * because that combination deletes every remote file the build does not contain. That guard is
+   * right for a DEPLOY and meaningless for a test, which transfers nothing and prunes nothing — yet
+   * the test route parsed the config through the same schema and inherited the refusal. The result
+   * was that the default shape of a new rsync target (remoteDir "/", pruning on, not yet
+   * acknowledged) could not be tested AT ALL, and the error it produced talked about deleting files,
+   * which is the one thing a test does not do.
+   */
+  it('tests an rsync target at the ROOT with pruning on, instead of refusing', async () => {
+    const { t, projectId } = await setup('r@example.com', 'rsync-root');
+    const res = await app.inject({
+      method: 'POST',
+      url: testUrl(projectId),
+      cookies: { sw_session: t },
+      payload: {
+        protocol: 'sftp',
+        host: '127.0.0.1',
+        port: CLOSED_PORT,
+        user: 'alice',
+        password: 'pw',
+        remoteDir: '/',
+        useRsync: true,
+        rsyncDelete: true,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; failure?: { message: string } };
+    expect(body.ok).toBe(false); // the port is closed — but it got as far as TRYING
+    expect(body.failure?.message ?? '').not.toMatch(/deletes every remote file|mirror the whole root/i);
+  });
+
+  it('tests an rsync target at the root with pruning OFF too', async () => {
+    const { t, projectId } = await setup('s@example.com', 'rsync-root-nodelete');
+    const res = await app.inject({
+      method: 'POST',
+      url: testUrl(projectId),
+      cookies: { sw_session: t },
+      payload: { protocol: 'sftp', host: '127.0.0.1', port: CLOSED_PORT, user: 'alice', password: 'pw', remoteDir: '/', useRsync: true, rsyncDelete: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { ok: boolean }).ok).toBe(false);
+  });
+
+  it('tests a SAVED rsync target that carries the root acknowledgement', async () => {
+    const { t, projectId } = await setup('u@example.com', 'rsync-saved');
+    const created = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies: { sw_session: t },
+      payload: {
+        name: 'rsync',
+        protocol: 'sftp',
+        host: '127.0.0.1',
+        port: CLOSED_PORT,
+        user: 'alice',
+        password: 'pw',
+        remoteDir: '/',
+        useRsync: true,
+        rsyncDelete: true,
+        rsyncRootDeleteAck: true,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const id = (created.json() as { target: { id: string } }).target.id;
+    const res = await app.inject({ method: 'POST', url: testUrl(projectId), cookies: { sw_session: t }, payload: { id } });
+    expect(res.statusCode).toBe(200);
+  });
+});

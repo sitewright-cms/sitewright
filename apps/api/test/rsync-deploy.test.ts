@@ -112,3 +112,27 @@ describe('buildRsyncArgs — the --delete toggle', () => {
   });
 });
 
+
+describe('buildRsyncArgs — the --dry-run probe', () => {
+  const cfg = { user: 'u', host: 'h' } as const;
+
+  it('adds --dry-run only when asked', () => {
+    expect(buildRsyncArgs(cfg, '/src', '/var/www', 'ssh')).not.toContain('--dry-run');
+    expect(buildRsyncArgs(cfg, '/src', '/var/www', 'ssh', { dryRun: true })).toContain('--dry-run');
+  });
+
+  // ★ The connection test's guarantee. --delete and --dry-run together must still modify nothing:
+  // rsync reports the deletions it WOULD make and performs none. Asserted because the alternative is
+  // an ordering assumption about two flags, one of which is destructive.
+  it('keeps --dry-run alongside --delete, so a pruning config still probes harmlessly', () => {
+    const args = buildRsyncArgs({ ...cfg, rsyncDelete: true }, '/src', '/', 'ssh', { dryRun: true });
+    expect(args).toContain('--delete');
+    expect(args).toContain('--dry-run');
+  });
+
+  it('leaves every other argument untouched, so the probe exercises the real command', () => {
+    const plain = buildRsyncArgs(cfg, '/src', '/var/www', 'ssh');
+    const probe = buildRsyncArgs(cfg, '/src', '/var/www', 'ssh', { dryRun: true });
+    expect(probe.filter((a) => a !== '--dry-run')).toEqual(plain);
+  });
+});

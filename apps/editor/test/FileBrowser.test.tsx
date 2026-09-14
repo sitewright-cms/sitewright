@@ -81,6 +81,12 @@ beforeEach(() => {
   replaceMediaContent.mockResolvedValue({ item: image, previous: { bytes: 2048, width: 100, height: 100 }, snapshotId: 'snap1' });
 });
 
+// jsdom reports no layout and loads no CSS, so the separator between a control's child texts
+// is not something it can get right: dom-accessibility-api only spaces children it sees as
+// non-inline, jsdom 25 reported every element's computed `display` as '' (so everything looked
+// block-level and every name came out spaced) and jsdom 30 reports the real value, running
+// sibling <span>s together. The browser DOES space these — the real CSS makes the wrappers
+// flex — so the query stays whole-name and exact, and only the gap is made optional.
 describe('FileBrowser (Assets)', () => {
   it('defaults to LIST view and shows assets + folders (incl. a persisted empty folder)', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
@@ -147,7 +153,7 @@ describe('FileBrowser (Assets)', () => {
     await screen.findByRole('button', { name: 'hero.png' });
     fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'hero' } });
     // The name-cell button now reads "<filename> in <folder>" (the location subtitle).
-    expect(screen.getByRole('button', { name: 'hero.png in Assets' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^hero\.png\s*in Assets$/ })).toBeInTheDocument();
     expect(screen.queryByText('brochure.pdf')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Docs' })).toBeNull(); // folders are filtered too
   });
@@ -158,7 +164,7 @@ describe('FileBrowser (Assets)', () => {
     // q4.pdf lives in Docs; at the root it is NOT listed until a global search surfaces it.
     expect(screen.queryByText('q4.pdf')).toBeNull();
     fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'q4' } });
-    expect(await screen.findByRole('button', { name: 'q4.pdf in Docs' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^q4\.pdf\s*in Docs$/ })).toBeInTheDocument();
     expect(screen.getByText('in Docs')).toBeInTheDocument(); // the result shows its folder location
   });
 

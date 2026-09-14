@@ -71,6 +71,12 @@ async function open() {
   return screen.findByRole('dialog', { name: 'TailwindCSS Reference' });
 }
 
+// jsdom reports no layout and loads no CSS, so the separator between a control's child texts
+// is not something it can get right: dom-accessibility-api only spaces children it sees as
+// non-inline, jsdom 25 reported every element's computed `display` as '' (so everything looked
+// block-level and every name came out spaced) and jsdom 30 reports the real value, running
+// sibling <span>s together. The browser DOES space these — the real CSS makes the wrappers
+// flex — so the query stays whole-name and exact, and only the gap is made optional.
 describe('TailwindReferenceModal', () => {
   it('fetches the reference and lists the categories it contains', async () => {
     const dialog = await open();
@@ -123,7 +129,7 @@ describe('TailwindReferenceModal', () => {
     await waitFor(() => expect(within(dialog).getByText(/^Topics \(/)).toBeInTheDocument());
     expect(within(dialog).getByText(/^Classes \(/)).toBeInTheDocument();
     // Clicking a class result navigates to its topic with the row highlighted.
-    fireEvent.click(within(dialog).getByRole('button', { name: /text-red-500\s+Text Color/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /text-red-500\s*Text Color/ }));
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Text Color' })).toBeInTheDocument());
   });
 
@@ -136,7 +142,7 @@ describe('TailwindReferenceModal', () => {
     const dialog = await open();
     fireEvent.change(await within(dialog).findByRole('searchbox'), { target: { value: 'text' } });
     await waitFor(() => expect(within(dialog).getByText(/^Classes \(/)).toBeInTheDocument());
-    fireEvent.click(within(dialog).getByRole('button', { name: /text-red-500\s+Text Color/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /text-red-500\s*Text Color/ }));
 
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Text Color' })).toBeInTheDocument());
     // The sibling topic in the SAME category must not come back.
@@ -149,7 +155,7 @@ describe('TailwindReferenceModal', () => {
     const dialog = await open();
     fireEvent.change(await within(dialog).findByRole('searchbox'), { target: { value: 'sets' } });
     await waitFor(() => expect(within(dialog).getByText(/^Topics \(/)).toBeInTheDocument());
-    fireEvent.click(within(dialog).getByRole('button', { name: /Font Size\s+Typography/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Font Size\s*Typography/ }));
 
     await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Font Size' })).toBeInTheDocument());
     expect(within(dialog).queryByRole('heading', { name: 'Text Color' })).toBeNull();

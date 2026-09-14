@@ -2,6 +2,15 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { RichTextField } from '../src/views/datasets/RichTextField';
 
+
+/** The rem size a text-size row previews at, however the CSSOM spells `min(a, b)`. */
+function previewRem(name: string): number {
+  const value = screen.getByRole('button', { name }).style.fontSize;
+  const rems = [...value.matchAll(/([\d.]+)rem/g)].map((m) => Number(m[1]));
+  expect(rems.length).toBeGreaterThan(0);
+  return Math.min(...rems);
+}
+
 describe('RichTextField', () => {
   it('fills the editable with the stored value on mount', () => {
     render(<RichTextField value="<p>Hello world</p>" onChange={() => {}} ariaLabel="body" />);
@@ -40,8 +49,11 @@ describe('RichTextField', () => {
       expect(screen.getByRole('button', { name })).toBeInTheDocument();
     }
     // Each row previews itself at its own size, capped so a 6XL row doesn't dominate the menu.
-    expect(screen.getByRole('button', { name: 'Small' })).toHaveStyle({ fontSize: 'min(0.875rem, 1.75rem)' });
-    expect(screen.getByRole('button', { name: '6XL' })).toHaveStyle({ fontSize: 'min(3.75rem, 1.75rem)' });
+    // Read as a NUMBER, not as a string: the component sets `min(<own size>, <cap>)`, jsdom 25 keeps
+    // that verbatim and jsdom 30 folds it to `calc(<the smaller one>)`. Same size either way, and the
+    // size is the thing under test — the CSSOM's spelling of it is not.
+    expect(previewRem('Small')).toBeCloseTo(0.875); // below the cap → its own size
+    expect(previewRem('6XL')).toBeCloseTo(1.75); // above it → capped, not 3.75
     // The menu is PORTALLED out of the toolbar and positioned fixed. Absolutely positioned, the entry
     // modal's own overflow clipped it: the five-item list fit, the ten-item one lost its last rows.
     const pop = document.querySelector('[data-sw-rich-menu]') as HTMLElement;

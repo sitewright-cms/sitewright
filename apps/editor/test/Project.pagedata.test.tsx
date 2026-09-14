@@ -44,11 +44,17 @@ beforeEach(() => {
 /** Right-click the page row and return its context menu. */
 async function openMenu() {
   render(<ProjectView project={project} tab="pages" />);
-  const row = await screen.findByRole('button', { name: 'Home /' });
+  const row = await screen.findByRole('button', { name: /^Home\s*\/$/ });
   fireEvent.contextMenu(row);
   return screen.getByRole('menu', { name: 'Actions for Home' });
 }
 
+// jsdom reports no layout and loads no CSS, so the separator between a control's child texts
+// is not something it can get right: dom-accessibility-api only spaces children it sees as
+// non-inline, jsdom 25 reported every element's computed `display` as '' (so everything looked
+// block-level and every name came out spaced) and jsdom 30 reports the real value, running
+// sibling <span>s together. The browser DOES space these — the real CSS makes the wrappers
+// flex — so the query stays whole-name and exact, and only the gap is made optional.
 describe('Pages tab — Edit page data', () => {
   it('offers the action in the row context menu', async () => {
     await openMenu();

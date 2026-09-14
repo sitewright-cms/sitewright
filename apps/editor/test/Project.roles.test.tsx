@@ -48,12 +48,18 @@ beforeEach(() => {
   listTemplates.mockResolvedValue({ items: [] });
 });
 
+// jsdom reports no layout and loads no CSS, so the separator between a control's child texts
+// is not something it can get right: dom-accessibility-api only spaces children it sees as
+// non-inline, jsdom 25 reported every element's computed `display` as '' (so everything looked
+// block-level and every name came out spaced) and jsdom 30 reports the real value, running
+// sibling <span>s together. The browser DOES space these — the real CSS makes the wrappers
+// flex — so the query stays whole-name and exact, and only the gap is made optional.
 describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('owner on the Pages tab sees the add-page button + the page list', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     // Wait for the page LIST to actually render (listPages resolving AND re-rendering), not merely for
     // the mock to fire — a synchronous getByRole here raced the async re-render and flaked in CI.
-    expect(await screen.findByRole('button', { name: 'Home /' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Home\s*\/$/ })).toBeInTheDocument();
     // The add-page form now lives in a modal opened from this button.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
@@ -66,7 +72,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('a member (invited client) now gets the FULL studio — page list + add-page', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    expect(await screen.findByRole('button', { name: 'Home /' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /^Home\s*\/$/ })).toBeInTheDocument();
     // Full editing: members get the same add-page affordance as owners (no more content-only list).
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
@@ -75,7 +81,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('opens an owner on a page in CONTENT mode (the default for everyone)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Home\s*\/$/ }));
     expect(await screen.findByText('PAGE EDITOR mode=content')).toBeInTheDocument();
     // The list (and its add-page button) stays mounted behind the modal.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
@@ -83,7 +89,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('opens a member on a page in CONTENT mode (the same default; the in-modal toggle reaches Code)', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Home\s*\/$/ }));
     expect(await screen.findByText('PAGE EDITOR mode=content')).toBeInTheDocument();
   });
 

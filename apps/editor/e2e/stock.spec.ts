@@ -27,7 +27,7 @@ test('media manager exposes a Stock images picker with a loaded provider list', 
   const provider = dialog.getByLabel('Stock provider');
   await expect(provider).toBeVisible();
   await expect(provider).toHaveValue('all');
-  await expect(provider.locator('option')).toHaveCount(4); // all + openverse + unsplash + pexels
+  await expect(provider.locator('option')).toHaveCount(5); // all + openverse + unsplash + pexels + pixabay
 
   // Search controls are present. ALL is searchable because keyless Openverse is always available,
   // so with a query the Search button is enabled (order-independent of any instance key config).

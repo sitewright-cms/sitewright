@@ -442,7 +442,7 @@ IMAGES — three ways to bring one in, all self-hosted (never hotlink), then ref
 media url in \`source\`:
 - STOCK: search_stock_images with provider "all" — it queries every enabled provider at once and
   interleaves the hits, so there is no need to call list_stock_providers first (do that only to
-  explain a gap: openverse is always on; unsplash / pexels need an instance API key). Pass each
+  explain a gap: openverse is always on; unsplash / pexels / pixabay need a key). Pass each
   hit's OWN \`provider\` back to import_stock_image with its id (downloaded, optimized, attributed);
   \`hasMore\` says whether page+1 is worth fetching.
 - BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).

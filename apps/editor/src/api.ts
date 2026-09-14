@@ -21,6 +21,7 @@ import type {
   SmtpInput,
   SmtpPublic,
   Snippet,
+  StockKeyedProvider,
   StockProviderName,
   StockProvidersStatus,
   StockSearchProvider,
@@ -71,6 +72,7 @@ export type {
   SmtpInput,
   SmtpPublic,
   Snippet,
+  StockKeyedProvider,
   StockProviderName,
   StockProvidersStatus,
   StockSearchProvider,
@@ -1811,7 +1813,7 @@ export const api = {
   testInstanceAi: (body: { provider: AiProviderKind; model?: string; baseUrl?: string; apiKey?: string }) =>
     request<AiTestResult>('POST', '/admin/settings/ai/test', body),
   /** Verify a stock-image provider key with a minimal search. A blank key tests the stored one. */
-  testStockKey: (body: { provider: 'unsplash' | 'pexels'; key?: string }) =>
+  testStockKey: (body: { provider: StockKeyedProvider; key?: string }) =>
     request<{ ok: boolean; error?: string }>('POST', '/admin/settings/stock/test', body),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>

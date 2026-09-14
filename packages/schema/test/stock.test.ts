@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { StockProviderNameSchema, StockSearchProviderSchema, StockImportSchema } from '../src/stock.js';
+import { StockKeyedProviderSchema, StockProviderNameSchema, StockSearchProviderSchema, StockImportSchema } from '../src/stock.js';
 import {
   InstanceSettingsInputSchema,
   InstanceSettingsStoredSchema,
+  StockKeysInputSchema,
+  StockKeysStoredSchema,
   maskInstanceSettings,
   type InstanceSettingsStored,
 } from '../src/instance-settings.js';
 import { MediaAssetSchema } from '../src/media.js';
 
 describe('StockProviderNameSchema + StockImportSchema', () => {
-  it('accepts the three providers and rejects others', () => {
+  it('accepts the four providers and rejects others', () => {
+    expect(StockProviderNameSchema.options).toEqual(['openverse', 'unsplash', 'pexels', 'pixabay']);
     expect(StockProviderNameSchema.parse('openverse')).toBe('openverse');
+    expect(StockProviderNameSchema.parse('pixabay')).toBe('pixabay');
     expect(() => StockProviderNameSchema.parse('shutterstock')).toThrow();
   });
 
@@ -51,8 +55,25 @@ describe('instance-settings stock keys', () => {
       stock: { unsplash: enc },
     };
     const masked = maskInstanceSettings(stored);
-    expect(masked.stock).toEqual({ hasUnsplash: true, hasPexels: false });
+    expect(masked.stock).toEqual({ hasUnsplash: true, hasPexels: false, hasPixabay: false });
     expect(JSON.stringify(masked)).not.toContain(enc.ct);
+  });
+
+  it('a keyed provider has a slot in EVERY settings shape (stored, input, masked)', () => {
+    // openverse is the only keyless one; everything else must be configurable.
+    expect(StockKeyedProviderSchema.options).toEqual(
+      StockProviderNameSchema.options.filter((name) => name !== 'openverse'),
+    );
+    const masked = maskInstanceSettings({
+      formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false },
+      stock: {},
+    });
+    for (const provider of StockKeyedProviderSchema.options) {
+      expect(Object.keys(StockKeysStoredSchema.shape)).toContain(provider);
+      expect(Object.keys(StockKeysInputSchema.shape)).toContain(provider);
+      // …and a presence flag, which is what tells the editor to show "key stored" instead of blank.
+      expect(masked.stock).toHaveProperty(`has${provider[0]!.toUpperCase()}${provider.slice(1)}`);
+    }
   });
 
   it('stored stock section validates as encrypted envelopes', () => {

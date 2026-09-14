@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DEFAULT_FORM_MODES } from '@sitewright/schema';
 import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
 
@@ -9,6 +9,7 @@ const putInstanceSettings = vi.fn();
 const testInstanceSmtp = vi.fn();
 const sendInstanceSmtpTest = vi.fn();
 const undeliveredInstanceSubmissions = vi.fn();
+const testStockKey = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getInstanceSettings: () => getInstanceSettings(),
@@ -16,6 +17,7 @@ vi.mock('../src/api', () => ({
     testInstanceSmtp: () => testInstanceSmtp(),
     undeliveredInstanceSubmissions: () => undeliveredInstanceSubmissions(),
     sendInstanceSmtpTest: (to?: string) => sendInstanceSmtpTest(to),
+    testStockKey: (body: { provider: string; key?: string }) => testStockKey(body),
   },
 }));
 
@@ -29,6 +31,7 @@ beforeEach(() => {
   getInstanceSettings.mockReset();
   putInstanceSettings.mockReset();
   undeliveredInstanceSubmissions.mockReset();
+  testStockKey.mockReset();
   undeliveredInstanceSubmissions.mockResolvedValue({ count: 0, lastError: null }); // nothing owed by default
   putInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
 });
@@ -151,10 +154,46 @@ describe('InstanceSettings', () => {
     expect(body.stock).toBeNull();
   });
 
+  it('offers a key field per keyed provider and sends only the ones typed', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Configure stock provider keys'));
+    // Exactly one field per KEYED provider, in order — openverse is keyless and gets none.
+    // (Matched on the inputs themselves: the section's help tooltip also mentions Openverse, and
+    // DaisyUI tooltip text folds into the accessible name of the control that contains it.)
+    const section = screen.getByLabelText('Configure stock provider keys').closest('fieldset')!;
+    expect([...section.querySelectorAll('input[type="password"]')].map((f) => f.getAttribute('aria-label'))).toEqual([
+      'Unsplash access key',
+      'Pexels API key',
+      'Pixabay API key',
+    ]);
+    fireEvent.change(screen.getByLabelText('Pixabay API key'), { target: { value: 'pixabay-xyz' } });
+    fireEvent.change(screen.getByLabelText('Pexels API key'), { target: { value: 'pexels-def' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.stock).toEqual({ pexels: 'pexels-def', pixabay: 'pixabay-xyz' });
+  });
+
+  it('tests each provider key independently — the verdict lands on the field that was tested', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    testStockKey.mockResolvedValue({ ok: false, error: 'provider request failed (400)' });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Configure stock provider keys'));
+    fireEvent.change(screen.getByLabelText('Pixabay API key'), { target: { value: 'bad-key' } });
+    const pixabayField = screen.getByLabelText('Pixabay API key').closest('label')!;
+    fireEvent.click(within(pixabayField).getByRole('button', { name: 'Test' }));
+    await waitFor(() => expect(testStockKey).toHaveBeenCalledWith({ provider: 'pixabay', key: 'bad-key' }));
+    // The failure is rendered beside Pixabay, not smeared across every provider's field.
+    await within(pixabayField).findByText(/provider request failed \(400\)/);
+    const unsplashField = screen.getByLabelText('Unsplash access key').closest('label')!;
+    expect(within(unsplashField).queryByText(/provider request failed/)).toBeNull();
+  });
+
   it('keeps an existing key (placeholder) and omits it when left blank', async () => {
     const withStock: InstanceSettingsPublic = {
       formModes: DEFAULTS.formModes,
-      stock: { hasUnsplash: true, hasPexels: false },
+      stock: { hasUnsplash: true, hasPexels: false, hasPixabay: false },
     };
     getInstanceSettings.mockResolvedValue({ settings: withStock });
     putInstanceSettings.mockResolvedValue({ settings: withStock });
@@ -162,6 +201,8 @@ describe('InstanceSettings', () => {
     // Section is pre-enabled (settings.stock present); save without typing → empty merge object (keep).
     const unsplash = await screen.findByLabelText('Unsplash access key');
     expect(unsplash).toHaveAttribute('placeholder', expect.stringContaining('leave blank to keep'));
+    // A provider with NO stored key shows a blank field, not the "keep" placeholder.
+    expect(screen.getByLabelText('Pixabay API key')).toHaveAttribute('placeholder', '');
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;

@@ -22,6 +22,7 @@ const ALL_PROVIDERS = {
     { name: 'openverse', available: true, requiresKey: false },
     { name: 'unsplash', available: false, requiresKey: true },
     { name: 'pexels', available: false, requiresKey: true },
+    { name: 'pixabay', available: false, requiresKey: true },
   ],
 };
 
@@ -74,6 +75,18 @@ describe('StockPicker', () => {
     expect(Array.from(select.options)[0]?.textContent).toBe('All providers');
   });
 
+  it('a keyed provider that HAS a key is offered without the "needs an API key" note', async () => {
+    stockProviders.mockResolvedValue({
+      providers: [...ALL_PROVIDERS.providers.filter((p) => p.name !== 'pixabay'), { name: 'pixabay', available: true, requiresKey: true }],
+    });
+    renderPicker();
+    const select = (await screen.findByLabelText('Stock provider')) as HTMLSelectElement;
+    await waitFor(() => expect(Array.from(select.options).some((o) => o.value === 'pixabay')).toBe(true));
+    const pixabay = Array.from(select.options).find((o) => o.value === 'pixabay');
+    expect(pixabay?.textContent).toBe('Pixabay');
+    expect(pixabay?.disabled).toBe(false);
+  });
+
   it('searches every provider at once by default, and renders results with author/license', async () => {
     const onImported = renderPicker();
     await runSearch();
@@ -90,12 +103,14 @@ describe('StockPicker', () => {
       provider: 'all',
       page: 1,
       hasMore: false,
-      results: [hit('openverse', 'ov1', 'Ann'), hit('pexels', 'px1', 'Cy')],
+      results: [hit('openverse', 'ov1', 'Ann'), hit('pexels', 'px1', 'Cy'), hit('pixabay', 'pb1', 'Di')],
     });
     renderPicker();
     await runSearch();
     expect(await screen.findByText('Openverse (CC)')).toBeInTheDocument();
-    expect(screen.getByText('Pexels')).toBeInTheDocument();
+    // Scoped to the tiles: an option element can carry the same bare provider label.
+    const badges = [...document.querySelectorAll('figure span.uppercase')].map((el) => el.textContent);
+    expect(badges).toEqual(['Openverse (CC)', 'Pexels', 'Pixabay']);
   });
 
   it('appends the next page on Load more, keeping what is already on screen', async () => {

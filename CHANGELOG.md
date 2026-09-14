@@ -9,6 +9,34 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Pixabay joins the stock-image picker**, alongside Openverse, Unsplash and Pexels. Add an instance
+  API key under *System settings → Stock image providers* and it appears in the picker's provider list
+  and in the `all` fan-out; `search_stock_images` / `import_stock_image` reach it with no MCP change.
+  Imports are downloaded, optimized and self-hosted with attribution exactly like the others.
+  - **Two things are specific to this provider.** Pixabay authenticates with the key as a *query
+    parameter*, not a header, so the request URL is itself a secret — only the HTTP status is ever
+    carried out of a failed call, never the URL or the response body. And the resolution an import can
+    reach depends on the account: `imageURL` (the original) and `fullHDURL` (1920px) exist only for
+    keys Pixabay has approved for **full API access**, so a standard key tops out at 1280px. The
+    resolver prefers the largest available, so an approved key imports at full resolution with no
+    change here.
+  - Searches ask for `image_type=photo` (Pixabay's vector hits resolve to SVG, which the image store
+    refuses outright) with `safesearch=true`, and clamp the query to Pixabay's documented 100-character
+    limit so the one provider with the shorter limit does not report a failure for a query the other
+    three answered.
+
+### Changed
+
+- **A stock provider's "Test" button now says when the KEY was refused** rather than reporting every
+  failure as an outage. An auth-shaped status (Unsplash and Pexels answer a bad key with 401, Pixabay
+  with 400) is reported as *"… rejected this key (HTTP n) — check it was copied in full"*; anything
+  else keeps the raw message, because retrying is the right advice for a provider that is merely down.
+- The three provider key fields in system settings are now generated from one list rather than
+  hand-copied, so a future provider gets its field, its save payload and its stored-key placeholder
+  together instead of in two places out of three.
+
 ## [0.51.1] — 2026-09-10
 
 ### Changed

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OpenverseProvider, UnsplashProvider, PexelsProvider, type FetchLike } from '../src/stock/providers.js';
+import { OpenverseProvider, UnsplashProvider, PexelsProvider, PixabayProvider, defaultStockProviders, type FetchLike } from '../src/stock/providers.js';
 
 function jsonFetch(payload: unknown, ok = true): FetchLike {
   return vi.fn(async () => ({
@@ -159,6 +159,133 @@ describe('rendition choice — the sizes each provider is asked for', () => {
     const pexels = new PexelsProvider(px.fetchImpl);
     await pexels.search('x', 1, 'PK');
     expect(new URL(px.url()).searchParams.get('per_page')).toBe(String(pexels.pageSize));
+  });
+});
+
+describe('PixabayProvider', () => {
+  /** Captures the URL (and any headers) a provider call made — Pixabay's key rides in the URL. */
+  function capture(payload: unknown, ok = true): { fetchImpl: FetchLike; url: () => string; init: () => unknown } {
+    let seen = '';
+    let seenInit: unknown;
+    return {
+      fetchImpl: async (url, init) => {
+        seen = url;
+        seenInit = init;
+        return { ok, status: ok ? 200 : 429, json: async () => payload, arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } };
+      },
+      url: () => seen,
+      init: () => seenInit,
+    };
+  }
+
+  const HIT = {
+    id: 195893,
+    pageURL: 'https://pixabay.com/photos/blossom-195893/',
+    previewURL: 'https://cdn.pixabay.com/photo/flower-195893_150.jpg',
+    webformatURL: 'https://pixabay.com/get/flower_640.jpg',
+    largeImageURL: 'https://pixabay.com/get/flower_1280.jpg',
+    imageWidth: 4000,
+    imageHeight: 2250,
+    user: 'Josch13',
+    user_id: 48777,
+  };
+
+  it('maps a hit: 640px tile, 1280px preview, ORIGINAL dimensions, composed profile URL', async () => {
+    const [hit] = await new PixabayProvider(jsonFetch({ hits: [HIT] })).search('flowers', 1, 'PK');
+    expect(hit).toEqual({
+      provider: 'pixabay',
+      id: '195893',
+      thumbUrl: 'https://pixabay.com/get/flower_640.jpg',
+      previewUrl: 'https://pixabay.com/get/flower_1280.jpg',
+      // imageWidth/Height, NOT webformatWidth/Height — the author is judging the file they import.
+      width: 4000,
+      height: 2250,
+      author: 'Josch13',
+      authorUrl: 'https://pixabay.com/users/Josch13-48777/',
+      sourceUrl: 'https://pixabay.com/photos/blossom-195893/',
+      license: 'Pixabay Content License',
+    });
+  });
+
+  it('sends the key as a QUERY PARAMETER and no auth header (the one provider that does)', async () => {
+    const c = capture({ hits: [] });
+    await new PixabayProvider(c.fetchImpl).search('flowers', 1, 'PK');
+    expect(new URL(c.url()).searchParams.get('key')).toBe('PK');
+    expect(c.init()).toBeUndefined();
+  });
+
+  it('never leaks the key into the error it throws for a failed request', async () => {
+    const c = capture({}, false);
+    await expect(new PixabayProvider(c.fetchImpl).search('x', 1, 'SUPER-SECRET')).rejects.toThrow(
+      /provider request failed \(429\)/,
+    );
+    await expect(new PixabayProvider(c.fetchImpl).search('x', 1, 'SUPER-SECRET')).rejects.not.toThrow(/SUPER-SECRET/);
+  });
+
+  it('asks for photos only, with safesearch on and its own page size', async () => {
+    const c = capture({ hits: [] });
+    const p = new PixabayProvider(c.fetchImpl);
+    await p.search('x', 2, 'PK');
+    const params = new URL(c.url()).searchParams;
+    // Vectors resolve to SVG, which the image store refuses outright — so photos only.
+    expect(params.get('image_type')).toBe('photo');
+    expect(params.get('safesearch')).toBe('true');
+    expect(params.get('per_page')).toBe(String(p.pageSize));
+    expect(params.get('page')).toBe('2');
+    expect(p.pageSize).toBe(30);
+  });
+
+  it('clamps a query to Pixabay’s 100-character limit on a word boundary', async () => {
+    const c = capture({ hits: [] });
+    // 12 x 9 chars = 108 > 100, so the last whole word has to go rather than 400-ing upstream.
+    const long = Array.from({ length: 12 }, (_, i) => `word${String(i).padStart(4, '0')}`).join(' ');
+    expect(long.length).toBeGreaterThan(100);
+    await new PixabayProvider(c.fetchImpl).search(long, 1, 'PK');
+    const sent = new URL(c.url()).searchParams.get('q') ?? '';
+    expect(sent.length).toBeLessThanOrEqual(100);
+    expect(long.startsWith(sent)).toBe(true);
+    expect(sent.endsWith(' ')).toBe(false);
+  });
+
+  it('resolves by id and prefers the original over Full HD over the 1280px scale', async () => {
+    const c = capture({ hits: [{ ...HIT, fullHDURL: 'https://pixabay.com/get/flower_1920.jpg', imageURL: 'https://pixabay.com/get/flower_orig.jpg' }] });
+    const r = await new PixabayProvider(c.fetchImpl).resolve('195893', 'PK');
+    expect(new URL(c.url()).searchParams.get('id')).toBe('195893');
+    expect(r).toMatchObject({
+      downloadUrl: 'https://pixabay.com/get/flower_orig.jpg',
+      attribution: { provider: 'pixabay', author: 'Josch13', sourceUrl: 'https://pixabay.com/photos/blossom-195893/', license: 'Pixabay Content License' },
+    });
+  });
+
+  it('falls back down the resolution chain a standard (non-full-access) key gets', async () => {
+    // fullHDURL/imageURL only exist for accounts approved for full API access; 1280 is the floor.
+    const hd = await new PixabayProvider(jsonFetch({ hits: [{ ...HIT, fullHDURL: 'https://pixabay.com/get/flower_1920.jpg' }] })).resolve('1', 'PK');
+    expect(hd).toMatchObject({ downloadUrl: 'https://pixabay.com/get/flower_1920.jpg' });
+    const large = await new PixabayProvider(jsonFetch({ hits: [HIT] })).resolve('1', 'PK');
+    expect(large).toMatchObject({ downloadUrl: 'https://pixabay.com/get/flower_1280.jpg' });
+  });
+
+  it('resolve returns null for an unknown id (empty hits) and for a non-https file', async () => {
+    expect(await new PixabayProvider(jsonFetch({ total: 0, hits: [] })).resolve('nope', 'PK')).toBeNull();
+    expect(await new PixabayProvider(jsonFetch({ hits: [{ ...HIT, largeImageURL: 'http://insecure/flower.jpg' }] })).resolve('1', 'PK')).toBeNull();
+  });
+
+  it('falls back to previewURL, Unknown author and no profile URL when fields are missing', async () => {
+    const [hit] = await new PixabayProvider(
+      jsonFetch({ hits: [{ id: 7, previewURL: 'https://cdn.pixabay.com/photo/x_150.jpg' }] }),
+    ).search('x', 1, 'PK');
+    expect(hit).toMatchObject({ id: '7', thumbUrl: 'https://cdn.pixabay.com/photo/x_150.jpg', previewUrl: 'https://cdn.pixabay.com/photo/x_150.jpg', author: 'Unknown', sourceUrl: 'https://cdn.pixabay.com/photo/x_150.jpg' });
+    expect(hit!.authorUrl).toBeUndefined();
+  });
+
+  it('drops a hit whose URLs are not https', async () => {
+    expect(await new PixabayProvider(jsonFetch({ hits: [{ id: 8, webformatURL: 'http://insecure/x_640.jpg', previewURL: 'http://insecure/x_150.jpg' }] })).search('x', 1, 'PK')).toEqual([]);
+  });
+
+  it('is in the default registry and declares that it needs a key', async () => {
+    const registry = defaultStockProviders(jsonFetch({ hits: [] }));
+    expect([...registry.keys()]).toEqual(['openverse', 'unsplash', 'pexels', 'pixabay']);
+    expect(registry.get('pixabay')?.requiresKey).toBe(true);
   });
 });
 

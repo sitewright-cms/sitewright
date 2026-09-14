@@ -46,6 +46,10 @@ const UNSPLASH_PAGE_SIZE = 30;
 // Pexels permits 80, but 30 keeps a fan-out page balanced and the grid quick to scan; `hasMore`
 // + "Load more" reaches the rest.
 const PEXELS_PAGE_SIZE = 30;
+// Pixabay accepts 3-200; 30 for the same reason as Pexels.
+const PIXABAY_PAGE_SIZE = 30;
+/** Pixabay rejects a `q` over 100 characters with a 400 (documented). The route allows 200. */
+const PIXABAY_MAX_QUERY = 100;
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 /** Provider-supplied URL, but only if it is https — else '' (defense-in-depth: these
@@ -57,12 +61,23 @@ const idStr = (v: unknown): string =>
 
 async function getJson(fetchImpl: FetchLike, url: string, headers?: Record<string, string>): Promise<unknown> {
   const res = await fetchImpl(url, headers ? { headers } : undefined);
-  if (!res.ok) throw new StockProviderError(`provider request failed (${res.status})`);
+  // Only the STATUS is carried out of here. The body can be an upstream error page, and for Pixabay
+  // the request URL itself holds the API key — neither ever reaches a log line or the client.
+  if (!res.ok) throw new StockProviderError(`provider request failed (${res.status})`, res.status);
   return res.json();
 }
 
 /** A provider-call failure (bad upstream response/status). Maps to 502 at the route. */
-export class StockProviderError extends Error {}
+export class StockProviderError extends Error {
+  constructor(
+    message: string,
+    /** The upstream HTTP status, when the failure was one. Lets a caller tell a REJECTED KEY
+     *  (400/401/403) from an upstream that is merely down, which are different problems. */
+    readonly status?: number,
+  ) {
+    super(message);
+  }
+}
 
 // --- Openverse (CC-licensed, no API key) -------------------------------------
 export class OpenverseProvider implements StockProvider {
@@ -231,11 +246,118 @@ function pexelsResult(r: Record<string, unknown>): StockResult | null {
   };
 }
 
+// --- Pixabay -----------------------------------------------------------------
+/**
+ * Pixabay authenticates with the key as a QUERY PARAMETER (`?key=`), not a header — the one
+ * provider here that does. Two consequences the code has to respect:
+ *  - the request URL is a secret. It is never logged, never put in an error message, and never
+ *    returned to the client; `getJson` only ever reports the STATUS.
+ *  - the download URLs it hands back (cdn.pixabay.com / pixabay.com/get/…) carry no key, so the
+ *    import path is unaffected.
+ *
+ * Hotlinking: Pixabay permits its URLs for *temporarily displaying search results* only, which is
+ * exactly what the picker's grid + lightbox do — an import downloads the file to our own storage
+ * before anything is published. `webformatURL` is documented as valid for 24h; nothing persists it.
+ */
+export class PixabayProvider implements StockProvider {
+  readonly name = 'pixabay' as const;
+  readonly requiresKey = true;
+  readonly pageSize = PIXABAY_PAGE_SIZE;
+  constructor(private readonly fetchImpl: FetchLike) {}
+
+  async search(query: string, page: number, key: string | null): Promise<StockResult[]> {
+    // `image_type=photo`: the sibling providers are photo-only, and Pixabay's vector hits resolve to
+    // SVG, which the image store refuses outright (librsvg fetches remote refs — an SSRF vector).
+    // `safesearch=true`: Unsplash filters by default, Pixabay does not unless asked.
+    const url =
+      `https://pixabay.com/api/?key=${encodeURIComponent(key ?? '')}` +
+      `&q=${encodeURIComponent(clampPixabayQuery(query))}` +
+      `&image_type=photo&safesearch=true&page=${page}&per_page=${PIXABAY_PAGE_SIZE}`;
+    const data = (await getJson(this.fetchImpl, url)) as { hits?: unknown[] };
+    const rows = Array.isArray(data.hits) ? data.hits : [];
+    return rows.map((r) => pixabayResult(r as Record<string, unknown>)).filter((r): r is StockResult => r !== null);
+  }
+
+  async resolve(id: string, key: string | null): Promise<ResolvedStock | null> {
+    // Lookup-by-id is the same endpoint with `&id=`; the single hit still arrives inside `hits`.
+    const url = `https://pixabay.com/api/?key=${encodeURIComponent(key ?? '')}&id=${encodeURIComponent(id)}`;
+    const data = (await getJson(this.fetchImpl, url)) as { hits?: unknown[] };
+    const hit = (Array.isArray(data.hits) ? data.hits[0] : undefined) as Record<string, unknown> | undefined;
+    if (!hit) return null;
+    // ★ Resolution ceiling depends on the INSTANCE'S KEY. `imageURL` (the original) and `fullHDURL`
+    // (1920px) are only present for accounts Pixabay has approved for "full API access"; a standard
+    // key tops out at `largeImageURL` = 1280px. Preferring the big ones means an approved key
+    // automatically imports at full resolution with no code change, and a standard one still works.
+    const downloadUrl = httpsUrl(hit.imageURL) || httpsUrl(hit.fullHDURL) || httpsUrl(hit.largeImageURL);
+    if (!downloadUrl) return null;
+    return {
+      downloadUrl,
+      attribution: {
+        provider: 'pixabay',
+        author: str(hit.user) || 'Unknown',
+        sourceUrl: httpsUrl(hit.pageURL) || downloadUrl,
+        license: PIXABAY_LICENSE,
+      },
+    };
+  }
+}
+
+/** Pixabay's own name for its terms; no attribution is required, but we record it like the rest. */
+const PIXABAY_LICENSE = 'Pixabay Content License';
+
+/**
+ * Clamp to Pixabay's documented 100-character `q` limit, on a word boundary where there is one.
+ * Without this the one provider with the shorter limit 400s on a query the other three handled,
+ * and a fan-out reports it as "Pixabay did not respond" — a broken-upstream message for a query
+ * that was merely long.
+ */
+function clampPixabayQuery(query: string): string {
+  if (query.length <= PIXABAY_MAX_QUERY) return query;
+  const cut = query.slice(0, PIXABAY_MAX_QUERY);
+  const lastSpace = cut.lastIndexOf(' ');
+  return lastSpace > 0 ? cut.slice(0, lastSpace) : cut;
+}
+
+/**
+ * Pixabay publishes no author URL, only a name + numeric id; the profile URL is documented as
+ * `https://pixabay.com/users/{USERNAME}-{ID}/`. Built only when both halves are present.
+ */
+function pixabayUserUrl(r: Record<string, unknown>): string {
+  const user = str(r.user);
+  const userId = num(r.user_id);
+  if (!user || !userId) return '';
+  return `https://pixabay.com/users/${encodeURIComponent(user)}-${userId}/`;
+}
+
+function pixabayResult(r: Record<string, unknown>): StockResult | null {
+  const id = idStr(r.id);
+  // `webformatURL` (<=640px) for the tile: `previewURL` is only 150px, which is visibly soft in the
+  // grid on a 2x display. `largeImageURL` (1280px) for the lightbox, matching the other providers.
+  const thumbUrl = httpsUrl(r.webformatURL) || httpsUrl(r.previewURL);
+  if (!id || !thumbUrl) return null;
+  const authorUrl = pixabayUserUrl(r);
+  return {
+    provider: 'pixabay',
+    id,
+    thumbUrl,
+    previewUrl: httpsUrl(r.largeImageURL) || httpsUrl(r.webformatURL) || thumbUrl,
+    // imageWidth/imageHeight are the ORIGINAL's dimensions — what the preview panel should report,
+    // and what the author is judging when deciding whether a photo is big enough for a hero.
+    width: num(r.imageWidth),
+    height: num(r.imageHeight),
+    author: str(r.user) || 'Unknown',
+    ...(authorUrl ? { authorUrl } : {}),
+    sourceUrl: httpsUrl(r.pageURL) || thumbUrl,
+    license: PIXABAY_LICENSE,
+  };
+}
+
 /** Builds the default provider registry backed by the live `fetch`. */
 export function defaultStockProviders(fetchImpl: FetchLike = fetch as unknown as FetchLike): Map<StockProviderName, StockProvider> {
   return new Map<StockProviderName, StockProvider>([
     ['openverse', new OpenverseProvider(fetchImpl)],
     ['unsplash', new UnsplashProvider(fetchImpl)],
     ['pexels', new PexelsProvider(fetchImpl)],
+    ['pixabay', new PixabayProvider(fetchImpl)],
   ]);
 }

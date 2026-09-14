@@ -26,7 +26,6 @@ vi.mock('../src/views/publish/DeployModal', () => ({
 
 import { PublishBar } from '../src/views/PublishBar';
 import { LONG_PRESS_MS } from '../src/lib/use-long-press';
-import { tipOf } from './tooltip-helpers';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100 };
@@ -192,6 +191,21 @@ describe('PublishBar — deploy split button', () => {
     expect(screen.getByRole('menuitem', { name: /Download/ })).toBeInTheDocument();
   });
 
+  it('offers Download .zip with NOTHING configured — no target, no hosting, never published', async () => {
+    // ★ The three preconditions this item must NOT have. It was gated on a release, which greyed it
+    // out for exactly the project that has no other way to get its site out: never published, no
+    // deploy target, no Local Hosting. The route renders the current content in that case.
+    publishStatus.mockResolvedValue({ release: null, url: '', dirty: false, localHosting: false });
+    listDeployTargets.mockResolvedValue({ items: [] });
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
+    const download = await screen.findByRole('menuitem', { name: /Download/ });
+    // A real link, not an aria-disabled span with a "publish first" tooltip.
+    expect(download).toHaveAttribute('href', '/projects/p/publish/archive');
+    expect(download).not.toHaveAttribute('aria-disabled');
+    expect(download.tagName).toBe('A');
+  });
+
   it('offers Download .zip with NO targets configured — the manual deployment path', async () => {
     // ★ THE BUG: the ▾ only rendered when targets.length > 0, so the menu holding "Download .zip"
     // could not be opened at all without a deploy target — and a zip download is what you reach for
@@ -216,17 +230,17 @@ describe('PublishBar — deploy split button', () => {
     expect(onOpenDeploy).toHaveBeenCalled(); // unchanged behaviour — only the ▾ beside it is new
   });
 
-  it('DISABLES Download .zip until the site has been published, with the reason', async () => {
-    // The archive is the site AS PUBLISHED, so the route answers 409 until a release exists. As a
-    // bare link that 409 opened a tab of raw JSON.
+  it('Download .zip stays a live link WITH a target configured but nothing published', async () => {
+    // The other half of the "never refuses" rule: having a deploy target must not re-introduce a
+    // publish precondition. This case used to assert the opposite — aria-disabled with a
+    // "publish the site first" tooltip — which was the behaviour being removed, not a regression.
     publishStatus.mockResolvedValue({ release: null, url: '', dirty: false, localHosting: false });
     listDeployTargets.mockResolvedValue({ items: [local] });
     render(<PublishBar project={project} />);
     (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
     const download = await screen.findByRole('menuitem', { name: /Download/ });
-    expect(download).toHaveAttribute('aria-disabled', 'true');
-    expect(download).not.toHaveAttribute('href');
-    expect(tipOf(download)).toMatch(/publish the site first/i);
+    expect(download).toHaveAttribute('href', '/projects/p/publish/archive');
+    expect(download).not.toHaveAttribute('aria-disabled');
   });
 
   it('deploying a remote target from the dropdown opens the streaming deploy modal', async () => {

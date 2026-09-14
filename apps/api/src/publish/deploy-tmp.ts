@@ -6,6 +6,20 @@ import { join } from 'node:path';
 export const DEPLOY_TMP_PREFIX = 'sw-deploy-';
 
 /**
+ * Every temp-directory family this sweep owns. All three are `mkdtemp` (0700) directly inside the OS
+ * temp dir, and all three are removed on the normal success AND failure paths — this list exists only
+ * for the paths a `finally` cannot cover.
+ *
+ * ★ `sw-site-archive-` and `sw-export-` were NOT swept until the "Download .zip" precondition was
+ * removed. That was survivable while the zip path ran rarely; it renders on demand for every
+ * never-published project now, so an orphan from a SIGKILL mid-download is no longer a curiosity.
+ * A zip carries no credential — unlike a deploy payload, whose `sw-mail.config.php` is the reason
+ * this sweep exists at all — so these two are a DISK leak rather than a secret one. On an instance
+ * with a bounded volume that is still worth bounding.
+ */
+export const TMP_PREFIXES = [DEPLOY_TMP_PREFIX, 'sw-site-archive-', 'sw-export-'] as const;
+
+/**
  * Age below which a deploy directory is assumed to belong to a deploy that is still running, and is
  * therefore left alone. A deploy is minutes, not hours — but this only has to be longer than the
  * slowest plausible one, and deleting a live payload mid-upload would be far worse than letting an
@@ -14,7 +28,7 @@ export const DEPLOY_TMP_PREFIX = 'sw-deploy-';
 export const DEPLOY_TMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Removes deploy payload directories left behind by a previous run.
+ * Removes deploy payloads, site-archive zips and project-export zips left behind by a previous run.
  *
  * WHY THIS EXISTS: a `contactPhpSmtp` form's `sw-mail.config.php` carries the project's SMTP
  * password in plaintext, and it is the only artifact in the system that ever puts a live credential
@@ -25,7 +39,8 @@ export const DEPLOY_TMP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
  *
  * Deliberately conservative, because deleting a payload out from under a running deploy would break
  * a customer's site rather than protect it:
- *  - only directories whose name carries our own prefix, directly inside the OS temp dir;
+ *  - only directories whose name carries one of our own prefixes ({@link TMP_PREFIXES}), directly
+ *    inside the OS temp dir;
  *  - only those older than {@link DEPLOY_TMP_MAX_AGE_MS};
  *  - never throws — a sweep failure must not stop the server from booting.
  *
@@ -53,7 +68,7 @@ export async function sweepOrphanedDeployDirs(opts: {
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory() || !entry.name.startsWith(DEPLOY_TMP_PREFIX)) continue;
+    if (!entry.isDirectory() || !TMP_PREFIXES.some((prefix) => entry.name.startsWith(prefix))) continue;
     const abs = join(base, entry.name);
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- abs is `${base}/${entry.name}`, both ours
@@ -62,7 +77,7 @@ export async function sweepOrphanedDeployDirs(opts: {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- same, and prefix-gated above
       await rm(abs, { recursive: true, force: true });
       removed += 1;
-      opts.log?.(`removed orphaned deploy payload ${entry.name}`);
+      opts.log?.(`removed orphaned temp artifact ${entry.name}`);
     } catch {
       // A racing deploy may have removed it already, or it may not be ours to delete. Either way the
       // next boot tries again; one unreadable entry must not abort the rest of the sweep.

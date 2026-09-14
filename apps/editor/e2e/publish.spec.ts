@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp, signUpWithProject } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -58,4 +58,34 @@ test('build a code page, publish the project, and view the live site', async ({ 
   expect(live.html).toContain('We Are Live');
   // The preview-only inline-edit marker MUST NOT reach published HTML.
   expect(live.html).not.toContain('data-sw-text="headline"');
+});
+
+test('download the site zip from a project with NOTHING configured — never published, no target', async ({ page }) => {
+  // ★ The whole point of the zip: it is the manual deployment path, so it has to work for the author
+  // who has no deploy target, no Local Hosting and has never published. This case used to be a greyed
+  // menu item with a "publish the site first" tooltip — no way out for exactly the person who needs it.
+  await signUpWithProject(page, `zip-${stamp}@e2e.test`, 'Zip Only', `zip-${stamp}`);
+
+  // Give the home page some content, then save — but deliberately never publish and never add a target.
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('<h1>Never Published</h1>');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.getByRole('button', { name: 'Choose a deploy target' }).click();
+  const item = page.getByRole('menuitem', { name: 'Download site zip' });
+  // A live link, not an aria-disabled span.
+  await expect(item).toHaveAttribute('href', /\/publish\/archive$/);
+  const [download] = await Promise.all([page.waitForEvent('download'), item.click()]);
+  expect(await download.suggestedFilename()).toMatch(/\.zip$/);
+  // Real bytes, and a real zip: the route rendered the current content into a temp dir on demand.
+  const path = await download.path();
+  const { readFileSync } = await import('node:fs');
+  const head = readFileSync(path).subarray(0, 2);
+  expect(head[0]).toBe(0x50); // 'P'
+  expect(head[1]).toBe(0x4b); // 'K'
 });

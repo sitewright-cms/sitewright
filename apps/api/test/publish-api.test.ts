@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -174,24 +174,29 @@ describe('publish API', () => {
     expect(Date.parse(after!)).toBeGreaterThan(0);
   });
 
-  it('exports the published site as a zip (409 before publishing)', async () => {
+  it('exports a zip WITHOUT a prior publish — the archive route never refuses', async () => {
+    // ★ A zip download is the manual deployment path, so it has to work for the project that has no
+    // deploy target and has never published — that is exactly who needs it. It used to 409 here.
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
-
-    const early = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
-    expect(early.statusCode).toBe(409);
-
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
-    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
 
-    const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
-    expect(zip.statusCode).toBe(200);
-    expect(zip.headers['content-type']).toBe('application/zip');
-    expect(zip.headers['content-disposition']).toContain('.zip');
-    // PK zip magic bytes.
-    expect(zip.rawPayload[0]).toBe(0x50);
-    expect(zip.rawPayload[1]).toBe(0x4b);
+    const isZip = (res: { statusCode: number; headers: Record<string, unknown>; rawPayload: Buffer }) => {
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('application/zip');
+      expect(String(res.headers['content-disposition'])).toContain('.zip');
+      // PK zip magic bytes.
+      expect(res.rawPayload[0]).toBe(0x50);
+      expect(res.rawPayload[1]).toBe(0x4b);
+    };
+
+    // Never published, no deploy target: the route renders fresh into a temp dir and streams it.
+    isZip(await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies }));
+
+    // …and once published it still works, now off the retained build.
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    isZip(await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies }));
   });
 
   it('validates deploy config and builds fresh at deploy time (no prior publish required)', async () => {
@@ -218,6 +223,27 @@ describe('publish API', () => {
       payload: { protocol: 'ftp', host: 'nonexistent.invalid', user: 'u', password: 'p' },
     });
     expect(fresh.statusCode).toBe(502);
+  });
+
+  it('leaves NO temp artifacts behind — the throwaway build dir and the zip are both reaped', async () => {
+    // ★ The archive route creates up to TWO temp trees per request: `sw-deploy-*` (the fresh render,
+    // when there is no retained build) and `sw-site-archive-*` (the zip itself). Dropping the publish
+    // precondition means the render path now runs for EVERY never-published project, so a leak here
+    // would accumulate per download rather than being a rare case. Counted, not assumed.
+    const temps = async (): Promise<string[]> =>
+      (await readdir(tmpdir())).filter((n) => n.startsWith('sw-deploy-') || n.startsWith('sw-site-archive-'));
+
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+
+    const before = await temps();
+    const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
+    expect(zip.statusCode).toBe(200);
+    const after = await temps();
+    const leaked = after.filter((n) => !before.includes(n));
+    expect(leaked, `leaked temp artifacts: ${leaked.join(', ')}`).toEqual([]);
   });
 
   it('forbids exporting another tenant’s archive', async () => {

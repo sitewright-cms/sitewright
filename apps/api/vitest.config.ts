@@ -3,6 +3,13 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // ★ Above vitest's 5s default, for the same reason apps/editor raised its own (see that config):
+    // under the full parallel `turbo run test` load every package's workers oversubscribe the CPU,
+    // and a test that takes ~2.6s of its own work can be starved past 5s. `runtime-parity` — which
+    // builds a publish AND a preview — was the one that tipped over, failing a forced full run and
+    // passing alone seconds later. That is a scheduling artefact being reported as a broken build.
+    // Costs the fast path nothing: a quick test still finishes quickly, only the failure ceiling moves.
+    testTimeout: 20000,
     coverage: {
       provider: 'v8',
       include: ['src/**'],

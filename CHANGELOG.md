@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.52.0] — 2026-09-14
+
 ### Added
 
 - **Pixabay joins the stock-image picker**, alongside Openverse, Unsplash and Pexels. Add an instance
@@ -36,6 +38,41 @@ The running version of an instance is reported at `GET /version` (baked into the
 - The three provider key fields in system settings are now generated from one list rather than
   hand-copied, so a future provider gets its field, its save payload and its stored-key placeholder
   together instead of in two places out of three.
+
+- **Dependency refresh** — the five open Dependabot PRs, merged onto current main. Production
+  (#1021): `@libsql/client` 0.17 → 0.18, `fastify`, `daisyui`, `openid-client`, `basic-ftp`,
+  `playwright-core`, `@codemirror/state`/`view`, `lucide-react`. Development (#1016, #1017, #1018):
+  `typescript-eslint`, `@types/node`, `@playwright/test` 1.62 → 1.63, `jose`, `simple-icons`,
+  `lucide-static`, `vanilla-calendar-pro`, `@testing-library/*`, `@eslint/js`.
+  - Two of them could not pass on their own. A `vanilla-calendar-pro` bump fails `gen:vendor:check`
+    until the bundled runtime is regenerated, which Dependabot cannot do — expect that on every bump
+    of a vendored package. And the production group had to be re-raised entirely: Dependabot
+    **rebuilds its branch whenever main moves**, so it closed its own PR mid-review and opened a
+    replacement.
+
+- **jsdom 25 → 30** (#1022), with the 17 test changes it needs — and every one of them was a test
+  asserting an implementation detail rather than behaviour.
+  - 14 of them turned on one measured fact: jsdom 25 reported every element's computed `display` as
+    the empty string, and `dom-accessibility-api` (what `getByRole({ name })` uses) only puts a space
+    between a control's child texts when the child is **not inline**. So under 25 nothing was ever
+    inline and every composed name came out spaced — `"hero.png in Assets"`, `"Home /"`. jsdom 30
+    reports the real value and they run together. The browser *does* space them, because the real CSS
+    makes those wrappers flex; jsdom loads no stylesheets in either version, so it was never modelling
+    this. The queries keep the whole name and stay exact, and only the gap is optional.
+  - The other 3 pinned an exact CSSOM spelling for a value that did not change: `min-width: 0` reads
+    back as `0px`, `inset(a b c d)` gains an explicit `round 0 0 0 0`, and `min(a, b)` folds to
+    `calc(…)`. The string we *set* is what ships to the browser; how the current CSSOM spells it back
+    is not the thing under test.
+
+- **The Node floor is now truthful, and checked** (#1023). `engines.node` said `>=22.13` while
+  `lighthouse` — a production dependency — has required `>=22.19` for a while, and jsdom 30 pushed the
+  real floor to `^22.22.2`. Nobody noticed, because nothing was checking: pnpm only *warns* about
+  `engines` and exits 0, with `engine-strict=true` as well as without. The field is now
+  `^22.22.2 || ^24.15.0 || >=26` (the intersection of what the dependencies demand), and a
+  `Node version` gate runs first in `pnpm verify` — the cost of not checking was never the missing
+  version, it was that an older Node installs cleanly and then fails several steps from the cause.
+  `.nvmrc` deliberately stays on the major: CI resolves it with `node-version-file`, so pinning the
+  patch would freeze CI on one release and stop it picking up Node's own security updates.
 
 ## [0.51.1] — 2026-09-10
 

@@ -36,7 +36,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62",
+    "@playwright/test": "^1.63",
     "@tailwindcss/vite": "^4",
     "@testing-library/jest-dom": "^6.6",
     "@testing-library/react": "^16.3",

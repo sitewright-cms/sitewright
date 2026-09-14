@@ -24,6 +24,8 @@ import {
   type InstanceSettingsStored,
   type InstanceSettingsPublic,
   type SmtpStored,
+  StockKeyedProviderSchema,
+  type StockKeyedProvider,
   type StockKeysStored,
   type AiStored,
   type AiProviderKind,
@@ -276,15 +278,14 @@ export class InstanceSettingsRepository {
     } else if (input.stock === undefined) {
       if (current.stock) next.stock = current.stock;
     } else {
-      // Per-provider: a provided key is encrypted; an omitted one retains the stored.
-      const unsplash =
-        input.stock.unsplash !== undefined ? this.encrypt(input.stock.unsplash) : current.stock?.unsplash;
-      const pexels =
-        input.stock.pexels !== undefined ? this.encrypt(input.stock.pexels) : current.stock?.pexels;
-      const stock: StockKeysStored = {
-        ...(unsplash !== undefined ? { unsplash } : {}),
-        ...(pexels !== undefined ? { pexels } : {}),
-      };
+      // Per-provider: a provided key is encrypted; an omitted one retains the stored. Driven off
+      // the enum so a new provider needs no edit here.
+      const stock: StockKeysStored = {};
+      for (const provider of StockKeyedProviderSchema.options) {
+        const plaintext = input.stock[provider];
+        const enc = plaintext !== undefined ? this.encrypt(plaintext) : current.stock?.[provider];
+        if (enc !== undefined) stock[provider] = enc;
+      }
       next.stock = stock;
     }
 
@@ -493,9 +494,9 @@ export class InstanceSettingsRepository {
   }
 
   /** Decrypted stock-provider API key for server-side search/import, or null if unset. */
-  async getStockKey(provider: 'unsplash' | 'pexels'): Promise<string | null> {
+  async getStockKey(provider: StockKeyedProvider): Promise<string | null> {
     const stored = await this.getStored();
-    const enc = provider === 'unsplash' ? stored.stock?.unsplash : stored.stock?.pexels;
+    const enc = stored.stock?.[provider];
     return enc ? this.decrypt(enc) : null;
   }
 

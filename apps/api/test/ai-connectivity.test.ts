@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { testAiProvider } from '../src/ai/connectivity.js';
 import { StockService } from '../src/stock/service.js';
-import type { StockProvider } from '../src/stock/providers.js';
+import { StockProviderError, type StockProvider } from '../src/stock/providers.js';
 import type { StockProviderName } from '@sitewright/schema';
 
 function sse(body: string): Response {
@@ -66,6 +66,30 @@ describe('StockService.testKey', () => {
     const svc = new StockService(new Map<StockProviderName, StockProvider>([['unsplash', stubProvider(true, (k) => (used = k))]]), settings);
     await svc.testKey('unsplash');
     expect(used).toBe('stored-key');
+  });
+
+  it('says the KEY was rejected for an auth-shaped status, so the admin stops retrying', async () => {
+    // Pixabay answers a bad key with 400 (Unsplash/Pexels with 401) — all three mean "wrong key",
+    // not "provider down", and "provider request failed (400)" reads like the latter.
+    const rejecting = (status: number): StockProvider => ({
+      name: 'pixabay',
+      requiresKey: true,
+      pageSize: 30,
+      search: async () => {
+        throw new StockProviderError(`provider request failed (${status})`, status);
+      },
+      resolve: async () => null,
+    });
+    for (const status of [400, 401, 403]) {
+      const svc = new StockService(new Map<StockProviderName, StockProvider>([['pixabay', rejecting(status)]]), settings);
+      expect(await svc.testKey('pixabay', 'bad')).toEqual({
+        ok: false,
+        error: `pixabay rejected this key (HTTP ${status}) — check it was copied in full`,
+      });
+    }
+    // A genuine outage keeps the raw message: retrying IS the right advice there.
+    const down = new StockService(new Map<StockProviderName, StockProvider>([['pixabay', rejecting(503)]]), settings);
+    expect((await down.testKey('pixabay', 'ok')).error).toBe('provider request failed (503)');
   });
 
   it('reports the provider error when the key is rejected', async () => {

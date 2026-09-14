@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { StockService, StockNotConfiguredError, StockUnknownProviderError, STOCK_IMPORT_CAP } from '../src/stock/service.js';
 import { StockProviderError, type StockProvider, type ResolvedStock } from '../src/stock/providers.js';
-import type { StockProviderName, StockResult } from '@sitewright/schema';
+import type { StockKeyedProvider, StockProviderName, StockResult } from '@sitewright/schema';
 
 const PAGE_SIZE = 4;
 
@@ -41,6 +41,7 @@ function fakeProvider(
 function service(opts: {
   unsplashKey?: string | null;
   pexelsKey?: string | null;
+  pixabayKey?: string | null;
   resolved?: ResolvedStock | null;
   download?: (url: string) => Promise<{ buffer: Buffer; contentType: string }>;
   /** Per-provider canned search outcome (results, or an Error to throw). */
@@ -52,10 +53,14 @@ function service(opts: {
     ['openverse', make('openverse', false)],
     ['unsplash', make('unsplash', true)],
     ['pexels', make('pexels', true)],
+    ['pixabay', make('pixabay', true)],
   ]);
-  const settings = {
-    getStockKey: async (p: 'unsplash' | 'pexels') => (p === 'unsplash' ? (opts.unsplashKey ?? null) : (opts.pexelsKey ?? null)),
+  const keys: Record<StockKeyedProvider, string | null> = {
+    unsplash: opts.unsplashKey ?? null,
+    pexels: opts.pexelsKey ?? null,
+    pixabay: opts.pixabayKey ?? null,
   };
+  const settings = { getStockKey: async (p: StockKeyedProvider) => keys[p] };
   return new StockService(providers, settings, opts.download ?? (async () => ({ buffer: Buffer.from('img'), contentType: 'image/jpeg' })));
 }
 
@@ -63,7 +68,7 @@ describe('StockService', () => {
   it('reports availability: keyless openverse always; keyed providers only when configured', async () => {
     const a = await service({ unsplashKey: 'k' }).availability();
     const by = Object.fromEntries(a.providers.map((p) => [p.name, p.available]));
-    expect(by).toEqual({ openverse: true, unsplash: true, pexels: false });
+    expect(by).toEqual({ openverse: true, unsplash: true, pexels: false, pixabay: false });
   });
 
   it('searches a keyless provider without a key', async () => {
@@ -175,6 +180,20 @@ describe('StockService — `all` fan-out', () => {
       results: { openverse: hits('openverse', 1), unsplash: hits('unsplash', PAGE_SIZE) },
     });
     expect((await svc.search('all', 'cats', 1)).hasMore).toBe(true);
+  });
+
+  it('a keyed pixabay joins the fan-out and is interleaved with the rest', async () => {
+    const svc = service({
+      unsplashKey: 'k',
+      pixabayKey: 'pxb',
+      results: { openverse: hits('openverse', 2), unsplash: hits('unsplash', 2), pixabay: hits('pixabay', 2) },
+    });
+    const res = await svc.search('all', 'cats', 1);
+    expect(res.results.map((r) => r.id)).toEqual([
+      'openverse1', 'unsplash1', 'pixabay1',
+      'openverse2', 'unsplash2', 'pixabay2',
+    ]);
+    expect(res.errors).toBeUndefined();
   });
 
   it('passes the requested page AND each provider its own key through to every provider', async () => {

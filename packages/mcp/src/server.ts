@@ -1093,7 +1093,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_stock_providers',
     {
       description:
-        'List the configured stock-image providers and whether each is available (openverse needs no key; unsplash/pexels need an instance-admin key). Only needed to explain a gap — search_stock_images with provider "all" already uses every available one.',
+        'List the configured stock-image providers and whether each is available (openverse needs no key; unsplash/pexels/pixabay need an instance-admin key). Only needed to explain a gap — search_stock_images with provider "all" already uses every available one.',
     },
     gate('content:read', () => client.stockProviders()),
   );

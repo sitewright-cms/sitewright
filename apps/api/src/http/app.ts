@@ -80,6 +80,7 @@ import {
   AiConfigSchema,
   PREVIEW_SANDBOX_CSP,
   SLOT_MAX,
+  StockKeyedProviderSchema,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -1708,6 +1709,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'req.body.secret',
             'req.body.stock.unsplash',
             'req.body.stock.pexels',
+            // Pixabay's key is a QUERY param upstream, but it still arrives here in the body.
+            'req.body.stock.pixabay',
             // AI keys (plaintext on input before encryption): the platform key on /admin/settings and
             // the per-project BYO key on /projects/:id/ai-config.
             'req.body.ai.apiKey',
@@ -2969,7 +2972,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Verify a stock-image provider key with a minimal search. Tests the just-typed key if present, else
   // the stored one. Admin-only; heavily rate-limited.
-  const StockTestBody = z.object({ provider: z.enum(['unsplash', 'pexels']), key: z.string().min(1).max(512).optional() });
+  const StockTestBody = z.object({ provider: StockKeyedProviderSchema, key: z.string().min(1).max(512).optional() });
   app.post('/admin/settings/stock/test', { config: rl(10) }, async (req, reply) => {
     await requireInstanceAdmin(req);
     const body = StockTestBody.safeParse(req.body);

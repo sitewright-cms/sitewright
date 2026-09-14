@@ -282,6 +282,7 @@ export type LegacyHcaptchaStored = z.infer<typeof LegacyHcaptchaStoredSchema>;
 export const StockKeysStoredSchema = z.object({
   unsplash: EncryptedSecretSchema.optional(),
   pexels: EncryptedSecretSchema.optional(),
+  pixabay: EncryptedSecretSchema.optional(),
 });
 export type StockKeysStored = z.infer<typeof StockKeysStoredSchema>;
 
@@ -473,6 +474,7 @@ export type SmtpInput = z.infer<typeof SmtpInputSchema>;
 export const StockKeysInputSchema = z.object({
   unsplash: z.string().min(1).max(512).optional(),
   pexels: z.string().min(1).max(512).optional(),
+  pixabay: z.string().min(1).max(512).optional(),
 });
 export type StockKeysInput = z.infer<typeof StockKeysInputSchema>;
 
@@ -592,6 +594,7 @@ export interface SmtpPublic {
 export interface StockKeysPublic {
   hasUnsplash: boolean;
   hasPexels: boolean;
+  hasPixabay: boolean;
 }
 
 /** Masked platform AI config — the API key collapses to a presence flag. */
@@ -686,6 +689,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
     result.stock = {
       hasUnsplash: stored.stock.unsplash !== undefined,
       hasPexels: stored.stock.pexels !== undefined,
+      hasPixabay: stored.stock.pixabay !== undefined,
     };
   }
   if (stored.ai) result.ai = maskAi(stored.ai);

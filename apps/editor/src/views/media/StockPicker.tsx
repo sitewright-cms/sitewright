@@ -8,6 +8,7 @@ const PROVIDER_LABELS: Record<StockProviderName, string> = {
   openverse: 'Openverse (CC)',
   unsplash: 'Unsplash',
   pexels: 'Pexels',
+  pixabay: 'Pixabay',
 };
 
 type Result = StockSearchResult['results'][number];
@@ -21,7 +22,7 @@ function providerNames(errors: NonNullable<StockSearchResult['errors']>): string
 }
 
 /**
- * Search Openverse/Unsplash/Pexels and import a photo into the project. Import
+ * Search Openverse/Unsplash/Pexels/Pixabay and import a photo into the project. Import
  * downloads + optimizes + self-hosts the image server-side (never a hotlink) and
  * records attribution; provider keys live in instance settings and never reach here.
  *

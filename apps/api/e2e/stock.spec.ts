@@ -4,12 +4,16 @@ import { adminContext, seedUser } from './helpers.js';
 type PwFixture = PlaywrightWorkerArgs['playwright'];
 
 // Stock-images over HTTP against the deployed instance. Gating + admin key config +
-// secret masking run unconditionally. The REAL keyed search/import (Unsplash/Pexels)
-// runs only when SW_E2E_UNSPLASH_KEY / SW_E2E_PEXELS_KEY are provided to the test run,
-// so no provider secret is ever committed and a keyless CI still exercises the wiring.
+// secret masking run unconditionally. The REAL keyed search/import (Unsplash/Pexels/Pixabay)
+// runs only when SW_E2E_<PROVIDER>_KEY is provided to the test run, so no provider secret is
+// ever committed and a keyless CI still exercises the wiring.
 
-const UNSPLASH_KEY = process.env.SW_E2E_UNSPLASH_KEY;
-const PEXELS_KEY = process.env.SW_E2E_PEXELS_KEY;
+const KEYED_PROVIDERS = ['unsplash', 'pexels', 'pixabay'] as const;
+const LIVE_KEYS: Record<(typeof KEYED_PROVIDERS)[number], string | undefined> = {
+  unsplash: process.env.SW_E2E_UNSPLASH_KEY,
+  pexels: process.env.SW_E2E_PEXELS_KEY,
+  pixabay: process.env.SW_E2E_PIXABAY_KEY,
+};
 
 async function newProject(playwright: PwFixture, baseURL: string) {
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
@@ -37,7 +41,9 @@ test('stock: provider availability, search gating, and tenant isolation', async 
   const cleaner = await adminContext(playwright, baseURL!);
   expect((await cleaner.put('/admin/settings', { data: { stock: null } })).status()).toBe(200);
   await cleaner.dispose();
-  expect((await ctx.get(`${base}/stock/search?provider=pexels&q=cats`)).status()).toBe(400);
+  for (const provider of KEYED_PROVIDERS) {
+    expect((await ctx.get(`${base}/stock/search?provider=${provider}&q=cats`)).status()).toBe(400);
+  }
   // Unknown provider / empty query → 400.
   expect((await ctx.get(`${base}/stock/search?provider=bogus&q=cats`)).status()).toBe(400);
   expect((await ctx.get(`${base}/stock/search?provider=openverse&q=`)).status()).toBe(400);
@@ -87,7 +93,7 @@ test('stock: `all` fans out across every available provider without a key', asyn
   expect(typeof body.hasMore).toBe('boolean');
   for (const hit of body.results as Array<{ provider: string }>) {
     // Every RESULT names a concrete provider, which is what an import passes back.
-    expect(['openverse', 'unsplash', 'pexels']).toContain(hit.provider);
+    expect(['openverse', ...KEYED_PROVIDERS]).toContain(hit.provider);
   }
   await ctx.dispose();
 });
@@ -95,22 +101,22 @@ test('stock: `all` fans out across every available provider without a key', asyn
 test('stock: admin configures provider keys, which are stored masked (never echoed)', async ({ playwright, baseURL }) => {
   const admin = await adminContext(playwright, baseURL!);
 
-  const put = await admin.put('/admin/settings', { data: { stock: { unsplash: 'unsplash-secret-key-xyz', pexels: 'pexels-secret-key-abc' } } });
+  const secrets = { unsplash: 'unsplash-secret-key-xyz', pexels: 'pexels-secret-key-abc', pixabay: 'pixabay-secret-key-def' };
+  const put = await admin.put('/admin/settings', { data: { stock: secrets } });
   expect(put.status()).toBe(200);
   const body = await put.text();
-  expect(body).not.toContain('unsplash-secret-key-xyz');
-  expect(body).not.toContain('pexels-secret-key-abc');
-  const settings = JSON.parse(body).settings;
-  expect(settings.stock).toEqual({ hasUnsplash: true, hasPexels: true });
+  for (const secret of Object.values(secrets)) expect(body).not.toContain(secret);
+  const stored = { hasUnsplash: true, hasPexels: true, hasPixabay: true };
+  expect(JSON.parse(body).settings.stock).toEqual(stored);
 
   // Re-read confirms persistence and still no secrets.
   const read = await admin.get('/admin/settings');
-  expect(JSON.parse(await read.text()).settings.stock).toEqual({ hasUnsplash: true, hasPexels: true });
+  expect(JSON.parse(await read.text()).settings.stock).toEqual(stored);
   await admin.dispose();
 });
 
-for (const provider of ['unsplash', 'pexels'] as const) {
-  const key = provider === 'unsplash' ? UNSPLASH_KEY : PEXELS_KEY;
+for (const provider of KEYED_PROVIDERS) {
+  const key = LIVE_KEYS[provider];
   test(`stock: real ${provider} search + import (download → optimize → self-host with attribution)`, async ({ playwright, baseURL }) => {
     test.skip(!key, `set SW_E2E_${provider.toUpperCase()}_KEY to run the live ${provider} import`);
 

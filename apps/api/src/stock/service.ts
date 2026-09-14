@@ -1,5 +1,7 @@
 import {
+  StockKeyedProviderSchema,
   targetsPrivateHost,
+  type StockKeyedProvider,
   type StockProviderName,
   type StockProvidersStatus,
   type StockResult,
@@ -34,9 +36,13 @@ export class StockImageTooLargeError extends Error {}
 /** An unknown provider name (→ 404 at the route). */
 export class StockUnknownProviderError extends Error {}
 
+/** Upstream statuses that mean "this key is wrong", not "this provider is down". Unsplash answers a
+ *  bad key with 401, Pexels with 401, Pixabay with 400 ("Invalid or missing API key"). */
+const KEY_REJECTED_STATUSES = new Set([400, 401, 403]);
+
 /** The instance-settings surface the service needs (decoupled from the repo). */
 export interface StockSettings {
-  getStockKey(provider: 'unsplash' | 'pexels'): Promise<string | null>;
+  getStockKey(provider: StockKeyedProvider): Promise<string | null>;
 }
 
 /** A downloaded image: the bytes plus the upstream content-type (e.g. `image/jpeg`). */
@@ -185,6 +191,12 @@ export class StockService {
       await provider.search('nature', 1, effectiveKey ?? null);
       return { ok: true };
     } catch (err) {
+      // The whole point of this button is to say WHY. An auth-shaped status means the key itself was
+      // refused — actionable — where "provider request failed (401)" reads like an outage and invites
+      // a pointless retry. Anything else is passed through as-is.
+      if (err instanceof StockProviderError && err.status !== undefined && KEY_REJECTED_STATUSES.has(err.status)) {
+        return { ok: false, error: `${name} rejected this key (HTTP ${err.status}) — check it was copied in full` };
+      }
       return { ok: false, error: err instanceof Error ? err.message : 'request failed' };
     }
   }
@@ -210,7 +222,10 @@ export class StockService {
   }
 
   private async keyFor(name: StockProviderName): Promise<string | null> {
-    return name === 'unsplash' || name === 'pexels' ? this.settings.getStockKey(name) : null;
+    // Parsed rather than compared: the enum is the list of keyed providers, so a new one is picked
+    // up here automatically instead of silently resolving to `null` (= "not configured", forever).
+    const keyed = StockKeyedProviderSchema.safeParse(name);
+    return keyed.success ? this.settings.getStockKey(keyed.data) : null;
   }
 }
 

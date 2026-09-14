@@ -103,7 +103,7 @@ describe('stock API — real service (no network needed for gating)', () => {
     const res = await app.inject({ method: 'GET', url: `${base}/stock/providers`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
     const by = Object.fromEntries((res.json() as { providers: Array<{ name: string; available: boolean }> }).providers.map((p) => [p.name, p.available]));
-    expect(by).toEqual({ openverse: true, unsplash: false, pexels: false });
+    expect(by).toEqual({ openverse: true, unsplash: false, pexels: false, pixabay: false });
   });
 
   it('rejects searching a keyed provider that has no key configured (400)', async () => {

@@ -6,8 +6,18 @@ import { MediaFolderSchema } from './media.js';
 // for the project-scoped search + import endpoints and MCP tools.
 
 /** Supported stock providers. `openverse` needs no key; the others need an instance key. */
-export const StockProviderNameSchema = z.enum(['openverse', 'unsplash', 'pexels']);
+export const StockProviderNameSchema = z.enum(['openverse', 'unsplash', 'pexels', 'pixabay']);
 export type StockProviderName = z.infer<typeof StockProviderNameSchema>;
+
+/**
+ * The providers that need an instance API key. `openverse` is the only keyless one.
+ *
+ * ONE source of truth: the settings repo (encrypt/decrypt), the service (`keyFor`), the admin
+ * "test key" route body and the editor's client all derive from this, so adding a provider cannot
+ * land in three of those four places and silently skip the fourth.
+ */
+export const StockKeyedProviderSchema = z.enum(['unsplash', 'pexels', 'pixabay']);
+export type StockKeyedProvider = z.infer<typeof StockKeyedProviderSchema>;
 
 /**
  * What a SEARCH may target: one provider, or `all` to fan out across every available one.
@@ -15,7 +25,7 @@ export type StockProviderName = z.infer<typeof StockProviderNameSchema>;
  * Search-only. An IMPORT always names a concrete provider — ids are unique only WITHIN a provider,
  * so `all` could not identify a photo; each hit carries its own `StockResult.provider` for that.
  */
-export const StockSearchProviderSchema = z.enum(['openverse', 'unsplash', 'pexels', 'all']);
+export const StockSearchProviderSchema = z.enum(['openverse', 'unsplash', 'pexels', 'pixabay', 'all']);
 export type StockSearchProvider = z.infer<typeof StockSearchProviderSchema>;
 
 /**

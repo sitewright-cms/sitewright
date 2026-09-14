@@ -29,6 +29,25 @@ describe('InstanceSettingsRepository', () => {
     expect(pub.formModes.userSmtp).toBe(false); // untouched fields stay false
   });
 
+  it('stock keys: each provider round-trips, an omitted one is RETAINED, and null clears all', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    await repo.put({ stock: { unsplash: 'uk', pexels: 'pk', pixabay: 'xk' } });
+    expect(await repo.getStockKey('unsplash')).toBe('uk');
+    expect(await repo.getStockKey('pexels')).toBe('pk');
+    expect(await repo.getStockKey('pixabay')).toBe('xk');
+    expect((await repo.getPublic()).stock).toEqual({ hasUnsplash: true, hasPexels: true, hasPixabay: true });
+
+    // The editor sends only the fields the admin actually typed — everything else must survive.
+    await repo.put({ stock: { pixabay: 'xk2' } });
+    expect(await repo.getStockKey('pixabay')).toBe('xk2');
+    expect(await repo.getStockKey('unsplash')).toBe('uk');
+    expect(await repo.getStockKey('pexels')).toBe('pk');
+
+    await repo.put({ stock: null });
+    expect(await repo.getStockKey('pixabay')).toBeNull();
+    expect((await repo.getPublic()).stock).toBeUndefined();
+  });
+
   it('revision policy: defaults 0/90, round-trips a set value (+ masked view), null reverts', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 0, retentionDays: 90 }); // built-in defaults

@@ -23,11 +23,34 @@ import {
   type PlatformLogo,
   type AiProviderKind,
   type AiAudience,
+  type StockKeyedProvider,
+  type StockKeysPublic,
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
 import { modelPlaceholder } from './AiConfig';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
+
+/**
+ * The stock providers that take an instance API key, in display order.
+ *
+ * One row per provider drives the state, the save payload and the markup — the three key fields are
+ * otherwise identical, and hand-copying a fourth is how one of those three places gets missed.
+ * `publicFlag` is the masked-settings field that reports whether a key is already stored.
+ */
+const STOCK_KEY_FIELDS: ReadonlyArray<{
+  provider: StockKeyedProvider;
+  label: string;
+  publicFlag: keyof StockKeysPublic;
+}> = [
+  { provider: 'unsplash', label: 'Unsplash access key', publicFlag: 'hasUnsplash' },
+  { provider: 'pexels', label: 'Pexels API key', publicFlag: 'hasPexels' },
+  { provider: 'pixabay', label: 'Pixabay API key', publicFlag: 'hasPixabay' },
+];
+
+type StockKeyMap<T> = Record<StockKeyedProvider, T>;
+const stockKeyMap = <T,>(value: T): StockKeyMap<T> =>
+  Object.fromEntries(STOCK_KEY_FIELDS.map((f) => [f.provider, value])) as StockKeyMap<T>;
 import { DatabaseIntegrityModal } from './settings/DatabaseIntegrityModal';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './ui/ColorPicker';
@@ -138,10 +161,9 @@ export function InstanceSettings() {
   const [hasPassword, setHasPassword] = useState(false);
 
   const [stockEnabled, setStockEnabled] = useState(false);
-  const [unsplashKey, setUnsplashKey] = useState('');
-  const [pexelsKey, setPexelsKey] = useState('');
-  const [hasUnsplash, setHasUnsplash] = useState(false);
-  const [hasPexels, setHasPexels] = useState(false);
+  // Typed per provider rather than one useState each: see STOCK_KEY_FIELDS.
+  const [stockKeys, setStockKeys] = useState<StockKeyMap<string>>(() => stockKeyMap(''));
+  const [stockStored, setStockStored] = useState<StockKeyMap<boolean>>(() => stockKeyMap(false));
 
   // Platform-wide AI assistant config (the key is write-only; a presence flag comes back).
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -165,9 +187,10 @@ export function InstanceSettings() {
   // A broken GLOBAL SMTP breaks every project at once, so the backlog is shown to the person who
   // can actually fix it, beside the settings that caused it.
   const [owed, setOwed] = useState<{ count: number; lastError: string | null }>({ count: 0, lastError: null });
-  const [unsplashTest, setUnsplashTest] = useState<{ ok: boolean; error?: string } | null>(null);
-  const [pexelsTest, setPexelsTest] = useState<{ ok: boolean; error?: string } | null>(null);
-  const [stockTesting, setStockTesting] = useState<'unsplash' | 'pexels' | null>(null);
+  const [stockTests, setStockTests] = useState<StockKeyMap<{ ok: boolean; error?: string } | null>>(() =>
+    stockKeyMap(null),
+  );
+  const [stockTesting, setStockTesting] = useState<StockKeyedProvider | null>(null);
 
   // HSTS (HTTP Strict-Transport-Security) — admin opt-in, OFF by default (sticky + dangerous, so gated).
   const [hstsEnabled, setHstsEnabled] = useState(false);
@@ -278,8 +301,9 @@ export function InstanceSettings() {
     }
   }
 
-  async function testStock(provider: 'unsplash' | 'pexels', key: string) {
-    const set = provider === 'unsplash' ? setUnsplashTest : setPexelsTest;
+  async function testStock(provider: StockKeyedProvider, key: string) {
+    const set = (result: { ok: boolean; error?: string } | null) =>
+      setStockTests((prev) => ({ ...prev, [provider]: result }));
     setStockTesting(provider);
     set(null);
     try {
@@ -345,10 +369,12 @@ export function InstanceSettings() {
     setHasPassword(s.smtp?.hasPassword ?? false);
     setPassword('');
     setStockEnabled(Boolean(s.stock));
-    setHasUnsplash(s.stock?.hasUnsplash ?? false);
-    setHasPexels(s.stock?.hasPexels ?? false);
-    setUnsplashKey('');
-    setPexelsKey('');
+    setStockStored(
+      Object.fromEntries(
+        STOCK_KEY_FIELDS.map((f) => [f.provider, s.stock?.[f.publicFlag] ?? false]),
+      ) as StockKeyMap<boolean>,
+    );
+    setStockKeys(stockKeyMap(''));
     setAiEnabled(s.ai?.enabled ?? false);
     setAiProvider(s.ai?.provider ?? 'anthropic');
     setAiModel(s.ai?.model ?? '');
@@ -466,8 +492,10 @@ export function InstanceSettings() {
         }
       : null;
     input.stock = stockEnabled
-      ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
-      : null; // disabling clears both keys
+      ? Object.fromEntries(
+          STOCK_KEY_FIELDS.filter((f) => stockKeys[f.provider]).map((f) => [f.provider, stockKeys[f.provider]]),
+        )
+      : null; // disabling clears every key
     input.ai = aiEnabled
       ? {
           enabled: true,
@@ -899,7 +927,7 @@ export function InstanceSettings() {
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           Stock image providers
-          <SectionHelp tip="Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media stock picker. Keys are encrypted at rest and never leave the server." />
+          <SectionHelp tip="Openverse needs no key. Add an Unsplash, Pexels and/or Pixabay API key to enable those providers in the media stock picker. Keys are encrypted at rest and never leave the server." />
         </legend>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -909,50 +937,45 @@ export function InstanceSettings() {
             checked={stockEnabled}
             onChange={(e) => setStockEnabled(e.target.checked)}
           />
-          Configure Unsplash / Pexels API keys
+          Configure Unsplash / Pexels / Pixabay API keys
         </label>
         {stockEnabled && (
           <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Unsplash access key
-              <input
-                className={field}
-                aria-label="Unsplash access key"
-                type="password"
-                {...secretFieldProps}
-                value={unsplashKey}
-                placeholder={hasUnsplash ? '•••••• (leave blank to keep)' : ''}
-                onChange={(e) => setUnsplashKey(e.target.value)}
-              />
-              <span className="mt-1 flex items-center gap-2">
-                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('unsplash', unsplashKey)} disabled={stockTesting === 'unsplash' || (!unsplashKey && !hasUnsplash)}>
-                  {stockTesting === 'unsplash' ? 'Testing…' : 'Test'}
-                </button>
-                {unsplashTest && (unsplashTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <Tooltip tip={unsplashTest.error}>
-  <span className="text-xs text-red-600 dark:text-red-400">✗ {unsplashTest.error}</span>
-</Tooltip>)}
-              </span>
-            </label>
-            <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
-              Pexels API key
-              <input
-                className={field}
-                aria-label="Pexels API key"
-                type="password"
-                {...secretFieldProps}
-                value={pexelsKey}
-                placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
-                onChange={(e) => setPexelsKey(e.target.value)}
-              />
-              <span className="mt-1 flex items-center gap-2">
-                <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void testStock('pexels', pexelsKey)} disabled={stockTesting === 'pexels' || (!pexelsKey && !hasPexels)}>
-                  {stockTesting === 'pexels' ? 'Testing…' : 'Test'}
-                </button>
-                {pexelsTest && (pexelsTest.ok ? <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span> : <Tooltip tip={pexelsTest.error}>
-  <span className="text-xs text-red-600 dark:text-red-400">✗ {pexelsTest.error}</span>
-</Tooltip>)}
-              </span>
-            </label>
+            {STOCK_KEY_FIELDS.map(({ provider, label }) => {
+              const result = stockTests[provider];
+              return (
+                <label key={provider} className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
+                  {label}
+                  <input
+                    className={field}
+                    aria-label={label}
+                    type="password"
+                    {...secretFieldProps}
+                    value={stockKeys[provider]}
+                    placeholder={stockStored[provider] ? '•••••• (leave blank to keep)' : ''}
+                    onChange={(e) => setStockKeys((prev) => ({ ...prev, [provider]: e.target.value }))}
+                  />
+                  <span className="mt-1 flex items-center gap-2">
+                    <button
+                      type="button"
+                      className={`${ghostButton} px-2 py-1 text-xs`}
+                      onClick={() => void testStock(provider, stockKeys[provider])}
+                      disabled={stockTesting === provider || (!stockKeys[provider] && !stockStored[provider])}
+                    >
+                      {stockTesting === provider ? 'Testing…' : 'Test'}
+                    </button>
+                    {result &&
+                      (result.ok ? (
+                        <span className="text-xs text-green-600 dark:text-green-400">✓ Connected</span>
+                      ) : (
+                        <Tooltip tip={result.error}>
+                          <span className="text-xs text-red-600 dark:text-red-400">✗ {result.error}</span>
+                        </Tooltip>
+                      ))}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         )}
       </fieldset>

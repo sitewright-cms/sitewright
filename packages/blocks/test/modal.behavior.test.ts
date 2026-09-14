@@ -97,7 +97,9 @@ describe('Modal width guarantee (jsdom)', () => {
     Object.defineProperty(dialog, 'clientWidth', { value: 600, configurable: true });
     (document.querySelector('a[href="#m"]') as HTMLElement).click();
     expect(card.style.maxWidth).toBe('536px');
-    expect(card.style.minWidth).toBe('0'); // an author's INLINE min-width would otherwise beat the clamp
+    // `0` or `0px`: the runtime writes `0` and jsdom 30 re-serializes lengths to px. What matters is
+    // that the author's INLINE min-width was RELEASED — an untouched one reads '' and fails here.
+    expect(card.style.minWidth).toMatch(/^0(px)?$/);
     expect(panel.style.width).toBe('536px');
   });
 
@@ -116,7 +118,7 @@ describe('Modal width guarantee (jsdom)', () => {
     (document.querySelector('a[href="#m"]') as HTMLElement).click();
     expect(panel.style.width).toBe('356px'); // 420 − 2×32 of gutter
     expect(panel.style.maxWidth).toBe('356px');
-    expect(panel.style.minWidth).toBe('0'); // the author's min-width is released, or the width can't land
+    expect(panel.style.minWidth).toMatch(/^0(px)?$/); // released, or the width can't land
     expect(card.style.maxWidth).toBe('356px');
   });
 

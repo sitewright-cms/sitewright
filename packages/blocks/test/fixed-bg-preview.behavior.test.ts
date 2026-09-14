@@ -12,6 +12,17 @@ function run(): void {
 }
 
 const LAYER = '[data-sw-fixed-bg]';
+
+/**
+ * The layer's clip-path with a ZERO `round` tail normalised away.
+ *
+ * The runtime writes `inset(a b c d)` and omits `round` entirely when the host has no radius (see
+ * `radiusOf`). jsdom 30 re-serializes that as `inset(a b c d round 0 0 0 0)`; jsdom 25 and real
+ * browsers keep the short form. Both parse identically, and the string we SET is what ships — so
+ * assert the authored value rather than whichever spelling the current CSSOM hands back. A non-zero
+ * radius is left alone, which is what the border-radius case below pins.
+ */
+const clipOf = (el: HTMLElement): string => el.style.clipPath.replace(/ round(?: 0(?:px)?)+\)$/, ')');
 const fixedSection = (id: string): string =>
   `<section id="${id}" style="background-image:url('/t.png');background-attachment:fixed">x</section>`;
 
@@ -127,7 +138,7 @@ describe('fixed-background emulation (jsdom)', () => {
     placeAt(host, 100, 400);
     run();
     const layer = host.querySelector(LAYER) as HTMLElement;
-    expect(layer.style.clipPath).toBe('inset(100px 0px 300px 0px)');
+    expect(clipOf(layer)).toBe('inset(100px 0px 300px 0px)');
 
     // Something else on the page mutates — a runtime enhancing markup, the editor's own overlay.
     document.body.insertAdjacentHTML('beforeend', '<span>tick</span>');
@@ -137,7 +148,7 @@ describe('fixed-background emulation (jsdom)', () => {
     placeAt(host, -50, 400);
     window.dispatchEvent(new Event('scroll'));
     await settle();
-    expect(layer.style.clipPath, 'the clip froze: the host was dropped from the tracked pairs').toBe(
+    expect(clipOf(layer), 'the clip froze: the host was dropped from the tracked pairs').toBe(
       'inset(0px 0px 450px 0px)',
     );
   });
@@ -207,7 +218,8 @@ describe('fixed-background emulation (jsdom)', () => {
     run();
     const layer = host.querySelector(LAYER) as HTMLElement;
     // Without this a rounded section paints square background corners.
-    expect(layer.style.clipPath).toBe('inset(100px 0px 300px 0px round 24px 24px 24px 24px)');
+    // A REAL radius is never stripped by the normaliser — this is the authored string verbatim.
+    expect(clipOf(layer)).toBe('inset(100px 0px 300px 0px round 24px 24px 24px 24px)');
   });
 
   it('hides the layer while its host is off-screen', async () => {

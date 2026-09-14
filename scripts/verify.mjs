@@ -12,6 +12,10 @@ import { spawnSync } from 'node:child_process';
 
 /** One gate: a label, the command, and whether a known-infra failure is tolerated. */
 const GATES = [
+  // First, because every gate below it runs on this Node: a version below the floor produces
+  // failures that point anywhere but at the cause. pnpm only WARNS about `engines` and exits 0,
+  // so the field needs something that actually checks it. ~1ms.
+  { name: 'Node version', cmd: ['node', 'scripts/node-version-gate.mjs'] },
   {
     name: 'Audit dependencies',
     // Was `pnpm audit --audit-level high`, which failed OPEN on a transport error and used a floor

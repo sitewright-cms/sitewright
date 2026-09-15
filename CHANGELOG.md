@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.53.0] — 2026-09-15
+
+### Fixed
+
+- **A tooltip inside a panel is no longer cut off at the panel's edge.** Every editor panel is a
+  scroll container and a DaisyUI `data-tip` bubble is a `:before` pseudo-element, so it was clipped
+  by the ancestor's `overflow` — the hint was cut off exactly where it was most needed. The bubble
+  now renders in a `document.body` portal, which is the only thing that escapes both clipping and
+  the containing block.
+  - **A `position:fixed` pseudo-element would NOT have been enough**, which is worth stating because
+    it looks like it should be: `backdrop-filter` establishes a containing block for fixed
+    descendants, and every editor surface is a glass panel. Measured in a browser — a fixed child of
+    a plain `overflow:auto` panel lands at the viewport origin; the same child inside a
+    `backdrop-filter` panel lands at the PANEL's origin.
+  - `HoverTip` already did this and was used at ONE call site; `Tooltip` now uses that mechanism for
+    all 132, and `HoverTip` is a thin alias so the two cannot drift. `data-tip` stays on the host as
+    the query hook the test helpers use, and the CSS bubble is suppressed by a marker attribute
+    rather than removed — the Image Map vertex handles set `data-tip` directly and cannot take a
+    wrapper at all, being absolutely positioned against a parent `.tooltip` would hijack.
+  - A tooltip also no longer opens while a mouse button is held: the pages list wraps its drag handle
+    in one, and a hint appearing under the cursor mid-drag is wrong on its own terms.
+
 ### Changed
 
 - **The compiled stylesheet moved out of the site root** into `_assets/_sw/styles.css`, beside the
@@ -3845,7 +3867,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.52.1...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.53.0...HEAD
+[0.53.0]: https://github.com/sitewright-cms/sitewright/compare/v0.52.1...v0.53.0
 [0.52.1]: https://github.com/sitewright-cms/sitewright/compare/v0.52.0...v0.52.1
 [0.52.0]: https://github.com/sitewright-cms/sitewright/compare/v0.51.1...v0.52.0
 [0.51.1]: https://github.com/sitewright-cms/sitewright/compare/v0.51.0...v0.51.1

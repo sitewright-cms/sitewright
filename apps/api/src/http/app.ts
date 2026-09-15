@@ -7552,25 +7552,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // Download the published site as a zip artifact (deploy it anywhere at a root).
+    // Download the rendered site as a zip artifact (deploy it anywhere at a root).
     // Member-readable: the archive is the already-public published output (also
     // served unauthenticated at /sites/<id>/), so it needs no extra role gate.
     app.get<{ Params: { projectId: string } }>(
       '/projects/:projectId/publish/archive',
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
-        // ★ THE ARCHIVE IS THE SECOND READER OF THE BUILD DIRECTORY, and the reason it cannot simply
-        // be gated on one existing. Downloading a zip is most useful precisely when a project has NO
-        // deploy target — that IS the manual deployment path — so the retention rule (keep a build
-        // only while Local Hosting is on) must not take the feature away.
+        // ★ THIS ROUTE NEVER REFUSES. Downloading a zip IS the manual deployment path — it is what
+        // you reach for precisely when there is no deploy target and nothing has been published, so
+        // every precondition it could impose would remove the feature from the only people who need
+        // it. It therefore depends on neither a deploy target, nor Local Hosting, nor a release.
         //
-        // So: use the retained build when there is one, and otherwise build fresh into a temp dir and
-        // throw it away, exactly as a remote deploy does. A publish is still required first, because
-        // "export" means "the site as published", not "whatever the draft happens to be".
-        const everPublished = await releasesRepo.get(project.id, () => store.readRelease(project.slug));
-        if (everPublished === null) {
-          return reply.code(409).send({ error: 'publish the site before exporting' });
-        }
+        // It used to answer 409 until a publish existed, on the reasoning that "export" means "the
+        // site as published". That reasoning fails a project that has never published: there is no
+        // published site to mean, and the author is left with a greyed menu item and no way out.
+        // Rendering the current content is the useful answer and always exists.
+        //
+        // So: use the retained build when there is one — that is the published site, already on disk
+        // and free — and otherwise render fresh into a temp dir and throw it away, exactly as a
+        // remote deploy does. A project WITH unpublished changes still gets its published build; the
+        // dirty indicator beside this menu is what says so.
         const retained = (await store.readRelease(project.slug)) !== null;
         const dir = retained ? store.dirFor(project.slug) : await buildForDeploy(ctx, project.id);
         // ★ STREAMED, not buffered. The archive lands in a temp file and goes out as a read stream,

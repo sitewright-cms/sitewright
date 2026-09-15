@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -174,24 +174,29 @@ describe('publish API', () => {
     expect(Date.parse(after!)).toBeGreaterThan(0);
   });
 
-  it('exports the published site as a zip (409 before publishing)', async () => {
+  it('exports a zip WITHOUT a prior publish — the archive route never refuses', async () => {
+    // ★ A zip download is the manual deployment path, so it has to work for the project that has no
+    // deploy target and has never published — that is exactly who needs it. It used to 409 here.
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
-
-    const early = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
-    expect(early.statusCode).toBe(409);
-
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
-    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
 
-    const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
-    expect(zip.statusCode).toBe(200);
-    expect(zip.headers['content-type']).toBe('application/zip');
-    expect(zip.headers['content-disposition']).toContain('.zip');
-    // PK zip magic bytes.
-    expect(zip.rawPayload[0]).toBe(0x50);
-    expect(zip.rawPayload[1]).toBe(0x4b);
+    const isZip = (res: { statusCode: number; headers: Record<string, unknown>; rawPayload: Buffer }) => {
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('application/zip');
+      expect(String(res.headers['content-disposition'])).toContain('.zip');
+      // PK zip magic bytes.
+      expect(res.rawPayload[0]).toBe(0x50);
+      expect(res.rawPayload[1]).toBe(0x4b);
+    };
+
+    // Never published, no deploy target: the route renders fresh into a temp dir and streams it.
+    isZip(await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies }));
+
+    // …and once published it still works, now off the retained build.
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    isZip(await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies }));
   });
 
   it('validates deploy config and builds fresh at deploy time (no prior publish required)', async () => {
@@ -218,6 +223,46 @@ describe('publish API', () => {
       payload: { protocol: 'ftp', host: 'nonexistent.invalid', user: 'u', password: 'p' },
     });
     expect(fresh.statusCode).toBe(502);
+  });
+
+  it('leaves NO temp artifacts behind — the throwaway build dir and the zip are both reaped', async () => {
+    // ★ The archive route creates up to TWO temp trees per request: `sw-deploy-*` (the fresh render,
+    // when there is no retained build) and `sw-site-archive-*` (the zip itself). Dropping the publish
+    // precondition means the render path now runs for EVERY never-published project, so a leak here
+    // would accumulate per download rather than being a rare case. Counted, not assumed.
+    //
+    // ★★ Counted in a PRIVATE temp dir, not the shared one. `os.tmpdir()` re-reads TMPDIR on every
+    // call, so pointing it at our own directory makes the check hermetic. Scanning the real temp dir
+    // is what a first version did, and it is a race: ten other api test files drive deploy/archive
+    // paths that create `sw-deploy-*` concurrently, and vitest runs each file in its own process.
+    // On a fast machine the window is too small to notice; on a 2-core CI runner it caught a NEIGHBOUR'S
+    // directory and failed as though this route had leaked it.
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+
+    const scratch = await mkdtemp(join(tmpdir(), 'sw-leakcheck-'));
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = scratch;
+    try {
+      const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
+      expect(zip.statusCode).toBe(200);
+      // ★ The zip is reaped on the response's `close`, which fires AFTER the request resolves — so
+      // read once and you are reading too early, and the first version of this test passed only
+      // because it was looking at the wrong (shared) directory. Poll for the reap instead: a real
+      // leak never empties, so the bound is what distinguishes "slow" from "leaked".
+      let leaked = await readdir(scratch);
+      for (let i = 0; i < 50 && leaked.length > 0; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        leaked = await readdir(scratch);
+      }
+      expect(leaked, `leaked temp artifacts: ${leaked.join(', ')}`).toEqual([]);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = saved;
+      await rm(scratch, { recursive: true, force: true });
+    }
   });
 
   it('forbids exporting another tenant’s archive', async () => {

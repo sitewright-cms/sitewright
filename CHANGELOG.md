@@ -9,6 +9,36 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Download .zip" now always works** — no deploy target, no Local Hosting, and no publish required.
+  The route already built a fresh archive when no build was retained (a zip is the manual deployment
+  path, so it deliberately does not depend on a target), but it still answered **409 until the project
+  had published at least once**, and the menu item was greyed out with "publish the site first". That
+  left the one author who has no other way to get their site out — never published, no target — with a
+  disabled control and no route forward. The archive now renders the current content when there is no
+  published build, exactly as a remote deploy does.
+  - A project that HAS published still gets its published build, which is already on disk and free;
+    the dirty indicator beside the menu is what says unpublished changes exist.
+  - The size (413) and disk-space (507) guards are unchanged, as is member-readability — the archive
+    is the same output already served unauthenticated at `/sites/<slug>/`.
+
+- **The boot sweep now reaps export artifacts, not just deploy payloads.** Every path already removes
+  its own temp tree in a `finally`, and that is measured rather than assumed — a test counts
+  `sw-deploy-*` / `sw-site-archive-*` directories across a download and fails naming any that leak.
+  What a `finally` cannot survive is a SIGKILL or an OOM kill mid-request, which is why
+  `sweepOrphanedDeployDirs` exists at boot — but it only matched `sw-deploy-`. Now that the zip
+  renders on demand for any never-published project, an orphaned `sw-site-archive-`/`sw-export-` tree
+  stops being a curiosity, so both are swept, under the same conservative rules: our own prefixes
+  only, directly inside the OS temp dir, and only when older than 6h so an in-flight download is
+  never deleted out from under the client.
+
+- **`apps/api`'s test timeout is raised to 20s**, matching what `apps/editor` already does for the
+  same reason. Under the full parallel `turbo run test` load the packages' workers oversubscribe the
+  CPU, and `runtime-parity` — which builds a publish AND a preview — was starved past vitest's 5s
+  default: it failed a forced full run and passed alone seconds later. That is a scheduling artefact
+  reported as a broken build. Pre-existing; found while verifying the change above.
+
 ## [0.52.0] — 2026-09-14
 
 ### Added

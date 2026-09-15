@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, mkdir, rm, writeFile, readdir, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { sweepOrphanedDeployDirs, DEPLOY_TMP_PREFIX, DEPLOY_TMP_MAX_AGE_MS } from '../src/publish/deploy-tmp.js';
+import { sweepOrphanedDeployDirs, DEPLOY_TMP_PREFIX, TMP_PREFIXES, DEPLOY_TMP_MAX_AGE_MS } from '../src/publish/deploy-tmp.js';
 
 // The last line of defence for the one artifact that puts a live credential on this host's disk.
 // Every deploy path removes its payload in a `finally`; this covers the case a `finally` cannot —
@@ -45,6 +45,25 @@ describe('sweepOrphanedDeployDirs', () => {
     const { removed } = await sweepOrphanedDeployDirs({ dir: base, now: NOW });
     expect(removed).toBe(0);
     expect(await readdir(base)).toEqual([`${DEPLOY_TMP_PREFIX}live`]);
+  });
+
+  it('★ sweeps the ZIP families too, not just deploy payloads', async () => {
+    // The site archive and the project export land in their own temp trees and are removed on every
+    // normal path — but a `finally` cannot run through a SIGKILL, and "Download .zip" now renders on
+    // demand for any never-published project, so the zip path runs often enough to matter.
+    expect(TMP_PREFIXES).toEqual([DEPLOY_TMP_PREFIX, 'sw-site-archive-', 'sw-export-']);
+    for (const prefix of TMP_PREFIXES) await payload(`${prefix}orphan`, 12 * HOUR, false);
+    const { removed } = await sweepOrphanedDeployDirs({ dir: base, now: NOW });
+    expect(removed).toBe(TMP_PREFIXES.length);
+    expect(await readdir(base)).toEqual([]);
+  });
+
+  it('★ the age floor protects a live download, not just a live deploy', async () => {
+    // A zip being streamed to a client right now is as destructive to delete as a payload mid-upload.
+    for (const prefix of TMP_PREFIXES) await payload(`${prefix}inflight`, 5 * 60 * 1000, false);
+    const { removed } = await sweepOrphanedDeployDirs({ dir: base, now: NOW });
+    expect(removed).toBe(0);
+    expect((await readdir(base)).length).toBe(TMP_PREFIXES.length);
   });
 
   it('touches nothing that is not ours, however old', async () => {

@@ -482,31 +482,21 @@ export function PublishBar({
             >
               + Add a target…
             </button>
-            {/* ★ The archive is the site AS PUBLISHED, so the route answers 409 until a release
-                exists. As a bare <a> that 409 opened a tab of raw JSON; disabled WITH THE REASON is
-                the same information without the dead end. */}
-            {published ? (
-              <a
-                role="menuitem"
-                href={api.archiveUrl(project.id)}
-                aria-label="Download site zip"
-                className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Download .zip
-              </a>
-            ) : (
-              <Tooltip tip="Publish the site first — the archive is the site as published">
-                <span
-                  role="menuitem"
-                  aria-disabled="true"
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-400 dark:text-slate-500"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Download .zip
-                </span>
-              </Tooltip>
-            )}
+            {/* ★ ALWAYS ENABLED, unconditionally — no deploy target, no Local Hosting, no release.
+                A zip download is the manual deployment path, so it is what you reach for precisely
+                when you have none of those; every precondition took the feature away from the only
+                people who need it. It was gated on a release until the route stopped answering 409,
+                which left a never-published project with a greyed item and no way out. The route
+                renders the current content when there is no published build. */}
+            <a
+              role="menuitem"
+              href={api.archiveUrl(project.id)}
+              aria-label="Download site zip"
+              className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download .zip
+            </a>
           </div>
         )}
       </div>

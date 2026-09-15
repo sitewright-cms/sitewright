@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.52.1] — 2026-09-15
+
 ### Fixed
 
 - **"Download .zip" now always works** — no deploy target, no Local Hosting, and no publish required.
@@ -3821,7 +3823,26 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.38.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.52.1...HEAD
+[0.52.1]: https://github.com/sitewright-cms/sitewright/compare/v0.52.0...v0.52.1
+[0.52.0]: https://github.com/sitewright-cms/sitewright/compare/v0.51.1...v0.52.0
+[0.51.1]: https://github.com/sitewright-cms/sitewright/compare/v0.51.0...v0.51.1
+[0.51.0]: https://github.com/sitewright-cms/sitewright/compare/v0.50.1...v0.51.0
+[0.50.1]: https://github.com/sitewright-cms/sitewright/compare/v0.50.0...v0.50.1
+[0.50.0]: https://github.com/sitewright-cms/sitewright/compare/v0.49.0...v0.50.0
+[0.49.0]: https://github.com/sitewright-cms/sitewright/compare/v0.48.0...v0.49.0
+[0.48.0]: https://github.com/sitewright-cms/sitewright/compare/v0.47.0...v0.48.0
+[0.47.0]: https://github.com/sitewright-cms/sitewright/compare/v0.46.0...v0.47.0
+[0.46.0]: https://github.com/sitewright-cms/sitewright/compare/v0.45.0...v0.46.0
+[0.45.0]: https://github.com/sitewright-cms/sitewright/compare/v0.44.0...v0.45.0
+[0.44.0]: https://github.com/sitewright-cms/sitewright/compare/v0.43.0...v0.44.0
+[0.43.0]: https://github.com/sitewright-cms/sitewright/compare/v0.42.0...v0.43.0
+[0.42.0]: https://github.com/sitewright-cms/sitewright/compare/v0.41.0...v0.42.0
+[0.41.0]: https://github.com/sitewright-cms/sitewright/compare/v0.40.1...v0.41.0
+[0.40.1]: https://github.com/sitewright-cms/sitewright/compare/v0.40.0...v0.40.1
+[0.40.0]: https://github.com/sitewright-cms/sitewright/compare/v0.39.1...v0.40.0
+[0.39.1]: https://github.com/sitewright-cms/sitewright/compare/v0.39.0...v0.39.1
+[0.39.0]: https://github.com/sitewright-cms/sitewright/compare/v0.38.0...v0.39.0
 [0.38.0]: https://github.com/sitewright-cms/sitewright/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/sitewright-cms/sitewright/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/sitewright-cms/sitewright/compare/v0.35.0...v0.36.0

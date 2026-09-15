@@ -69,7 +69,7 @@ export function SearchField({
           })
         }
         placeholder={placeholder}
-        className={`${noFocusRing ? '' : 'sw-brand-focus '}${dense ? 'pl-7 pr-2 ' : 'pl-9 pr-3 '}w-full rounded-lg border border-slate-300 bg-white py-2.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:bg-white disabled:opacity-60 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900`}
+        className={`${noFocusRing ? '' : 'sw-brand-focus '}${dense ? 'pl-7 pr-2 ' : 'pl-9 pr-3 '}w-full rounded-lg border border-slate-300 bg-white py-2.5 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 focus:bg-white disabled:opacity-60 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-900`}
       />
     </div>
   );

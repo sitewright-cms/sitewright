@@ -187,7 +187,7 @@ describe('PublishBar — deploy split button', () => {
     (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
     expect(await screen.findByRole('menuitem', { name: /Local Hosting/ })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Production/ })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /Add a target/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Manage Deploy Targets/ })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: /Download/ })).toBeInTheDocument();
   });
 
@@ -219,7 +219,7 @@ describe('PublishBar — deploy split button', () => {
     expect(download).toHaveAttribute('href', '/projects/p/publish/archive');
     // …and no empty "Deploy to…" heading above a list of nothing.
     expect(screen.queryByText('Deploy to…')).not.toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: /Add a target/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Manage Deploy Targets/ })).toBeInTheDocument();
   });
 
   it('with no targets the primary button still opens the config modal', async () => {

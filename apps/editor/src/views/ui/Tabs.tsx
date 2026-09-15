@@ -30,7 +30,7 @@ export function Tabs<T extends string>({
     <div
       role="tablist"
       aria-label={ariaLabel}
-      className={`flex flex-wrap items-center gap-1 rounded-xl border border-white/60 bg-white/50 p-1 text-sm font-medium shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5 ${className}`}
+      className={`flex flex-wrap items-center gap-1 rounded-xl border border-white/60 bg-white/50 p-1 text-sm font-medium shadow-sm backdrop-blur-3xl dark:border-white/10 dark:bg-white/5 ${className}`}
     >
       {tabs.map((t) => (
         <button

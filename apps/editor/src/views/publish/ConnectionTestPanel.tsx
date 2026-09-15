@@ -72,7 +72,7 @@ export function CertificateCard({
     </div>
   );
   return (
-    <div className="mt-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white/60 dark:bg-slate-900/40 p-2">
+    <div className="mt-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white/80 dark:bg-slate-900/40 p-2">
       <p className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
         <Lock className="h-3.5 w-3.5" aria-hidden /> Certificate this server presented
       </p>

@@ -199,7 +199,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
     <div
       role="group"
       aria-label="Builder mode"
-      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-3xl"
     >
       {(['builder', 'lab'] as const).map((m) => (
         <button

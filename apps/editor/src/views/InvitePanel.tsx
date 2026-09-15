@@ -93,7 +93,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged, onAp
   return (
     <div>
       {link && (
-        <div className="mb-4 rounded-2xl border border-amber-300/60 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/10 p-3 text-sm shadow-sm backdrop-blur-xl">
+        <div className="mb-4 rounded-2xl border border-amber-300/60 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/10 p-3 text-sm shadow-sm backdrop-blur-3xl">
           <p className="font-medium text-amber-900 dark:text-amber-200">Invite link for {link.email}</p>
           <p className="mt-1 text-amber-800 dark:text-amber-200">
             Send this link to your {noun}. They accept by signing in (or registering) with that email.

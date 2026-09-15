@@ -383,7 +383,7 @@ function MainApp({
   );
 
   const header = (
-    <header className={`sticky top-0 z-20 border-b border-white/40 bg-white/60 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60 ${
+    <header className={`sticky top-0 z-20 border-b border-white/40 bg-white/80 shadow-sm backdrop-blur-3xl dark:border-white/10 dark:bg-slate-900/80 ${
       isMobile ? 'px-3 py-2' : 'px-6 py-3'
     }`}>
       {/* Full-width flex row: project selector at the far left, the tablist centered via its own

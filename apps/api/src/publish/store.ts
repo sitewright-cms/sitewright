@@ -37,20 +37,26 @@ const NESTED_ASSET_PATHS: ReadonlySet<string> = new Set([SECURITY_TXT_PATH]);
 const SEARCH_INDEX_FILE = /^search-(index|text)(\.[A-Za-z0-9-]+)?\.json$/;
 
 /**
- * PLATFORM-GENERATED runtime scripts, emitted by the builder under a RESERVED `_assets/` subdirectory.
+ * PLATFORM-GENERATED assets — the component runtimes and the compiled utility stylesheet — emitted by
+ * the builder under a RESERVED `_assets/` subdirectory.
  *
  * ★ Why they need a carve-out at all. A `.js` anywhere else under `_assets/` is served DOWNLOAD-ONLY on
  * the cookie-bearing app origin, because that tree also holds scripts IMPORTED from a cloned site and
  * executing foreign code there could read a visitor's session (see `readBinary`). These files are not
- * that: they are the platform's own component runtimes, and they were served executable from the site
- * ROOT until they moved here — so serving them executable keeps exactly the posture they already had,
- * rather than granting anything new.
+ * that: they are the platform's own output, and they were served from the site ROOT until they moved
+ * here — so serving them normally keeps exactly the posture they already had, rather than granting
+ * anything new.
  *
- * The prefix is unreachable for tenant content: imported media is flattened to `_assets/<alias>-<name>`
- * with a generated alias, and platform textures live under `_assets/_textures/`. Nothing writes a
- * caller-controlled name into `_sw/`.
+ * ★ `.css` is on this list for the stylesheet, and the `_sw/` ANCHOR is what makes that safe. A cloned
+ * site's own stylesheet is a real thing in this tree — imported `stylesheet`/`script` assets are
+ * flattened to `_assets/<alias>-<name>` — and widening the rule to `.css` anywhere under `_assets/`
+ * would start serving that foreign CSS through this route. Only the reserved prefix is matched.
+ *
+ * The prefix is unreachable for tenant content: imported media is flattened with a generated alias as
+ * above, and platform textures live under `_assets/_textures/`. Nothing writes a caller-controlled
+ * name into `_sw/`.
  */
-const PLATFORM_SCRIPT_PATH = /^_assets\/_sw\/[A-Za-z0-9][A-Za-z0-9_.-]*\.js$/;
+const PLATFORM_ASSET_PATH = /^_assets\/_sw\/[A-Za-z0-9][A-Za-z0-9_.-]*\.(?:js|css)$/;
 
 // Author-declared data files (`website.dataFiles`), which live in their own `data/` directory.
 //
@@ -243,7 +249,7 @@ export class PublishStore {
     // Claiming them here would make every component runtime a DOWNLOAD on the app-origin path form —
     // silently dead interactivity on every platform-served page — because this method's `.js` rule
     // exists for IMPORTED foreign scripts, which these are not.
-    if (PLATFORM_SCRIPT_PATH.test(rel)) return null;
+    if (PLATFORM_ASSET_PATH.test(rel)) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     let body: Buffer;
@@ -275,7 +281,7 @@ export class PublishStore {
   }
 
   /**
-   * Reads a published non-HTML text asset (e.g. the compiled `styles.css`),
+   * Reads a published non-HTML text asset (e.g. the compiled `_assets/_sw/styles.css`),
    * returning its body + content type, or null if the path is not an allowlisted
    * asset, is absent, or is out of bounds. The path is confined to the site dir.
    */
@@ -289,12 +295,12 @@ export class PublishStore {
       ASSET_CONTENT_TYPES.get(extname(rel).toLowerCase()) ??
       (SEARCH_INDEX_FILE.test(rel) || DATA_FILE_PATH.test(rel) ? 'application/json; charset=utf-8' : undefined);
     if (!contentType) return null;
-    // The builder writes these assets ONLY at the site root (styles.css, the
-    // per-type component chunks c-<type>.js, the effect runtimes). Restrict serving
-    // to root-level files so no future write path into a subdirectory could become
-    // publicly served as CSS/JS. NESTED_ASSET_PATHS is an EXACT-path exception list, not a
-    // relaxation of that rule: each entry is one platform-generated file at one fixed location.
-    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel) && !DATA_FILE_PATH.test(rel) && !PLATFORM_SCRIPT_PATH.test(rel)) {
+    // Outside the reserved `_assets/_sw/` prefix the builder writes these assets ONLY at the site root
+    // (robots.txt, sitemap.xml, site.webmanifest). Restrict serving to root-level files so no future
+    // write path into a subdirectory could become publicly served as CSS/JS. NESTED_ASSET_PATHS is an
+    // EXACT-path exception list, not a relaxation of that rule: each entry is one platform-generated
+    // file at one fixed location.
+    if (rel.includes('/') && !NESTED_ASSET_PATHS.has(rel) && !DATA_FILE_PATH.test(rel) && !PLATFORM_ASSET_PATH.test(rel)) {
       return null;
     }
     const full = resolve(dir, rel);

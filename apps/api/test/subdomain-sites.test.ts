@@ -81,7 +81,7 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     // but the response for a non-existent path (404, empty body) is left alone.
     const css = await client.inject({
       method: 'GET',
-      url: '/styles.css',
+      url: '/_assets/_sw/styles.css',
       headers: { host: `${slug}.${DOMAIN}`, 'accept-encoding': 'gzip' },
     });
     // styles.css exists for a Tailwind-using page and is text/css → compressed.
@@ -105,7 +105,7 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(redir.headers.location).toBe('/about/');
     expect((await site('/about/')).body).toContain('About us');
     // a static asset serves at the subdomain root too
-    expect((await site('/styles.css')).statusCode).toBe(200);
+    expect((await site('/_assets/_sw/styles.css')).statusCode).toBe(200);
   });
 
   it('the apex and `www` are NOT treated as a site (API/editor live there)', async () => {

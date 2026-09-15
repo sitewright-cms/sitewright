@@ -854,7 +854,7 @@ export function WebsiteSection({
               type="button"
               aria-label="Edit shop settings"
               onClick={() => setShopOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
             >
               <span className="min-w-0">
                 <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Shop settings</span>
@@ -916,7 +916,7 @@ export function WebsiteSection({
               type="button"
               aria-label="Edit consent settings"
               onClick={() => setConsentOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
             >
               <span className="min-w-0">
                 <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Consent settings</span>

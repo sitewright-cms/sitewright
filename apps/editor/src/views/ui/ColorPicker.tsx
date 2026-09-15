@@ -262,7 +262,7 @@ function PickerPopover({
       role="dialog"
       aria-label={`${label} picker`}
       style={{ position: 'fixed', top: pos.top, left: pos.left, width: POPOVER_W, zIndex: 80 }}
-      className="rounded-xl border border-white/60 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 p-3 shadow-2xl backdrop-blur-xl"
+      className="rounded-xl border border-white/60 dark:border-white/10 bg-white/95 dark:bg-slate-900/95 p-3 shadow-2xl backdrop-blur-3xl"
     >
       <ColorPicker value={value} onChange={onChange} />
     </div>,

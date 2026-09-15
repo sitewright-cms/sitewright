@@ -299,7 +299,7 @@ export function SidePanel({ side, label, icon, headerExtra, size, width, align =
         {...(!open ? ({ inert: '' } as object) : {})}
         onDragOver={openOnFileDrag ? onPanelFileDrag : undefined}
         onDrop={openOnFileDrag ? onPanelFileDrag : undefined}
-        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none dark:border-white/10 dark:bg-slate-800/90 ${panelPos(side, align, width)} ${panelSize} ${
+        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-3xl transition-[translate,opacity] duration-300 ease-out motion-reduce:transition-none dark:border-white/10 dark:bg-slate-800/90 ${panelPos(side, align, width)} ${panelSize} ${
           open ? `${SLIDE[side].open} opacity-100` : `${SLIDE[side].closed} opacity-0 pointer-events-none`
         }`}
       >

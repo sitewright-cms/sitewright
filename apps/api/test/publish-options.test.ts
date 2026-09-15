@@ -105,7 +105,7 @@ describe('Local Hosting serve options (local deploy target: previewToken / minif
     expect(badCookie.statusCode).toBe(403);
 
     // A static asset (sub-resource) stays ungated.
-    expect((await client.get(`/sites/${slug}/styles.css`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/_assets/_sw/styles.css`)).statusCode).toBe(200);
   });
 
   it('no Local Hosting target → not served locally (404); adding one serves it without a republish', async () => {

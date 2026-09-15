@@ -1256,7 +1256,7 @@ export function InstanceSettings() {
               ) : (
                 <ul className="flex flex-col gap-1.5">
                   {embedOrigins.map((o) => (
-                    <li key={o} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/60 px-2.5 py-1.5 text-sm dark:border-white/10 dark:bg-white/5">
+                    <li key={o} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-sm dark:border-white/10 dark:bg-white/5">
                       <code className="truncate">{o}</code>
                       <button
                         type="button"
@@ -1534,7 +1534,7 @@ export function InstanceSettings() {
             <li key={t.name} className="flex flex-wrap items-baseline gap-2">
               <code className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[12px] font-bold">{t.name}</code>
               <span className="text-xs text-slate-500 dark:text-slate-400">{t.description}</span>
-              <span className="ml-auto rounded-full border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+              <span className="ml-auto rounded-full border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                 {t.capability ?? 'always'}
               </span>
             </li>

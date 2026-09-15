@@ -422,7 +422,7 @@ describe('preview-site API (signed path)', () => {
     const pbase = await signedBase(projectId, t);
     await app.inject({ method: 'GET', url: pbase }); // build it (styles.css now on disk)
 
-    const css = await app.inject({ method: 'GET', url: `${pbase}styles.css` });
+    const css = await app.inject({ method: 'GET', url: `${pbase}_assets/_sw/styles.css` });
     expect(css.statusCode).toBe(200);
     expect(css.headers['content-type']).toContain('text/css');
     expect(css.headers['access-control-allow-origin']).toBe('*');

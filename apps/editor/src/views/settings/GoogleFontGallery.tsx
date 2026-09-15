@@ -101,7 +101,7 @@ export function GoogleFontGallery({
         ) : (
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {shown.map((font) => (
-              <li key={font.family} className="rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 p-3">
+              <li key={font.family} className="rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-3">
                 <p
                   className="truncate text-xl text-slate-800 dark:text-slate-100"
                   style={{ fontFamily: `'${font.family}', ${font.fallback}`, fontWeight: font.weights.includes(400) ? 400 : font.weights[0] }}

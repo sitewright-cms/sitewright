@@ -1047,7 +1047,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     <div
       role="group"
       aria-label="Edit mode"
-      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-3xl"
     >
       {(['source', 'content', 'audit'] as const).map((m) => (
         <button
@@ -1218,7 +1218,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           data-expanded={stripExpanded}
           data-collapsed={mode !== 'source'}
           className={`shrink-0 overflow-hidden rounded-2xl shadow-xl shadow-slate-900/10 transition-all duration-300 ease-out ${
-            !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl'
+            !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl'
           } ${
             mode !== 'source'
               ? 'invisible h-0 opacity-0'
@@ -1310,7 +1310,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <div
             role="group"
             aria-label="Preview device"
-            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-xl"
+            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-3xl"
           >
             {PREVIEW_DEVICES.map((d) => (
               <Tooltip key={d.key} tip={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`} side="left">

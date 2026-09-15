@@ -364,7 +364,7 @@ export function AgentDrawer({
       {/* No full-screen backdrop: the drawer is a NON-MODAL side panel — the preview stays fully
           visible + interactive on the left while you chat (close via ×, Esc, or the AI badge). */}
       <aside
-        className={`fixed right-0 top-0 z-[61] flex h-full w-[26rem] max-w-[92vw] flex-col border-l border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed right-0 top-0 z-[61] flex h-full w-[26rem] max-w-[92vw] flex-col border-l border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 shadow-2xl backdrop-blur-3xl transition-transform duration-300 ${open ? 'translate-x-0' : 'translate-x-full'}`}
         role="dialog"
         aria-label="AI Assistant"
       >
@@ -444,7 +444,7 @@ export function AgentDrawer({
             <p className="text-sm text-slate-600 dark:text-slate-300">Choose what the assistant may do on this site. You can change this anytime.</p>
             <div className="flex flex-col gap-2">
               {CONSENT_CAPS.map(({ cap, label, hint }) => (
-                <label key={cap} className="flex items-start gap-2.5 rounded-xl border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 p-2.5">
+                <label key={cap} className="flex items-start gap-2.5 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-2.5">
                   <input
                     type="checkbox"
                     className={toggleInput}

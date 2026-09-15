@@ -57,7 +57,7 @@ describe('Tailwind utility layer → publish', () => {
     expect(index.statusCode).toBe(200);
     expect(index.body).not.toContain('rel="stylesheet"');
 
-    const sheet = await client.get(`/sites/${slug}/styles.css`);
+    const sheet = await client.get(`/sites/${slug}/_assets/_sw/styles.css`);
     expect(sheet.statusCode).toBe(404); // never written
   });
 

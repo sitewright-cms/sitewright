@@ -119,7 +119,14 @@ import {
   type MediaAsset,
 } from '@sitewright/schema';
 
-/** The compiled utility stylesheet, written at the site root and linked per page. */
+/**
+ * The compiled utility stylesheet, written under {@link SCRIPT_DIR} and linked per page.
+ *
+ * ★ It lives beside the runtimes, NOT at the site root. The runtimes moved out of the root in 0.32.0
+ * because a deploy to `/` dropped loose generated files straight into the customer's web root; the
+ * stylesheet is exactly the same kind of file and was simply left behind by that move. Generated
+ * output belongs in the bundled asset tree.
+ */
 const UTILITY_STYLESHEET = 'styles.css';
 /** Per-component-type runtime chunk filename (e.g. Carousel → `c-carousel.js`). One file per component
  *  TYPE used anywhere on the site (written once, stable name → cached across every page that uses that
@@ -1368,10 +1375,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           rawFidelity: page.rawHtml === true,
           // Raw-HTML pages also drop the platform effect JS — only the user's own website.scripts remains.
           customScripts: [website?.scripts, page.rawHtml ? undefined : fxCode.bodyEnd, page.rawHtml ? undefined : pageEffectNoscriptHtml].filter(Boolean).join('\n') || undefined,
-          // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
+          // Shared assets (under the site's asset tree, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
-          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
+          stylesheets: usesUtilities ? [`${siteRoot}${SCRIPT_DIR}/${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
@@ -1562,8 +1569,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (usesUtilities) {
       report({ phase: 'styles' });
       const css = await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand));
+      // The runtimes may not be written yet, and a site with no media has no `_assets/` at all, so the
+      // directory cannot be assumed to exist.
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir
+      await mkdir(join(tmp, SCRIPT_DIR), { recursive: true });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
-      await writeFile(join(tmp, UTILITY_STYLESHEET), css, 'utf8');
+      await writeFile(join(tmp, SCRIPT_DIR, UTILITY_STYLESHEET), css, 'utf8');
       bytes += Buffer.byteLength(css);
     }
 

@@ -9,6 +9,28 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The compiled stylesheet moved out of the site root** into `_assets/_sw/styles.css`, beside the
+  component runtimes. Those runtimes left the root in 0.32.0 because a deploy to `/` dropped loose
+  generated files straight into the customer's web root — `styles.css` is the same kind of file and
+  was simply left behind by that move. It was the last generated asset at the root; what remains
+  there is only what belongs there (`index.html`, `robots.txt`, `sitemap.xml`, `site.webmanifest`).
+  - The serving rule that lets platform files live under `_assets/` is widened from `.js` to `.css`,
+    and stays ANCHORED to the reserved `_sw/` prefix. That anchor is the whole safety argument: a
+    cloned site's own stylesheet is a real thing in this tree — imported `stylesheet`/`script` assets
+    are flattened to `_assets/<alias>-<name>` — so matching `.css` anywhere under `_assets/` would
+    start serving foreign CSS through a route meant for platform output.
+  - Nothing to do on an existing site: the stale root-level `styles.css` is pruned by the same
+    manifest diff (SFTP/FTP) or `--delete` (rsync) that removes any other file a build no longer
+    contains.
+- **The deploy menu's "+ Add a target…" is now "Manage Deploy Targets"** — it opens the full target
+  manager, not an add-only form.
+- **Glass surfaces are less transparent and more diffuse**: `backdrop-blur-xl` → `backdrop-blur-3xl`,
+  `bg-white/60` → `bg-white/80`, `dark:bg-slate-900/60` → `dark:bg-slate-900/80` across the editor UI
+  (54 occurrences in 30 files). The seeded example project's own markup is deliberately untouched —
+  it is a demo site's content, not editor chrome.
+
 ## [0.52.1] — 2026-09-15
 
 ### Fixed

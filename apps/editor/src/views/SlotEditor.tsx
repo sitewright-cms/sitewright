@@ -470,7 +470,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     <div
       role="group"
       aria-label="Edit mode"
-      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-3xl"
     >
       {(['source', 'content'] as const).map((m) => (
         <button
@@ -677,7 +677,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
           <div
             role="group"
             aria-label="Preview device"
-            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-xl"
+            className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 p-1 shadow-lg backdrop-blur-3xl"
           >
             {PREVIEW_DEVICES.map((d) => (
               <Tooltip key={d.key} tip={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`} side="left">

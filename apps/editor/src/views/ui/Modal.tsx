@@ -315,7 +315,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: isMobile ? 24 : -24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${sheetShape} flex-col overflow-hidden border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl dark:border-white/10 dark:bg-slate-800/95`}
+            className={`relative flex w-full ${sheetShape} flex-col overflow-hidden border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-3xl dark:border-white/10 dark:bg-slate-800/95`}
           >
             {/* ON A NARROW HEADER THE TITLE GETS ITS OWN ROW.
                 One row has to hold the title, whatever the modal pins to either side, and Save/Close.

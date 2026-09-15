@@ -249,7 +249,7 @@ function MetricCard({
 }) {
   const rc = ratingClasses(rate(value, def.good, def.poor));
   return (
-    <div className="flex flex-col gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-3 dark:border-white/10 dark:bg-white/5">
+    <div className="flex flex-col gap-1 rounded-xl border border-slate-200/70 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
       <div className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
         <span
           className={`inline-block h-1.5 w-1.5 rounded-full ${rc.dot}`}
@@ -623,7 +623,7 @@ export function PageAuditPanel({
     <div className="min-h-0 flex-1 overflow-auto">
       <div className="mx-auto flex max-w-3xl flex-col gap-4 p-2 sm:p-4">
         {/* SEO summary — the head fields this page will publish with. */}
-        <section className="flex gap-4 rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+        <section className="flex gap-4 rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-3xl dark:border-white/10 dark:bg-white/5">
           <div className="min-w-0 flex-1">
             <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               SEO preview
@@ -680,7 +680,7 @@ export function PageAuditPanel({
           <div
             role="group"
             aria-label="Audit device"
-            className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-white/5"
+            className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 shadow-sm backdrop-blur-3xl dark:border-white/10 dark:bg-white/5"
           >
             {deviceToggle("mobile", Smartphone, "Mobile")}
             {deviceToggle("desktop", Monitor, "Desktop")}

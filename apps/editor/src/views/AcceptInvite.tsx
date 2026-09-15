@@ -179,7 +179,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAU
 
   return (
     <div>
-      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20 bg-indigo-50/70 dark:bg-indigo-500/10 p-4 text-center text-sm text-indigo-900 dark:text-indigo-200 shadow-sm backdrop-blur-xl">
+      <div className="mx-auto mt-16 max-w-md rounded-2xl border border-indigo-200/60 dark:border-indigo-500/20 bg-indigo-50/70 dark:bg-indigo-500/10 p-4 text-center text-sm text-indigo-900 dark:text-indigo-200 shadow-sm backdrop-blur-3xl">
         You’ve been invited as <strong>{peek.email}</strong> {target}.{' '}
         {peek.hasAccount ? 'Sign in to accept.' : 'Set a password to accept.'}
         {hasOidc && (

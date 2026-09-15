@@ -74,8 +74,8 @@ describe('buildSite', () => {
     expect(home).not.toContain('<section data-sw-block="Section"');
     // The source's literal Tailwind class is compiled into the shared, root-linked sheet, with a
     // content-hash cache-bust `?v=` token (busts iff the runtime assets change; stable otherwise).
-    expect(home).toMatch(/<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]{16}"/);
-    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+    expect(home).toMatch(/<link rel="stylesheet" href="_assets\/_sw\/styles\.css\?v=[0-9a-f]{16}"/);
+    expect(await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
   it('materialises referenced platform textures into _assets/_textures + rewrites the url; unreferenced are skipped', async () => {
@@ -126,8 +126,8 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     // Author content flipped the site into "uses utilities" → the sheet is linked + written.
-    expect(home).toMatch(/<link rel="stylesheet" href="styles\.css\?v=[0-9a-f]{16}"/);
-    const css = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(home).toMatch(/<link rel="stylesheet" href="_assets\/_sw\/styles\.css\?v=[0-9a-f]{16}"/);
+    const css = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     for (const cls of ['text-center', 'pl-8', 'text-red-600', 'text-lg', 'text-primary', 'bg-yellow-200', 'font-heading']) {
       expect(css).toContain(cls);
     }
@@ -145,7 +145,7 @@ describe('buildSite', () => {
         pages: [{ id: 'home', path: '', title: 'Home', source: '<div><h1>{{ company.name }}</h1></div>', data: { note: 'just plain text, no html' } }],
       }),
     });
-    const css = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const css = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     for (const cls of ['text-red-600', 'bg-yellow-200', 'pl-8', 'text-lg']) {
       expect(css).not.toContain(cls);
     }
@@ -252,7 +252,7 @@ describe('buildSite', () => {
     expect(home).toContain('Harbor &amp; Co.');
     // The class-extraction gotcha guard: a utility from the WIDGET body (h-[60vh]) must be compiled,
     // proving referencedSnippets scanned the merged widget partial — not just project snippets.
-    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('height:60vh');
+    expect(await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8')).toContain('height:60vh');
   });
 
   it('renders a source-less page as an empty body (no crash)', async () => {
@@ -377,12 +377,12 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<button class="btn btn-primary">Sign up</button>');
-    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
+    expect(home).toContain('<link rel="stylesheet" href="_assets/_sw/styles.css?v=');
     // The button is VENDORED (daisyUI's button component is excluded): its CSS + the brand primary
     // ship INLINE in the page head (baseStyles + brandToCss), not the compiled sheet.
     expect(home).toMatch(/\.btn\s*\{/); // the vendored .btn base
     expect(home).toContain('#0a7fae'); // themed by the brand primary (--sw-color-primary), not DaisyUI's default
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).not.toContain('oklch(45% 0.24 277.023)'); // DaisyUI's indigo default is gone
   });
 
@@ -420,10 +420,10 @@ describe('buildSite', () => {
     expect(home).toContain('<a href="about">About</a>');
     // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
     expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
-    expect(home).toContain('<link rel="stylesheet" href="styles.css?v=');
+    expect(home).toContain('<link rel="stylesheet" href="_assets/_sw/styles.css?v=');
     // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet (the button is vendored
     // inline, but .navbar / .menu are real daisyUI components and still compile here).
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).toMatch(/\.navbar/);
 
     // A second page shares the exact same nav + footer (authored once); from /about/
@@ -689,7 +689,7 @@ describe('buildSite', () => {
     expect(home).toContain('<body class="sw-nav-box-solid sw-btn-fx-lift">');
     // A pure-CSS nav scheme ships NO nav runtime.
     expect(await coreJs()).not.toContain(IN_CORE.navEffects);
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     // Only the chosen schemes ship, scoped to the .menu nav links, themed by the brand.
     expect(sheet).toContain('.sw-nav-box-solid');
     expect(sheet).toMatch(/\.menu/);
@@ -722,7 +722,7 @@ describe('buildSite', () => {
     expect(home).toContain('<body class="sw-nav-sliding-pill">');
     expect(home).toContain('core.js'); // the site-wide chrome bundle is linked
     expect(await coreJs()).toContain(IN_CORE.navEffects); // … and the nav-effects runtime is inside it
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).toContain('.sw-nav-indicator'); // the indicator CSS shipped with the scheme
     expect(sheet).toContain('--sw-ind-left');
   });
@@ -1002,7 +1002,7 @@ describe('buildSite', () => {
     expect(home).toContain('core.js'); // runtime linked (inside the chrome bundle)
     expect(home).toContain('position:fixed'); // BACK_TO_TOP_CSS inlined
     // The square-shape utility (tree-shaken) compiles into the sheet because build feeds the injected classes in.
-    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('sw-btn-shape-square');
+    expect(await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8')).toContain('sw-btn-shape-square');
     expect(await coreJs()).toContain(IN_CORE.backToTop);
   });
 
@@ -1248,7 +1248,7 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<div class="alert">Acme promo</div>'); // the snippet expanded + bound
     // The snippet's classes feed the shared utility sheet (compiled output lives in styles.css).
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).toMatch(/\.alert/);
   });
 
@@ -1291,7 +1291,7 @@ describe('buildSite', () => {
         ],
       }),
     });
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).toContain('display:flex'); // the composed snippet's utility ships
     expect(sheet).not.toContain('display:grid'); // the un-composed snippet's utility does NOT
   });
@@ -1416,7 +1416,7 @@ describe('buildSite', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b)); // strictly increasing
     expect(home).toContain('>Acme</div>'); // the bottom slot got the company-name binding
     // Every validated slot's classes feed the shared utility sheet.
-    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    const sheet = await readFile(join(outDir, '_assets', '_sw', 'styles.css'), 'utf8');
     expect(sheet).toMatch(/\.navbar/);
     expect(sheet).toMatch(/\.menu/);
   });

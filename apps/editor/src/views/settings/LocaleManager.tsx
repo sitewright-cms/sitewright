@@ -111,7 +111,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange, onL
       </p>
       <ul className="flex flex-col gap-1.5">
         {locales.map((loc) => (
-          <li key={loc} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/60 px-3 py-2">
+          <li key={loc} className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 px-3 py-2">
             <span aria-hidden className="text-lg">{localeFlag(loc)}</span>
             <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{localeLabel(loc)}</span>
             <span className="font-mono text-xs uppercase text-slate-500 dark:text-slate-400">{loc}</span>

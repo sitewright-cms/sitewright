@@ -330,7 +330,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     <div
       role="group"
       aria-label="Status"
-      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      className="flex items-center rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 p-0.5 text-xs font-medium shadow-sm backdrop-blur-3xl"
     >
       {(['published', 'draft'] as const).map((s) => (
         <button

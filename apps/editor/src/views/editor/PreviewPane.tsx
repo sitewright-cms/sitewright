@@ -64,7 +64,7 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
           ? // FRAMELESS: no gutter at all. The page editor's preview IS the working surface, so any
             // padding reads as a grey ring drawn around the site rather than as chrome around a card.
             'relative h-full overflow-hidden rounded-2xl bg-white shadow-xl shadow-slate-900/5'
-          : 'relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl'
+          : 'relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-3xl'
       }
     >
       {error && (

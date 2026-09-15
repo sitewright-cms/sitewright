@@ -732,7 +732,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
             onClick={() => goTo('')}
             onDragOver={allowDrop('')}
             onDrop={(e) => onDropInto('', e)}
-            className={`rounded px-1.5 py-0.5 hover:bg-white/60 dark:hover:bg-white/10 ${dropTarget === '' ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
+            className={`rounded px-1.5 py-0.5 hover:bg-white/80 dark:hover:bg-white/10 ${dropTarget === '' ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
           >
             Assets
           </button>
@@ -746,7 +746,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
                   onClick={() => goTo(crumbPath)}
                   onDragOver={allowDrop(crumbPath)}
                   onDrop={(e) => onDropInto(crumbPath, e)}
-                  className={`rounded px-1.5 py-0.5 hover:bg-white/60 dark:hover:bg-white/10 ${dropTarget === crumbPath ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
+                  className={`rounded px-1.5 py-0.5 hover:bg-white/80 dark:hover:bg-white/10 ${dropTarget === crumbPath ? 'bg-indigo-100 dark:bg-indigo-500/15' : ''}`}
                 >
                   {seg}
                 </button>
@@ -789,7 +789,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
           <span>
             Searching <strong>all folders</strong> for “{query.trim()}”.
           </span>
-          <button type="button" onClick={() => setQuery('')} className="rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 hover:bg-white/60 dark:hover:bg-white/10">
+          <button type="button" onClick={() => setQuery('')} className="rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 hover:bg-white/80 dark:hover:bg-white/10">
             Clear
           </button>
         </p>

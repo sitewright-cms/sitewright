@@ -116,7 +116,7 @@ export function TeamManager() {
           >
             <span>
               <span className="font-medium text-slate-800 dark:text-slate-100">{m.email}</span>{' '}
-              <span className="ml-1 rounded-full border border-white/60 dark:border-white/10 bg-white/60 dark:bg-slate-900/60 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+              <span className="ml-1 rounded-full border border-white/60 dark:border-white/10 bg-white/80 dark:bg-slate-900/80 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
                 {m.role}
               </span>
             </span>

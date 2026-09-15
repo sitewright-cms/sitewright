@@ -9,15 +9,15 @@
 
 /** A frosted card: translucent white over the gradient shell, blurred, with soft depth. */
 export const glassCard =
-  'rounded-2xl border border-white/50 bg-white/60 shadow-xl shadow-slate-900/5 backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/60 dark:shadow-black/20';
+  'rounded-2xl border border-white/50 bg-white/80 shadow-xl shadow-slate-900/5 backdrop-blur-3xl dark:border-white/10 dark:bg-slate-900/80 dark:shadow-black/20';
 
 /** A lighter frosted panel for nested/secondary surfaces. */
 export const glassPanel =
-  'rounded-xl border border-white/50 bg-white/50 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-slate-900/50';
+  'rounded-xl border border-white/50 bg-white/50 shadow-sm backdrop-blur-3xl dark:border-white/10 dark:bg-slate-900/50';
 
 /** A frosted text input/select with a BRAND focus ring (`sw-brand-focus` → border + ring follow --sw-brand-1). */
 export const glassInput =
-  'sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:bg-white dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-100 dark:focus:bg-slate-900';
+  'sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:bg-white dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-100 dark:focus:bg-slate-900';
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300';
 

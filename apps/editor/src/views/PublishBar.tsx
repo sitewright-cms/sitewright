@@ -45,7 +45,7 @@ function targetWhere(t: DeployTargetView, slug: string, sitesDomain?: string): s
 /**
  * The header DEPLOY control. An always-on split button: the primary action deploys the last-used (or
  * default) target in one click; the ▾ opens a dropdown listing every target (click to deploy) plus
- * "Add a target…" and "Download .zip". With no targets, the button opens the config modal. A `local`
+ * "Manage Deploy Targets" and "Download .zip". With no targets, the button opens the config modal. A `local`
  * target is published to Local Hosting (built + served at /sites/); a remote target streams an upload.
  */
 export function PublishBar({
@@ -480,7 +480,7 @@ export function PublishBar({
               }}
               className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
-              + Add a target…
+              Manage Deploy Targets
             </button>
             {/* ★ ALWAYS ENABLED, unconditionally — no deploy target, no Local Hosting, no release.
                 A zip download is the manual deployment path, so it is what you reach for precisely

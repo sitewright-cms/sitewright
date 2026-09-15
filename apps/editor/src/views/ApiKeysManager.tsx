@@ -83,7 +83,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
     <div className="flex flex-col gap-6">
       {dialog}
       {issued && (
-        <div className="rounded-2xl border border-amber-300/70 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-500/10 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
+        <div className="rounded-2xl border border-amber-300/70 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-500/10 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-3xl">
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Copy your new token now — it won’t be shown again.</p>
             <button

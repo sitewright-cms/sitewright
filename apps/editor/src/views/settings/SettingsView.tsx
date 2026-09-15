@@ -290,7 +290,7 @@ export function SettingsView({
         {showSwitcher && (
           // Legacy self-switching surface (the project's top tabs drive the fixed-section case).
           <div className="mb-4 flex">
-            <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 dark:border-white/10 bg-white/50 dark:bg-white/5 p-1 shadow-sm backdrop-blur-xl">
+            <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 dark:border-white/10 bg-white/50 dark:bg-white/5 p-1 shadow-sm backdrop-blur-3xl">
               {SECTIONS.map((s, i) => (
                 <button
                   key={s.key}

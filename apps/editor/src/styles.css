@@ -671,3 +671,22 @@ button:disabled,
 .tooltip:focus-within:after {
   display: block;
 }
+
+/*
+ * ★ The <Tooltip> component renders its bubble in a body PORTAL (it cannot be clipped by a panel's
+ * overflow, which the CSS bubble always was). Its hosts therefore keep `data-tip` — the test helpers
+ * and `byTip` find controls by it — but must NOT also paint a CSS bubble, or every hint shows twice.
+ *
+ * Scoped by the marker attribute rather than dropped wholesale: the Image Map vertex handles and the
+ * rich-text field set `data-tip` directly and still rely on the CSS bubble. The handles in particular
+ * CANNOT take a wrapper — they are absolutely positioned, and `.tooltip` is `position:relative`, so a
+ * wrapper would become their containing block and move them.
+ */
+.tooltip[data-sw-tip='portal']:hover:before,
+.tooltip[data-sw-tip='portal']:hover:after,
+.tooltip[data-sw-tip='portal']:focus-visible:before,
+.tooltip[data-sw-tip='portal']:focus-visible:after,
+.tooltip[data-sw-tip='portal']:focus-within:before,
+.tooltip[data-sw-tip='portal']:focus-within:after {
+  display: none;
+}

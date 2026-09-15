@@ -92,11 +92,21 @@ export function Tooltip({
   const [placed, setPlaced] = useState<Placed | null>(null);
 
   const hide = useCallback(() => setPlaced(null), []);
-  const show = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    setPlaced(place(el.getBoundingClientRect(), side, window.innerWidth, window.innerHeight));
-  }, [side]);
+  /**
+   * ★ Never while a button is held. The pages list wraps its DRAG HANDLE in a tooltip, so a reorder
+   * drag passes the pointer straight over (and out of) tooltipped hosts — popping a hint under the
+   * cursor mid-drag is wrong on its own terms, and it keeps this component from doing any work at all
+   * during an interaction it has no business touching. `buttons === 0` means no button is down.
+   */
+  const show = useCallback(
+    (e?: { buttons?: number }) => {
+      if (typeof e?.buttons === 'number' && e.buttons !== 0) return;
+      const el = ref.current;
+      if (!el) return;
+      setPlaced(place(el.getBoundingClientRect(), side, window.innerWidth, window.innerHeight));
+    },
+    [side],
+  );
 
   // The rect is a snapshot, so any scroll or resize while the bubble is open would strand it. Hide
   // instead; the next hover re-measures. CAPTURE phase, because a scroll inside the panel's own
@@ -122,7 +132,9 @@ export function Tooltip({
       aria-describedby={placed ? tipId : undefined}
       onMouseEnter={show}
       onMouseLeave={hide}
-      onFocus={show}
+      // Pressing to start a drag dismisses an already-open bubble, for the same reason.
+      onPointerDown={hide}
+      onFocus={() => show()}
       onBlur={hide}
     >
       {children}

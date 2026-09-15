@@ -230,20 +230,39 @@ describe('publish API', () => {
     // when there is no retained build) and `sw-site-archive-*` (the zip itself). Dropping the publish
     // precondition means the render path now runs for EVERY never-published project, so a leak here
     // would accumulate per download rather than being a rare case. Counted, not assumed.
-    const temps = async (): Promise<string[]> =>
-      (await readdir(tmpdir())).filter((n) => n.startsWith('sw-deploy-') || n.startsWith('sw-site-archive-'));
-
+    //
+    // ★★ Counted in a PRIVATE temp dir, not the shared one. `os.tmpdir()` re-reads TMPDIR on every
+    // call, so pointing it at our own directory makes the check hermetic. Scanning the real temp dir
+    // is what a first version did, and it is a race: ten other api test files drive deploy/archive
+    // paths that create `sw-deploy-*` concurrently, and vitest runs each file in its own process.
+    // On a fast machine the window is too small to notice; on a 2-core CI runner it caught a NEIGHBOUR'S
+    // directory and failed as though this route had leaked it.
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
 
-    const before = await temps();
-    const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
-    expect(zip.statusCode).toBe(200);
-    const after = await temps();
-    const leaked = after.filter((n) => !before.includes(n));
-    expect(leaked, `leaked temp artifacts: ${leaked.join(', ')}`).toEqual([]);
+    const scratch = await mkdtemp(join(tmpdir(), 'sw-leakcheck-'));
+    const saved = process.env.TMPDIR;
+    process.env.TMPDIR = scratch;
+    try {
+      const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
+      expect(zip.statusCode).toBe(200);
+      // ★ The zip is reaped on the response's `close`, which fires AFTER the request resolves — so
+      // read once and you are reading too early, and the first version of this test passed only
+      // because it was looking at the wrong (shared) directory. Poll for the reap instead: a real
+      // leak never empties, so the bound is what distinguishes "slow" from "leaked".
+      let leaked = await readdir(scratch);
+      for (let i = 0; i < 50 && leaked.length > 0; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        leaked = await readdir(scratch);
+      }
+      expect(leaked, `leaked temp artifacts: ${leaked.join(', ')}`).toEqual([]);
+    } finally {
+      if (saved === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = saved;
+      await rm(scratch, { recursive: true, force: true });
+    }
   });
 
   it('forbids exporting another tenant’s archive', async () => {

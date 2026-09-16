@@ -131,6 +131,28 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     }
   });
 
+  // ★ The images guide must keep STEERING agents to a sized image. An agent-built page shipped nine
+  // hand-written <img> and ten background urls with no `?size=` — every one of them the 2400px rung —
+  // because the guide led with "Plain image — simplest" and never mentioned {{sw-image}} or `?size=`
+  // at all. The result was a page that stuttered on first scroll (257ms of decode, 9 dropped frames).
+  // These pin the guidance itself; the RUNG VALUES are pinned against image-pipeline in
+  // packages/blocks (the only package that can see both).
+  it('the images guide tells an agent how to SIZE an image, not just how to import one', () => {
+    const body = AGENT_GUIDES.images.body;
+    expect(body).toContain('{{sw-image}}'); // the responsive helper, by name
+    expect(body).toMatch(/\?size=/); // the background/raw-url escape hatch
+    expect(body).toMatch(/sizes/); // the attribute that makes a srcset mean anything
+    // The consequence, in the currency that matters — decode is per PIXEL, not per byte.
+    expect(body).toMatch(/decode/i);
+  });
+
+  it('the images guide is discoverable as the SIZING guide from the topic index alone', () => {
+    // The index (guide summaries) is all an agent sees before choosing a guide to fetch, so a page
+    // built without ever calling get_guide("images") is the failure mode to design against.
+    expect(AGENT_GUIDES.images.summary).toMatch(/size/i);
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/SIZE them to their box/);
+  });
+
   it('the import guide teaches the rewrite handoff (marker, draft, checklist) and the core points at it', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("import")');
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('data.swImport');

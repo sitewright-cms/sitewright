@@ -115,13 +115,14 @@ test.describe('a paginated archive over 600 child pages', () => {
     expect(new Set(seen).size, 'the sampled windows must not overlap').toBe(seen.length);
 
     // Prev/next are conditional AND carry a computed page number. Publish rebases internal links, so the
-    // href is the portable form of the route the arithmetic produced.
+    // href is the portable, CANONICAL form of the route the arithmetic produced — directory form, so a
+    // computed archive link lands on the page instead of bouncing through a 301.
     const first = await (await ctx.get(`/sites/${slug}/news/`)).text();
     expect(first).not.toContain('id="prev"');
-    expect(first).toMatch(/id="next" href="(\.\.\/|\/)news-2"/);
+    expect(first).toMatch(/id="next" href="(\.\.\/|\/)news-2\//);
 
     const last = await (await ctx.get(`/sites/${slug}/news-${LAST_PAGE}/`)).text();
-    expect(last).toMatch(new RegExp(`id="prev" href="(\\.\\./|/)news-${LAST_PAGE - 1}"`));
+    expect(last).toMatch(new RegExp(`id="prev" href="(\\.\\./|/)news-${LAST_PAGE - 1}/`));
     expect(last).not.toContain('id="next"');
 
     await ctx.dispose();

@@ -614,7 +614,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
                 Menu label {inMenu && <span className="text-rose-500 dark:text-rose-300" aria-hidden>*</span>}
-                <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}} — the page title stays plain.'} />
+                {/* ★ WORDING IS LOAD-BEARING: a SectionHelp tip becomes the button's aria-label, and
+                    Playwright's getByLabel() matches by SUBSTRING — so a tip containing "page title"
+                    also matches getByLabel('Page title') and breaks every spec that fills that input
+                    (it broke 13). Keep tip text clear of the accessible names of nearby controls. */}
+                <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}} — the Title field above stays plain.'} />
               </span>
               <input
                 aria-label="Nav menu label"

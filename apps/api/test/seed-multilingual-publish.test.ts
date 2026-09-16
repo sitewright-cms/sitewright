@@ -198,7 +198,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
   it('shows the flag language switcher on every page (the whole site is translated)', async () => {
     const en = await page('index.html');
     expect(en).toContain('aria-label="Language"');
-    expect(en).toContain('href="de"'); // the German home, rebased page-relative
+    expect(en).toContain('href="de/"'); // the German home, rebased page-relative
     expect(en).toMatch(/<svg[^>]*aria-label="Germany"/);
     expect(en).toMatch(/<svg[^>]*aria-label="United Kingdom"/);
     const deAbout = await page('de/ueber-uns/index.html');

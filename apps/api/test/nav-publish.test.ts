@@ -80,13 +80,13 @@ describe('auto-nav → publish', () => {
     const home = await fetchSite('index.html');
     expect(home).toContain('<nav id="main-nav">');
     expect(home).toContain('href="./"'); // Home link
-    expect(home).toContain('href="about"'); // About link, label from nav.title
+    expect(home).toContain('href="about/"'); // About link (canonical directory form), label from nav.title
     expect(home).toContain('>About<');
 
     // About subpage: the SAME menu, rebased one level up.
     const about = await fetchSite('about/index.html');
     expect(about).toContain('href="../"'); // Home
-    expect(about).toContain('href="../about"'); // About
+    expect(about).toContain('href="../about/"'); // About
   });
 
   it('renders footer-slot menus', async () => {
@@ -102,7 +102,7 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('<footer id="footer">');
     expect(home).toContain('data-slot="footer"');
     expect(home).toContain('href="./"'); // Home
-    expect(home).toContain('href="terms"'); // Terms
+    expect(home).toContain('href="terms/"'); // Terms
     expect(home).toContain('>Terms<');
   });
 
@@ -191,7 +191,7 @@ describe('auto-nav → publish', () => {
     const home = await fetchSite('index.html');
     // The icon helper RESOLVED to an inline svg inside the authored wrapper — not escaped text.
     expect(home).toContain('<span class="flex items-center gap-2">');
-    expect(home).toMatch(/<a href="shop"><span class="flex items-center gap-2"><svg[^>]*class="[^"]*sw-icon-shopping-cart/);
+    expect(home).toMatch(/<a href="shop\/"><span class="flex items-center gap-2"><svg[^>]*class="[^"]*sw-icon-shopping-cart/);
     expect(home).not.toContain('&lt;span');
     expect(home).not.toContain('{{sw-icon');
 
@@ -219,6 +219,53 @@ describe('auto-nav → publish', () => {
     expect(css).toContain('letter-spacing'); // tracking-widest
     expect(css).toMatch(/\.gap-3\b/);
     expect(css).toMatch(/\.size-7\b/); // the icon helper's CLASS ARGUMENT counts too
+  });
+
+  it('links pages in canonical DIRECTORY form, so a menu click is NOT a 301', async () => {
+    // ★★ The whole point. A page builds to `<slug>/index.html`, so the served host answers a
+    // slash-less page URL with a 301 — which made every single menu click a redirect. Assert the
+    // emitted href AND that following it returns 200 rather than a redirect.
+    const proj = client.project(projectId);
+    await putSlots({ mainNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'services', navPage('services', 'services', 'Services', { slots: ['header'], order: 1 }))).statusCode).toBe(200);
+    // A nested child, so the depth-1 → depth-2 form is covered too.
+    expect(
+      (await proj.putContent('page', 'web', navPage('web', 'web', 'Web', { slots: ['header'], order: 2 })
+        , )).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    expect(home).toContain('href="services/"');
+    expect(home).not.toMatch(/href="services"/);
+    expect(home).toContain('href="./"'); // home stays the directory it already was
+
+    // Following the emitted link lands on the page with NO redirect hop.
+    const direct = await client.get(`/sites/${slug}/services/`);
+    expect(direct.statusCode).toBe(200);
+    // …while the OLD slash-less form still 301s, which is exactly the hop we stopped emitting.
+    const legacy = await client.get(`/sites/${slug}/services`);
+    expect(legacy.statusCode).toBe(301);
+  });
+
+  it('leaves ASSET urls alone — only page routes are directory-form', async () => {
+    const proj = client.project(projectId);
+    await putSlots({ mainNav: HEADER_SLOT });
+    expect(
+      (await proj.putContent('page', 'home', {
+        ...navPage('home', '', 'Home', { slots: ['header'] }),
+        source: '<section><a href="/contact.php">php</a><a href="/sitemap.xml">map</a><a href="/services">svc</a></section>',
+      })).statusCode,
+    ).toBe(200);
+    expect((await proj.putContent('page', 'services', navPage('services', 'services', 'Services', { slots: ['header'] }))).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    expect(home).toContain('href="contact.php"'); // extension → a FILE, untouched
+    expect(home).toContain('href="sitemap.xml"');
+    expect(home).toContain('href="services/"'); // a hand-authored page literal is canonicalized too
+    expect(home).toContain('_assets/_sw/styles.css'); // the platform stylesheet is not a directory
   });
 
   it('a PLAIN page menu label is still escaped — the opt-in is markup, not a setting', async () => {

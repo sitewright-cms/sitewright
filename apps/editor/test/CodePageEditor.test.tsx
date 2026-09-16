@@ -141,7 +141,7 @@ describe('CodePageEditor', () => {
     fireEvent.change(screen.getByLabelText('Image (Open Graph)'), { target: { value: 'https://x.test/og.png' } });
     // Parent is a searchable combobox: open it and pick the sibling by its path.
     fireEvent.click(screen.getByRole('combobox', { name: 'Parent page' }));
-    fireEvent.click(within(screen.getByRole('listbox', { name: 'Parent page' })).getByText('/about'));
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Parent page' })).getByText('/about/'));
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 

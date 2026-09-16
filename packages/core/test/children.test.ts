@@ -23,11 +23,11 @@ describe('childrenOf', () => {
     const kids = childrenOf(pages, pages[0]!, 'en');
     expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2
     expect(kids[0]).toMatchObject({
-      id: 'a1', title: 'First', slug: 'first', path: '/blog/first',
+      id: 'a1', title: 'First', slug: 'first', path: '/blog/first/',
       description: 'One', image: '/one.jpg', navTitle: 'First (nav)',
       status: 'draft', order: 1, data: { article_title: 'One!' },
     });
-    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', status: 'published' });
+    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second/', description: 'Two', image: '/two.jpg', status: 'published' });
   });
 
   it('excludes pages parented elsewhere', () => {
@@ -192,7 +192,7 @@ describe('parentPageView', () => {
       title: 'Home', slug: '', path: '/', locale: 'en', data: { brand: 'Acme' },
     });
     // web's parent is services — `path` is the FULL route (not the bare segment), `data` is the parent's own.
-    expect(parentPageView(pages, pages[2]!, 'en')).toMatchObject({ slug: 'services', path: '/services', data: { eyebrow: 'What we do' } });
+    expect(parentPageView(pages, pages[2]!, 'en')).toMatchObject({ slug: 'services', path: '/services/', data: { eyebrow: 'What we do' } });
   });
 
   it('reports the PARENT’s own locale, not the child’s (no same-locale filter, unlike childrenOf)', () => {

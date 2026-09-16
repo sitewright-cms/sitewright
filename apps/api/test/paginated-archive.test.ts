@@ -122,9 +122,10 @@ describe('a paginated archive over child PAGES', () => {
 
     const first = await client.get(`/sites/${slug}/news/`);
     // The number was computed INTO the href, and publish then rebased that route like any other
-    // internal link (root-relative "/news-2" → the portable "../news-2") — so the arithmetic landed
-    // before rebasing, not as leftover template text.
-    expect(first.body).toMatch(/href="(\.\.\/|\/)news-2"/);
+    // internal link (root-relative "/news-2" → the portable, canonical "../news-2/") — so the
+    // arithmetic landed before rebasing, not as leftover template text. The trailing slash is what
+    // makes a computed archive link land on the page instead of bouncing through a 301.
+    expect(first.body).toMatch(/href="(\.\.\/|\/)news-2\/"/);
 
     const last = await client.get(`/sites/${slug}/news-${LAST_PAGE}/`);
     expect(last.statusCode).toBe(200);

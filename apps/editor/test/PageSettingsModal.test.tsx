@@ -220,7 +220,9 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
     fireEvent.click(screen.getByRole('combobox', { name: 'Parent page' }));
     const listbox = screen.getByRole('listbox', { name: 'Parent page' });
     // Options are the PATH, not the (long) title.
-    expect(within(listbox).getByText('/services')).toBeInTheDocument();
+    // The option shows the page's CANONICAL route — directory form, the same string the published
+    // site links to (pagePath in @sitewright/core).
+    expect(within(listbox).getByText('/services/')).toBeInTheDocument();
     expect(within(listbox).queryByText(/Our Services/)).toBeNull();
     // …but typing the TITLE still finds it (keywords), shown by its path.
     fireEvent.change(screen.getByLabelText('Search Parent page'), { target: { value: 'care plans' } });

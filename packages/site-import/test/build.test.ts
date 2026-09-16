@@ -76,7 +76,9 @@ describe('buildImportBundle (integration)', () => {
 
     // Shared chrome hoisted into slots (and removed from page bodies).
     expect(result.stats.chromeExtracted).toBe(true);
-    expect(bundle.project.website?.mainNav).toContain('href="/about"');
+    // The route map yields the canonical DIRECTORY form, so a rewritten import link is already
+    // the form the host serves without a 301 (see pagePath in @sitewright/core).
+    expect(bundle.project.website?.mainNav).toContain('href="/about/"');
     expect(bundle.project.website?.mainNav).toContain('/media/test/');
     expect(bundle.project.website?.footer).toContain('© Acme');
     expect(bundle.project.website?.mainNav).not.toContain('<script');

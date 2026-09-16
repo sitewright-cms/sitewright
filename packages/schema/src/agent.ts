@@ -270,7 +270,7 @@ THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are 
     <p class="mt-5 text-lg text-base-content/70">One sentence that earns the next scroll.</p>
     <div class="mt-8 flex flex-wrap gap-3"><a href="#contact" class="btn btn-primary">Primary action</a><a href="#work" class="btn btn-ghost">Secondary</a></div>
   </div>
-  <div data-sw-animation="fade-up" data-sw-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200"><img src="..." alt="..." class="h-full w-full object-cover"></div>
+  <div data-sw-animation="fade-up" data-sw-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200">{{sw-image "/media/…" alt="…" loading="eager" sizes="(min-width:1024px) 50vw, 100vw" class="h-full w-full object-cover"}}</div>
 </div></section>
 
 2) PROOF STRIP: a muted row of client logos or 3 trust stats directly under the hero.
@@ -328,7 +328,10 @@ Quick rules vs the similar-looking DaisyUI classes:
   thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption,
   swipe, pinch-zoom, and keyboard nav (viewer DOM is runtime-built — no overlay element). THREE
   forms: (1) one line — a single image: <img data-sw-component="lightbox" src="{{sw-url thumb}}"
-  data-full="{{sw-url full}}" data-caption alt> (data-full optional); (2) minimal gallery — a
+  data-full="{{sw-url full}}" data-caption alt> (data-full optional). ★ SIZE BOTH URLS: the visible
+  one is a THUMBNAIL (?size=sm or md), data-full is what the viewer opens (?size=xl) — unsized, the
+  grid paints full-resolution tiles. For a real gallery prefer {{sw-image url lightbox=true sizes="…"}},
+  which emits the pair already sized; (2) minimal gallery — a
   <div data-sw-component="lightbox" class="grid grid-cols-4 gap-2"> of bare <img> or
   <a href><img></a> children (you style the container); (3) explicit data-sw-block + data-sw-part
   grid for the batteries-included styled square grid. Every image is an <img> (the open animation
@@ -395,7 +398,7 @@ own fields) / datetimepicker-field.
   },
   images: {
     title: "Images & lazy-loading",
-    summary: "add images (stock search/import), lazy-load, blur-up, skeletons",
+    summary: "add images (stock search/import), SIZE them to their box ({{sw-image}} / ?size=), lazy-load, blur-up, skeletons",
     body: `
 ★ LAZY-LOADING AND THE SCREENSHOT GATE DO NOT CONFLICT — every capture SCROLLS the page first.
 visual_audit / compare_to_source / preview_page settle the page by scrolling it end to end before
@@ -413,12 +416,16 @@ PREFER the platform's data-* deferral over the browser's loading="lazy" for anyt
 third-party: native lazy is DISTANCE-based (browsers fetch a "lazy" iframe/img that sits within a
 multi-thousand-px threshold of the viewport — on a typical page that means AT LOAD), while data-src
 loads only ~200px before the element actually scrolls into view.
-- Plain image — simplest, works without JS: <img src="…" loading="lazy" alt="…" width="…" height="…">
-  (the image pipeline adds a blur-up LQIP placeholder). Fine for self-hosted images.
+- Project asset — {{sw-image "/media/…" alt="…" sizes="…"}}. This is the DEFAULT choice: it already
+  emits lazy loading, decoding="async", width/height, the blur-up LQIP and the responsive srcset, so
+  it is both the fastest and the least markup. A hand-written <img src="…" loading="lazy" alt="…"
+  width="…" height="…"> works without JS too, but ships the 2400px rung — reach for it only for an
+  EXTERNAL url or a deliberate fixed rung, and then append ?size= yourself.
 - Deferred swap with a blur-up fade — put the URL in data-src (+ data-srcset for responsive) INSTEAD
   of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
   height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
-- BACKGROUND image: data-bg="<url>" on any element → set as the background-image on scroll-in.
+- BACKGROUND image: data-bg="<url>?size=md" on any element → set as the background-image on
+  scroll-in. ★ SIZE IT — a bare data-bg url serves the 2400px rung (see the sizing rule below).
 - VIDEO / AUDIO: put the URL in data-src on the <video>/<audio> — or on a <source data-src> child —
   INSTEAD of src. NOTHING is fetched until it enters the viewport (opening a modal that holds it counts
   as entering). On enter the runtime sets the src + load()s it; add autoplay (keep it muted) OR
@@ -437,6 +444,30 @@ loads only ~200px before the element actually scrolls into view.
   <div class="skeleton h-64 w-full overflow-hidden rounded-box"><img data-src="…" alt="…" width="800"
   height="450" class="h-full w-full object-cover"></div>. (A native loading="lazy" iframe can carry
   class="skeleton" directly, since the runtime doesn't fade it.)
+
+★★ SIZE EVERY IMAGE TO THE BOX IT PAINTS INTO. A media url with NO \`?size=\` serves the \`xl\` rung —
+2400px wide — whatever the box is. This is the single most common performance defect in agent-built
+pages, and it does not present as a slow load: decode cost scales with PIXELS, not bytes, so a
+"nicely compressed" 900KB WebP is still ~3.8 MEGAPIXELS of main-thread decode to fill a 550px card.
+The symptom is the page STUTTERING as each section scrolls in — the decode lands in the same frame as
+the scroll-reveal animation, so it reads as "the animation is janky" — and it vanishes on a second
+pass once the decode cache is warm, which is what makes it easy to dismiss.
+MEASURED on a real agent-built page (six backgrounds at 2400px painted into 550px cards, 12-19x more
+pixels than displayed): decode 257ms, NINE dropped frames, worst frame 116ms. The same page with
+those backgrounds at \`md\`: decode 33ms, ZERO dropped frames, worst frame 31ms.
+Rungs: xs=150 sm=500 md=1000 lg=1600 xl=2400 (px wide). Pick the one that covers the box at 2x.
+- \`<img>\` OF A PROJECT ASSET → ALWAYS {{sw-image "/media/…" alt="…" sizes="…"}}, never a hand-written
+  \`<img src>\`. The helper emits the full responsive srcset (every rung with width descriptors),
+  \`width\`/\`height\` (no layout shift), \`decoding="async"\`, lazy loading and a blur-up LQIP — a
+  hand-written \`<img>\` gets NONE of that and silently ships the 2400px rung. Hand-write \`<img>\` only
+  for an EXTERNAL url, or when you deliberately want one fixed rung.
+  ★ \`sizes\` describes the box's real width per breakpoint and is what makes the srcset work. Left
+  off it defaults to \`100vw\` — the browser then believes every image is full-width and picks the
+  LARGEST rung, so the srcset buys nothing.
+- BACKGROUND image (\`data-bg\`, \`background-image:url(…)\`, any raw media url in CSS) → {{sw-image}}
+  CANNOT help here: the url is yours, so append \`?size=\` YOURSELF. \`?size=md\` for a card or column,
+  \`lg\` for a full-width band, \`xl\` only for a true full-bleed hero. A background with no \`?size=\` is
+  the most common cause of the stutter above.
 
 IMAGES — three ways to bring one in, all self-hosted (never hotlink), then reference the returned
 media url in \`source\`:

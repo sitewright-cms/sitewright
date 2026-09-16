@@ -9,6 +9,27 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Agent-authored pages no longer ship every image at 2400px.** A media url with no `?size=` serves
+  the largest rung, and the agent instructions never said so: the images guide led with a
+  hand-written `<img src>` as "simplest", never mentioned the `{{sw-image}}` helper at all, and gave
+  `data-bg` with no sizing. An agent following it faithfully produced a page with nine raw `<img>`
+  tags and ten unsized backgrounds — six of them 2400px wide painted into 550px cards.
+  - The symptom is not a slow load. It is the page **stuttering as each section scrolls in**, because
+    the first-time image decode lands in the same frame as the scroll-reveal animation — so it reads
+    as "the animation is janky" — and it disappears on a second pass once the decode cache is warm.
+    Measured on the real page: 257 ms of decode and nine dropped frames (worst 116 ms); the same page
+    with those backgrounds at `md` decoded in 33 ms and dropped **none** (worst 31 ms).
+  - The guide now leads with `{{sw-image}}` for project assets (it emits the responsive `srcset`,
+    `width`/`height`, `decoding="async"` and the blur-up placeholder that a hand-written tag does not),
+    states the rung table and the implicit `xl` default, and tells agents to append `?size=` to
+    background urls themselves — `{{sw-image}}` cannot help there. The split-hero skeleton in the
+    design guide and the lightbox example in the components guide were emitting unsized markup for
+    agents to copy; both now demonstrate the sized form.
+  - Drift guards: the rung widths quoted in the guide are pinned against `@sitewright/image-pipeline`,
+    so changing a rung or the default can no longer leave the guide confidently stating a stale number.
+
 ## [0.54.0] — 2026-09-16
 
 ### Added

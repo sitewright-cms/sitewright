@@ -15,6 +15,7 @@ import {
   type PagespeedAuditResult,
   type PagespeedFinding,
   type HeadingOutline,
+  type ImageSizingReport,
 } from "../../api";
 import { CapacityNotice } from "../ui/CapacityNotice";
 import { primaryButton, gradientSurface } from "../../theme";
@@ -365,6 +366,60 @@ function RecommendationCard({ f }: { f: PagespeedFinding }) {
 }
 
 /**
+ * Images served at the largest rung through a path that cannot adapt.
+ *
+ * ★ This is NOT a Lighthouse finding and is shown separately for that reason: Lighthouse's image
+ * audits read element boxes, so a CSS background is invisible to them however oversized it is. A page
+ * whose every backdrop was 2400px scored a perfect `image-delivery` while dropping nine frames on the
+ * first scroll — which is why this sits beside the Lighthouse list rather than inside it.
+ */
+function ImageSizingView({ report }: { report: ImageSizingReport }) {
+  const { findings, scanned, ok, truncated } = report;
+  const kb = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} MB` : `${Math.round(n / 1024)} KB`);
+  return (
+    <div>
+      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        Image sizing
+      </h4>
+      {findings.length === 0 ? (
+        <p className="mb-2 text-sm text-emerald-600">Every image is sized to its box. 🎉</p>
+      ) : (
+        <>
+          <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+            {findings.length} of {scanned} image references are served at the largest size because no{" "}
+            <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">?size=</code> was set — that is the
+            default, not a choice ({ok} already sized). Decode cost scales with pixels, so this shows up as the
+            page stuttering while sections animate in, not as a slow load.
+          </p>
+          <ul className="flex flex-col gap-1.5">
+            {findings.map((f) => (
+              <li
+                key={`${f.file}-${f.via}`}
+                className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+              >
+                <div className="flex items-start gap-1.5">
+                  <ImageOff className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="font-medium">{f.via === "background" ? "background" : "<img>"}</span>{" "}
+                    <span className="break-all font-mono">{f.file}</span>
+                    {f.bytes !== undefined ? ` — ${kb(f.bytes)}` : null}
+                    {f.count > 1 ? ` ×${f.count}` : null}
+                  </span>
+                </div>
+                <p className="mt-1 pl-5 opacity-90">{f.recommendation}</p>
+              </li>
+            ))}
+          </ul>
+          {truncated ? (
+            <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">…and {truncated} more</p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * The page's H1–H6 heading outline as an indented tree, with SEO/accessibility recommendations:
  * document-level notices (missing / duplicate H1, no headings) above the tree, and a per-heading warning
  * marker (skipped level, empty heading) inline. Text is rendered as plain text — never HTML.
@@ -467,7 +522,7 @@ function AuditSkeleton() {
 }
 
 function AuditReport({ result }: { result: PagespeedAuditResult }) {
-  const { scores, metrics, findings, runWarnings, outline } = result;
+  const { scores, metrics, findings, runWarnings, outline, imageSizing } = result;
   // Surface Lighthouse's own environment notices (e.g. its slow-CPU warning — emitted whenever the host
   // benchmark ≤ 1000) so a host-constrained lab score is understood, not mistaken for a page defect. We
   // defer to Lighthouse's wording + threshold rather than synthesize a second, near-duplicate line.
@@ -515,6 +570,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
         )}
       </div>
 
+      {imageSizing ? <ImageSizingView report={imageSizing} /> : null}
       {outline ? <HeadingOutlineView outline={outline} /> : null}
 
       {notices.length > 0 ? (

@@ -846,7 +846,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'pagespeed_audit',
     {
       description:
-        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. Use it to check a page before publishing and to get a concrete fix list. OMIT `formFactor` to get BOTH devices from one run, keyed `{ mobile, desktop }` — the expensive half is building and serving the site, which is shared, so both cost barely more than one and you should not call this twice. Pass 'mobile' or 'desktop' only when you genuinely need just that one.",
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. It also reports OVERSIZED IMAGES, which Lighthouse structurally cannot: its image audits read element boxes, so a CSS background served at the largest rung is invisible to it. RUN THIS ON EVERY PAGE YOU FINISH, before telling anyone the page is done — it is the only check that sees what you actually shipped. OMIT `formFactor` to get BOTH devices from one run, keyed `{ mobile, desktop }` — the expensive half is building and serving the site, which is shared, so both cost barely more than one and you should not call this twice. Pass 'mobile' or 'desktop' only when you genuinely need just that one.",
       inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop']).optional() },
     },
     async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
@@ -915,6 +915,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             if (r.outline.truncated) lines.push(`  …and ${r.outline.truncated} more headings`);
           }
           for (const issue of r.outline.issues) lines.push(`  ⚠ ${issue}`);
+        }
+        // Oversized images. Kept SEPARATE from the Lighthouse findings above on purpose: Lighthouse
+        // cannot see an oversized CSS background at all (its image audits read element boxes, and a
+        // background has none), so a page can score a perfect `image-delivery` and still ship every
+        // backdrop at the largest rung.
+        if (r.imageSizing && r.imageSizing.findings.length > 0) {
+          const s = r.imageSizing;
+          lines.push('', `Oversized images (${s.findings.length} of ${s.scanned} references; ${s.ok} already sized):`);
+          lines.push('  These are served at the LARGEST rung because no `?size=` was set — the default,');
+          lines.push('  not a choice. Decode cost scales with PIXELS, so this shows up as the page');
+          lines.push('  stuttering while sections animate in, not as a slow load.');
+          for (const f of s.findings) {
+            const cost = [f.bytes !== undefined ? kib(f.bytes) : null, f.count > 1 ? `×${f.count}` : null].filter(Boolean);
+            lines.push(`  • ${f.via === 'background' ? 'background' : '<img>'}  ${f.file}${cost.length ? ` — ${cost.join(', ')}` : ''}`);
+            lines.push(`      ${f.recommendation}`);
+          }
+          if (s.truncated) lines.push(`  • …and ${s.truncated} more`);
         }
         if (r.runWarnings && r.runWarnings.length > 0) {
           lines.push('', 'Lighthouse environment notices (may explain a host-constrained score):');

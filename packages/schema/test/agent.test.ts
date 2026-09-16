@@ -60,7 +60,14 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // unreadable, undiffable in a revision, and re-derived from scratch on the next edit. It fails
     // nothing at write time, so it is invisible until someone tries to change one line. The rationale
     // and the per-surface detail stayed in the design / templates / import guides.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_200);
+    // 21_200 -> 21_600 for the pagespeed_audit FINISHING STEP (+ the images guide's summary naming
+    // sizing). Same test as every raise above: is it a how-to, or a rule about the WORK ITSELF? An
+    // agent that never calls get_guide still decides when a page is DONE, and the audit is the only
+    // check that reads what was actually shipped — a screenshot cannot show weight. A page shipped
+    // with every background at the largest rung passed preview_page, a human review AND Lighthouse's
+    // own image audit; nothing in the flow asked the one question that would have caught it. The
+    // how-to (rungs, {{sw-image}}, ?size=) stayed in the images guide.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_600);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {
@@ -151,6 +158,14 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // built without ever calling get_guide("images") is the failure mode to design against.
     expect(AGENT_GUIDES.images.summary).toMatch(/size/i);
     expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/SIZE them to their box/);
+  });
+
+  it('the core PRESCRIBES the page audit as a finishing step, not just as an available tool', () => {
+    // pagespeed_audit was in the tool catalog from the start and callable by any agent — and nothing
+    // ever told one to run it. A page shipped every background at the largest rung and nobody asked.
+    // The tool existing is not the same as the flow requiring it.
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('pagespeed_audit');
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/EVERY PAGE YOU FINISH/);
   });
 
   it('the import guide teaches the rewrite handoff (marker, draft, checklist) and the core points at it', () => {

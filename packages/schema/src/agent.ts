@@ -185,7 +185,10 @@ spacing). Children need no own nav slots. Every new project already has the empt
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK and refine before moving on;
-includeHtml:true adds the HTML) → publish_project. All writes are validated
+includeHtml:true adds the HTML) → pagespeed_audit → publish_project.
+★ RUN pagespeed_audit ON EVERY PAGE YOU FINISH, before you call it done. A screenshot cannot show
+weight: it is the only check that reads what you actually shipped (oversized images, render-blocking
+bytes, contrast, heading structure) and it names the files to fix. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
 BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
 single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a

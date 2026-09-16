@@ -68,9 +68,9 @@ describe('translationsOf (language switcher / hreflang group)', () => {
   it('returns all variants of the group (incl. self), sorted by locale, default filling unset', () => {
     // The paths are COMPUTED from the parent chain: /de, /, /fr.
     expect(translationsOf(pages, pages[0]!, 'en')).toEqual([
-      { locale: 'de', path: '/de', title: 'Start' },
+      { locale: 'de', path: '/de/', title: 'Start' },
       { locale: 'en', path: '/', title: 'Home' }, // self, locale ← default
-      { locale: 'fr', path: '/fr', title: 'Accueil' },
+      { locale: 'fr', path: '/fr/', title: 'Accueil' },
     ]);
   });
 
@@ -204,9 +204,9 @@ describe('scaffoldLocale (whole-site duplicate into a new locale)', () => {
 
     const byId = pagesById([...pages.map((p) => updated.find((u) => u.id === p.id) ?? p), ...created]);
     const route = (id: string) => pagePath(byId.get(id)!, byId);
-    expect(route('home-de')).toBe('/de');
-    expect(route('about-de')).toBe('/de/about');
-    expect(route('team-de')).toBe('/de/about/team');
+    expect(route('home-de')).toBe('/de/');
+    expect(route('about-de')).toBe('/de/about/');
+    expect(route('team-de')).toBe('/de/about/team/');
 
     // Variants inherit code (no source/template) and copy data.
     const homeDe = created.find((p) => p.id === 'home-de')!;
@@ -250,8 +250,8 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     expect(updated.map((p) => p.id)).toEqual(['pricing']); // owner gains translationGroup
 
     const byId = pagesById([...base, updated[0]!, ...created]);
-    expect(pagePath(byId.get('pricing-de')!, byId)).toBe('/de/pricing');
-    expect(pagePath(byId.get('pricing-fr')!, byId)).toBe('/fr/pricing');
+    expect(pagePath(byId.get('pricing-de')!, byId)).toBe('/de/pricing/');
+    expect(pagePath(byId.get('pricing-fr')!, byId)).toBe('/fr/pricing/');
     expect(created.every((p) => p.source === undefined && p.template === undefined)).toBe(true);
     expect(created.every((p) => p.translationGroup === 'pricing')).toBe(true);
   });
@@ -277,8 +277,8 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     expect(updated.map((p) => p.id).sort()).toEqual(['about', 'team']); // both ancestors linked
 
     const byId = pagesById([...pages.map((p) => updated.find((u) => u.id === p.id) ?? p), ...created]);
-    expect(pagePath(byId.get('about-de')!, byId)).toBe('/de/about');
-    expect(pagePath(byId.get('team-de')!, byId)).toBe('/de/about/team'); // nested, not orphaned
+    expect(pagePath(byId.get('about-de')!, byId)).toBe('/de/about/');
+    expect(pagePath(byId.get('team-de')!, byId)).toBe('/de/about/team/'); // nested, not orphaned
     expect(created.find((p) => p.id === 'team-de')!.parent).toBe('about-de');
   });
 

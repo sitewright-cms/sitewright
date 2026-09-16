@@ -603,13 +603,18 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             </p>
           )}
           {/* The menu label is ALWAYS shown and required — every page in a menu needs a label. It
-              mirrors / defaults to the page title, so it's pre-filled but overridable. (There is no
-              Order field: menu position follows the PAGES list — drag a page, or select it and use
-              Arrow Up/Down — which is the single source of sibling order.) */}
+              mirrors / defaults to the page title, so it's pre-filled but overridable. It may also
+              carry MARKUP (inline HTML + {{sw-icon}}/{{sw-flag}}), exactly like a link placeholder's
+              name — which is why it is a separate field from the title: the title is the document /
+              og / sitemap text and stays plain. The Pages list previews whatever is typed here
+              (PlaceholderLabel) the way the menu will render it. (There is no Order field: menu
+              position follows the PAGES list — drag a page, or select it and use Arrow Up/Down —
+              which is the single source of sibling order.) */}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="flex flex-col text-[11px] text-slate-500 dark:text-slate-400">
               <span className="flex items-center gap-1">
                 Menu label {inMenu && <span className="text-rose-500 dark:text-rose-300" aria-hidden>*</span>}
+                <SectionHelp tip={'Shown in the menu. Supports basic HTML + {{sw-icon "name"}} / {{sw-flag "de"}} — the page title stays plain.'} />
               </span>
               <input
                 aria-label="Nav menu label"

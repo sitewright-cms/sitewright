@@ -57,11 +57,25 @@ export function pagesById(pages: readonly Page[]): Map<string, Page> {
 
 /**
  * The full root-relative route of a page, computed from its PARENT CHAIN:
- * `{root}/{ancestor slugs}/{own slug}`. Each page's `path` is a single slug SEGMENT
+ * `{root}/{ancestor slugs}/{own slug}/`. Each page's `path` is a single slug SEGMENT
  * (empty for the home page / tree root). The home page (empty slug, no parent) → `/`;
- * `about` under home → `/about`; `leistungen` under a `de` page under home → `/de/leistungen`.
+ * `about` under home → `/about/`; `leistungen` under a `de` page under home → `/de/leistungen/`.
  * Cycle-safe — a broken parent chain stops at the first repeated id. A parent id that
  * isn't in `byId` is treated as a root (the chain ends).
+ *
+ * ★ The route is the canonical DIRECTORY form, trailing slash included, because that is what a page
+ * IS: the build writes `<slug>/index.html`, so a slash-less URL only ever reaches it via a 301. The
+ * platform already published that form everywhere it spoke ABOUT a page — canonical, og:url, hreflang,
+ * sitemap (`siteUrlFor`), the site-search index — and the slash-less form everywhere it LINKED to one,
+ * so a site disagreed with itself and every menu click paid a redirect. On the draft preview the
+ * redirect is worse than a round trip: it is answered before the trailing-slash check, so a slash-less
+ * first request pays a whole site rebuild and throws it away in a 0-byte 301.
+ *
+ * Every caller that wants an identity/filename rather than a URL already normalizes: `pathToSlug` and
+ * `slugForPath` strip both ends, `{{sw-active}}` compares slash-insensitively, and the NAV_LINK_JS
+ * runtime strips before matching. Adding the slash here is therefore visible only where it is wanted —
+ * `{{page.path}}`, nav item `path`, `page.children[].path`, `page.translations[].path`, breadcrumbs,
+ * and the editor's own preview URL.
  */
 export function pagePath(page: Page, byId: ReadonlyMap<string, Page>): string {
   const segments: string[] = [];
@@ -72,7 +86,8 @@ export function pagePath(page: Page, byId: ReadonlyMap<string, Page>): string {
     if (cur.path) segments.unshift(cur.path); // skip the empty home/root slug
     cur = cur.parent ? byId.get(cur.parent) : undefined;
   }
-  return '/' + segments.join('/');
+  // Home is already the directory form ('/'); anything deeper gets the closing slash.
+  return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
 }
 
 /**

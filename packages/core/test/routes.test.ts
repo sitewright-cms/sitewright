@@ -66,9 +66,11 @@ describe('pagePath', () => {
     ];
     const byId = pagesById(pages);
     expect(pagePath(pages[0]!, byId)).toBe('/'); // home (empty slug, no parent)
-    expect(pagePath(pages[1]!, byId)).toBe('/about');
-    expect(pagePath(pages[3]!, byId)).toBe('/de/leistungen'); // two levels deep
-    expect(pagePath(pages[4]!, byId)).toBe('/x'); // parent not found → root
+    // The canonical DIRECTORY form — a page builds to `<slug>/index.html`, so the slash-less form
+    // only ever reaches it through a 301 (see pagePath). Home is already `/`.
+    expect(pagePath(pages[1]!, byId)).toBe('/about/');
+    expect(pagePath(pages[3]!, byId)).toBe('/de/leistungen/'); // two levels deep
+    expect(pagePath(pages[4]!, byId)).toBe('/x/'); // parent not found → root
   });
 
   it('is cycle-safe (a broken parent chain stops at the first repeat)', () => {

@@ -23,11 +23,11 @@ describe('childrenOf', () => {
     const kids = childrenOf(pages, pages[0]!, 'en');
     expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2
     expect(kids[0]).toMatchObject({
-      id: 'a1', title: 'First', slug: 'first', path: '/blog/first',
+      id: 'a1', title: 'First', slug: 'first', path: '/blog/first/',
       description: 'One', image: '/one.jpg', navTitle: 'First (nav)',
       status: 'draft', order: 1, data: { article_title: 'One!' },
     });
-    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', status: 'published' });
+    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second/', description: 'Two', image: '/two.jpg', status: 'published' });
   });
 
   it('excludes pages parented elsewhere', () => {
@@ -192,7 +192,7 @@ describe('parentPageView', () => {
       title: 'Home', slug: '', path: '/', locale: 'en', data: { brand: 'Acme' },
     });
     // web's parent is services — `path` is the FULL route (not the bare segment), `data` is the parent's own.
-    expect(parentPageView(pages, pages[2]!, 'en')).toMatchObject({ slug: 'services', path: '/services', data: { eyebrow: 'What we do' } });
+    expect(parentPageView(pages, pages[2]!, 'en')).toMatchObject({ slug: 'services', path: '/services/', data: { eyebrow: 'What we do' } });
   });
 
   it('reports the PARENT’s own locale, not the child’s (no same-locale filter, unlike childrenOf)', () => {
@@ -341,5 +341,36 @@ describe('extractClassNames', () => {
   it('respects a custom max parameter', () => {
     const src = '<div class="a b c d e">x</div>';
     expect(extractClassNames(src, 3)).toHaveLength(3);
+  });
+});
+
+describe('page.children navTitle is TEXT — a rich MENU LABEL cannot leak markup into a listing', () => {
+  const parent = page({ id: 'p', path: 'p', title: 'Parent' });
+  const kid = (navTitle: string): Page =>
+    page({ id: 'c', path: 'c', parent: 'p', title: 'Our Services', nav: { title: navTitle, slots: ['header'] } });
+
+  it('reduces an icon/HTML menu label to its words', () => {
+    // `{{#each page.children}}{{navTitle}}` escapes what it is given, so handing it the raw label
+    // would print `<span …>{{sw-icon …}} Services` on the page. The menu renders the markup; a
+    // listing gets the text.
+    expect(childrenOf([parent, kid('<span class="flex gap-2">{{sw-icon "wrench"}} Services</span>')], parent, 'en')[0]!.navTitle)
+      .toBe('Services');
+  });
+
+  it('leaves a plain menu label byte-identical', () => {
+    expect(childrenOf([parent, kid('News  &  Events')], parent, 'en')[0]!.navTitle).toBe('News  &  Events');
+  });
+
+  it('still falls back to the page title when there is no menu label', () => {
+    expect(childrenOf([parent, page({ id: 'c', path: 'c', parent: 'p', title: 'Our Services' })], parent, 'en')[0]!.navTitle)
+      .toBe('Our Services');
+  });
+});
+
+describe('the page TITLE fallback is never treated as markup', () => {
+  it('passes a title containing angle brackets through verbatim', () => {
+    const parent = page({ id: 'p', path: 'p', title: 'Parent' });
+    const kid = page({ id: 'c', path: 'c', parent: 'p', title: 'The <b> tag, explained' });
+    expect(childrenOf([parent, kid], parent, 'en')[0]!.navTitle).toBe('The <b> tag, explained');
   });
 });

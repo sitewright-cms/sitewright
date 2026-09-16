@@ -56,8 +56,8 @@ describe('pagesContext', () => {
     const ctx = pagesContext(PAGES, home, 'en', '{{pages.services.seo._attributes.data.header_title}} {{pages.services._attributes.path}}');
     expect(dig(ctx, 'services', 'seo', '_attributes', 'data', 'header_title')).toBe('SEO & Performance');
     expect(dig(ctx, 'services', '_attributes', 'title')).toBe('Services');
-    expect(dig(ctx, 'services', '_attributes', 'path')).toBe('/services');
-    expect(dig(ctx, 'services', 'seo', '_attributes', 'path')).toBe('/services/seo');
+    expect(dig(ctx, 'services', '_attributes', 'path')).toBe('/services/');
+    expect(dig(ctx, 'services', 'seo', '_attributes', 'path')).toBe('/services/seo/');
   });
 
   it('exposes the HOME node’s own fields under pages._attributes', () => {
@@ -78,7 +78,7 @@ describe('pagesContext', () => {
   it('is referenced-only: an unreferenced page is absent; data is gated to _attributes.data uses', () => {
     const ctx = pagesContext(PAGES, home, 'en', '{{pages.services._attributes.path}}');
     expect(dig(ctx, 'services')).toBeDefined();
-    expect(dig(ctx, 'services', '_attributes', 'path')).toBe('/services');
+    expect(dig(ctx, 'services', '_attributes', 'path')).toBe('/services/');
     expect(dig(ctx, 'services', '_attributes', 'data')).toEqual({}); // .data not referenced → empty (payload gate)
     expect(dig(ctx, 'services', 'seo')).toBeUndefined(); // seo never referenced
   });
@@ -88,7 +88,7 @@ describe('pagesContext', () => {
     const ctx = pagesContext(PAGES, home, 'en', '{{#each pages.services._attributes.children}}{{path}}{{/each}}');
     const kids = dig(ctx, 'services', '_attributes', 'children') as Array<Record<string, unknown>>;
     expect(Array.isArray(kids)).toBe(true);
-    expect(kids.map((k) => k.path)).toEqual(['/services/seo']); // the one child of /services, full route
+    expect(kids.map((k) => k.path)).toEqual(['/services/seo/']); // the one child of /services/, full route
     expect(kids[0]!.title).toBe('SEO');
     // children is GATED to referenced uses: when not referenced it is an empty array.
     const unref = pagesContext(PAGES, home, 'en', '{{pages.services._attributes.path}}');
@@ -137,7 +137,7 @@ describe('pagesContext', () => {
     const withSibling = [...PAGES, page({ id: 'contact', path: 'contact', title: 'Contact', data: { phone: '123' } })];
     const ctx = pagesContext(withSibling, home, 'en', '{{pages.contact._attributes.data.phone}} {{#each pages.services._attributes.children}}{{path}}{{/each}}');
     expect(dig(ctx, 'contact', '_attributes', 'data', 'phone')).toBe('123'); // root sibling resolves
-    expect((dig(ctx, 'services', '_attributes', 'children') as Array<Record<string, unknown>>).map((k) => k.path)).toEqual(['/services/seo']);
+    expect((dig(ctx, 'services', '_attributes', 'children') as Array<Record<string, unknown>>).map((k) => k.path)).toEqual(['/services/seo/']);
   });
 
   it('returns undefined when pages is not referenced or the locale has no home', () => {

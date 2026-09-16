@@ -41,7 +41,7 @@ describe('resolveDatasetPageRefs', () => {
       label: 'Our work',
       // The path is computed from the parent chain — a template links with {{sw-url target.path}} and
       // must get `/services/web-design`, not the bare slug the page row stores.
-      target: { id: 'web', title: 'Web design', slug: 'web-design', path: '/services/web-design', locale: 'en', description: 'We design', image: '/hero.jpg' },
+      target: { id: 'web', title: 'Web design', slug: 'web-design', path: '/services/web-design/', locale: 'en', description: 'We design', image: '/hero.jpg' },
     });
   });
 
@@ -63,8 +63,8 @@ describe('resolveDatasetPageRefs', () => {
       'en',
     );
     const v = out.blocks![0]!.values as { group: { link: { path: string } }; items: { to: { path: string } }[] };
-    expect(v.group.link.path).toBe('/services');
-    expect(v.items.map((i) => i.to.path)).toEqual(['/services/web-design', '/']);
+    expect(v.group.link.path).toBe('/services/');
+    expect(v.items.map((i) => i.to.path)).toEqual(['/services/web-design/', '/']);
   });
 
   it('returns the SAME object when no dataset declares a page field', () => {
@@ -77,7 +77,7 @@ describe('resolveDatasetPageRefs', () => {
     // `services_de` is a separate entity that may carry no schema row of its own; the fields are the
     // base dataset's. Without the fallback a translated page's loop would print raw ids.
     const out = resolveDatasetPageRefs({ promos_de: [entry('a', 'promos_de', { target: 'web' })] }, schemas, PAGES, 'en');
-    expect((out.promos_de![0]!.values.target as { path: string }).path).toBe('/services/web-design');
+    expect((out.promos_de![0]!.values.target as { path: string }).path).toBe('/services/web-design/');
   });
 
   it('leaves every other field untouched', () => {

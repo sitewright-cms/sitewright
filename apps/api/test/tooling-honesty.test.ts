@@ -164,7 +164,10 @@ describe('page endpoints hand back a preview URL', () => {
     await proj.putContent('page', 'about', { id: 'about', path: 'about', title: 'About', source: '<h1>A</h1>' });
 
     const got = (await proj.getContent('page', 'about')).json() as { previewUrl: string };
-    expect(got.previewUrl).toMatch(/^\/preview-site\/[^/]+\/[^/]+\/about$/);
+    // ★ Ends in the CANONICAL directory form. The /preview-site handler 301s a slash-less page URL —
+    // and it does so AFTER ensurePreviewBuild, so a slash-less previewUrl made the editor iframe's
+    // first request pay a whole site rebuild and throw it away in a 0-byte redirect.
+    expect(got.previewUrl).toMatch(/^\/preview-site\/[^/]+\/[^/]+\/about\/$/);
 
     const items = ((await proj.listContent('page')).json() as { items: Array<{ id: string; previewUrl: string }> })
       .items;
@@ -213,7 +216,7 @@ describe('page endpoints hand back a preview URL', () => {
     });
 
     const got = (await proj.getContent('page', 'audit')).json() as { previewUrl: string };
-    expect(got.previewUrl).toMatch(/\/services\/audit$/); // NOT `/audit`
+    expect(got.previewUrl).toMatch(/\/services\/audit\/$/); // NOT `/audit`, and directory-form
     const items = ((await proj.listContent('page')).json() as { items: Array<{ id: string; previewUrl: string }> })
       .items;
     expect(items.find((p) => p.id === 'audit')?.previewUrl).toBe(got.previewUrl);

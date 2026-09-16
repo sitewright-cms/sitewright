@@ -21,19 +21,19 @@ describe('buildRoutes', () => {
     expect(home).toBeTruthy();
     const about = r.pages.find((p) => p.path === 'about')!;
     expect(about.parent).toBe(home.id); // a top-level page nests UNDER home (route is still /about)
-    expect(pagePath(about, byId)).toBe('/about');
+    expect(pagePath(about, byId)).toBe('/about/');
     const web = r.pages.find((p) => p.path === 'web-design')!;
     const services = byId.get(web.parent!)!;
     expect(services.path).toBe('services');
     expect(services.parent).toBe(home.id); // the synthesized mid-level parent also nests under home
-    expect(pagePath(web, byId)).toBe('/services/web-design');
+    expect(pagePath(web, byId)).toBe('/services/web-design/');
     // The synthesized parent has no captured page but exists in the tree.
     expect(services).toBeTruthy();
   });
 
   it('maps captured URLs to their final routes for link rewriting', () => {
     const r = buildRoutes(site(['https://ex.com/', 'https://ex.com/services/web-design']));
-    expect(r.internalRoutes.get(normalizePageUrl('https://ex.com/services/web-design')!)).toBe('/services/web-design');
+    expect(r.internalRoutes.get(normalizePageUrl('https://ex.com/services/web-design')!)).toBe('/services/web-design/');
   });
 
   it('assigns header nav from navLinks order when provided', () => {

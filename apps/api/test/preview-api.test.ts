@@ -597,7 +597,7 @@ describe('preview API — code-first source page', () => {
     expect(html).toContain('>Start</a>'); // the German page's own nav item
     expect(html).not.toContain('>Home</a>'); // NOT the English page's item
     expect(html).toContain('<span class="loc">de</span>'); // page.locale in preview
-    expect(html).toContain('class="sw" href="/de">de</a>'); // switcher (root-relative link)
+    expect(html).toContain('class="sw" href="/de/">de</a>'); // switcher (root-relative link)
   });
 
   it('inlines the scroll-reveal runtime when the source uses data-sw-animation (and omits it otherwise)', async () => {

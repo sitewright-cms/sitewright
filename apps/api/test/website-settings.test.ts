@@ -148,7 +148,7 @@ describe('website settings → publish', () => {
     expect(html).toContain('<p>One</p>'); // the child's page.description
     expect(html).toContain('<span>x</span>'); // the child's page.data, read in the loop
     expect(html.indexOf('First')).toBeLessThan(html.indexOf('Second')); // ordered by `order`
-    expect(html).toContain('<a href="first">'); // {{sw-url path}} → portable relative link to the child page
+    expect(html).toContain('<a href="first/">'); // {{sw-url path}} → portable relative link to the child page
     expect(html).not.toContain('DraftArticle'); // the draft child is excluded from publish
   });
 

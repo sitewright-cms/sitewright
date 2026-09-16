@@ -17,9 +17,11 @@ export interface NavItem {
   /** Open in a new tab (`target="_blank" rel="noopener"`) — set from a link placeholder's `link.newTab`. */
   newTab?: boolean;
   /**
-   * Whether the label may contain rich markup (a link placeholder's name supports basic HTML +
-   * `{{sw-icon}}`). Plain page titles are NOT rich (escaped). Consumed by
-   * `decorateNav` (blocks), which renders rich labels into {@link labelHtml}.
+   * Whether the label may contain rich markup (basic HTML + `{{sw-icon}}`/`{{sw-flag}}` helpers).
+   * Set for a link placeholder's name and for a page whose `nav.title` MENU LABEL actually carries
+   * markup ({@link isRichNavLabel}) — a plain label is NOT rich and stays escaped, so nothing changes
+   * for a menu that never opted in. Consumed by `decorateNav` (blocks), which renders rich labels
+   * into {@link labelHtml}.
    */
   rich?: boolean;
   /**
@@ -51,6 +53,37 @@ export interface NavItem {
   children?: NavItem[];
 }
 
+/**
+ * Whether a nav label opts in to RICH rendering — it carries HTML or a `{{…}}` helper.
+ *
+ * The opt-in is the CONTENT, not a flag: a menu label is a free-text field, and the overwhelming
+ * majority are plain words that must keep taking the cheap escape path byte-for-byte. Only a label
+ * that visibly contains markup is handed to the template engine. (A page's own `title` is never
+ * tested — it is the document/og/sitemap title, so markup there is a mistake, not an opt-in.)
+ */
+export function isRichNavLabel(label: string): boolean {
+  return label.includes('<') || label.includes('{{');
+}
+
+/**
+ * Strip a (possibly rich) nav label down to readable text — drops `{{…}}`/`{{{…}}}` helpers, HTML
+ * tags and entities, then collapses whitespace. For the surfaces that can only show TEXT: the
+ * editor's plain-text fallback, and `page.children`'s `navTitle` (a listing binding that would
+ * otherwise print a label's raw markup once menu labels may carry any).
+ *
+ * A PLAIN label is returned untouched (interior spacing included) — only a label that
+ * {@link isRichNavLabel} accepts is rewritten, so nothing that never opted in can change shape.
+ */
+export function plainNavLabel(label: string): string {
+  if (!isRichNavLabel(label)) return label;
+  return label
+    .replace(/\{\{\{?[^}]*\}\}\}?/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(?:[a-z]+|#\d+);/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Resolves a link placeholder's href + external/newTab hints from its `link.target`. */
 function linkHref(page: Page): Pick<NavItem, 'path' | 'external' | 'newTab'> {
   const target = page.link?.target?.trim() ?? '';
@@ -76,15 +109,22 @@ export function byNavOrder(a: Page, b: Page): number {
 }
 
 function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
-  const label = page.nav?.title || page.title;
-  // A link placeholder resolves its href from `link.target` and its label is rich (HTML + icon
-  // helpers); a page from its tree route with a plain (escaped) label.
+  // The MENU LABEL (`nav.title`) is the field that may carry markup; the page `title` fallback never
+  // is — it doubles as the document/og/sitemap title, where markup would be a bug, not a feature.
+  const menuLabel = page.nav?.title || '';
+  const label = menuLabel || page.title;
+  // A link placeholder resolves its href from `link.target` and its label is ALWAYS rich (its name IS
+  // the menu label, there is no other title); a page from its tree route, rich only when its own menu
+  // label opted in by containing markup.
   if (isLinkPage(page)) return { label, rich: true, placeholder: true, ...linkHref(page) };
   // `description`/`image` come along so a dropdown can be a MENU rather than a list of titles. Both
   // are omitted when absent rather than emitted empty — they land in every page's render context, so
   // an empty string per item is pure weight on a large site.
   return {
     label,
+    // Placed before `path` only for key order in the (deep-equality) tests; `rich` is absent unless
+    // the label really is rich, so a plain menu keeps exactly the shape it has always had.
+    ...(isRichNavLabel(menuLabel) ? { rich: true } : {}),
     path: pagePath(page, byId),
     ...(page.description ? { description: page.description } : {}),
     ...(page.image ? { image: page.image } : {}),

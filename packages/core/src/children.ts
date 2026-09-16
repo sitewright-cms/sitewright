@@ -1,6 +1,6 @@
 import { isLinkPage, type JsonValue, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
-import { byNavOrder } from './nav.js';
+import { byNavOrder, plainNavLabel } from './nav.js';
 import { localeOf } from './i18n.js';
 
 /**
@@ -22,7 +22,13 @@ export interface PageChild {
   image: string;
   /** Whether the child is `noindex` (`page.noindex`). */
   noindex: boolean;
-  /** The child's nav label (`nav.title`) when set, else its title. */
+  /**
+   * The child's MENU LABEL (`nav.title`) when set, else its title — as TEXT. A menu label may carry
+   * markup (an icon + HTML, rendered into the nav by `decorateNav`), but this is a listing binding
+   * emitted through plain `{{navTitle}}`, which escapes what it is given — so a rich label is
+   * reduced to its words here rather than printed as visible markup. Plain labels pass through
+   * untouched.
+   */
   navTitle: string;
   /** `published` (the default) or `draft`. */
   status: 'draft' | 'published';
@@ -214,7 +220,9 @@ export function childrenView(pages: readonly Page[], page: Page, defaultLocale: 
       description: c.description ?? '',
       image: c.image ?? '',
       noindex: c.noindex ?? false,
-      navTitle: c.nav?.title || c.title,
+      // Only the MENU LABEL is reduced to text — the page `title` fallback is already plain prose and
+      // must pass through verbatim (a title like `A <b> tag guide` is not markup opting in).
+      navTitle: c.nav?.title ? plainNavLabel(c.nav.title) : c.title,
       status: c.status ?? 'published',
       locale: localeOf(c, defaultLocale),
       order: c.order ?? c.nav?.order ?? 0,

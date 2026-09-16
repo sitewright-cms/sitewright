@@ -33,6 +33,21 @@ export function cssUrlEscape(url: string): string {
 }
 
 /**
+ * Whether a root-relative internal path addresses a PAGE — and therefore has a canonical
+ * DIRECTORY-form URL (`/about/`) — rather than a file.
+ *
+ * The test is that the LAST SEGMENT carries no `.`, and it is exact rather than a heuristic in both
+ * directions: a page slug can never contain a dot (`PageSlugSchema` is `/^$|^[a-z0-9]+(?:-[a-z0-9]+)*$/`),
+ * and every asset the platform emits — media, `_assets/…`, `contact.php`, `sitemap.xml` — carries an
+ * extension. It is also the SAME predicate the server applies before issuing its 301 (the `/sites` and
+ * `/preview-site` handlers in apps/api), so the emitting and receiving ends cannot disagree about what
+ * a page URL is.
+ */
+function isPageRoutePath(path: string): boolean {
+  return !path.slice(path.lastIndexOf('/') + 1).includes('.');
+}
+
+/**
  * Rewrites an author-supplied href for portable output. Internal, root-relative
  * links (`/about`, `/`) are rebased onto `root` — the relative path from the
  * current page to the site root (see `relativeRoot` in @sitewright/core) — so
@@ -41,9 +56,14 @@ export function cssUrlEscape(url: string): string {
  * to `#`.
  *
  * `localePrefix` (e.g. `'de/'`) keeps internal PAGE links inside the current
- * locale subtree: `/about` → `<root>de/about`. It defaults to `''` (single-locale
+ * locale subtree: `/about` → `<root>de/about/`. It defaults to `''` (single-locale
  * / default-locale → identical to before). Pass it ONLY for page links, never for
  * shared assets (media/css/js live at the site root, the same across locales).
+ *
+ * ★ A PAGE route is emitted in its canonical DIRECTORY form (`/about` → `<root>about/`). A page
+ * builds to `<slug>/index.html`, so every host answers the slash-less form with a 301 — which made
+ * every menu click a redirect, and on the draft preview a redirect that first paid a full site
+ * rebuild. Files ({@link isPageRoutePath}) are left exactly as they are.
  */
 export function resolveInternalUrl(href: string, root: string, localePrefix = ''): string {
   const safe = safeUrl(href, '');
@@ -58,10 +78,21 @@ export function resolveInternalUrl(href: string, root: string, localePrefix = ''
   // Reject root-relative paths that traverse above the site root (`/../x`,
   // `/a/../b`) — they'd resolve off-root in the exported artifact.
   if (/(?:^|\/)\.\.(?:\/|$)/.test(safe)) return '#';
+  // Split the query/fragment off BEFORE touching the path: `/about#team` must canonicalize to
+  // `/about/#team`, never to `/about#team/` (which addresses a different, non-existent page).
+  const cut = safe.search(/[?#]/);
+  const rawPath = cut === -1 ? safe : safe.slice(0, cut);
+  const suffix = cut === -1 ? '' : safe.slice(cut);
+  // A page route gets its canonical trailing slash. Stripping any existing trailing slashes first
+  // makes this idempotent AND collapses a doubled `//` — which is what a template that worked around
+  // the old behaviour by hand (`{{page.path}}/`) would otherwise now emit.
+  const path = isPageRoutePath(rawPath) ? `${rawPath.replace(/\/+$/, '')}/` : rawPath;
   // Root-relative internal link: drop the leading '/' and rebase onto `root`,
   // inside the locale subtree.
-  const rebased = root + localePrefix + safe.slice(1);
-  return rebased === '' ? './' : rebased;
+  const rebased = root + localePrefix + path.slice(1);
+  // Only a bare home link with nothing after it becomes './'; `/#features` keeps resolving to the
+  // current document exactly as before.
+  return rebased === '' && suffix === '' ? './' : rebased + suffix;
 }
 
 // Rewrites internal root-relative links in `href`/`src` attributes; a single leading

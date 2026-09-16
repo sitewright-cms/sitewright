@@ -59,9 +59,12 @@ export function pagesById(pages) {
 }
 
 /**
- * The full root-relative route, from the PARENT CHAIN: `{ancestor slugs}/{own slug}`. Each `path` is a
+ * The full root-relative route, from the PARENT CHAIN: `{ancestor slugs}/{own slug}/`. Each `path` is a
  * single slug SEGMENT, and the home page's is empty — which is why parenting to home moves no URL.
  * Cycle-safe: a broken chain stops at the first repeated id.
+ *
+ * Canonical DIRECTORY form (trailing slash), matching `pagePath` in @sitewright/core — the report this
+ * script prints is a BEFORE→AFTER of page URLs, so it has to name them the way the site serves them.
  */
 export function pagePath(page, byId) {
   const segments = [];
@@ -72,7 +75,7 @@ export function pagePath(page, byId) {
     if (cur.path) segments.unshift(cur.path);
     cur = cur.parent ? byId.get(cur.parent) : undefined;
   }
-  return '/' + segments.join('/');
+  return segments.length === 0 ? '/' : `/${segments.join('/')}/`;
 }
 
 /** The site's root home: the empty-slug page in the default locale (a placeholder is not one). */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { buildNav } from '../src/index.js';
+import { buildNav, isRichNavLabel, plainNavLabel } from '../src/index.js';
 import { GLOBAL_SNIPPET_PARTIALS } from '../src/global-snippets.js';
 
 // `path` is a SLUG SEGMENT; the full route is computed from the parent chain (pagePath),
@@ -18,9 +18,9 @@ describe('buildNav', () => {
     ];
     expect(buildNav(pages, 'header')).toEqual([
       { label: 'Home', path: '/' },
-      { label: 'About', path: '/about' }, // nav.title overrides page title
+      { label: 'About', path: '/about/' }, // nav.title overrides page title
     ]);
-    expect(buildNav(pages, 'footer')).toEqual([{ label: 'Contact', path: '/contact' }]);
+    expect(buildNav(pages, 'footer')).toEqual([{ label: 'Contact', path: '/contact/' }]);
     expect(buildNav(pages, 'mobile')).toEqual([]);
   });
 
@@ -44,13 +44,13 @@ describe('buildNav', () => {
     expect(buildNav(pages, 'header')).toEqual([
       {
         label: 'Services',
-        path: '/services',
+        path: '/services/',
         children: [
-          { label: 'Web', path: '/services/web' },
-          { label: 'SEO', path: '/services/seo' },
+          { label: 'Web', path: '/services/web/' },
+          { label: 'SEO', path: '/services/seo/' },
         ],
       },
-      { label: 'About', path: '/about' }, // a nested child ('web') never ALSO appears flat
+      { label: 'About', path: '/about/' }, // a nested child ('web') never ALSO appears flat
     ]);
   });
 
@@ -61,14 +61,14 @@ describe('buildNav', () => {
       page({ id: 'silent', path: 'silent', title: 'Silent', parent: 'services' }), // no slots → absent
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'Services', path: '/services' },
-      { label: 'Web', path: '/services/web' },
+      { label: 'Services', path: '/services/' },
+      { label: 'Web', path: '/services/web/' },
     ]);
   });
 
   it('a dropdown parent with no children renders as a plain item', () => {
     const pages = [page({ id: 'p1', path: 'p1', title: 'P1', nav: { slots: ['header'], dropdown: true } })];
-    expect(buildNav(pages, 'header')).toEqual([{ label: 'P1', path: '/p1' }]);
+    expect(buildNav(pages, 'header')).toEqual([{ label: 'P1', path: '/p1/' }]);
   });
 
   it('resolves a link placeholder href from link.target (external/mailto/anchor/internal)', () => {
@@ -93,7 +93,7 @@ describe('buildNav', () => {
       page({ id: 'a', path: 'a', title: 'A', parent: 'grp', nav: { slots: ['footer'] } }),
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'Group', rich: true, placeholder: true, path: '#', children: [{ label: 'A', path: '/a' }] },
+      { label: 'Group', rich: true, placeholder: true, path: '#', children: [{ label: 'A', path: '/a/' }] },
     ]);
   });
 
@@ -103,7 +103,7 @@ describe('buildNav', () => {
       page({ id: 'c', path: 'c', title: 'C', parent: 'p', nav: { slots: ['header'] } }),
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'P', rich: true, placeholder: true, path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c' }] },
+      { label: 'P', rich: true, placeholder: true, path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c/' }] },
     ]);
   });
 });
@@ -184,5 +184,67 @@ describe('nav.hidden — a child that is not a menu entry', () => {
     const [item] = buildNav([parent, child('news-2', { nav: { hidden: true } }), child('calendar')], 'header');
     expect(item).toBeDefined();
     expect(item!.children?.map((c) => c.label)).toEqual(['calendar']);
+  });
+});
+
+describe('a page MENU LABEL may be rich (HTML + {{sw-icon}}), like a link placeholder name', () => {
+  const p = (navTitle?: string, over: Partial<Page> = {}): Page =>
+    ({ id: 'about', path: 'about', title: 'About', nav: { slots: ['header'], ...(navTitle === undefined ? {} : { title: navTitle }) }, ...over }) as Page;
+
+  it('marks a menu label carrying an icon helper as rich', () => {
+    const [item] = buildNav([p('{{sw-icon "house"}} Home')], 'header');
+    expect(item).toEqual({ label: '{{sw-icon "house"}} Home', rich: true, path: '/about/' });
+  });
+
+  it('marks a menu label carrying HTML as rich', () => {
+    const [item] = buildNav([p('<span class="flex gap-2">Shop</span>')], 'header');
+    expect(item!.rich).toBe(true);
+  });
+
+  it('leaves a PLAIN menu label alone — no rich flag, so it takes the escape path unchanged', () => {
+    const [item] = buildNav([p('Über uns & mehr')], 'header');
+    expect(item).toEqual({ label: 'Über uns & mehr', path: '/about/' });
+    expect('rich' in item!).toBe(false);
+  });
+
+  it('NEVER marks the page TITLE fallback rich — the title is <title>/og/sitemap text, not menu markup', () => {
+    // Markup in a page title is a mistake, not an opt-in: rendering it would change the document title
+    // and every SEO surface. Only the dedicated Menu label opts in.
+    const [item] = buildNav([p(undefined, { title: '{{sw-icon "house"}} Home' })], 'header');
+    expect(item!.label).toBe('{{sw-icon "house"}} Home');
+    expect('rich' in item!).toBe(false);
+  });
+
+  it('applies to a dropdown CHILD too — a mega menu renders children, not just parents', () => {
+    const parent = ({ id: 'l', path: 'l', title: 'Learning', nav: { slots: ['header'], dropdown: true } }) as Page;
+    const child = ({ id: 'c', path: 'c', title: 'DIA', parent: 'l', nav: { title: '{{sw-icon "star"}} DIA' } }) as Page;
+    const [item] = buildNav([parent, child], 'header');
+    expect(item!.children?.[0]?.rich).toBe(true);
+  });
+
+  it('is NOT a placeholder — a rich-labelled page is still the page, so {{sw-active}} can mark it', () => {
+    const [item] = buildNav([p('{{sw-icon "house"}} Home')], 'header');
+    expect('placeholder' in item!).toBe(false);
+  });
+});
+
+describe('isRichNavLabel', () => {
+  it('is true only for a label carrying HTML or a {{…}} helper', () => {
+    expect(isRichNavLabel('{{sw-icon "house"}} Home')).toBe(true);
+    expect(isRichNavLabel('<b>Home</b>')).toBe(true);
+    expect(isRichNavLabel('Home')).toBe(false);
+    expect(isRichNavLabel('Fish & Chips')).toBe(false);
+    expect(isRichNavLabel('')).toBe(false);
+  });
+});
+
+describe('plainNavLabel', () => {
+  it('strips helpers, tags and entities down to readable text', () => {
+    expect(plainNavLabel('<span class="flex">{{sw-icon "house"}} Home</span>')).toBe('Home');
+    expect(plainNavLabel('{{sw-flag "de"}}&nbsp;Deutsch')).toBe('Deutsch');
+  });
+
+  it('leaves plain text exactly alone — including interior spacing', () => {
+    expect(plainNavLabel('News  &  Events')).toBe('News  &  Events');
   });
 });

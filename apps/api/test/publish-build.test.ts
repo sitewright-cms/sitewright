@@ -196,7 +196,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('X=SEO &amp; Performance'); // grand-child page's data, walked by slug
-    expect(home).toContain('<a href="services">Services</a>'); // pages.services.path (sw-url page-relative) + .title
+    expect(home).toContain('<a href="services/">Services</a>'); // pages.services.path (sw-url page-relative) + .title
     // A page that doesn't reference `pages` ships no pages payload — covered by the referenced-only core tests.
   });
 
@@ -417,7 +417,7 @@ describe('buildSite', () => {
     // The auto-nav lists BOTH pages (built from each page's nav settings); internal links
     // are rebased page-relative (portable): from the home page, "/" → "./", "/about" → "about".
     expect(home).toContain('<a href="./">Home</a>');
-    expect(home).toContain('<a href="about">About</a>');
+    expect(home).toContain('<a href="about/">About</a>');
     // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
     expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
     expect(home).toContain('<link rel="stylesheet" href="_assets/_sw/styles.css?v=');
@@ -430,7 +430,7 @@ describe('buildSite', () => {
     // (depth 1) the internal links rebase onto '../'.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
     expect(about).toContain('About body');
-    expect(about).toContain('<a href="../about">About</a>');
+    expect(about).toContain('<a href="../about/">About</a>');
     expect(about).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>');
   });
 
@@ -657,10 +657,10 @@ describe('buildSite', () => {
     // route, so the highlight is unaffected by the rebasing.
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<a class="active" href="./" aria-current="page">Home</a>');
-    expect(home).toContain('<a class="" href="about">About</a>'); // not current → aria-current omitted
+    expect(home).toContain('<a class="" href="about/">About</a>'); // not current → aria-current omitted
     // On ABOUT, the roles swap.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('<a class="active" href="../about" aria-current="page">About</a>');
+    expect(about).toContain('<a class="active" href="../about/" aria-current="page">About</a>');
     expect(about).toContain('<a class="" href="../">Home</a>');
   });
 
@@ -1462,12 +1462,12 @@ describe('buildSite', () => {
     });
     // The en home's nav lists the EN pages; links are rebased page-relative (portable).
     const en = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(en).toContain('href="about"'); // "/about" → "about" from the root
+    expect(en).toContain('href="about/"'); // "/about" → the canonical "about/" from the root
     expect(en).not.toContain('href="/about"'); // not absolute
     expect(en).not.toContain('de/about'); // EN nav lists only EN pages
     // The de home (/de/index.html, depth 1) lists the DE pages only, rebased from '../'.
     const de = await readFile(join(outDir, 'de', 'index.html'), 'utf8');
-    expect(de).toContain('href="../de/about"'); // "/de/about" → "../de/about"
+    expect(de).toContain('href="../de/about/"'); // "/de/about" → "../de/about"
     expect(de).not.toContain('href="/de/about"'); // not absolute
   });
 

@@ -9,6 +9,42 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **A page's Menu label can carry an icon.** `nav.title` now accepts inline HTML plus
+  `{{sw-icon "name"}}` / `{{sw-flag "de"}}` — the same rich labels a menu-item placeholder's name has
+  always supported — so a menu entry can be an icon and a word without replacing the page with a
+  placeholder that links to it. Render it with `{{sw-label}}`.
+  - **The opt-in is the content, not a setting**: a label counts as rich only when it actually
+    contains `<` or `{{`. A plain label takes the same escaped path it always did, byte for byte.
+  - **The page's own `title` is never treated as markup.** It is the `<title>` / og / sitemap text,
+    where markup would be a bug rather than an intent — which is exactly why the Menu label is a
+    separate field. A rich label also arrives as plain TEXT in
+    `{{#each page.children}}{{navTitle}}`, so a listing can never print raw markup.
+  - The label's own Tailwind utilities now compile into the published stylesheet. They live in the
+    content database, so no source scan saw them — the label would have been styled in the editor
+    preview (which scans rendered HTML) and unstyled once published.
+
+### Fixed
+
+- **A menu click is no longer a redirect.** Pages are now linked in their canonical directory form
+  (`/about/`), so `{{page.path}}`, nav items, `page.children`, language switchers, breadcrumbs, the
+  canonical tag and hand-written `href="/contact"` links all address the page directly. A page builds
+  to `<slug>/index.html`, so every host — ours, Apache, nginx — answered the slash-less form with a
+  301; measured against a host behaving like nginx, a menu click went from one redirect to none.
+  - The site had been **disagreeing with itself**: canonical, `og:url`, `hreflang`, `sitemap.xml` and
+    the search index already used the directory form; only the links did not.
+  - **The editor preview is the biggest win.** Its per-page preview URL was slash-less, and the
+    preview handler answers that redirect only *after* rebuilding the draft site — so the iframe's
+    first request paid a whole site rebuild and threw it away in an empty 301.
+  - Nothing that *compares* a route changed: `{{sw-active}}` already ignored trailing slashes, and
+    output filenames, routes and duplicate-route detection all normalize. A doubled slash is
+    collapsed, so a template that worked around this with `{{page.path}}/` cannot emit `about//`, and
+    a fragment or query keeps its place (`/about#team` → `/about/#team`).
+  - Files are untouched: the page-versus-file test is the last path segment carrying no `.`, which is
+    exact — a page slug can never contain one — and is the same test the server applies before
+    redirecting.
+
 ## [0.53.0] — 2026-09-15
 
 ### Fixed

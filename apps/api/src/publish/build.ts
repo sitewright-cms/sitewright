@@ -21,6 +21,7 @@ import {
   publishedDatasetEntries,
   keyedDatasets,
   extractClassNames,
+  isRichNavLabel,
   publishedPages,
   relativeRoot,
   resolveTemplateSource,
@@ -43,6 +44,7 @@ import {
   type ProjectBundle,
 } from '@sitewright/core';
 import {
+  isLinkPage,
   type CaptchaRenderConfig, type Page, type Template } from '@sitewright/schema';
 import {
   renderDocument,
@@ -761,6 +763,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
+    // ★ Rich MENU LABELS (a page's `nav.title`, a link placeholder's name) render their own markup —
+    // and their own utilities — into every menu, but they live in the CONTENT DB, so not one of the
+    // SOURCE scans above can see them. Left out, a styled label is correct in the editor preview
+    // (which scans the RENDERED shell) and unstyled on the published site: the exact source-vs-rendered
+    // divergence this block exists to close. `extractClassNames` also reads the CLASS ARGUMENT of
+    // `{{sw-icon "name" "classes"}}`, so an icon's own sizing compiles too. Labels are capped at 200
+    // chars by the schema, so this is bounded by the page count.
+    const navLabelClassNames = pubBundle.pages.flatMap((p) => {
+      const label = p.nav?.title || (isLinkPage(p) ? p.title : '');
+      return isRichNavLabel(label) ? extractClassNames(label) : [];
+    });
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
     // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
     const themeClassNames = websiteEffectsClasses(website?.effects).split(' ').filter(Boolean);
@@ -800,6 +813,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
+      ...navLabelClassNames,
       ...themeClassNames,
       ...backToTopClassNames,
       ...consentClassNames,

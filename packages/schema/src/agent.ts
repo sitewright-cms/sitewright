@@ -1097,7 +1097,12 @@ Main Navigation slot (website.mainNav). The notes below explain how it works so 
 NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
 in a menu — "header" (the Main Navigation),
 "mobile" (the mobile drawer), "footer", and/or "custom". nav.title overrides the menu label (else the page
-title); nav.dropdown:true folds the page's CHILD pages into a dropdown under it. SORT ORDER is the page's
+title); nav.dropdown:true folds the page's CHILD pages into a dropdown under it.
+nav.title may carry MARKUP — inline HTML + {{sw-icon "name"}} / {{sw-flag "de"}} — so a menu entry can be
+an icon + text: nav:{title:'<span class="inline-flex items-center gap-2">{{sw-icon "wrench" "size-4"}} Services</span>'}.
+Render it with {{sw-label}} (NOT {{label}}, which escapes). The page's own title is ALWAYS plain — it is the
+<title>/og/sitemap text — so put the markup in nav.title and keep title a readable sentence. A plain nav.title
+is unaffected (still escaped), and a rich one arrives as TEXT in {{#each page.children}}{{navTitle}}. SORT ORDER is the page's
 TOP-LEVEL "order" (ascending, ties by title) — NOT nav.order, a legacy fallback that "order" always beats.
 ONE order governs EVERY menu: there is deliberately no per-slot ordinal. If a menu must run in a different
 order from the page tree (a footer that lists the feature pages first and Blog last, while the header lists

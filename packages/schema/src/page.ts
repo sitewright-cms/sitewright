@@ -106,7 +106,15 @@ const PageFields = z
     /** Navigation placement: which menu slots this page appears in (auto-nav). */
     nav: z
       .object({
-        /** Menu label; falls back to the page title. */
+        /**
+         * Menu label; falls back to the page title.
+         *
+         * May carry inline HTML + `{{sw-icon "name"}}` / `{{sw-flag "de"}}` helpers — the same rich
+         * labels a `kind:'link'` placeholder name supports, rendered through the validated template
+         * engine and emitted by `{{sw-label}}`. Markup here affects the MENU ONLY: the page `title`
+         * (document/og/sitemap) is always plain, and text-only bindings such as
+         * `{{#each page.children}}{{navTitle}}` receive the label stripped to its words.
+         */
         title: z.string().max(200).optional(),
         slots: z
           .array(z.enum(NAV_SLOTS))

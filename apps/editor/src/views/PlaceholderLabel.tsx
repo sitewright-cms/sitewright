@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isRichNavLabel } from '@sitewright/core';
 import { plainText } from './plain-text';
 
 // Lazy singleton: the icon renderer pulls the large icon/flag data (a separate chunk shared with the
@@ -17,11 +18,12 @@ function loadRenderer(): Promise<(name: string) => string> {
   return rendererP;
 }
 
-/** A label is RICH (worth the icon renderer) only if it carries HTML or a `{{…}}` helper. A plain
- *  page/menu title has neither — render it as text with NO lazy import (the common case). */
-function isRich(name: string): boolean {
-  return name.includes('<') || name.includes('{{');
-}
+// A label is RICH (worth the icon renderer) only if it carries HTML or a `{{…}}` helper. A plain
+// page/menu title has neither — render it as text with NO lazy import (the common case).
+//
+// The RULE is `isRichNavLabel` in @sitewright/core — the same predicate `buildNav` uses to decide
+// whether a menu label goes through the template engine at render. Sharing it is the point: a local
+// copy that drifted would show an author an icon here that the published menu escapes, or vice versa.
 
 /**
  * Previews a page/placeholder's MENU label in the Pages list the way it renders in the menu. A plain
@@ -30,7 +32,7 @@ function isRich(name: string): boolean {
  * chunk loads — instead of dumping the raw template markup.
  */
 export function PlaceholderLabel({ name }: { name: string }) {
-  const rich = isRich(name);
+  const rich = isRichNavLabel(name);
   const [html, setHtml] = useState<string | null>(null);
   useEffect(() => {
     setHtml(null); // clear any prior render so a name change shows the NEW fallback, never stale HTML

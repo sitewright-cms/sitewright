@@ -173,4 +173,61 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('href="./"');
     expect(home).not.toContain('href="secret"');
   });
+
+  it('renders a PAGE menu label\'s icon + HTML into the published nav, and keeps the page title plain', async () => {
+    const proj = client.project(projectId);
+    await putSlots({ mainNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    // A real page (not a link placeholder) whose MENU LABEL carries markup — the same rich labels a
+    // placeholder name has always supported.
+    expect(
+      (await proj.putContent('page', 'shop', navPage('shop', 'shop', 'Our Online Shop', {
+        title: '<span class="flex items-center gap-2">{{sw-icon "shopping-cart" "h-4 w-4"}} Shop</span>',
+        slots: ['header'], order: 1,
+      }))).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    // The icon helper RESOLVED to an inline svg inside the authored wrapper — not escaped text.
+    expect(home).toContain('<span class="flex items-center gap-2">');
+    expect(home).toMatch(/<a href="shop"><span class="flex items-center gap-2"><svg[^>]*class="[^"]*sw-icon-shopping-cart/);
+    expect(home).not.toContain('&lt;span');
+    expect(home).not.toContain('{{sw-icon');
+
+    // …while the page's own document title stays the plain page title.
+    const shop = await fetchSite('shop/index.html');
+    expect(shop).toContain('<title>Our Online Shop');
+    expect(shop).not.toMatch(/<title>[^<]*<span/);
+  });
+
+  it("compiles a rich menu label's Tailwind utilities into the published sheet", async () => {
+    // ★ The publish class scan reads SOURCES (pages, slots, snippets). A menu label lives in the
+    // content DB, so its utilities reach no source — the label would render in the nav with classes
+    // that were never compiled: styled in preview (which scans rendered html), unstyled once published.
+    const proj = client.project(projectId);
+    await putSlots({ mainNav: HEADER_SLOT });
+    expect(
+      (await proj.putContent('page', 'home', navPage('home', '', 'Home', {
+        title: '<span class="inline-flex items-center gap-3 tracking-widest">{{sw-icon "house" "size-7"}} Home</span>',
+        slots: ['header'],
+      }))).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const css = await fetchSite('_assets/_sw/styles.css');
+    expect(css).toContain('letter-spacing'); // tracking-widest
+    expect(css).toMatch(/\.gap-3\b/);
+    expect(css).toMatch(/\.size-7\b/); // the icon helper's CLASS ARGUMENT counts too
+  });
+
+  it('a PLAIN page menu label is still escaped — the opt-in is markup, not a setting', async () => {
+    const proj = client.project(projectId);
+    await putSlots({ mainNav: HEADER_SLOT });
+    expect(
+      (await proj.putContent('page', 'home', navPage('home', '', 'Home', { title: 'Tom & Jerry', slots: ['header'] }))).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    expect(await fetchSite('index.html')).toContain('Tom &amp; Jerry');
+  });
 });

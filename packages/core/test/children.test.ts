@@ -343,3 +343,34 @@ describe('extractClassNames', () => {
     expect(extractClassNames(src, 3)).toHaveLength(3);
   });
 });
+
+describe('page.children navTitle is TEXT — a rich MENU LABEL cannot leak markup into a listing', () => {
+  const parent = page({ id: 'p', path: 'p', title: 'Parent' });
+  const kid = (navTitle: string): Page =>
+    page({ id: 'c', path: 'c', parent: 'p', title: 'Our Services', nav: { title: navTitle, slots: ['header'] } });
+
+  it('reduces an icon/HTML menu label to its words', () => {
+    // `{{#each page.children}}{{navTitle}}` escapes what it is given, so handing it the raw label
+    // would print `<span …>{{sw-icon …}} Services` on the page. The menu renders the markup; a
+    // listing gets the text.
+    expect(childrenOf([parent, kid('<span class="flex gap-2">{{sw-icon "wrench"}} Services</span>')], parent, 'en')[0]!.navTitle)
+      .toBe('Services');
+  });
+
+  it('leaves a plain menu label byte-identical', () => {
+    expect(childrenOf([parent, kid('News  &  Events')], parent, 'en')[0]!.navTitle).toBe('News  &  Events');
+  });
+
+  it('still falls back to the page title when there is no menu label', () => {
+    expect(childrenOf([parent, page({ id: 'c', path: 'c', parent: 'p', title: 'Our Services' })], parent, 'en')[0]!.navTitle)
+      .toBe('Our Services');
+  });
+});
+
+describe('the page TITLE fallback is never treated as markup', () => {
+  it('passes a title containing angle brackets through verbatim', () => {
+    const parent = page({ id: 'p', path: 'p', title: 'Parent' });
+    const kid = page({ id: 'c', path: 'c', parent: 'p', title: 'The <b> tag, explained' });
+    expect(childrenOf([parent, kid], parent, 'en')[0]!.navTitle).toBe('The <b> tag, explained');
+  });
+});

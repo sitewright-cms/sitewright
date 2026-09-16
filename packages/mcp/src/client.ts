@@ -315,6 +315,34 @@ export interface HeadingOutline {
   /** How many headings were dropped past the render cap. */
   truncated?: number;
 }
+/** One image served larger than it can possibly need. */
+export interface ImageSizingFinding {
+  /** The published asset filename, e.g. `hero-xl.webp`. */
+  file: string;
+  /** How the page refers to it — a CSS background, or an `<img>` carrying no srcset. */
+  via: 'background' | 'img';
+  /** The delivery rung its filename resolves to. */
+  size: string;
+  /** That rung's width in px — a CEILING; the server never upscales, so a small source clamps below it. */
+  rungWidth: number;
+  /** What the visitor actually downloads, when the audit could read it from the build. */
+  bytes?: number;
+  /** How many times the page refers to it. */
+  count: number;
+  /** What to do about it. */
+  recommendation: string;
+}
+/** The page's oversized-image report. */
+export interface ImageSizingReport {
+  findings: ImageSizingFinding[];
+  /** How many image references were examined. */
+  scanned: number;
+  /** How many were already fine — a smaller rung, or an `<img>` with a srcset. */
+  ok: number;
+  /** Findings beyond the render cap. */
+  truncated?: number;
+}
+
 /** Lighthouse page-speed + SEO audit (GET /projects/:id/pagespeed-audit/:pageId). Lab-only; no CrUX field data. */
 export interface PagespeedAuditResult {
   url: string;
@@ -334,6 +362,12 @@ export interface PagespeedAuditResult {
   benchmarkIndex?: number;
   /** The page's heading (h1–h6) outline with recommendations — absent when the HTML could not be read. */
   outline?: HeadingOutline;
+  /**
+   * Images served at the largest rung through a path that cannot adapt — absent when there are none.
+   * This covers what Lighthouse does not: its image audits read element boxes, so a CSS background is
+   * invisible to them however oversized it is.
+   */
+  imageSizing?: ImageSizingReport;
   lighthouseVersion: string;
   fetchedAt: string;
 }

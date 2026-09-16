@@ -9,6 +9,30 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **The page audit now reports oversized images** — the one image defect Lighthouse structurally
+  cannot see. Its image audits read `<img>`/`<picture>` element boxes, so a CSS `background-image`
+  is invisible to them however oversized it is. Measured on a real page whose six backgrounds were
+  delivered at 2400px to paint 550px cards: Lighthouse scored image delivery a **perfect 1 with an
+  empty item list** and performance 90, while the page dropped nine frames on the first scroll.
+  - Flags only the largest rung reached through a path that cannot adapt — a CSS background, or an
+    `<img>` with no `srcset`. That rung is what a url with no `?size=` resolves to, so it reports the
+    **default nobody chose**; a smaller rung or a real `srcset` is left alone, so a page that did the
+    work is never nagged.
+  - It never claims a waste ratio: without a browser it cannot know the painted box, and the server
+    clamps a rung to the source width (an 800px logo asked for at `xl` is delivered at 800px). It
+    reports "up to", and orders findings by the **real transfer bytes** read from the build.
+  - Shown in the editor's Page audit panel, in the `pagespeed_audit` MCP output, and on the route.
+
+### Fixed
+
+- **Agents are now told to audit a page before calling it done.** `pagespeed_audit` has been callable
+  and documented since it shipped, and nothing in the instructions ever asked an agent to run it — so
+  a page went out with every background at the largest rung having passed a preview screenshot, a
+  human review and Lighthouse's own image audit. The core's typical flow now names it as a finishing
+  step: a screenshot cannot show weight.
+
 ### Fixed
 
 - **Agent-authored pages no longer ship every image at 2400px.** A media url with no `?size=` serves

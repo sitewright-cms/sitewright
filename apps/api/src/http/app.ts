@@ -2,7 +2,7 @@ import { timingSafeEqual, createHmac, createHash, randomUUID } from 'node:crypto
 import { gzip as gzipCb } from 'node:zlib';
 import { promisify } from 'node:util';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdtemp, mkdir, open, rm, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, open, rm, readFile, readdir, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -352,6 +352,7 @@ import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type 
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
 import { runPagespeedAudit, redactOrigin, rebaseFindingUrls, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
 import { extractHeadings, analyzeHeadingOutline, type HeadingOutline } from '../render/heading-outline.js';
+import { extractImageRefs, analyzeImageSizing, type ImageSizingReport } from '../render/image-sizing.js';
 import { serveBuiltSite, mimeTypeForFilename } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
@@ -8422,17 +8423,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
+            // Published asset sizes, read once from the build we just produced. Best-effort: a missing
+            // or unreadable _assets dir simply leaves the image report without byte figures.
+            const builtAssetBytes = new Map<string, number>();
+            try {
+              const assetsDir = join(dir, '_assets');
+              for (const entry of await readdir(assetsDir, { withFileTypes: true })) {
+                if (!entry.isFile()) continue;
+                const st = await stat(join(assetsDir, entry.name));
+                builtAssetBytes.set(entry.name, st.size);
+              }
+            } catch {
+              /* no _assets (a page with no media) — byte figures are simply absent */
+            }
             // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
             const origin = new URL(served.url).origin;
             // Heading-structure outline (SEO): best-effort — parse the served static HTML. Hoisted OUT
             // of the device loop: the heading structure is a property of the markup, identical on both
             // passes, so fetching it per device would just be a second request for the same answer.
             let outline: HeadingOutline | undefined;
+            // Oversized images (the gap Lighthouse cannot cover — a CSS background has no element box,
+            // so its image audits never see one). Same single fetch as the outline: both read the same
+            // served markup, and both are properties of the BUILD, identical across device passes.
+            let imageSizing: ImageSizingReport | undefined;
             try {
               const res = await fetch(pageUrl, { signal: abort.signal });
-              if (res.ok) outline = analyzeHeadingOutline(extractHeadings(await res.text()));
+              if (res.ok) {
+                const servedHtml = await res.text();
+                outline = analyzeHeadingOutline(extractHeadings(servedHtml));
+                // Real transfer sizes come straight from the directory we just built, so the report is
+                // ordered by what the visitor actually downloads rather than by a rung label — the only
+                // way to tell a 1.2MB photo from a 17KB logo that share the same `xl` suffix.
+                imageSizing = analyzeImageSizing(extractImageRefs(servedHtml), (file) => builtAssetBytes.get(file));
+              }
             } catch {
-              /* best-effort — outline stays undefined */
+              /* best-effort — outline + imageSizing stay undefined */
             }
 
             const runs: Partial<Record<FormFactor, unknown>> = {};
@@ -8451,6 +8476,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
                 findings,
                 ...(runWarnings ? { runWarnings } : {}),
                 ...(outline ? { outline } : {}),
+                ...(imageSizing && imageSizing.findings.length > 0 ? { imageSizing } : {}),
               };
             }
             // One device asked for ⇒ that result verbatim (unchanged shape for existing callers).

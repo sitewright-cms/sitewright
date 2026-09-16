@@ -1057,6 +1057,28 @@ export interface PagespeedAuditPair {
   desktop?: PagespeedAuditResult;
 }
 
+/** One image served larger than it can possibly need. */
+export interface ImageSizingFinding {
+  file: string;
+  /** A CSS background, or an `<img>` carrying no srcset. */
+  via: 'background' | 'img';
+  size: string;
+  /** The rung's width in px — a CEILING; the server never upscales, so a small source clamps below it. */
+  rungWidth: number;
+  /** What the visitor actually downloads, when the audit could read it from the build. */
+  bytes?: number;
+  count: number;
+  recommendation: string;
+}
+/** The page's oversized-image report. */
+export interface ImageSizingReport {
+  findings: ImageSizingFinding[];
+  scanned: number;
+  /** How many references were already fine — a smaller rung, or an `<img>` with a srcset. */
+  ok: number;
+  truncated?: number;
+}
+
 export interface PagespeedAuditResult {
   url: string;
   formFactor: 'mobile' | 'desktop';
@@ -1075,6 +1097,12 @@ export interface PagespeedAuditResult {
   benchmarkIndex?: number;
   /** The page's heading (h1–h6) outline with recommendations — absent when the HTML could not be read. */
   outline?: HeadingOutline;
+  /**
+   * Images served at the largest rung through a path that cannot adapt — absent when there are none.
+   * Not a Lighthouse finding: its image audits read element boxes, so a CSS background is invisible to
+   * them however oversized it is.
+   */
+  imageSizing?: ImageSizingReport;
   lighthouseVersion: string;
   fetchedAt: string;
 }

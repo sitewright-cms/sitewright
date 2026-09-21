@@ -1573,7 +1573,7 @@ against this list BEFORE you publish it:
   first (e.g. "Associate Directors" beside "Directors") ALL become datasets + {{#each}} — so a client adds/
   removes items without touching page code. Do NOT hard-code the second group, or a "short" list, inline.
   ENTRIES MUST BE PUBLISHED: an entry you create via put_content now defaults to status:"published", but if
-  you ever set status:"draft" the row is INVISIBLE on the published site (it still shows in the drafts-included
+  you ever set status:"draft" the row is INVISIBLE on the published site (a draft ENTRY still shows in the
   preview — so a section that looks full in preview renders EMPTY once published). After building a dataset,
   confirm its entries are published before you rely on the loop.
 - SLIDERS COME FROM DATA, never hard-coded slides. A HERO slideshow = the \`{{> hero-slider}}\` WIDGET + a

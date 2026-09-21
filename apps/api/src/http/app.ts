@@ -215,6 +215,7 @@ import { testAiProvider } from '../ai/connectivity.js';
 import { decryptSecret } from '../crypto/secret.js';
 import { PublishStore, PDF_MEDIA_CSP, SVG_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
+import { draftPageForPath, draftPageNotice } from './preview-draft-page.js';
 import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
@@ -1549,9 +1550,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    *  A `kind:"link"` row is a NAV ENTRY, not a page — it has no source and its `path` is empty, so it
    *  would resolve to the site ROOT. A real clone hit this: five `#anchor` nav placeholders each came
    *  back advertising the home page's URL, so following one renders the home page while claiming to be
-   *  "About Us". Emitting nothing is the honest answer; there is no page to see. */
+   *  "About Us". Emitting nothing is the honest answer; there is no page to see.
+   *
+   *  A `draft` page is null for the same reason: the draft build no longer renders drafts, so the URL
+   *  would be a confidently-wrong address that 404s. Drafts are previewed one page at a time instead,
+   *  through `POST /projects/:id/preview` (the editor's Preview / Live Preview, and the agent's
+   *  preview_page tool), which renders any page by id whatever its status. */
   const pagePreviewUrl = (base: string, page: Page, byId: ReadonlyMap<string, Page>): string | null =>
-    page.kind === 'link' ? null : `${base}${pagePath(page, byId).replace(/^\//, '')}`;
+    page.kind === 'link' || page.status === 'draft' ? null : `${base}${pagePath(page, byId).replace(/^\//, '')}`;
   // Cached source-reference screenshots (captured at import) for compare_to_source.
   const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
   // Live-preview draft-build state, keyed by project id: the content version currently built,
@@ -7860,8 +7866,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   // ---- Live PREVIEW: the always-on, whole-site DRAFT browse surface ----
-  // A members-only render of the project's CURRENT saved content (drafts included), browsable like
-  // a real site (working navigation) with NO publish required. The editor's same-origin SitePreview
+  // A members-only render of the project's CURRENT saved content, browsable like a real site (working
+  // navigation) with NO publish required. It renders the pages a PUBLISH would: a draft PAGE is absent
+  // here exactly as it is from the live site — no route, no menu entry, no search hit — so what an
+  // author or a share-link client browses can never advertise a page that is not going to be there.
+  // (Draft dataset ENTRIES still show; an entry has no route of its own to advertise.)
+  //
+  // The editor's same-origin SitePreview
   // shell embeds these pages in a sandboxed iframe and reloads/navigates on the SSE change stream, so
   // an author or agent sees edits land live. The build is ephemeral + lazy: rebuilt on the first
   // request after content changes (keyed by the latest-update stamp), then served from disk via the
@@ -7897,9 +7908,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         bundle: inputs.bundle,
         publishedAt: new Date().toISOString(),
         media: inputs.media,
-        // The two preview-only switches: show work-in-progress drafts, and inject the parent-bridge
-        // runtime so the editor shell can track + auto-navigate the iframe. (No minify — stays readable.)
-        includeDrafts: true,
+        // The preview-only switch: inject the parent-bridge runtime so the editor shell can track +
+        // auto-navigate the iframe. (No minify — the draft stays readable.) It no longer asks for DRAFT
+        // pages: this build renders exactly the pages the published site would, so what an author or a
+        // share-link client browses here cannot advertise a page that will not be there. A draft is
+        // previewed one page at a time instead (`POST /projects/:id/preview`).
         previewRuntime: PREVIEW_SITE_RUNTIME_JS,
         // Somebody is watching a spinner for this one. (Dropped by the isolated worker runner, which
         // serializes its job — that path simply reports the generic "building" state below.)
@@ -7983,8 +7996,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
     // Resolve a changed content entity (a page id off the SSE stream) to its preview ROUTE, so the
     // shell can auto-navigate the iframe to the page an agent just created/edited. Non-page entities
-    // (settings, entries, translations) and routeless pages (link placeholders, collection parents)
-    // → `null`, and the shell simply reloads the current page instead.
+    // (settings, entries, translations) and routeless pages (link placeholders, collection parents,
+    // DRAFTS) → `null`, and the shell simply reloads the current page instead.
     app.get<{ Params: { projectId: string }; Querystring: { entity?: string } }>(
       '/projects/:projectId/preview-locate',
       { config: rl(120) }, // a page-list read per call; the client debounces, so this is generous
@@ -7995,7 +8008,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const pages = (await contentRepo.list(ctx, 'page')) as Page[];
         const byId = pagesById(pages);
         const page = byId.get(entity);
-        if (!page || isLinkPage(page)) return reply.send({ path: null });
+        // A DRAFT page is routeless like a placeholder — the draft build does not render it — so the
+        // shell must not navigate the iframe onto a 404 when an agent edits one. It reloads instead.
+        if (!page || isLinkPage(page) || page.status === 'draft') return reply.send({ path: null });
         return reply.send({ path: pathToSlug(pagePath(page, byId)) ?? '' });
       },
     );
@@ -8729,7 +8744,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const systemCtx = { userId: 'system', projectId: project.id, role: 'owner' as const };
         await ensurePreviewBuild(systemCtx, project);
         const html = await preview.readHtml(project.slug, path);
-        if (html === null) return reply.code(404).send();
+        if (html === null) {
+          // Nothing built for this path. If a DRAFT page owns it, say so rather than serving the blank
+          // 404 a missing file gets — that blank reads as a broken preview, not as "you marked this
+          // draft". The page lookup runs ONLY on the miss, so a served page pays nothing for it.
+          const draft = draftPageForPath((await contentRepo.list(systemCtx, 'page')) as Page[], path);
+          if (draft) {
+            return reply
+              .code(404)
+              .header('cache-control', 'no-store')
+              .header('referrer-policy', 'no-referrer')
+              .header('content-security-policy', PREVIEW_SANDBOX_CSP)
+              // SAMEORIGIN like the served pages above. Setting our own CSP makes the global onSend
+              // hook skip its default framing header, so without this the notice — which names a draft
+              // page — would be the one preview document ANY origin could frame.
+              .header('x-frame-options', 'SAMEORIGIN')
+              .type('text/html')
+              .send(draftPageNotice(draft));
+          }
+          return reply.code(404).send();
+        }
         // Canonicalize an extensionless, slash-less page URL so its page-relative asset/link paths
         // resolve against the right base (mirrors the /sites redirect).
         const lastSegment = path.slice(path.lastIndexOf('/') + 1);

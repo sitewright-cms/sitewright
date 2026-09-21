@@ -354,12 +354,6 @@ export interface BuildSiteOptions {
   /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
   minifyHtml?: boolean;
   /**
-   * Include `draft` pages too. The PUBLISHED build excludes drafts; the live PREVIEW
-   * browse-surface sets this so an author/agent sees work-in-progress pages before they
-   * are marked `published`. Off (published-only) by default.
-   */
-  includeDrafts?: boolean;
-  /**
    * First-party runtime injected INLINE into every rendered page (preview only). The live
    * preview's parent-bridge reports the iframe's location to the editor shell so it can
    * auto-reload / auto-navigate on a content change. Empty in a published build — the
@@ -639,12 +633,23 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
-  // Drafts are excluded from the published site: filter once, so routes, auto-nav,
-  // and the sitemap all see only published pages. Draft dataset ENTRIES are filtered
-  // separately, at the binding boundary (`publishedDatasetEntries`).
+  // Drafts are excluded from EVERY build — published and draft-preview alike: filter once, so routes,
+  // auto-nav, `page.children`/`page.parent`, `{{pages.*}}`, hreflang, the sitemap and the site-search
+  // index all see only published pages.
+  //
+  // ★ The preview used to pass the unfiltered list (an `includeDrafts` switch), which made ONE list do
+  // two different jobs — the route set AND "which pages exist". A draft page therefore got a route (the
+  // point) but also leaked into all eight of the surfaces above, so the preview quietly disagreed with
+  // the site it is meant to be a preview OF: a menu entry that will not be there, a sitemap.xml naming
+  // draft URLs at the production host, a draft findable in site search. A draft page is now simply not
+  // part of the site on either surface. To LOOK at one, use the per-page render
+  // (`POST /projects/:id/preview` — the editor's Preview / Live Preview), which takes any page by id.
+  //
+  // Draft dataset ENTRIES are a separate axis and keep their old behaviour: filtered at the binding
+  // boundary below, visible in the preview.
   const pubBundle: ProjectBundle = {
     ...bundle,
-    pages: opts.includeDrafts ? [...bundle.pages] : publishedPages(bundle.pages),
+    pages: publishedPages(bundle.pages),
   };
   let routes;
   try {
@@ -658,9 +663,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp derives from a resolved, validated dir
   await mkdir(tmp, { recursive: true });
   try {
-    // Drafts appear in the preview (includeDrafts) but NOT in a published build — mirrors the page
-    // filter above so `{{#each dataset.x}}` loops + keyed `{{item.x.key}}` show published entries only.
-    const datasets = opts.includeDrafts ? datasetEntries(bundle) : publishedDatasetEntries(bundle);
+    // Draft ENTRIES appear in the preview but NOT in a published build, so `{{#each dataset.x}}` loops +
+    // keyed `{{item.x.key}}` show published entries only once the site is live. Unlike draft PAGES (which
+    // are absent from both builds — see `pubBundle` above), an entry has no route of its own: it is only
+    // ever visible THROUGH a page, so showing work-in-progress entries cannot make the preview advertise
+    // a URL that will not exist. Keyed on `previewMode` — the same switch that injects the parent-bridge.
+    const datasets = previewMode ? datasetEntries(bundle) : publishedDatasetEntries(bundle);
     // Resolvable `{{> name}}` partials. `opts.snippets` carries the global snippets (a DB read —
     // admin-editable, so it MUST come from the caller, not a constant) ∪ the project's snippets. The
     // MANAGED Widget bodies are added HERE from the constant — before the Tailwind class scan AND the

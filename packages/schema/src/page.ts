@@ -34,10 +34,18 @@ const PageFields = z
     path: PageSlugSchema,
     title: z.string().min(1).max(300),
     /**
-     * Publication status. `draft` pages are excluded from the published site, its
-     * sitemap, and the auto-nav — but stay editable and visible in the preview.
-     * Optional: an absent status means published, so existing pages (and the
-     * API/MCP) keep working unchanged. `publishedPages` keys off `!== 'draft'`.
+     * Publication status. `draft` pages are excluded from the SITE — the published build and the
+     * whole-site draft preview alike. No route, no auto-nav entry, no sitemap line, no search hit,
+     * and absent from `page.children` / `page.parent` / `{{pages.*}}` / hreflang. A draft is still
+     * fully editable, and previewable ONE PAGE AT A TIME through `POST /projects/:id/preview` (the
+     * editor's Preview / Live Preview, and the agent's preview_page tool), which renders any page
+     * whatever its status.
+     *
+     * Optional: an absent status means published, so existing pages (and the API/MCP) keep working
+     * unchanged. `publishedPages` keys off `!== 'draft'`.
+     *
+     * NOTE the OPPOSITE default on a dataset `Entry`, whose status defaults to `draft` — and which
+     * stays visible in the preview, because an entry has no route of its own to advertise.
      */
     status: z.enum(['draft', 'published']).optional(),
     // SEO/meta fields, flattened directly onto the page (there is no nested `page.seo` object).

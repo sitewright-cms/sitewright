@@ -178,8 +178,8 @@ export function parentPageView(pages: readonly Page[], page: Page, defaultLocale
  * for `{{#each page.children}}`. Same-locale only (an overview lists articles in its own language),
  * ordered by the shared sibling order (page-tree `order` → legacy `nav.order` → title), and capped
  * at {@link MAX_PAGE_CHILDREN}.
- * Draft visibility follows WHICH list the caller passes: both the preview and publish call sites pass
- * the already-published subset (drafts excluded — the preview mirrors publish, like nav/translations).
+ * Draft visibility follows WHICH list the caller passes: every call site passes the already-published
+ * subset, so drafts are excluded here exactly as they are from routes, nav and translations.
  */
 export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: string, limits?: ChildrenLimits): PageChild[] {
   return childrenView(pages, page, defaultLocale, limits).children;

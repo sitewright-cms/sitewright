@@ -324,8 +324,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1
       domhandler:
-        specifier: ^5.0.3
-        version: 5.0.3
+        specifier: ^6.0.1
+        version: 6.0.1
       domutils:
         specifier: ^4.0.2
         version: 4.0.2
@@ -519,8 +519,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1
       domhandler:
-        specifier: ^5.0.3
-        version: 5.0.3
+        specifier: ^6.0.1
+        version: 6.0.1
       domutils:
         specifier: ^4.0.2
         version: 4.0.2

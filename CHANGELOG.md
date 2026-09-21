@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.55.0] — 2026-09-21
+
 ### Added
 
 - **The page audit now reports oversized images** — the one image defect Lighthouse structurally
@@ -3973,7 +3975,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...HEAD
+[0.55.0]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/sitewright-cms/sitewright/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/sitewright-cms/sitewright/compare/v0.52.1...v0.53.0
 [0.52.1]: https://github.com/sitewright-cms/sitewright/compare/v0.52.0...v0.52.1

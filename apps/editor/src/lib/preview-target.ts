@@ -1,7 +1,8 @@
 /**
  * The always-on whole-site PREVIEW surface is addressed by a `?preview=projectId[/route]` query
  * param so it opens in its own tab. Unlike `?live=` (a single page's preview), this browses the
- * project's CURRENT saved content as a real, navigable site — drafts included, no publish required —
+ * project's CURRENT saved content as a real, navigable site — as publish would produce it (so draft
+ * PAGES are absent, same as the live site), no publish required —
  * and auto-reloads / auto-navigates on any change. `path` is the route to open first ('' = home).
  */
 export interface PreviewTarget {

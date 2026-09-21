@@ -12,7 +12,8 @@ import { PREVIEW_SITE_RUNTIME_JS } from '../src/http/preview-site-runtime.js';
 import { buildSite } from '../src/publish/build.js';
 
 // ---------------------------------------------------------------------------
-// buildSite preview-mode options (includeDrafts + previewRuntime), tested directly.
+// buildSite preview-mode options (previewRuntime + progress), and the draft-page exclusion that
+// applies to EVERY build, tested directly.
 // ---------------------------------------------------------------------------
 describe('buildSite preview options', () => {
   let outDir: string;
@@ -44,16 +45,83 @@ describe('buildSite preview options', () => {
     { id: 'sec', path: 'secret', title: 'Secret', status: 'draft', source: '<h1>Secret Draft</h1>' },
   ] as unknown as ProjectBundle['pages'];
 
-  it('includeDrafts: draft pages get a route (the published build omits them)', async () => {
-    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, includeDrafts: true, bundle: bundle(pages) });
-    expect(await readFile(join(outDir, 'secret/index.html'), 'utf8')).toContain('Secret Draft');
-  });
-
-  it('without includeDrafts, a draft page is excluded', async () => {
+  it('a draft page is excluded from the PUBLISHED build', async () => {
     await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(pages) });
     await expect(readFile(join(outDir, 'secret/index.html'), 'utf8')).rejects.toThrow();
     // The published home is still there.
     expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('Home');
+  });
+
+  it('…and from the DRAFT PREVIEW build too — the preview browses the site publish would produce', async () => {
+    // ★ THE BUG THIS EXISTS FOR: the preview used to pass the unfiltered page list, so a draft got a
+    // route here. That made the preview disagree with the site it previews — see the nav/sitemap/search
+    // assertions below, which are the surfaces the leak actually showed up on.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: bundle(pages),
+    });
+    await expect(readFile(join(outDir, 'secret/index.html'), 'utf8')).rejects.toThrow();
+    // The preview itself is otherwise intact: the published page renders, with the bridge injected.
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('Home');
+    expect(home).toContain('window.__SW_PREVIEW__=1;');
+  });
+
+  it('a draft never reaches the preview nav, its sitemap, or its search index', async () => {
+    // The route is only the first surface. A draft that keeps a menu entry, a sitemap line (absolute,
+    // at the PRODUCTION host) or a search hit is still advertising a page that will not be there.
+    const navPages = [
+      {
+        id: 'home',
+        path: '',
+        title: 'Home',
+        // `{{sw-url …}}`, not a bare `{{this.path}}` — a bare value in an href is rejected as unsafe,
+        // and in PREVIEW mode that failure is not an exception but an error DOCUMENT served in the
+        // page's place. Every "the draft is not in the menu" assertion below would then pass against a
+        // page that has no menu at all, which is the false green this note exists to prevent (see the
+        // no-failures assertion immediately after the build).
+        source:
+          '<h1>Home</h1>{{#each nav.header}}<a href="{{sw-url this.path}}">{{this.label}}</a>{{/each}}' +
+          '<div data-sw-component="search"></div>',
+        nav: { slots: ['header'] },
+      },
+      {
+        id: 'sec',
+        path: 'secret',
+        title: 'Secret',
+        status: 'draft',
+        source: '<h1>Secret Draft</h1>',
+        nav: { slots: ['header'] },
+      },
+    ] as unknown as ProjectBundle['pages'];
+    const withUrl = bundle(navPages);
+    (withUrl.project as { website?: unknown }).website = { siteUrl: 'https://acme.test' };
+
+    const manifest = await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: withUrl,
+    });
+    // ★ The guard: a page served as an error document proves nothing about menus.
+    expect(manifest.pageFailures).toBeUndefined();
+
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The menu really was rendered — the draft's absence below is a filter, not an empty loop.
+    expect(home).toContain('>Home<');
+    expect(home).not.toContain('>Secret<'); // no menu entry
+    expect(home).not.toContain('/secret/'); // …and no link to it anywhere in the chrome
+
+    const sitemap = await readFile(join(outDir, 'sitemap.xml'), 'utf8');
+    expect(sitemap).toContain('https://acme.test/');
+    expect(sitemap).not.toContain('secret');
+
+    const index = await readFile(join(outDir, 'search-index.json'), 'utf8');
+    expect(index).not.toContain('Secret');
+    // The index is real (the published page IS in it), so the line above is not an empty-file pass.
+    expect(index).toContain('Home');
   });
 
   it('a page that cannot render fails the PUBLISH, but only ITSELF in the preview', async () => {
@@ -96,7 +164,6 @@ describe('buildSite preview options', () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
-      includeDrafts: true,
       bundle: bundle(pages),
       onProgress: (p) => seen.push(p),
     });
@@ -132,7 +199,6 @@ describe('buildSite preview options', () => {
       outDir,
       previewRuntime: 'window.__SW_PREVIEW__=1;',
       bundle: bundle(pages),
-      includeDrafts: true,
     });
     expect(manifest.pageFailures).toBeUndefined();
   });
@@ -275,7 +341,7 @@ describe('preview-site API (signed path)', () => {
     return (res.json() as { base: string }).base;
   }
 
-  it('serves the live preview at the signed path (sandboxed, runtime injected, NO cookie), drafts included', async () => {
+  it('serves the live preview at the signed path (sandboxed, runtime injected, NO cookie)', async () => {
     const { t, projectId } = await setup('p@acme.test');
     const api = `/projects/${projectId}`;
     const cookies = { sw_session: t };
@@ -296,10 +362,62 @@ describe('preview-site API (signed path)', () => {
     expect(res.body).toContain('Home Live');
     expect(res.body).toContain('sitewright-preview-site');
 
-    // A DRAFT page is browsable (a published build would 404 it) — relative nav carries the sig.
+    // A DRAFT page is NOT part of this site — the preview browses what publish would produce.
     const draft = await app.inject({ method: 'GET', url: `${pbase}wip/` });
-    expect(draft.statusCode).toBe(200);
-    expect(draft.body).toContain('Draft WIP');
+    expect(draft.statusCode).toBe(404);
+    expect(draft.body).not.toContain('Draft WIP');
+  });
+
+  it('a draft page answers with a NOTICE, not the blank 404 a missing file gets', async () => {
+    // ★ A bare 404 here is indistinguishable from a broken build, a stale build, or a typo'd URL — and
+    // the author reading it is looking at the preview pane of the very page they just marked draft. The
+    // route says which of those it is, and where to go to see the page anyway.
+    const { t, projectId } = await setup('n@acme.test', 'notice');
+    const api = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await putPage(api, cookies, {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      source: '<h1>Home</h1>{{#each nav.header}}<a href="{{sw-url this.path}}">{{this.label}}</a>{{/each}}',
+      nav: { slots: ['header'] },
+    });
+    // In the header slot — the symptom this whole change is about: a draft that keeps its menu entry.
+    await putPage(api, cookies, {
+      id: 'wip',
+      path: 'wip',
+      title: 'Secret Launch',
+      status: 'draft',
+      source: '<h1>WIP</h1>',
+      nav: { slots: ['header'] },
+    });
+    const pbase = await signedBase(projectId, t);
+
+    // The SERVED menu lists the published page and nothing else — checked over HTTP, not just in the
+    // build output, because that is where it was seen.
+    const served = await app.inject({ method: 'GET', url: pbase });
+    expect(served.statusCode).toBe(200);
+    expect(served.body).toContain('>Home<');
+    expect(served.body).not.toContain('Secret Launch');
+    expect(served.body).not.toContain('wip/');
+
+    const draft = await app.inject({ method: 'GET', url: `${pbase}wip/` });
+    expect(draft.statusCode).toBe(404); // the page really is not here — the status stays honest
+    expect(draft.headers['content-type']).toContain('text/html');
+    expect(draft.body).toContain('is a draft');
+    expect(draft.body).toContain('Secret Launch'); // names the page, so there is no guessing which one
+    expect(draft.body).toContain('Preview'); // …and names the way to see it anyway
+    // The notice is inert: it must not leak the draft's own markup, which is what publishing would ship.
+    expect(draft.body).not.toContain('<h1>WIP</h1>');
+    // Still sandboxed AND framed like any preview document — it has to render inside the editor's
+    // preview pane, and must not be framable from anywhere else (it names a draft page).
+    expect(draft.headers['content-security-policy']).toContain('sandbox');
+    expect(draft.headers['x-frame-options']).toBe('SAMEORIGIN');
+
+    // A path no page owns keeps the blank 404: there is nothing to explain.
+    const gone = await app.inject({ method: 'GET', url: `${pbase}no-such-page/` });
+    expect(gone.statusCode).toBe(404);
+    expect(gone.body).toBe('');
   });
 
   it('serves a platform RUNTIME from _assets/_sw/ — executable, not a download', async () => {
@@ -506,6 +624,16 @@ describe('preview-site API (signed path)', () => {
     expect(home.json()).toEqual({ path: '' });
     const none = await app.inject({ method: 'GET', url: `${base}/preview-locate?entity=does-not-exist`, cookies });
     expect(none.json()).toEqual({ path: null });
+
+    // A DRAFT is routeless on this surface, so the shell must not navigate the iframe onto it — it
+    // would land on the draft notice (a 404) instead of the page an agent just edited. `null` means
+    // "reload where you are", which is the right move for a change the preview cannot show.
+    await putPage(base, cookies, { id: 'wip', path: 'wip', title: 'WIP', status: 'draft', source: '<h1>W</h1>' });
+    const wip = await app.inject({ method: 'GET', url: `${base}/preview-locate?entity=wip`, cookies });
+    expect(wip.json()).toEqual({ path: null });
+    // …and the published sibling still resolves, so this is a targeted exclusion.
+    const still = await app.inject({ method: 'GET', url: `${base}/preview-locate?entity=about`, cookies });
+    expect(still.json()).toEqual({ path: 'about' });
   });
 
   it('preview-progress answers WITHOUT blocking on the build, and reports nothing in flight once idle', async () => {

@@ -203,6 +203,25 @@ describe('page endpoints hand back a preview URL', () => {
     expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\//);
   });
 
+  it('a DRAFT page gets NO previewUrl either — the draft build does not render it', async () => {
+    // Same honesty rule as the placeholder above, for the same reason: the whole-site preview browses
+    // the site as it would be PUBLISHED, so a draft has no route there. Handing an agent (or the editor)
+    // a URL for one would advertise an address that answers 404 — a confidently-wrong answer. A draft is
+    // looked at through the per-page render (preview_page / the editor's Preview) instead.
+    const projectId = await client.createProject('Drafty', 'drafty');
+    const proj = client.project(projectId);
+    await proj.putContent('page', 'wip', { id: 'wip', path: 'wip', title: 'WIP', status: 'draft', source: '<h1>W</h1>' });
+
+    const got = (await proj.getContent('page', 'wip')).json() as Record<string, unknown>;
+    expect(got.previewUrl).toBeUndefined();
+
+    const items = (
+      (await proj.listContent('page')).json() as { items: Array<Record<string, unknown>> }
+    ).items;
+    expect(items.find((p) => p.id === 'wip')?.previewUrl).toBeUndefined();
+    expect(items.find((p) => p.id === 'home')?.previewUrl).toMatch(/^\/preview-site\//);
+  });
+
   it('a CHILD page gets its full parent-chain route, not just its own last segment', async () => {
     const projectId = await client.createProject('Nested', 'nested');
     const proj = client.project(projectId);

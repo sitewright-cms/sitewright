@@ -25,6 +25,29 @@ The running version of an instance is reported at `GET /version` (baked into the
     reports "up to", and orders findings by the **real transfer bytes** read from the build.
   - Shown in the editor's Page audit panel, in the `pagespeed_audit` MCP output, and on the route.
 
+### Changed
+
+- **A `draft` page is no longer part of the live preview.** `/preview-site/` browses a project as a
+  real, navigable site with no publish required — and it used to render draft pages too, from a single
+  unfiltered page list that did two different jobs at once: the route set *and* "which pages exist". A
+  draft therefore got a route (the intent) but also leaked into every surface built from that list, so
+  the preview quietly disagreed with the site it is a preview **of**.
+  - Eight surfaces were affected: the auto-nav (header/footer/mobile/custom, per locale), `page.children`,
+    `page.parent`, `{{pages.*}}`, hreflang alternates, dataset `page` references, `sitemap.xml` — whose
+    entries are absolute URLs at the **production** host — and the site-search index. Several of these
+    carried comments asserting the drafts were already filtered; they were not.
+  - The draft build now renders exactly the pages a publish would. A share link handed to a client
+    cannot show a menu entry, a search result or a sitemap line for a page that will not be there.
+  - **To look at a draft, use the per-page render** — the editor's *Preview* / *Live preview*, or the
+    `preview_page` MCP tool. Both take any page by id whatever its status, and neither changed.
+  - Browsing to a draft's old preview URL now answers with a short notice naming the page and saying
+    where to see it, instead of the blank 404 a missing file gets — a blank there is indistinguishable
+    from a broken build. A path no page owns still answers with the blank 404.
+  - `previewUrl` is now absent on a draft page in `get_page` / `list_pages` and in the content API, and
+    `preview-locate` returns `null` for one, for the same reason a `kind:"link"` placeholder does: the
+    URL would be a confidently-wrong address. Draft dataset **entries** are unchanged — they still show
+    in the preview, since an entry has no route of its own to advertise.
+
 ### Fixed
 
 - **Agents are now told to audit a page before calling it done.** `pagespeed_audit` has been callable

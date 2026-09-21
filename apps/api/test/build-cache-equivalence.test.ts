@@ -64,7 +64,7 @@ async function snapshot(dir: string): Promise<Map<string, string>> {
 }
 
 const build = (dir: string, bundle: ProjectBundle): Promise<unknown> =>
-  buildSite({ outDir: join(out, dir), bundle, publishedAt: PUBLISHED_AT, includeDrafts: true });
+  buildSite({ outDir: join(out, dir), bundle, publishedAt: PUBLISHED_AT });
 
 describe('build output is unaffected by the memoized minify/validate caches', () => {
   it('produces byte-identical output on a repeated build of the same content', async () => {

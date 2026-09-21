@@ -6,9 +6,13 @@ import { compareEntryOrder } from './bindings.js';
 import type { ProjectBundle } from './validate.js';
 
 /**
- * The pages a published build should include: everything except `draft`s. Filter a
- * bundle's pages with this at the publish boundary (the preview/editor keep drafts
- * visible). Status defaults to `published`, so pages predating the field are kept.
+ * The pages a build should include: everything except `draft`s. EVERY build filters with this — the
+ * published one and the draft-preview one — so the preview browses the same site the publish would
+ * produce and can never advertise a page (a menu entry, a sitemap line, a search hit) that will not
+ * be there. Status defaults to `published`, so pages predating the field are kept.
+ *
+ * A draft is still reachable one page at a time through the per-page render endpoint; it is only the
+ * SITE that does not contain it.
  */
 export function publishedPages(pages: readonly Page[]): Page[] {
   return pages.filter((page) => page.status !== 'draft');

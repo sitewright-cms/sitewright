@@ -87,7 +87,8 @@ export function referencedPagePaths(source: string): string[][] {
  * Build the `pages` render context for `currentPage` — its locale HOME node + only the descendant nodes
  * named by `source`'s `pages.*` references, as a minimal nested object. `undefined` when the source
  * doesn't reference `pages` or the locale has no home (→ renders empty). Published/draft visibility
- * follows WHICH `pages` list the caller passes (preview + publish both pass the published subset).
+ * follows WHICH `pages` list the caller passes; every call site passes the published subset, so a
+ * `pages.<slug>` chain naming a draft resolves to nothing on both the preview and the live site.
  */
 export function pagesContext(
   pages: readonly Page[],

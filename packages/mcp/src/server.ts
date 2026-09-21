@@ -171,7 +171,7 @@ export function normalizePutData(kind: string, id: string, dataset: string | und
   if (!ID_LESS_PUT_KINDS.has(kind) && (obj.id === undefined || obj.id === '') && id) patch.id = id;
   if (kind === 'entry' && (obj.dataset === undefined || obj.dataset === '') && dataset) patch.dataset = dataset;
   // A dataset ENTRY's status defaults to 'draft' (EntrySchema) — but a draft entry is INVISIBLE in the
-  // PUBLISHED build (it only shows in the drafts-included preview), so an agent that omits status silently
+  // PUBLISHED build (the preview still shows draft ENTRIES; draft PAGES it does not), so an agent that omits status silently
   // authors an empty {{#each}} loop that renders fine in preview then vanishes once the site is published.
   // Agents write content meant to go live: default an OMITTED entry status to 'published'. An explicit
   // 'draft' is untouched (the field is present), so intentional staging still works.
@@ -565,7 +565,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_pages',
     {
       description:
-        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large). On a large site narrow with `q` (searches title/path/description) or page with `limit`/`offset` instead of listing everything. Each page carries a `previewUrl` — a signed DRAFT preview of that page that needs no login. That is how you (or the user) LOOK at a page: it works with no deploy target, which most projects have none of.',
+        'List the project’s pages. Returns METADATA only by default (id/path/title/status/nav/parent/order/template/…): a page’s Handlebars `source` and `data` store are omitted and described under `_summary` instead, because a full listing of a real site runs to hundreds of KB and blows the tool-output limit. Call get_page for the body of the ONE page you need. Pass includeSource:true only if you genuinely need every page’s code at once (it will be large). On a large site narrow with `q` (searches title/path/description) or page with `limit`/`offset` instead of listing everything. Each page carries a `previewUrl` — a signed preview of that page that needs no login. That is how you (or the user) LOOK at a page: it works with no deploy target, which most projects have none of. A page with `status: "draft"` carries NO previewUrl: the preview site browses the project as it would be PUBLISHED, so a draft has no address there. Use preview_page on it instead, which renders any page whatever its status.',
       inputSchema: {
         includeSource: z.boolean().optional(),
         q: z.string().max(200).optional(),
@@ -584,7 +584,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_page',
     {
       description:
-        'Get one page by id. For code-first pages the design is in the `source` field. The response also carries `previewUrl` — a signed DRAFT preview of this page that needs no login and works with no deploy target.',
+        'Get one page by id. For code-first pages the design is in the `source` field. The response also carries `previewUrl` — a signed preview of this page that needs no login and works with no deploy target. It is ABSENT for a `status: "draft"` page, which the preview site does not render; use preview_page for those.',
       inputSchema: { id: z.string() },
     },
     gate(null, ({ id }) => client.getContent('page', id)),

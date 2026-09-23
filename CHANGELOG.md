@@ -9,6 +9,49 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.56.0] — 2026-09-23
+
+### Added
+
+- **`{{ website.json_data }}` now renders in the preview, before any publish.** The single-page
+  preview never fetched `website.jsonDataUrl` at all, so a page built against a remote feed showed a
+  hole where its content would be and the author was designing blind until they shipped. It could not
+  simply start fetching: that route renders on every keystroke, so a bare fetch would be a round trip
+  per character — and against an unreachable host, the full 8s timeout per character.
+  - A short-lived per-project snapshot now backs every preview surface. It is **warmed when the URL is
+    saved**, serves stale data while revalidating behind it, and **caches failures too** — which is the
+    half that protects the editor, since a dead source now costs one attempt per half-minute rather
+    than one timeout per render. Measured: 25 consecutive preview renders after one save make **zero**
+    further requests.
+  - The whole-site draft preview read the source on **every rebuild** — and any content change rebuilds
+    the whole site, so a tenant's JSON host was being polled at the author's typing speed. It now
+    shares the same snapshot.
+  - **Publish is unchanged**: it still fetches fresh and still fails with a 409 on a bad source. A
+    published site must never ship a stale snapshot.
+  - New `GET /projects/:id/json-data` reports what the previews are actually using — reachable or not,
+    and **how many bytes**. A source that 404s and a source that returns `{}` both render as nothing,
+    and until now the first signal either way was a failed publish. The Settings → Website field says
+    so inline.
+
+### Fixed
+
+- **The E2E suites no longer break the day a release is cut.** A test slot is built from the working
+  tree, so the moment a version is tagged the instance reports an older version than the published one
+  and the editor renders its "a new release is available" banner — a strip of chrome above the whole
+  app that shifts every coordinate below it. It silently broke a drag-reorder spec in a tree that had
+  nothing to do with it. Slots now run with `SW_DISABLE_UPDATE_CHECK=true`, which also stops every
+  editor load in a test from calling `api.github.com`.
+- **Two E2E specs were asserting things they did not mean**, and both failed intermittently on `main`:
+  - The file-manager search spec matched `getByText('photo-0000.png')`, which resolves to the tile
+    label **and** the daisyUI tooltip carrying the same text — a strict-mode violation that depended on
+    where the previous action happened to leave the pointer. Scoped to the virtual row.
+  - The long-list reorder drove native HTML5 drag-and-drop as `hover → down → hover → up`. That jumps
+    the pointer in one move, and native DnD only fires `dragstart` once the pointer travels with the
+    button held — so under full-suite load it dragged **nothing**, and the spec then waited 20s for an
+    order change that was never coming. It now moves in steps and waits on two new stable attributes,
+    `data-dragging` and `data-drop-indicator`, so a real regression reports which half broke instead of
+    timing out.
+
 ## [0.55.0] — 2026-09-21
 
 ### Added
@@ -3975,7 +4018,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...HEAD
+[0.56.0]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/sitewright-cms/sitewright/compare/v0.53.0...v0.54.0
 [0.53.0]: https://github.com/sitewright-cms/sitewright/compare/v0.52.1...v0.53.0

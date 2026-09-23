@@ -1519,6 +1519,19 @@ export const api = {
       'GET',
       `/projects/${projectId}/preview-progress`,
     ),
+  /** Whether `website.jsonDataUrl` actually resolves, from the snapshot the previews render with.
+   *  A failing source and an empty source both render as nothing, so this is the only place the
+   *  difference is visible before a publish 409s. Reads the cache — free to call after a save. */
+  jsonDataStatus: (projectId: string) =>
+    request<{
+      configured: boolean;
+      url?: string;
+      awaiting?: boolean;
+      ok?: boolean;
+      bytes?: number;
+      fetchedAt?: string;
+      error?: string;
+    }>('GET', `/projects/${projectId}/json-data`),
   /** Revocable, stable SHARE links for the draft preview (viewable by UNAUTHENTICATED clients). */
   listPreviewShares: (projectId: string) =>
     request<{ items: Array<{ id: string; label: string; createdAt: number; url: string }> }>('GET', `/projects/${projectId}/preview-shares`),

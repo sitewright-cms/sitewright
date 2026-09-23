@@ -28,6 +28,12 @@
 #   --no-editor  do not bundle the editor SPA (API-only slot)
 #   --image REF  redeploy an existing local image as-is (skips build + package + docker build)
 #
+# The slot always runs with SW_DISABLE_UPDATE_CHECK=true. A test instance is built from the working
+# tree, so once a release is cut it reports an OLDER version than the published one and the editor
+# renders its "a new release is available" banner — a strip of chrome above the whole app that shifts
+# every coordinate below it. That silently broke a drag-reorder spec the day v0.55.0 was tagged, in a
+# tree that had nothing to do with it. It also stops every editor load from calling api.github.com.
+#
 # Env overrides: SW_E2E_PORT_MIN/MAX, SW_E2E_HOST (default dind.local),
 #   SW_E2E_MEMORY (cgroup cap for the slot, e.g. 1g — required to stress memory behaviour),
 #   SW_E2E_ADMIN_EMAILS (admin@e2e.test),
@@ -210,6 +216,7 @@ cmd_up() {
           -e SW_ADMIN_EMAIL="$SW_E2E_ADMIN_EMAILS" \
           -e SW_ADMIN_PASSWORD="$SW_E2E_ADMIN_PASSWORD" \
           -e SW_SITES_DOMAIN="$SW_E2E_SITES_DOMAIN" \
+          -e SW_DISABLE_UPDATE_CHECK=true \
           "$_up_tmp_image" 2>&1 >/dev/null)"; then
       claimed=1; break
     fi

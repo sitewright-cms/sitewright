@@ -187,7 +187,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'website',
     keywords: 'site url json data',
     description:
-      'Site-level settings (Settings → Website): website.siteUrl (the public site URL), website.json_data (a JSON file fetched from a URL at publish), and website.data (an object you edit right here — see its own entry below).',
+      'Site-level settings (Settings → Website): website.siteUrl (the public site URL), website.json_data (a JSON file fetched from a URL — live in the preview as well as at publish), and website.data (an object you edit right here — see its own entry below).',
     example: '{{website.siteUrl}}',
   },
   {

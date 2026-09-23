@@ -204,6 +204,7 @@ import {
 } from '../publish/build.js';
 import { bodyEffectStyles, previewBodyEffectScripts } from '../publish/effect-runtimes.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
+import { JsonDataCache } from './json-data-cache.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
@@ -1560,6 +1561,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     page.kind === 'link' || page.status === 'draft' ? null : `${base}${pagePath(page, byId).replace(/^\//, '')}`;
   // Cached source-reference screenshots (captured at import) for compare_to_source.
   const sourceRefStore = opts.sourceRefRoot ? new SourceRefStore(opts.sourceRefRoot) : undefined;
+  // `{{ website.json_data }}` for the PREVIEW surfaces. Publish fetches its own fresh copy and fails
+  // loudly on a bad source; preview reads here, so rendering the data costs no network per keystroke
+  // and a dead URL costs one timeout a minute instead of one per render. Warmed on settings save.
+  const jsonDataCache = new JsonDataCache();
   // Live-preview draft-build state, keyed by project id: the content version currently built,
   // any in-flight build (so concurrent requests coalesce onto one), and the last failed
   // version+time (a short cooldown so a persistently-broken project can't spin a fresh build on
@@ -3415,6 +3420,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       previewBuildFail.delete(project.id);
       previewPageFailures.delete(project.id);
       previewProgress.delete(project.id);
+      jsonDataCache.delete(project.id);
       return reply.code(204).send();
     },
   );
@@ -3503,6 +3509,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       previewBuilds.delete(project.id);
       previewProgress.delete(project.id);
       previewPageFailures.delete(project.id);
+      jsonDataCache.delete(project.id);
     }
     return reply.send({ project: updated });
   });
@@ -3531,6 +3538,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     previewBuildFail.delete(project.id);
     previewPageFailures.delete(project.id);
     previewProgress.delete(project.id);
+    jsonDataCache.delete(project.id);
     await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
     await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
   }
@@ -3882,6 +3890,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // implies an entity, and deriving it on save is what keeps the two from disagreeing.
       if (kind === 'settings') {
         await ensureShopOrderForms(contentRepo, ctx, item as Settings, await instanceSettingsRepo.getFormModes(), app.log);
+        // …and reads `website.jsonDataUrl` ONCE, here, for the same reason. A save is the moment the
+        // author is looking at that field, so it is the moment to find out whether the URL works —
+        // previously a typo stayed invisible until it 409'd a publish, because every preview rendered
+        // the data empty and an empty binding looks exactly like a source with nothing in it.
+        // Deliberately NOT awaited into the response: the save has already succeeded and must not be
+        // held for up to 8s on a tenant's server. The outcome is read back from GET …/json-data.
+        void jsonDataCache
+          .resolve(ctx.projectId, (item as Settings).website?.jsonDataUrl)
+          .catch((err: unknown) => app.log.warn({ err, project: ctx.projectId }, 'json data warm failed'));
       }
       // Hand back the NEW version so a client can chain writes without a re-read between them, and so
       // the editor's buffer stays armed with a current token after every save.
@@ -4414,6 +4431,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+// Whether `website.jsonDataUrl` actually resolves — the answer the preview itself cannot give,
+  // because a source that fails and a source that is empty both render as nothing. Reports the
+  // CACHED snapshot the previews are using (never a fresh fetch, so polling it is free), and
+  // `awaiting: true` means a warm is still in flight after a save.
+  //
+  // `bytes` matters as much as `ok`: a 200 returning `{}` is a "working" URL that will render an
+  // empty page, and the number is what tells those apart at a glance.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/json-data',
+    { config: rl(120) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      const settings = (await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null;
+      const url = settings?.website?.jsonDataUrl;
+      if (!url) return reply.send({ configured: false });
+      const snap = jsonDataCache.snapshot(project.id, url);
+      if (!snap) return reply.send({ configured: true, url, awaiting: true });
+      return reply.send({
+        configured: true,
+        url,
+        awaiting: false,
+        ok: snap.error === undefined,
+        bytes: snap.bytes,
+        fetchedAt: new Date(snap.fetchedAt).toISOString(),
+        ...(snap.error !== undefined ? { error: snap.error } : {}),
+      });
+    },
+  );
   // Live SSR preview of a draft page. Renders an in-flight (possibly unsaved)
   // page tree to a full, brand-themed, self-contained HTML document using the
   // shared pure renderer. Tenant-scoped; any project member may preview.
@@ -4602,9 +4647,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // WYSIWYG parity with publish (drafts excluded, like publish): the previewed
         // page's auto-nav lists ONLY its own language's pages, its bindings resolve to
         // the locale dataset variant (`<name>-<locale>`), and `page.locale` /
-        // `page.translations` power a language switcher. `json_data` is NOT fetched in
-        // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
-        // until publish.
+        // `page.translations` power a language switcher.
+        //
+        // `json_data` comes from the CACHE, never a fetch — this route renders on every keystroke, so
+        // a fetch here would be a round trip per character and, on an unreachable host, the full 8s
+        // timeout per character. `snapshot()` serves what it has and revalidates in the background, so
+        // the data is here for a source that has ever been read (settings save warms it) and the
+        // editor never waits on somebody else's server. Publish still fetches fresh.
+        const jsonSnapshot = jsonDataCache.snapshot(project.id, website?.jsonDataUrl);
         const savedPages = publishedPages(allSavedPages);
         const previewLocale = localeOf(page, defaultLocale);
         const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
@@ -4691,7 +4741,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, json_data: jsonSnapshot?.data, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -4728,7 +4778,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
         const slotCtx = {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
+          website: { siteUrl: website?.siteUrl, json_data: jsonSnapshot?.data, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), consent: website?.consent, t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -7892,17 +7942,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       version: string,
     ): Promise<void> {
       const inputs = await assembleBuildInputs(ctx, project);
-      // Preview is best-effort about the publish-time JSON snapshot: a bad/unreachable source must
-      // never break the live preview (publish, by contrast, 409s so the author fixes it before shipping).
-      let jsonData: unknown;
-      const jsonDataUrl = inputs.bundle.project.website?.jsonDataUrl;
-      if (jsonDataUrl) {
-        try {
-          jsonData = await fetchJsonData(jsonDataUrl);
-        } catch {
-          /* preview tolerates a missing JSON source */
-        }
-      }
+      // Preview is best-effort about the JSON snapshot: a bad/unreachable source must never break the
+      // live preview (publish, by contrast, 409s so the author fixes it before shipping). Read through
+      // the shared cache rather than fetching here — ANY content change rebuilds this whole site, so a
+      // fetch per rebuild meant hammering a tenant's JSON host at the author's typing speed. `resolve`
+      // awaits a cold read (this build already blocks) and coalesces with a concurrent settings save.
+      const jsonData = (await jsonDataCache.resolve(project.id, inputs.bundle.project.website?.jsonDataUrl))?.data;
       const manifest = await buildRunner.run({
         outDir: preview.dirFor(project.slug),
         bundle: inputs.bundle,

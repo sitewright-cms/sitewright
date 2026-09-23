@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page, type Locator } from '@playwright/test';
 import { signUp } from './helpers.js';
 
 /**
@@ -14,6 +14,49 @@ import { signUp } from './helpers.js';
  */
 
 const PAGES = 140; // comfortably over the threshold, small enough to seed quickly
+
+/**
+ * Drive a NATIVE HTML5 drag from one row to another, waiting on the two states the component actually
+ * exposes instead of hoping the events landed.
+ *
+ * ★ The flake this replaces cost several full-suite runs to pin down, and it failed on main too — so it
+ * was never about whatever was being changed at the time. `hover() → mouse.down() → hover() → up()`
+ * jumps the pointer in ONE move. Native DnD only fires `dragstart` once the pointer travels while the
+ * button is held, so under load that sequence frequently dragged nothing at all: no dragstart, no
+ * dragover, a `drop` the handler ignores because `dragId` is null, and a 20s poll for an order that was
+ * never going to change. It passed in isolation and failed about half the time inside the full suite,
+ * which is exactly the signature of a gesture that is racing rather than a product that is broken.
+ *
+ * So: move in STEPS (the intermediate moves are what start the drag), then assert `data-dragging` —
+ * proof the drag exists — then move onto the target and wait for its `data-drop-indicator` — proof the
+ * target accepted the dragover — and only then release. Each wait fails with its own message, so a real
+ * regression still reports which half broke.
+ */
+async function dragRow(page: Page, source: Locator, target: Locator): Promise<void> {
+  const from = await source.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error('drag: a row had no box');
+
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  // Cross the drag threshold WHILE the button is held — this is what fires dragstart.
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2 + 12, { steps: 6 });
+  await expect(source, 'the drag should have started (dragstart never fired)').toHaveAttribute('data-dragging', '', {
+    timeout: 10_000,
+  });
+
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
+  // ANY indicator, not one on `target` specifically. `onDragOver` resolves the nearest LEGAL row and a
+  // position within it, so landing mid-row legitimately paints "after the row above" — the same visual
+  // gap, a different element. Asserting the indicator on `target` made the test demand an implementation
+  // detail it does not care about; what it needs to know is that SOME legal drop was registered, and
+  // the order assertion afterwards is what checks the page actually moved.
+  await expect(
+    page.locator('[data-drop-indicator]').first(),
+    'the list should have registered a legal drop target',
+  ).toBeVisible({ timeout: 10_000 });
+  await page.mouse.up();
+}
 
 test('a long pages list virtualises, scrolls, and still reorders', async ({ page, baseURL }) => {
   test.setTimeout(180_000);
@@ -72,11 +115,7 @@ test('a long pages list virtualises, scrolls, and still reorders', async ({ page
 
   const source = page.locator('li[data-virtual-row]').nth(1); // p-000 (row 0 is Home)
   const target = page.locator('li[data-virtual-row]').nth(4);
-  await source.hover();
-  await page.mouse.down();
-  await target.hover();
-  await target.hover(); // a second move so dragover fires on the target with a settled position
-  await page.mouse.up();
+  await dragRow(page, source, target);
 
   await expect
     .poll(

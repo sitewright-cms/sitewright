@@ -96,6 +96,7 @@
   "GET /projects/:projectId/imagemaps/preview",
   "GET /projects/:projectId/integrity",
   "GET /projects/:projectId/invites",
+  "GET /projects/:projectId/json-data",
   "GET /projects/:projectId/media",
   "GET /projects/:projectId/media/deleted",
   "GET /projects/:projectId/media/folders",

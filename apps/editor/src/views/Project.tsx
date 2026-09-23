@@ -1129,6 +1129,10 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
                     draggable={!isHome}
+                    // Same reason as data-drop-indicator: "the drag really started" must be assertable.
+                    // Native HTML5 DnD only fires dragstart once the pointer crosses a threshold, so a
+                    // driver that jumps straight to the target drags NOTHING and the drop is a no-op.
+                    data-dragging={dragId === p.id ? '' : undefined}
                     onDragStart={(e) => {
                       if (isHome) return;
                       setDragId(p.id);
@@ -1151,6 +1155,11 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
                   {dropping && (
                     <span
                       aria-hidden
+                      // A STABLE hook for "this row is the drop target right now". The indicator is
+                      // otherwise identifiable only by its colour class, which a restyle would break
+                      // silently; an E2E drag has to wait for this before releasing, or it releases
+                      // over a row that has not registered the dragover yet.
+                      data-drop-indicator=""
                       className={`pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-indigo-500 ${
                         drop.pos === 'before' ? '-top-1' : '-bottom-1'
                       }`}

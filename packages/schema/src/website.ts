@@ -29,8 +29,8 @@ export const SLOT_MAX = 256 * 1024;
 
 // --- website.data: an editable, free-form JSON object the author manages in the CMS (a graphical
 // tree editor), exposed in templates as {{ website.data.* }} and {{#each website.data.x}}. It is the
-// LOCAL counterpart to `jsonDataUrl`/`json_data` (which is fetched from a URL at publish) and is
-// available in BOTH preview and publish. Values are output-escaped like any binding; the namespace
+// LOCAL counterpart to `jsonDataUrl`/`json_data` (which is fetched from a remote URL) and is
+// available in BOTH preview and publish with no network at all. Values are output-escaped like any binding; the namespace
 // is bounded + prototype-safe. The validator + bounds are shared with page.data/template.data — see
 // `json-store.ts`.
 /** The `website.data` editable JSON store — a root OBJECT (the shared bounded, prototype-safe store). */
@@ -1041,10 +1041,14 @@ const WebsiteSettingsObject = z.object({
   footer: z.string().max(SLOT_MAX).optional(),
   bottom: z.string().max(SLOT_MAX).optional(),
   /**
-   * URL to an external JSON file fetched once at PUBLISH time (SSRF-guarded, public-https-only) and
-   * decoded into `{{ website.json_data }}` — e.g. a code-first page can render `{{ website.json_data.title }}`
-   * or `{{#each website.json_data.items}}…{{/each}}`. The result is snapshotted into the static
-   * output; the exported site never fetches it itself. Query strings are allowed (it is an API URL).
+   * URL to an external JSON file (SSRF-guarded, public-https-only) decoded into
+   * `{{ website.json_data }}` — e.g. a code-first page can render `{{ website.json_data.title }}` or
+   * `{{#each website.json_data.items}}…{{/each}}`. The result is snapshotted into the static output;
+   * the exported site never fetches it itself. Query strings are allowed (it is an API URL).
+   *
+   * Read at PUBLISH time (fresh, and a bad source fails the publish) and ALSO in the PREVIEW, from a
+   * short-lived per-project cache warmed when this field is saved — so a page designed against a
+   * remote feed renders with the real data before it goes live, without a fetch per keystroke.
    */
   jsonDataUrl: z
     .string()
@@ -1055,8 +1059,9 @@ const WebsiteSettingsObject = z.object({
     .optional(),
   /**
    * An editable, free-form JSON object the author manages in the CMS, exposed as `{{ website.data.* }}`
-   * and `{{#each website.data.x}}`. Unlike `jsonDataUrl` (remote, publish-only) this is local and shows
-   * in the preview too. Bounded + prototype-safe (see {@link WebsiteDataSchema}).
+   * and `{{#each website.data.x}}`. Unlike `jsonDataUrl` (remote, and therefore cached and capable of
+   * failing) this is local and always exactly what you last typed. Bounded + prototype-safe (see
+   * {@link WebsiteDataSchema}).
    */
   data: WebsiteDataSchema.optional(),
   /**

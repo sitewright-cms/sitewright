@@ -142,7 +142,13 @@ test('★ SEARCH spans every folder, so it must stay windowed too', async ({ pag
 
   const t0 = Date.now();
   await page.getByPlaceholder(/search/i).first().fill('photo');
-  await expect(page.getByText('photo-0000.png')).toBeVisible({ timeout: 30_000 });
+  // ★ Scoped to the virtual ROW, not to raw text. A daisyUI tooltip bubble carries the SAME filename
+  // and is always in the DOM, so a bare `getByText('photo-0000.png')` resolves to two elements the
+  // moment the pointer happens to rest on that tile — a strict-mode violation that depends on where
+  // the previous action left the mouse, i.e. an intermittent failure with nothing wrong behind it.
+  await expect(page.locator('tr[data-virtual-row]').filter({ hasText: 'photo-0000.png' }).first()).toBeVisible({
+    timeout: 30_000,
+  });
   const elapsed = Date.now() - t0;
 
   const rows = await page.evaluate(() => document.querySelectorAll('tr[data-virtual-row]').length);

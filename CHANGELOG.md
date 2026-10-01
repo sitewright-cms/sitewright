@@ -47,6 +47,23 @@ The running version of an instance is reported at `GET /version` (baked into the
   picker-only control would have taken something away. Nothing picked shows a dashed placeholder,
   because "nothing yet" has to look different from "a name that draws nothing".
 
+### Added
+
+- **Every History row now has a "Details" button showing what actually changed.** A row said a page
+  was saved; it could not say that the only thing that moved was the meta description — and finding
+  that out meant reading two snapshots side by side, which for a page `source` is hopeless. Details
+  fetches the revision and the one before it **for that entity** (not the row above, which in a
+  filtered, paginated feed is usually something else entirely) and shows the field-level difference:
+  scalars as before → after, multi-line text as a line diff with the unchanged stretches elided. A
+  first revision says so rather than showing an empty diff, and a save that stored no change says
+  that too.
+
+### Fixed
+
+- **The History filters no longer crowd their own chevron.** A native `<select>` paints its arrow
+  inside its box, so the symmetric padding left the longest values ("All content", "Translation")
+  touching it. Right padding is now 32px, measured in the browser.
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

@@ -61,6 +61,39 @@ export function isAcceptableRedirectUri(uri: string): boolean {
 }
 
 /**
+ * Does `requested` match one of the URIs this client registered?
+ *
+ * Exact string match, with ONE relaxation: between two loopback `http` URIs the **port** is ignored
+ * (RFC 8252 §7.3 — "the authorization server MUST allow any port to be specified at the time of the
+ * request for loopback IP redirect URIs"). Scheme, host, path and query are still pinned, and an
+ * `https` registration gets no relaxation at all.
+ *
+ * ★ WHY. A native app binds an EPHEMERAL loopback port, chosen when the login starts and not
+ * knowable at registration time. Pinning it makes the registration valid for exactly one port
+ * number, so the first time the app comes back on a different one it is refused — and because the
+ * authorization endpoint must not redirect an unvalidated redirect URI, the refusal reaches the user
+ * as a browser page and the app itself learns nothing (same dead end as a deleted registration,
+ * reached by a different route). The built-in CLI client already accepts any loopback redirect;
+ * this brings dynamically-registered clients into line, but strictly: unlike the CLI client, a DCR
+ * client still only matches the host and path it actually registered.
+ *
+ * ★ NOT an open-redirect widening. The relaxed branch requires the REQUESTED uri to pass the same
+ * validation registration applies (`isAcceptableRedirectUri`: loopback-or-https, no fragment, no
+ * userinfo, length-capped) and to be loopback — so it can only ever send a code to a port on the
+ * user's own machine, which is the threat model RFC 8252 already assumes.
+ */
+export function redirectMatchesRegistration(registered: string[], requested: string): boolean {
+  if (registered.includes(requested)) return true;
+  if (!isAcceptableRedirectUri(requested) || !isLoopbackHttp(requested)) return false;
+  const want = new URL(requested);
+  return registered.some((uri) => {
+    if (!isLoopbackHttp(uri)) return false;
+    const have = new URL(uri);
+    return have.hostname === want.hostname && have.pathname === want.pathname && have.search === want.search;
+  });
+}
+
+/**
  * When a registration was last used, falling back to its registration time. NULL means "never
  * presented since it was registered" — read as `created_at` so a client that is mid-flow (registered
  * seconds ago, consent page not yet reached) is never ranked as the most abandoned row in the table.

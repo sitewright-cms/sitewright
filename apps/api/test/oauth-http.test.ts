@@ -219,6 +219,41 @@ describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
     expect(okRes.body).toContain('Hosted &lt;b&gt;App&lt;/b&gt;'); // name escaped, not raw HTML
     expect(okRes.body).not.toContain('Hosted <b>App</b>');
 
+    // A DIFFERENT loopback port on the same callback is the normal case for a native app, which
+    // binds an ephemeral port it could not know when it registered (RFC 8252 §7.3). Registered on
+    // one port, authorized on another — end to end, through the real route.
+    const loop = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Native App', redirect_uris: ['http://localhost:49213/callback'] },
+    });
+    const loopId = (loop.json() as { client_id: string }).client_id;
+    const loopQ = (redirect: string) =>
+      new URLSearchParams({
+        client_id: loopId,
+        redirect_uri: redirect,
+        response_type: 'code',
+        code_challenge: CHALLENGE,
+        code_challenge_method: 'S256',
+        scope: 'content:read',
+        state: 's',
+      }).toString();
+    const otherPort = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${loopQ('http://localhost:60994/callback')}`,
+      cookies: { sw_session: session },
+    });
+    expect(otherPort.statusCode).toBe(200); // the consent page, not the recovery page
+    expect(otherPort.body).toContain('Native App');
+    // …and the port is the ONLY thing that floats: a different path is still refused.
+    const otherPath = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${loopQ('http://localhost:60994/stolen')}`,
+      cookies: { sw_session: session },
+    });
+    expect(otherPath.statusCode).toBe(400);
+    expect(otherPath.headers.location).toBeUndefined();
+
     // Reaching the consent page is a USE of the registration — it is what keeps the row off the
     // least-recently-used end of the eviction order. Assert the column actually moved, rather than
     // trusting that a touch was wired in.

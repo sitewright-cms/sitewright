@@ -85,6 +85,16 @@ The running version of an instance is reported at `GET /version` (baked into the
     claude.ai/ChatGPT connector, or `sitewright login` for the CLI. It deliberately does not say
     which of the two causes it was, so it cannot be used to probe which client ids exist.
 
+- **A native app's loopback callback port no longer has to match the one it registered**
+  (RFC 8252 §7.3). A dynamically-registered client's redirect URIs were matched by exact string, but
+  a native app binds an **ephemeral** loopback port chosen when the login starts — not knowable at
+  registration time — so the registration was valid for exactly one port number and the next login
+  on a different one was refused. It reached the same unrecognised-app page as a deleted
+  registration, by a different route and with the same inability to tell the client why. The port is
+  now the only component that floats: scheme, host, path and query are still pinned, `https`
+  registrations get no relaxation at all, and the relaxed branch requires the requested URI to pass
+  the same validation registration applies (loopback-only, no fragment, no userinfo).
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

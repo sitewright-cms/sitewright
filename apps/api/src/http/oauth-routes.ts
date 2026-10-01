@@ -5,7 +5,12 @@ import { isValidS256Challenge } from '../auth/pkce.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability } from '../db/schema.js';
 import { listProjectAccessForUser, resolveProjectRole } from '../repo/accounts.js';
 import type { ProjectRepository } from '../repo/projects.js';
-import { OAuthClientError, isLoopbackHttp, type OAuthClientRepository } from '../repo/oauth-clients.js';
+import {
+  OAuthClientError,
+  isLoopbackHttp,
+  redirectMatchesRegistration,
+  type OAuthClientRepository,
+} from '../repo/oauth-clients.js';
 import { ForbiddenError, NotFoundError } from '../repo/context.js';
 import {
   isSafeCssTokenValue,
@@ -419,7 +424,12 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     // off the least-recently-used end of the eviction order. Rate-limited inside `touch` to at most
     // one write per hour, so an authorize round-trip does not cost a row write every time.
     await clients.touch(clientId);
-    return { name: client.name, allowsRedirect: (uri) => client.redirectUris.includes(uri) };
+    return {
+      name: client.name,
+      // Exact match, except that a loopback redirect's PORT floats (RFC 8252 §7.3) — see
+      // `redirectMatchesRegistration`. The CLI client above is looser still by design.
+      allowsRedirect: (uri) => redirectMatchesRegistration(client.redirectUris, uri),
+    };
   }
 
   // The user's project options for a consent/device picker — every project they can reach (a

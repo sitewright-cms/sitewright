@@ -5,6 +5,7 @@ import {
   OAuthClientRepository,
   OAuthClientError,
   isAcceptableRedirectUri,
+  redirectMatchesRegistration,
   CLIENT_TOUCH_INTERVAL_MS,
 } from '../src/repo/oauth-clients.js';
 import { oauthClients, oauthRefreshTokens, projects, users } from '../src/db/schema.js';
@@ -165,5 +166,44 @@ describe('OAuthClientRepository eviction at the cap', () => {
       capped.register({ name: 'New', redirectUris: ['https://new.example/cb'] }, now),
     ).rejects.toThrow(OAuthClientError);
     expect(await db.select({ id: oauthClients.id }).from(oauthClients)).toHaveLength(1);
+  });
+});
+
+describe('redirectMatchesRegistration', () => {
+  const loopback = ['http://localhost:49213/callback'];
+
+  it('ignores the PORT of a loopback redirect, and nothing else (RFC 8252 §7.3)', () => {
+    // ★ THE BUG THIS CLOSES. A native app binds an ephemeral loopback port it cannot know when it
+    // registers, so pinning the port means the registration is valid for exactly one port number —
+    // and the client that comes back on a different one gets the same dead-end page as a client
+    // whose registration was deleted, with the same inability to be told why.
+    expect(redirectMatchesRegistration(loopback, 'http://localhost:49213/callback')).toBe(true); // exact
+    expect(redirectMatchesRegistration(loopback, 'http://localhost:60994/callback')).toBe(true); // other port
+    expect(redirectMatchesRegistration(loopback, 'http://localhost/callback')).toBe(true); // no port
+  });
+
+  it('still pins every other component of a loopback redirect', () => {
+    expect(redirectMatchesRegistration(loopback, 'http://localhost:1/other')).toBe(false); // path
+    expect(redirectMatchesRegistration(loopback, 'http://localhost:1/callback?x=1')).toBe(false); // query
+    expect(redirectMatchesRegistration(loopback, 'http://127.0.0.1:1/callback')).toBe(false); // host
+    expect(redirectMatchesRegistration(loopback, 'https://localhost:1/callback')).toBe(false); // scheme
+    // Rejected by the same validation registration applies, so the relaxed path can't be a way in.
+    expect(redirectMatchesRegistration(loopback, 'http://localhost:1/callback#f')).toBe(false); // fragment
+    expect(redirectMatchesRegistration(loopback, 'http://u:p@localhost:1/callback')).toBe(false); // userinfo
+  });
+
+  it('never relaxes an https registration — only loopback gets a floating port', () => {
+    const hosted = ['https://app.example.test/cb'];
+    expect(redirectMatchesRegistration(hosted, 'https://app.example.test/cb')).toBe(true);
+    expect(redirectMatchesRegistration(hosted, 'https://app.example.test:8443/cb')).toBe(false);
+    expect(redirectMatchesRegistration(hosted, 'https://app.example.test/other')).toBe(false);
+    expect(redirectMatchesRegistration(hosted, 'http://localhost:1/cb')).toBe(false);
+  });
+
+  it('does not let a loopback registration authorize a non-loopback redirect', () => {
+    expect(redirectMatchesRegistration(loopback, 'https://evil.example.com/callback')).toBe(false);
+    expect(redirectMatchesRegistration(loopback, 'http://evil.example.com/callback')).toBe(false);
+    expect(redirectMatchesRegistration(loopback, 'not a url')).toBe(false);
+    expect(redirectMatchesRegistration([], 'http://localhost:1/callback')).toBe(false);
   });
 });

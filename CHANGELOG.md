@@ -36,6 +36,17 @@ The running version of an instance is reported at `GET /version` (baked into the
     `@otplib/plugin-thirty-two`, `@otplib/preset-default`) in favour of the maintained
     `plugin-crypto-noble` / `plugin-base32-scure`.
 
+### Added
+
+- **A social profile's icon can be picked from the library instead of typed.** Corporate Identity →
+  Social profiles stored the icon as a bare name (`brand:whatsapp`) in a plain text box: you had to
+  know the spelling, and a typo rendered nothing at all while looking like a broken row. Each row now
+  carries a swatch that opens the full icon picker (Phosphor at every weight, brand logos, country
+  flags) and shows the current icon right next to the field. The field itself stays editable — the
+  value is auto-detected from the URL you enter and is often pasted, so replacing it with a
+  picker-only control would have taken something away. Nothing picked shows a dashed placeholder,
+  because "nothing yet" has to look different from "a name that draws nothing".
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

@@ -55,16 +55,20 @@ describe('TailwindPreview', () => {
   });
 
   it('paints a colour swatch with the colour as its background, whatever property the class sets', () => {
+    // ★ NOT oklch, though Tailwind's palette is oklch and the product handles it fine. The component
+    // applies styles through `style.setProperty`, so this test can only ever see what JSDOM'S CSSOM
+    // accepts — and jsdom 30.1.1 refuses `oklch()`, dropping it to ''. Written around oklch, this
+    // asserted jsdom's colour-syntax support rather than the component's behaviour.
+    //
+    // The invariant is colour-AGNOSTIC: whatever property the class sets, the same colour is mirrored
+    // onto `background-color` so a one-property swatch is visible. Assert that with a value jsdom
+    // parses, and guard that something was applied at all — `'' === ''` would pass vacuously.
     const { container } = render(
-      <TailwindPreview kind="color" decls={[['border-color', 'oklch(63.7% 0.237 25.331)']]} name="border-red-500" />,
+      <TailwindPreview kind="color" decls={[['border-color', 'rgb(239, 68, 68)']]} name="border-red-500" />,
     );
     const el = demo(container);
-    // Assert the property, not the byte sequence: the CSSOM canonicalises `63.7%` to `0.637`, which
-    // is the value being ACCEPTED and painted. Pinning the literal string would test the serialiser.
     const border = el?.style.getPropertyValue('border-color') ?? '';
-    expect(border).toMatch(/^oklch\(/);
-    // …and background-color carries the same colour, so a one-property swatch is visible for any
-    // property the class happens to set.
+    expect(border).not.toBe('');
     expect(el?.style.getPropertyValue('background-color')).toBe(border);
   });
 

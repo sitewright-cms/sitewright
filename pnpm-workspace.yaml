@@ -81,7 +81,10 @@ overrides:
   "@esbuild-kit/core-utils>esbuild": ^0.25.0
   "@hono/node-server@<2.0.5": ^2.0.5
   "body-parser@<2.3.0": ^2.3.0
-  "brace-expansion@<5.0.9": ^5.0.9
+  # ★ Widened range. 5.0.9 fixed GHSA-v6h2-p8h4-qcjw; three more then landed (GHSA-6j4f-fj2g-mc7p
+  # and GHSA-qhr7-859c-m2p7, stack exhaustion via uncontrolled recursion; GHSA-q2hr-2g5m-vwhr,
+  # quadratic `{a},b}` expansion), with 5.0.12 as the fix for all three.
+  "brace-expansion@<5.0.12": ^5.0.12
   # GHSA-c83g-rgw3-j3cx (unbounded memory growth → OOM) + GHSA-73wf-gq98-2v4g (uncaught crash /
   # prototype write via an untrusted browserslist-stats.json). Reached only through the BUILD
   # toolchain (@vitejs/plugin-react → babel, plus update-browserslist-db), so it is not in the
@@ -92,7 +95,16 @@ overrides:
   # (GHSA-5jgf-p345-68v8, -f65p-4m7j-42xc, -fph4-wmhf-6fwf, -jqff-g426-hqxp — host confusion and SSRF
   # via IDN/percent-decoding handling) landed with 3.1.6 as the fix, so the old pin started failing
   # the gate with no change on our side. It is in the RUNTIME tree (ajv → fastify).
-  "fast-uri@<3.1.6": ^3.1.6
+  # ★ Widened AGAIN, and now in two lines because the tree carries both majors (ajv wants ^3,
+  # @fastify/* wants ^4). 3.1.6 was the fix, then GHSA-58mr-gqgx-xq4g (host confusion via an
+  # unclosed bracket) landed naming *3.1.6 itself* as affected, plus GHSA-qw65-cvwx-89v3
+  # (authority injection via an unvalidated port) and GHSA-hrr3-gc8f-f4qj (host case
+  # normalization). It is in the RUNTIME tree (ajv → fastify).
+  # NB the audit output prints "fixed in: undefined" for GHSA-58mr-gqgx-xq4g — a display artifact:
+  # the advisory patches = 2.4.5 → 2.4.6, = 3.1.6 → 3.1.7 and = 4.1.3 → 4.1.4, exact-version
+  # ranges with no single global fix. Do not read that as "unfixable".
+  "fast-uri@<3.1.8": ^3.1.8
+  "fast-uri@>=4.0.0 <4.1.5": ^4.1.5
   "find-my-way@<9.7.0": ^9.7.0
   "form-data@<4.0.6": ^4.0.6
   # ★ Widened range, the same story as fast-uri and nanoid below: 4.12.34 was the fix, then three more
@@ -101,7 +113,11 @@ overrides:
   # differential), so the old pin started failing the gate with no change on our side. It IS in the
   # runtime tree (@modelcontextprotocol/sdk → @hono/node-server), so this is not toolchain-only.
   "hono@<4.13.5": ">=4.13.5"
-  "ip-address@<10.3.1": ^10.3.1
+  # ★ Widened range: 10.3.1 was the fix, then four more landed through 10.7.1 — isLinkLocal()
+  # reading fe80::/64 instead of fe80::/10 and no classifier for NAT64 64:ff9b:1::/48 (both
+  # SSRF/trust-boundary bypasses), isInSubnet() comparing across address families, and an
+  # unbounded parse diagnostic. It backs the SSRF guard, so these are reachable, not theoretical.
+  "ip-address@<10.7.1": ^10.7.1
   # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not bound CPU for empty merge sources. Same
   # widened-range pattern: 4.3.1 was the fix for the previous advisory, 4.3.2 is the fix for this one.
   # Dev-only (eslint → @eslint/eslintrc), pinned rather than accepted because a fix exists.
@@ -113,7 +129,12 @@ overrides:
   # started failing the gate with no change on our side — worth knowing the next time a pinned advisory
   # reappears out of nowhere. Re-check the advisory's range before assuming the pin is stale.
   "nanoid@<3.3.18": ^3.3.18
-  "nodemailer@<9.0.1": ">=9.0.1"
+  # ★ Now a MAJOR floor (9 → 10): four advisories land past 9.x with no 9-line backport —
+  # GHSA-6vj9-mwq6-2f5v (a process-global DNS cache reusing the TLS `servername` ACROSS
+  # transports, i.e. cross-tenant SMTP credential disclosure, which for a platform sending as
+  # many different clients is the one that matters), two addressparser DoS bugs, and a malformed
+  # envelope recipient. 10.0.9 is the floor; 10.0.12 is what resolves.
+  "nodemailer@<10.0.9": ">=10.0.9"
   "postcss@<8.5.18": ^8.5.18
   # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing) + GHSA-4mjr-xmp4-gh2g
   # (DoS via an attacker-controlled isBuffer). Reached through body-parser/express in the deploy

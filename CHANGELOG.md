@@ -9,6 +9,27 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on
+  `main`. Four override ranges had been outgrown the usual way: the pin was the fix when it was
+  written, then further advisories landed naming the pinned version itself as affected.
+  - **`nodemailer` 9 → 10** (manifest floor `^10.0.12`). The one that matters for a platform sending
+    as many different clients is **GHSA-6vj9-mwq6-2f5v**: a process-global DNS cache reused the TLS
+    `servername` *across transports*, i.e. cross-tenant SMTP credential disclosure. Also two
+    `addressparser` DoS bugs and a malformed envelope recipient. No 9-line backport exists, so the
+    floor is a major. `@types/nodemailer` is gone — v10 ships its own types.
+  - **`fastify` 5.12.3 → 5.12.5** (GHSA-4mh8-r7rc-xpvc, unhandled exception on HTTP/2 trailers), with
+    the manifest floor raised from `^5` so a clean resolve cannot land back on a vulnerable version.
+  - **`fast-uri`** now pinned on both major lines the tree carries (`^3.1.8` for ajv → fastify,
+    `^4.1.5` for `@fastify/*`) — host confusion via an unclosed bracket, authority injection via an
+    unvalidated port, host-case normalization, mailto header injection.
+  - **`ip-address` → `^10.7.1`**: `isLinkLocal()` matched `fe80::/64` instead of `fe80::/10`, no
+    classifier recognized the NAT64 `64:ff9b:1::/48` range, and `isInSubnet()` compared addresses
+    across families — all three are SSRF / trust-boundary bypasses, and this package backs the SSRF
+    guard, so they are reachable rather than theoretical.
+  - **`brace-expansion` → `^5.0.12`**: two stack-exhaustion DoS bugs and a quadratic expansion.
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

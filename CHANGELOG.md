@@ -104,6 +104,19 @@ The running version of an instance is reported at `GET /version` (baked into the
   4:3 flag carried its own `h-6` class — 32px wide inside the 24px box meant to hold it. Flags keep
   their proportions; the glyph box is now 24×24 for every shape.
 
+### Changed
+
+- **The SVG studio's snippet shelf is now "Animation Examples" — five finished animations you open
+  instead of four directive snippets you copy.** A snippet could only ever show one attribute on one
+  shape, which is the part of the model the docs already cover; what it could not show is the thing
+  people are actually trying to build — a mark or a scene where a dozen elements arrive on one
+  choreographed timeline. Each example now ships as a complete SVG (Orbit mark, Crest badge, Network
+  scene, Dashboard scene, Sunrise scene), and the affordance is **View**, which imports it into the
+  Studio where every element, effect and delay is inspectable, re-timeable and exportable. The markup
+  is still one click away in the Studio's own code view. Between 6 and 11 animated elements each,
+  covering draw / draw-then-fill / reverse draw / scale-c / zoom-in / expand / reveal / fade and
+  along-path, all cascading from one scene stagger, with click-to-replay and auto-loop.
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

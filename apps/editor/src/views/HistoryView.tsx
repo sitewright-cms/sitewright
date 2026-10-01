@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, FileSearch } from 'lucide-react';
 import { api, eventsUrl, type Project, type ProjectRevisionRow } from '../api';
 import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
 import { glassCard } from '../theme';
 import { when, OP_PILL, authorLabel, KIND_LABEL } from './revision-format';
 import { Tooltip } from './ui/Tooltip';
+import { RevisionDetailsModal } from './RevisionDetailsModal';
 
 const PAGE = 50;
 const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings'];
@@ -15,7 +16,10 @@ const OP_FILTERS = [
   { value: 'restore', label: 'Restored' },
   { value: 'delete', label: 'Deleted' },
 ];
-const selectCls = 'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-sm text-slate-600 dark:text-slate-300 shadow-sm';
+// `pr-8`, not a symmetric `px-2.5`: a native <select> paints its own chevron INSIDE its box, so equal
+// padding leaves the longest value ("All content", "Translation") touching the arrow.
+const selectCls =
+  'rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 pl-2.5 pr-8 py-1.5 text-sm text-slate-600 dark:text-slate-300 shadow-sm';
 
 /**
  * Project-wide revision activity feed (the History nav tab). Lists every revision across all content
@@ -32,6 +36,7 @@ export function HistoryView({ project }: { project: Project }) {
   const [op, setOp] = useState('');
   const [restoringId, setRestoringId] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [detailsOf, setDetailsOf] = useState<ProjectRevisionRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +148,14 @@ export function HistoryView({ project }: { project: Project }) {
                 </div>
                 <button
                   type="button"
+                  onClick={() => setDetailsOf(r)}
+                  aria-label={`See what changed in ${r.label}`}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100"
+                >
+                  <FileSearch className="h-3.5 w-3.5" aria-hidden /> Details
+                </button>
+                <button
+                  type="button"
                   disabled={restoringId !== null}
                   onClick={() => void restore(r)}
                   className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 transition hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-default disabled:opacity-40"
@@ -165,6 +178,7 @@ export function HistoryView({ project }: { project: Project }) {
           {loadingMore ? 'Loading…' : 'Load more'}
         </button>
       )}
+      {detailsOf && <RevisionDetailsModal projectId={project.id} row={detailsOf} onClose={() => setDetailsOf(null)} />}
       {dialog}
     </div>
   );

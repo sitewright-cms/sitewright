@@ -57,6 +57,17 @@ The running version of an instance is reported at `GET /version` (baked into the
     guard, so they are reachable rather than theoretical.
   - **`brace-expansion` → `^5.0.12`**: two stack-exhaustion DoS bugs and a quadratic expansion.
 
+### Removed
+
+- **`POST /projects/:projectId/imagemaps/from-template`** — the route that copied a bundled example
+  into a project (images into the media library, config rewritten to point at them, map stored).
+  Nothing has called it since 0.14.0, when opening an example became a read-only render; it was the
+  one remaining path that would write an example into a project. The editor's
+  `api.createImageMapFromTemplate` goes with it. Templates are still served for rendering by
+  `GET /authoring/imagemaps` and `GET /authoring/imagemaps/templates/<id>`.
+  - This is a **route removal**, i.e. a breaking change under `contract/README.md`; the pre-1.0 rule
+    applies and `contract/http-routes.json` is regenerated accordingly (exactly one line).
+
 ### Fixed
 
 - **An MCP client could no longer log in after 30 days, and nothing could tell it why.** Connecting

@@ -5690,16 +5690,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // more than on a blind fetch — this route STORES the response as a retrievable media asset, and it is
     // reachable by the `import_image` MCP tool, i.e. by an agent loop reading untrusted third-party content.
     const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
-    // Where a materialised template's images land, so they are easy to find (and to delete with the
-    // map). Organisational only — a media URL carries no folder segment.
-    const TEMPLATE_MEDIA_FOLDER = 'image-maps';
-    const FromTemplateBody = z.object({
-      template: z.string().min(1).max(100),
-      /** Entity id for the new map; generated from the template id when omitted. */
-      id: z.string().min(1).max(100).regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/).optional(),
-      /** Display name; the template's own name when omitted. */
-      name: z.string().min(1).max(200).optional(),
-    });
     // ★ On the AGENT LANE — this is the route `import_image` calls, i.e. the one a clone runs thousands
     // of times. The AMPLIFIER concern that shaped `rl(20)` is real (a few hundred bytes of request makes
     // the server fetch and buffer up to MAX_UPLOAD_BYTES from a third party) — and it is answered by the
@@ -5955,66 +5945,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // Materialise a bundled IMAGE MAP TEMPLATE into this project.
-    //
-    // The template's images are copied into the project's OWN media library and the config is
-    // rewritten to point at them, so the resulting map is self-contained: nothing it references
-    // lives on the platform, and a publish/export carries it like any other project image. This is
-    // the only supported way to use a template — the /authoring/imagemaps/* URLs are a source, not
-    // a destination.
-    app.post<{ Params: { projectId: string } }>('/projects/:projectId/imagemaps/from-template', { config: rl(20) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:write');
-      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-      const parsed = FromTemplateBody.safeParse(req.body);
-      if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
-
-      const template = IMAGE_MAP_TEMPLATES.find((t) => t.id === parsed.data.template);
-      const config = template ? await readTemplateConfig(template.id) : null;
-      if (!template || !config) return reply.code(404).send({ error: 'unknown image map template' });
-
-      // Copy each referenced image into the media library, collecting the URL rewrites.
-      const rewrites = new Map<string, string>();
-      for (const authoringUrl of template.images) {
-        const filename = authoringUrl.split('/').pop() as string;
-        const bytes = await readTemplateImage(filename);
-        if (!bytes) return reply.code(500).send({ error: 'template image is missing' });
-        const saved = await createMediaAsset(ctx, project.slug, bytes, {
-          filename,
-          mimetype: 'image/jpeg',
-          folder: TEMPLATE_MEDIA_FOLDER,
-        });
-        rewrites.set(authoringUrl, saved.url);
-      }
-
-      // Rewrite over the SERIALISED config: an image URL can appear on an artboard background, a
-      // hotspot's background image or inside tooltip content, and a whole-string replace reaches
-      // every one of them without a path list that can miss a nesting level.
-      let json = JSON.stringify(config);
-      for (const [from, to] of rewrites) json = json.split(from).join(to);
-      const rewritten = JSON.parse(json) as Record<string, unknown>;
-
-      // Give every artboard an id. Vendor exports omit it on the first artboard, and the runtime
-      // assigns none — so without this every artboard shares artboardDefaults' `default-id` and the
-      // floor switcher does nothing. Existing ids are kept, because the hotspots' change-artboard
-      // actions already point at them.
-      const artboards = Array.isArray(rewritten.artboards) ? (rewritten.artboards as Array<Record<string, unknown>>) : [];
-      const usedArtboardIds = new Set(artboards.map((a) => a.id).filter((v): v is string => typeof v === 'string' && v !== ''));
-      rewritten.artboards = artboards.map((artboard) => {
-        if (typeof artboard.id === 'string' && artboard.id !== '') return artboard;
-        let fresh = `artboard-${randomUUID().slice(0, 8)}`;
-        while (usedArtboardIds.has(fresh)) fresh = `artboard-${randomUUID().slice(0, 8)}`;
-        usedArtboardIds.add(fresh);
-        return { ...artboard, id: fresh };
-      });
-
-      const id = parsed.data.id ?? `${template.id}-${randomUUID().slice(0, 8)}`;
-      const name = parsed.data.name ?? template.name;
-      const data = { ...rewritten, id, general: { ...(rewritten.general as object), name } };
-
-      // put() validates against ImageMapSchema and records a revision like any other content write.
-      const stored = await contentRepo.put(ctx, 'imagemap', id, data);
-      return reply.code(201).send({ item: stored, importedImages: rewrites.size });
-    });
 
     // Clear this project's DERIVED thumbnail cache: removes every on-demand-generated sm/md/lg/xl
     // WebP/AVIF file, keeping every retained ORIGINAL. Thumbnails regenerate on the next request, so

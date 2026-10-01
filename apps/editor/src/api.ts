@@ -1349,8 +1349,6 @@ export const api = {
   listImageMapTemplates: () => request<{ templates: ImageMapTemplate[] }>('GET', '/authoring/imagemaps'),
   /** Materialise a template INTO a project: its images are copied into the project's own media
    *  library and the config rewritten, so the new map references nothing on the platform. */
-  createImageMapFromTemplate: (projectId: string, body: { template: string; id?: string; name?: string }) =>
-    request<{ item: ImageMap; importedImages: number }>('POST', `/projects/${projectId}/imagemaps/from-template`, body),
 
   // --- snippets (code-first reusable Handlebars partials, included via {{> name}}) ---
   listSnippets: (projectId: string) =>

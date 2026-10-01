@@ -109,14 +109,13 @@ describe('ImageMapStudio — the map list', () => {
   it('opens a demo as a PREVIEW and writes nothing into the project', async () => {
     // ★ It used to materialise the template on click — a new map in the project plus its images
     // copied into the media library — just from looking at an example.
-    const create = vi.spyOn(api, 'createImageMapFromTemplate');
-    // …and NOTHING else may write either: a persisted map is also a row in the project's history,
-    // which is how "I only opened an example" turns into "Saved imagemap" in the activity feed.
+    // NOTHING may write: a persisted map is also a row in the project's history, which is how
+    // "I only opened an example" turns into "Saved imagemap" in the activity feed. (The materialise
+    // endpoint this used to spy on no longer exists — there is no longer a call to make.)
     const put = vi.spyOn(api, 'putImageMap');
     studio();
     fireEvent.click(await screen.findByRole('button', { name: /Business/ }));
     expect(await screen.findByTestId('imap-demo-frame')).toBeTruthy();
-    expect(create).not.toHaveBeenCalled();
     expect(put).not.toHaveBeenCalled();
     expect(screen.getByText(/nothing is added to your project/i)).toBeTruthy();
   });

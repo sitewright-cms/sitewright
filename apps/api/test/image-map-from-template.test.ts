@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import type { ImageMap, MediaAsset } from '@sitewright/schema';
+import type { ImageMap } from '@sitewright/schema';
 import { IMAGE_MAP_TEMPLATES } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
@@ -43,9 +43,6 @@ async function setup(email: string) {
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
 }
 
-const fromTemplate = (t: string, projectId: string, payload: Record<string, unknown>) =>
-  app.inject({ method: 'POST', url: `/projects/${projectId}/imagemaps/from-template`, cookies: { sw_session: t }, payload });
-
 describe('the bundled template catalog routes', () => {
   it('lists the templates without auth (static platform data)', async () => {
     const res = await app.inject({ method: 'GET', url: '/authoring/imagemaps' });
@@ -68,89 +65,6 @@ describe('the bundled template catalog routes', () => {
     expect(ok.rawPayload.length).toBeGreaterThan(1000);
 
     expect((await app.inject({ method: 'GET', url: '/authoring/imagemaps/not-a-file.jpg' })).statusCode).toBe(404);
-  });
-});
-
-describe('POST /projects/:id/imagemaps/from-template', () => {
-  it('self-hosts a template that carries images', async () => {
-    const { t, projectId } = await setup('imap-a@x.test');
-    const res = await fromTemplate(t, projectId, { template: 'real-estate' });
-    expect(res.statusCode).toBe(201);
-
-    const { item, importedImages } = res.json() as { item: ImageMap; importedImages: number };
-    expect(importedImages).toBe(2);
-
-    // Nothing may still point at the platform's own copies.
-    const raw = JSON.stringify(item);
-    expect(raw).not.toContain('/authoring/imagemaps/');
-    expect(raw).not.toContain('cloudfront');
-    expect(raw).toContain('/media/');
-
-    // …and the media library really holds them.
-    const media = await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } });
-    const items = (media.json() as { items: MediaAsset[] }).items;
-    expect(items).toHaveLength(2);
-    for (const asset of items) expect(raw).toContain(asset.url);
-  });
-
-  it('imports nothing for a pure-SVG template', async () => {
-    const { t, projectId } = await setup('imap-b@x.test');
-    const res = await fromTemplate(t, projectId, { template: 'business' });
-    expect(res.statusCode).toBe(201);
-    expect((res.json() as { importedImages: number }).importedImages).toBe(0);
-  });
-
-  it('gives every artboard a unique id, so the floor switcher works', async () => {
-    // The vendor export omits the id on its FIRST artboard; without one every artboard shares
-    // artboardDefaults' `default-id` and a change-artboard action silently does nothing.
-    const { t, projectId } = await setup('imap-c@x.test');
-    const res = await fromTemplate(t, projectId, { template: 'real-estate' });
-    const map = (res.json() as { item: ImageMap }).item;
-    const ids = map.artboards.map((a) => a.id);
-    expect(ids.every((id) => typeof id === 'string' && id.length > 0)).toBe(true);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('honours an explicit id and name, and defaults both otherwise', async () => {
-    const { t, projectId } = await setup('imap-d@x.test');
-    const named = await fromTemplate(t, projectId, { template: 'business', id: 'my-chart', name: 'Q3 split' });
-    const a = (named.json() as { item: ImageMap }).item;
-    expect(a.id).toBe('my-chart');
-    expect(a.general.name).toBe('Q3 split');
-
-    const auto = (await fromTemplate(t, projectId, { template: 'business' })).json() as { item: ImageMap };
-    expect(auto.item.id).toMatch(/^business-[0-9a-f]{8}$/);
-    expect(auto.item.general.name).toBe('Business');
-  });
-
-  it('stores it as retrievable imagemap content', async () => {
-    const { t, projectId } = await setup('imap-e@x.test');
-    await fromTemplate(t, projectId, { template: 'engineering', id: 'engine' });
-    const got = await app.inject({
-      method: 'GET',
-      url: `/projects/${projectId}/content/imagemap/engine`,
-      cookies: { sw_session: t },
-    });
-    expect(got.statusCode).toBe(200);
-    expect((got.json() as { item: ImageMap }).item.general.name).toBe('Engineering diagram');
-  });
-
-  it('404s an unknown template and 400s a malformed body', async () => {
-    const { t, projectId } = await setup('imap-f@x.test');
-    expect((await fromTemplate(t, projectId, { template: 'nope' })).statusCode).toBe(404);
-    expect((await fromTemplate(t, projectId, {})).statusCode).toBe(400);
-    // A traversal attempt is just an unknown template — the catalog is an allowlist.
-    expect((await fromTemplate(t, projectId, { template: '../../../etc/passwd' })).statusCode).toBe(404);
-  });
-
-  it('requires a session', async () => {
-    const { projectId } = await setup('imap-g@x.test');
-    const res = await app.inject({
-      method: 'POST',
-      url: `/projects/${projectId}/imagemaps/from-template`,
-      payload: { template: 'business' },
-    });
-    expect(res.statusCode).toBe(401);
   });
 });
 
@@ -286,16 +200,32 @@ describe('image maps are sanitised AT REST, not only at render', () => {
   it('keeps every bundled template intact through a store round-trip', async () => {
     // The SVG-heavy templates are the risk: education alone builds 396 elements from tagName +
     // properties, and an over-eager allowlist would quietly gut the artwork.
+    //
+    // This used to go through POST /imagemaps/from-template. That route is gone (nothing reached it
+    // once examples stopped being materialised), but what it was really proving — that a bundled
+    // config survives the at-rest sanitiser — is a property of STORING one, so it is asserted by
+    // storing one.
     const { t, projectId } = await setup('imap-s6@x.test');
     for (const template of IMAGE_MAP_TEMPLATES) {
-      const created = await app.inject({
-        method: 'POST',
-        url: `/projects/${projectId}/imagemaps/from-template`,
+      const cfg = await app.inject({ method: 'GET', url: `/authoring/imagemaps/templates/${template.id}` });
+      expect(cfg.statusCode, template.id).toBe(200);
+      const config = (cfg.json() as { config: Record<string, unknown> }).config;
+      // A vendor export can omit the FIRST artboard's id, and the schema requires one. The old route
+      // assigned them on the way in; here the test does it, the same way image-map-templates.test.ts
+      // does — it is a property of the raw export, not of how it reaches storage.
+      const artboards = config.artboards as Array<Record<string, unknown>>;
+      config.artboards = artboards.map((a, i) =>
+        typeof a.id === 'string' && a.id !== '' ? a : { ...a, id: `artboard-${i}` },
+      );
+      const id = `t-${template.id}`;
+      const stored = await app.inject({
+        method: 'PUT',
+        url: `/projects/${projectId}/content/imagemap/${id}`,
         cookies: { sw_session: t },
-        payload: { template: template.id, id: `t-${template.id}` },
+        payload: { ...config, id, general: { ...(config.general as object), name: template.name } },
       });
-      expect(created.statusCode, template.id).toBe(201);
-      const item = (created.json() as { item: ImageMap }).item;
+      expect(stored.statusCode, template.id).toBe(200);
+      const item = (stored.json() as { item: ImageMap }).item;
       let tags = 0;
       let props = 0;
       const walk = (objs: unknown): void => {

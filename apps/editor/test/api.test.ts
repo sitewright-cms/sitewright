@@ -1451,13 +1451,6 @@ describe('api client — image maps', () => {
     expect(fetchMock.mock.calls[0]![0]).not.toContain('/projects/');
   });
 
-  it('materialises a template through the SERVER, which self-hosts its images', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'm' }, importedImages: 2 }));
-    const res = await api.createImageMapFromTemplate('p1', { template: 'real-estate', name: 'Tower' });
-    expect(res.importedImages).toBe(2);
-    expect(fetchMock.mock.calls[0]![0]).toContain('/projects/p1/imagemaps/from-template');
-    expect(fetchMock.mock.calls[0]![1]).toMatchObject({ method: 'POST' });
-  });
 });
 
 describe('entry list scoping', () => {

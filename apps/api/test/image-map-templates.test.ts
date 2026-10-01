@@ -14,7 +14,7 @@ import { readTemplateConfig, readTemplateImage, templateConfigPath, templateImag
  * (not `[x, y]` pairs), its grouped children omit `type`, and its FIRST artboard carries no `id`.
  */
 
-/** Assign ids the way the from-template route does, so we validate what actually gets stored. */
+/** A vendor export can omit the first artboard's id; assign one so we validate a STORABLE doc. */
 function withArtboardIds(config: Record<string, unknown>): Record<string, unknown> {
   const artboards = config.artboards as Array<Record<string, unknown>>;
   const used = new Set(artboards.map((a) => a.id).filter((v): v is string => typeof v === 'string' && v !== ''));

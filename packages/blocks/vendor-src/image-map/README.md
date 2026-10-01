@@ -179,8 +179,10 @@ vendored locally instead:
 - images → `apps/api/assets/imagemaps/*.jpg` (only two of the five use one; the rest are pure SVG)
 - metadata → `IMAGE_MAP_TEMPLATES` in `@sitewright/schema` (small enough to bundle for a picker)
 
-`POST /projects/:id/imagemaps/from-template` materialises one into a project: it copies the images
-into that project's own media library, rewrites the config to point at them, fills in any missing
-artboard id, and stores the map. So nothing a project references lives on the platform.
+A template is a read-only EXAMPLE: the studio renders it from the bundle and nothing is copied into
+a project. (`POST /projects/:id/imagemaps/from-template` used to materialise one — copying the images
+into the project's media library and storing the map — and was removed once the studio stopped
+offering it: looking at an example is not the same as wanting a copy of it. An author's own map
+starts from their own image.)
 
 Upstream's 69 country/region SVG maps were deliberately **not** ported.

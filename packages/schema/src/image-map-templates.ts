@@ -8,9 +8,10 @@
  * METADATA ONLY, on purpose. The five configs together are ~940 KB — inlining them here would put
  * that in every bundle of `@sitewright/schema`, which the editor ships to the browser. A picker
  * only needs the name, the shape and a count; the config itself is fetched on demand from
- * `GET /authoring/imagemaps/templates/<id>` and materialised into a project by
- * `POST /projects/:projectId/imagemaps/from-template` (which self-hosts `images` into the
- * project's media library, so a published site never points back at the platform).
+ * `GET /authoring/imagemaps/templates/<id>`, which is also all the studio needs — a template is
+ * RENDERED as a read-only example and is never copied into a project. (It used to be materialised by
+ * `POST /projects/:projectId/imagemaps/from-template`; that route is gone, because looking at an
+ * example is not the same as wanting a copy of it.)
  */
 export interface ImageMapTemplate {
   /** Stable id — the filename under apps/api/assets/imagemaps/templates/. */

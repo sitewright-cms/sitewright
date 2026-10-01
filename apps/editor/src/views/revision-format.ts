@@ -31,5 +31,6 @@ export const KIND_LABEL: Record<string, string> = {
   dataset: 'Dataset',
   entry: 'Entry',
   form: 'Form',
+  imagemap: 'Image map',
   settings: 'Settings',
 };

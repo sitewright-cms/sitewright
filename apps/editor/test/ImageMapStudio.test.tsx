@@ -109,12 +109,54 @@ describe('ImageMapStudio — the map list', () => {
   it('opens a demo as a PREVIEW and writes nothing into the project', async () => {
     // ★ It used to materialise the template on click — a new map in the project plus its images
     // copied into the media library — just from looking at an example.
-    const create = vi.spyOn(api, 'createImageMapFromTemplate');
+    // NOTHING may write: a persisted map is also a row in the project's history, which is how
+    // "I only opened an example" turns into "Saved imagemap" in the activity feed. (The materialise
+    // endpoint this used to spy on no longer exists — there is no longer a call to make.)
+    const put = vi.spyOn(api, 'putImageMap');
     studio();
     fireEvent.click(await screen.findByRole('button', { name: /Business/ }));
     expect(await screen.findByTestId('imap-demo-frame')).toBeTruthy();
-    expect(create).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
     expect(screen.getByText(/nothing is added to your project/i)).toBeTruthy();
+  });
+
+  it('starts a new map as a DRAFT — nothing is written until the author saves', async () => {
+    // ★ THE BUG. "New map" PUT the empty map immediately, purely so it would appear in the list the
+    // editor resolves from. That left an untitled, image-less map in the project AND a "Saved
+    // imagemap" row in its history, before the author had done anything — indistinguishable, from
+    // the history feed, from merely having looked around the studio.
+    const put = vi.spyOn(api, 'putImageMap').mockResolvedValue({ item: MAP });
+    studio();
+    fireEvent.click(await screen.findByRole('button', { name: 'New map' }));
+
+    // We are in the editor for the new map…
+    expect(await screen.findByRole('button', { name: '← All maps' })).toBeTruthy();
+    expect(screen.getByText(/Untitled map/)).toBeTruthy();
+    // …and not one byte has gone to the server.
+    expect(put).not.toHaveBeenCalled();
+
+    // Save is OFFERED (a never-written map is unsaved work), where before it read a disabled "Saved".
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeEnabled();
+
+    // Leaving without saving discards it: still no write, and no phantom map in the list.
+    fireEvent.click(screen.getByRole('button', { name: '← All maps' }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Your maps' })).toBeTruthy());
+    expect(put).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Untitled map/)).toBeNull();
+  });
+
+  it('writes the draft exactly once, when the author actually saves it', async () => {
+    const put = vi.spyOn(api, 'putImageMap').mockResolvedValue({ item: MAP });
+    studio();
+    fireEvent.click(await screen.findByRole('button', { name: 'New map' }));
+    await screen.findByRole('button', { name: '← All maps' });
+    await act(async () => {
+      screen.getByRole('button', { name: 'Save' }).click();
+    });
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1));
+    // The map it wrote is the draft, not some re-created blank.
+    expect(put.mock.calls[0]![1]!.general.name).toBe('Untitled map');
   });
 
   it('asks before deleting through a real dialog, and says what breaks', async () => {

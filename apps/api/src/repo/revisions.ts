@@ -194,7 +194,9 @@ export class RevisionsRepository {
     opts: { limit?: number; kind?: ContentKind; op?: RevisionOp; before?: Date } = {},
   ): Promise<ProjectRevisionMeta[]> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
-    const label = sql<string | null>`coalesce(json_extract(${contentRevisions.data}, '$.title'), json_extract(${contentRevisions.data}, '$.name'), json_extract(${contentRevisions.data}, '$.id'))`;
+    // `$.general.name` is how an IMAGE MAP carries its name — without it an imagemap row falls all
+    // the way through to its raw id (`map-ixlvc4fa`), which tells a reader nothing about what changed.
+    const label = sql<string | null>`coalesce(json_extract(${contentRevisions.data}, '$.title'), json_extract(${contentRevisions.data}, '$.name'), json_extract(${contentRevisions.data}, '$.general.name'), json_extract(${contentRevisions.data}, '$.id'))`;
     const conds = [eq(contentRevisions.projectId, ctx.projectId)];
     if (opts.kind) conds.push(eq(contentRevisions.kind, opts.kind));
     if (opts.op) conds.push(eq(contentRevisions.op, opts.op));

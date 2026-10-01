@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, notExists, or, sql, type SQL } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { oauthClients } from '../db/schema.js';
+import { oauthClients, oauthAuthCodes, oauthDeviceCodes, oauthRefreshTokens } from '../db/schema.js';
 
 /** A client-registration validation failure (maps to `invalid_client_metadata`). */
 export class OAuthClientError extends Error {
@@ -21,6 +21,12 @@ const MAX_REDIRECT_URIS = 5;
 const MAX_URI_LENGTH = 2048;
 /** Hard cap on total registered clients (open DCR + rotating IPs → disk-exhaustion guard). */
 const MAX_TOTAL_CLIENTS = 10_000;
+/**
+ * How stale the stored `last_used_at` must be before {@link OAuthClientRepository.touch} writes.
+ * The stamp only has to order registrations against each other for eviction, so hour granularity is
+ * plenty — and it keeps a busy client's hourly token refreshes from being an hourly row write.
+ */
+export const CLIENT_TOUCH_INTERVAL_MS = 60 * 60 * 1000;
 const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost', '[::1]', '::1'];
 
 /** `http` on a loopback host (RFC 8252 native apps) — the single source of truth, shared
@@ -54,9 +60,67 @@ export function isAcceptableRedirectUri(uri: string): boolean {
   return isLoopbackHttp(uri);
 }
 
+/**
+ * Does `requested` match one of the URIs this client registered?
+ *
+ * Exact string match, with ONE relaxation: between two loopback `http` URIs the **port** is ignored
+ * (RFC 8252 §7.3 — "the authorization server MUST allow any port to be specified at the time of the
+ * request for loopback IP redirect URIs"). Scheme, host, path and query are still pinned, and an
+ * `https` registration gets no relaxation at all.
+ *
+ * ★ WHY. A native app binds an EPHEMERAL loopback port, chosen when the login starts and not
+ * knowable at registration time. Pinning it makes the registration valid for exactly one port
+ * number, so the first time the app comes back on a different one it is refused — and because the
+ * authorization endpoint must not redirect an unvalidated redirect URI, the refusal reaches the user
+ * as a browser page and the app itself learns nothing (same dead end as a deleted registration,
+ * reached by a different route). The built-in CLI client already accepts any loopback redirect;
+ * this brings dynamically-registered clients into line, but strictly: unlike the CLI client, a DCR
+ * client still only matches the host and path it actually registered.
+ *
+ * ★ NOT an open-redirect widening. The relaxed branch requires the REQUESTED uri to pass the same
+ * validation registration applies (`isAcceptableRedirectUri`: loopback-or-https, no fragment, no
+ * userinfo, length-capped) and to be loopback — so it can only ever send a code to a port on the
+ * user's own machine, which is the threat model RFC 8252 already assumes.
+ */
+export function redirectMatchesRegistration(registered: string[], requested: string): boolean {
+  if (registered.includes(requested)) return true;
+  if (!isAcceptableRedirectUri(requested) || !isLoopbackHttp(requested)) return false;
+  const want = new URL(requested);
+  return registered.some((uri) => {
+    if (!isLoopbackHttp(uri)) return false;
+    const have = new URL(uri);
+    return have.hostname === want.hostname && have.pathname === want.pathname && have.search === want.search;
+  });
+}
+
+/**
+ * When a registration was last used, falling back to its registration time. NULL means "never
+ * presented since it was registered" — read as `created_at` so a client that is mid-flow (registered
+ * seconds ago, consent page not yet reached) is never ranked as the most abandoned row in the table.
+ */
+export const effectiveLastUse: SQL<Date> = sql`coalesce(${oauthClients.lastUsedAt}, ${oauthClients.createdAt})`;
+
+/**
+ * True when NOTHING points at the registration — no refresh token, no authorization code, no device
+ * code. The boundary for both removal paths (eviction at the cap, and the retention sweep): a row
+ * something still references is mid-flow or mid-session, and dropping it would break a live client.
+ */
+export function clientUnreferenced(db: Database): SQL {
+  const none = (table: typeof oauthRefreshTokens | typeof oauthAuthCodes | typeof oauthDeviceCodes): SQL =>
+    notExists(db.select({ one: sql`1` }).from(table).where(eq(table.clientId, oauthClients.id)));
+  return and(none(oauthRefreshTokens), none(oauthAuthCodes), none(oauthDeviceCodes)) as SQL;
+}
+
 /** Store for dynamically-registered OAuth clients (RFC 7591). */
 export class OAuthClientRepository {
-  constructor(private readonly db: Database) {}
+  private readonly maxTotalClients: number;
+
+  constructor(
+    private readonly db: Database,
+    opts: { maxTotalClients?: number } = {},
+  ) {
+    this.maxTotalClients = opts.maxTotalClients ?? MAX_TOTAL_CLIENTS;
+  }
 
   async register(
     input: { name: string; redirectUris: unknown[] },
@@ -76,7 +140,9 @@ export class OAuthClientRepository {
       uris.push(uri);
     }
     const counted = await this.db.select({ total: sql<number>`count(*)` }).from(oauthClients);
-    if ((counted[0]?.total ?? 0) >= MAX_TOTAL_CLIENTS) {
+    const over = (counted[0]?.total ?? 0) - this.maxTotalClients + 1;
+    if (over > 0 && (await this.evictLeastRecentlyUsed(over)) < over) {
+      // Nothing left that is safe to drop: every row at the cap is referenced by a live grant.
       throw new OAuthClientError('client registration is temporarily unavailable');
     }
     const id = `swcid_${randomUUID().replace(/-/g, '')}`;
@@ -88,5 +154,63 @@ export class OAuthClientRepository {
     const [row] = await this.db.select().from(oauthClients).where(eq(oauthClients.id, clientId));
     if (!row) return null;
     return { id: row.id, name: row.name, redirectUris: row.redirectUris };
+  }
+
+  /**
+   * Records that `clientId` was just presented at the authorization or token endpoint.
+   *
+   * ★ WHY A REGISTRATION NEEDS A LAST-USE STAMP AT ALL. Removal used to be keyed on `created_at`,
+   * and the only thing that could keep a registration alive was a live grant row — but an agent's
+   * refresh chain is capped at an absolute 8h, so between sessions nothing references it. A client
+   * used every single day looked exactly like one abandoned the day it registered, and got deleted
+   * on a fixed fuse. The resulting dead-end is invisible to the client (see the authorization
+   * endpoint's recovery page), so the only real fix is to not create the condition.
+   *
+   * Written at most once per {@link CLIENT_TOUCH_INTERVAL_MS} via a guarded UPDATE — one statement,
+   * so there is no read-then-write race between concurrent authorizations. Unknown id = no rows
+   * matched = silent no-op, which is what the authorization endpoint wants (it has already decided
+   * to render its error page; a touch must never turn that into a 500).
+   */
+  async touch(clientId: string, now: Date = new Date()): Promise<void> {
+    const staleBefore = new Date(now.getTime() - CLIENT_TOUCH_INTERVAL_MS);
+    await this.db
+      .update(oauthClients)
+      .set({ lastUsedAt: now })
+      .where(
+        and(
+          eq(oauthClients.id, clientId),
+          or(isNull(oauthClients.lastUsedAt), lt(oauthClients.lastUsedAt, staleBefore)),
+        ),
+      );
+  }
+
+  /**
+   * Frees up to `count` slots by deleting the least-recently-used UNREFERENCED registrations, and
+   * returns how many it actually removed (fewer than asked = the rest are all referenced).
+   *
+   * ★ WHY EVICTION RATHER THAN A TIME FUSE. `MAX_TOTAL_CLIENTS` is the guard that matters — a
+   * registration is ~150–300 bytes, so the ceiling is a couple of MB of disk, and open DCR is what
+   * makes a ceiling necessary at all. A hard ceiling with no eviction path is just a deadline, so
+   * #913 added a time-based reap to drain it; but a fuse cannot tell an abandoned registration from
+   * an idle one, so it deleted live clients to defend against a hoard that, measured on a real
+   * instance, was ONE row. Evicting on demand inverts that: pressure (not the calendar) decides, and
+   * the rows that have gone longest without being used go first — which is exactly the spam
+   * registrations, since they are never used at all.
+   */
+  private async evictLeastRecentlyUsed(count: number): Promise<number> {
+    const victims = await this.db
+      .select({ id: oauthClients.id })
+      .from(oauthClients)
+      .where(clientUnreferenced(this.db))
+      .orderBy(effectiveLastUse)
+      .limit(count);
+    if (victims.length === 0) return 0;
+    await this.db.delete(oauthClients).where(
+      inArray(
+        oauthClients.id,
+        victims.map((v) => v.id),
+      ),
+    );
+    return victims.length;
   }
 }

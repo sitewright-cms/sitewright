@@ -400,6 +400,17 @@ export const oauthClients = sqliteTable('oauth_clients', {
   name: text('name').notNull(),
   redirectUris: text('redirect_uris', { mode: 'json' }).notNull().$type<string[]>(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  /**
+   * When this registration was last presented at the authorization or token endpoint. NULL = never
+   * since it was registered, and every reader treats that as `created_at` (see
+   * `effectiveLastUse` in repo/oauth-clients.ts), so a registration that is mid-flow is never
+   * mistaken for an abandoned one.
+   *
+   * A registration is not a credential — the token endpoint never reads this table, so deleting a
+   * row revokes nothing. It exists only so the eviction order can tell an ABANDONED registration
+   * from one that is simply idle between sessions, which `created_at` cannot.
+   */
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
 });
 
 /**

@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, lt, lte, notExists, or, sql, type SQL } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, lte, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -13,6 +13,7 @@ import {
   sessions,
   webauthnChallenges,
 } from '../db/schema.js';
+import { clientUnreferenced, effectiveLastUse } from './oauth-clients.js';
 
 /** How long soft-deleted media stays in the Recycle Bin before it is permanently purged. */
 export const MEDIA_RECYCLE_RETENTION_DAYS = 90;
@@ -65,10 +66,18 @@ export async function sweepExpiredAuthRows(db: Database, now: Date = new Date())
 export const DEAD_PAT_RETENTION_DAYS = 90;
 
 /**
- * How long a dynamically-registered OAuth client survives with nothing referencing it. Generous on
- * purpose: the row is tiny, and the cost of dropping one a client still wanted is a re-registration.
+ * How long a dynamically-registered OAuth client survives with nothing referencing it, measured from
+ * its LAST USE (see `oauth_clients.last_used_at`) — not from registration.
+ *
+ * ★ WHY A YEAR, WHEN THIS WAS 30 DAYS. The cost of dropping a registration a client still holds is
+ * NOT "a re-registration" — that was the mistaken premise. A client cannot be told its id is gone:
+ * the authorization endpoint must not redirect an unvalidated redirect_uri (RFC 6749 §4.1.2.1), so
+ * the client sees nothing but a timeout, keeps presenting the same dead id, and the user is stuck in
+ * a browser error page. So the window has to be long enough that a real user never crosses it by
+ * simply not working on a site for a while, and the actual disk guard is MAX_TOTAL_CLIENTS with
+ * on-demand eviction (see `OAuthClientRepository`). This sweep is now hygiene, not the guard.
  */
-export const OAUTH_CLIENT_RETENTION_DAYS = 30;
+export const OAUTH_CLIENT_RETENTION_DAYS = 365;
 
 /**
  * Deletes personal access tokens that have been DEAD — expired, or revoked — for longer than
@@ -106,22 +115,20 @@ export async function reapDeadPats(db: Database, now: Date = new Date()): Promis
  * that reached the cap could never accept a new MCP client again. A monotonic counter guarded by a
  * hard ceiling needs an eviction path, or the ceiling is just a deadline.
  *
+ * ★ THE EVICTION PATH IS NO LONGER THIS SWEEP. `register()` now evicts least-recently-used
+ * unreferenced rows when it meets the cap, which is what keeps the ceiling from being a deadline.
+ * Keyed on `created_at`, this sweep could not tell an abandoned registration from one merely idle
+ * between sessions — an agent's refresh chain expires after 8h absolute and is then swept, so a
+ * client in daily use is unreferenced nearly all the time — and it deleted live registrations on a
+ * fixed fuse. It now measures DISUSE, over a window (a year) no working user crosses by accident.
+ *
  * Run AFTER sweepExpiredAuthRows so an expired token can't keep a dead registration alive.
  */
 export async function reapUnusedOAuthClients(db: Database, now: Date = new Date()): Promise<void> {
   const cutoff = new Date(now.getTime() - OAUTH_CLIENT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const unreferenced = (table: typeof oauthRefreshTokens | typeof oauthAuthCodes | typeof oauthDeviceCodes): SQL =>
-    notExists(db.select({ one: sql`1` }).from(table).where(eq(table.clientId, oauthClients.id)));
   await db
     .delete(oauthClients)
-    .where(
-      and(
-        lt(oauthClients.createdAt, cutoff),
-        unreferenced(oauthRefreshTokens),
-        unreferenced(oauthAuthCodes),
-        unreferenced(oauthDeviceCodes),
-      ),
-    );
+    .where(and(lt(effectiveLastUse, cutoff), clientUnreferenced(db)));
 }
 
 /**

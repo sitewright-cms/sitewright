@@ -1,0 +1,19 @@
+-- Record WHEN a dynamically-registered OAuth client was last USED, so the retention window can stop
+-- measuring the wrong thing.
+--
+-- WHY: `reapUnusedOAuthClients` deleted any `oauth_clients` row older than 30 days with no refresh
+-- token / auth code / device code pointing at it. But a Claude Code (or claude.ai / ChatGPT) grant's
+-- refresh chain is capped at an ABSOLUTE 8h, and the expired-row sweep then deletes it — so a
+-- registration in daily use is unreferenced for almost all of its life and was reaped on a 30-day
+-- fuse regardless of use. Measured on a live instance: one registration, 28.1 days old, zero
+-- references, in active use, ~2 days from deletion.
+--
+-- The failure that causes is unrecoverable by the client. A deleted registration makes
+-- /oauth/authorize answer "this app isn't recognised", and RFC 6749 §4.1.2.1 forbids redirecting an
+-- unvalidated redirect_uri — so the client is never told to re-register. It just sees its loopback
+-- listener time out, reuses the same dead client_id next time, and the user has no way to know why.
+--
+-- NULL = never used since registration, which is the pre-migration state for every existing row and
+-- is read as "last used when it was created" — the honest assumption, and the one that keeps a
+-- just-registered client out of the eviction firing line while it is still mid-flow.
+ALTER TABLE `oauth_clients` ADD `last_used_at` integer;

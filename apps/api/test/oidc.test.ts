@@ -176,9 +176,9 @@ describe('OIDC single sign-on', () => {
 
   it('gates TOTP on top: an OIDC sign-in for a TOTP-enabled user returns a ticket, not a session', async () => {
     const user = await harness.signup({ email: 'mfa@test.local', password: 'Pw-secret-1' });
-    const { authenticator } = await import('otplib');
+    const { generateSync } = await import('otplib');
     const { secret } = (await user.post('/account/mfa/totp/setup')).json() as { secret: string };
-    await user.post('/account/mfa/totp/confirm', { code: authenticator.generate(secret) });
+    await user.post('/account/mfa/totp/confirm', { code: generateSync({ secret }) });
 
     const res = await login({ sub: 'sub-5', email: 'mfa@test.local', emailVerified: true });
     expect(res.statusCode).toBe(302);

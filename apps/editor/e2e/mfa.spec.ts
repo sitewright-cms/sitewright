@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { dismissProjectSelector, signUp } from './helpers.js';
-import { authenticator } from 'otplib';
+import { generateSync } from 'otplib';
 
 const stamp = Date.now();
 
@@ -21,7 +21,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   // Read the secret from the manual-key field and compute a valid code.
   const secret = (await account.getByLabel('TOTP secret key').textContent())?.trim() ?? '';
   expect(secret.length).toBeGreaterThan(0);
-  await account.getByLabel('Authentication code').fill(authenticator.generate(secret));
+  await account.getByLabel('Authentication code').fill(generateSync({ secret }));
   await account.getByRole('button', { name: 'Enable two-factor' }).click();
 
   // Recovery codes are revealed once; grab the first for the recovery path, then dismiss.
@@ -45,7 +45,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   // Code step appears; a fresh TOTP code completes the sign-in.
   const codeField = page.getByLabel('Authentication code');
   await expect(codeField).toBeVisible();
-  await codeField.fill(authenticator.generate(secret));
+  await codeField.fill(generateSync({ secret }));
   await page.getByRole('button', { name: 'Verify' }).click();
 
   // Signed in: the account menu icon is back.

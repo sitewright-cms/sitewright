@@ -110,6 +110,89 @@ describe('DatabaseIntegrityModal', () => {
     await waitFor(() => expect(repairIntegrity).not.toHaveBeenCalled());
   });
 
+  it('FIX ALL runs the safe repair for every issue, and never the destructive alternative', async () => {
+    // ★ An issue's actions are ALTERNATIVES. Orphaned entries offer "Recreate the dataset" AND
+    // "Delete the entries"; running both would recreate the rows and then delete them. Fix all picks
+    // exactly one per issue, and always the one that cannot lose content.
+    const scopeIssue: IntegrityIssue = {
+      code: 'entry_scope_mismatch',
+      severity: 'warning',
+      projectId: 'p2',
+      projectSlug: 'beta',
+      subject: 'posts',
+      count: 4,
+      sample: ['e9'],
+      detail: 'rows are stored under the wrong scope.',
+      actions: [{ id: 'fix_entry_scope', label: 'Repair storage scope', destructive: false, detail: 'Re-derives the scope.' }],
+    };
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [orphanIssue, scopeIssue] })));
+    render(<DatabaseIntegrityModal onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(2\)/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Fix 2 issues\?/ });
+    expect(within(dialog).getByText(/None of these delete anything/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fix them' }));
+
+    await waitFor(() => expect(repairIntegrity).toHaveBeenCalledTimes(2));
+    expect(repairIntegrity).toHaveBeenCalledWith({ action: 'recreate_dataset', projectId: 'p1', subject: 'items' });
+    expect(repairIntegrity).toHaveBeenCalledWith({ action: 'fix_entry_scope', projectId: 'p2', subject: 'posts' });
+    // The destructive alternative was never run.
+    expect(repairIntegrity).not.toHaveBeenCalledWith(expect.objectContaining({ action: 'delete_orphan_entries' }));
+  });
+
+  it('LEAVES issues that need a decision, and says how many', async () => {
+    // Only a deletion on offer, or a dataset the operator must choose: there is no safe default, so
+    // bulk-fixing must not guess — and must not quietly do less than it says either.
+    const deleteOnly: IntegrityIssue = {
+      ...orphanIssue,
+      subject: 'stranded-history',
+      code: 'orphan_history',
+      actions: [{ id: 'delete_orphan_history', label: 'Delete the stranded history', destructive: true, detail: 'Removes snapshots.' }],
+    };
+    const chooseOne: IntegrityIssue = {
+      ...orphanIssue,
+      subject: 'needs-target',
+      actions: [{ id: 'reassign_entries', label: 'Move to an existing dataset', destructive: false, detail: 'Re-points the rows.' }],
+    };
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [orphanIssue, deleteOnly, chooseOne] })));
+    render(<DatabaseIntegrityModal onClose={() => {}} />);
+
+    // Three issues, but only ONE is safely automatic.
+    fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(1\)/ }));
+    const dialog = await screen.findByRole('dialog', { name: /Fix 1 issue\?/ });
+    expect(within(dialog).getByText(/2 issues need a decision and will be LEFT ALONE/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fix them' }));
+
+    await waitFor(() => expect(repairIntegrity).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/2 left for you to decide on/)).toBeInTheDocument();
+  });
+
+  it('keeps going when one repair fails, and reports which', async () => {
+    const second: IntegrityIssue = { ...orphanIssue, projectId: 'p2', projectSlug: 'beta', subject: 'posts' };
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [orphanIssue, second] })));
+    repairIntegrity.mockRejectedValueOnce(new Error('dataset slug is taken'));
+    repairIntegrity.mockResolvedValueOnce({ action: 'recreate_dataset', changed: 1, message: 'ok' });
+    render(<DatabaseIntegrityModal onClose={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(2\)/ }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: /Fix 2 issues\?/ })).getByRole('button', { name: 'Fix them' }));
+
+    // One failure must not abort the rest — a later repair is often the one that would have worked.
+    await waitFor(() => expect(repairIntegrity).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/1 could not be applied/)).toBeInTheDocument();
+  });
+
+  it('offers no Fix all button when nothing can be fixed unattended', async () => {
+    const deleteOnly: IntegrityIssue = {
+      ...orphanIssue,
+      actions: [{ id: 'delete_orphan_entries', label: 'Delete the entries', destructive: true, detail: 'Removes rows.' }],
+    };
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [deleteOnly] })));
+    render(<DatabaseIntegrityModal onClose={() => {}} />);
+    expect(await screen.findByText('1 issue found')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Fix all issues/ })).toBeNull();
+  });
+
   it('surfaces a stream error instead of pretending the database is clean', async () => {
     checkDatabaseIntegrity.mockImplementation(async (h: { onError?: (m: string) => void }) => {
       h.onError?.('the integrity check could not complete');

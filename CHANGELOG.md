@@ -74,6 +74,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **The per-project SMTP panel gets the same treatment**, for the same reason, and withdraws the send
   again when a stored config is deleted.
 
+### Added
+
+- **Database integrity: a "Fix all issues" button.** Repairing a long report meant clicking through it
+  one issue at a time. The button applies every repair that needs no judgement call, then re-scans
+  once.
+  - **It picks ONE action per issue**, because an issue's actions are *alternatives*, not a list:
+    orphaned entries offer "Recreate the dataset", "Move to an existing dataset" and "Delete the
+    entries", and running all three would recreate, move and then delete the same rows.
+  - **It never deletes and never guesses.** "Move to an existing dataset" needs a target only the
+    operator can choose; "Delete the entries" would permanently remove content that "Recreate the
+    dataset" could have brought back; "Delete the stranded history" only reclaims space sooner than
+    the retention limit would. All three are skipped, **counted, and named in the confirmation**, so
+    the button never quietly does less than it says. The button is not offered at all when nothing
+    qualifies.
+  - One repair failing does not abort the rest — a later one is often the one that would have
+    worked — and the result line says how many were applied, how many failed and why, and how many
+    were left for the operator.
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

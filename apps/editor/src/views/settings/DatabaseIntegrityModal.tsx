@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, Download, Info, Loader2, RefreshCw, ShieldCheck, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Download, Info, Loader2, RefreshCw, ShieldCheck, Wrench, XCircle } from 'lucide-react';
 import {
   api,
   ApiError,
@@ -124,6 +124,37 @@ function IssueCard({
   );
 }
 
+/**
+ * The repairs a "Fix all" can run unattended, and the ones it must leave alone.
+ *
+ * ★ AN ISSUE'S ACTIONS ARE ALTERNATIVES, NOT A LIST. Orphaned entries offer "Recreate the dataset",
+ * "Move to an existing dataset" and "Delete the entries" — running all three would recreate, move and
+ * then delete the same rows. So this picks exactly ONE per issue, and the choice is the conservative
+ * one every time:
+ *
+ *  - `reassign_entries` is SKIPPED: it re-points rows at a dataset the operator chooses, and there is
+ *    no safe default for "which one".
+ *  - Destructive actions are SKIPPED. `delete_orphan_entries` would permanently remove content that
+ *    "Recreate the dataset" could have brought back, and `delete_orphan_history` only reclaims space
+ *    sooner than the retention limit would. Neither belongs behind a bulk button.
+ *  - What is left — recreate a missing dataset, repair a storage scope — only adds or re-points, and
+ *    is exactly what an operator would click one at a time.
+ *
+ * Whatever is skipped is COUNTED and named in the confirmation, so "Fix all" never quietly does less
+ * than it says.
+ */
+function fixPlan(issues: IntegrityIssue[]): { auto: Array<{ issue: IntegrityIssue; action: IntegrityAction }>; manual: IntegrityIssue[] } {
+  const auto: Array<{ issue: IntegrityIssue; action: IntegrityAction }> = [];
+  const manual: IntegrityIssue[] = [];
+  for (const issue of issues) {
+    if (!issue.projectId || issue.actions.length === 0) continue;
+    const action = issue.actions.find((a) => !a.destructive && a.id !== 'reassign_entries');
+    if (action) auto.push({ issue, action });
+    else manual.push(issue);
+  }
+  return { auto, manual };
+}
+
 export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
   const { confirm, dialog } = useDialogs();
   const [progress, setProgress] = useState<IntegrityProgress | null>(null);
@@ -198,6 +229,51 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  /** Apply every unattended repair in `fixPlan`, then re-scan ONCE. */
+  async function fixAll() {
+    const { auto, manual } = fixPlan(issues);
+    if (auto.length === 0) return;
+    const projects = new Set(auto.map((a) => a.issue.projectSlug ?? a.issue.projectId));
+    const rows = auto.reduce((n, a) => n + a.issue.count, 0);
+    const ok = await confirm({
+      title: `Fix ${auto.length} issue${auto.length === 1 ? '' : 's'}?`,
+      message:
+        `${auto.map((a) => `· ${a.action.label} — ${a.issue.projectSlug ?? 'instance'} (${a.issue.count} row${a.issue.count === 1 ? '' : 's'})`).join('\n')}\n\n` +
+        `${rows} row(s) across ${projects.size} project(s). None of these delete anything.` +
+        (manual.length > 0
+          ? `\n\n${manual.length} issue${manual.length === 1 ? '' : 's'} need a decision and will be LEFT ALONE — they only offer a deletion, or a dataset you have to choose. Run those individually.`
+          : ''),
+      confirmLabel: 'Fix them',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    setNote(null);
+    const done: string[] = [];
+    const failed: string[] = [];
+    for (const { issue, action } of auto) {
+      try {
+        // Each repair is re-verified server-side, so one that an earlier repair already resolved
+        // fails harmlessly — which is why a failure here must not abort the rest.
+        await api.repairIntegrity({ action: action.id, projectId: issue.projectId!, subject: issue.subject });
+        done.push(issue.subject);
+      } catch (err) {
+        failed.push(`${issue.subject}: ${err instanceof ApiError ? err.message : 'could not be applied'}`);
+      }
+    }
+    setBusy(false);
+    setNote(
+      [
+        done.length > 0 ? `Repaired ${done.length} issue${done.length === 1 ? '' : 's'}.` : 'Nothing was repaired.',
+        failed.length > 0 ? `${failed.length} could not be applied — ${failed.join('; ')}` : '',
+        manual.length > 0 ? `${manual.length} left for you to decide on.` : '',
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+    await run();
+  }
+
   function download() {
     if (!report) return;
     const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
@@ -269,7 +345,12 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
               <button type="button" className={`${ghostButton}`} onClick={download}>
                 <Download className="h-4 w-4" aria-hidden /> Report
               </button>
-              <button type="button" className={primaryButton} disabled={busy} onClick={() => void run()}>
+              {fixPlan(issues).auto.length > 0 && (
+                <button type="button" className={primaryButton} disabled={busy} onClick={() => void fixAll()}>
+                  <Wrench className="h-4 w-4" aria-hidden /> Fix all issues ({fixPlan(issues).auto.length})
+                </button>
+              )}
+              <button type="button" className={ghostButton} disabled={busy} onClick={() => void run()}>
                 <RefreshCw className="h-4 w-4" aria-hidden /> Re-check
               </button>
             </div>

@@ -644,20 +644,42 @@ function IconsTab({ blurb }: { blurb: string }) {
   );
 }
 
-/** A dense, searchable grid of icons; clicking one copies its `{{sw-icon …}}` snippet. */
+/**
+ * A dense, searchable grid of icons; clicking one copies its `{{sw-icon …}}` snippet.
+ *
+ * ★ EVERY TILE IS THE SAME SIZE, and that takes three separate things — each of which was missing,
+ * so the grid read as ragged rows rather than a grid (measured: 13 / 30 / 23 distinct tile widths on
+ * the icons / brand / flags tabs, from 51.3px to 81.6px):
+ *  1. `w-full` on the TOOLTIP, because that span is the grid item. `Tooltip` renders `inline-flex`,
+ *     which shrink-wraps its child, so without this the button never fills its `1fr` cell and each
+ *     tile ends up as wide as its own label. (The icon PICKER already does this; this grid did not.)
+ *  2. `h-[4.5rem]` on the button, matching the `h-[4.5rem]` skeleton this grid replaces — the two
+ *     disagreed, so arriving data also shifted the layout.
+ *  3. `[&>svg]:h-full [&>svg]:w-full` on the glyph box, because the SVG carries its OWN size class
+ *     from the catalog (`h-6` for a rectangular flag, `h-6 w-6` for everything else) and a 4:3 flag
+ *     at `h-6` is 32px wide — wider than the 24px box meant to hold it. The child rule wins on
+ *     specificity, and SVG's default `preserveAspectRatio` letterboxes rather than distorts, so a
+ *     flag keeps its proportions inside a box that is now the same for every tile.
+ */
 function IconGrid({ items }: { items: LibraryItem[] }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
       {items.map((it) => (
-        <Tooltip key={it.id} tip={`${it.name} — click to copy ${it.example}`}>
+        <Tooltip key={it.id} tip={`${it.name} — click to copy ${it.example}`} className="w-full">
           <button
             aria-label={`Copy ${it.name} icon snippet`}
             onClick={() => copy(it.example, it.id)}
-            className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
+            className="waves-effect flex h-[4.5rem] w-full flex-col items-center justify-center gap-1 rounded-xl border border-slate-200/70 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 p-2.5 text-slate-600 dark:text-slate-300 transition hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-slate-100"
           >
-            {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
+            {it.svg && (
+              <span
+                aria-hidden
+                className="block h-6 w-6 shrink-0 [&>svg]:h-full [&>svg]:w-full"
+                dangerouslySetInnerHTML={{ __html: it.svg }}
+              />
+            )}
             <span className="w-full truncate text-center text-[10px] text-slate-500 dark:text-slate-400">
               {copiedId === it.id ? 'Copied!' : it.name}
             </span>

@@ -162,6 +162,42 @@ describe('LibraryPanel', () => {
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
   }, 20000);
 
+  it('gives every tile the SAME geometry, on every tab', async () => {
+    // ★ MEASURED REGRESSION. The tile shrink-wrapped its own label — the Tooltip span IS the grid
+    // item and renders `inline-flex`, so the button never filled its `1fr` cell. Driven in a real
+    // browser against a deployed slot, the three tabs showed 13 / 30 / 23 DISTINCT tile widths
+    // (51.3px–81.6px) instead of one, and a 4:3 flag's glyph was 32px wide in a 24px box. jsdom
+    // cannot measure layout, so what is pinned here is the three classes that produce it; the
+    // geometry itself was verified by measurement (all tabs 81.6×72, every glyph box 24×24).
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+    render(<LibraryPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open System Library' }));
+    fireEvent.click(screen.getByRole('button', { name: /Icons & flags/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Icons & flags' }, { timeout: 15000 });
+
+    for (const tab of ['Brand', 'Flags'] as const) {
+      fireEvent.click(within(dialog).getByRole('tab', { name: tab }));
+      const tiles = await within(dialog).findAllByRole(
+        'button',
+        { name: /^Copy .* icon snippet$/ },
+        { timeout: 15000 },
+      );
+      expect(tiles.length).toBeGreaterThan(5);
+      for (const tile of tiles) {
+        // A fixed box, filling its cell — and matching the h-[4.5rem] skeleton it replaces, so the
+        // arriving data does not also shift the layout.
+        expect(tile).toHaveClass('h-[4.5rem]', 'w-full', 'justify-center');
+        // The grid ITEM is the Tooltip span; without w-full the button cannot fill the cell.
+        expect(tile.parentElement).toHaveClass('w-full');
+        // The glyph box overrides the size class the catalog bakes into the SVG (`h-6` for a
+        // rectangular flag = 32px wide), so one box holds every shape.
+        const glyph = tile.querySelector('span[aria-hidden]');
+        expect(glyph).not.toBeNull();
+        expect(glyph).toHaveClass('h-6', 'w-6', '[&>svg]:h-full', '[&>svg]:w-full');
+      }
+    }
+  }, 20000);
+
   it('switches to the Brand tab (lazy-loaded) and copies a brand: snippet', async () => {
     // The default Icons tab fetches on mount — stub it so the real network isn't hit before we
     // switch to Brand (which needs no fetch, just the code-split `import('./catalog-icons')`).

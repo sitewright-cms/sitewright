@@ -71,6 +71,8 @@ The running version of an instance is reported at `GET /version` (baked into the
   reload), and on load when SMTP was already configured. "Test connection" stays throughout: it sends
   nothing, and "not configured" is a useful answer. The paragraph explaining all of this is gone — the
   control not being there says it better than a sentence under it did.
+- **The per-project SMTP panel gets the same treatment**, for the same reason, and withdraws the send
+  again when a stored config is deleted.
 
 ### Security
 

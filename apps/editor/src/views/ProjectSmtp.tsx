@@ -13,6 +13,12 @@ import { secretFieldProps } from '../lib/secret-field';
 export function ProjectSmtp({ project }: { project: Project }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
+  /**
+   * Whether SMTP is SAVED for this project — not the same as `enabled`, the toggle on screen. Both
+   * tests act on the stored settings, so before a save they can only fail, and they fail in a way
+   * that reads as "my server details are wrong" rather than "I have not saved yet".
+   */
+  const [smtpSaved, setSmtpSaved] = useState(false);
   const [host, setHost] = useState('');
   const [port, setPort] = useState(587);
   const [secure, setSecure] = useState(false);
@@ -81,6 +87,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
         if (!active) return;
         if (smtp) {
           setEnabled(true);
+          setSmtpSaved(true);
           setHost(smtp.host);
           setPort(smtp.port);
           setSecure(smtp.secure);
@@ -109,6 +116,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
       if (!enabled) {
         await api.deleteProjectSmtp(project.id);
         setHasPassword(false);
+        setSmtpSaved(false); // nothing stored any more — the send has nothing to go through
         setSaved(true);
         return;
       }
@@ -116,6 +124,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
       const { smtp } = await api.putProjectSmtp(project.id, body);
       setHasPassword(smtp.hasPassword);
       setPassword('');
+      setSmtpSaved(true); // the send can work from here, without a reload
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save SMTP');
@@ -213,24 +222,27 @@ export function ProjectSmtp({ project }: { project: Project }) {
               <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void test()} disabled={busy}>
                 {testing ? 'Testing…' : 'Test connection'}
               </button>
-              <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void sendTest()} disabled={busy}>
-                {sending ? 'Sending…' : 'Send test message'}
-              </button>
-              {staff && (
-                <input
-                  className={`${glassInput} max-w-xs px-2 py-1 text-xs`}
-                  aria-label="Test message recipient"
-                  type="email"
-                  value={sendTo}
-                  placeholder="your address"
-                  onChange={(e) => setSendTo(e.target.value)}
-                />
+              {/* Only once SMTP is SAVED: this sends real mail through the STORED settings, so before
+                  a save it can only fail — and it fails as "your server details are wrong" rather
+                  than "you have not saved yet". "Test connection" stays: it sends nothing, and
+                  "not configured" is a useful answer to it. */}
+              {smtpSaved && (
+                <>
+                  <button type="button" className={`${ghostButton} px-2 py-1 text-xs`} onClick={() => void sendTest()} disabled={busy}>
+                    {sending ? 'Sending…' : 'Send test message'}
+                  </button>
+                  {staff && (
+                    <input
+                      className={`${glassInput} max-w-xs px-2 py-1 text-xs`}
+                      aria-label="Test message recipient"
+                      type="email"
+                      value={sendTo}
+                      placeholder="your address"
+                      onChange={(e) => setSendTo(e.target.value)}
+                    />
+                  )}
+                </>
               )}
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Both act on the SAVED settings, not what is on screen. “Test connection” sends no mail;
-                “Send test message” sends real mail
-                {staff ? ' — blank recipient means your own address.' : ' to your account address.'}
-              </span>
             </>
           )}
           {saved && <span className="text-sm text-green-600 dark:text-green-400">Saved.</span>}

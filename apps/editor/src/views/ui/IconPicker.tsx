@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ImagePlus } from 'lucide-react';
 import {
   BRAND_ICON_NAMES_ALL,
   FLAG_CIRCLE_SUFFIX,
@@ -81,6 +82,57 @@ export function IconField({
       </button>
       {open && <IconPicker value={value} onPick={onChange} onClose={() => setOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * The icon SWATCH, and the picker behind it — for a control that already has its own input.
+ *
+ * `IconField` above OWNS its field: it replaces the input with a button that reads the icon's name.
+ * That is right where the name is only ever picked. It is wrong where the name is also typed or
+ * pasted, or filled in for you — a social profile's icon is auto-detected from the URL you enter, so
+ * the text has to stay visible and editable, and what was missing was simply a way to SEE the icon
+ * and to browse for one. Hence a swatch that sits beside the input rather than replacing it.
+ *
+ * An empty or unresolvable name renders no artwork at all, so the button falls back to a dashed
+ * outline — "nothing picked" has to look different from "picked something that draws nothing".
+ */
+export function IconPickButton({
+  value,
+  onPick,
+  ariaLabel,
+}: {
+  value: string;
+  onPick: (name: string) => void;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const art = iconSvg(value);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={ariaLabel}
+        title={value || 'Choose an icon'}
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition ${
+          art
+            ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900'
+            : 'border-dashed border-slate-300 dark:border-slate-600'
+        } hover:border-indigo-300 hover:bg-white dark:hover:bg-white/10`}
+      >
+        {art ? (
+          <span
+            className="block h-5 w-5 [&>svg]:h-full [&>svg]:w-full"
+            aria-hidden="true"
+            dangerouslySetInnerHTML={{ __html: art }}
+          />
+        ) : (
+          <ImagePlus aria-hidden className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+        )}
+      </button>
+      {open && <IconPicker value={value} onPick={onPick} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

@@ -4,9 +4,11 @@ import { detectSocial } from '@sitewright/schema';
 import { glassInput, ghostButton } from '../../theme';
 import { newSocial, type KeyedSocial } from './model';
 import { Tooltip } from '../ui/Tooltip';
+import { IconPickButton } from '../ui/IconPicker';
 
 /**
- * Sortable list of social profiles. Each row is a link + display name + icon; entering a URL
+ * Sortable list of social profiles. Each row is a link + display name + icon (a swatch that opens
+ * the icon library, next to the name it stores); entering a URL
  * AUTO-FILLS the name + icon from the host (e.g. a wa.me link → "WhatsApp" / "brand:whatsapp"),
  * but only when those fields are still empty — an author's own value is never overwritten. Drag a
  * row by its handle to reorder; order is preserved as `company.social` for `{{#each}}` in templates.
@@ -73,6 +75,14 @@ export function SocialProfilesEditor({ rows, onChange }: { rows: KeyedSocial[]; 
             value={r.name}
             placeholder="Name"
             onChange={(e) => setRow(r.id, { name: e.target.value })}
+          />
+          {/* The swatch BESIDE the input, not instead of it: this value is auto-detected from the
+              URL and is often pasted, so the name stays visible and editable — what was missing was
+              seeing the icon, and a way to browse the library for one. */}
+          <IconPickButton
+            value={r.icon}
+            onPick={(icon) => setRow(r.id, { icon })}
+            ariaLabel={`Pick an icon for profile ${i + 1}`}
           />
           <input
             aria-label={`Social icon ${i + 1}`}

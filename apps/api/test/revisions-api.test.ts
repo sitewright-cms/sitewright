@@ -128,6 +128,21 @@ describe('revision routes', () => {
     expect(onlyPages.items.every((i: { kind: string }) => i.kind === 'page')).toBe(true);
   });
 
+  it('labels an image map by its NAME, not its raw id', async () => {
+    // ★ An ImageMap carries its name at `general.name`, so the label coalesce fell through `$.title`
+    // and `$.name` all the way to `$.id` — a History row that read "Saved · imagemap · map-ixlvc4fa"
+    // and told the reader nothing about what had changed.
+    await client.project(pid).putContent('imagemap', 'map-1', {
+      id: 'map-1',
+      general: { name: 'Ground floor' },
+      artboards: [{ id: 'a1', title: 'Ground', background_type: 'image', image_url: '/m/a.jpg', width: 800, height: 600, children: [] }],
+    });
+    const feed = (await client.get(`/projects/${pid}/revisions?kind=imagemap`)).json();
+    expect(feed.items.length).toBe(1);
+    expect(feed.items[0].kind).toBe('imagemap');
+    expect(feed.items[0].label).toBe('Ground floor');
+  });
+
   it('isolates history across tenants (a non-member is forbidden)', async () => {
     await client.project(pid).putContent('page', 'about', aboutPage('A'));
     const other = await h.signup({ email: 'other@e2e.test' });

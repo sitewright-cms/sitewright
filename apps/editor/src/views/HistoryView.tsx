@@ -8,7 +8,7 @@ import { when, OP_PILL, authorLabel, KIND_LABEL } from './revision-format';
 import { Tooltip } from './ui/Tooltip';
 
 const PAGE = 50;
-const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'settings'];
+const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings'];
 const OP_FILTERS = [
   { value: '', label: 'All actions' },
   { value: 'put', label: 'Saved' },

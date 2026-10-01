@@ -70,7 +70,8 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
   const [maps, setMaps] = useState<ImageMap[]>([]);
   const [templates, setTemplates] = useState<ImageMapTemplate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  /** A map the author has started but not yet saved — it exists ONLY here until the first save. */
+  const [draft, setDraft] = useState<ImageMap | null>(null);
   // Raised by the open editor. The modal closes on Escape and on a backdrop click, and a map is a
   // lot of positioning to redo, so an unsaved editor asks first.
   const [dirty, setDirty] = useState(false);
@@ -130,20 +131,21 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
     setView({ kind: 'edit', id: initialMapId });
   }, [initialMapId, loading, maps]);
 
-  async function createBlank(): Promise<void> {
+  /**
+   * Start a new map — IN MEMORY. Nothing is written until the author saves.
+   *
+   * ★ It used to PUT the empty map immediately, purely so it would appear in `maps` and `editing`
+   * could resolve from there. The cost of that shortcut was real: every click of "New map" left an
+   * untitled, image-less map in the project AND a "Saved imagemap" row in the project's history,
+   * before the author had done anything at all. Clicking into a studio to look around is not a
+   * statement of intent to create something. The draft lives here until `save()` persists it, which
+   * is also what makes the Save button mean something on a new map.
+   */
+  function createBlank(): void {
     if (!projectId) return;
-    const name = 'Untitled map';
-    const map = emptyMap(newId('map'), name);
-    setBusy(true);
-    try {
-      await api.putImageMap(projectId, map);
-      await load();
-      setView({ kind: 'edit', id: map.id });
-    } catch {
-      toast.show('Could not create the map', 'error');
-    } finally {
-      setBusy(false);
-    }
+    const map = emptyMap(newId('map'), 'Untitled map');
+    setDraft(map);
+    setView({ kind: 'edit', id: map.id });
   }
 
   /**
@@ -175,7 +177,11 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
     }
   }
 
-  const editing = view.kind === 'edit' ? maps.find((m) => m.id === view.id) : undefined;
+  // The draft wins over the saved list: it is the same id, but only this copy has the author's work
+  // until the first save lands.
+  const editing =
+    view.kind === 'edit' ? (draft?.id === view.id ? draft : maps.find((m) => m.id === view.id)) : undefined;
+  const editingIsDraft = !!editing && editing.id === draft?.id;
 
   return (
     <Modal
@@ -200,6 +206,11 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
           projectId={projectId}
           palette={palette}
           onSaved={onSaved}
+          isDraft={editingIsDraft}
+          onPersisted={() => {
+            setDraft(null);
+            void load();
+          }}
           confirmLeave={() =>
             confirm({
               title: 'Leave this map?',
@@ -211,6 +222,7 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
           onBack={() => {
             setView({ kind: 'list' });
             setDirty(false);
+            setDraft(null); // never saved ⇒ never existed; a saved draft was cleared by onPersisted
             void load();
           }}
         />
@@ -221,7 +233,6 @@ export function ImageMapStudio({ onClose, projectId, initialMapId, onSaved }: Im
           maps={maps}
           templates={templates}
           loading={loading}
-          busy={busy}
           onOpen={(id) => setView({ kind: 'edit', id })}
           onCreateBlank={createBlank}
           onCreateFromTemplate={openDemo}
@@ -271,7 +282,6 @@ function MapList({
   maps,
   templates,
   loading,
-  busy,
   onOpen,
   onCreateBlank,
   onCreateFromTemplate,
@@ -280,7 +290,6 @@ function MapList({
   maps: ImageMap[];
   templates: ImageMapTemplate[];
   loading: boolean;
-  busy: boolean;
   onOpen: (id: string) => void;
   onCreateBlank: () => void;
   onCreateFromTemplate: (t: ImageMapTemplate) => void;
@@ -292,7 +301,7 @@ function MapList({
       <section>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">Your maps</h3>
-          <button type="button" className={primaryButton} disabled={busy} onClick={onCreateBlank}>
+          <button type="button" className={primaryButton} onClick={onCreateBlank}>
             New map
           </button>
         </div>
@@ -305,7 +314,7 @@ function MapList({
               Create one, drop in the image you want to make interactive, then trace the parts of it that should respond
               — a floor plan’s rooms, a product’s parts, a map’s regions.
             </p>
-            <button type="button" className={`${primaryButton} mt-3`} disabled={busy} onClick={onCreateBlank}>
+            <button type="button" className={`${primaryButton} mt-3`} onClick={onCreateBlank}>
               New map
             </button>
           </div>
@@ -355,15 +364,14 @@ function MapList({
         <h3 className="mb-1 text-sm font-bold text-slate-800 dark:text-slate-100">Examples</h3>
         <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
           Finished maps to open and pick apart — how a floor switcher is wired, what a tooltip can hold, how a traced
-          region is shaped. They’re demonstrations, not starting points: your own map begins with your own image. Opening
-          one copies its images into this project’s media library.
+          region is shaped. They’re demonstrations, not starting points: your own map begins with your own image.
+          Opening one changes nothing in this project — it renders straight from the bundled example.
         </p>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {templates.map((t) => (
             <li key={t.id}>
               <button
                 type="button"
-                disabled={busy}
                 onClick={() => onCreateFromTemplate(t)}
                 className="h-full w-full rounded-xl border border-slate-200 p-3 text-left transition hover:border-slate-400 disabled:opacity-50 dark:border-slate-700 dark:hover:border-slate-500"
               >
@@ -389,6 +397,8 @@ function MapEditor({
   onBack,
   onDirtyChange,
   onSaved,
+  isDraft = false,
+  onPersisted,
 }: {
   map: ImageMap;
   projectId: string;
@@ -401,6 +411,10 @@ function MapEditor({
   onDirtyChange: (dirty: boolean) => void;
   /** Announce a successful save, so a surface that EMBEDS this map can re-render itself. */
   onSaved?: (id: string) => void;
+  /** This map has never been written: it exists only in the shell's draft state. */
+  isDraft?: boolean;
+  /** The draft has just been written for the first time — the shell can stop holding it. */
+  onPersisted?: () => void;
 }) {
   const toast = useToast();
   const [map, setMap] = useState<ImageMap>(initial);
@@ -424,6 +438,11 @@ function MapEditor({
 
   // Warn before losing unsaved work — a map is a lot of positioning to redo. This was the only surface
   // that guarded leaving the page; the guard now lives in one place and every editor shares it.
+  // A never-written draft is unsaved work even before it is edited, which is what lets Save mean
+  // something on a brand-new map. The LEAVE guards stay keyed on `dirty` alone: prompting about an
+  // untouched, image-less map would be noise, since re-creating it is one click.
+  const unsaved = dirty || isDraft;
+
   useUnsavedWork(dirty, 'Image map');
 
   /**
@@ -467,7 +486,7 @@ function MapEditor({
     }
     setPreviewing(true);
     try {
-      if (dirty) await save();
+      if (unsaved) await save();
       setPreviewSrc(api.imageMapPreviewUrl(projectId, { map: map.id }));
     } catch (err) {
       toast.show(err instanceof Error ? `Could not build the preview: ${err.message}` : 'Could not build the preview', 'error');
@@ -483,6 +502,7 @@ function MapEditor({
       setDirty(false);
       onDirtyChange(false);
       onSaved?.(map.id);
+      onPersisted?.();
       toast.show('Map saved', 'success');
     } catch (err) {
       // The schema is the authority; surface WHY rather than a generic failure.
@@ -625,10 +645,10 @@ function MapEditor({
             type="button"
             // Gradient only when there is something to save (see `saveSurface`).
             className={`${saveSurface(dirty)} waves-effect inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold transition disabled:opacity-60`}
-            disabled={!dirty || saving}
+            disabled={!unsaved || saving}
             onClick={save}
           >
-            {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+            {saving ? 'Saving…' : unsaved ? 'Save' : 'Saved'}
           </button>
         </div>
       </div>

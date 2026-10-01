@@ -117,6 +117,24 @@ The running version of an instance is reported at `GET /version` (baked into the
   covering draw / draw-then-fill / reverse draw / scale-c / zoom-in / expand / reveal / fade and
   along-path, all cascading from one scene stagger, with click-to-replay and auto-loop.
 
+- **Clicking "New map" in the Image Map Studio no longer creates a map.** It wrote the empty map to
+  the project the instant you clicked — so merely opening the studio and looking around left an
+  untitled, image-less map behind *and* a **"Saved imagemap"** row in the project's History, which
+  from the activity feed is indistinguishable from work you actually did. The map is now a draft held
+  in the editor until you save it: leaving without saving writes nothing and leaves no phantom entry,
+  and the toolbar offers an enabled **Save** rather than a greyed-out "Saved" on a map that has never
+  been written. (Opening an *example* already wrote nothing — that was fixed in 0.14.0 — and is now
+  pinned by a test that also asserts no content write, not just no template materialisation.)
+- **The Examples section no longer promises a write it doesn't make.** Its blurb still read "Opening
+  one copies its images into this project's media library", directly contradicting the badge beside
+  it ("Example — nothing is added to your project") and describing behaviour removed in 0.14.0. If
+  you believed opening an example wrote to your project, this sentence is why.
+- **An image map in the History feed is now labelled.** The row read `Saved · imagemap ·
+  map-ixlvc4fa`: the kind had no entry in the editor's label map so it rendered raw, and the revision
+  label looks at `$.title`/`$.name`/`$.id` — but an image map carries its name at `$.general.name`,
+  so it fell through to the id. It now reads `Saved · Image map · Ground floor`, and `imagemap` is
+  selectable in the History tab's kind filter (the API already accepted it).
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

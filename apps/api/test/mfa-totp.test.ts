@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { authenticator } from 'otplib';
+import { generateSync } from 'otplib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 
@@ -7,7 +7,7 @@ const SESSION_COOKIE = 'sw_session';
 const PASSWORD = 'Pw-secret-1';
 
 /** A valid current code for a base32 secret (window ±1 on the server absorbs any step boundary). */
-const codeFor = (secret: string) => authenticator.generate(secret);
+const codeFor = (secret: string) => generateSync({ secret });
 
 function hasSessionCookie(res: { cookies: { name: string }[] }): boolean {
   return res.cookies.some((c) => c.name === SESSION_COOKIE);

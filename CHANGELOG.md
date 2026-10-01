@@ -22,6 +22,20 @@ The running version of an instance is reported at `GET /version` (baked into the
     two copies each of `state` and `view`, which is the mismatched-nominal-types failure it exists to
     prevent.
 
+- **otplib 12 → 13** (the MFA/TOTP library). v13 drops the `authenticator` singleton for a functional
+  API, so `generateSecret` / `generateURI` / `verifySync` replace it.
+  - ★ **The window changed units.** v12's `{ window: 1 }` meant ±1 **time step** (±30s); v13's
+    `epochTolerance` is in **seconds**. Carrying the literal `1` across would have narrowed the skew
+    tolerance to ±1s — a working login for anyone whose clock is exact, and an intermittent mystery
+    for everyone else. It is now derived from the period so the two cannot drift apart.
+  - **Existing enrolments are unaffected, and that is proven rather than assumed:** a new test pins
+    the algorithm to RFC 6238's published vectors, so it checks the codes against the standard rather
+    than against the library that produced them. A further test asserts a code one step either side
+    is accepted and two steps out is refused — the assertion that fails if the units are wrong.
+  - Drops three **deprecated** transitive packages (`@otplib/plugin-crypto`,
+    `@otplib/plugin-thirty-two`, `@otplib/preset-default`) in favour of the maintained
+    `plugin-crypto-noble` / `plugin-base32-scure`.
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { authenticator } from 'otplib';
+import { generateSync } from 'otplib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The WebAuthn crypto (attestation/assertion verification) is @simplewebauthn's job and is covered
@@ -124,7 +124,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
 
     // Enrol TOTP.
     const { secret } = (await client.post('/account/mfa/totp/setup')).json() as { secret: string };
-    await client.post('/account/mfa/totp/confirm', { code: authenticator.generate(secret) });
+    await client.post('/account/mfa/totp/confirm', { code: generateSync({ secret }) });
 
     // Passkey verify now yields an MFA ticket (no session cookie).
     const { handle } = (await harness.app.inject({ method: 'POST', url: '/auth/passkey/options' })).json() as { handle: string };
@@ -135,7 +135,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
 
     // Redeem the ticket with a TOTP code → session.
     const ticket = (verify.json() as { ticket: string }).ticket;
-    const totp = await harness.app.inject({ method: 'POST', url: '/auth/login/totp', payload: { ticket, code: authenticator.generate(secret) } });
+    const totp = await harness.app.inject({ method: 'POST', url: '/auth/login/totp', payload: { ticket, code: generateSync({ secret }) } });
     expect(totp.statusCode).toBe(200);
     expect(hasSessionCookie(totp)).toBe(true);
   });

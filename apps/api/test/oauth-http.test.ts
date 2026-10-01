@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
+import { oauthClients } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
@@ -87,6 +89,25 @@ describe('OAuth discovery + authorize', () => {
     expect(bad.statusCode).toBe(400);
     expect(bad.headers['content-type']).toMatch(/text\/html/);
     expect(bad.headers.location).toBeUndefined(); // no open redirect
+  });
+
+  it('tells the user how to RECOVER from an unrecognised client, in the browser', async () => {
+    // This page is the only channel that exists. The spec forbids redirecting an unvalidated
+    // redirect_uri (RFC 6749 §4.1.2.1), so the client never learns it must re-register — it sees its
+    // loopback listener time out. Whatever the page says IS the recovery path.
+    const res = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${authorizeQuery({ client_id: 'swcid_doesnotexist' })}`,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.headers.location).toBeUndefined();
+    expect(res.body).toContain('Clear authentication'); // Claude Code
+    expect(res.body).toContain('connector'); // claude.ai / ChatGPT
+    expect(res.body).toContain('sitewright login'); // the CLI
+    // Reassurance, because the page appears mid-authorization and looks like a security event.
+    expect(res.body).toMatch(/no access was granted/i);
+    // No enumeration oracle: the page must not say WHICH of the two causes it was.
+    expect(res.body).not.toMatch(/unknown client/i);
   });
 
   it('round-trips an unauthenticated user through the login and back', async () => {
@@ -198,7 +219,15 @@ describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
     expect(okRes.body).toContain('Hosted &lt;b&gt;App&lt;/b&gt;'); // name escaped, not raw HTML
     expect(okRes.body).not.toContain('Hosted <b>App</b>');
 
-    // A different (unregistered) redirect → 400, no redirect (open-redirect guard).
+    // Reaching the consent page is a USE of the registration — it is what keeps the row off the
+    // least-recently-used end of the eviction order. Assert the column actually moved, rather than
+    // trusting that a touch was wired in.
+    const [row] = await db.select().from(oauthClients).where(eq(oauthClients.id, clientId));
+    expect(row?.lastUsedAt).toBeInstanceOf(Date);
+    expect(row!.lastUsedAt!.getTime()).toBeGreaterThanOrEqual(row!.createdAt.getTime());
+
+    // A different (unregistered) redirect → 400, no redirect (open-redirect guard) — and the SAME
+    // recovery page as an unknown client, so the response can't be used to probe which ids exist.
     const badRes = await app.inject({
       method: 'GET',
       url: `/oauth/authorize?${q('https://app.example.test/other')}`,
@@ -206,6 +235,7 @@ describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
     });
     expect(badRes.statusCode).toBe(400);
     expect(badRes.headers.location).toBeUndefined();
+    expect(badRes.body).toContain('Clear authentication');
   });
 });
 

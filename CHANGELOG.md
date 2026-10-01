@@ -57,6 +57,34 @@ The running version of an instance is reported at `GET /version` (baked into the
     guard, so they are reachable rather than theoretical.
   - **`brace-expansion` → `^5.0.12`**: two stack-exhaustion DoS bugs and a quadratic expansion.
 
+### Fixed
+
+- **An MCP client could no longer log in after 30 days, and nothing could tell it why.** Connecting
+  Claude Code (or a claude.ai / ChatGPT connector) to an instance registers the app once via dynamic
+  client registration; the browser login then failed for good with *"Unknown client or redirect
+  URI."* The registration had been deleted underneath it.
+  - The reaper measured the wrong thing. It dropped any registration older than 30 days with no
+    refresh token, authorization code or device code pointing at it — but an agent's refresh chain is
+    capped at an **absolute 8h**, and the expired-row sweep then deletes it, so a registration in
+    **daily use** is unreferenced for nearly all of its life. The sweep ran hourly and the two steps
+    are chained, so past day 30 the first pass that landed between sessions deleted it. Measured on a
+    live instance: one registration, 28.1 days old, zero references, in active use, two days from
+    deletion.
+  - **The client can never find out.** `/oauth/authorize` must not redirect to an unvalidated
+    redirect URI (RFC 6749 §4.1.2.1), so there is no `error=invalid_client` to hand back — the host
+    just watches its loopback listener time out, keeps the same dead `client_id`, and fails again
+    next time. Deleting a registration also revokes nothing: the token endpoint never reads that
+    table, so this bought no security.
+  - Registrations now record **when they were last used** (`last_used_at`, touched at the
+    authorization and token endpoints), and the disk guard is the existing 10,000-row cap with
+    **on-demand eviction** — at the cap, `register()` drops the least-recently-used *unreferenced*
+    rows, which is exactly the never-used spam, instead of a fuse deleting live clients on a
+    schedule. The retention sweep remains as hygiene, now measuring **disuse** over a year.
+  - The dead-end page is now a **recovery page**: it says the app could not be identified and names
+    the gesture per host — Claude Code's `/mcp` → *Clear authentication*, removing and re-adding a
+    claude.ai/ChatGPT connector, or `sitewright login` for the CLI. It deliberately does not say
+    which of the two causes it was, so it cannot be used to probe which client ids exist.
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

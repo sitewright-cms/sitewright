@@ -266,6 +266,8 @@ function htmlPage(title: string, body: string, chrome: ConsentChrome = DEFAULT_C
       border-radius:.7rem;background:var(--field);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85rem;
       word-break:break-all;user-select:all}
     .expiry{font-size:.78rem}
+    /* The recovery steps on the unrecognised-client page: one line per host, the gesture in bold. */
+    .recover{margin:.6rem 0 0;padding-left:1.15rem;display:flex;flex-direction:column;gap:.45rem;font-size:.9rem}
     /* The "just the code" alternative: present but folded away, so the URL (what most clients ask
        for) is the obvious action and the code is still one click from anyone who needs it. */
     details.alt{margin-top:.9rem}
@@ -349,6 +351,42 @@ function issuedCodePage(code: string, continueUrl: string, redirectUri: string, 
   );
 }
 
+/**
+ * The page a client reaches when its `client_id` is not recognised, or the `redirect_uri` it asked
+ * for is not one it registered.
+ *
+ * ★ THIS PAGE IS THE ENTIRE RECOVERY PATH. RFC 6749 §4.1.2.1 forbids redirecting to an unvalidated
+ * redirect URI, so the error cannot be handed back to the client as `error=invalid_client` — it is
+ * the open-redirect boundary. The client therefore learns NOTHING: an MCP host just watches its
+ * loopback listener time out, keeps the same stored client_id, and fails again identically next
+ * time. Whatever is written here is the only instruction the user will ever get, which is why it
+ * names the concrete gesture per host instead of saying "unknown client".
+ *
+ * ★ It deliberately does NOT distinguish the two causes. Confirming that a given client_id exists
+ * but presented the wrong redirect would make this an enumeration oracle, and the recovery — drop
+ * the stored authorization, let the app register again — is the same for both.
+ */
+function unrecognisedClientPage(chrome: ConsentChrome): string {
+  return htmlPage(
+    'App not recognised',
+    '<div class="card">' +
+      "<h1>This app isn't recognised</h1>" +
+      '<p>The application that sent you here could not be identified, so there is nothing to approve. ' +
+      'Either its registration is no longer on this instance, or the callback address it asked for ' +
+      'is not the one it registered.</p>' +
+      '<p>Reconnecting fixes it — the app registers itself again from scratch:</p>' +
+      '<ul class="recover">' +
+      '<li><strong>Claude Code</strong> — run <code>/mcp</code>, pick this server, choose ' +
+      '<strong>Clear authentication</strong>, then connect again.</li>' +
+      '<li><strong>claude.ai or ChatGPT</strong> — remove the connector in its settings and add it back.</li>' +
+      '<li><strong>Sitewright CLI</strong> — run <code>sitewright login</code> again.</li>' +
+      '</ul>' +
+      '<p class="expiry">Nothing was approved and no access was granted.</p>' +
+      '</div>',
+    chrome,
+  );
+}
+
 /** Builds a redirect URL appending query params, preserving any existing query. */
 function redirectWith(redirectUri: string, params: Record<string, string>): string {
   const url = new URL(redirectUri);
@@ -377,6 +415,10 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     }
     const client = await clients.get(clientId);
     if (!client) return null;
+    // Presenting a registration IS using it — this is the signal that keeps a client in daily use
+    // off the least-recently-used end of the eviction order. Rate-limited inside `touch` to at most
+    // one write per hour, so an authorize round-trip does not cost a row write every time.
+    await clients.touch(clientId);
     return { name: client.name, allowsRedirect: (uri) => client.redirectUris.includes(uri) };
   }
 
@@ -481,13 +523,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       // A bad client_id / redirect_uri must NOT redirect (open-redirect guard) — render.
       const client = await resolveClient(clientId);
       if (!client || !client.allowsRedirect(redirectUri)) {
-        return reply.code(400).type('text/html').send(
-          htmlPage(
-            'Invalid request',
-            '<div class="card"><h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p></div>',
-            await chromeOf(),
-          ),
-        );
+        return reply.code(400).type('text/html').send(unrecognisedClientPage(await chromeOf()));
       }
       // From here, parameter errors can safely redirect back to the (validated) client.
       const fail = (error: string): FastifyReply =>
@@ -585,7 +621,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const redirectUri = b.redirect_uri ?? '';
       const client = await resolveClient(clientId);
       if (!client || !client.allowsRedirect(redirectUri)) {
-        return reply.code(400).type('text/html').send(htmlPage('Invalid request', '<div class="card"><h1>Invalid request</h1></div>', await chromeOf()));
+        return reply.code(400).type('text/html').send(unrecognisedClientPage(await chromeOf()));
       }
       const state = b.state;
       const back = (params: Record<string, string>): FastifyReply =>
@@ -778,6 +814,10 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
             new Date(),
             await sessionExpiry(),
           );
+          // AFTER redemption, never before: `client_id` is unauthenticated input here, and the
+          // redemption is what proves it owns the grant. Touching first would let anyone keep any
+          // registration at the fresh end of the eviction order by POSTing an id.
+          await clients.touch(b.client_id);
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',
@@ -790,6 +830,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
           if (!b.refresh_token || !b.client_id) return fail(400, 'invalid_request', 'missing required parameter');
           // Pass the CURRENT instance cap so a lowered session length tightens this rotation.
           const tokens = await oauth.refresh({ refreshToken: b.refresh_token, clientId: b.client_id }, new Date(), await sessionExpiry());
+          await clients.touch(b.client_id);
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',
@@ -801,6 +842,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         if (b.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
           if (!b.device_code || !b.client_id) return fail(400, 'invalid_request', 'missing required parameter');
           const tokens = await oauth.redeemDeviceCode({ deviceCode: b.device_code, clientId: b.client_id }, new Date(), await sessionExpiry());
+          await clients.touch(b.client_id);
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',

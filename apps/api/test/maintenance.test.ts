@@ -126,21 +126,30 @@ describe('sweepExpiredAuthRows', () => {
 });
 
 describe('reapUnusedOAuthClients', () => {
-  it('drops only long-idle, unreferenced registrations', async () => {
+  it('drops only long-UNUSED, unreferenced registrations', async () => {
     const db = await makeTestDb();
     await seedUser(db);
     await seedProject(db);
     const now = new Date();
-    const old = new Date(now.getTime() - (OAUTH_CLIENT_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000);
-    const recent = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const day = 24 * 60 * 60 * 1000;
+    const old = new Date(now.getTime() - (OAUTH_CLIENT_RETENTION_DAYS + 1) * day);
+    const recent = new Date(now.getTime() - day);
     const grant = { userId: 'u1', projectId: 'p1', role: 'owner' as const, scope: ['content:read' as const] };
 
     await db.insert(oauthClients).values([
-      { id: 'c-idle', name: 'stale', redirectUris: ['http://127.0.0.1/cb'], createdAt: old },
+      { id: 'c-idle', name: 'never used, ancient', redirectUris: ['http://127.0.0.1/cb'], createdAt: old },
       { id: 'c-granted', name: 'has a session', redirectUris: ['http://127.0.0.1/cb'], createdAt: old },
       { id: 'c-authorizing', name: 'mid-flow', redirectUris: ['http://127.0.0.1/cb'], createdAt: old },
       { id: 'c-polling', name: 'device flow', redirectUris: ['http://127.0.0.1/cb'], createdAt: old },
       { id: 'c-fresh', name: 'just registered', redirectUris: ['http://127.0.0.1/cb'], createdAt: recent },
+      // ★ THE REGRESSION. Registered long ago, authorized yesterday, and between sessions NOTHING
+      // references it — an 8h refresh chain expires and the token sweep deletes it. Keyed on
+      // created_at this row was reaped while in daily use, which dead-ends the client's next login
+      // with no way to tell it to re-register.
+      { id: 'c-in-use', name: 'old but in daily use', redirectUris: ['http://127.0.0.1/cb'], createdAt: old, lastUsedAt: recent },
+      // A month of disuse is NOT enough to drop a registration any more: a client that comes back
+      // after a quiet month still holds this id and cannot be told to mint a new one.
+      { id: 'c-quiet-month', name: 'idle 31 days', redirectUris: ['http://127.0.0.1/cb'], createdAt: new Date(now.getTime() - 31 * day) },
     ]);
     await db.insert(oauthRefreshTokens).values({ id: 'r1', clientId: 'c-granted', ...grant, expiresAt: new Date(now.getTime() + 60_000), createdAt: now });
     await db.insert(oauthAuthCodes).values({ id: 'a1', clientId: 'c-authorizing', ...grant, redirectUri: 'http://127.0.0.1/cb', codeChallenge: 'x', expiresAt: new Date(now.getTime() + 60_000), createdAt: now });
@@ -152,8 +161,29 @@ describe('reapUnusedOAuthClients', () => {
       'c-authorizing',
       'c-fresh',
       'c-granted',
+      'c-in-use',
       'c-polling',
+      'c-quiet-month',
     ]);
+  });
+
+  it('drops a registration whose LAST USE is past the window, even though it was used once', async () => {
+    const db = await makeTestDb();
+    const now = new Date();
+    const day = 24 * 60 * 60 * 1000;
+    await db.insert(oauthClients).values([
+      {
+        id: 'c-abandoned',
+        name: 'used once, two years ago',
+        redirectUris: ['http://127.0.0.1/cb'],
+        createdAt: new Date(now.getTime() - 800 * day),
+        lastUsedAt: new Date(now.getTime() - (OAUTH_CLIENT_RETENTION_DAYS + 1) * day),
+      },
+    ]);
+
+    await reapUnusedOAuthClients(db, now);
+
+    expect(await db.select({ id: oauthClients.id }).from(oauthClients)).toEqual([]);
   });
 
   it('is a safe no-op on an empty instance', async () => {

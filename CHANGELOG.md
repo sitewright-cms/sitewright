@@ -95,6 +95,15 @@ The running version of an instance is reported at `GET /version` (baked into the
   registrations get no relaxation at all, and the relaxed branch requires the requested URI to pass
   the same validation registration applies (loopback-only, no fragment, no userinfo).
 
+- **Every tile in the Icons & flags library is now the same size.** Each tile shrink-wrapped its own
+  label, so the gallery read as ragged rows rather than a grid — measured in a real browser,
+  the icons / brand / flags tabs showed **13 / 30 / 23 distinct tile widths** (51.3px–81.6px); now
+  one, 81.6×72, identical across all three tabs. Three separate causes: the grid item is the tooltip
+  span (`inline-flex`, so the button never filled its `1fr` cell), the tile had no height while the
+  skeleton it replaces was `h-[4.5rem]` (so arriving data shifted the layout too), and a rectangular
+  4:3 flag carried its own `h-6` class — 32px wide inside the 24px box meant to hold it. Flags keep
+  their proportions; the glyph box is now 24×24 for every shape.
+
 ## [0.56.0] — 2026-09-23
 
 ### Added

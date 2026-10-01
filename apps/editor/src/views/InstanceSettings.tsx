@@ -151,6 +151,12 @@ export function InstanceSettings() {
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
 
   const [smtpEnabled, setSmtpEnabled] = useState(false);
+  /**
+   * Whether SMTP is SAVED on the server — which is not the same as `smtpEnabled`, the toggle on
+   * screen. Both test actions run against the stored settings, so they are meaningless (and their
+   * failure misleading) until a save has happened.
+   */
+  const [smtpSaved, setSmtpSaved] = useState(false);
   const [host, setHost] = useState('');
   const [port, setPort] = useState(587);
   const [secure, setSecure] = useState(false);
@@ -360,6 +366,7 @@ export function InstanceSettings() {
     setAuthMaxFailures(maxFail);
     initialAuthMaxFailuresRef.current = maxFail;
     setSmtpEnabled(Boolean(s.smtp));
+    setSmtpSaved(Boolean(s.smtp));
     setHost(s.smtp?.host ?? '');
     setPort(s.smtp?.port ?? 587);
     setSecure(s.smtp?.secure ?? false);
@@ -597,6 +604,7 @@ export function InstanceSettings() {
         secondary: res.settings.brandSecondary ?? DEFAULT_BRAND_SECONDARY,
         logoUrl: res.settings.hasLogo ? `/branding/logo?v=${bust}` : null,
       });
+      setSmtpSaved(Boolean(res.settings.smtp));
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save settings');
@@ -889,22 +897,29 @@ export function InstanceSettings() {
               >
                 {smtpTesting ? 'Testing…' : 'Test connection'}
               </button>
-              <button
-                type="button"
-                className={`${ghostButton} px-2 py-1 text-xs`}
-                onClick={() => void sendSmtpTest()}
-                disabled={smtpTesting || smtpSending}
-              >
-                {smtpSending ? 'Sending…' : 'Send test message'}
-              </button>
-              <input
-                className={`${field} max-w-xs`}
-                aria-label="Test message recipient"
-                type="email"
-                value={smtpTestTo}
-                placeholder="your address"
-                onChange={(e) => setSmtpTestTo(e.target.value)}
-              />
+              {/* Only once SMTP is SAVED: this sends real mail through the STORED settings, so
+                  before a save it can only fail — and it fails in a way that reads as "my server
+                  details are wrong" rather than "I have not saved yet". */}
+              {smtpSaved && (
+                <>
+                  <button
+                    type="button"
+                    className={`${ghostButton} px-2 py-1 text-xs`}
+                    onClick={() => void sendSmtpTest()}
+                    disabled={smtpTesting || smtpSending}
+                  >
+                    {smtpSending ? 'Sending…' : 'Send test message'}
+                  </button>
+                  <input
+                    className={`${field} max-w-xs`}
+                    aria-label="Test message recipient"
+                    type="email"
+                    value={smtpTestTo}
+                    placeholder="your address"
+                    onChange={(e) => setSmtpTestTo(e.target.value)}
+                  />
+                </>
+              )}
               {smtpTest &&
                 (smtpTest.ok ? (
                   <span className="text-sm text-green-600 dark:text-green-400">
@@ -913,10 +928,6 @@ export function InstanceSettings() {
                 ) : (
                   <span className="text-sm text-red-600 dark:text-red-400">✗ {smtpTest.error}</span>
                 ))}
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                Both act on the SAVED settings, not what is on screen. “Test connection” sends nothing;
-                “Send test message” sends real mail — blank recipient means your own address.
-              </span>
             </div>
           </div>
         )}

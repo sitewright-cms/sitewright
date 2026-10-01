@@ -64,6 +64,16 @@ The running version of an instance is reported at `GET /version` (baked into the
   inside its box, so the symmetric padding left the longest values ("All content", "Translation")
   touching it. Right padding is now 32px, measured in the browser.
 
+- **System Settings → Global SMTP: the real-mail test is offered only once SMTP is saved.** Both test
+  actions run against the STORED settings, so before a save the "Send test message" button could only
+  fail — and it failed in a way that reads as "my server details are wrong" rather than "I have not
+  saved yet". It and its recipient box now appear once a save has stored SMTP (immediately, without a
+  reload), and on load when SMTP was already configured. "Test connection" stays throughout: it sends
+  nothing, and "not configured" is a useful answer. The paragraph explaining all of this is gone — the
+  control not being there says it better than a sentence under it did.
+- **The per-project SMTP panel gets the same treatment**, for the same reason, and withdraws the send
+  again when a stored config is deleted.
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

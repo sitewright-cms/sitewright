@@ -69,6 +69,42 @@ describe('InstanceSettings', () => {
     expect(body.revisionRetentionDays).toBeNull(); // back to the 90-day default → null (revert)
   });
 
+  it('hides the real-mail test until SMTP is actually SAVED, not merely switched on', async () => {
+    // ★ Both tests run against the STORED settings. Before a save there is nothing stored, so the
+    // send can only fail — and it fails in a way that reads as "my server details are wrong" rather
+    // than "I have not saved yet". The explainer that used to say so is gone; the control is simply
+    // not offered until it can work.
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Global SMTP'));
+    fireEvent.click(screen.getByLabelText('Configure global SMTP'));
+
+    // Switched on, filled in, NOT saved: no send, no recipient box.
+    fireEvent.change(await screen.findByLabelText('SMTP host'), { target: { value: 'smtp.acme.com' } });
+    fireEvent.change(screen.getByLabelText('SMTP from email'), { target: { value: 'a@acme.com' } });
+    expect(screen.queryByRole('button', { name: 'Send test message' })).toBeNull();
+    expect(screen.queryByLabelText('Test message recipient')).toBeNull();
+    // "Test connection" stays: it sends nothing, and reporting "not configured" is a useful answer.
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeInTheDocument();
+
+    // After a save that stores SMTP, the send appears without a reload.
+    putInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@acme.com', hasPassword: false } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByRole('button', { name: 'Send test message' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Test message recipient')).toBeInTheDocument();
+  });
+
+  it('offers the real-mail test straight away when SMTP was already stored', async () => {
+    getInstanceSettings.mockResolvedValue({
+      settings: { ...DEFAULTS, smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@acme.com', hasPassword: true } },
+    });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByLabelText('Global SMTP'));
+    expect(await screen.findByRole('button', { name: 'Send test message' })).toBeInTheDocument();
+  });
+
   it('saves the platform AI assistant config (provider/model/key/limit/admins)', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     render(<InstanceSettings />);

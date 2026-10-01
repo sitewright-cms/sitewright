@@ -105,6 +105,38 @@ describe('ProjectSmtp connection test', () => {
     expect(await screen.findByText(/Connected/)).toBeInTheDocument();
   });
 
+  it('offers the real-mail test only once SMTP is SAVED, not merely switched on', async () => {
+    // ★ Same reasoning as the Global SMTP panel: both tests act on the STORED settings, so before a
+    // save the send can only fail — and it fails as "your server details are wrong" rather than
+    // "you have not saved yet". The explainer that used to say so is gone; the control is simply not
+    // offered until it can work.
+    getProjectSmtp.mockResolvedValue({ smtp: null });
+    me.mockResolvedValue({ platformRole: 'admin' }); // staff, so the recipient box is in play
+    render(<ProjectSmtp project={project} />);
+    fireEvent.click(await screen.findByLabelText('Configure project SMTP'));
+    fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.acme.com' } });
+    fireEvent.change(screen.getByLabelText('From email'), { target: { value: 'a@b.co' } });
+
+    expect(screen.queryByRole('button', { name: 'Send test message' })).toBeNull();
+    expect(screen.queryByLabelText('Test message recipient')).toBeNull();
+    // "Test connection" stays: it sends nothing, and "not configured" is a useful answer.
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
+    expect(await screen.findByRole('button', { name: 'Send test message' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Test message recipient')).toBeInTheDocument();
+  });
+
+  it('withdraws the real-mail test when the stored config is deleted', async () => {
+    getProjectSmtp.mockResolvedValue({ smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } });
+    render(<ProjectSmtp project={project} />);
+    expect(await screen.findByRole('button', { name: 'Send test message' })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Configure project SMTP')); // switch off
+    fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
+    await waitFor(() => expect(deleteProjectSmtp).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Send test message' })).toBeNull();
+  });
+
   it('offers no test button until SMTP is switched on — there would be nothing to test', async () => {
     getProjectSmtp.mockResolvedValue({ smtp: null });
     render(<ProjectSmtp project={project} />);

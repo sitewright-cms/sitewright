@@ -7,8 +7,7 @@ import { api } from '../../api';
 import { glassInput, ghostButton, primaryButton, toggleInput } from '../../theme';
 import { FilePicker } from '../files/FilePicker';
 import { parseSvg, cleanupSvg, prettySvg, stampIds, buildTree, assetFromUrl, cssEsc, type TreeNode, type SourceAsset } from './svg-studio-helpers';
-import { SnippetShelf } from './SnippetShelf';
-import { SVG_ANIM_ITEMS } from './catalog';
+import { AnimationExampleShelf } from './AnimationExampleShelf';
 import { Tooltip } from '../ui/Tooltip';
 
 interface SvgAnimStudioProps {
@@ -274,7 +273,7 @@ export function SvgAnimStudio({ onClose, projectId }: SvgAnimStudioProps) {
               </button>
             )}
           </div>
-          <SnippetShelf title="Ready-made SVG-animation snippets" items={SVG_ANIM_ITEMS} blurb="Hand-apply a data-sw-svg* directive, or import an SVG above to animate its elements visually and export." />
+          <AnimationExampleShelf onView={(svg) => doImport(svg)} />
           {projectId && pickerOpen && (
             <FilePicker projectId={projectId} accept={(a) => a.kind === 'image' && (a as { format?: string }).format === 'svg'} onPick={pickFromMedia} onClose={() => setPickerOpen(false)} />
           )}

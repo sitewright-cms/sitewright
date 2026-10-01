@@ -9,6 +9,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The CodeMirror pin and the editor's manifest now agree, and say so.** `pnpm-workspace.yaml` pinned
+  `@codemirror/state` to 6.7.1 and `view` to 6.43.7 — the pin that keeps exactly one copy of each in
+  the tree — while `apps/editor/package.json` declared `^6.7.4` / `^6.43.11`. An override wins over a
+  manifest range, so the manifest had been describing versions that were never installed, and every
+  Dependabot bump of those lines installed nothing. The family is bumped as a set to 6.7.6 / 6.43.13 /
+  6.12.4, the manifest now states those **exact** versions so the two can be compared at a glance, and
+  the override carries the rule plus the one-line lockfile check that decides it.
+  - The pin is **not** a historical leftover: measured by removing it, the tree immediately carried
+    two copies each of `state` and `view`, which is the mismatched-nominal-types failure it exists to
+    prevent.
+
 ### Security
 
 - **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on

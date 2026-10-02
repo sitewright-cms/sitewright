@@ -9,6 +9,44 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.57.0] — 2026-10-02
+
+### Added
+
+- **A social profile's icon can be picked from the library instead of typed.** Corporate Identity →
+  Social profiles stored the icon as a bare name (`brand:whatsapp`) in a plain text box: you had to
+  know the spelling, and a typo rendered nothing at all while looking like a broken row. Each row now
+  carries a swatch that opens the full icon picker (Phosphor at every weight, brand logos, country
+  flags) and shows the current icon right next to the field. The field itself stays editable — the
+  value is auto-detected from the URL you enter and is often pasted, so replacing it with a
+  picker-only control would have taken something away. Nothing picked shows a dashed placeholder,
+  because "nothing yet" has to look different from "a name that draws nothing".
+
+- **Every History row now has a "Details" button showing what actually changed.** A row said a page
+  was saved; it could not say that the only thing that moved was the meta description — and finding
+  that out meant reading two snapshots side by side, which for a page `source` is hopeless. Details
+  fetches the revision and the one before it **for that entity** (not the row above, which in a
+  filtered, paginated feed is usually something else entirely) and shows the field-level difference:
+  scalars as before → after, multi-line text as a line diff with the unchanged stretches elided. A
+  first revision says so rather than showing an empty diff, and a save that stored no change says
+  that too.
+
+- **Database integrity: a "Fix all issues" button.** Repairing a long report meant clicking through it
+  one issue at a time. The button applies every repair that needs no judgement call, then re-scans
+  once.
+  - **It picks ONE action per issue**, because an issue's actions are *alternatives*, not a list:
+    orphaned entries offer "Recreate the dataset", "Move to an existing dataset" and "Delete the
+    entries", and running all three would recreate, move and then delete the same rows.
+  - **It never deletes and never guesses.** "Move to an existing dataset" needs a target only the
+    operator can choose; "Delete the entries" would permanently remove content that "Recreate the
+    dataset" could have brought back; "Delete the stranded history" only reclaims space sooner than
+    the retention limit would. All three are skipped, **counted, and named in the confirmation**, so
+    the button never quietly does less than it says. The button is not offered at all when nothing
+    qualifies.
+  - One repair failing does not abort the rest — a later one is often the one that would have
+    worked — and the result line says how many were applied, how many failed and why, and how many
+    were left for the operator.
+
 ### Changed
 
 - **The CodeMirror pin and the editor's manifest now agree, and say so.** `pnpm-workspace.yaml` pinned
@@ -36,27 +74,27 @@ The running version of an instance is reported at `GET /version` (baked into the
     `@otplib/plugin-thirty-two`, `@otplib/preset-default`) in favour of the maintained
     `plugin-crypto-noble` / `plugin-base32-scure`.
 
-### Added
+- **The SVG studio's snippet shelf is now "Animation Examples" — five finished animations you open
+  instead of four directive snippets you copy.** A snippet could only ever show one attribute on one
+  shape, which is the part of the model the docs already cover; what it could not show is the thing
+  people are actually trying to build — a mark or a scene where a dozen elements arrive on one
+  choreographed timeline. Each example now ships as a complete SVG (Orbit mark, Crest badge, Network
+  scene, Dashboard scene, Sunrise scene), and the affordance is **View**, which imports it into the
+  Studio where every element, effect and delay is inspectable, re-timeable and exportable. The markup
+  is still one click away in the Studio's own code view. Between 6 and 11 animated elements each,
+  covering draw / draw-then-fill / reverse draw / scale-c / zoom-in / expand / reveal / fade and
+  along-path, all cascading from one scene stagger, with click-to-replay and auto-loop.
 
-- **A social profile's icon can be picked from the library instead of typed.** Corporate Identity →
-  Social profiles stored the icon as a bare name (`brand:whatsapp`) in a plain text box: you had to
-  know the spelling, and a typo rendered nothing at all while looking like a broken row. Each row now
-  carries a swatch that opens the full icon picker (Phosphor at every weight, brand logos, country
-  flags) and shows the current icon right next to the field. The field itself stays editable — the
-  value is auto-detected from the URL you enter and is often pasted, so replacing it with a
-  picker-only control would have taken something away. Nothing picked shows a dashed placeholder,
-  because "nothing yet" has to look different from "a name that draws nothing".
+### Removed
 
-### Added
-
-- **Every History row now has a "Details" button showing what actually changed.** A row said a page
-  was saved; it could not say that the only thing that moved was the meta description — and finding
-  that out meant reading two snapshots side by side, which for a page `source` is hopeless. Details
-  fetches the revision and the one before it **for that entity** (not the row above, which in a
-  filtered, paginated feed is usually something else entirely) and shows the field-level difference:
-  scalars as before → after, multi-line text as a line diff with the unchanged stretches elided. A
-  first revision says so rather than showing an empty diff, and a save that stored no change says
-  that too.
+- **`POST /projects/:projectId/imagemaps/from-template`** — the route that copied a bundled example
+  into a project (images into the media library, config rewritten to point at them, map stored).
+  Nothing has called it since 0.14.0, when opening an example became a read-only render; it was the
+  one remaining path that would write an example into a project. The editor's
+  `api.createImageMapFromTemplate` goes with it. Templates are still served for rendering by
+  `GET /authoring/imagemaps` and `GET /authoring/imagemaps/templates/<id>`.
+  - This is a **route removal**, i.e. a breaking change under `contract/README.md`; the pre-1.0 rule
+    applies and `contract/http-routes.json` is regenerated accordingly (exactly one line).
 
 ### Fixed
 
@@ -71,60 +109,9 @@ The running version of an instance is reported at `GET /version` (baked into the
   reload), and on load when SMTP was already configured. "Test connection" stays throughout: it sends
   nothing, and "not configured" is a useful answer. The paragraph explaining all of this is gone — the
   control not being there says it better than a sentence under it did.
+
 - **The per-project SMTP panel gets the same treatment**, for the same reason, and withdraws the send
   again when a stored config is deleted.
-
-### Added
-
-- **Database integrity: a "Fix all issues" button.** Repairing a long report meant clicking through it
-  one issue at a time. The button applies every repair that needs no judgement call, then re-scans
-  once.
-  - **It picks ONE action per issue**, because an issue's actions are *alternatives*, not a list:
-    orphaned entries offer "Recreate the dataset", "Move to an existing dataset" and "Delete the
-    entries", and running all three would recreate, move and then delete the same rows.
-  - **It never deletes and never guesses.** "Move to an existing dataset" needs a target only the
-    operator can choose; "Delete the entries" would permanently remove content that "Recreate the
-    dataset" could have brought back; "Delete the stranded history" only reclaims space sooner than
-    the retention limit would. All three are skipped, **counted, and named in the confirmation**, so
-    the button never quietly does less than it says. The button is not offered at all when nothing
-    qualifies.
-  - One repair failing does not abort the rest — a later one is often the one that would have
-    worked — and the result line says how many were applied, how many failed and why, and how many
-    were left for the operator.
-
-### Security
-
-- **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on
-  `main`. Four override ranges had been outgrown the usual way: the pin was the fix when it was
-  written, then further advisories landed naming the pinned version itself as affected.
-  - **`nodemailer` 9 → 10** (manifest floor `^10.0.12`). The one that matters for a platform sending
-    as many different clients is **GHSA-6vj9-mwq6-2f5v**: a process-global DNS cache reused the TLS
-    `servername` *across transports*, i.e. cross-tenant SMTP credential disclosure. Also two
-    `addressparser` DoS bugs and a malformed envelope recipient. No 9-line backport exists, so the
-    floor is a major. `@types/nodemailer` is gone — v10 ships its own types.
-  - **`fastify` 5.12.3 → 5.12.5** (GHSA-4mh8-r7rc-xpvc, unhandled exception on HTTP/2 trailers), with
-    the manifest floor raised from `^5` so a clean resolve cannot land back on a vulnerable version.
-  - **`fast-uri`** now pinned on both major lines the tree carries (`^3.1.8` for ajv → fastify,
-    `^4.1.5` for `@fastify/*`) — host confusion via an unclosed bracket, authority injection via an
-    unvalidated port, host-case normalization, mailto header injection.
-  - **`ip-address` → `^10.7.1`**: `isLinkLocal()` matched `fe80::/64` instead of `fe80::/10`, no
-    classifier recognized the NAT64 `64:ff9b:1::/48` range, and `isInSubnet()` compared addresses
-    across families — all three are SSRF / trust-boundary bypasses, and this package backs the SSRF
-    guard, so they are reachable rather than theoretical.
-  - **`brace-expansion` → `^5.0.12`**: two stack-exhaustion DoS bugs and a quadratic expansion.
-
-### Removed
-
-- **`POST /projects/:projectId/imagemaps/from-template`** — the route that copied a bundled example
-  into a project (images into the media library, config rewritten to point at them, map stored).
-  Nothing has called it since 0.14.0, when opening an example became a read-only render; it was the
-  one remaining path that would write an example into a project. The editor's
-  `api.createImageMapFromTemplate` goes with it. Templates are still served for rendering by
-  `GET /authoring/imagemaps` and `GET /authoring/imagemaps/templates/<id>`.
-  - This is a **route removal**, i.e. a breaking change under `contract/README.md`; the pre-1.0 rule
-    applies and `contract/http-routes.json` is regenerated accordingly (exactly one line).
-
-### Fixed
 
 - **An MCP client could no longer log in after 30 days, and nothing could tell it why.** Connecting
   Claude Code (or a claude.ai / ChatGPT connector) to an instance registers the app once via dynamic
@@ -171,19 +158,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   4:3 flag carried its own `h-6` class — 32px wide inside the 24px box meant to hold it. Flags keep
   their proportions; the glyph box is now 24×24 for every shape.
 
-### Changed
-
-- **The SVG studio's snippet shelf is now "Animation Examples" — five finished animations you open
-  instead of four directive snippets you copy.** A snippet could only ever show one attribute on one
-  shape, which is the part of the model the docs already cover; what it could not show is the thing
-  people are actually trying to build — a mark or a scene where a dozen elements arrive on one
-  choreographed timeline. Each example now ships as a complete SVG (Orbit mark, Crest badge, Network
-  scene, Dashboard scene, Sunrise scene), and the affordance is **View**, which imports it into the
-  Studio where every element, effect and delay is inspectable, re-timeable and exportable. The markup
-  is still one click away in the Studio's own code view. Between 6 and 11 animated elements each,
-  covering draw / draw-then-fill / reverse draw / scale-c / zoom-in / expand / reveal / fade and
-  along-path, all cascading from one scene stagger, with click-to-replay and auto-loop.
-
 - **Clicking "New map" in the Image Map Studio no longer creates a map.** It wrote the empty map to
   the project the instant you clicked — so merely opening the studio and looking around left an
   untitled, image-less map behind *and* a **"Saved imagemap"** row in the project's History, which
@@ -192,15 +166,38 @@ The running version of an instance is reported at `GET /version` (baked into the
   and the toolbar offers an enabled **Save** rather than a greyed-out "Saved" on a map that has never
   been written. (Opening an *example* already wrote nothing — that was fixed in 0.14.0 — and is now
   pinned by a test that also asserts no content write, not just no template materialisation.)
+
 - **The Examples section no longer promises a write it doesn't make.** Its blurb still read "Opening
   one copies its images into this project's media library", directly contradicting the badge beside
   it ("Example — nothing is added to your project") and describing behaviour removed in 0.14.0. If
   you believed opening an example wrote to your project, this sentence is why.
+
 - **An image map in the History feed is now labelled.** The row read `Saved · imagemap ·
   map-ixlvc4fa`: the kind had no entry in the editor's label map so it rendered raw, and the revision
   label looks at `$.title`/`$.name`/`$.id` — but an image map carries its name at `$.general.name`,
   so it fell through to the id. It now reads `Saved · Image map · Ground floor`, and `imagemap` is
   selectable in the History tab's kind filter (the API already accepted it).
+
+### Security
+
+- **18 dependency advisories cleared** — the audit gate (floor: moderate, fail-closed) was red on
+  `main`. Four override ranges had been outgrown the usual way: the pin was the fix when it was
+  written, then further advisories landed naming the pinned version itself as affected.
+  - **`nodemailer` 9 → 10** (manifest floor `^10.0.12`). The one that matters for a platform sending
+    as many different clients is **GHSA-6vj9-mwq6-2f5v**: a process-global DNS cache reused the TLS
+    `servername` *across transports*, i.e. cross-tenant SMTP credential disclosure. Also two
+    `addressparser` DoS bugs and a malformed envelope recipient. No 9-line backport exists, so the
+    floor is a major. `@types/nodemailer` is gone — v10 ships its own types.
+  - **`fastify` 5.12.3 → 5.12.5** (GHSA-4mh8-r7rc-xpvc, unhandled exception on HTTP/2 trailers), with
+    the manifest floor raised from `^5` so a clean resolve cannot land back on a vulnerable version.
+  - **`fast-uri`** now pinned on both major lines the tree carries (`^3.1.8` for ajv → fastify,
+    `^4.1.5` for `@fastify/*`) — host confusion via an unclosed bracket, authority injection via an
+    unvalidated port, host-case normalization, mailto header injection.
+  - **`ip-address` → `^10.7.1`**: `isLinkLocal()` matched `fe80::/64` instead of `fe80::/10`, no
+    classifier recognized the NAT64 `64:ff9b:1::/48` range, and `isInSubnet()` compared addresses
+    across families — all three are SSRF / trust-boundary bypasses, and this package backs the SSRF
+    guard, so they are reachable rather than theoretical.
+  - **`brace-expansion` → `^5.0.12`**: two stack-exhaustion DoS bugs and a quadratic expansion.
 
 ## [0.56.0] — 2026-09-23
 
@@ -4211,7 +4208,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/sitewright-cms/sitewright/compare/v0.53.0...v0.54.0

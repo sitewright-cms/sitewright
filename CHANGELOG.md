@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.57.0] — 2026-10-02
+
 ### Added
 
 - **A social profile's icon can be picked from the library instead of typed.** Corporate Identity →
@@ -4206,7 +4208,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.57.0...HEAD
+[0.57.0]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...v0.55.0
 [0.54.0]: https://github.com/sitewright-cms/sitewright/compare/v0.53.0...v0.54.0

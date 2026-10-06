@@ -40,6 +40,8 @@ import {
   type ProjectSettings,
   type Snippet,
   type Template,
+  PaymentGatewayStoredSchema,
+  PaymentBindingStoredSchema,
 } from '@sitewright/schema';
 import { validateProject, withResolvedParent, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -146,6 +148,15 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Per-project "bring your own agent" AI config (encrypted API key). Singleton per project,
   // managed via dedicated /ai-config routes; excluded from export/import bundles (never export secrets).
   ['ai_config', AiConfigSchema],
+  // LEVEL 1 of the payments model: a payment GATEWAY definition. Instance-wide, stored under the
+  // reserved `__global__` scope, and admin-only — `resolveProject` 404s on that scope, so these are
+  // unreachable through any per-project route. A DEDICATED_KIND, so the generic content API cannot
+  // reach them either.
+  ['payment_gateway', PaymentGatewayStoredSchema],
+  // LEVEL 2: one project's credentials for a gateway (encrypted, per mode). Singleton per project,
+  // managed via dedicated routes; a DEDICATED_KIND and excluded from export/import bundles for the
+  // same reason as deploy_target and project_smtp — never export secrets.
+  ['project_payment', PaymentBindingStoredSchema],
 ]);
 
 /** The content kinds, derived from the schema map (single source of truth). */
@@ -1256,8 +1267,10 @@ export class ContentRepository {
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */
   private entityKey(kind: ContentKind, entityId: string, data: unknown): string {
     if (kind === 'settings') return SETTINGS_ENTITY_ID;
-    // project_smtp / project_captcha are per-project singletons with no `id` field (keyed by path).
-    if (kind === 'project_smtp' || kind === 'project_captcha') return entityId;
+    // project_smtp / project_captcha / project_payment are per-project singletons with no `id` field
+    // (keyed by path). `payment_gateway` is NOT one of these: it carries its own id, which must match
+    // the path exactly as every other keyed entity does.
+    if (kind === 'project_smtp' || kind === 'project_captcha' || kind === 'project_payment') return entityId;
     const id = (data as { id?: string }).id;
     if (id !== entityId) {
       throw new ConflictError(`${kind} id "${id ?? ''}" does not match path "${entityId}"`);

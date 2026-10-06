@@ -158,10 +158,24 @@ function toFormFields(channel: Extract<ShopChannel, { kind: 'checkout' }>): Form
   );
 }
 
-/** Joins a site base and a same-site path into an absolute URL. */
+/**
+ * Joins a site base and a same-site path into an absolute URL, and REFUSES to leave the site.
+ *
+ * ★★ The schema already rejects everything that could change the authority (`//`, a scheme, a
+ * backslash, control characters), so this is defence in depth — and it is the layer that does not
+ * depend on having enumerated every such trick correctly. The resolved URL is compared against the
+ * site's OWN origin, so any value that escapes falls back to the site root rather than sending a
+ * paying customer to someone else's page with their transaction token attached.
+ *
+ * Same posture as `originAllowed` in the executor: a URL is checked by PARSING it, never by
+ * inspecting the string it came from.
+ */
 function absolute(base: string, path: string | undefined, fallback: string): string {
-  const p = path ?? fallback;
-  return new URL(p, base.endsWith('/') ? base : `${base}/`).toString();
+  const root = base.endsWith('/') ? base : `${base}/`;
+  const resolved = new URL(path ?? fallback, root);
+  const expected = new URL(root);
+  if (resolved.origin !== expected.origin) return expected.toString();
+  return resolved.toString();
 }
 
 export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesDeps): void {
@@ -310,13 +324,27 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       }
 
       // ---- hold stock ------------------------------------------------------------------------
+      //
+      // ★★ A PREVIEW CHECKOUT NEVER TOUCHES THE STOCK LEDGER.
+      //
+      // The ledger is not mode-scoped — availability is a fact about real inventory, not about which
+      // credentials happen to be in use — so a dry run that reserved from it would hold real units
+      // for the full reservation TTL, and one that reached `paid` would increment real `sold`
+      // permanently. `sold` is never decremented, so an admin verifying a gateway, or an author
+      // testing their checkout page, would quietly make a SKU unavailable to actual buyers.
+      //
+      // Skipping the reserve rather than adding a `mode` column is the honest shape: there is no
+      // such thing as "preview inventory" to hold, and the dry run's purpose is to prove the request,
+      // redirect, webhook and notification path works — none of which needs a real hold.
       const held = priced.lines.map((l) => ({ sku: l.sku, qty: l.qty }));
-      const reserved = await stock.reserve(projectId, held);
-      if (!reserved.ok) {
-        if (reserved.reason === 'out-of-stock') {
-          return reply.code(409).send({ error: 'out_of_stock', sku: reserved.sku, available: reserved.available });
+      if (!previewMode) {
+        const reserved = await stock.reserve(projectId, held);
+        if (!reserved.ok) {
+          if (reserved.reason === 'out-of-stock') {
+            return reply.code(409).send({ error: 'out_of_stock', sku: reserved.sku, available: reserved.available });
+          }
+          return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
         }
-        return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
       }
 
       // ---- open the transaction, then ask the provider ---------------------------------------
@@ -334,10 +362,11 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
           buyer: bodyFields,
           catalogDigest: priced.catalogDigest,
           owesNotification: true,
+          ...(previewMode ? { preview: true } : {}),
           ...(customerEmail ? { customerEmail } : {}),
         });
       } catch (err) {
-        await stock.release(projectId, held).catch(() => undefined);
+        if (!previewMode) await stock.release(projectId, held).catch(() => undefined);
         throw err;
       }
 
@@ -375,7 +404,7 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       } catch (err) {
         // The provider never opened a session, so nothing can resolve this transaction. Give the
         // stock back and close the row rather than leaving a hold nobody will ever release.
-        await stock.release(projectId, held).catch(() => undefined);
+        if (!previewMode) await stock.release(projectId, held).catch(() => undefined);
         await transactions.advance(txn.id, 'failed').catch(() => undefined);
         const kind = err instanceof GatewayError ? err.kind : 'upstream';
         app.log.error({ projectId, channelKey, kind, errMsg: err instanceof Error ? err.message : 'unknown' }, 'could not create a checkout session');
@@ -465,14 +494,16 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
             ...(payerEmail ?? txn.customerEmail ? { customerEmail: payerEmail ?? txn.customerEmail! } : {}),
             ...(verdict.ref ? { providerPaymentRef: verdict.ref } : {}),
           });
-          if (advanced.outcome === 'advanced') {
+          // ★ A preview rehearsal reserved nothing, so committing would increment `sold` against
+          // stock it never held — permanently understating what a real buyer can order.
+          if (advanced.outcome === 'advanced' && !txn.preview) {
             await stock.commit(projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
           }
           return reply.send({ ok: true });
         }
 
         const advanced = await transactions.advance(txn.id, kind === 'refunded' ? 'refunded' : kind);
-        if (advanced.outcome === 'advanced' && (kind === 'failed' || kind === 'expired' || kind === 'cancelled')) {
+        if (advanced.outcome === 'advanced' && !txn.preview && (kind === 'failed' || kind === 'expired' || kind === 'cancelled')) {
           // Give the hold back — this order will never be paid.
           await stock.release(projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
         }

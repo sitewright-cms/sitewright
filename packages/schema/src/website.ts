@@ -319,7 +319,24 @@ const ShopReturnPathSchema = z
   .max(300)
   .refine((p) => p.startsWith('/'), 'must start with /')
   .refine((p) => !p.startsWith('//'), 'must not start with //')
+  // ★★ A BACKSLASH IS AN AUTHORITY, NOT A PATH CHARACTER. WHATWG URL parsing treats `\` as a path
+  // separator for special schemes, so `new URL('/\\evil.test/x', 'https://real.site/')` resolves to
+  // `https://evil.test/x` — a full origin takeover from a value that still LOOKS like a path.
+  //
+  // This matters because the resolved value becomes the provider's `return_url`, carrying the
+  // transaction's public token: after a buyer's real, verified payment they would land on an
+  // attacker's origin with a token that reads their submitted name, email and address back out of
+  // `GET /pay/:projectId/txn/:token`. A ready-made post-payment phishing page, settable by anyone
+  // holding ordinary `content:write` on the project.
+  //
+  // Rejected outright rather than escaped: a path containing a backslash is never something an
+  // author meant, so there is nothing to preserve.
+  .refine((p) => !p.includes('\\'), 'must not contain a backslash')
   .refine((p) => !/[\r\n\t]/.test(p), 'must not contain control characters')
+  // Control characters below 0x20 are stripped by URL parsing rather than rejected, so a path
+  // carrying one can also change what the resolved URL means.
+  // eslint-disable-next-line no-control-regex -- deliberately matching the C0 range
+  .refine((p) => !/[\u0000-\u001f\u007f]/.test(p), 'must not contain control characters')
   .refine((p) => !/^\/+\w+:/.test(p), 'must not contain a scheme');
 
 /**

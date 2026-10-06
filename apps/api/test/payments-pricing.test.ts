@@ -109,10 +109,21 @@ describe('amountMatches — the provider echo is cross-checked, never used', () 
     expect(amountMatches(expected, { amountMinor: 2498, currency: 'USD' })).toBe(false);
   });
 
-  it('compares a decimal echo as an amount, not as a string', () => {
+  it('★ compares a decimal echo as MINOR UNITS, not as a string', () => {
     expect(amountMatches(expected, { amountDecimal: '24.98' })).toBe(true);
     expect(amountMatches(expected, { amountDecimal: ' 24.98 ' })).toBe(true);
     expect(amountMatches(expected, { amountDecimal: '24.99' })).toBe(false);
+    // The bug this pins: a string compare made a provider that does not zero-pad look like an
+    // attack. `24.9` where the order is 24.90 is the SAME AMOUNT, and must not be a mismatch.
+    expect(amountMatches({ totalMinor: 2490, currency: 'EUR' }, { amountDecimal: '24.9' })).toBe(true);
+    expect(amountMatches({ totalMinor: 2490, currency: 'EUR' }, { amountDecimal: '24.900' })).toBe(true);
+    expect(amountMatches({ totalMinor: 500, currency: 'JPY' }, { amountDecimal: '500' })).toBe(true);
+  });
+
+  it('★ an UNREADABLE decimal echo is a mismatch — the platform cannot agree with a figure it cannot parse', () => {
+    expect(amountMatches(expected, { amountDecimal: 'twenty-four ninety-eight' })).toBe(false);
+    expect(amountMatches(expected, { amountDecimal: '' })).toBe(false);
+    expect(amountMatches(expected, { amountDecimal: '24.9801' })).toBe(false);
   });
 
   it('★ a provider that echoes NO amount is not a mismatch — most do not', () => {

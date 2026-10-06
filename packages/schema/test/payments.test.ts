@@ -12,7 +12,6 @@ import {
   toPublicGateway,
   maskBinding,
   validateCredentialValue,
-  isSafeFieldPattern,
   canTransitionPayment,
   FULFILMENT_TRANSITIONS,
   composeAmounts,
@@ -300,17 +299,24 @@ describe('toPublicGateway', () => {
   });
 });
 
-describe('isSafeFieldPattern', () => {
-  it('accepts a plain shape check', () => {
-    expect(isSafeFieldPattern('sk_(test|live)_[A-Za-z0-9]{10,64}')).toBe(true);
+describe('★★ there is no author-supplied regex to abuse', () => {
+  it('a credential field cannot carry a `pattern` at all', () => {
+    // The gate that used to guard one was unsound: `(a|aa)+` passed it and then took 24 SECONDS
+    // against a 45-character value, on the single event loop shared by every tenant. Deciding
+    // whether an arbitrary regex backtracks catastrophically is not something syntactic rules can
+    // do, so the feature is gone rather than narrowed — `modePrefix` covers what it was for.
+    const parsed = PaymentGatewayInputSchema.parse({
+      ...baseGateway,
+      credentialFields: [{ key: 'secretKey', label: 'Key', pattern: '(a|aa)+' }, { key: 'whsec', label: 'W' }],
+    });
+    expect(JSON.stringify(parsed)).not.toContain('pattern');
+    expect(JSON.stringify(parsed)).not.toContain('(a|aa)');
   });
-  it('★ refuses the constructs that make a stored regex a denial-of-service surface', () => {
-    expect(isSafeFieldPattern('(a+)+')).toBe(false); // nested quantifier
-    expect(isSafeFieldPattern('(a)\\1')).toBe(false); // backreference
-    expect(isSafeFieldPattern('(?=a)b')).toBe(false); // lookahead
-    expect(isSafeFieldPattern('(?<=a)b')).toBe(false); // lookbehind
-    expect(isSafeFieldPattern('a'.repeat(300))).toBe(false); // unbounded length
-    expect(isSafeFieldPattern('([')).toBe(false); // does not compile
+
+  it('a value is bounded by a literal length instead', () => {
+    const f: CredentialField = { key: 'k', label: 'K', kind: 'secret', required: true, perMode: false, maxLength: 8 };
+    expect(validateCredentialValue(f, 'test', '12345678')).toBeNull();
+    expect(validateCredentialValue(f, 'test', '123456789')).toContain('at most 8');
   });
 });
 
@@ -423,8 +429,11 @@ describe('validateCredentialValue', () => {
     expect(validateCredentialValue(fields[1]!, 'test', 'abc\r\nX: y')).toContain('line breaks');
   });
 
-  it('enforces a required field but allows an optional blank', () => {
-    expect(validateCredentialValue(fields[1]!, 'test', '')).toContain('required');
+  it('★ a BLANK is allowed even for a required field, because a blank CLEARS the stored value', () => {
+    // An operator must be able to revoke a leaked credential from the editor without deleting the
+    // whole binding. "Required" is a completeness fact — enforced by `maskBinding` and by
+    // `resolveCredentials`, which refuse a checkout — not a rule about what may be saved.
+    expect(validateCredentialValue(fields[1]!, 'test', '')).toBeNull();
     expect(validateCredentialValue(fields[2]!, 'test', '')).toBeNull();
   });
 
@@ -436,16 +445,7 @@ describe('validateCredentialValue', () => {
     expect(validateCredentialValue(flag, 'test', 'yes')).toContain('true or false');
   });
 
-  it('applies a declared pattern anchored at both ends', () => {
-    const f: CredentialField = { key: 'k', label: 'K', kind: 'secret', required: true, perMode: false, pattern: '[0-9]{4}' };
-    expect(validateCredentialValue(f, 'test', '1234')).toBeNull();
-    expect(validateCredentialValue(f, 'test', 'x1234y')).toContain('expected format');
-  });
 
-  it('ignores a pattern that failed the safety subset rather than compiling it', () => {
-    const f: CredentialField = { key: 'k', label: 'K', kind: 'secret', required: true, perMode: false, pattern: '(a+)+' };
-    expect(validateCredentialValue(f, 'test', 'whatever')).toBeNull();
-  });
 });
 
 // ---------------------------------------------------------------------------------------------

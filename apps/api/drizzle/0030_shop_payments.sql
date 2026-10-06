@@ -77,6 +77,7 @@ CREATE TABLE `shop_transactions` (
 	`channel_key` text NOT NULL,
 	`gateway_id` text NOT NULL,
 	`mode` text NOT NULL,
+	`preview` integer DEFAULT false NOT NULL,
 	`status` text DEFAULT 'created' NOT NULL,
 	`fulfilment` text DEFAULT 'new' NOT NULL,
 	`fulfilment_note` text,

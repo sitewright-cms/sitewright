@@ -857,6 +857,15 @@ export const shopTransactions = sqliteTable(
     gatewayId: text('gateway_id').notNull(),
     /** ★ Stamped at creation: a test transaction can never be confused for a live one afterwards. */
     mode: text('mode', { enum: ['test', 'live'] }).notNull(),
+    /**
+     * Whether this came from a DRAFT PREVIEW checkout rather than the published site.
+     *
+     * ★ Distinct from `mode`, and both are needed. A project legitimately running in `test` mode is
+     * still running its real shop, so its checkouts must hold and commit real stock; a PREVIEW is a
+     * rehearsal against the draft catalog and holds nothing. Without this flag the paid webhook would
+     * commit `sold` for a rehearsal that never reserved, permanently understating availability.
+     */
+    preview: integer('preview', { mode: 'boolean' }).notNull().default(false),
     status: text('status', {
       enum: ['created', 'pending', 'paid', 'failed', 'expired', 'refunded', 'partially_refunded', 'cancelled'],
     })

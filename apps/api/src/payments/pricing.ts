@@ -1,6 +1,7 @@
 import {
   composeAmounts,
   fromMinorUnits,
+  toMinorUnits,
   MAX_CHECKOUT_LINES,
   type CheckoutItem,
   type ShopPricing,
@@ -117,8 +118,14 @@ export function amountMatches(
   if (claimed.currency !== undefined && claimed.currency.toUpperCase() !== expected.currency.toUpperCase()) return false;
   if (claimed.amountMinor !== undefined) return claimed.amountMinor === expected.totalMinor;
   if (claimed.amountDecimal !== undefined) {
-    // Compared as minor units, not as strings: "19.9" and "19.90" are the same amount.
-    return claimed.amountDecimal.trim() === fromMinorUnits(expected.totalMinor, expected.currency).trim();
+    // ★ Parsed to MINOR UNITS and compared as integers, not compared as strings: a provider that
+    // sends "19.9" for 19.90, or "1999.00" where the currency has no decimals, is reporting the same
+    // amount and must not be read as a mismatch. A string compare fails CLOSED (the order is left
+    // unresolved rather than wrongly resolved), so this was not a hole — but it would have made every
+    // genuine webhook from a provider that does not zero-pad look like an attack.
+    const parsed = toMinorUnits(claimed.amountDecimal, expected.currency);
+    // Unparseable is a real mismatch: the platform cannot agree with a figure it cannot read.
+    return parsed.ok && parsed.minor === expected.totalMinor;
   }
   return true;
 }

@@ -236,11 +236,22 @@ import { buttonPreviewCss } from './button-preview.js';
 import { tailwindReferencePayload } from './tailwind-reference.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
+
+/**
+ * How long an unresolved payment waits before the platform asks the provider about it.
+ *
+ * Long enough that an ordinary buyer is still on the provider's page (so reconciliation does not
+ * race the webhook for every normal checkout), short enough that a merchant is not left unaware of a
+ * real payment for long.
+ */
+const PAYMENT_RECONCILE_AFTER_MS = 10 * 60 * 1000;
 import { GatewayRepository } from '../payments/gateways.js';
 import { ShopTransactionRepository } from '../repo/shop-transactions.js';
 import { ShopStockRepository } from '../repo/shop-stock.js';
 import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { reconcileStock } from '../publish/shop-catalog.js';
+import { fetchProviderStatus } from '../payments/executor.js';
+import { fromMinorUnits } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -724,7 +735,21 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'project_captcha', 'ai_config']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set([
+  'media',
+  'mediafolder',
+  'deploy_target',
+  'project_smtp',
+  'project_captcha',
+  'ai_config',
+  // ★ Payments. `project_payment` holds a project's ENCRYPTED gateway credentials, and
+  // `payment_gateway` is instance-wide admin-only infrastructure — neither may be reachable through
+  // the generic, member-accessible content API. Without this, a project member could read a
+  // credential envelope or write one, and `content:write` would silently become "configure
+  // payments".
+  'payment_gateway',
+  'project_payment',
+]);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -9012,7 +9037,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           .where(and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode)));
         return row ? { currency: row.currency, items: row.items, digest: row.digest } : null;
       },
-      systemContext: (projectId: string) => ({ userId: 'system', projectId, role: 'owner' }),
+      // ★ The reserved GLOBAL scope is refused here too, mirroring `resolveProject`.
+      //
+      // These three routes are UNAUTHENTICATED and run as `owner`, so without this the isolation of
+      // `__global__` would rest on "nothing sensitive is ever stored under it" rather than on a
+      // check. That is precisely the fragile invariant `resolveProject`'s own 404 exists to avoid
+      // relying on, and a later feature storing anything project-shaped there would silently open it.
+      systemContext: (projectId: string) => {
+        if (projectId === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
+        return { userId: 'system', projectId, role: 'owner' };
+      },
       publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
       siteBaseUrl: async (projectId: string) => {
         const project = await projects.get(projectId).catch(() => null);
@@ -10055,7 +10089,93 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // between them (permanent project deletion), so anything ever published, previewed or imported
     // grew forever — 1.35 GB on a real instance, almost none of it reachable.
     void reapDerivedStorage().catch((err) => app.log.warn(err, 'derived-storage reap failed'));
+    // ★★ THE PAYMENTS SAFETY NET. Every one of these exists because the module's other invariants
+    // assume it runs — they were written, tested, and then not connected to anything, which is worse
+    // than not having them: the code reads as though an abandoned checkout self-heals.
+    //
+    // Chained, in this order, on purpose: expiring a stale transaction is what releases the stock it
+    // was holding, so the reservation sweep must see those releases or it would zero reservations a
+    // moment before the transaction reaper could account for them.
+    void runPaymentSweeps().catch((err) => app.log.warn(err, 'payments maintenance sweep failed'));
   };
+
+  /**
+   * Housekeeping that keeps the payment invariants true.
+   *
+   * - **Reconciliation** is the safeguard that makes "the webhook is the only truth" survivable: a
+   *   webhook lost to a firewall, an outage or a misconfigured endpoint would otherwise leave a
+   *   genuinely PAID order permanently invisible to the merchant.
+   * - **Expiry** moves an abandoned session (a buyer who simply closed the tab — the most common
+   *   outcome of any checkout page) to `expired` and gives its stock back.
+   * - **The reservation sweep** is the backstop for a hold whose release never happened because the
+   *   process died mid-checkout. Zeroing can only ever FREE stock, so the failure mode is a brief
+   *   oversell window rather than inventory nobody can ever sell.
+   * - **Event reaping** bounds `shop_payment_events`; an expired event cannot be replayed anyway,
+   *   because the transaction's own state machine refuses the transition.
+   */
+  async function runPaymentSweeps(): Promise<void> {
+    if (!gatewayRepo) return; // no encryption key ⇒ no payment surface ⇒ nothing to sweep
+    const now = new Date();
+    const expired = await shopTransactionsRepo.expireStale(now);
+    // A preview rehearsal held nothing, so there is nothing to give back for one.
+    for (const txn of expired.filter((t) => !t.preview)) {
+      await shopStockRepo
+        .release(
+          txn.projectId,
+          txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })),
+        )
+        .catch((err: unknown) => app.log.warn({ err, txnId: txn.id }, 'could not release stock for an expired checkout'));
+    }
+    await shopStockRepo.sweepExpiredReservations(now);
+    // Keep spent event ids for a week: long enough to cover any provider's retry schedule, short
+    // enough that the table stays small.
+    await shopTransactionsRepo.reapEvents(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+    await reconcileDuePayments(now);
+  }
+
+  /**
+   * Asks the provider about transactions whose webhook never arrived.
+   *
+   * Bounded per pass, and each one is independent: a single gateway being down must not stop the
+   * others from being reconciled.
+   */
+  async function reconcileDuePayments(now: Date): Promise<void> {
+    if (!gatewayRepo) return;
+    const due = await shopTransactionsRepo.dueForReconciliation(now, PAYMENT_RECONCILE_AFTER_MS, 25);
+    for (const txn of due) {
+      try {
+        const resolved = await gatewayRepo.resolveCredentials({ userId: 'system', projectId: txn.projectId, role: 'owner' });
+        if (!resolved.ok || resolved.gateway.id !== txn.gatewayId || !resolved.gateway.status) continue;
+        const status = await fetchProviderStatus(resolved.gateway, txn.mode, {
+          cred: resolved.cred,
+          amount: { minor: txn.amounts.totalMinor, decimal: fromMinorUnits(txn.amounts.totalMinor, txn.currency), currency: txn.currency },
+          txn: { id: txn.id, publicToken: txn.publicToken, reference: txn.providerRef ?? txn.id },
+          url: { return: '', cancel: '', webhook: '' },
+          field: {},
+          text: {},
+        }, { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now() });
+        // `recheck` means the provider still has no answer — leave it for the next pass.
+        if (status.kind === 'recheck') continue;
+        if (status.kind === 'paid') {
+          const advanced = await shopTransactionsRepo.advance(txn.id, 'paid', {
+            owesNotification: true,
+            ...(txn.customerEmail ? { customerEmail: txn.customerEmail } : {}),
+          });
+          if (advanced.outcome === 'advanced' && !txn.preview) {
+            await shopStockRepo.commit(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+            app.log.warn({ projectId: txn.projectId, txnId: txn.id }, 'a paid order was recovered by reconciliation — its webhook never arrived');
+          }
+          continue;
+        }
+        const advanced = await shopTransactionsRepo.advance(txn.id, status.kind === 'refunded' ? 'refunded' : status.kind);
+        if (advanced.outcome === 'advanced' && !txn.preview) {
+          await shopStockRepo.release(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+        }
+      } catch (err) {
+        app.log.warn({ txnId: txn.id, errMsg: err instanceof Error ? err.message : String(err) }, 'could not reconcile a payment');
+      }
+    }
+  }
 
   if (sweepMs > 0) {
     // Well inside the shortest interval any caller sets, so the two never overlap on the first pass.

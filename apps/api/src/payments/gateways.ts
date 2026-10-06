@@ -54,7 +54,11 @@ export class GatewayRepository {
    * them on the next upgrade.
    */
   async list(): Promise<GatewayRecord[]> {
-    const rows = (await this.contentRepo.list(this.globalCtx(), 'payment_gateway').catch(() => [])) as unknown[];
+    // ★ NOT `.catch(() => [])`. An empty list and a BROKEN READ are different facts, and collapsing
+    // them is how a misregistered content kind presented as "no gateways configured" instead of as an
+    // error — the write path was throwing and the read path was hiding it. A genuine failure
+    // propagates; only the ordinary "nothing stored yet" case yields an empty list.
+    const rows = (await this.contentRepo.list(this.globalCtx(), 'payment_gateway')) as unknown[];
     const stored = new Map<string, PaymentGatewayStored>();
     for (const row of rows) {
       // Validated on READ, permissively (see PaymentGatewayStoredSchema): a row that no longer parses
@@ -121,7 +125,7 @@ export class GatewayRepository {
 
   /** The project's stored binding, or null. Validated permissively on read. */
   async binding(ctx: ProjectContext): Promise<PaymentBindingStored | null> {
-    const [row] = (await this.contentRepo.list(ctx, 'project_payment').catch(() => [])) as unknown[];
+    const [row] = (await this.contentRepo.list(ctx, 'project_payment')) as unknown[];
     if (!row) return null;
     const parsed = PaymentBindingStoredSchema.safeParse(row);
     return parsed.success ? parsed.data : null;

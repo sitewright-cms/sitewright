@@ -4,7 +4,7 @@ import { makeTestDb } from './helpers.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { SubmissionRepository } from '../src/repo/submissions.js';
-import { agentGrants } from '../src/db/schema.js';
+import { agentGrants, shopCatalog, shopStock, shopTransactions, shopFiltered } from '../src/db/schema.js';
 
 // REAP = the permanent delete behind the admin "deleted projects" purge. There is no ON DELETE CASCADE
 // in this schema, so `ProjectRepository.remove()` must clear every table holding an FK to `projects`
@@ -43,6 +43,10 @@ describe('project reap', () => {
     'oauth_refresh_tokens',
     'project_members',
     'project_releases',
+    'shop_catalog',
+    'shop_filtered',
+    'shop_stock',
+    'shop_transactions',
   ].sort();
 
   it('remove() clears EVERY table that carries an FK to projects', async () => {
@@ -51,6 +55,41 @@ describe('project reap', () => {
     // If this fails, a new table references `projects` — add a `tx.delete(...)` for it in
     // ProjectRepository.remove() and list it here. Do not just update the list.
     expect(referencing).toEqual(REAPED_TABLES);
+  });
+
+  it('reaps a project that has taken PAYMENTS (four more tables of the same trap)', async () => {
+    // shop_catalog / shop_stock / shop_transactions / shop_filtered all carry an FK to projects. The
+    // drift guard above named them the moment they were added; this proves the deletes actually work,
+    // because a missed one makes the project permanently un-purgeable rather than merely untidy.
+    const db = await makeTestDb();
+    const projects = new ProjectRepository(db);
+    const project = await projects.create({ name: 'Shop', slug: 'shop-reap' });
+    const now = new Date();
+    await db.insert(shopCatalog).values({ projectId: project.id, mode: 'live', currency: 'EUR', items: {}, digest: 'd', publishedAt: now });
+    await db.insert(shopStock).values({ projectId: project.id, sku: 'mug', onStock: 1, sold: 0, reserved: 0, authoredAtPublish: 1, updatedAt: now });
+    await db.insert(shopTransactions).values({
+      id: 'txn_reap',
+      projectId: project.id,
+      channelKey: 'pay',
+      gatewayId: 'mock',
+      mode: 'test',
+      currency: 'EUR',
+      subtotalMinor: 100,
+      totalMinor: 100,
+      lines: [],
+      buyer: {},
+      catalogDigest: 'd',
+      publicToken: 'tok_reap_aaaaaaaaaaaaaaaa',
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(shopFiltered).values({ projectId: project.id, channelKey: 'pay', reason: 'honeypot', count: 1, lastAt: now });
+
+    await expect(projects.remove(project.id)).resolves.toBeUndefined();
+    expect(await db.select().from(shopCatalog)).toHaveLength(0);
+    expect(await db.select().from(shopStock)).toHaveLength(0);
+    expect(await db.select().from(shopTransactions)).toHaveLength(0);
+    expect(await db.select().from(shopFiltered)).toHaveLength(0);
   });
 
   it('reaps a project whose forms have FILTERED counts (the same trap, caught by the guard above)', async () => {

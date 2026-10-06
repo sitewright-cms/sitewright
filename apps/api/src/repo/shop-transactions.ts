@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import {
   canTransitionPayment,
   FULFILMENT_TRANSITIONS,
+  TRANSACTION_STATUSES,
   type FulfilmentState,
   type PaymentMode,
   type TransactionLine,
@@ -47,6 +48,8 @@ export interface CreateTransactionInput {
   catalogDigest: string;
   /** Whether the shop owes somebody an email once this is paid. */
   owesNotification: boolean;
+  /** True for a DRAFT PREVIEW checkout: it holds no stock, so it must not commit any. */
+  preview?: boolean;
   customerEmail?: string;
 }
 
@@ -56,6 +59,8 @@ export interface TransactionRow {
   channelKey: string;
   gatewayId: string;
   mode: PaymentMode;
+  /** A draft-preview rehearsal rather than a real order — see the column's note. */
+  preview: boolean;
   status: TransactionStatus;
   fulfilment: FulfilmentState;
   currency: string;
@@ -80,6 +85,7 @@ function toRow(r: any): TransactionRow {
     channelKey: r.channelKey,
     gatewayId: r.gatewayId,
     mode: r.mode,
+    preview: r.preview === true,
     status: r.status,
     fulfilment: r.fulfilment,
     currency: r.currency,
@@ -120,6 +126,7 @@ export class ShopTransactionRepository {
       channelKey: input.channelKey,
       gatewayId: input.gatewayId,
       mode: input.mode,
+      ...(input.preview ? { preview: true } : {}),
       status: 'created',
       fulfilment: 'new',
       currency: input.currency,
@@ -192,9 +199,9 @@ export class ShopTransactionRepository {
     to: TransactionStatus,
     opts: { paidAt?: Date; providerPaymentRef?: string; refundedMinor?: number; owesNotification?: boolean; customerEmail?: string } = {},
   ): Promise<AdvanceResult> {
-    const legalFrom = (['created', 'pending', 'paid', 'failed', 'expired', 'refunded', 'partially_refunded', 'cancelled'] as const).filter(
-      (from) => canTransitionPayment(from, to),
-    );
+    // Derived from the canonical list rather than re-typed: a status added to TRANSACTION_STATUSES
+    // without updating a hand-written copy here would silently never be a legal `from` state.
+    const legalFrom = TRANSACTION_STATUSES.filter((from) => canTransitionPayment(from, to));
     if (legalFrom.length === 0) {
       const existing = await this.anyById(id);
       return existing ? { outcome: 'stale', row: existing } : { outcome: 'not-found' };

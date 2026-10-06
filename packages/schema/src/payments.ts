@@ -170,8 +170,12 @@ export const CredentialFieldSchema = z.object({
   perMode: z.boolean().default(true),
   hint: z.string().max(400).optional(),
   docsUrl: z.string().url().max(500).optional(),
-  /** Validation applied when the PROJECT saves a value. Anchored and length-bounded by the refine below. */
-  pattern: z.string().max(200).optional(),
+  /**
+   * Maximum length of a value for this field. Shape checking beyond a prefix and a length belongs to
+   * the PROVIDER, which rejects a malformed key on the dry run — see the note below on why there is
+   * no author-supplied regex here.
+   */
+  maxLength: z.number().int().min(1).max(4000).optional(),
   /** Required leading literal, per mode — e.g. `{live:'sk_live_', test:'sk_test_'}`. */
   modePrefix: z.partialRecord(PaymentModeSchema, z.string().max(40)).optional(),
   /** Allowed values for `kind: 'choice'`. */
@@ -406,16 +410,11 @@ export const PaymentGatewayInputSchema = PaymentGatewayStoredSchema.omit({
       ),
     allowedOrigins: z.array(GatewayOriginSchema).min(1).max(16),
   })
-  // A `pattern` an author typed is compiled and run against project input, so reject one that cannot
-  // compile at SAVE time rather than discovering it when a project tries to store a key.
   .superRefine((gw, ctx) => {
     const keys = new Set<string>();
     for (const f of gw.credentialFields) {
       if (keys.has(f.key)) ctx.addIssue({ code: 'custom', message: `duplicate credential field "${f.key}"`, path: ['credentialFields'] });
       keys.add(f.key);
-      if (f.pattern !== undefined && !isSafeFieldPattern(f.pattern)) {
-        ctx.addIssue({ code: 'custom', message: `credential field "${f.key}" has an invalid pattern`, path: ['credentialFields'] });
-      }
       if (f.kind === 'choice' && (f.options ?? []).length === 0) {
         ctx.addIssue({ code: 'custom', message: `credential field "${f.key}" is a choice with no options`, path: ['credentialFields'] });
       }
@@ -448,28 +447,29 @@ export const PaymentGatewayInputSchema = PaymentGatewayStoredSchema.omit({
 export type PaymentGatewayInput = z.infer<typeof PaymentGatewayInputSchema>;
 
 /**
- * Whether a credential `pattern` is safe to compile and run against project input.
+ * ★★ WHY THERE IS NO AUTHOR-SUPPLIED REGEX HERE.
  *
- * An author-supplied regex is run server-side on a save, so it is a denial-of-service surface
- * (catastrophic backtracking). Rather than attempt to detect that in general — which is not
- * decidable in any practical sense — the pattern is restricted to a conservative subset: no nested
- * quantifiers, no backreferences, no lookaround, bounded length. Anything richer is a sign the check
- * belongs in the gateway's own validation, not in a stored regex.
+ * `CredentialField` briefly carried a `pattern` an admin could write, gated by a "safe subset" check
+ * that rejected nested quantifiers like `(a+)+`. That gate was unsound, and demonstrably so: a
+ * pattern as ordinary-looking as `(a|aa)+` passed it and then took **24 seconds** against a
+ * 45-character value. The call site ran it on inputs up to 4000 characters, on the single Node event
+ * loop shared by every tenant on the instance — so an admin following the platform's own assurance
+ * ("the safety check accepted my pattern") could freeze the whole box.
+ *
+ * The lesson is not that the subset needed one more rule. Whether an arbitrary regex backtracks
+ * catastrophically is not something a handful of syntactic rules can decide, so a check of that
+ * shape is always one cleverly-built pattern away from being wrong — and here it was guarding
+ * something the feature barely needed.
+ *
+ * What this field actually has to express is "this is the test key, not the live one", and
+ * {@link CredentialField.modePrefix} does that with a literal `startsWith`. Everything beyond it —
+ * is this a well-formed Stripe key? — is a question only the PROVIDER can really answer, and it
+ * already does: a gateway cannot take live money until a test-mode checkout has succeeded against
+ * it, which beats any regex because it exercises the actual credential.
+ *
+ * So the class is gone rather than narrowed. A future gateway needing richer validation should get a
+ * BOUNDED execution (a worker with a timeout, or RE2) — never a bare `new RegExp` on author input.
  */
-export function isSafeFieldPattern(pattern: string): boolean {
-  if (pattern.length > 200) return false;
-  if (/\\\d/.test(pattern)) return false; // backreference
-  if (/\(\?[=!<]/.test(pattern)) return false; // lookaround
-  // A quantified group that itself contains a quantifier — the classic (a+)+ blow-up.
-  if (/\([^)]*[*+{][^)]*\)\s*[*+{]/.test(pattern)) return false;
-  try {
-    // eslint-disable-next-line security/detect-non-literal-regexp -- the subset above is the gate; this only proves it compiles
-    new RegExp(pattern);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /** Public view of a gateway — what a PROJECT may read. Never the request templates, never origins. */
 export interface PaymentGatewayPublic {
@@ -612,7 +612,12 @@ export function validateCredentialValue(
 ): string | null {
   if (field.kind === 'bool') return typeof value === 'boolean' ? null : `${field.label} must be true or false`;
   if (typeof value !== 'string') return `${field.label} must be text`;
-  if (value === '') return field.required ? `${field.label} is required` : null;
+  // ★ A BLANK IS ALWAYS ALLOWED, even for a required field, because a blank CLEARS the stored value
+  // and an operator must be able to remove a leaked credential without deleting the whole binding.
+  // "Required" is a statement about COMPLETENESS, not about what may be saved — it is enforced by
+  // `maskBinding` (`missing` / `complete`) and by `resolveCredentials`, which refuse a checkout. A
+  // save that refused the blank would leave no way to revoke a key from the editor at all.
+  if (value === '') return null;
   if (/[\r\n]/.test(value)) return `${field.label} must not contain line breaks`;
   if (field.kind === 'choice') {
     return (field.options ?? []).includes(value) ? null : `${field.label} must be one of: ${(field.options ?? []).join(', ')}`;
@@ -623,10 +628,9 @@ export function validateCredentialValue(
     // is the single most common way to configure a gateway wrongly.
     return `${field.label} for ${mode} mode must start with "${prefix}"`;
   }
-  if (field.pattern && isSafeFieldPattern(field.pattern)) {
-    // eslint-disable-next-line security/detect-non-literal-regexp -- gated by isSafeFieldPattern (bounded, no backrefs/lookaround/nested quantifiers)
-    if (!new RegExp(`^(?:${field.pattern})$`).test(value)) return `${field.label} is not in the expected format`;
-  }
+  // A literal length bound — no regex. See the note above on why.
+  const max = field.maxLength ?? 4000;
+  if (value.length > max) return `${field.label} must be at most ${max} characters`;
   return null;
 }
 

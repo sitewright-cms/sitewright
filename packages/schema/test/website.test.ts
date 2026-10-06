@@ -295,7 +295,23 @@ describe('WebsiteSettingsSchema', () => {
       it('★ returnPath is a same-site PATH, never a URL an attacker could aim a buyer at', () => {
         const ok = WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, returnPath: '/thank-you/' }] } });
         expect(ok.success).toBe(true);
-        for (const returnPath of ['https://evil.test/', '//evil.test/', 'thank-you/', '/x\r\ny', '/\tx']) {
+        for (const returnPath of [
+          'https://evil.test/',
+          '//evil.test/',
+          'thank-you/',
+          '/x\r\ny',
+          '/\tx',
+          // ★★ THE BACKSLASH. WHATWG URL parsing treats `\` as a path separator for special schemes,
+          // so `new URL('/\\evil.test/x', 'https://real.site/')` resolves to `https://evil.test/x` —
+          // a full origin takeover from a value that still looks like a path. The resolved value
+          // becomes the provider's return_url carrying the transaction token, so after a real,
+          // verified payment the buyer would land on an attacker's page that can read their
+          // submitted name, email and address back out of the public status endpoint.
+          '/\\evil.test/steal',
+          '/\\\\evil.test/steal',
+          '/ok/\\evil.test',
+          '/\u0000evil',
+        ]) {
           const r = WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, returnPath }] } });
           expect(r.success, returnPath).toBe(false);
         }

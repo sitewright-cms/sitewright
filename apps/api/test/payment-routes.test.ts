@@ -276,6 +276,86 @@ describe('★ stock', () => {
   });
 });
 
+describe('★★ a PREVIEW checkout never touches the real stock ledger', () => {
+  /** The draft snapshot a preview prices against. */
+  async function seedDraftCatalog() {
+    await h.db.insert(shopCatalog).values({
+      projectId,
+      mode: 'draft',
+      currency: 'EUR',
+      items: { tee: { sku: 'tee', name: 'Tee', priceMinor: 2450, stock: 2 } },
+      digest: 'cat_draft',
+      publishedAt: new Date(),
+    });
+  }
+
+  const previewCheckout = (payload: unknown) =>
+    h.app.inject({ method: 'POST', url: `/pay/${projectId}/pay?preview=1`, payload: payload as never });
+
+  it('reserves NOTHING, so an author testing checkout cannot make a SKU unavailable', async () => {
+    await seedDraftCatalog();
+    scripted.responses.push({ body: { id: 'sess_p', url: 'https://mock-pay.invalid/s/p' } });
+    const res = await previewCheckout(body({ items: [{ sku: 'tee', qty: 2 }] }));
+    expect(res.statusCode).toBe(200);
+    const [row] = await h.db.select().from(shopStock).where(and(eq(shopStock.projectId, projectId), eq(shopStock.sku, 'tee')));
+    // `sold` is never decremented, so a rehearsal that held real units would understate availability
+    // for every subsequent real buyer — permanently.
+    expect(row).toMatchObject({ reserved: 0, sold: 0, onStock: 2 });
+  });
+
+  it('is not refused by stock it does not consume', async () => {
+    await seedDraftCatalog();
+    await h.db.update(shopStock).set({ onStock: 0 }).where(eq(shopStock.sku, 'tee'));
+    scripted.responses.push({ body: { id: 'sess_p', url: 'https://mock-pay.invalid/s/p' } });
+    // A sold-out shop must still be rehearsable.
+    expect((await previewCheckout(body({ items: [{ sku: 'tee', qty: 1 }] }))).statusCode).toBe(200);
+  });
+
+  it('★ a PAID preview webhook does not commit stock', async () => {
+    await seedDraftCatalog();
+    scripted.responses.push({ body: { id: 'sess_p', url: 'https://mock-pay.invalid/s/p' } });
+    const out = (await previewCheckout(body({ items: [{ sku: 'tee', qty: 2 }] }))).json();
+    const raw = JSON.stringify({ event_id: 'evt_p', session_id: 'sess_p', type: 'session.paid', amount: out.amounts.totalMinor, currency: 'EUR' });
+    expect((await webhook(raw)).statusCode).toBe(200);
+    const [row] = await h.db.select().from(shopStock).where(eq(shopStock.sku, 'tee'));
+    // Committing here would increment `sold` against stock the rehearsal never reserved.
+    expect(row).toMatchObject({ sold: 0, reserved: 0 });
+    // The transaction itself DID resolve — the point of a dry run is to prove this path works.
+    const [txn] = await h.db.select().from(shopTransactions);
+    expect(txn).toMatchObject({ status: 'paid', preview: true });
+  });
+
+  it('is marked `preview` and prices against the DRAFT snapshot', async () => {
+    await seedDraftCatalog();
+    scripted.responses.push({ body: { id: 'sess_p', url: 'https://mock-pay.invalid/s/p' } });
+    await previewCheckout(body({ items: [{ sku: 'tee', qty: 1 }] }));
+    const [txn] = await h.db.select().from(shopTransactions);
+    expect(txn).toMatchObject({ preview: true, mode: 'test', catalogDigest: 'cat_draft' });
+  });
+
+  it('★ a preview requires TEST mode — it can never transact against the live account', async () => {
+    await seedDraftCatalog();
+    await h.db
+      .update(content)
+      .set({ data: { gatewayId: 'mock', mode: 'live', values: { live: { apiKey: encryptSecret('sk_live_x', KEY), webhookSecret: encryptSecret(WHSEC, KEY) } } } })
+      .where(and(eq(content.projectId, projectId), eq(content.kind, 'project_payment')));
+    const res = await previewCheckout(body({ items: [{ sku: 'tee', qty: 1 }] }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ error: 'a preview checkout requires test mode' });
+  });
+
+  it('a REAL test-mode checkout still holds and commits stock — `mode` is not `preview`', async () => {
+    // The distinction both flags exist for: a project legitimately running in test mode is still
+    // running its real shop.
+    scripted.responses.push({ body: { id: 'sess_r', url: 'https://mock-pay.invalid/s/r' } });
+    const out = (await checkout(body({ items: [{ sku: 'tee', qty: 2 }] }))).json();
+    expect((await h.db.select().from(shopStock).where(eq(shopStock.sku, 'tee')))[0]).toMatchObject({ reserved: 2 });
+    const raw = JSON.stringify({ event_id: 'evt_r', session_id: 'sess_r', type: 'session.paid', amount: out.amounts.totalMinor, currency: 'EUR' });
+    await webhook(raw);
+    expect((await h.db.select().from(shopStock).where(eq(shopStock.sku, 'tee')))[0]).toMatchObject({ sold: 2, reserved: 0 });
+  });
+});
+
 describe('POST /pay/:projectId/webhook/:gatewayId', () => {
   /** Runs a successful checkout and returns its session ref + token. */
   async function openSession(sku = 'mug', qty = 1) {

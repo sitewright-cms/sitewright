@@ -100,6 +100,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   with the project resolved through the ordinary session membership check. Unreleased in 0.57.0, so
   the old path never shipped.
 
+- **Five dependency advisories cleared** — 2 critical, 2 high, 1 moderate, all fixed rather than
+  accepted. `proxy-addr` (IP spoofing via IPv4-mapped IPv6, reachable because the platform makes
+  trust decisions from client IPs), `shell-quote` (`quote()` command injection — the previous pin had
+  been outgrown and our own tree had floated into the new affected range), `@fastify/busboy` (CRLF
+  injection via a multipart filename, and every upload goes through it), `sharp` (a librsvg CVE), and
+  `source-map-js` (toolchain only, pinned anyway).
+
 - **`payments:provider:write` now requires the key's owner to be an instance admin.** The capability
   alone passed the gate, while an API key is bound to one project and may be minted by that project's
   owner at any role — and the OAuth consent screen pre-checks every capability for a client that

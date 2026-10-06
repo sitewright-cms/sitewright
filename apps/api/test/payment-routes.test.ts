@@ -653,3 +653,40 @@ describe('CORS', () => {
     expect(res.headers['access-control-allow-origin']).toBe('*');
   });
 });
+
+describe('★★ the raw-body parser must apply to the webhook route', () => {
+  /** Runs a successful checkout so there is a transaction for the event to resolve. */
+  async function openSession() {
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    const res = await checkout(body());
+    expect(res.statusCode).toBe(200);
+    return res.json().amounts;
+  }
+
+  // ★★ Compact, key-order-stable JSON round-trips through JSON.parse/stringify byte-identically, so
+  // every webhook test above would pass even WITHOUT the raw-body parser. A real provider does not
+  // send compact JSON. This sends the bytes a provider actually sends — pretty-printed, with a
+  // trailing newline — signed over those exact bytes, which is what every provider signs.
+  it('accepts PRETTY-PRINTED bytes signed as sent (what a real provider posts)', async () => {
+    const amounts = await openSession();
+    const raw = `${JSON.stringify(
+      { event_id: 'e_pretty', session_id: 'sess_1', type: 'session.paid', amount: amounts.totalMinor, currency: 'EUR' },
+      null,
+      2,
+    )}\n`;
+    const res = await webhook(raw);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true });
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(txn?.status).toBe('paid');
+  });
+
+  it('accepts bytes whose key order differs from any re-serialization', async () => {
+    const amounts = await openSession();
+    const raw = `{"currency":"EUR","amount":${amounts.totalMinor},"type":"session.paid","session_id":"sess_1","event_id":"e_order"}`;
+    const res = await webhook(raw);
+    expect(res.statusCode).toBe(200);
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(txn?.status).toBe('paid');
+  });
+});

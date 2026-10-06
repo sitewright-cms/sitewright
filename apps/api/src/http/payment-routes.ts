@@ -428,7 +428,14 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
   void app.register(async (scope) => {
     scope.removeContentTypeParser(JSON_MIME);
     scope.addContentTypeParser(JSON_MIME, { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
-    app.post<{ Params: { projectId: string; gatewayId: string } }>(
+    // ★★ On `scope`, NOT `app`. A parser registered on an encapsulated scope applies only to routes
+    // registered on THAT scope — hanging the route off the outer `app` silently left it on the global
+    // JSON parser, so `req.body` arrived as an object and the handler fell back to re-serializing it.
+    // Compact provider JSON round-trips byte-identically, which is why every webhook test still
+    // passed; pretty-printed JSON (what providers actually send) did not, and was rejected as a bad
+    // signature. The webhook is the sole source of truth for payment, so this failed closed on every
+    // real payment while looking exactly like a misconfigured secret.
+    scope.post<{ Params: { projectId: string; gatewayId: string } }>(
       '/pay/:projectId/webhook/:gatewayId',
       { config: rl(120), bodyLimit: MAX_WEBHOOK_BYTES },
       async (req, reply) => {

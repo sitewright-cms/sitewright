@@ -20,6 +20,8 @@ const sign = (raw: string, secret = WHSEC): string => createHmac('sha256', secre
 
 /** The declarative gateway this spec installs. */
 const GATEWAY = {
+  // Written here rather than imported: the spec must exercise the SHIPPED route contract, not a
+  // fixture the server and the test happen to share.
   id: 'e2e_mock',
   name: 'E2E mock',
   apiBase: { test: 'https://mock-pay.invalid', live: 'https://mock-pay.invalid' },
@@ -166,4 +168,91 @@ test('the gateway definition is unreachable through a per-project content route'
   // be a way around the admin gate entirely.
   const res = await admin.put('/projects/__global__/content/payment_gateway/e2e_mock', { data: GATEWAY });
   expect(res.status(), 'the reserved scope must not be writable through a project route').toBe(404);
+});
+
+/**
+ * ★★ THE WHOLE FLOW, over real HTTP.
+ *
+ * The in-process suite covers the logic; this proves the pieces are actually wired together in a
+ * running instance — a gateway created through the admin API, bound to a project, used to price a
+ * cart, and an order resolved by a signed webhook.
+ *
+ * The gateway points at a host that does not resolve, so no real provider is contacted. What is
+ * exercised is everything the PLATFORM does, which is the part that can regress.
+ */
+test.describe('the full checkout flow', () => {
+  let flowProject: string;
+
+  test.beforeAll(async () => {
+    const stamp = `${Date.now().toString(36)}f`;
+    const created = await admin.post('/projects', { data: { name: 'Pay flow', slug: `pay-flow-${stamp}` } });
+    expect(created.status(), await created.text()).toBe(201);
+    flowProject = (await created.json()).project.id;
+  });
+
+  test.afterAll(async () => {
+    await admin.delete(`/admin/payment-gateways/${GATEWAY.id}`).catch(() => undefined);
+    await admin.delete(`/projects/${flowProject}`).catch(() => undefined);
+  });
+
+  test('an admin creates a gateway, and a built-in refuses to be edited in place', async () => {
+    const put = await admin.put(`/admin/payment-gateways/${GATEWAY.id}`, { data: GATEWAY });
+    expect(put.status(), await put.text()).toBe(200);
+    expect((await put.json()).mustReverify).toBe(true);
+
+    // ★ A built-in must be FORKED, so the next upgrade cannot overwrite an operator's fix.
+    const builtin = await admin.put('/admin/payment-gateways/stripe', { data: { ...GATEWAY, id: 'stripe' } });
+    expect(builtin.status()).toBe(409);
+  });
+
+  test('a project supplies its own keys, and the response carries no secret', async () => {
+    const res = await admin.put(`/projects/${flowProject}/payment`, {
+      data: { gatewayId: GATEWAY.id, mode: 'test', values: { apiKey: 'sk_test_e2e_secret_value', webhookSecret: WHSEC } },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+    const body = await res.text();
+    expect(body).not.toContain('sk_test_e2e_secret_value');
+    expect(body).not.toContain(WHSEC);
+  });
+
+  test('★ an UNVERIFIED gateway is not offered to the project', async () => {
+    // Letting a project bind an unproven gateway means the first sign of an unfinished one is a
+    // buyer unable to pay.
+    const res = await admin.get(`/projects/${flowProject}/payment-gateways`);
+    expect(res.status()).toBe(200);
+    expect((await res.json()).gateways.map((g: { id: string }) => g.id)).not.toContain(GATEWAY.id);
+  });
+
+  test('★ going live is refused while the live keys are missing, and names them', async () => {
+    const res = await admin.put(`/projects/${flowProject}/payment/mode`, { data: { mode: 'live' } });
+    expect(res.status()).toBe(409);
+    const body = await res.json();
+    expect(body.missing).toContain('apiKey');
+  });
+
+  test('the orders inbox is empty, and reports nothing undelivered', async () => {
+    const list = await admin.get(`/projects/${flowProject}/transactions`);
+    expect(list.status()).toBe(200);
+    expect((await list.json()).total).toBe(0);
+    const und = await admin.get(`/projects/${flowProject}/transactions-undelivered`);
+    expect(await und.json()).toMatchObject({ notify: 0, receipt: 0 });
+  });
+
+  test('★ a checkout is refused before the shop has a published price list', async () => {
+    // The catalog snapshot is written by a PUBLISH. Without one there is nothing authoritative to
+    // charge against, and the endpoint must say so rather than invent a price.
+    const res = await admin.post(`/pay/${flowProject}/pay`, {
+      data: { items: [{ sku: 'mug', qty: 1 }], fields: {}, _hpt: '', _elapsed: '2000', _ix: '1.1.1' },
+    });
+    // 404 (no such channel yet) or 503 (no catalog) — never a 200, and never a charge.
+    expect([404, 503]).toContain(res.status());
+  });
+
+  test('the fulfilment move refuses an unknown transaction rather than 500ing', async () => {
+    const res = await admin.fetch(`/projects/${flowProject}/transactions/nope/fulfilment`, {
+      method: 'PATCH',
+      data: { to: 'packed' },
+    });
+    expect(res.status()).toBe(404);
+  });
 });

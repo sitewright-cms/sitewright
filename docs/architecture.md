@@ -48,6 +48,18 @@ apps/
 (AI providers live in `apps/api`; there is no separate `ai`/`renderer`/`publish` package — rendering,
 Tailwind compilation, and the deploy adapters all run inside `apps/api`.)
 
+## Payments
+
+Processed payments are a **database-stored gateway** model: an instance admin authors a declarative
+record and each project supplies its own encrypted credentials. The host keeps everything that can be
+lied about — credential substitution, signature verification, the origin allowlist, the amount — and
+the record contributes only the SHAPE of a provider request. The browser never sends an amount; the
+server re-prices from a catalog snapshot harvested at publish time. A verified webhook is the only
+thing that resolves a payment, with reconciliation as the backstop for one that never arrives.
+
+See [payments.md](payments.md) for the full decision record, the invariants, and the checklist for
+adding a gateway.
+
 ## Quality bar (enforced in CI)
 
 TDD with 80%+ coverage, full code review + security review per change, E2E coverage of every

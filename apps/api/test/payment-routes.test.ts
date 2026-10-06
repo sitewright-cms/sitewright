@@ -5,6 +5,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { MIN_SUBMIT_ELAPSED_MS, PaymentGatewayStoredSchema } from '@sitewright/schema';
 import { shopCatalog, shopStock, shopTransactions, shopFiltered, instanceSettings, INSTANCE_SETTINGS_ID, content } from '../src/db/schema.js';
 import { GLOBAL_SCOPE_ID } from '../src/repo/global-library.js';
+import { usableEmail } from '../src/http/payment-routes.js';
 import { encryptSecret } from '../src/crypto/secret.js';
 import { ensureGlobalProject } from '../src/repo/global-library.js';
 
@@ -564,6 +565,84 @@ describe('proof-of-work challenge', () => {
       expect(res.headers['cache-control']).toBe('no-store');
       expect(res.json()).toHaveProperty('challenge');
     }
+  });
+});
+
+describe('★★ an expensive check never runs before a cheap bound', () => {
+  it('★ usableEmail is O(1) on a pathological value — MEASURED, not asserted by reading', () => {
+    // EMAIL_RE (`[^\s@]+` then a literal `.`, which the class contains) is QUADRATIC on this shape.
+    // With the length bound AFTER the regex, 200k characters takes many seconds on the single shared
+    // event loop; with it FIRST, the function returns before the regex is ever constructed.
+    //
+    // Measured on the function directly rather than through the route: request overhead swamps the
+    // ~80 ms the bug costs per HTTP call, so any threshold stable enough for CI also passes with the
+    // bug present. Verified by restoring the old ordering — this assertion fails, the route-level one
+    // did not.
+    const evil = `x@${'a.'.repeat(100_000)}a@`;
+    const started = performance.now();
+    expect(usableEmail(evil)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
+
+  it('still accepts a real address and rejects the obvious non-addresses', () => {
+    expect(usableEmail('ada@example.com')).toBe(true);
+    expect(usableEmail(undefined)).toBe(false);
+    expect(usableEmail('')).toBe(false);
+    expect(usableEmail('not-an-address')).toBe(false);
+    expect(usableEmail('ada@example')).toBe(false);
+    expect(usableEmail('a@b.co\r\nBcc: x@y.z')).toBe(false);
+    expect(usableEmail(`${'a'.repeat(400)}@example.com`)).toBe(false);
+  });
+
+  it('the route picks the valid address and ignores a pathological sibling field', async () => {
+    const evil = `x@${'a.'.repeat(4900)}a@`;
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    const res = await checkout(body({ fields: { email: 'ada@example.com', e_mail: evil, mail: evil, customer_email: evil } }));
+    expect(res.statusCode).toBe(200);
+    const [txn] = await h.db.select().from(shopTransactions);
+    expect(txn?.customerEmail).toBe('ada@example.com');
+  });
+
+  it('an over-long value is not stored as an address', async () => {
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    await checkout(body({ fields: { email: `${'a'.repeat(400)}@example.com` } }));
+    const [txn] = await h.db.select().from(shopTransactions);
+    expect(txn?.customerEmail).toBeNull();
+  });
+});
+
+describe('★ the return URL carries its token in the QUERY, whatever the path contains', () => {
+  async function returnUrlFor(returnPath: string): Promise<string> {
+    await owner.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Shop', colors: { primary: '#0a7' } },
+      website: { shop: { ...SHOP, channels: [{ ...SHOP.channels[0], returnPath }] } },
+      settings: {},
+    });
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    const res = await checkout(body());
+    expect(res.statusCode, res.body).toBe(200);
+    return JSON.parse(scripted.calls[scripted.calls.length - 1]!.body!).ret as string;
+  }
+
+  it('a plain path', async () => {
+    const url = new URL(await returnUrlFor('/thank-you/'));
+    expect(url.searchParams.get('t')).toBeTruthy();
+    expect(url.pathname).toContain('/thank-you/');
+  });
+
+  it('★ a path with a FRAGMENT — a string append would hide the token inside it', async () => {
+    // The failure this pins: the thank-you page's `?t=` lookup finds nothing, so a buyer who has
+    // just paid is told their order cannot be found.
+    const url = new URL(await returnUrlFor('/thank-you/#order'));
+    expect(url.searchParams.get('t')).toBeTruthy();
+    expect(url.hash).toBe('#order');
+    expect(url.hash).not.toContain('t=');
+  });
+
+  it('a path that already has a query keeps it', async () => {
+    const url = new URL(await returnUrlFor('/thank-you/?ref=mail'));
+    expect(url.searchParams.get('t')).toBeTruthy();
+    expect(url.searchParams.get('ref')).toBe('mail');
   });
 });
 

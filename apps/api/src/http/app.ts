@@ -9023,6 +9023,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       getPowSecret: () => currentCookieSecret,
       claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
       getShop: async (projectId: string) => {
+        // ★ The same reserved-scope refusal `systemContext` makes. These deps build their own
+        // context from the untrusted route param, so leaving the check to the sibling closure would
+        // put the isolation back on "nothing project-shaped is ever stored under __global__" —
+        // exactly the invariant the guard exists to stop depending on.
+        if (projectId === GLOBAL_SCOPE_ID) return null;
         const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
           | { website?: { shop?: unknown } }
@@ -9031,6 +9036,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return (shop ?? null) as never;
       },
       getCatalog: async (projectId: string, mode: 'live' | 'draft') => {
+        if (projectId === GLOBAL_SCOPE_ID) return null;
         const [row] = await db
           .select()
           .from(shopCatalogTable)

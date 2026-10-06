@@ -379,7 +379,7 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
         url: {
           // ★ The return destination carries the opaque token, and the thank-you page reads its
           // status from the platform. The URL itself is never evidence of payment.
-          return: `${absolute(siteBase, channel.returnPath, '/')}${channel.returnPath?.includes('?') ? '&' : '?'}t=${encodeURIComponent(txn.publicToken)}`,
+          return: withToken(absolute(siteBase, channel.returnPath, '/'), txn.publicToken),
           cancel: absolute(siteBase, channel.cancelPath, '/'),
           webhook: `${apiBase}/pay/${projectId}/webhook/${resolved.gateway.id}`,
         },
@@ -529,6 +529,21 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
   });
 }
 
+/**
+ * Appends the status token to a return URL.
+ *
+ * ★ Built with `searchParams`, not by concatenating `?t=` / `&t=`. A `returnPath` may legitimately
+ * carry its own query string or a FRAGMENT (`/thank-you/#order`), and a string append puts the token
+ * inside the fragment, where the thank-you page's `?t=` lookup never finds it — the page then shows
+ * "we could not find your order" after a successful payment, which is the worst possible moment for
+ * it. Setting the param moves it to the right component whatever the path already contained.
+ */
+function withToken(url: string, token: string): string {
+  const u = new URL(url);
+  u.searchParams.set('t', token);
+  return u.toString();
+}
+
 /** Scope for a status re-read: credentials plus the reference. No amount is needed to ASK. */
 function statusScope(cred: Readonly<Record<string, string>>, txn: TransactionRow): InterpolationScope {
   return {
@@ -541,14 +556,41 @@ function statusScope(cred: Readonly<Record<string, string>>, txn: TransactionRow
   };
 }
 
+/** Longest address this will accept. RFC 5321's limit, and the bound that makes EMAIL_RE cheap. */
+const MAX_EMAIL_LEN = 320;
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Whether a submitted value is a usable address.
+ *
+ * ★★ THE LENGTH CHECK RUNS FIRST, AND THE ORDER IS THE WHOLE POINT. `[^\s@]+` followed by a literal
+ * `.` is an ambiguous overlap (the class contains `.`), so this pattern is quadratic: at the
+ * checkout's own 10,000-character field cap one `.test()` costs ~20 ms, and a single unauthenticated
+ * POST naming all four candidate keys burns ~80 ms of the shared event loop. On the webhook path the
+ * body cap is 256 KB, where the same shape reaches multiple seconds.
+ *
+ * The regex is not the bug — testing it before the cheap bound is. Reordering costs nothing and
+ * removes the class, which is the same lesson as dropping author-supplied patterns from
+ * `CredentialField`: run the cheap, certain check before the expensive, ambiguous one.
+ *
+ * Exported so the cost can be MEASURED directly. Asserting the timing through the HTTP route cannot
+ * discriminate: request overhead swamps the ~80 ms the bug costs there, so a threshold loose enough
+ * to be stable is loose enough to pass with the bug present — which the first version of that test
+ * did.
+ */
+export function usableEmail(v: string | undefined): v is string {
+  if (!v || v.length > MAX_EMAIL_LEN) return false;
+  if (/[\r\n]/.test(v)) return false;
+  return EMAIL_RE.test(v);
+}
 
 /** A plausible customer address from the submitted fields, for the receipt. */
 function pickEmail(fields: Record<string, string>): string | undefined {
   for (const key of ['email', 'e_mail', 'mail', 'customer_email']) {
     // eslint-disable-next-line security/detect-object-injection -- `key` is from a literal list above; own-property checked
     const v = Object.prototype.hasOwnProperty.call(fields, key) ? fields[key] : undefined;
-    if (v && EMAIL_RE.test(v) && !/[\r\n]/.test(v) && v.length <= 320) return v;
+    if (usableEmail(v)) return v;
   }
   return undefined;
 }
@@ -575,7 +617,7 @@ function payerEmailFrom(raw: Buffer): string | undefined {
     'payer.email',
   ]) {
     const v = readStringPath(body, path);
-    if (v && EMAIL_RE.test(v) && !/[\r\n]/.test(v) && v.length <= 320) return v;
+    if (usableEmail(v)) return v;
   }
   return undefined;
 }

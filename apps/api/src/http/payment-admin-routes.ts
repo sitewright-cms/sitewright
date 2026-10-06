@@ -4,6 +4,7 @@ import {
   PaymentGatewayInputSchema,
   PaymentBindingInputSchema,
   PaymentModeSchema,
+  FulfilmentStateSchema,
   GatewayIdSchema,
   toPublicGateway,
   fromMinorUnits,
@@ -12,6 +13,7 @@ import {
 } from '@sitewright/schema';
 import type { ProjectContext } from '../repo/context.js';
 import type { GatewayRepository } from '../payments/gateways.js';
+import type { ShopTransactionRepository } from '../repo/shop-transactions.js';
 import { isBuiltinGateway } from '../payments/builtin-gateways.js';
 import { createCheckoutSession, GatewayError, type ExecutorIo } from '../payments/executor.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -36,6 +38,7 @@ type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 export interface PaymentAdminDeps {
   gateways: GatewayRepository;
+  transactions: ShopTransactionRepository;
   /** Throws unless the caller is an instance admin on an interactive session. */
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
   /** True when the caller holds `payments:provider:write` on a bearer token. */
@@ -64,7 +67,7 @@ const VerifyBodySchema = z.object({
 });
 
 export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAdminDeps): void {
-  const { gateways, requireInstanceAdmin, hasProviderWriteScope, resolveProject, isWriter, io, rl } = deps;
+  const { gateways, requireInstanceAdmin, hasProviderWriteScope, resolveProject, isWriter, io, rl, transactions } = deps;
 
   /**
    * Authorises a LEVEL 1 write.
@@ -243,6 +246,67 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     }
     return reply.send({ mode });
   });
+
+  // ---- the transactions inbox --------------------------------------------------------------------
+
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/transactions', { config: rl(60) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:read');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const q = req.query as { limit?: string; offset?: string; status?: string };
+    const page = await transactions.list(project.id, {
+      ...(q.limit ? { limit: Number(q.limit) } : {}),
+      ...(q.offset ? { offset: Number(q.offset) } : {}),
+      ...(q.status ? { status: q.status as never } : {}),
+    });
+    return reply.send(page);
+  });
+
+  app.get<{ Params: { projectId: string; id: string } }>('/projects/:projectId/transactions/:id', { config: rl(60) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:read');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const row = await transactions.byId(project.id, req.params.id);
+    if (!row) return reply.code(404).send({ error: 'transaction not found' });
+    return reply.send({ transaction: row });
+  });
+
+  /**
+   * How many orders are still owed a mail.
+   *
+   * ★ Emailing somebody about broken email is circular, so this has to surface somewhere they
+   * already look. The two kinds are counted separately because they mean different things: a missed
+   * notification is an order the shop has not seen; a missed receipt is a customer wondering where
+   * their money went.
+   */
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/transactions-undelivered', { config: rl(60) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:read');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    return reply.send(await transactions.undeliveredSummary(project.id));
+  });
+
+  /** Puts one mail back in the queue — what an operator clicks after fixing SMTP. */
+  app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/transactions/:id/resend', { config: rl(30) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:write');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const { kind } = z.object({ kind: z.enum(['notify', 'receipt']) }).parse(req.body ?? {});
+    const queued = await transactions.requeueMail(project.id, req.params.id, kind);
+    if (!queued) return reply.code(404).send({ error: 'transaction not found' });
+    return reply.send({ queued: true, kind });
+  });
+
+  /** Moves the operator-owned fulfilment state. Refuses an illegal or backwards move. */
+  app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/transactions/:id/fulfilment', { config: rl(60) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:write');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const body = z.object({ to: FulfilmentStateSchema, note: z.string().max(2000).optional() }).parse(req.body);
+    const moved = await transactions.setFulfilment(project.id, req.params.id, body.to, body.note);
+    if (!moved.ok) {
+      return moved.reason === 'not-found'
+        ? reply.code(404).send({ error: 'transaction not found' })
+        : reply.code(409).send({ error: `an order cannot move to "${body.to}" from where it is` });
+    }
+    return reply.send({ transaction: moved.row });
+  });
+
 }
 
 /** Re-exported so app.ts does not reach past this module. */

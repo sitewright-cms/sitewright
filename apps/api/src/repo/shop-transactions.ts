@@ -1,4 +1,4 @@
-import { and, eq, lte, sql, inArray, desc, isNotNull } from 'drizzle-orm';
+import { and, eq, lte, or, sql, inArray, desc, isNotNull, isNull } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import {
   canTransitionPayment,
@@ -72,6 +72,9 @@ export interface TransactionRow {
   providerRef: string | null;
   publicToken: string;
   customerEmail: string | null;
+  /** Attempts already made for each mail — the runner's back-off input. */
+  notifyAttempts: number;
+  receiptAttempts: number;
   createdAt: Date;
   paidAt: Date | null;
 }
@@ -102,6 +105,8 @@ function toRow(r: any): TransactionRow {
     providerRef: r.providerRef ?? null,
     publicToken: r.publicToken,
     customerEmail: r.customerEmail ?? null,
+    notifyAttempts: r.notifyAttempts ?? 0,
+    receiptAttempts: r.receiptAttempts ?? 0,
     createdAt: r.createdAt,
     paidAt: r.paidAt ?? null,
   };
@@ -252,6 +257,120 @@ export class ShopTransactionRepository {
       .insert(shopPaymentEvents)
       .values({ gatewayId, eventId, seenAt: now })
       .onConflictDoNothing();
+    return (res.rowsAffected ?? 0) > 0;
+  }
+
+  /**
+   * Claims transactions whose notification or receipt is due.
+   *
+   * ★ ONE conditional UPDATE per row: the claim marker goes in the WHERE, so two runners racing the
+   * same row cannot both send. Then the row is re-read, so the caller acts on what it ACTUALLY became
+   * rather than what it assumed. This is the same discipline the stock ledger uses, and it is here
+   * for the same reason: the cost of getting it wrong is a customer receiving two confirmations and
+   * concluding they were charged twice.
+   */
+  async claimDueMail(kind: 'notify' | 'receipt', now: Date, leaseMs: number, limit: number): Promise<TransactionRow[]> {
+    const stateCol = kind === 'notify' ? shopTransactions.notifyState : shopTransactions.receiptState;
+    const nextCol = kind === 'notify' ? shopTransactions.notifyNextAt : shopTransactions.receiptNextAt;
+    const claimedCol = kind === 'notify' ? shopTransactions.notifyClaimedAt : shopTransactions.receiptClaimedAt;
+    const stale = new Date(now.getTime() - leaseMs);
+    const candidates = await this.db
+      .select({ id: shopTransactions.id })
+      .from(shopTransactions)
+      .where(
+        and(
+          eq(stateCol, 'pending'),
+          lte(nextCol, now),
+          // A claim older than the lease belonged to a process that died; it may be taken over.
+          or(isNull(claimedCol), lte(claimedCol, stale)),
+        ),
+      )
+      .limit(Math.min(Math.max(limit, 1), 100));
+
+    const claimed: TransactionRow[] = [];
+    for (const { id } of candidates) {
+      const res = await this.db
+        .update(shopTransactions)
+        .set({ ...(kind === 'notify' ? { notifyClaimedAt: now } : { receiptClaimedAt: now }), updatedAt: now })
+        .where(
+          and(
+            eq(shopTransactions.id, id),
+            eq(stateCol, 'pending'),
+            lte(nextCol, now),
+            or(isNull(claimedCol), lte(claimedCol, stale)),
+          ),
+        );
+      if ((res.rowsAffected ?? 0) === 0) continue; // somebody else won it
+      const row = await this.anyById(id);
+      if (row) claimed.push(row);
+    }
+    return claimed;
+  }
+
+  /** Records the outcome of one mail attempt. `sent` and `failed` are terminal; `pending` backs off. */
+  async recordMail(
+    id: string,
+    kind: 'notify' | 'receipt',
+    outcome: { state: 'sent' } | { state: 'pending'; attempts: number; nextAt: Date; error: string } | { state: 'failed'; attempts: number; error: string },
+  ): Promise<void> {
+    const common =
+      outcome.state === 'sent'
+        ? { state: 'sent' as const, attempts: undefined, nextAt: null, error: null }
+        : outcome.state === 'pending'
+          ? { state: 'pending' as const, attempts: outcome.attempts, nextAt: outcome.nextAt, error: outcome.error }
+          : { state: 'failed' as const, attempts: outcome.attempts, nextAt: null, error: outcome.error };
+    const values =
+      kind === 'notify'
+        ? {
+            notifyState: common.state,
+            ...(common.attempts !== undefined ? { notifyAttempts: common.attempts } : {}),
+            notifyNextAt: common.nextAt,
+            notifyError: common.error,
+            // Cleared whatever the outcome: the attempt concluded, so nothing holds the row.
+            notifyClaimedAt: null,
+          }
+        : {
+            receiptState: common.state,
+            ...(common.attempts !== undefined ? { receiptAttempts: common.attempts } : {}),
+            receiptNextAt: common.nextAt,
+            receiptError: common.error,
+            receiptClaimedAt: null,
+          };
+    await this.db.update(shopTransactions).set({ ...values, updatedAt: new Date() }).where(eq(shopTransactions.id, id));
+  }
+
+  /** How many orders are still owed a mail, and why the last attempt failed. For the editor banner. */
+  async undeliveredSummary(projectId: string): Promise<{ notify: number; receipt: number; lastError?: string }> {
+    const rows = await this.db
+      .select()
+      .from(shopTransactions)
+      .where(and(eq(shopTransactions.projectId, projectId), inArray(shopTransactions.status, ['paid', 'refunded', 'partially_refunded'])));
+    let notify = 0;
+    let receipt = 0;
+    let lastError: string | undefined;
+    for (const r of rows) {
+      if (r.notifyState === 'pending' || r.notifyState === 'failed') {
+        notify += 1;
+        lastError = r.notifyError ?? lastError;
+      }
+      if (r.receiptState === 'pending' || r.receiptState === 'failed') {
+        receipt += 1;
+        lastError = r.receiptError ?? lastError;
+      }
+    }
+    return { notify, receipt, ...(lastError ? { lastError } : {}) };
+  }
+
+  /** Puts a failed mail back in the queue — what an operator clicks after fixing SMTP. */
+  async requeueMail(projectId: string, id: string, kind: 'notify' | 'receipt'): Promise<boolean> {
+    const row = await this.byId(projectId, id);
+    if (!row) return false;
+    const now = new Date();
+    const values =
+      kind === 'notify'
+        ? { notifyState: 'pending' as const, notifyAttempts: 0, notifyNextAt: now, notifyError: null, notifyClaimedAt: null }
+        : { receiptState: 'pending' as const, receiptAttempts: 0, receiptNextAt: now, receiptError: null, receiptClaimedAt: null };
+    const res = await this.db.update(shopTransactions).set({ ...values, updatedAt: now }).where(eq(shopTransactions.id, id));
     return (res.rowsAffected ?? 0) > 0;
   }
 

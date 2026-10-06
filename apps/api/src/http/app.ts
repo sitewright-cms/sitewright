@@ -252,6 +252,7 @@ import { ShopStockRepository } from '../repo/shop-stock.js';
 import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus } from '../payments/executor.js';
+import { runOrderMail } from '../payments/notify-runner.js';
 import { fromMinorUnits } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
@@ -9112,6 +9113,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (gatewayRepo) {
     registerPaymentAdminRoutes(app, {
       gateways: gatewayRepo,
+      transactions: shopTransactionsRepo,
       requireInstanceAdmin,
       // A bearer token carrying the one capability that authors GATEWAY DEFINITIONS. Exact-string
       // check, as for every other capability — no prefix matching.
@@ -10165,6 +10167,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // enough that the table stays small.
     await shopTransactionsRepo.reapEvents(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
     await reconcileDuePayments(now);
+    // ★ The two order mails. Last in the chain on purpose: reconciliation can turn an unresolved
+    // order into a paid one, and a payment recovered this pass should be notified in the same pass
+    // rather than waiting for the next.
+    await runOrderMail(
+      {
+        transactions: shopTransactionsRepo,
+        globalMailer: mailer,
+        projectMailer,
+        resolveChannel: async (projectId, channelKey) => {
+          const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+          const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
+            | { identity?: { name?: string }; website?: { shop?: { channels?: Array<{ kind: string; key: string; email?: string; subject?: string }> } } }
+            | null;
+          const channel = settings?.website?.shop?.channels?.find((c) => c.kind === 'checkout' && c.key === channelKey);
+          if (!channel?.email) return null;
+          const modes = await instanceSettingsRepo.getFormModes();
+          return {
+            email: channel.email,
+            ...(channel.subject ? { subject: channel.subject } : {}),
+            // Same preference the provisioned order Forms make: the operator's own SMTP first.
+            mode: modes.globalSmtp ? ('globalSmtp' as const) : ('userSmtp' as const),
+            shopName: settings?.identity?.name ?? 'Shop',
+          };
+        },
+        log: { warn: (o, m) => app.log.warn(o, m), info: (o, m) => app.log.info(o, m) },
+      },
+      now,
+    );
   }
 
   /**

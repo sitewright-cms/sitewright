@@ -280,8 +280,17 @@ export type GatewayRequest = z.infer<typeof GatewayRequestSchema>;
 /** A dotted/bracketed path into a JSON response. Bounded so extraction cannot be made pathological. */
 const ResponsePathSchema = z.string().min(1).max(200).regex(/^[A-Za-z0-9_.[\]-]+$/, 'invalid response path');
 
-/** What the paid/failed/expired/refunded verdicts are called in this provider's events. */
-export const GATEWAY_EVENT_KINDS = ['paid', 'failed', 'expired', 'refunded', 'recheck'] as const;
+/**
+ * The verdicts a provider event can map to.
+ *
+ * ★ `cancelled` is distinct from `failed` on purpose: a buyer who abandons the provider's page has
+ * not had a payment declined, and a merchant reading their inbox needs to tell "they changed their
+ * mind" from "their card was refused" — the second is worth following up, the first usually is not.
+ *
+ * ★ `recheck` means "verified, now go and ask". Mollie's webhook body is only an id, so mapping it
+ * straight to `paid` would accept an unpaid order on an attacker's say-so.
+ */
+export const GATEWAY_EVENT_KINDS = ['paid', 'failed', 'expired', 'cancelled', 'refunded', 'recheck'] as const;
 export type GatewayEventKind = (typeof GATEWAY_EVENT_KINDS)[number];
 
 /**

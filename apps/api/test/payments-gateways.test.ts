@@ -229,6 +229,29 @@ describe('resolveCredentials', () => {
     }
   });
 
+  it('★ a PUBLIC credential resolves as plaintext — only a `secret` is encrypted', async () => {
+    // A publishable key is readable config, not "a secret we happen not to encrypt", and a gateway
+    // that declares one must get its literal value through to the request template.
+    await repo.put(custom(), 'admin1');
+    await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_x1234567', region: 'eu' } });
+    const r = await repo.resolveCredentials(ctx);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.cred.region).toBe('eu');
+      expect(r.cred.secretKey).toBe('sk_test_x1234567');
+    }
+  });
+
+  it('a BOOLEAN credential resolves as "true"/"false" for template substitution', async () => {
+    await repo.put(custom({ credentialFields: [
+          { key: 'secretKey', label: 'Key', kind: 'secret', required: true, perMode: true },
+          { key: 'sandbox', label: 'Sandbox', kind: 'bool', required: false, perMode: false },
+        ] }), 'admin1');
+    await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_x1234567', sandbox: true } });
+    const r = await repo.resolveCredentials(ctx);
+    if (r.ok) expect(r.cred.sandbox).toBe('true');
+  });
+
   it('reports not-configured, disabled and incomplete distinctly', async () => {
     expect(await repo.resolveCredentials(ctx)).toEqual({ ok: false, reason: 'not-configured' });
     await repo.put(custom(), 'admin1');

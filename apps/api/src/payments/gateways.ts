@@ -3,7 +3,6 @@ import {
   PaymentBindingStoredSchema,
   maskBinding,
   validateCredentialValue,
-  type CredentialField,
   type PaymentBindingInput,
   type PaymentBindingPublic,
   type PaymentBindingStored,
@@ -282,8 +281,3 @@ export class GatewayRepository {
 
 /** Re-exported so callers do not reach past this module for the reserved scope id. */
 export { GLOBAL_SCOPE_ID, isBuiltinGateway };
-
-/** The declared fields of a gateway, for the editor's generic credential form. */
-export function declaredFields(gateway: PaymentGatewayStored): CredentialField[] {
-  return gateway.credentialFields;
-}

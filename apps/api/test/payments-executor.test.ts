@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { PaymentGatewayStoredSchema, type PaymentGatewayStored } from '@sitewright/schema';
 import {
@@ -11,7 +11,7 @@ import {
   type FetchLike,
 } from '../src/payments/executor.js';
 import type { InterpolationScope } from '../src/payments/interpolate.js';
-import { BUILTIN_GATEWAYS } from '../src/payments/builtin-gateways.js';
+import { BUILTIN_GATEWAYS, BUILTIN_GATEWAY_IDS, isBuiltinGateway } from '../src/payments/builtin-gateways.js';
 
 const NOW = 1_760_000_000_000;
 
@@ -199,6 +199,67 @@ describe('createCheckoutSession', () => {
   });
 });
 
+describe('auth modes', () => {
+  it('sends no Authorization header for an unauthenticated gateway', async () => {
+    const gw = gateway({ auth: { kind: 'none' } });
+    const io = scriptedIo([{ body: { id: 's', url: 'https://pay.acme.test/s' } }]);
+    await createCheckoutSession(gw, 'test', scope, io);
+    expect(io.calls[0]!.headers.authorization).toBeUndefined();
+  });
+
+  it('builds a Basic header from two declared credentials', async () => {
+    const gw = gateway({ auth: { kind: 'basic', userField: 'secretKey', secretField: 'whsec' } });
+    const io = scriptedIo([{ body: { id: 's', url: 'https://pay.acme.test/s' } }]);
+    await createCheckoutSession(gw, 'test', scope, io);
+    expect(io.calls[0]!.headers.authorization).toBe(`Basic ${Buffer.from('sk_test_abc:whsec_abc').toString('base64')}`);
+  });
+
+  it('★ a Basic gateway missing one half is a CONFIG error, and sends nothing', async () => {
+    const gw = gateway({ auth: { kind: 'basic', userField: 'secretKey', secretField: 'whsec' } });
+    const io = scriptedIo([{ body: {} }]);
+    const err = await createCheckoutSession(gw, 'test', { ...scope, cred: { secretKey: 'sk_test_abc' } }, io).catch((e: unknown) => e);
+    expect((err as GatewayError).kind).toBe('config');
+    expect(io.calls).toHaveLength(0);
+  });
+});
+
+describe('★ the whole-operation deadline', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('aborts a provider that never answers, instead of holding the worker open', async () => {
+    // A per-socket inactivity timeout would not help here: a server trickling one byte a second keeps
+    // resetting it. This is a deadline on the whole operation, so a hung or malicious provider costs
+    // a bounded amount of one request rather than an indefinitely parked worker.
+    vi.useFakeTimers();
+    let seenSignal: AbortSignal | undefined;
+    const io: ExecutorIo = {
+      now: () => NOW,
+      fetch: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          seenSignal = init.signal;
+          init.signal?.addEventListener('abort', () => reject(new Error('AbortError')));
+        }),
+    };
+    // ★ The catch is attached IMMEDIATELY, not after the clock moves: the rejection happens while the
+    // timers are being advanced, and a handler added afterwards leaves a window in which vitest sees
+    // an unhandled rejection and reports it as an error even though the test passes.
+    const pending = createCheckoutSession(gateway(), 'test', scope, io).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    // Let the call reach `fetch` before the clock moves.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(seenSignal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    const err = await pending;
+    expect(seenSignal?.aborted).toBe(true);
+    expect(err).toBeInstanceOf(GatewayError);
+    expect((err as GatewayError).kind).toBe('upstream');
+  });
+});
+
 describe('fetchProviderStatus', () => {
   it('maps a declared state', async () => {
     const io = scriptedIo([{ body: { state: 'paid' } }]);
@@ -317,6 +378,15 @@ describe('remote-verify (PayPal shape)', () => {
     expect(io.calls).toHaveLength(0);
   });
 
+  it('★ a verified-shaped webhook whose BODY is not JSON fails closed', async () => {
+    // Reached before any network call: there is nothing to ask PayPal about, so the only safe answer
+    // is "no". Returning true here would accept an event the platform cannot even read.
+    const io = scriptedIo([{ body: {} }]);
+    const junk = Buffer.from('<html>not json</html>', 'utf8');
+    expect(await interpretWebhook(paypal, 'live', junk, headers, cred, io)).toEqual({ ok: false, reason: 'bad-signature' });
+    expect(io.calls).toHaveLength(0);
+  });
+
   it('★ a provider OUTAGE does not wave the event through', async () => {
     const io: ExecutorIo = { now: () => NOW, fetch: async () => { throw new Error('ECONNRESET'); } };
     expect(await interpretWebhook(paypal, 'live', body, headers, cred, io)).toEqual({ ok: false, reason: 'bad-signature' });
@@ -345,6 +415,14 @@ describe('★ every built-in gateway is internally consistent', () => {
       expect(gw.verified, gw.id).toBe(false);
       expect(gw.builtin, gw.id).toBe(true);
     }
+  });
+
+  it('★ isBuiltinGateway names exactly the shipped records — it decides what may be EDITED in place', () => {
+    // A built-in may be forked but never edited or deleted, so a wrong answer here either lets an
+    // upgrade silently overwrite an operator's fix, or makes a genuine fork un-editable.
+    for (const gw of BUILTIN_GATEWAYS) expect(isBuiltinGateway(gw.id), gw.id).toBe(true);
+    for (const id of ['acme', 'stripe_eu', '', 'STRIPE', 'mock2']) expect(isBuiltinGateway(id), id).toBe(false);
+    expect(BUILTIN_GATEWAY_IDS.size).toBe(BUILTIN_GATEWAYS.length);
   });
 
   it('★ the mock gateway cannot become a live payment surface', () => {

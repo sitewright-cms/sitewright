@@ -155,6 +155,32 @@ describe('reserve / commit / release', () => {
   });
 });
 
+describe('★ the per-SKU queue survives a THROWING operation', () => {
+  it('a thrown op does not poison the chain for the next caller on that sku', async () => {
+    // The queue serializes read-modify-write pairs per SKU. Its tail deliberately swallows
+    // rejections so the stored promise is not an unhandled rejection — but the CALLER must still see
+    // the real failure, and the NEXT caller on that key must still run. A chain left rejected would
+    // make one database hiccup permanently unsellable for that SKU in this process.
+    let fail = true;
+    const flaky = {
+      ...db,
+      update: (...args: unknown[]) => {
+        if (fail) throw new Error('database hiccup');
+        return (db as unknown as { update: (...a: unknown[]) => unknown }).update(...args);
+      },
+    } as unknown as Database;
+    const repoFlaky = new ShopStockRepository(flaky);
+    await seed('mug', 5);
+
+    // The caller sees the real error…
+    await expect(repoFlaky.reserve(PROJECT, [{ sku: 'mug', qty: 1 }])).rejects.toThrow(/database hiccup/);
+    // …and the queue is still usable for the same key afterwards.
+    fail = false;
+    expect(await repoFlaky.reserve(PROJECT, [{ sku: 'mug', qty: 1 }])).toEqual({ ok: true });
+    expect((await read('mug'))?.reserved).toBe(1);
+  });
+});
+
 describe('sweepExpiredReservations', () => {
   it('frees a lapsed hold and leaves a live one alone', async () => {
     const now = new Date('2026-10-06T12:00:00Z');

@@ -121,19 +121,6 @@ test('the webhook endpoint is not an existence oracle', async () => {
   expect(await unknownProject.text()).toBe(await unconfigured.text());
 });
 
-test('★ the webhook route accepts a RAW body over real HTTP (the parser is scoped, not global)', async () => {
-  // The point of running this over a socket rather than `inject`: if the encapsulated raw-body
-  // parser were wrong, this route would 400 on content-type or mangle the bytes. A refusal here must
-  // be the SIGNATURE check, not a parse failure — so assert the shape of the refusal.
-  const raw = '{"event_id":"e","session_id":"s","type":"session.paid"}';
-  const res = await admin.post(`/pay/${projectId}/webhook/e2e_mock`, {
-    headers: { 'content-type': 'application/json', 'x-mock-signature': 'deadbeef' },
-    data: raw,
-  });
-  expect(res.status()).toBe(400);
-  expect(await res.json()).toEqual({ error: 'invalid' });
-});
-
 test('the checkout endpoint answers a CORS preflight', async () => {
   const res = await admin.fetch(`/pay/${projectId}/pay`, { method: 'OPTIONS' });
   expect(res.status()).toBe(204);
@@ -228,6 +215,40 @@ test.describe('the full checkout flow', () => {
     expect(res.status()).toBe(409);
     const body = await res.json();
     expect(body.missing).toContain('apiKey');
+  });
+
+  /**
+   * ★★ THE RAW-BODY PARSER, PROVEN OVER A REAL SOCKET.
+   *
+   * This test used to live outside this describe and assert only that a BAD signature gets a 400 —
+   * which happens whether or not the parser is correct, so it passed for the entire period the
+   * parser was mis-wired (registered on an encapsulated scope the route was not registered on) and
+   * its name claimed an invariant it never checked.
+   *
+   * What actually distinguishes the two worlds is PRETTY-PRINTED bytes with a CORRECT signature over
+   * exactly those bytes — which is what every real provider sends. Re-serializing compact JSON
+   * reproduces the same bytes by luck; re-serializing this cannot. So: 200 means the handler saw the
+   * bytes as sent; 400 means it verified a reconstruction, and no real webhook would ever work.
+   */
+  test('★★ a PRETTY-PRINTED signed webhook is accepted over real HTTP', async () => {
+    const raw = `${JSON.stringify({ event_id: `e2e_${Date.now()}`, session_id: 'no_such_session', type: 'session.paid' }, null, 2)}\n`;
+    const res = await admin.post(`/pay/${flowProject}/webhook/${GATEWAY.id}`, {
+      headers: { 'content-type': 'application/json', 'x-mock-signature': sign(raw) },
+      data: raw,
+    });
+    // 200: the signature VERIFIED. (The reference matches no transaction, and a verified event is
+    // always acknowledged so the provider stops retrying — that is the documented contract.)
+    expect(res.status(), await res.text()).toBe(200);
+  });
+
+  test('★ the same bytes with a wrong signature are refused — it is the signature that decides', async () => {
+    const raw = `${JSON.stringify({ event_id: `e2e_bad_${Date.now()}`, session_id: 'no_such_session', type: 'session.paid' }, null, 2)}\n`;
+    const res = await admin.post(`/pay/${flowProject}/webhook/${GATEWAY.id}`, {
+      headers: { 'content-type': 'application/json', 'x-mock-signature': 'deadbeef' },
+      data: raw,
+    });
+    expect(res.status()).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid' });
   });
 
   test('the orders inbox is empty, and reports nothing undelivered', async () => {

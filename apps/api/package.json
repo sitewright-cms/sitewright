@@ -35,7 +35,7 @@
     "drizzle-orm": "^0.45.3",
     "fastify": "^5.12.5",
     "html-minifier-terser": "^7",
-    "isomorphic-git": "^1.42.2",
+    "isomorphic-git": "^1.42.4",
     "jszip": "^3",
     "lighthouse": "^13.5.0",
     "nodemailer": "^10.0.12",

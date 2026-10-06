@@ -104,7 +104,7 @@ export const ORDER_STATUS_JS = `(function(){
     if(paid){
       var ck=mount.getAttribute('data-cart-key');
       try{
-        if(ck){localStorage.removeItem(ck);localStorage.removeItem(ck+':txn');}
+        if(ck){localStorage.removeItem(ck);localStorage.removeItem(ck+':txn');localStorage.removeItem(ck+':pending');}
         else{
           var kill=[];
           for(var j=0;j<localStorage.length;j++){var kk=localStorage.key(j);if(kk&&kk.indexOf('sw-cart:')===0){kill.push(kk);}}

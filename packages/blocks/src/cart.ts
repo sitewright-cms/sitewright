@@ -577,11 +577,15 @@ export const CART_JS = `(function(){
   // ★ The cart is NOT cleared on redirect. The buyer is leaving for the provider's page and may well
   // come back without paying; clearing here would lose their basket for an abandoned payment. The
   // thank-you page clears it, on a confirmed paid status.
-  function postCheckout(ch,items,cfg,values,onDone){
+  function postCheckout(ch,items,cfg,values,onDone,prior){
     if(!window.__swp){onDone({error:'unavailable'});return;}
     var lines=[];
     for(var i=0;i<items.length;i++){lines.push({sku:items[i].sku,qty:items[i].qty});}
     var payload={items:lines,fields:values||{},_hpt:'',_elapsed:String(Date.now()-CART_STARTED),_ix:ixSnapshot()};
+    // ★ Hands back the token of this buyer's own previous unpaid attempt so the server can cancel it
+    // and return its units before reserving again. Without it, Checkout -> Back -> Checkout holds a
+    // fresh reservation on every click.
+    if(prior){payload.supersede=prior;}
     fetch(window.__swp(ch.key),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
       .then(function(res){return res.json().then(function(body){return {status:res.status,body:body};});})
       .then(function(r){
@@ -597,7 +601,7 @@ export const CART_JS = `(function(){
   // URL is ours to refuse.
   function goToProvider(url,token,key){
     if(!/^https:\\/\\//i.test(String(url||''))){return false;}
-    try{if(token){localStorage.setItem(key+':txn',String(token));}}catch(e){}
+    try{if(token){localStorage.setItem(key+':txn',String(token));localStorage.removeItem(key+':pending');}}catch(e){}
     window.location.assign(url);
     return true;
   }
@@ -661,6 +665,10 @@ export const CART_JS = `(function(){
     }
     var values=collectFields(host,cfg).values;
 
+    // The previous attempt's token, if this buyer already started one and came back.
+    var prior='';
+    try{prior=localStorage.getItem(key+':pending')||'';}catch(e){}
+
     postCheckout(ch,items,cfg,values,function(r){
       btn.disabled=false;
       if(!r.ok){
@@ -672,6 +680,10 @@ export const CART_JS = `(function(){
         return;
       }
       status.textContent='';
+      // ★ Remembered HERE, not at redirect: a buyer who reaches the review panel and goes back has
+      // already cost a provider session and a stock hold, and this is what lets the next attempt
+      // reclaim them.
+      try{if(r.data.token){localStorage.setItem(key+':pending',String(r.data.token));}}catch(e){}
       var panel=reviewPanel(r.data,cfg,function(){
         status.textContent=cfg.redirectingLabel||'Taking you to the payment page...';
         if(!goToProvider(r.data.redirectUrl,r.data.token,key)){
@@ -683,7 +695,7 @@ export const CART_JS = `(function(){
       });
       btn.hidden=true;
       host.insertBefore(panel,status.nextSibling);
-    });
+    },prior);
   }
 
   // ---- authored-markup binding ----

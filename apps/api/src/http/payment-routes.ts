@@ -121,6 +121,16 @@ const CheckoutBodySchema = z.object({
   [POW_FIELD]: z.string().max(4096).optional(),
   'h-captcha-response': z.string().max(8192).optional(),
   'g-recaptcha-response': z.string().max(8192).optional(),
+  /**
+   * The opaque token of the buyer's OWN previous unpaid attempt, to be cancelled before this one
+   * reserves.
+   *
+   * ★ Checkout -> Back -> Checkout used to open a fresh provider session and a fresh stock
+   * reservation on every click, so one indecisive buyer could hold several units of a low-stock item
+   * until the 36h sweep released them. Possession of the token is the authority to supersede: it is
+   * 24 random bytes the browser only has because the server issued it for that cart.
+   */
+  supersede: z.string().min(1).max(128).optional(),
 });
 
 /** Flattens submitted fields to a text map, exactly as the form endpoint does. */
@@ -337,6 +347,22 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       // such thing as "preview inventory" to hold, and the dry run's purpose is to prove the request,
       // redirect, webhook and notification path works — none of which needs a real hold.
       const held = priced.lines.map((l) => ({ sku: l.sku, qty: l.qty }));
+
+      // ★ Supersede the buyer's own prior attempt FIRST, so its units are back before this one asks
+      // for them — otherwise a buyer re-confirming the last item in stock would be refused by their
+      // own abandoned hold. Narrow on purpose: same project, same channel, still `created`. Anything
+      // else (another channel, already paid, already cancelled) is left exactly as it is.
+      if (parsed.data.supersede) {
+        const prior = await transactions.byPublicToken(projectId, parsed.data.supersede);
+        if (prior && prior.status === 'created' && prior.channelKey === channelKey) {
+          if (await transactions.advance(prior.id, 'cancelled')) {
+            if (!prior.preview) {
+              await stock.release(projectId, prior.lines.map((l) => ({ sku: l.sku, qty: l.qty }))).catch(() => undefined);
+            }
+          }
+        }
+      }
+
       if (!previewMode) {
         const reserved = await stock.reserve(projectId, held);
         if (!reserved.ok) {

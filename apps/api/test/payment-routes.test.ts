@@ -690,3 +690,133 @@ describe('★★ the raw-body parser must apply to the webhook route', () => {
     expect(txn?.status).toBe('paid');
   });
 });
+
+describe('★★ a buyer who goes back and retries does not stack stock reservations', () => {
+  const start = async (supersede?: string) => {
+    scripted.responses.push({ body: { id: `sess_${Math.random().toString(36).slice(2, 8)}`, url: 'https://mock-pay.invalid/s/x' } });
+    const res = await checkout(body({ items: [{ sku: 'tee', qty: 1 }], ...(supersede ? { supersede } : {}) }));
+    expect(res.statusCode).toBe(200);
+    return res.json().token as string;
+  };
+
+  it('cancels the prior attempt and returns its units', async () => {
+    const first = await start();
+    let [stockRow] = await h.db.select().from(shopStock).where(eq(shopStock.projectId, projectId));
+    expect(stockRow?.reserved).toBe(1);
+
+    await start(first);
+    // Still ONE unit held, not two: the first attempt gave its unit back.
+    [stockRow] = await h.db.select().from(shopStock).where(eq(shopStock.projectId, projectId));
+    expect(stockRow?.reserved).toBe(1);
+
+    const rows = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.status === 'cancelled')).toHaveLength(1);
+    expect(rows.filter((r) => r.status === 'created')).toHaveLength(1);
+  });
+
+  it('★ lets a buyer re-confirm the LAST unit in stock — their own hold is released first', async () => {
+    // Only 2 on stock; hold both, then retry for both. Without the release-first ordering the
+    // buyer would be refused by their own abandoned reservation.
+    scripted.responses.push({ body: { id: 'sess_a', url: 'https://mock-pay.invalid/s/a' } });
+    const res1 = await checkout(body({ items: [{ sku: 'tee', qty: 2 }] }));
+    expect(res1.statusCode).toBe(200);
+    scripted.responses.push({ body: { id: 'sess_b', url: 'https://mock-pay.invalid/s/b' } });
+    const res2 = await checkout(body({ items: [{ sku: 'tee', qty: 2 }], supersede: res1.json().token }));
+    expect(res2.statusCode).toBe(200);
+    const [stockRow] = await h.db.select().from(shopStock).where(eq(shopStock.projectId, projectId));
+    expect(stockRow?.reserved).toBe(2);
+  });
+
+  it('★ ignores a token that is not a cancellable prior attempt', async () => {
+    // A made-up token, and a token from another channel, must both be no-ops rather than errors.
+    const t = await start('tok_does_not_exist');
+    expect(t).toBeTruthy();
+    const rows = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(rows.every((r) => r.status === 'created')).toBe(true);
+  });
+
+  it('★★ cannot cancel an attempt that is already PAID', async () => {
+    const first = await start();
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    const raw = JSON.stringify({ event_id: 'e_paid', session_id: txn!.providerRef, type: 'session.paid', amount: txn!.totalMinor, currency: 'EUR' });
+    expect((await webhook(raw)).statusCode).toBe(200);
+
+    await start(first);
+    const rows = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    // The paid order is untouched — a token is authority to supersede an UNPAID attempt, nothing more.
+    expect(rows.find((r) => r.id === txn!.id)?.status).toBe('paid');
+  });
+});
+
+describe('★ a "something changed" webhook makes the platform ASK the provider', () => {
+  // Mollie's shape: the event body carries no outcome, only "look again". The host must re-read
+  // the status rather than guess — and must not resolve the order on the event alone.
+  beforeEach(async () => {
+    await h.db
+      .update(content)
+      .set({ data: { ...GATEWAY, events: { ...GATEWAY.events, types: { 'session.changed': 'recheck' } } } })
+      .where(and(eq(content.kind, 'payment_gateway'), eq(content.entityId, 'mock')));
+  });
+
+  const open = async () => {
+    scripted.responses.push({ body: { id: 'sess_1', url: 'https://mock-pay.invalid/s/1' } });
+    const res = await checkout(body());
+    expect(res.statusCode).toBe(200);
+    return res.json();
+  };
+
+  it('re-reads the status and resolves the order from the ANSWER', async () => {
+    await open();
+    // The provider's status endpoint says paid.
+    scripted.responses.push({ body: { state: 'paid' } });
+    const raw = JSON.stringify({ event_id: 'e_chg', session_id: 'sess_1', type: 'session.changed' });
+    expect((await webhook(raw)).statusCode).toBe(200);
+    // The status request really was made, against the reference the transaction holds.
+    expect(scripted.calls.some((c) => c.url.includes('/sessions/sess_1'))).toBe(true);
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(txn?.status).toBe('paid');
+  });
+
+  it('★ leaves the order alone when the provider still says "open" — the reconciler will retry', async () => {
+    await open();
+    scripted.responses.push({ body: { state: 'recheck' } });
+    const raw = JSON.stringify({ event_id: 'e_chg2', session_id: 'sess_1', type: 'session.changed' });
+    expect((await webhook(raw)).statusCode).toBe(200);
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(txn?.status).toBe('created');
+  });
+
+  it('★ a failed re-read is acknowledged, not retried forever by the provider', async () => {
+    await open();
+    scripted.responses.push({ ok: false, status: 500, body: 'nope' });
+    const raw = JSON.stringify({ event_id: 'e_chg3', session_id: 'sess_1', type: 'session.changed' });
+    // 200: the event was VERIFIED, so re-delivery achieves nothing. The reconciler owns the retry.
+    expect((await webhook(raw)).statusCode).toBe(200);
+    const [txn] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.projectId, projectId));
+    expect(txn?.status).toBe('created');
+  });
+});
+
+describe('the browser preflights, and the endpoints answer', () => {
+  it('every cross-origin endpoint answers OPTIONS with 204 and a wildcard origin', async () => {
+    for (const url of [
+      `/pay/${projectId}/pay/challenge`,
+      `/pay/${projectId}/pay/preview/challenge`,
+      `/pay/${projectId}/pay`,
+      `/pay/${projectId}/txn/tok_x`,
+    ]) {
+      const res = await h.app.inject({ method: 'OPTIONS', url });
+      expect(res.statusCode, url).toBe(204);
+      expect(res.headers['access-control-allow-origin'], url).toBe('*');
+    }
+  });
+
+  it('the challenge endpoint issues a solvable challenge and is never cached', async () => {
+    const res = await h.app.inject({ method: 'GET', url: `/pay/${projectId}/pay/challenge` });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    // The altcha shape: a salted challenge the browser must brute-force up to `maxnumber`.
+    expect(res.json()).toMatchObject({ challenge: expect.any(String), salt: expect.any(String), signature: expect.any(String) });
+  });
+});

@@ -157,3 +157,26 @@ describe('★★ declared buyer fields are rendered AND collected', () => {
     expect((root.querySelector('[data-sw-part="channel"]') as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe('★ the runtime hands back its prior attempt so stock is not stacked', () => {
+  it('sends no supersede on a first attempt, and the prior token on a retry', async () => {
+    const root = mount([CHECKOUT]);
+    const btn = root.querySelector('[data-sw-part="channel"]') as HTMLElement;
+    btn.click();
+    await vi.waitFor(() => expect(posted).toHaveLength(1));
+    expect((posted[0]!.body as Record<string, unknown>).supersede).toBeUndefined();
+    // The token is remembered at REVIEW time — a buyer who goes back has already cost a hold.
+    // (The cart key is derived from the page address, so find it rather than hard-coding it.)
+    const pendingKey = () =>
+      Object.keys(window.localStorage).find((k) => k.endsWith(':pending')) ?? '';
+    await vi.waitFor(() => expect(pendingKey()).not.toBe(''));
+    expect(window.localStorage.getItem(pendingKey())).toBe('tok_1');
+
+    // Back, then Checkout again.
+    await vi.waitFor(() => expect(root.querySelector('[data-sw-part="review-cancel"]')).toBeTruthy());
+    (root.querySelector('[data-sw-part="review-cancel"]') as HTMLElement).click();
+    btn.click();
+    await vi.waitFor(() => expect(posted).toHaveLength(2));
+    expect((posted[1]!.body as Record<string, unknown>).supersede).toBe('tok_1');
+  });
+});

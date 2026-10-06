@@ -59,8 +59,30 @@ The running version of an instance is reported at `GET /version` (baked into the
   recovered by a reconciliation pass that asks the provider directly — the safeguard that makes
   "the webhook is the truth" survivable when a firewall or an outage eats one.
 
+- The cart drawer's disclaimer now matches what its button does. "Prices are indicative — the seller
+  confirms availability and final price" is true of a WhatsApp or email cart and false above a Pay
+  button that charges a card, so a cart carrying a `checkout` channel uses `cart.checkout_note`
+  instead ("You'll see the final total, including any shipping and tax, before you pay").
+
 - Payments are **off by default** on every instance (`paymentsEnabled`), and the endpoints are not
   registered at all without an encryption key.
+
+### Security
+
+- **A gateway dry run can no longer spend another project's credentials.** The verify endpoint took
+  the project id from the request *body* and built a `role: 'owner'` context from it, so any caller
+  authorised to author gateways could name any tenant's project and have the server decrypt that
+  tenant's stored secret and spend it on a real request to their connected provider account — and
+  tell them apart by the differentiated refusals. It is now `POST /projects/:projectId/payment/verify`,
+  with the project resolved through the ordinary session membership check. Unreleased in 0.57.0, so
+  the old path never shipped.
+
+- **`payments:provider:write` now requires the key's owner to be an instance admin.** The capability
+  alone passed the gate, while an API key is bound to one project and may be minted by that project's
+  owner at any role — and the OAuth consent screen pre-checks every capability for a client that
+  requests no scope, with this one unflagged. An invited client could acquire platform-wide control
+  of every tenant's gateway configuration by approving an ordinary MCP connection. The capability is
+  also now excluded from the pre-checked default and marked elevated on the consent page.
 
 
 ## [0.57.0] — 2026-10-02

@@ -209,3 +209,24 @@ text part), and a **test order says so in the subject and the body**.
 
 Tax *determination* (one project rate, displayed — no OSS thresholds or per-country rates), invoicing,
 multi-currency, saved cards, subscriptions, marketplaces and shipping-rate calculation.
+
+## What broke, and where to look first
+
+Two defects in this module were invisible to a full green test suite, and both are shapes rather
+than typos. If something here "cannot be reproduced but users report it", start with these.
+
+**The page never got the channel.** `template.ts` projects shop channels into the `data-channels`
+attribute, and that projection is a `switch` on `kind` with a `return null` default. A channel kind
+with no branch is silently dropped, so the runtime sees nothing and renders no button — while every
+cart test still passes, because they all set `data-channels` by hand. Any new channel kind needs a
+branch there AND a case in `cart-rendered-checkout.behavior.test.ts`, which is the one test that
+renders with the real helper and runs the real runtime against the output.
+
+**The webhook's raw body.** Signature verification MUST see the bytes as sent. The raw-body parser is
+registered on an encapsulated Fastify scope, and the route must be registered **on that same scope** —
+`scope.post`, never `app.post`. Get it wrong and the route silently falls back to the global JSON
+parser, the handler re-serializes `req.body`, and compact provider JSON still verifies by luck while
+pretty-printed JSON gets a 400 that is indistinguishable from a bad secret. The E2E case that proves
+this posts pretty-printed bytes with a correct signature; a test that only checks a *bad* signature
+is refused proves nothing.
+

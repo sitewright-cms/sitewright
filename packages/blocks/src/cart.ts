@@ -293,6 +293,24 @@ export const CART_JS = `(function(){
   'use strict';
   var MAX_LINES=50, MAX_QTY=99;
   function q(sel,root){return Array.prototype.slice.call((root||document).querySelectorAll(sel));}
+  // When this page loaded — the /pay time-trap's reference point, shared by every mount.
+  var CART_STARTED=Date.now();
+  // The /pay INTERACTION gate wants evidence that a human touched the page at all. Collected here,
+  // once, from TRUSTED events only (isTrusted is false for anything a script dispatches), passively
+  // so it never delays typing. Deliberately the weakest possible test: a keyboard-only visitor
+  // produces no pointer events, autofill produces no keystrokes, and anything sharper costs real
+  // buyers — which is far more expensive than a spam order getting through.
+  var CART_IX_P=0,CART_IX_K=0,CART_IX_F={};
+  function ixGlobal(e,kind){
+    if(!e||e.isTrusted===false)return;
+    if(kind==='p')CART_IX_P++;else CART_IX_K++;
+    var t=e.target;if(t&&t.name)CART_IX_F[t.name]=1;
+  }
+  document.addEventListener('pointerdown',function(e){ixGlobal(e,'p');},{passive:true});
+  document.addEventListener('touchstart',function(e){ixGlobal(e,'p');},{passive:true});
+  document.addEventListener('keydown',function(e){ixGlobal(e,'k');},{passive:true});
+  document.addEventListener('input',function(e){ixGlobal(e,'k');},{passive:true});
+  function ixSnapshot(){var n=0;for(var k in CART_IX_F){if(Object.prototype.hasOwnProperty.call(CART_IX_F,k))n++;}return CART_IX_P+'.'+CART_IX_K+'.'+n;}
   function mk(tag,cls,txt){var n=document.createElement(tag);if(cls){n.className=cls;}if(txt!=null){n.textContent=txt;}return n;}
   function part(tag,name,txt){var n=mk(tag,null,txt);n.setAttribute('data-sw-part',name);return n;}
   // A self-contained "waves" ripple on a control (pointerdown → an expanding circle from the click
@@ -352,6 +370,19 @@ export const CART_JS = `(function(){
       totalLabel:mount.getAttribute('data-total-label')||'Total',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
+      // CHECKOUT strings. Every one is a reserved catalog key, so a multilingual shop localizes the
+      // whole payment flow without touching a page.
+      reviewLabel:mount.getAttribute('data-review-label')||'Confirm your order',
+      payLabel:mount.getAttribute('data-pay-label')||'Pay now',
+      backLabel:mount.getAttribute('data-back-label')||'Back',
+      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
+      shippingLabel:mount.getAttribute('data-shipping-label')||'Shipping',
+      taxLabel:mount.getAttribute('data-tax-label')||'Tax',
+      checkingLabel:mount.getAttribute('data-checking-label')||'Checking availability\\u2026',
+      redirectingLabel:mount.getAttribute('data-redirecting-label')||'Taking you to the payment page\\u2026',
+      outOfStockLabel:mount.getAttribute('data-oos-label')||'Sorry, that is out of stock.',
+      goneLabel:mount.getAttribute('data-gone-label')||'An item in your cart is no longer available.',
+      checkoutFailedLabel:mount.getAttribute('data-checkout-failed-label')||'Checkout is unavailable right now. Please try again.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       yesLabel:mount.getAttribute('data-yes-label')||'Yes', // the value a ticked checkbox order field contributes
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
@@ -482,6 +513,119 @@ export const CART_JS = `(function(){
     for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
     return svg;
   }
+  // ---- CHECKOUT (a processed payment) ---------------------------------------------------------
+  //
+  // ★★ TWO STEPS, AND THE SECOND ONE SHOWS THE SERVER'S NUMBERS. The drawer computes a total for
+  // display, but the amount actually charged is recomputed server-side from the publish-time catalog
+  // snapshot — the browser never sends a price. So the review step renders the breakdown the SERVER
+  // returned, not the one the cart was showing. A drawer showing one total while the provider charges
+  // another is the single worst defect this feature can have, and a confirmation step on the server's
+  // own figures removes the whole class rather than trying to keep two of them in step.
+  //
+  // ★ The cart is NOT cleared on redirect. The buyer is leaving for the provider's page and may well
+  // come back without paying; clearing here would lose their basket for an abandoned payment. The
+  // thank-you page clears it, on a confirmed paid status.
+  function postCheckout(ch,items,cfg,values,onDone){
+    if(!window.__swp){onDone({error:'unavailable'});return;}
+    var lines=[];
+    for(var i=0;i<items.length;i++){lines.push({sku:items[i].sku,qty:items[i].qty});}
+    var payload={items:lines,fields:values||{},_hpt:'',_elapsed:String(Date.now()-CART_STARTED),_ix:ixSnapshot()};
+    fetch(window.__swp(ch.key),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
+      .then(function(res){return res.json().then(function(body){return {status:res.status,body:body};});})
+      .then(function(r){
+        if(r.status===200&&r.body&&r.body.redirectUrl){onDone({ok:true,data:r.body});return;}
+        onDone({error:(r.body&&r.body.error)||'failed',sku:r.body&&r.body.sku,available:r.body&&r.body.available});
+      })
+      .catch(function(){onDone({error:'network'});});
+  }
+
+  // Hands the buyer to the provider. ★ A TOP-LEVEL NAVIGATION, not window.open: a popup opened after
+  // an await is blocked by every browser, and the result would be a buyer who clicked Pay and saw
+  // nothing happen. Re-checks https even though the server already did — this is the last place the
+  // URL is ours to refuse.
+  function goToProvider(url,token,key){
+    if(!/^https:\\/\\//i.test(String(url||''))){return false;}
+    try{if(token){localStorage.setItem(key+':txn',String(token));}}catch(e){}
+    window.location.assign(url);
+    return true;
+  }
+
+  // Renders the server's authoritative breakdown and a confirm button. Returns the panel element.
+  // ★ Built from the RESPONSE, never from the cart's own arithmetic — that is the whole point of the
+  // step. Every value goes in through textContent.
+  function reviewPanel(data,cfg,onConfirm,onCancel){
+    var panel=part('div','review');
+    var h=part('div','review-title',cfg.reviewLabel||'Confirm your order');
+    panel.appendChild(h);
+    var rows=part('dl','review-lines');
+    function row(label,value){
+      var dt=document.createElement('dt');dt.textContent=label;
+      var dd=document.createElement('dd');dd.textContent=value;
+      rows.appendChild(dt);rows.appendChild(dd);
+    }
+    var lines=(data&&data.lines)||[];
+    // Every value here came from the server already formatted; the panel adds no arithmetic of its own.
+    for(var i=0;i<lines.length;i++){row(lines[i].qty+' x '+lines[i].name,String(lines[i].amount||''));}
+    var d=(data&&data.display)||{};
+    if(d.subtotal!==undefined){row(cfg.subtotalLabel||'Subtotal',d.subtotal);}
+    if(d.shipping!==undefined&&d.shipping!=='0.00'&&d.shipping!=='0'){row(cfg.shippingLabel||'Shipping',d.shipping);}
+    if(d.tax!==undefined&&d.tax!=='0.00'&&d.tax!=='0'){row(cfg.taxLabel||'Tax',d.tax);}
+    panel.appendChild(rows);
+    var totalRow=part('div','review-total');
+    totalRow.appendChild(mk('span',null,cfg.totalLabel));
+    totalRow.appendChild(mk('span',null,String(d.total!==undefined?d.total:'')));
+    panel.appendChild(totalRow);
+    var pay=part('button','review-pay',cfg.payLabel||'Pay now');pay.type='button';pay.className='btn btn-primary btn-block';ripple(pay,true);
+    pay.addEventListener('click',onConfirm);
+    var back=part('button','review-cancel',cfg.backLabel||'Back');back.type='button';
+    back.addEventListener('click',onCancel);
+    panel.appendChild(pay);panel.appendChild(back);
+    return panel;
+  }
+
+  // The whole checkout interaction, shared by the default drawer and an authored one.
+  function startCheckout(ch,btn,mount,items,cfg,key){
+    if(!items.length){return;}
+    var host=btn.parentNode;if(!host){return;}
+    var prior=host.querySelector('[data-sw-part="review"]');
+    if(prior){host.removeChild(prior);}
+    var status=btn.nextSibling&&btn.nextSibling.getAttribute&&btn.nextSibling.getAttribute('data-sw-part')==='checkout-status'
+      ? btn.nextSibling
+      : (function(){var p2=part('p','checkout-status');host.insertBefore(p2,btn.nextSibling);return p2;})();
+    status.textContent=cfg.checkingLabel||'Checking availability...';
+    btn.disabled=true;
+
+    // Buyer fields, when the channel declares any: collected by the SAME inline form a deep-link
+    // channel uses, so one control vocabulary covers every channel kind.
+    var values={};
+    var inputs=host.querySelectorAll('[data-sw-part="order-field"] input,[data-sw-part="order-field"] select,[data-sw-part="order-field"] textarea');
+    for(var i=0;i<inputs.length;i++){if(inputs[i].name){values[inputs[i].name]=inputs[i].value;}}
+
+    postCheckout(ch,items,cfg,values,function(r){
+      btn.disabled=false;
+      if(!r.ok){
+        // ★ Named, actionable refusals. "Something went wrong" is what a buyer gets today from most
+        // shops and it is why they leave; "the mug is out of stock" is a cart they can fix.
+        if(r.error==='out_of_stock'){status.textContent=(cfg.outOfStockLabel||'Sorry, this is out of stock.')+(r.sku?' ('+r.sku+')':'');}
+        else if(r.error==='unknown-sku'){status.textContent=cfg.goneLabel||'An item in your cart is no longer available.';}
+        else{status.textContent=cfg.checkoutFailedLabel||'Checkout is unavailable right now. Please try again.';}
+        return;
+      }
+      status.textContent='';
+      var panel=reviewPanel(r.data,cfg,function(){
+        status.textContent=cfg.redirectingLabel||'Taking you to the payment page...';
+        if(!goToProvider(r.data.redirectUrl,r.data.token,key)){
+          status.textContent=cfg.checkoutFailedLabel||'Checkout is unavailable right now. Please try again.';
+        }
+      },function(){
+        if(panel.parentNode){panel.parentNode.removeChild(panel);}
+        btn.hidden=false;
+      });
+      btn.hidden=true;
+      host.insertBefore(panel,status.nextSibling);
+    });
+  }
+
   // ---- authored-markup binding ----
   //
   // ★★ BIND, DO NOT BUILD. Everything below attaches behaviour to markup that already exists. It
@@ -556,6 +700,10 @@ export const CART_JS = `(function(){
         if(!ch){
           if(window.console&&console.warn){console.warn('sitewright cart: no channel named "'+wanted+'" is configured');}
           btn.setAttribute('data-sw-unconfigured','');
+          return;
+        }
+        if(ch.kind==='checkout'){
+          btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key);});
           return;
         }
         btn.addEventListener('click',function(){runChannel(ch,items,cfg);});
@@ -696,6 +844,9 @@ export const CART_JS = `(function(){
             if(opening){cf.open();}
           });
           foot.appendChild(b);foot.appendChild(cf.form);
+        }else if(ch.kind==='checkout'){
+          b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key);});
+          foot.appendChild(b);
         }else{
           b.addEventListener('click',function(){runChannel(ch,items,cfg);});
           foot.appendChild(b);

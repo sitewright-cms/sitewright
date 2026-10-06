@@ -91,6 +91,17 @@ function summarize(lines: readonly TransactionLine[]): string {
   return joined.length <= 180 ? joined : `${joined.slice(0, 177)}...`;
 }
 
+/**
+ * Renders each priced line for the review step.
+ *
+ * ★ Formatted HERE, not in the browser. The review step exists to show the SERVER's numbers, and a
+ * client that re-formats them is a client that can disagree about them — which is the exact class of
+ * defect the step was added to remove.
+ */
+export function describeLines(lines: readonly TransactionLine[], currency: string): Array<{ name: string; qty: number; amount: string }> {
+  return lines.map((l) => ({ name: l.name, qty: l.qty, amount: fromMinorUnits(l.lineMinor, currency) }));
+}
+
 /** Renders the authoritative breakdown for the review step and the provider payload. */
 export function describeAmounts(amounts: TransactionAmounts, currency: string): Record<string, string> {
   return {

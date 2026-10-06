@@ -88,6 +88,22 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'cart.total', label: 'Cart total label', default: 'Total' },
       { key: 'cart.clear', label: 'Clear-cart button', default: 'Clear cart' },
       { key: 'cart.sent', label: 'Order-sent confirmation', default: 'Order sent — we will be in touch.' },
+      // ★ CHECKOUT (a processed payment). Separate keys from the deep-link channels: a buyer being
+      // taken to a real payment page needs different words from one whose order is being emailed, and
+      // a merchant must be able to say so in every language they sell in.
+      { key: 'cart.review', label: 'Review-order heading', default: 'Confirm your order' },
+      { key: 'cart.pay', label: 'Pay-now button', default: 'Pay now' },
+      { key: 'cart.back', label: 'Back-from-review button', default: 'Back' },
+      { key: 'cart.subtotal', label: 'Subtotal row', default: 'Subtotal' },
+      { key: 'cart.shipping', label: 'Shipping row', default: 'Shipping' },
+      { key: 'cart.tax', label: 'Tax row', default: 'Tax' },
+      { key: 'cart.checking', label: 'Checking-availability status', default: 'Checking availability…' },
+      { key: 'cart.redirecting', label: 'Redirecting-to-payment status', default: 'Taking you to the payment page…' },
+      // ★ Each refusal says WHAT is wrong. "Something went wrong" is what most shops give a buyer and
+      // it is why they leave; "the mug is out of stock" is a cart they can fix.
+      { key: 'cart.out_of_stock', label: 'Out-of-stock message', default: 'Sorry, that is out of stock.' },
+      { key: 'cart.gone', label: 'Item-no-longer-sold message', default: 'An item in your cart is no longer available.' },
+      { key: 'cart.checkout_failed', label: 'Checkout-unavailable message', default: 'Checkout is unavailable right now. Please try again.' },
       { key: 'cart.order_lead', label: 'Order message lead-in', default: 'I’d like to order:' },
       { key: 'cart.currency_symbol', label: 'Currency symbol', default: '$' },
       { key: 'cart.currency_code', label: 'Currency code (ISO 4217)', default: 'USD' },

@@ -10,7 +10,23 @@ import type { Translations } from '../src/website.js';
 // Keys that shipped SCOPED from the start and therefore have no legacy name to migrate from. Listing
 // them explicitly is the point: the exhaustiveness test below turns "I added a reserved key and forgot
 // the migration row" into a failure, and adding a key here is the deliberate way to say "no legacy name".
-const NO_LEGACY_NAME = new Set(['cart.yes']);
+const NO_LEGACY_NAME = new Set([
+  'cart.yes',
+  // The CHECKOUT flow shipped scoped from the start — there was never a flat `cart_pay` in any
+  // catalog, so there is nothing to lift and a migration row would map from a name that has never
+  // existed.
+  'cart.review',
+  'cart.pay',
+  'cart.back',
+  'cart.subtotal',
+  'cart.shipping',
+  'cart.tax',
+  'cart.checking',
+  'cart.redirecting',
+  'cart.out_of_stock',
+  'cart.gone',
+  'cart.checkout_failed',
+]);
 
 describe('reserved translation key migration', () => {
   // The whole compatibility story for the hard rename. A reserved key missing from this map means every

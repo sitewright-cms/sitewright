@@ -23,7 +23,7 @@ import type { ProjectContext } from '../repo/context.js';
 import type { ShopTransactionRepository, TransactionRow } from '../repo/shop-transactions.js';
 import type { ShopStockRepository } from '../repo/shop-stock.js';
 import type { GatewayRepository } from '../payments/gateways.js';
-import { amountMatches, describeAmounts, priceOrder } from '../payments/pricing.js';
+import { amountMatches, describeAmounts, describeLines, priceOrder } from '../payments/pricing.js';
 import {
   createCheckoutSession,
   fetchProviderStatus,
@@ -399,7 +399,9 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
           currency: priced.currency,
           amounts: priced.amounts,
           display: describeAmounts(priced.amounts, priced.currency),
-          lines: priced.lines,
+          // Each line already FORMATTED, for the same reason as the totals: the review step must not
+          // compute anything, or it can disagree with what is charged.
+          lines: describeLines(priced.lines, priced.currency),
         });
       } catch (err) {
         // The provider never opened a session, so nothing can resolve this transaction. Give the

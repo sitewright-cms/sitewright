@@ -252,3 +252,26 @@ describe('★ {{#sw-cart}} block form — the authoring surface', () => {
     expect(renderTemplate('{{#sw-cart}}<p>x</p>{{/sw-cart}}', off).trim()).toBe('');
   });
 });
+
+describe('★★ the shipped runtime is syntactically valid JavaScript', () => {
+  it('CART_JS parses', () => {
+    // ★ This guard exists because the file is ONE TEMPLATE LITERAL, and that has now produced two
+    // distinct classes of silent corruption:
+    //   - a BACKTICK in a comment ends the literal early (bitten three times);
+    //   - `\/` inside it collapses to `/`, which ended a regex and turned the rest of the line into
+    //     a comment — the runtime still "built", and every behavioural test failed at eval time with
+    //     a syntax error pointing at an innocent line twenty lines further on.
+    // Both are invisible to a reader and to tsc. Parsing the emitted source catches the whole family.
+    expect(() => new Function(CART_JS)).not.toThrow();
+  });
+
+  it('contains no backtick, which would end the literal early', () => {
+    expect(CART_JS).not.toContain('`');
+  });
+
+  it('the https guard on a provider redirect is a REGEX, not a comment', () => {
+    // The specific corruption above: `/^https:///i` parses as a regex `/^https:/` followed by `//i`.
+    expect(CART_JS).toContain(String.raw`/^https:\/\//i`);
+    expect(CART_JS).not.toContain('/^https:///i');
+  });
+});

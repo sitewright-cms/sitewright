@@ -1469,6 +1469,25 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart.total'))}"`;
     attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart.clear'))}"`;
     attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart.sent'))}"`;
+    // ★ CHECKOUT strings, emitted only when the shop actually has a checkout channel — a shop with no
+    // processed payments should not carry eleven unused attributes on every page that has a cart.
+    if ((shop.channels as Array<{ kind?: string }> | undefined)?.some((c) => c?.kind === 'checkout')) {
+      for (const [attr, key] of [
+        ['data-review-label', 'cart.review'],
+        ['data-pay-label', 'cart.pay'],
+        ['data-back-label', 'cart.back'],
+        ['data-subtotal-label', 'cart.subtotal'],
+        ['data-shipping-label', 'cart.shipping'],
+        ['data-tax-label', 'cart.tax'],
+        ['data-checking-label', 'cart.checking'],
+        ['data-redirecting-label', 'cart.redirecting'],
+        ['data-oos-label', 'cart.out_of_stock'],
+        ['data-gone-label', 'cart.gone'],
+        ['data-checkout-failed-label', 'cart.checkout_failed'],
+      ] as const) {
+        attrs += ` ${attr}="${escapeAttr(rt(key))}"`;
+      }
+    }
     // The word a ticked `checkbox` order field contributes to the message ("Gift wrap: Yes").
     attrs += ` data-yes-label="${escapeAttr(str(h.yes) || rt('cart.yes'))}"`;
     // The order-message lead-in ({{sw-cart}} → cart.js prepends it to the deep-link order summary). The

@@ -1451,6 +1451,61 @@
         "comp_search.n3_d": {
           "de": "Jeder Treffer ist ein Link mit Seitentitel, Beschreibung und einem Ausschnitt der Fundstelle. Vor Suchmaschinen verborgene Seiten erscheinen nie.",
           "es": "Cada resultado es un enlace con el título de la página, su descripción y un fragmento con la coincidencia. Las páginas ocultas a los buscadores nunca aparecen."
+        },
+        "cart.review": {
+          "en": "Confirm your order",
+          "de": "Bestellung bestätigen",
+          "es": "Confirma tu pedido"
+        },
+        "cart.pay": {
+          "en": "Pay now",
+          "de": "Jetzt bezahlen",
+          "es": "Pagar ahora"
+        },
+        "cart.back": {
+          "en": "Back",
+          "de": "Zurück",
+          "es": "Volver"
+        },
+        "cart.subtotal": {
+          "en": "Subtotal",
+          "de": "Zwischensumme",
+          "es": "Subtotal"
+        },
+        "cart.shipping": {
+          "en": "Shipping",
+          "de": "Versand",
+          "es": "Envío"
+        },
+        "cart.tax": {
+          "en": "Tax",
+          "de": "MwSt.",
+          "es": "Impuestos"
+        },
+        "cart.checking": {
+          "en": "Checking availability…",
+          "de": "Verfügbarkeit wird geprüft…",
+          "es": "Comprobando disponibilidad…"
+        },
+        "cart.redirecting": {
+          "en": "Taking you to the payment page…",
+          "de": "Weiterleitung zur Zahlungsseite…",
+          "es": "Te llevamos a la página de pago…"
+        },
+        "cart.out_of_stock": {
+          "en": "Sorry, that is out of stock.",
+          "de": "Leider ausverkauft.",
+          "es": "Lo sentimos, está agotado."
+        },
+        "cart.gone": {
+          "en": "An item in your cart is no longer available.",
+          "de": "Ein Artikel in Ihrem Warenkorb ist nicht mehr verfügbar.",
+          "es": "Un artículo de tu carrito ya no está disponible."
+        },
+        "cart.checkout_failed": {
+          "en": "Checkout is unavailable right now. Please try again.",
+          "de": "Die Kasse ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.",
+          "es": "El pago no está disponible ahora. Inténtalo de nuevo."
         }
       },
       "siteUrl": "https://example.com",

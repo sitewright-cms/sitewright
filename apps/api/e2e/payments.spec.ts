@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, request, type APIRequestContext } from '@playwright/test';
 import { createHmac } from 'node:crypto';
 import { adminContext } from './helpers.js';
 
@@ -37,14 +37,18 @@ const GATEWAY = {
   },
   verification: { scheme: 'hmac-sha256-header', header: 'x-mock-signature', encoding: 'hex', secretField: 'webhookSecret' },
   events: { eventIdPath: 'event_id', refPath: 'session_id', typePath: 'type', types: { 'session.paid': 'paid' } },
+  refund: { request: { method: 'POST', path: '/payments/${TXN:reference}/refunds', format: 'json', headers: {}, body: { amount: '${#AMOUNT:minor}' } } },
   allowedOrigins: ['https://mock-pay.invalid'],
   enabled: true,
 };
 
 let admin: APIRequestContext;
 let projectId: string;
+/** Captured from the fixture so a test can build a second, differently-authenticated context. */
+let base: string | undefined;
 
 test.beforeAll(async ({ playwright, baseURL }) => {
+  base = baseURL;
   admin = await adminContext(playwright, baseURL);
 
   // Payments are OFF by default on every instance; turn them on for this run.
@@ -267,6 +271,25 @@ test.describe('the full checkout flow', () => {
     });
     // 404 (no such channel yet) or 503 (no catalog) — never a 200, and never a charge.
     expect([404, 503]).toContain(res.status());
+  });
+
+  test('★★ a refund is refused to a BEARER token, at any role — this route is session-only', async () => {
+    const key = await admin.post(`/projects/${flowProject}/api-keys`, {
+      data: { name: 'agent', role: 'owner', expiresInDays: 1, capabilities: ['content:read', 'content:write', 'publish', 'deploy'] },
+    });
+    expect(key.status(), await key.text()).toBe(201);
+    const token = (await key.json()).token as string;
+    const ctx = await request.newContext({ baseURL: base, extraHTTPHeaders: { authorization: `Bearer ${token}` } });
+    // ★ Money leaving a merchant's account is not an agent capability. The id does not matter: the
+    // gate is reached before anything is looked up.
+    const res = await ctx.post(`/projects/${flowProject}/transactions/any_id/refund`, { data: {} });
+    expect(res.status()).toBeGreaterThanOrEqual(403);
+    await ctx.dispose();
+  });
+
+  test('a refund names an unknown order rather than 500ing', async () => {
+    const res = await admin.post(`/projects/${flowProject}/transactions/txn_nope/refund`, { data: {} });
+    expect(res.status()).toBe(404);
   });
 
   test('the fulfilment move refuses an unknown transaction rather than 500ing', async () => {

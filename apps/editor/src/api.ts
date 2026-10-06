@@ -1964,6 +1964,15 @@ export const api = {
   putProjectPaymentMode: (projectId: string, mode: 'test' | 'live') =>
     request<{ mode: string }>('PUT', `/projects/${projectId}/payment/mode`, { mode }),
 
+  /** The dry run: a REAL test-mode checkout with this project's own stored credentials. ★ Requires
+   *  both a writer session here and gateway-author rights, which is why it is not on an agent path. */
+  verifyProjectPayment: (projectId: string, gatewayId: string) =>
+    request<{ verified: boolean; redirectUrl?: string; reason?: string; message?: string }>(
+      'POST',
+      `/projects/${projectId}/payment/verify`,
+      { gatewayId, mode: 'test' },
+    ),
+
   /** The orders inbox. */
   listTransactions: (projectId: string, q: { limit?: number; offset?: number; status?: string } = {}) =>
     request<{ items: ShopTransaction[]; total: number }>(

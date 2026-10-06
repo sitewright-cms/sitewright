@@ -124,12 +124,23 @@ A checklist, not a code change. Everything below is data.
    Use **`recheck`** when the webhook body does not itself prove payment (Mollie sends only an id);
    mapping that to `paid` would accept an unpaid order on an attacker's say-so.
 8. **Add `status`** so reconciliation and `recheck` can re-read the truth.
-9. **Enable it**, then **prove it**: `POST /admin/payment-gateways/acme/verify` with a project that
-   has test credentials. This performs a **real test-mode checkout** — a template can be
-   syntactically perfect and still produce a request the provider rejects. A gateway cannot take live
-   money until this has succeeded, and **any edit clears the flag**.
+9. **Enable it**, then **prove it**: `POST /projects/<id>/payment/verify` with `{ gatewayId }`, from
+   a project that has test credentials — or the **Prove it works** button in that project's payment
+   credentials dialog. This performs a **real test-mode checkout** — a template can be syntactically
+   perfect and still produce a request the provider rejects. A gateway cannot take live money until
+   this has succeeded, and **any edit clears the flag**.
 
-An agent can do all of this with the opt-in `payments:provider:write` capability. It deliberately
+   ★ The project is a **path** parameter, and the caller must be both a writer of that project (by
+   session, so no bearer token reaches it) and entitled to author gateways. It used to take the
+   project in the request *body* and trust it, which let one caller spend another tenant's stored
+   credentials against their real provider account. Each gate covers a different half: a project
+   writer must not mark a definition proven for every tenant, and a gateway author must not spend a
+   tenant's secret.
+
+An agent can do all of this — except the dry run, which is session-only — with the opt-in
+`payments:provider:write` capability, **and only when the key's owner is an instance admin**. The
+capability alone is not enough: an API key is bound to one project and may be minted by that
+project's owner at any role, while a gateway definition is instance-wide infrastructure. It deliberately
 cannot touch a **project's** keys: those are session-only, because an agent that can mint a live key
 into a project can redirect that project's revenue.
 

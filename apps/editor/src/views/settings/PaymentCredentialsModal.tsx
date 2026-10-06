@@ -30,6 +30,8 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
   const [error, setError] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  /** The dry run's outcome: the provider's own hosted page, or its refusal. */
+  const [proof, setProof] = useState<{ ok: boolean; url?: string; message?: string } | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -88,6 +90,35 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     } catch (e) {
       const missing = (e as { details?: { missing?: string[] } }).details?.missing;
       setError(missing?.length ? [`Fill in the live values first: ${missing.join(', ')}`] : [(e as Error).message]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /**
+   * The dry run.
+   *
+   * ★ A REAL test-mode checkout, because a gateway template can be syntactically perfect and still
+   * produce a request the provider rejects — and until one has succeeded the gateway cannot take
+   * live money. What it returns is the provider's own hosted page: the proof that matters is
+   * visual, not a 200 from our own API, so the link is offered rather than a green tick.
+   */
+  const prove = async (): Promise<void> => {
+    setBusy(true);
+    setError([]);
+    setProof(null);
+    try {
+      const r = await api.verifyProjectPayment(projectId, gatewayId);
+      setProof({ ok: r.verified === true, ...(r.redirectUrl ? { url: r.redirectUrl } : {}) });
+    } catch (e) {
+      const d = e as { details?: { message?: string; error?: string; missing?: string[] } };
+      const missing = d.details?.missing;
+      setProof({
+        ok: false,
+        message: missing?.length
+          ? `Fill in the test values first: ${missing.join(', ')}`
+          : d.details?.message ?? d.details?.error ?? (e as Error).message,
+      });
     } finally {
       setBusy(false);
     }
@@ -201,10 +232,42 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
               <button type="button" className={ghostButton} disabled={busy} onClick={() => void goLive()}>
                 {activeMode === 'live' ? 'Switch back to test mode' : 'Go live'}
               </button>
+              {/* ★ Only offered in test mode: proving a gateway must never mean taking a real payment. */}
+              {activeMode === 'test' && gatewayId && (
+                <button type="button" className={ghostButton} disabled={busy} onClick={() => void prove()}>
+                  Prove it works
+                </button>
+              )}
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 This project is currently in <strong>{activeMode}</strong> mode.
               </span>
             </div>
+
+            {proof && (
+              <div
+                className={`rounded-lg border p-3 text-xs ${
+                  proof.ok
+                    ? 'border-emerald-200/70 dark:border-emerald-500/20 bg-emerald-50/60 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+                    : 'border-amber-200/70 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300'
+                }`}
+              >
+                {proof.ok ? (
+                  <span>
+                    <strong>The provider accepted a test checkout.</strong>{' '}
+                    {proof.url && (
+                      <a href={proof.url} target="_blank" rel="noreferrer noopener" className="underline">
+                        Open their page to see it
+                      </a>
+                    )}
+                    {proof.url && ' — that page is the proof, not this message.'}
+                  </span>
+                ) : (
+                  <span>
+                    <strong>The provider refused it.</strong> {proof.message ?? 'The attempt failed.'}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* ★ Live mode is a different kind of thing, and the UI should feel like it. */}
             {activeMode === 'live' && (

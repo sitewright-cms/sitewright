@@ -105,6 +105,8 @@ import {
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { buildSearchIndex, type SearchPageInput } from './search-index.js';
 import {
+  validateAuthoredCart,
+  cartMountContents,
   createCatalogAccumulator,
   harvestCatalogPage,
   finishCatalog,
@@ -234,6 +236,16 @@ export interface ReleaseManifest {
    * would be a worse trade. Reported either way — a buy button nobody can use is owed a reason.
    */
   shopCatalogWarnings?: string[];
+  /**
+   * Problems with an AUTHORED cart drawer — a fork that has lost a part the runtime needs, or a
+   * button naming a channel that no longer exists.
+   *
+   * ★ Warnings, never publish errors. A half-forked drawer must not block deploying the rest of a
+   * site: the cart is one feature on one page, and refusing the whole publish over it would make
+   * forking feel dangerous, which is the opposite of the point. But it must not be SILENT either —
+   * the failure mode is a drawer that renders beautifully and does nothing.
+   */
+  shopCartWarnings?: string[];
   /**
    * The sealed SHOP CATALOG SNAPSHOT — the price list the payment endpoints charge against.
    *
@@ -999,6 +1011,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const catalogAcc = shopSettlementCurrency ? createCatalogAccumulator(shopSettlementCurrency) : undefined;
     let shopCatalog: ShopCatalog | undefined;
     const shopCatalogWarnings: string[] = [];
+    const shopCartWarnings: string[] = [];
+    const shopChannelKeys = (website?.shop?.channels ?? []).map((c) => c.key);
     const dataFileWarnings: string[] = [];
     let dataFiles: ReturnType<typeof buildDataFiles>['files'] = [];
     // Site-search corpus, collected per rendered route and emitted per locale after the loop.
@@ -1311,7 +1325,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared registry: the inline CSS for every body-effect runtime THIS page uses (animation,
           // parallax, svg-anim, marquee, lazyload, ripple, cart, consent) — same set + order the editor
           // preview inlines for this page.
-          ...pageBodyEffects.flatMap((r) => (r.css ? [r.css] : [])),
+          // ★ The cart sheet is dropped when the shop asks for it — the escape hatch for a drawer
+          // forked far enough that the platform's rules are things to undo.
+          ...pageBodyEffects.flatMap((r) => (r.css && !(r.key === 'cart' && website?.shop?.platformCartStyles === false) ? [r.css] : [])),
           ...(pageThemeToggle ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
           ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
@@ -1335,6 +1351,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Harvest this route's buy buttons from the SAME string the CSP scan reads — body plus every
         // chrome slot, so a product tile in a footer is priced exactly as one in a page body is.
         if (catalogAcc) harvestCatalogPage(catalogAcc, cspScanHtml, pageFullPath);
+        // An AUTHORED cart drawer on this page, checked against the contract and the shop's own
+        // channel keys. Only pages that actually mount a cart cost anything here.
+        if (website?.shop?.enabled === true) {
+          for (const inner of cartMountContents(cspScanHtml)) {
+            for (const problem of validateAuthoredCart(inner, { channelKeys: shopChannelKeys })) {
+              shopCartWarnings.push(`${pageFullPath}: ${problem.message}`);
+            }
+          }
+        }
         const authorCspOrigins = authorContentCspOrigins(cspScanHtml);
         // …and the origins the PLATFORM injects into the very same page. The publisher used to contradict
         // itself here: it bakes an ABSOLUTE `/f/` endpoint into every platform-routed form, and a published
@@ -1876,6 +1901,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...(searchLargeLocales.length > 0 ? { searchLargeLocales } : {}),
       ...(dataFileWarnings.length > 0 ? { dataFileWarnings } : {}),
       ...(shopCatalogWarnings.length > 0 ? { shopCatalogWarnings } : {}),
+      ...(shopCartWarnings.length > 0 ? { shopCartWarnings: [...new Set(shopCartWarnings)].slice(0, 50) } : {}),
       ...(childrenTruncated.size > 0 ? { childrenTruncated: [...childrenTruncated.values()] } : {}),
     };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir

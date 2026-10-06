@@ -109,9 +109,19 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   { key: 'consent', uses: usesConsent, css: CONSENT_CSS, js: CONSENT_JS, script: 'consent.js', preview: 'style-only' },
 ];
 
-/** The inline CSS blocks for every registry runtime a page uses (both paths). */
-export function bodyEffectStyles(scanHtml: string): string[] {
-  return BODY_EFFECT_RUNTIMES.filter((r) => r.css && r.uses(scanHtml)).map((r) => r.css as string);
+/**
+ * The inline CSS blocks for every registry runtime a page uses (both paths).
+ *
+ * `opts.platformCartStyles === false` drops the cart sheet entirely — the escape hatch for a drawer
+ * forked far enough that the platform's rules are things to undo rather than a base to build on.
+ * Author CSS already wins by cascade position without this; the switch is for shipping NONE of it.
+ */
+export function bodyEffectStyles(scanHtml: string, opts: { platformCartStyles?: boolean } = {}): string[] {
+  return BODY_EFFECT_RUNTIMES.filter((r) => {
+    if (!r.css || !r.uses(scanHtml)) return false;
+    if (r.key === 'cart' && opts.platformCartStyles === false) return false;
+    return true;
+  }).map((r) => r.css as string);
 }
 
 /** A single `<noscript><style>…</style></noscript>` un-hide for every used runtime that hides content from

@@ -87,3 +87,34 @@ describe('reconcileStock — the ownership split', () => {
     expect(ops.find((o) => o.sku === 'c')).toMatchObject({ setOnStock: true, onStock: null });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// ★ The style escape hatch — a fully-forked drawer can ship with none of the platform's CSS.
+// ------------------------------------------------------------------------------------------------
+describe('bodyEffectStyles — platform cart styles', () => {
+  it('ships the cart sheet by default', async () => {
+    const { bodyEffectStyles } = await import('../src/publish/effect-runtimes.js');
+    const withCart = bodyEffectStyles('<div data-sw-cart></div>');
+    expect(withCart.some((css) => css.includes('data-sw-cart'))).toBe(true);
+  });
+
+  it('★ drops it entirely when the shop asks — not a pile of overrides, but none of it', async () => {
+    const { bodyEffectStyles } = await import('../src/publish/effect-runtimes.js');
+    const none = bodyEffectStyles('<div data-sw-cart></div>', { platformCartStyles: false });
+    expect(none.some((css) => css.includes('data-sw-cart'))).toBe(false);
+  });
+
+  it('leaves every OTHER runtime’s CSS alone', async () => {
+    const { bodyEffectStyles } = await import('../src/publish/effect-runtimes.js');
+    const html = '<div data-sw-cart></div><div data-sw-animate="fade-up"></div>';
+    const all = bodyEffectStyles(html);
+    const noCart = bodyEffectStyles(html, { platformCartStyles: false });
+    // Exactly one sheet fewer — the switch is about the cart, not about effects in general.
+    expect(noCart).toHaveLength(all.length - 1);
+  });
+
+  it('ships nothing for a page with no cart, either way', async () => {
+    const { bodyEffectStyles } = await import('../src/publish/effect-runtimes.js');
+    expect(bodyEffectStyles('<main>no shop</main>').some((c) => c.includes('data-sw-cart'))).toBe(false);
+  });
+});

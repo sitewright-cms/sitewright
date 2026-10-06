@@ -1038,6 +1038,12 @@ interface PreviewShell {
   preloader?: string;
   /** Emit the brand's text-on-brand tokens (custom effect code references them). */
   emitBrandContentTokens?: boolean;
+  /**
+   * `website.shop.platformCartStyles`. False drops the platform cart sheet entirely — the escape
+   * hatch for a fully-forked drawer. Threaded through the shell so the EDITOR PREVIEW agrees with
+   * publish: a drawer that looks right in the editor and wrong on the site is the worst of both.
+   */
+  platformCartStyles?: boolean;
   /** `<html lang>` for the preview — the previewed page's locale (publish parity). */
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
@@ -1172,7 +1178,7 @@ async function styledSourceDocument(
         ...(componentCss ? [componentCss] : []),
         // Shared registry: every marker-gated body-effect runtime's CSS (animation, parallax, svg-anim,
         // marquee, lazyload, ripple, cart, consent) — same set + order as the publish path.
-        ...bodyEffectStyles(scanHtml),
+        ...bodyEffectStyles(scanHtml, { platformCartStyles: shell.platformCartStyles }),
         ...(fixedBg ? [FIXED_BG_PREVIEW_CSS] : []),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
       ];
@@ -4890,6 +4896,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bottom,
           head: website?.head,
           criticalCss: website?.criticalCss,
+          platformCartStyles: website?.shop?.platformCartStyles,
           containerWidth: website?.containerWidth,
           customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
           // NO preloader in the single-page canvas — for CUSTOM code either, now. A preloader is

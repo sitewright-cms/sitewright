@@ -1557,7 +1557,16 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       const channelsJson = JSON.stringify(clean).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
       attrs += ` data-channels="${escapeAttr(channelsJson)}"`;
     }
-    return new Handlebars.SafeString(`<div ${attrs}></div>`);
+    // ★ BLOCK FORM: `{{#sw-cart}}…your markup…{{/sw-cart}}` puts the author's own drawer inside the
+    // mount, and the runtime then BINDS to it rather than building its own (see CART_PARTS). The
+    // inline form `{{sw-cart}}` keeps its original meaning — an empty mount the runtime fills — so
+    // every existing page is byte-identical.
+    //
+    // The config attributes are identical either way: an authored drawer still needs the currency,
+    // the channel list and the localized labels, and making the author restate them would be a
+    // second source of truth for things that already live in settings.
+    const inner = typeof options.fn === 'function' ? options.fn(this) : '';
+    return new Handlebars.SafeString(`<div ${attrs}>${inner}</div>`);
   });
   // (The CONSENT MANAGER banner mount is AUTO-INJECTED by the publish pipeline whenever
   // website.consent.enabled — there is no `{{sw-consent}}` helper. See consentMountMarkup + renderDocument.)

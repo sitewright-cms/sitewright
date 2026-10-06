@@ -2,6 +2,7 @@
 /// <reference lib="dom" />
 import { describe, it, expect, beforeEach } from 'vitest';
 import { CART_JS, CART_PARTS, CART_FIELDS, CART_ACTIONS, CART_REQUIRED_PARTS } from '../src/cart.js';
+import { renderTemplate } from '../src/template.js';
 
 /**
  * ★★ AUTHORED CART MARKUP, driven through the REAL shipped runtime in a DOM.
@@ -214,5 +215,40 @@ describe('the contract is a single source of truth', () => {
     expect(CART_PARTS.lineTemplate).toBe('line-template');
     expect(CART_FIELDS.subtotal).toBe('subtotal');
     expect(CART_ACTIONS.increment).toBe('inc');
+  });
+});
+
+describe('★ {{#sw-cart}} block form — the authoring surface', () => {
+  it('wraps the author’s markup in a mount carrying the SAME config attributes as the inline form', () => {
+    const ctx = {
+      website: {
+        shop: {
+          enabled: true,
+          currency: { code: 'EUR', decimals: 2 },
+          channels: [{ kind: 'whatsapp', key: 'wa', number: '+14155550123' }],
+        },
+      },
+    } as never;
+    const inline = renderTemplate('{{sw-cart}}', ctx);
+    const block = renderTemplate('{{#sw-cart}}<dialog data-sw-part="drawer"></dialog>{{/sw-cart}}', ctx);
+    // The author's markup is inside…
+    expect(block).toContain('<dialog data-sw-part="drawer">');
+    // …and the mount's own config attributes are unchanged, so an authored drawer still gets the
+    // currency, channels and labels without the author restating settings.
+    const attrsOf = (html: string) => html.slice(html.indexOf('<div'), html.indexOf('>') + 1);
+    expect(attrsOf(block)).toBe(attrsOf(inline));
+    expect(block).toContain('data-channels');
+  });
+
+  it('★ the inline form is byte-identical to before — existing pages do not move', () => {
+    // The whole reason the block form is additive rather than a replacement.
+    const ctx = { website: { shop: { enabled: true } } } as never;
+    expect(renderTemplate('{{sw-cart}}', ctx)).toMatch(/^<div data-sw-cart[^>]*><\/div>$/);
+  });
+
+  it('renders nothing in either form when the shop is OFF', () => {
+    const off = { website: { shop: { enabled: false } } } as never;
+    expect(renderTemplate('{{sw-cart}}', off).trim()).toBe('');
+    expect(renderTemplate('{{#sw-cart}}<p>x</p>{{/sw-cart}}', off).trim()).toBe('');
   });
 });

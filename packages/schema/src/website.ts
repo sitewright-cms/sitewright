@@ -426,6 +426,19 @@ export const ShopSchema = z.object({
    * figures in their order message.
    */
   pricing: ShopPricingSchema.optional(),
+  /**
+   * Whether the platform's own cart stylesheet ships.
+   *
+   * ★ Defaults to ON, and author CSS already wins without touching this: the platform sheet is
+   * emitted among `inlineStyles`, which sit BEFORE `criticalCss` in the cascade, so anything an
+   * author writes overrides it at equal specificity.
+   *
+   * The switch exists for the OTHER case — a drawer forked far enough that the platform's rules are
+   * not a base to build on but a set of things to undo. Turning it off ships no cart CSS at all,
+   * which is cleaner than a growing pile of overrides and is the honest end state of "you may author
+   * this yourself".
+   */
+  platformCartStyles: z.boolean().optional(),
   // NOTE: the cart's display TEXT (add-to-cart button, drawer title/note/etc., currency symbol/code, and
   // each channel/field label) is all TRANSLATABLE — it lives in the translation catalog (reserved cart_*
   // keys + per-channel/field `shop.<key>` keys), NOT here. Settings holds only non-text STRUCTURE.

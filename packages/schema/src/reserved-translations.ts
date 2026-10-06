@@ -83,6 +83,16 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
         default:
           'Prices are indicative. This sends an order request — the seller confirms availability and final price.',
       },
+      {
+        // ★★ A SEPARATE note for a cart that can actually take payment. The line above is true of a
+        // deep-link cart (WhatsApp/email): nothing is charged, and the seller confirms the price. It
+        // is FALSE, and misleading at the worst moment, directly above a Pay button that charges a
+        // card — the amount is server-computed and authoritative, and the buyer confirms it on the
+        // review step before anything is taken.
+        key: 'cart.checkout_note',
+        label: 'Cart note when the cart takes payment',
+        default: 'You’ll see the final total, including any shipping and tax, before you pay.',
+      },
       { key: 'cart.added', label: '“Added” confirmation', default: 'Added' },
       { key: 'cart.empty', label: 'Empty-cart message', default: 'Your cart is empty.' },
       { key: 'cart.total', label: 'Cart total label', default: 'Total' },

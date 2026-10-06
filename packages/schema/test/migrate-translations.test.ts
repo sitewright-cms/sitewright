@@ -21,6 +21,7 @@ const NO_LEGACY_NAME = new Set([
   'cart.subtotal',
   'cart.shipping',
   'cart.tax',
+  'cart.checkout_note',
   'cart.checking',
   'cart.redirecting',
   'cart.out_of_stock',

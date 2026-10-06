@@ -180,3 +180,26 @@ describe('★ the runtime hands back its prior attempt so stock is not stacked',
     expect((posted[1]!.body as Record<string, unknown>).supersede).toBe('tok_1');
   });
 });
+
+describe('★ the note has to match what the button actually does', () => {
+  it('a cart that TAKES PAYMENT does not claim prices are indicative', () => {
+    const root = mount([CHECKOUT]);
+    const note = root.querySelector('[data-sw-part="note"]')!.textContent ?? '';
+    // ★ The deep-link disclaimer directly above a Pay button is false and misleading at the worst
+    // possible moment: the amount is server-computed and authoritative, and nothing about it is
+    // "confirmed by the seller later".
+    expect(note).not.toContain('indicative');
+    expect(note).not.toContain('order request');
+    expect(note).toContain('before you pay');
+  });
+
+  it('a deep-link cart keeps the disclaimer, which is true for it', () => {
+    const root = mount([{ kind: 'whatsapp', key: 'wa', number: '+14155550123' }]);
+    expect(root.querySelector('[data-sw-part="note"]')!.textContent).toContain('indicative');
+  });
+
+  it('a mixed cart takes the payment wording — the strongest claim on the panel governs', () => {
+    const root = mount([{ kind: 'whatsapp', key: 'wa', number: '+14155550123' }, CHECKOUT]);
+    expect(root.querySelector('[data-sw-part="note"]')!.textContent).toContain('before you pay');
+  });
+});

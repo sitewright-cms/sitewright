@@ -1491,6 +1491,9 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart.title'))}"`;
     attrs += ` data-toggle-label="${escapeAttr(str(h.toggle) || rt('cart.toggle'))}"`;
     attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart.note'))}"`;
+    // ★ Emitted alongside, not instead: one mount can carry both kinds of channel, and the runtime
+    // decides from what is actually configured rather than the page guessing.
+    attrs += ` data-checkout-note="${escapeAttr(str(h.checkoutNote) || tr('cart.checkout_note'))}"`;
     attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart.added'))}"`;
     attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart.empty'))}"`;
     attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart.total'))}"`;

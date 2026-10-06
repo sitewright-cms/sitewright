@@ -392,6 +392,7 @@ export const CART_JS = `(function(){
       toggleLabel:mount.getAttribute('data-toggle-label')||'Shopping Cart',
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
+      checkoutNote:mount.getAttribute('data-checkout-note')||'You\\u2019ll see the final total, including any shipping and tax, before you pay.',
       emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
       totalLabel:mount.getAttribute('data-total-label')||'Total',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
@@ -897,7 +898,11 @@ export const CART_JS = `(function(){
     var empty=part('p','empty',cfg.emptyLabel);
     var foot=part('div','foot');
     var totalRow=part('div','total');var stLabel=mk('span',null,cfg.totalLabel);var stVal=mk('span',null,'');totalRow.appendChild(stLabel);totalRow.appendChild(stVal);
-    var note=part('p','note',cfg.note);
+    // ★ The note has to match what the button DOES. "Prices are indicative, the seller confirms the
+    // final price" is true of a WhatsApp/email cart and false above a Pay button that charges a card.
+    var takesPayment=false;
+    for(var ni=0;ni<cfg.channels.length;ni++){if(cfg.channels[ni].kind==='checkout'){takesPayment=true;break;}}
+    var note=part('p','note',takesPayment?cfg.checkoutNote:cfg.note);
     foot.appendChild(totalRow);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
     // inline order form that POSTs to the resolved /f endpoint (the first form channel wins). A whatsapp/

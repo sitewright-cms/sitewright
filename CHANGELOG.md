@@ -9,6 +9,60 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Processed payments for the shop — the server, not the cart, decides what you are charged.** The
+  mini-shop could only ever hand a cart to a deep link or an order form, because its prices live in
+  the markup and are client-tamperable by design: fine for an order inquiry, unusable as a charge
+  amount. A new `checkout` shop channel takes a real payment instead. The browser posts only
+  `{sku, qty}` — there is nowhere in the request to put a price — and the server re-prices from a
+  **catalog snapshot** harvested at publish time from the rendered HTML, so a tampered cart can at
+  worst order a different quantity of a real product at the real price. One consequence is worth
+  stating plainly: a price change becomes chargeable only after a republish.
+
+  Two things stop a publish rather than being resolved quietly: a price that cannot be represented
+  exactly in the currency's minor units (rounding it would charge an amount appearing nowhere in the
+  project), and one SKU carrying two different prices (which would make the authoritative price
+  depend on the order pages happened to render in). Both only *fail* a publish once a checkout
+  channel exists — for a mini-shop they are warnings, because those prices were never authoritative.
+
+- **Payment gateways live in the database, not in this repo.** An instance admin authors a gateway as
+  a declarative record — request templates, which response field holds the session id, which webhook
+  scheme to use — and an MCP agent holding the new opt-in `payments:provider:write` capability can
+  write one too. Stripe, PayPal and Mollie ship as built-in, read-only records that can be **forked**
+  and edited, the same model the global snippet library already uses.
+
+  The host keeps everything that can be lied about. A record never holds a credential (it writes
+  `${CRED:key}` placeholders the host substitutes), never verifies a signature (it *names* a scheme
+  the host implements — a record allowed to verify would simply return true), and never decides where
+  a buyer is sent: the admin-approved origin allowlist is a separate field, and the provider's own
+  returned checkout URL is re-checked against it, so the author of a gateway is not the approver of
+  its destinations.
+
+- **Each project supplies its own keys.** A gateway is defined once instance-wide; every project
+  stores its own credentials, encrypted, **keyed by mode** — because a project holds a test key and a
+  live key at the same time, and a draft preview is forced to test mode. A gateway cannot take live
+  money until a test-mode checkout has actually succeeded against it, and editing a gateway clears
+  that proof, since a template change can break a request shape in a way only a real round trip
+  reveals.
+
+- **Stock that survives a republish.** `stock=` on an add-to-cart button is the quantity *you*
+  declare; the platform owns the count sold. A publish rewrites availability only when you actually
+  change that number, so an unrelated republish can never silently restock everything that had sold
+  out. Units are held while a buyer is away on the provider's page, so two people cannot both be sold
+  the last one, and a hold is given back if the provider never opens a session.
+
+- **A verified webhook is the only thing that resolves a payment.** The buyer's return from the
+  provider is a navigation they can forge, so the thank-you page reads its status from the platform
+  instead. A replayed webhook changes nothing, a webhook whose amount disagrees with the order is
+  refused and flagged rather than believed, and a payment whose webhook never arrives at all is
+  recovered by a reconciliation pass that asks the provider directly — the safeguard that makes
+  "the webhook is the truth" survivable when a firewall or an outage eats one.
+
+- Payments are **off by default** on every instance (`paymentsEnabled`), and the endpoints are not
+  registered at all without an encryption key.
+
+
 ## [0.57.0] — 2026-10-02
 
 ### Added

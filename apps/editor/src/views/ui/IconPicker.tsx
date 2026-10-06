@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ImagePlus } from 'lucide-react';
 import {
   BRAND_ICON_NAMES_ALL,
@@ -36,8 +36,24 @@ const FLAG_SHAPE_TABS: [FlagShape, string][] = [
   ['circle', 'Round'],
 ];
 
-/** How many results a tab shows at once. Enough to browse, few enough to stay responsive. */
+/**
+ * How many tiles are ADDED per page — the first screenful, and each step as the grid is scrolled.
+ *
+ * ★★ This used to be a hard ceiling: every branch below ended in `.slice(0, PAGE)` with nothing
+ * anywhere to raise it, so the picker showed the first 120 matches and scrolling simply ran out.
+ * That hid 1393 of 1513 Phosphor icons (92%), 155 of 275 brands, and 135 of 255 flags — half the
+ * world's flags were unreachable by browsing at all. Worse, it was SILENT: no count, no "load more",
+ * nothing to suggest the set continued. Now it is a page size, and `shown` grows.
+ */
 const PAGE = 120;
+
+/**
+ * Per-term cap handed to the scored search.
+ *
+ * Generous because the grid pages now — the search no longer has to be the thing that keeps the DOM
+ * small, and when it was it silently truncated results a user had deliberately narrowed.
+ */
+const SEARCH_LIMIT = 600;
 
 /**
  * Pick an icon from the platform library. Promoted out of the image-map Studio when dataset fields
@@ -148,7 +164,7 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
     const q = query.trim().toLowerCase();
     if (tab === 'brands') {
       const all = BRAND_ICON_NAMES_ALL.map((slug: string) => `brand:${slug}`);
-      return (q ? all.filter((n: string) => n.includes(q)) : all).slice(0, PAGE);
+      return q ? all.filter((n: string) => n.includes(q)) : all;
     }
     if (tab === 'flags') {
       // The ROUND set is a subset — five flags have no circular variant — so filter to the ones that
@@ -161,18 +177,70 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
         .filter((f) => f.flag && (flagShape === 'rect' || f.flag.circle))
         .filter((f) => !q || f.code.includes(q) || (f.flag?.name ?? '').toLowerCase().includes(q))
         .map((f) => `${FLAG_PREFIX}${f.code}${suffix}`);
-      return all.slice(0, PAGE);
+      return all;
     }
     // Phosphor: the platform's own scored search when there's a query (it understands synonyms —
     // "car" finds `taxi`), the plain name list when there isn't.
     // Browsing must list the vendored marks alongside Phosphor's, or `linkedin` is renderable but
     // absent from the only surface an author browses.
-    const base = q ? [...new Set(searchIcons(q, PAGE).flatMap((g) => g.matches))] : [...VENDORED_WEIGHTED_NAMES, ...PHOSPHOR_NAMES];
+    const base = q ? [...new Set(searchIcons(q, SEARCH_LIMIT).flatMap((g) => g.matches))] : [...VENDORED_WEIGHTED_NAMES, ...PHOSPHOR_NAMES];
     return base
       .filter((n: string) => !n.startsWith('brand:'))
-      .slice(0, PAGE)
-      .map((n) => (weight === 'regular' ? n : `${n}:${weight}`));
+      // ★★ ALWAYS suffixed, `regular` included. Omitting it for regular looked like a tidy-up — a
+      // bare name is the shortest spelling — but a bare name does NOT render regular: `renderIconSvg`
+      // falls back to FILL. So the Regular pill produced byte-identical SVG to Fill, and the one
+      // weight most authors want was the one weight the picker could not give them. Measured: all
+      // six weights render distinctly once the suffix is explicit.
+      .map((n) => `${n}:${weight}`);
   }, [tab, query, weight, flagShape]);
+
+  // ---- paging -----------------------------------------------------------------------------------
+  //
+  // How many of `names` are rendered. Grows a page at a time as the grid is scrolled, because the
+  // tiles are not cheap: each one inlines a real SVG, so rendering all 1513 Phosphor glyphs at once
+  // is a visibly janky modal open for a set almost nobody scrolls to the end of.
+  const [shown, setShown] = useState(PAGE);
+
+  // Reset to the first page whenever the QUESTION changes. Done during render (React's documented
+  // "adjust state when a prop changes" pattern) rather than in an effect, so a new search never
+  // paints one frame of the previous result's scroll length first.
+  const facet = `${tab}\u0000${query}\u0000${weight}\u0000${flagShape}`;
+  const [lastFacet, setLastFacet] = useState(facet);
+  if (facet !== lastFacet) {
+    setLastFacet(facet);
+    setShown(PAGE);
+  }
+
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const moreRef = useRef<HTMLButtonElement | null>(null);
+  const hasMore = shown < names.length;
+
+  useEffect(() => {
+    const root = gridRef.current;
+    const target = moreRef.current;
+    if (!root || !target) return;
+    // ★ Degrade, never crash. Scroll-to-load is an ENHANCEMENT over the button, so an environment
+    // without IntersectionObserver keeps a fully working picker instead of a white screen where the
+    // modal should be. (jsdom is exactly such an environment, which is how this was noticed: the
+    // component threw on mount and took six unrelated unit tests down with it.)
+    if (typeof IntersectionObserver === 'undefined') return;
+    // ★★ `root` IS THE GRID, not the viewport. The grid is the `overflow-auto` scroll container, so
+    // with the default root (the viewport) the sentinel is clipped by that ancestor and never
+    // reports as intersecting — the observer would arm cleanly and then simply never fire. Same
+    // family as the panel-scroll trap: a scrolling panel is the thing that has to be listened to.
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) setShown((n) => n + PAGE);
+      },
+      // Start the next page a little before it is reached, so scrolling stays continuous rather than
+      // stopping at a button and resuming.
+      { root, rootMargin: '300px' },
+    );
+    io.observe(target);
+    return () => io.disconnect();
+    // Re-armed on both: a new observer after each page keeps the callback's closure fresh, and the
+    // sentinel is a different node once `hasMore` flips.
+  }, [shown, hasMore]);
 
   // The segmented pill: one look for the SET switcher (icons/brands/flags) and the flag SHAPE switcher,
   // so a second row of choices reads as another facet of the same picker, not a new kind of control.
@@ -224,13 +292,18 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
 
         {/* content-start: the grid is a flex CHILD filling the modal, so without it the few rows a
             narrow search returns stretch to the full height and each tile becomes a tall empty box. */}
-        <div className="grid min-h-0 flex-1 auto-rows-min content-start grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-auto pr-1">
-          {names.map((name: string) => (
+        <div
+          ref={gridRef}
+          data-sw-icon-grid=""
+          className="grid min-h-0 flex-1 auto-rows-min content-start grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-auto pr-1"
+        >
+          {names.slice(0, shown).map((name: string) => (
             // `w-full` on BOTH: the tooltip span is the grid ITEM now, so without it the span fills
             // the cell and the tile inside shrinks to its own content.
             <Tooltip key={name} tip={`${tileLabel(name)} — ${name}`} className="w-full">
               <button
                 type="button"
+                data-sw-icon-tile=""
                 onClick={() => {
                   onPick(name);
                   onClose();
@@ -245,7 +318,30 @@ function IconPicker({ value, onPick, onClose }: { value: string; onPick: (name: 
             </Tooltip>
           ))}
           {names.length === 0 && <p className="col-span-full p-6 text-center text-sm text-slate-500 dark:text-slate-400">Nothing matched “{query}”.</p>}
+          {/* ★ The sentinel IS the button. Scrolling near it loads the next page via the observer
+              above; clicking it does the same thing — which is what a keyboard user gets, and they
+              cannot scroll a container they have not focused. One control, two ways in. */}
+          {hasMore && (
+            <button
+              ref={moreRef}
+              type="button"
+              onClick={() => setShown((n) => n + PAGE)}
+              className={`${ghostButton} col-span-full my-2 justify-self-center`}
+            >
+              Load more ({names.length - shown} to go)
+            </button>
+          )}
         </div>
+        {/* ★ The set size, always. The picker used to stop at 120 with nothing to say it had — a
+            silent truncation reads as "that is all there is", which is how 92% of the icons went
+            unnoticed. */}
+        <p aria-live="polite" className="text-[11px] text-slate-500 dark:text-slate-400">
+          {names.length === 0
+            ? 'No matches'
+            : hasMore
+              ? `Showing ${shown} of ${names.length}`
+              : `${names.length} ${names.length === 1 ? 'icon' : 'icons'}`}
+        </p>
       </div>
     </Modal>
   );

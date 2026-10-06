@@ -36,6 +36,7 @@ const TOKEN = /\$\{([A-Z]+):([A-Za-z0-9_.-]{1,64})\}/g;
 function resolveToken(scope: InterpolationScope, ns: string, key: string): string {
   switch (ns) {
     case 'CRED': {
+      // eslint-disable-next-line security/detect-object-injection -- own-property checked; scope.cred is a flat string map built by the host
       const v = Object.prototype.hasOwnProperty.call(scope.cred, key) ? scope.cred[key] : undefined;
       // A missing credential must NOT become an empty header. An unauthenticated request to a payment
       // provider is at best a confusing 401 and at worst an anonymous call that half-succeeds.
@@ -60,8 +61,10 @@ function resolveToken(scope: InterpolationScope, ns: string, key: string): strin
       throw new InterpolationError(`unknown url field "${key}"`);
     case 'FIELD':
       // A buyer field IS allowed to be absent — an optional input the buyer left blank.
+      // eslint-disable-next-line security/detect-object-injection -- own-property checked; scope.field is a flat string map of submitted values
       return Object.prototype.hasOwnProperty.call(scope.field, key) ? (scope.field[key] ?? '') : '';
     case 'TEXT':
+      // eslint-disable-next-line security/detect-object-injection -- own-property checked; scope.text is a flat string map built by the host
       return Object.prototype.hasOwnProperty.call(scope.text, key) ? (scope.text[key] ?? '') : '';
     default:
       throw new InterpolationError(`unknown template namespace "${ns}"`);

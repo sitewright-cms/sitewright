@@ -263,7 +263,7 @@ export class ShopTransactionRepository {
   ): Promise<{ ok: true; row: TransactionRow } | { ok: false; reason: 'not-found' | 'illegal' }> {
     const row = await this.byId(projectId, id);
     if (!row) return { ok: false, reason: 'not-found' };
-    // eslint-disable-next-line security/detect-object-injection -- row.fulfilment is a DB enum value; the table is a frozen const
+     
     const allowed = FULFILMENT_TRANSITIONS[row.fulfilment] ?? [];
     if (!allowed.includes(to)) return { ok: false, reason: 'illegal' };
     const res = await this.db

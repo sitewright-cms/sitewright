@@ -40,7 +40,7 @@ function safeEqualStrings(a: string, b: string): boolean {
 
 /** Lower-cases and trims a header value; arrays (a repeated header) collapse to the first. */
 function headerValue(headers: Readonly<Record<string, string | string[] | undefined>>, name: string): string | undefined {
-  // eslint-disable-next-line security/detect-object-injection -- name comes from the gateway's bounded `header` field; headers is a plain request-header bag
+   
   const raw = headers[name.toLowerCase()];
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (typeof v !== 'string') return undefined;

@@ -1511,3 +1511,99 @@ describe('bulk reorder client', () => {
     });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// PAYMENTS — the client half.
+//
+// ★ These go through the gated `api.ts` deliberately: the UI flows are Playwright's job, but the
+// REQUEST SHAPES are this file's, and a wrong method or path here is a silent feature failure.
+// ------------------------------------------------------------------------------------------------
+describe('payments api', () => {
+  /** The (method, url, body) the client actually sent. */
+  const sent = () => {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return { url, method: init.method, body: init.body ? JSON.parse(String(init.body)) : undefined };
+  };
+
+  it('reads the gateways a project may bind to', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { gateways: [{ id: 'stripe', name: 'Stripe', credentialFields: [], refunds: false }] }));
+    const res = await api.projectPaymentGateways('p1');
+    expect(sent()).toMatchObject({ method: 'GET', url: expect.stringContaining('/projects/p1/payment-gateways') });
+    expect(res.gateways[0]?.id).toBe('stripe');
+  });
+
+  it('reads the binding and its webhook URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { binding: null, webhookUrl: 'https://sw.test/pay/p1/webhook/stripe' }));
+    const res = await api.getProjectPayment('p1');
+    expect(sent().method).toBe('GET');
+    expect(res.webhookUrl).toContain('/webhook/stripe');
+  });
+
+  it('★ saves ONE mode, sending only what was typed', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { binding: { gatewayId: 'stripe', mode: 'test', fields: { test: [], live: [] }, missing: [], orphaned: [], complete: true } }));
+    await api.putProjectPayment('p1', { gatewayId: 'stripe', mode: 'test', values: { secretKey: 'sk_test_x' } });
+    const s = sent();
+    expect(s.method).toBe('PUT');
+    // An omitted field must stay omitted: the server reads absence as "keep what is stored", so
+    // sending a blank for every field would wipe the ones the form could not show.
+    expect(s.body).toEqual({ gatewayId: 'stripe', mode: 'test', values: { secretKey: 'sk_test_x' } });
+  });
+
+  it('switches mode, and surfaces the server’s refusal with what is missing', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { mode: 'live' }));
+    await api.putProjectPaymentMode('p1', 'live');
+    expect(sent()).toMatchObject({ method: 'PUT', body: { mode: 'live' } });
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse(409, { error: 'the live credentials are incomplete', details: { missing: ['secretKey'] } }));
+    await expect(api.putProjectPaymentMode('p1', 'live')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('lists transactions, passing only the filters that were set', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
+    await api.listTransactions('p1', { limit: 50, status: 'paid' });
+    const { url } = sent();
+    expect(url).toContain('limit=50');
+    expect(url).toContain('status=paid');
+    // An unset filter must not become `offset=undefined` in the query string.
+    expect(url).not.toContain('offset');
+  });
+
+  it('lists transactions with no filters at all', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
+    await api.listTransactions('p1');
+    expect(sent().url).toMatch(/\/transactions\?$/);
+  });
+
+  it('reads one transaction', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { transaction: { id: 't1' } }));
+    await api.getTransaction('p1', 't1');
+    expect(sent()).toMatchObject({ method: 'GET', url: expect.stringContaining('/transactions/t1') });
+  });
+
+  it('reads the undelivered summary, counted per kind', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { notify: 2, receipt: 1, lastError: 'smtp down' }));
+    const res = await api.transactionsUndelivered('p1');
+    // Two numbers, because a missed notification and a missed receipt are different problems.
+    expect(res).toMatchObject({ notify: 2, receipt: 1 });
+  });
+
+  it('★ resends ONE kind of mail, named explicitly', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { queued: true }));
+    await api.resendOrderMail('p1', 't1', 'receipt');
+    // Not "resend the emails" — retrying one must never re-send the other.
+    expect(sent()).toMatchObject({ method: 'POST', body: { kind: 'receipt' } });
+  });
+
+  it('moves fulfilment, with an optional note', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { transaction: { id: 't1', fulfilment: 'shipped' } }));
+    await api.setOrderFulfilment('p1', 't1', 'shipped', 'sent today');
+    expect(sent()).toMatchObject({ method: 'PATCH', body: { to: 'shipped', note: 'sent today' } });
+
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(jsonResponse(200, { transaction: { id: 't1' } }));
+    await api.setOrderFulfilment('p1', 't1', 'packed');
+    // A blank note is omitted rather than sent as '' — the server reads absence as "leave it".
+    expect(sent().body).toEqual({ to: 'packed' });
+  });
+});

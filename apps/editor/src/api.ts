@@ -20,6 +20,12 @@ import type {
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
+  PaymentGatewayPublic,
+  PaymentBindingPublic,
+  TransactionStatus,
+  FulfilmentState,
+  TransactionLine,
+  TransactionAmounts,
   Snippet,
   StockKeyedProvider,
   StockProviderName,
@@ -1107,6 +1113,30 @@ export interface PagespeedAuditResult {
   fetchedAt: string;
 }
 
+/**
+ * One order as the inbox reads it.
+ *
+ * Shaped from the API rather than imported from the server repo: the editor must not depend on the
+ * server's internal row type, and the two differ (dates arrive as strings over JSON).
+ */
+export interface ShopTransaction {
+  id: string;
+  channelKey: string;
+  gatewayId: string;
+  mode: 'test' | 'live';
+  preview: boolean;
+  status: TransactionStatus;
+  fulfilment: FulfilmentState;
+  currency: string;
+  amounts: TransactionAmounts;
+  refundedMinor: number;
+  lines: TransactionLine[];
+  buyer: Record<string, string>;
+  customerEmail: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
 export const api = {
   register: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/register', { email, password }),
@@ -1915,6 +1945,40 @@ export const api = {
     request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
   deleteProjectSmtp: (projectId: string) =>
     request<void>('DELETE', `/projects/${projectId}/smtp`),
+
+  // ---- PAYMENTS -----------------------------------------------------------------------------
+  //
+  // ★ These are SESSION-ONLY on the server, deliberately: an agent that can mint a live payment key
+  // into a project can redirect that project's revenue. Nothing here is reachable with an API token.
+
+  /** Gateways this project may bind to — enabled AND proven. Public metadata only. */
+  projectPaymentGateways: (projectId: string) =>
+    request<{ gateways: PaymentGatewayPublic[] }>('GET', `/projects/${projectId}/payment-gateways`),
+  /** The project's binding: which fields have values, per mode. Never a secret. */
+  getProjectPayment: (projectId: string) =>
+    request<{ binding: PaymentBindingPublic | null; webhookUrl?: string }>('GET', `/projects/${projectId}/payment`),
+  /** Saves ONE mode's values. An omitted field keeps what is stored; a blank one clears it. */
+  putProjectPayment: (projectId: string, body: { gatewayId: string; mode: 'test' | 'live'; values: Record<string, string | boolean> }) =>
+    request<{ binding: PaymentBindingPublic }>('PUT', `/projects/${projectId}/payment`, body),
+  /** Switches between test and live. Refused while the target mode is incomplete. */
+  putProjectPaymentMode: (projectId: string, mode: 'test' | 'live') =>
+    request<{ mode: string }>('PUT', `/projects/${projectId}/payment/mode`, { mode }),
+
+  /** The orders inbox. */
+  listTransactions: (projectId: string, q: { limit?: number; offset?: number; status?: string } = {}) =>
+    request<{ items: ShopTransaction[]; total: number }>(
+      'GET',
+      `/projects/${projectId}/transactions?${new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString()}`,
+    ),
+  getTransaction: (projectId: string, id: string) =>
+    request<{ transaction: ShopTransaction }>('GET', `/projects/${projectId}/transactions/${id}`),
+  /** How many orders are still owed a mail — surfaced as a banner, because mailing about broken mail is circular. */
+  transactionsUndelivered: (projectId: string) =>
+    request<{ notify: number; receipt: number; lastError?: string }>('GET', `/projects/${projectId}/transactions-undelivered`),
+  resendOrderMail: (projectId: string, id: string, kind: 'notify' | 'receipt') =>
+    request<{ queued: boolean }>('POST', `/projects/${projectId}/transactions/${id}/resend`, { kind }),
+  setOrderFulfilment: (projectId: string, id: string, to: string, note?: string) =>
+    request<{ transaction: ShopTransaction }>('PATCH', `/projects/${projectId}/transactions/${id}/fulfilment`, { to, ...(note ? { note } : {}) }),
   /** Opens a real session to the saved SMTP and authenticates, sending nothing. */
   testProjectSmtp: (projectId: string) =>
     request<{ ok: boolean; error?: string }>('POST', `/projects/${projectId}/smtp/test`),

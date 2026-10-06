@@ -27,6 +27,9 @@ vi.mock('../src/api', () => ({
     listPreviewShares: () => Promise.resolve({ items: [] }),
     createPreviewShare: () => Promise.resolve({ id: 's1', url: '/preview-site/p/s1~sig/' }),
     deletePreviewShare: () => Promise.resolve({}),
+    // WebsiteSection asks which payment gateways this project may bind to, so the checkout channel
+    // row can offer them by NAME. A project with none is the normal case — hence the empty list.
+    projectPaymentGateways: () => Promise.resolve({ gateways: [] }),
   },
 }));
 

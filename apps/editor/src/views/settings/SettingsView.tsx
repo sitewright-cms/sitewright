@@ -40,7 +40,11 @@ export const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'securityEnabled', 'securityContactPageId', 'securityUsePhone', 'securityUseEmail',
   'securityExpiryYears', 'securityPolicyUrl', 'securityAcknowledgmentsUrl',
   'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
-  'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
+  // ★ Every shop key belongs here because every one of them writes to `website.shop`. A key missing
+  // from this set is UNSAVABLE on its own and silently reverted by the other section's Discard —
+  // which is exactly how the security.txt block broke.
+  'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopCurrencyCode', 'shopChannels',
+  'shopShippingFlat', 'shopShippingFreeOver', 'shopTaxRate', 'shopTaxMode', 'shopPlatformCartStyles',
   'consent', 'searchFoldDiacritics',
   'defaultLocale', 'locales', 'translations',
 ]);

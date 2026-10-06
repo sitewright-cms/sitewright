@@ -36,6 +36,9 @@ const ALL_MARKERS =
   '<a class="waves-effect">r</a>' +
   '<div data-sw-cart></div>' +
   '<div data-sw-consent></div>' +
+  // The thank-you page's status poll. Every registry runtime must appear here, or the parity guard
+  // silently stops checking that one on both delivery paths.
+  '<div data-sw-order-status></div>' +
   '</section>';
 
 describe('effect-runtime registry — self-consistency', () => {
@@ -99,7 +102,11 @@ describe('effect-runtime registry — self-consistency', () => {
 describe('effect-runtime registry — both delivery paths consume it (no hand-list regression)', () => {
   it('the single-page preview (app.ts) derives its runtimes from the registry helpers', () => {
     const app = read('src/http/app.ts');
-    expect(app).toContain('bodyEffectStyles(scanHtml)');
+    // Matched as a CALL PREFIX, not the exact text: the styles helper now takes an options argument
+    // (the platform-cart-styles escape hatch), and what this guard actually protects is that the
+    // preview DERIVES its runtimes from the registry rather than hand-listing them — not the
+    // argument list of the call that does it.
+    expect(app).toContain('bodyEffectStyles(scanHtml');
     expect(app).toContain('previewBodyEffectScripts(scanHtml)');
     // It must NOT reintroduce a per-runtime hand-list in the preview assembly (the old drift source).
     expect(app).not.toContain('SVG_ANIM_JS');

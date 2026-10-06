@@ -820,3 +820,75 @@ describe('the browser preflights, and the endpoints answer', () => {
     expect(res.json()).toMatchObject({ challenge: expect.any(String), salt: expect.any(String), signature: expect.any(String) });
   });
 });
+
+describe('★ proof-of-work on a checkout channel', () => {
+  /** Brute-forces the altcha challenge, exactly as a browser would. */
+  const solve = async (c: { salt: string; challenge: string; signature: string; maxnumber: number }) => {
+    const { createHash } = await import('node:crypto');
+    for (let n = 0; n <= c.maxnumber; n += 1) {
+      if (createHash('sha256').update(c.salt + String(n)).digest('hex') === c.challenge) {
+        return Buffer.from(
+          JSON.stringify({ algorithm: 'SHA-256', challenge: c.challenge, salt: c.salt, number: n, signature: c.signature }),
+        ).toString('base64');
+      }
+    }
+    throw new Error('unsolvable');
+  };
+
+  /** Turns PoW on for the checkout channel. */
+  beforeEach(async () => {
+    const put = await owner.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Shop', colors: { primary: '#0a7' } },
+      website: { shop: { ...SHOP, channels: [{ ...SHOP.channels[0], pow: true }] } },
+      settings: {},
+    });
+    expect(put.statusCode).toBeLessThan(400);
+  });
+
+  const challenge = async () => {
+    const res = await h.app.inject({ method: 'GET', url: `/pay/${projectId}/pay/challenge` });
+    expect(res.statusCode).toBe(200);
+    return res.json() as { salt: string; challenge: string; signature: string; maxnumber: number };
+  };
+
+  it('refuses a checkout with no solution, without naming the gate', async () => {
+    const res = await checkout(body());
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'checkout_unavailable' });
+    // The refusal is COUNTED, so "we blocked bots" and "we lost sales" stay distinguishable.
+    const [row] = await h.db.select().from(shopFiltered).where(eq(shopFiltered.projectId, projectId));
+    expect(row?.reason).toBe('pow-missing');
+  });
+
+  it('accepts a solved challenge', async () => {
+    scripted.responses.push({ body: { id: 'sess_pow', url: 'https://mock-pay.invalid/s/pow' } });
+    const res = await checkout(body({ _pow: await solve(await challenge()) }));
+    expect(res.statusCode).toBe(200);
+    expect(res.json().redirectUrl).toBe('https://mock-pay.invalid/s/pow');
+  });
+
+  it('★★ a solution is SPENT — replaying it buys nothing', async () => {
+    const solution = await solve(await challenge());
+    scripted.responses.push({ body: { id: 'sess_pow1', url: 'https://mock-pay.invalid/s/1' } });
+    expect((await checkout(body({ _pow: solution }))).statusCode).toBe(200);
+    // The same work, again: the challenge was consumed by the first checkout.
+    const replay = await checkout(body({ _pow: solution }));
+    expect(replay.statusCode).toBe(400);
+    expect(replay.json()).toEqual({ error: 'checkout_unavailable' });
+  });
+
+  it('★★ refuses a solution minted for a DIFFERENT channel — the work is SCOPED', async () => {
+    // The challenge endpoint issues per `pay:<channelKey>`. Work bought for one channel must not
+    // spend at another, or one cheap challenge would unlock every checkout on the site.
+    const other = await h.app.inject({ method: 'GET', url: `/pay/${projectId}/other/challenge` });
+    expect(other.statusCode).toBe(200);
+    const foreign = await solve(other.json() as never);
+    const res = await checkout(body({ _pow: foreign }));
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'checkout_unavailable' });
+    // And it is specifically the scope that refused it, not a missing solution.
+    const rows = await h.db.select().from(shopFiltered).where(eq(shopFiltered.projectId, projectId));
+    expect(rows.some((r) => r.reason.startsWith('pow-'))).toBe(true);
+    expect(rows.some((r) => r.reason === 'pow-missing')).toBe(false);
+  });
+});

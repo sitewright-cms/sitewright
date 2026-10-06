@@ -236,6 +236,7 @@ import { buttonPreviewCss } from './button-preview.js';
 import { tailwindReferencePayload } from './tailwind-reference.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerPaymentRoutes } from './payment-routes.js';
+import { registerPaymentAdminRoutes } from './payment-admin-routes.js';
 
 /**
  * How long an unresolved payment waits before the platform asks the provider about it.
@@ -9099,6 +9100,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     } catch (err) {
       app.log.warn({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not persist the shop catalog snapshot');
     }
+  }
+
+  if (gatewayRepo) {
+    registerPaymentAdminRoutes(app, {
+      gateways: gatewayRepo,
+      requireInstanceAdmin,
+      // A bearer token carrying the one capability that authors GATEWAY DEFINITIONS. Exact-string
+      // check, as for every other capability — no prefix matching.
+      hasProviderWriteScope: async (req) => {
+        const token = bearerToken(req);
+        if (token === undefined) return false;
+        const key = await apiKeysRepo.resolve(token).catch(() => null);
+        return key?.capabilities.includes('payments:provider:write') === true;
+      },
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      rl,
+    });
   }
 
   // ---- AI (online generation — agency-funded, metered, quota-gated) ----

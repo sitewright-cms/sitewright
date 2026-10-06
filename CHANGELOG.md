@@ -9,6 +9,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The icon picker stopped at 120 icons and scrolling did nothing.** Every tab ended its list in a
+  hard `.slice(0, 120)` with no mechanism anywhere to raise it, so the grid rendered the first
+  screenful and ran out — hiding 1393 of 1513 Phosphor icons, 155 of 275 brands and 135 of 255 flags.
+  Roughly half the world's flags could not be browsed to at all; they existed only if you knew to
+  search for them. It was silent, too: no count, no control, nothing to suggest the set continued, so
+  it read as "that is all there is". The grid now pages as it is scrolled, with a "Load more" button
+  that doubles as the scroll sentinel (so keyboard users are not stranded in a container they cannot
+  scroll), and the footer always states the set size — `Showing 240 of 1513`.
+
+- **Picking the "Regular" icon weight gave you Fill.** Regular was emitted as a bare, unsuffixed name
+  on the theory that it is the shortest spelling — but a bare name does not render regular, it falls
+  back to fill. So the Regular pill produced byte-identical artwork to Fill, and the weight most
+  authors actually want was the one the picker could not give them. All six weights now draw
+  distinctly.
+
 ## [0.58.0] — 2026-10-06
 
 ### Added

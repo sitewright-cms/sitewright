@@ -120,6 +120,10 @@ overrides:
   # ranges with no single global fix. Do not read that as "unfixable".
   "fast-uri@<3.1.8": ^3.1.8
   "fast-uri@>=4.0.0 <4.1.5": ^4.1.5
+  # GHSA-wq5f-xc86-pv6w via the busboy CRLF-injection advisory: a multipart Content-Disposition
+  # filename carrying CR/LF could inject header lines. `@fastify/multipart` is how every upload in
+  # this platform arrives, so this is squarely in the runtime path.
+  "@fastify/busboy@<3.2.2": ^3.2.2
   "find-my-way@<9.7.0": ^9.7.0
   "form-data@<4.0.6": ^4.0.6
   # ★ Widened range, the same story as fast-uri and nanoid below: 4.12.34 was the fix, then three more
@@ -150,12 +154,26 @@ overrides:
   # many different clients is the one that matters), two addressparser DoS bugs, and a malformed
   # envelope recipient. 10.0.9 is the floor; 10.0.12 is what resolves.
   "nodemailer@<10.0.9": ">=10.0.9"
+  # GHSA — IP spoofing via IPv4-mapped IPv6 addresses: `proxy-addr` trusted a mapped form that
+  # bypasses a configured trust list. Reached through @modelcontextprotocol/sdk's express, which the
+  # MCP server runs, and this platform makes trust decisions from client IPs (rate limits, the SSRF
+  # guard's notion of a remote peer) — so it is reachable, not theoretical.
+  "proxy-addr@<2.0.8": ^2.0.8
   "postcss@<8.5.18": ^8.5.18
+  # Event-loop DoS through an unbounded regex in the mappings parser. Dev/toolchain only
+  # (@vitest/coverage-v8 → magicast, and vite → postcss), so it is not in the runtime container —
+  # pinned rather than accepted because a fix exists and ACCEPTED is deliberately empty.
+  "source-map-js@<1.2.2": ^1.2.2
   # GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing) + GHSA-4mjr-xmp4-gh2g
   # (DoS via an attacker-controlled isBuffer). Reached through body-parser/express in the deploy
   # tooling; 6.16.0 covers both ranges.
   "qs@<6.16.0": ^6.16.0
-  "shell-quote@<1.9.0": ^1.9.0
+  # ★ Widened range — the recurring shape again. 1.9.0 was the fix for the previous advisory and the
+  # tree had floated to 1.10.0; then GHSA for `quote()` command injection via a line terminator landed
+  # naming >=1.8.4 <1.11.0 as affected, so 1.10.0 became vulnerable with no change on our side.
+  # Reached through drizzle-orm's `gel` driver, which this platform never loads — pinned anyway,
+  # because an override keeps `pnpm audit` honest and costs nothing.
+  "shell-quote@<1.11.0": ^1.11.0
 
 # Deliberately EMPTY and it should stay that way — advisory acceptances live in scripts/audit-gate.mjs,
 # where they carry a reason and a stale one is a hard failure. An `ignore` here would instead make

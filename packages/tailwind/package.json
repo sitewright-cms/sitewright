@@ -29,7 +29,7 @@
     "tailwindcss": "^4.3.3"
   },
   "devDependencies": {
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@vitest/coverage-v8": "^4.1.11",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"

@@ -1506,6 +1506,26 @@
           "en": "Checkout is unavailable right now. Please try again.",
           "de": "Die Kasse ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.",
           "es": "El pago no está disponible ahora. Inténtalo de nuevo."
+        },
+        "order.paid": {
+          "en": "Thank you — your payment is confirmed.",
+          "de": "Vielen Dank — Ihre Zahlung ist bestätigt.",
+          "es": "Gracias: tu pago está confirmado."
+        },
+        "order.failed": {
+          "en": "That payment did not go through. Nothing has been charged.",
+          "de": "Die Zahlung ist fehlgeschlagen. Es wurde nichts abgebucht.",
+          "es": "El pago no se realizó. No se ha cobrado nada."
+        },
+        "order.unknown": {
+          "en": "We have not had confirmation yet. We will email you as soon as we do.",
+          "de": "Wir haben noch keine Bestätigung. Wir melden uns per E-Mail, sobald sie vorliegt.",
+          "es": "Aún no tenemos confirmación. Te escribiremos en cuanto la tengamos."
+        },
+        "order.keep_shopping": {
+          "en": "Continue shopping",
+          "de": "Weiter einkaufen",
+          "es": "Seguir comprando"
         }
       },
       "siteUrl": "https://example.com",

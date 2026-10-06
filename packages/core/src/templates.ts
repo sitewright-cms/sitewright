@@ -87,6 +87,51 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     },
   },
   {
+    // THE THANK-YOU PAGE. Where a provider returns a buyer after they pay.
+    //
+    // ★★ EVERY WORD HERE RENDERS SERVER-SIDE AND STANDS ALONE. The status panel only enriches it,
+    // so a buyer on a flaky connection still lands on a complete page that thanks them — rather than
+    // a blank one, at the single worst moment to show someone nothing.
+    //
+    // ★ The URL this page is reached at carries an opaque token, and the panel asks the PLATFORM what
+    // that token means. Arriving here is never itself treated as evidence of payment: the return is a
+    // navigation a buyer can forge.
+    id: 'global:thank-you',
+    name: 'Thank you (global)',
+    source: `<section class="mx-auto max-w-2xl px-6 py-24 text-center">
+  <h1 class="text-4xl font-bold tracking-tight" data-sw-text="page.data.heading">Thank you for your order</h1>
+  <p class="mx-auto mt-4 max-w-xl text-lg text-base-content/70" data-sw-text="page.data.intro">
+    We have received your order and will be in touch shortly.
+  </p>
+
+  {{#sw-order-status}}
+    <p data-sw-part="status-pending" class="mt-8 text-base-content/60">{{sw-translate "cart.checking" default="Checking…"}}</p>
+
+    <div data-sw-part="status-paid" class="mt-8 alert alert-success justify-center" style="display:none">
+      <span>{{sw-translate "order.paid" default="Thank you — your payment is confirmed."}}</span>
+    </div>
+    <div data-sw-part="status-failed" class="mt-8 alert alert-warning justify-center" style="display:none">
+      <span>{{sw-translate "order.failed" default="That payment did not go through. Nothing has been charged."}}</span>
+    </div>
+    <div data-sw-part="status-unknown" class="mt-8 alert justify-center" style="display:none">
+      <span>{{sw-translate "order.unknown" default="We have not had confirmation yet. We will email you as soon as we do."}}</span>
+    </div>
+
+    <ul data-sw-part="status-summary" class="mt-8 mx-auto max-w-sm text-left space-y-1"></ul>
+    <template data-sw-part="status-line-template">
+      <li class="flex justify-between gap-4">
+        <span><span data-sw-field="qty"></span>&#215; <span data-sw-field="name"></span></span>
+      </li>
+    </template>
+    <p class="mt-4 text-xl font-semibold"><span data-sw-part="status-total"></span></p>
+  {{/sw-order-status}}
+
+  <p class="mt-10">
+    <a class="btn btn-ghost" data-sw-href="page.data.back_href" href="/">{{sw-translate "order.keep_shopping" default="Continue shopping"}}</a>
+  </p>
+</section>`,
+  },
+  {
     // A MINI SHOP storefront: a product grid from the `products` dataset, each card with a first-party
     // {{sw-add-to-cart}} button, plus the {{sw-cart}} mount (the floating cart + drawer). The cart is
     // FRONT-END only — it builds an order in localStorage and hands it to a submission channel

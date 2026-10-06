@@ -36,6 +36,8 @@ import {
   RIPPLE_JS,
   componentTypesInSource,
   usesCart,
+  usesOrderStatus,
+  ORDER_STATUS_JS,
   CART_CSS,
   CART_JS,
   usesConsent,
@@ -101,6 +103,9 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   // showModal() fallback for the sandboxed iframe) and its overlay is benign in the canvas — the drawer
   // opens only on an explicit toggle click, and an add-to-cart click just writes localStorage.
   { key: 'cart', uses: usesCart, css: CART_CSS, js: CART_JS, script: 'cart.js', preview: 'run' },
+  // The thank-you panel's status poll. Ships only on a page carrying the marker, like every other
+  // runtime here — a site with one thank-you page does not pay for it on the other hundred.
+  { key: 'order-status', uses: usesOrderStatus, js: ORDER_STATUS_JS, script: 'order-status.js', preview: 'run' },
   // consent stays style-only: its runtime hydrates HELD cross-origin iframes and drives a page-covering
   // consent GATE, which would be disruptive/incorrect in the editor canvas (single-page preview doesn't
   // grant consent — only the whole-site draft preview does, via build.ts grantAll). KNOWN LIMITATION: the

@@ -104,6 +104,12 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'cart.out_of_stock', label: 'Out-of-stock message', default: 'Sorry, that is out of stock.' },
       { key: 'cart.gone', label: 'Item-no-longer-sold message', default: 'An item in your cart is no longer available.' },
       { key: 'cart.checkout_failed', label: 'Checkout-unavailable message', default: 'Checkout is unavailable right now. Please try again.' },
+      // THANK-YOU PAGE. Separate from the cart keys because they are read at a different moment, by
+      // someone who has already paid — and the wrong tone there is expensive.
+      { key: 'order.paid', label: 'Payment-confirmed message', default: 'Thank you — your payment is confirmed.' },
+      { key: 'order.failed', label: 'Payment-failed message', default: 'That payment did not go through. Nothing has been charged.' },
+      { key: 'order.unknown', label: 'Payment-pending message', default: 'We have not had confirmation yet. We will email you as soon as we do.' },
+      { key: 'order.keep_shopping', label: 'Continue-shopping link', default: 'Continue shopping' },
       { key: 'cart.order_lead', label: 'Order message lead-in', default: 'I’d like to order:' },
       { key: 'cart.currency_symbol', label: 'Currency symbol', default: '$' },
       { key: 'cart.currency_code', label: 'Currency code (ISO 4217)', default: 'USD' },

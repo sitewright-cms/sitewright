@@ -11,6 +11,7 @@ export { baseStyles } from './base-css.js';
 export * from './cart.js';
 export * from './cart-catalog.js';
 export * from './cart-validate.js';
+export * from './order-status.js';
 export * from './consent.js';
 export * from './preloader.js';
 export * from './back-to-top.js';

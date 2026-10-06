@@ -1425,6 +1425,33 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     attrs += ` class="${escapeAttr(cls)}"`;
     return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
   });
+  /**
+   * {{sw-order-status}} / {{#sw-order-status}}…{{/sw-order-status}} → the THANK-YOU panel mount.
+   *
+   * ★ Block form is the authoring surface, exactly as for the cart: your own copy and layout, with
+   * `data-sw-part` names the runtime fills in. The inline form emits a minimal default.
+   *
+   * ★★ WHATEVER YOU WRITE RENDERS SERVER-SIDE AND STANDS ALONE. The runtime only enriches it. A
+   * buyer has just paid; a page that is blank until a fetch resolves is blank on a flaky connection,
+   * at the worst possible moment to show someone nothing.
+   */
+  hb.registerHelper('sw-order-status', function swOrderStatus(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown>; t?: Record<string, unknown> } };
+    const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
+    // Same master switch as the cart: with the shop off there is no order to report on.
+    if (shop.enabled !== true) return new Handlebars.SafeString('');
+    const currency = (shop.currency ?? {}) as Record<string, unknown>;
+    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
+    let attrs = 'data-sw-order-status';
+    // The currency formatting the panel needs, from the same place the cart gets it.
+    attrs += ` data-currency-symbol="${escapeAttr(tr('cart.currency_symbol'))}"`;
+    if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
+    if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
+    const inner = typeof options.fn === 'function' ? options.fn(this) : defaultOrderStatusMarkup(tr);
+    return new Handlebars.SafeString(`<div ${attrs}>${inner}</div>`);
+  });
+
   // {{sw-cart}} → the cart MOUNT: a single <div data-sw-cart> carrying the currency + submission
   // channels (read from `website.shop`) as escaped data-* attributes. cart.js (shipped only when this
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
@@ -1980,6 +2007,25 @@ const DEFAULT_MAX_OUTPUT = 1_048_576; // 1 MiB
  * Prototype access is disabled; only curated helpers + per-render partials are available.
  * Throws {@link TemplateError} on an unsafe context, a compile error, or a render error.
  */
+/**
+ * The default thank-you panel, for a bare `{{sw-order-status}}`.
+ *
+ * ★ Deliberately plain, and deliberately COMPLETE without JavaScript: the paid message is what a
+ * buyer sees the instant the page paints, and the pending line is removed by the runtime rather than
+ * being the only thing there. An author who wants more forks the `order-status` snippet.
+ */
+function defaultOrderStatusMarkup(tr: (key: string) => string): string {
+  const t = (key: string, fallback: string): string => escapeHtml(tr(key) || fallback);
+  return (
+    `<p data-sw-part="status-paid" style="display:none">${t('order.paid', 'Thank you — your payment is confirmed.')}</p>` +
+    `<p data-sw-part="status-failed" style="display:none">${t('order.failed', 'That payment did not go through. Nothing has been charged.')}</p>` +
+    `<p data-sw-part="status-unknown" style="display:none">${t('order.unknown', 'We have not had confirmation yet. We will email you as soon as we do.')}</p>` +
+    `<ul data-sw-part="status-summary"></ul>` +
+    `<template data-sw-part="status-line-template"><li><span data-sw-field="qty"></span>&#215; <span data-sw-field="name"></span></li></template>` +
+    `<p><strong data-sw-part="status-total"></strong></p>`
+  );
+}
+
 export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: RenderOptions = {}): string {
   validateTemplate(source);
   // Partials are rendered verbatim too — validate each so a malicious `{{> snippet}}`

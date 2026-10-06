@@ -26,6 +26,11 @@ const NO_LEGACY_NAME = new Set([
   'cart.out_of_stock',
   'cart.gone',
   'cart.checkout_failed',
+  // The thank-you page's own scope — new, and never flat.
+  'order.paid',
+  'order.failed',
+  'order.unknown',
+  'order.keep_shopping',
 ]);
 
 describe('reserved translation key migration', () => {

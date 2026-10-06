@@ -336,7 +336,7 @@ describe('the transactions inbox', () => {
     const id = await insertTxn({ seq: 1 });
     const res = await admin.get(`/projects/${projectId}/transactions/${id}`);
     expect(res.statusCode).toBe(200);
-    expect(res.json().transaction).toMatchObject({ id, totalMinor: 1999, fulfilment: 'new' });
+    expect(res.json().transaction).toMatchObject({ id, fulfilment: 'new', amounts: { totalMinor: 1999 } });
     expect((await admin.get(`/projects/${projectId}/transactions/txn_nope`)).statusCode).toBe(404);
   });
 
@@ -441,6 +441,7 @@ describe('★★ `payments:provider:write` is not enough on its own', () => {
     const made = await member.post(`/projects/${theirs}/api-keys`, {
       name: 'agent',
       role: 'owner',
+      expiresInDays: 1,
       capabilities: ['content:read', 'content:write', 'payments:provider:write'],
     });
     expect(made.statusCode).toBe(201);
@@ -465,6 +466,7 @@ describe('★★ `payments:provider:write` is not enough on its own', () => {
     const made = await admin.post(`/projects/${projectId}/api-keys`, {
       name: 'admin agent',
       role: 'owner',
+      expiresInDays: 1,
       capabilities: ['content:read', 'content:write', 'payments:provider:write'],
     });
     expect(made.statusCode).toBe(201);

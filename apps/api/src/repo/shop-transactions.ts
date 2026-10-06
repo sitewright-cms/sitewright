@@ -64,6 +64,9 @@ export interface TransactionRow {
   preview: boolean;
   status: TransactionStatus;
   fulfilment: FulfilmentState;
+  /** ★ The operator's own note on the last fulfilment move. Mapped because it was WRITE-ONLY: the
+   *  column was set and never read back, so the inbox could never show what an operator recorded. */
+  fulfilmentNote: string | null;
   currency: string;
   amounts: TransactionAmounts;
   refundedMinor: number;
@@ -92,6 +95,7 @@ function toRow(r: any): TransactionRow {
     preview: r.preview === true,
     status: r.status,
     fulfilment: r.fulfilment,
+    fulfilmentNote: r.fulfilmentNote ?? null,
     currency: r.currency,
     amounts: {
       subtotalMinor: r.subtotalMinor,

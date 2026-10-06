@@ -1559,6 +1559,23 @@ describe('payments api', () => {
     await expect(api.putProjectPaymentMode('p1', 'live')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('★ the dry run posts to the PROJECT path, never a project id in the body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { verified: true, redirectUrl: 'https://provider.test/s/1' }));
+    const res = await api.verifyProjectPayment('p1', 'stripe');
+    const s = sent();
+    expect(s.method).toBe('POST');
+    expect(s.url).toContain('/projects/p1/payment/verify');
+    // ★ The project is the PATH. It used to travel in the body, where the server trusted it, which
+    // let one caller spend another tenant's stored credentials.
+    expect(s.body).toEqual({ gatewayId: 'stripe', mode: 'test' });
+    expect(res.redirectUrl).toContain('provider.test');
+  });
+
+  it('surfaces the provider’s own refusal from a dry run', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(422, { verified: false, reason: 'upstream', message: 'No such price' }));
+    await expect(api.verifyProjectPayment('p1', 'stripe')).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('lists transactions, passing only the filters that were set', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listTransactions('p1', { limit: 50, status: 'paid' });

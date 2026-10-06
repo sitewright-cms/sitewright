@@ -44,6 +44,86 @@ import { shopOrderFormId } from '@sitewright/schema';
  */
 export const CART_ADD_MARKER = 'data-sw-cart-add';
 
+/**
+ * ★★ THE PART CONTRACT — the vocabulary an AUTHORED cart drawer binds to.
+ *
+ * The cart runtime used to CONSTRUCT its whole drawer: nothing an author wrote could participate, so
+ * the only way to change the markup was to not use the cart. Now the mount DESCRIBES ITSELF:
+ *
+ *  - an **empty** mount (a bare `{{sw-cart}}`, which is every existing site) gets the platform
+ *    default built exactly as before — no migration, no behaviour change;
+ *  - a mount that already contains **any** `[data-sw-part]` is AUTHORED, and the runtime binds to
+ *    what it finds and builds nothing. A part the author left out is a feature they left out.
+ *
+ * Self-describing rather than flagged, because a flag is a second thing to keep in step with the
+ * markup it describes. And both halves are predictable, which matters more here than purity: an
+ * author who deletes the clear button must not find the platform has put one back.
+ *
+ * ★ This const is the ONE source of truth for these names. The helper that emits the default markup,
+ * the runtime that binds it, the fork validator and the drift tests all read it — a private copy on
+ * any of those sides would drift, and the failure is silent: a drawer that renders and does nothing.
+ */
+export const CART_PARTS = Object.freeze({
+  /** The floating open-the-drawer control. */
+  toggle: 'toggle',
+  /** The item-count badge inside the toggle. */
+  count: 'count',
+  /** The `<dialog>` itself. */
+  drawer: 'drawer',
+  /** The close control inside the drawer. */
+  close: 'close',
+  /** The `<ul>` lines are cloned into. */
+  items: 'items',
+  /** An inert `<template>` holding ONE line's markup. */
+  lineTemplate: 'line-template',
+  /** Shown when the cart is empty. */
+  empty: 'empty',
+  /** The block holding totals and channel buttons; hidden when the cart is empty. */
+  foot: 'foot',
+  /** Where the grand total is written. */
+  total: 'total',
+  /** The post-order confirmation, kept OUTSIDE the foot so it survives the cart emptying. */
+  sentMsg: 'sent-msg',
+  /** The clear-the-cart control. */
+  clear: 'clear',
+} as const);
+
+/**
+ * Field names inside a line template, filled with `textContent` / `setAttribute` ONLY.
+ *
+ * ★ Never innerHTML. Cart contents are author- and buyer-influenced strings, and the whole reason a
+ * line can be author-controlled at all is that filling it cannot introduce a markup sink.
+ */
+export const CART_FIELDS = Object.freeze({
+  name: 'name',
+  price: 'price',
+  qty: 'qty',
+  subtotal: 'subtotal',
+  image: 'image',
+} as const);
+
+/**
+ * Behaviours an authored control can request, via `data-sw-action`.
+ *
+ * `channel:<key>` names a configured submission channel; the runtime refuses an unknown key rather
+ * than wiring a button to nothing.
+ */
+export const CART_ACTIONS = Object.freeze({
+  open: 'open',
+  close: 'close',
+  clear: 'clear',
+  increment: 'inc',
+  decrement: 'dec',
+  remove: 'remove',
+} as const);
+
+/** Required for a drawer to function at all. A fork missing one of these is warned about. */
+export const CART_REQUIRED_PARTS: readonly string[] = Object.freeze([
+  CART_PARTS.drawer,
+  CART_PARTS.items,
+  CART_PARTS.lineTemplate,
+]);
+
 function hasCartMarker(s: string): boolean {
   return s.includes('sw-cart') || s.includes('sw-add-to-cart');
 }
@@ -402,9 +482,167 @@ export const CART_JS = `(function(){
     for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
     return svg;
   }
+  // ---- authored-markup binding ----
+  //
+  // ★★ BIND, DO NOT BUILD. Everything below attaches behaviour to markup that already exists. It
+  // creates exactly one kind of node — a clone of the author's own line <template> — and fills it
+  // with textContent and setAttribute only, so an author-controlled line can never become a markup
+  // sink.
+  //
+  // A part the author omitted is a feature they omitted: every lookup is tolerant, and nothing is
+  // injected to compensate. That is the difference between "you may edit this" and "you may edit
+  // this and the platform will put bits back".
+  function bindAuthored(mount){
+    mount.setAttribute('data-sw-enhanced','true');
+    var cfg=readConfig(mount);
+    var key='sw-cart:'+siteKey(mount);
+    var items=load(key);
+    var sent=false;
+
+    var drawer=part$(mount,'drawer');
+    var list=part$(mount,'items');
+    var tpl=part$(mount,'line-template');
+    var count=part$(mount,'count');
+    var empty=part$(mount,'empty');
+    var foot=part$(mount,'foot');
+    var totalEl=part$(mount,'total');
+    var sentMsg=part$(mount,'sent-msg');
+    var toggle=part$(mount,'toggle');
+
+    // Without these three there is nothing to drive. Say so once, in the console, rather than
+    // failing silently: a drawer that renders and does nothing is the hardest kind of bug to see.
+    if(!drawer||!list||!tpl){
+      if(window.console&&console.warn){console.warn('sitewright cart: the drawer is missing a required part (drawer / items / line-template) — see data-sw-part');}
+      return;
+    }
+
+    function removeSku(sku){for(var i=0;i<items.length;i++){if(items[i].sku===sku){items.splice(i,1);return;}}}
+    function persist(){save(key,items);render();}
+
+    // ---- open / close -------------------------------------------------------------------------
+    var scrollLocked=false,prevOverflow='';
+    function lockScroll(){if(scrollLocked){return;}scrollLocked=true;prevOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';}
+    function unlockScroll(){if(!scrollLocked){return;}scrollLocked=false;document.documentElement.style.overflow=prevOverflow;}
+    function openDrawer(){
+      if(drawer.showModal){try{drawer.showModal();}catch(e){drawer.setAttribute('open','');}}
+      else{drawer.setAttribute('open','');}
+      lockScroll();
+    }
+    function closeDrawer(){if(drawer.close){drawer.close();}else{drawer.removeAttribute('open');unlockScroll();}}
+    drawer.addEventListener('close',unlockScroll);
+    if(toggle){toggle.addEventListener('click',openDrawer);}
+    var openers=actions$(mount,'open');for(var oi=0;oi<openers.length;oi++){openers[oi].addEventListener('click',openDrawer);}
+    var closers=actions$(mount,'close').concat(parts$(mount,'close'));
+    for(var ci2=0;ci2<closers.length;ci2++){closers[ci2].addEventListener('click',closeDrawer);}
+    // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's own box is the backdrop.
+    // A plain target check is not enough — the backdrop is the dialog element itself.
+    drawer.addEventListener('click',function(e){
+      if(e.target!==drawer){return;}
+      var r=drawer.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){closeDrawer();}
+    });
+    var clears=actions$(mount,'clear').concat(parts$(mount,'clear'));
+    for(var cl=0;cl<clears.length;cl++){clears[cl].addEventListener('click',function(){items.length=0;persist();});}
+
+    // ---- channel buttons ----------------------------------------------------------------------
+    // An authored button declares which channel it fires. An unknown key is REFUSED rather than
+    // wired to nothing: a dead checkout button is worse than a missing one, because it looks fine.
+    var chButtons=q('[data-sw-action^="channel:"]',mount);
+    for(var cb=0;cb<chButtons.length;cb++){
+      (function(btn){
+        var wanted=String(btn.getAttribute('data-sw-action')||'').slice('channel:'.length);
+        var ch=null;
+        for(var k=0;k<cfg.channels.length;k++){if(cfg.channels[k].key===wanted){ch=cfg.channels[k];break;}}
+        if(!ch){
+          if(window.console&&console.warn){console.warn('sitewright cart: no channel named "'+wanted+'" is configured');}
+          btn.setAttribute('data-sw-unconfigured','');
+          return;
+        }
+        btn.addEventListener('click',function(){runChannel(ch,items,cfg);});
+      })(chButtons[cb]);
+    }
+
+    // ---- render -------------------------------------------------------------------------------
+    function render(){
+      var n=countOf(items);
+      if(count){count.textContent=String(n);if(n>0){count.removeAttribute('hidden');}else{count.setAttribute('hidden','');}}
+      if(sentMsg){sentMsg.style.display=sent?'':'none';}
+      if(empty){empty.style.display=(!items.length&&!sent)?'':'none';}
+      list.style.display=(items.length&&!sent)?'':'none';
+      if(foot){foot.style.display=(items.length&&!sent)?'':'none';}
+      while(list.firstChild){list.removeChild(list.firstChild);}
+      for(var i=0;i<items.length;i++){
+        (function(it){
+          // ★ The ONE node this function creates: a clone of the author's own template.
+          var frag=tpl.content?tpl.content.cloneNode(true):null;
+          if(!frag){return;}
+          var row=frag.firstElementChild?frag:frag;
+          var nameEl=frag.querySelector('[data-sw-field="name"]');if(nameEl){nameEl.textContent=it.name;}
+          var priceEl=frag.querySelector('[data-sw-field="price"]');if(priceEl){priceEl.textContent=money(it.price,cfg);}
+          var qtyEl=frag.querySelector('[data-sw-field="qty"]');if(qtyEl){qtyEl.textContent=String(it.qty);}
+          var subEl=frag.querySelector('[data-sw-field="subtotal"]');if(subEl){subEl.textContent=money(lineTotal(it,cfg),cfg);}
+          var imgEl=frag.querySelector('[data-sw-field="image"]');
+          if(imgEl){
+            if(it.image){
+              // src via setAttribute; no referrer leak, and a broken image removes itself rather
+              // than leaving an empty box in the author's layout.
+              imgEl.setAttribute('referrerpolicy','no-referrer');
+              imgEl.setAttribute('loading','lazy');
+              imgEl.onerror=function(){if(imgEl.parentNode){imgEl.parentNode.removeChild(imgEl);}};
+              imgEl.setAttribute('src',it.image);
+            }else if(imgEl.parentNode){imgEl.parentNode.removeChild(imgEl);}
+          }
+          var inc=frag.querySelector('[data-sw-action="inc"]');
+          if(inc){inc.addEventListener('click',function(){if(it.qty<MAX_QTY){it.qty+=1;}persist();});}
+          var dec=frag.querySelector('[data-sw-action="dec"]');
+          if(dec){dec.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});}
+          var rm=frag.querySelector('[data-sw-action="remove"]');
+          if(rm){rm.addEventListener('click',function(){removeSku(it.sku);persist();});}
+          list.appendChild(row);
+        })(items[i]);
+      }
+      if(totalEl){totalEl.textContent=money(totalOf(items,cfg),cfg);}
+    }
+
+    // ---- add to cart --------------------------------------------------------------------------
+    function add(btn){
+      sent=false;
+      var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
+      var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
+      var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}
+      if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
+      else{
+        if(items.length>=MAX_LINES){return;}
+        items.push({sku:String(sku).slice(0,200),name:(btn.getAttribute('data-name')||sku).slice(0,300),price:price,image:(btn.getAttribute('data-image')||'').slice(0,2048),qty:1});
+      }
+      persist();
+      if(toggle){
+        // Same affordance as the default drawer: pulse rather than popping the modal open, so a
+        // visitor can add several things without the overlay swallowing their next click.
+        toggle.setAttribute('data-sw-pulse','');
+        void toggle.offsetWidth;
+        setTimeout(function(){toggle.removeAttribute('data-sw-pulse');},700);
+      }
+    }
+    var adders=q('[data-sw-cart-add]');
+    for(var ai=0;ai<adders.length;ai++){(function(b){b.addEventListener('click',function(){add(b);});})(adders[ai]);}
+
+    render();
+  }
+
+
+  // Find a part WITHIN this mount, never across mounts.
+  function part$(root,name){return root.querySelector('[data-sw-part="'+name+'"]');}
+  function parts$(root,name){return q('[data-sw-part="'+name+'"]',root);}
+  function field$(root,name){return root.querySelector('[data-sw-field="'+name+'"]');}
+  function actions$(root,name){return q('[data-sw-action="'+name+'"]',root);}
+  // True when the author supplied their own drawer markup. Self-describing: no flag to keep in step.
+  function isAuthored(mount){return !!mount.querySelector('[data-sw-part]');}
+
   // ---- enhance one mount ----
   function enhance(mount){
     if(mount.getAttribute('data-sw-enhanced')==='true'){return;}
+    if(isAuthored(mount)){bindAuthored(mount);return;}
     var cfg=readConfig(mount);
     var key='sw-cart:'+siteKey(mount);
     var items=load(key);

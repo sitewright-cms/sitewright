@@ -34,6 +34,16 @@ import { shopOrderFormId } from '@sitewright/schema';
 // isn't detected). So we match two substrings that cover every form: `sw-cart` (covers `{{sw-cart}}`,
 // `data-sw-cart`, and `data-sw-cart-add`) and `sw-add-to-cart` (covers `{{sw-add-to-cart}}`). A stray
 // prose match only over-ships a few KB — benign, like the other runtimes.
+/**
+ * The attribute the `{{sw-add-to-cart}}` helper puts on a buy button.
+ *
+ * ★ Exported so the publish-time catalog harvest reads the SAME name the helper writes and the
+ * runtime binds to. A private copy on the build side would drift, and the failure would be silent —
+ * a SKU that renders a buy button and cannot be priced. (Same reasoning as search-index.ts keeping
+ * its tokenizer and file format in this package.)
+ */
+export const CART_ADD_MARKER = 'data-sw-cart-add';
+
 function hasCartMarker(s: string): boolean {
   return s.includes('sw-cart') || s.includes('sw-add-to-cart');
 }

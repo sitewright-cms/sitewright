@@ -1410,6 +1410,16 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       const safe = safeUrl(img); // blocks javascript:/data:/protocol-relative → '#'
       if (safe && safe !== '#') attrs += ` data-image="${escapeAttr(safe)}"`;
     }
+    // `stock=` — the quantity the AUTHOR declares available. Optional; a SKU without it is
+    // untracked and never refused for being out of stock.
+    //
+    // ★ It is emitted for the PUBLISH-TIME HARVEST, not for the browser: the cart runtime ignores it
+    // and must keep ignoring it, because a client-side stock check is advice, not a guard. The
+    // server refuses an oversell against its own ledger (see reconcileStock / the stock repo).
+    // Non-integral or negative values are dropped rather than coerced — `stock="many"` must not
+    // become a number nobody authored.
+    const rawStock = str(h.stock).trim();
+    if (/^\d{1,9}$/.test(rawStock)) attrs += ` data-stock="${escapeAttr(String(Number(rawStock)))}"`;
     // Default to the vendored .btn (btn-primary); an explicit `class=` overrides it per-button.
     const cls = str(h.class) || 'btn btn-sm';
     attrs += ` class="${escapeAttr(cls)}"`;

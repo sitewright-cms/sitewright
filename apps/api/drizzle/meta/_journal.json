@@ -211,6 +211,13 @@
       "when": 1786361222213,
       "tag": "0029_oauth_client_last_used",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1791294539581,
+      "tag": "0030_shop_payments",
+      "breakpoints": true
     }
   ]
 }

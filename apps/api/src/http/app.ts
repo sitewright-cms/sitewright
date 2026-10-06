@@ -9121,7 +9121,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const token = bearerToken(req);
         if (token === undefined) return false;
         const key = await apiKeysRepo.resolve(token).catch(() => null);
-        return key?.capabilities.includes('payments:provider:write') === true;
+        if (key?.capabilities.includes('payments:provider:write') !== true) return false;
+        // ★★ The capability is NECESSARY BUT NOT SUFFICIENT. A gateway definition is instance-wide
+        // infrastructure, while an API key is bound to ONE project and may be minted by that
+        // project's owner at any role — so the capability alone would let a member of any single
+        // tenant rewrite every other tenant's checkout. It is also pre-checked by the OAuth consent
+        // screen for a client that requests no scope, which is how an invited client would obtain it
+        // without ever asking. The requirement is "only admins author gateway code", so the KEY'S
+        // OWNER must be an instance admin as well; the capability then does its intended job of
+        // keeping a routine agent token from reaching this by accident.
+        return await isInstanceAdmin(key.createdBy);
       },
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),

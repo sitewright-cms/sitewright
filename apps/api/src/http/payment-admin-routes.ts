@@ -56,14 +56,23 @@ export interface PaymentAdminDeps {
 
 /** Body of a fork request. */
 const ForkBodySchema = z.object({ id: GatewayIdSchema, name: z.string().min(1).max(120).optional() });
-/** Body of a dry run: which mode to prove, and a nominal amount. */
+/**
+ * Body of a dry run: which mode to prove, a nominal amount, and which gateway.
+ *
+ * ★★ There is deliberately NO `projectId` here. It used to be a body field, and the handler built a
+ * synthetic `{ userId: 'system', role: 'owner' }` context from it — so any caller who passed the
+ * level-1 gate could name ANY project and have the server decrypt that project's stored secret and
+ * spend it against the real provider. The project is now a ROUTE param resolved through the ordinary
+ * membership check, which is the only thing that ties the credentials used to the caller entitled
+ * to use them.
+ */
 const VerifyBodySchema = z.object({
   mode: PaymentModeSchema.default('test'),
   /** Minor units to attempt. Small by default — a dry run should not look like a real order. */
   amountMinor: z.number().int().min(1).max(1_000_000).default(100),
   currency: z.string().length(3).default('EUR'),
-  /** A project whose stored credentials should be used for the attempt. */
-  projectId: z.string().min(1).max(64),
+  /** Which gateway definition this run is proving. Must match what the project is bound to. */
+  gatewayId: GatewayIdSchema,
 });
 
 export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAdminDeps): void {
@@ -142,16 +151,24 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
    * ★ It refuses to run in `live` mode. "Prove it works" must never mean "take a real payment", and
    * an operator clicking a verify button should not be able to charge anybody by accident.
    */
-  app.post<{ Params: { id: string } }>('/admin/payment-gateways/:id/verify', { config: rl(10) }, async (req, reply) => {
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/payment/verify', { config: rl(10) }, async (req, reply) => {
+    // ★★ BOTH gates, and they check different things. `resolveProject` proves the caller may use THIS
+    // project's stored credentials (session-only, membership-checked); `requireGatewayAuthor` proves
+    // they may flip the instance-wide `verified` flag the run sets. Either one alone was a hole: a
+    // project writer must not mark a definition proven for every tenant, and a gateway author must
+    // not spend a tenant's secret. An agent bearer token cannot reach this at all — `session-only`
+    // refuses it — which is right for a step whose real proof is an operator LOOKING at the
+    // provider's own page.
+    const { ctx, project } = await resolveProject(req, 'session-only');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const userId = await requireGatewayAuthor(req);
     const body = VerifyBodySchema.parse(req.body ?? {});
     if (body.mode !== 'test') {
       return reply.code(400).send({ error: 'a gateway is proven in test mode only — verifying in live mode would take a real payment' });
     }
-    const rec = await gateways.byId(req.params.id);
+    const rec = await gateways.byId(body.gatewayId);
     if (!rec) return reply.code(404).send({ error: 'gateway not found' });
 
-    const ctx: ProjectContext = { userId: 'system', projectId: body.projectId, role: 'owner' };
     const resolved = await gateways.resolveCredentials(ctx);
     if (!resolved.ok) {
       return reply.code(409).send({ error: 'the project has no usable credentials for this gateway', reason: resolved.reason, missing: resolved.missing });
@@ -171,7 +188,7 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
         // Clearly-labelled placeholders: this is a probe, and anything that reaches the provider's
         // dashboard should say so rather than looking like a real order.
         txn: { id: 'sw-verify', publicToken: 'sw-verify', reference: 'sw-verify' },
-        url: { return: `${base}/`, cancel: `${base}/`, webhook: `${base}/pay/${body.projectId}/webhook/${rec.gateway.id}` },
+        url: { return: `${base}/`, cancel: `${base}/`, webhook: `${base}/pay/${project.id}/webhook/${rec.gateway.id}` },
         field: {},
         text: { order_name: 'Sitewright gateway verification' },
       }, io);

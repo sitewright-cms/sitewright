@@ -30,6 +30,9 @@ const PAID = {
     fulfilment: 'new',
     currency: 'EUR',
     amounts: { subtotalMinor: 1999, shippingMinor: 499, taxMinor: 0, totalMinor: 2498 },
+    // ★ The SERVER formats these, by the currency's ISO-4217 exponent. The page renders the string.
+    display: { subtotal: '19.99', shipping: '4.99', tax: '0.00', total: '24.98' },
+    lineDisplay: ['39.98'],
     lines: [{ sku: 'MUG', name: 'Enamel mug', unitMinor: 1999, qty: 2, lineMinor: 3998 }],
     buyer: { email: 'ada@example.com' },
     createdAt: '2026-10-06T10:00:00.000Z',
@@ -164,11 +167,52 @@ describe('the summary', () => {
     expect(nameEl.querySelector('img')).toBeNull();
   });
 
-  it('respects a zero-decimal currency', async () => {
+  // ★★ THE REGRESSION THIS REPLACES. The page used to compute the total itself, dividing
+  // `totalMinor` by 10^`data-currency-decimals` — but that attribute is the merchant's DISPLAY
+  // preference, independent of the settlement currency and defaulting to 2. A JPY shop (exponent 0)
+  // that never touched it rendered 2498 minor units as "24.98": the thank-you page understating the
+  // charge by 100x, on the one screen whose job is reassuring the buyer. The amount now arrives
+  // already formatted, so the attribute cannot influence it at all.
+  it('★★ renders the SERVER\'s formatted amount — the display-decimals attribute cannot change it', async () => {
     document.body.innerHTML = '';
-    const root = run('https://shop.test/thank-you/?t=tok_abc', PANEL.replace('data-currency-decimals="2"', 'data-currency-decimals="0"').replace('data-currency-symbol="$"', 'data-currency-symbol="¥"'));
-    reply = { ok: true, body: { transaction: { ...PAID.transaction, currency: 'JPY', amounts: { ...PAID.transaction.amounts, totalMinor: 2498 } } } };
+    const root = run(
+      'https://shop.test/thank-you/?t=tok_abc',
+      PANEL.replace('data-currency-decimals="2"', 'data-currency-decimals="0"').replace('data-currency-symbol="$"', 'data-currency-symbol="¥"'),
+    );
+    // A zero-exponent currency: 2498 JPY is "2498", and the server says so.
+    reply = {
+      ok: true,
+      body: {
+        transaction: {
+          ...PAID.transaction,
+          currency: 'JPY',
+          amounts: { ...PAID.transaction.amounts, totalMinor: 2498 },
+          display: { subtotal: '2498', shipping: '0', tax: '0', total: '2498' },
+          lineDisplay: ['2498'],
+        },
+      },
+    };
     await vi.waitFor(() => expect(root.querySelector('[data-sw-part="status-total"]')?.textContent).toBe('¥2498'));
+  });
+
+  it('★ a 3-decimal currency is NOT re-divided by the 2-decimal display default', async () => {
+    document.body.innerHTML = '';
+    // The attribute still says 2 — the old default that caused the bug.
+    const root = run('https://shop.test/thank-you/?t=tok_abc', PANEL.replace('data-currency-symbol="$"', 'data-currency-symbol="KD "'));
+    reply = {
+      ok: true,
+      body: {
+        transaction: {
+          ...PAID.transaction,
+          currency: 'KWD',
+          amounts: { ...PAID.transaction.amounts, totalMinor: 19_990 },
+          display: { subtotal: '19.990', shipping: '0.000', tax: '0.000', total: '19.990' },
+          lineDisplay: ['19.990'],
+        },
+      },
+    };
+    // Old behaviour would have shown 199.90 — ten times the real charge.
+    await vi.waitFor(() => expect(root.querySelector('[data-sw-part="status-total"]')?.textContent).toBe('KD 19.990'));
   });
 });
 

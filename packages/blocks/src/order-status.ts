@@ -81,17 +81,22 @@ export const ORDER_STATUS_JS = `(function(){
         var frag=tpl.content.cloneNode(true);
         var n=frag.querySelector('[data-sw-field="name"]');if(n){n.textContent=lines[i].name;}
         var qf=frag.querySelector('[data-sw-field="qty"]');if(qf){qf.textContent=String(lines[i].qty);}
+        var lt=frag.querySelector('[data-sw-field="line-total"]');
+        if(lt&&txn.lineDisplay&&txn.lineDisplay[i]){
+          var lsym=mount.getAttribute('data-currency-symbol')||'';
+          lt.textContent=mount.getAttribute('data-currency-pos')==='after'?(txn.lineDisplay[i]+' '+lsym):(lsym+txn.lineDisplay[i]);
+        }
         summary.appendChild(frag);
       }
     }
     var total=part(mount,'status-total');
-    if(total&&txn.amounts){
-      // The server has already decided the currency and the amount; this only renders them.
-      var minor=txn.amounts.totalMinor;
-      var d=mount.getAttribute('data-currency-decimals');
-      var places=d===null?2:Math.max(0,Math.min(4,parseInt(d,10)||0));
+    if(total&&txn.display&&txn.display.total){
+      // ★★ The SERVER's formatted string, never arithmetic here. This used to divide by
+      // 10^data-currency-decimals, which is the merchant's display preference and has nothing to do
+      // with the settlement currency's ISO-4217 exponent — so a 0- or 3-decimal currency rendered a
+      // total out by a factor of 100 or 10. The symbol and its position remain presentation.
       var sym=mount.getAttribute('data-currency-symbol')||'';
-      var amount=(minor/Math.pow(10,places)).toFixed(places);
+      var amount=String(txn.display.total);
       total.textContent=mount.getAttribute('data-currency-pos')==='after'?(amount+' '+sym):(sym+amount);
     }
     // ★ The cart is cleared HERE, and only on a confirmed payment. Clearing at redirect time would

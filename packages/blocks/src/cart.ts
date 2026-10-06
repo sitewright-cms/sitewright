@@ -86,6 +86,24 @@ export const CART_PARTS = Object.freeze({
   sentMsg: 'sent-msg',
   /** The clear-the-cart control. */
   clear: 'clear',
+  /**
+   * A buyer-input control's wrapper — one per declared channel field.
+   *
+   * ★ Named here because an AUTHORED cart must be able to carry the channel's fields: the checkout
+   * endpoint validates against them and refuses an order missing a required one. The runtime reads
+   * every control inside a wrapper and keys it by the control's `name`.
+   */
+  orderField: 'order-field',
+  /** A checkbox field's wrapper (its own part, because a checkbox contributes only when ticked). */
+  orderToggle: 'order-toggle',
+  /** A radio group's `<fieldset>` wrapper. */
+  orderChoice: 'order-choice',
+  /** The `<form>` holding the buyer-input controls; its validity is checked before a checkout POST. */
+  channelForm: 'channel-form',
+  /** Where a checkout writes progress and refusals. */
+  checkoutStatus: 'checkout-status',
+  /** The pre-payment review panel the server's authoritative breakdown is rendered into. */
+  review: 'review',
 } as const);
 
 /**
@@ -100,6 +118,14 @@ export const CART_FIELDS = Object.freeze({
   qty: 'qty',
   subtotal: 'subtotal',
   image: 'image',
+} as const);
+
+/** Fields inside an ORDER-STATUS line template (the thank-you page), same textContent-only rule. */
+export const ORDER_STATUS_FIELDS = Object.freeze({
+  name: 'name',
+  qty: 'qty',
+  /** The line's total, already formatted by the server's ISO-4217 exponent. */
+  lineTotal: 'line-total',
 } as const);
 
 /**
@@ -421,6 +447,32 @@ export const CART_JS = `(function(){
   }
   function itemsSummary(items){var p=[];for(var i=0;i<items.length;i++){p.push(items[i].qty+'x '+items[i].name);}return p.join(', ');}
   // Collected buyer-input fields → "Label: value" lines (blank values dropped). '' when there are none.
+  // Reads whatever buyer-input controls exist under the host, in BOTH shapes the runtime needs: an
+  // object keyed by the field's 'name' (what the checkout endpoint validates against) and a
+  // label/value list (what a deep-link channel writes into its message). One reader, so an authored
+  // cart and the default one can never collect different things.
+  function collectFields(host,cfg){
+    var out={values:{},list:[]};
+    if(!host||!host.querySelectorAll){return out;}
+    var wraps=host.querySelectorAll('[data-sw-part="order-field"],[data-sw-part="order-toggle"],[data-sw-part="order-choice"]');
+    for(var w=0;w<wraps.length;w++){
+      var wrap=wraps[w];
+      var ctrls=wrap.querySelectorAll('input,select,textarea');
+      var lab=wrap.querySelector('span,legend');
+      var label=lab?String(lab.textContent||'').replace(/\\s*\\*$/,''):'';
+      for(var c=0;c<ctrls.length;c++){
+        var el=ctrls[c];
+        // A radio group contributes only the checked member; an unticked checkbox contributes nothing.
+        if(el.type==='radio'||el.type==='checkbox'){if(!el.checked){continue;}}
+        var val=(el.type==='checkbox')?((cfg&&cfg.yesLabel)||'Yes'):String(el.value||'');
+        val=val.replace(/^\\s+|\\s+$/g,'');
+        if(!val){continue;}
+        if(el.name){out.values[el.name]=val;}
+        out.list.push({label:label||el.name||'',value:val});
+      }
+    }
+    return out;
+  }
   function fieldLines(values){
     if(!values||!values.length){return '';}
     var lines=[];for(var i=0;i<values.length;i++){var v=values[i];if(v&&v.value){lines.push(v.label+': '+v.value);}}
@@ -597,9 +649,17 @@ export const CART_JS = `(function(){
 
     // Buyer fields, when the channel declares any: collected by the SAME inline form a deep-link
     // channel uses, so one control vocabulary covers every channel kind.
-    var values={};
-    var inputs=host.querySelectorAll('[data-sw-part="order-field"] input,[data-sw-part="order-field"] select,[data-sw-part="order-field"] textarea');
-    for(var i=0;i<inputs.length;i++){if(inputs[i].name){values[inputs[i].name]=inputs[i].value;}}
+    //
+    // ★ VALIDATE FIRST. The server validates against the channel's declared fields and refuses the
+    // order if a required one is missing — and a new field defaults to required — so without this a
+    // merchant who adds one field turns their own Checkout button into a control that always fails
+    // with a generic message. The browser's own bubbles say which field and why.
+    var fform=host.querySelector('[data-sw-part="channel-form"]');
+    if(fform&&typeof fform.reportValidity==='function'&&!fform.reportValidity()){
+      btn.disabled=false;status.textContent='';
+      return;
+    }
+    var values=collectFields(host,cfg).values;
 
     postCheckout(ch,items,cfg,values,function(r){
       btn.disabled=false;
@@ -706,7 +766,10 @@ export const CART_JS = `(function(){
           btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key);});
           return;
         }
-        btn.addEventListener('click',function(){runChannel(ch,items,cfg);});
+        // ★ The author's own order-field controls, in the deep-link message shape. The default
+        // drawer collects these for whatsapp/mailto through its inline form; an authored drawer that
+        // dropped them silently sent an order with the buyer's answers missing.
+        btn.addEventListener('click',function(){runChannel(ch,items,cfg,collectFields(btn.parentNode||mount,cfg).list);});
       })(chButtons[cb]);
     }
 
@@ -724,7 +787,6 @@ export const CART_JS = `(function(){
           // ★ The ONE node this function creates: a clone of the author's own template.
           var frag=tpl.content?tpl.content.cloneNode(true):null;
           if(!frag){return;}
-          var row=frag.firstElementChild?frag:frag;
           var nameEl=frag.querySelector('[data-sw-field="name"]');if(nameEl){nameEl.textContent=it.name;}
           var priceEl=frag.querySelector('[data-sw-field="price"]');if(priceEl){priceEl.textContent=money(it.price,cfg);}
           var qtyEl=frag.querySelector('[data-sw-field="qty"]');if(qtyEl){qtyEl.textContent=String(it.qty);}
@@ -746,7 +808,8 @@ export const CART_JS = `(function(){
           if(dec){dec.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});}
           var rm=frag.querySelector('[data-sw-action="remove"]');
           if(rm){rm.addEventListener('click',function(){removeSku(it.sku);persist();});}
-          list.appendChild(row);
+          // The clone is a DocumentFragment; appending it moves its children into the list.
+          list.appendChild(frag);
         })(items[i]);
       }
       if(totalEl){totalEl.textContent=money(totalOf(items,cfg),cfg);}
@@ -845,6 +908,11 @@ export const CART_JS = `(function(){
           });
           foot.appendChild(b);foot.appendChild(cf.form);
         }else if(ch.kind==='checkout'){
+          // ★ The fields go in BEFORE the button, inside the same parent: startCheckout reads them
+          // from the button's own parentNode. A checkout channel that declares fields and rendered
+          // none was a button that could only ever fail.
+          var kf=buildChannelForm(ch,null,true);
+          if(kf){foot.appendChild(kf.form);}
           b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key);});
           foot.appendChild(b);
         }else{
@@ -868,10 +936,13 @@ export const CART_JS = `(function(){
     // Returns { form, open } or null when the channel declares no fields (then the button fires directly).
     // "toggleBtn" is the channel button that shows/hides this form — its aria-expanded is re-synced on
     // submit. Values flow through input .value into the (URL-encoded) deep link — never HTML; no new sink.
-    function buildChannelForm(ch,toggleBtn){
+    // 'bare' builds the FIELDS ONLY — visible, with no submit button and no submit handler. That is
+    // what a checkout needs: the buyer fills the fields in place and the channel's own Checkout
+    // button reads them, rather than the form submitting itself.
+    function buildChannelForm(ch,toggleBtn,bare){
       var fields=(ch&&ch.fields&&ch.fields.length)?ch.fields:null;
       if(!fields){return null;}
-      var form=part('form','channel-form');form.hidden=true;
+      var form=part('form','channel-form');if(!bare){form.hidden=true;}
       var inputs=[];
       for(var i=0;i<fields.length;i++){
         (function(f,idx){
@@ -888,6 +959,7 @@ export const CART_JS = `(function(){
           if(type==='select'&&opts){
             var wrapS=part('label','order-field');wrapS.appendChild(mk('span',null,prompt));
             var sel=document.createElement('select');if(req){sel.required=true;sel.appendChild(mk('option',null,''));}
+            if(f&&f.name){sel.name=String(f.name);}
             for(var s=0;s<opts.length;s++){var o=mk('option',null,String(opts[s]));o.value=String(opts[s]);sel.appendChild(o);}
             wrapS.appendChild(sel);form.appendChild(wrapS);
             inputs.push({label:label,read:function(){return sel.value||'';},focus:function(){sel.focus();}});
@@ -903,7 +975,7 @@ export const CART_JS = `(function(){
             var radios=[];
             for(var r=0;r<opts.length;r++){
               var rowL=part('label','order-option');
-              var ri=document.createElement('input');ri.type='radio';ri.name=gname;ri.value=String(opts[r]);
+              var ri=document.createElement('input');ri.type='radio';ri.name=(f&&f.name)?String(f.name):gname;ri.value=String(opts[r]);
               if(req){ri.required=true;}
               rowL.appendChild(ri);rowL.appendChild(mk('span',null,String(opts[r])));
               fs.appendChild(rowL);radios.push(ri);
@@ -918,6 +990,7 @@ export const CART_JS = `(function(){
           if(type==='checkbox'){
             var wrapC=part('label','order-toggle');
             var cb=document.createElement('input');cb.type='checkbox';if(req){cb.required=true;}
+            if(f&&f.name){cb.name=String(f.name);}
             wrapC.appendChild(cb);wrapC.appendChild(mk('span',null,prompt));
             form.appendChild(wrapC);
             inputs.push({label:label,read:function(){return cb.checked?cfg.yesLabel:'';},focus:function(){cb.focus();}});
@@ -931,10 +1004,14 @@ export const CART_JS = `(function(){
           var wrap=part('label','order-field');wrap.appendChild(mk('span',null,prompt));
           var inp=t==='textarea'?document.createElement('textarea'):document.createElement('input');
           if(t!=='textarea'){inp.type=t;}if(req){inp.required=true;}
+          if(f&&f.name){inp.name=String(f.name);}
           wrap.appendChild(inp);form.appendChild(wrap);
           inputs.push({label:label,read:function(){return inp.value||'';},focus:function(){inp.focus();}});
         })(fields[i],i);
       }
+      // ★ A bare form owns no submit: returning here leaves a form whose only job is to hold the
+      // controls, so reportValidity() still guards required fields before the checkout POST.
+      if(bare){return {form:form,open:function(){if(inputs[0]){inputs[0].focus();}}};}
       var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','channel-status');
       form.appendChild(submit);form.appendChild(status);

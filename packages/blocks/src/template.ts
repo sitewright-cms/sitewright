@@ -1578,9 +1578,22 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       .map((c): Record<string, unknown> | null => {
         if (!c || typeof c !== 'object') return null;
         const label = shopLabel(str(c.key));
-        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
-        if (c.kind === 'mailto') return { kind: 'mailto', label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
-        if (c.kind === 'payment') return { kind: 'payment', label, urlTemplate: c.urlTemplate };
+        // ★★ The KEY travels on every channel. An AUTHORED cart resolves `data-sw-action="channel:<key>"`
+        // by looking the key up in this very list, and a checkout POSTs to `window.__swp(ch.key)` — so
+        // without it an authored button could never match any channel at all (it marked every one
+        // `data-sw-unconfigured`), and a checkout had no endpoint to call. It is not a secret: for a
+        // checkout it is already the last path segment of the public pay URL. What stays out of this
+        // attribute is the form channel's ENDPOINT, which is a different thing.
+        const key = str(c.key);
+        if (c.kind === 'whatsapp') return { kind: 'whatsapp', key, label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
+        if (c.kind === 'mailto') return { kind: 'mailto', key, label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
+        if (c.kind === 'payment') return { kind: 'payment', key, label, urlTemplate: c.urlTemplate };
+        // ★★ The CHECKOUT channel — the one this whole module exists for. Omitting it here meant a
+        // correctly-configured, gateway-verified shop rendered a drawer with NO pay button (default)
+        // or a permanently-"unconfigured" one (authored), with every server-side layer built and
+        // working behind it. The runtime needs the key (the endpoint), the label, and the buyer
+        // fields; nothing about the gateway or its credentials belongs in a page attribute.
+        if (c.kind === 'checkout') return { kind: 'checkout', key, label, fields: projFields(c.fields) };
         // The form channel carries its form ID, never the resolved URL: cart.js assembles the address
         // from the encoded blob (window.__swf), so the endpoint stays out of this attribute — it used to
         // ship the full `/f/…` URL in `data-channels` for any scraper to read. `endpoint` is still what
@@ -1590,7 +1603,7 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
         // attribute. `captcha` is a flag; the provider + site key ride on the mount, not per channel.
         if (c.kind === 'form') {
           return typeof c.endpoint === 'string' && typeof c.formId === 'string'
-            ? { kind: 'form', label, formId: c.formId, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}) }
+            ? { kind: 'form', key, label, formId: c.formId, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}) }
             : null;
         }
         return null;

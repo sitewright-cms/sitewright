@@ -91,13 +91,20 @@ function parseScope(raw: string | undefined): ApiKeyCapability[] {
   return API_KEY_CAPABILITIES.filter((c) => requested.includes(c));
 }
 
+/** Capabilities never pre-checked for a client that asked for no scope. ★ The all-capabilities
+ *  default exists so a generic client does not dead-end at `invalid_scope` — but it means "approve"
+ *  grants whatever is in that list, so anything that reaches beyond the one project being connected
+ *  has to be asked for by name. `payments:provider:write` edits INSTANCE-WIDE gateway definitions. */
+const NEVER_DEFAULTED: readonly ApiKeyCapability[] = ['payments:provider:write'];
+
 /** The scope to PRE-SELECT on the consent page: the client's requested capabilities if it named any
- *  known ones, else ALL capabilities. A generic MCP/OAuth client (e.g. Claude Code) commonly requests
- *  no Sitewright-specific scope — rather than dead-end at `invalid_scope`, we present everything
- *  pre-checked and let the user UNCHECK what they don't want to grant. */
+ *  known ones, else every capability except `NEVER_DEFAULTED`. A generic MCP/OAuth client (e.g.
+ *  Claude Code) commonly requests no Sitewright-specific scope — rather than dead-end at
+ *  `invalid_scope`, we present the rest pre-checked and let the user UNCHECK what they don't want.
+ *  A client that explicitly names an un-defaulted capability still gets it pre-checked: it asked. */
 function resolveScope(raw: string | undefined): ApiKeyCapability[] {
   const parsed = parseScope(raw);
-  return parsed.length > 0 ? parsed : [...API_KEY_CAPABILITIES];
+  return parsed.length > 0 ? parsed : API_KEY_CAPABILITIES.filter((c) => !NEVER_DEFAULTED.includes(c));
 }
 
 /** Capabilities CHECKED on the consent form, in canonical order. Each capability is its OWN checkbox
@@ -111,7 +118,7 @@ function selectedScope(body: Record<string, unknown>): ApiKeyCapability[] {
 /** Capabilities whose grant is destructive or externally visible — flagged on the consent page so a
  *  quick "Approve" doesn't hand them over unnoticed. They are still pre-checked (per the all-caps
  *  default); the user can uncheck them. */
-const ELEVATED_SCOPES: readonly ApiKeyCapability[] = ['content:delete', 'deploy'];
+const ELEVATED_SCOPES: readonly ApiKeyCapability[] = ['content:delete', 'deploy', 'payments:provider:write'];
 
 /** Renders the editable per-capability checkboxes for a consent form; `selected` are pre-checked. */
 function scopeCheckboxes(selected: readonly ApiKeyCapability[]): string {

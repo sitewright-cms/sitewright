@@ -8,6 +8,7 @@ import {
   type PaymentMode,
   type TransactionLine,
   type TransactionAmounts,
+  fromMinorUnits,
   type TransactionPublic,
   type TransactionStatus,
 } from '@sitewright/schema';
@@ -467,6 +468,15 @@ export class ShopTransactionRepository {
       amounts: row.amounts,
       lines: row.lines,
       buyer: row.buyer,
+      // ★ Formatted HERE, by the currency's real exponent — never by a display preference, and never
+      // by arithmetic in the browser.
+      display: {
+        subtotal: fromMinorUnits(row.amounts.subtotalMinor, row.currency),
+        shipping: fromMinorUnits(row.amounts.shippingMinor, row.currency),
+        tax: fromMinorUnits(row.amounts.taxMinor, row.currency),
+        total: fromMinorUnits(row.amounts.totalMinor, row.currency),
+      },
+      lineDisplay: row.lines.map((l) => fromMinorUnits(l.lineMinor, row.currency)),
       createdAt: row.createdAt.toISOString(),
       ...(row.paidAt ? { paidAt: row.paidAt.toISOString() } : {}),
     };

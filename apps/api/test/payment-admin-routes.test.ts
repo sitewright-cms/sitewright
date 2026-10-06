@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
-import { content, instanceSettings, INSTANCE_SETTINGS_ID } from '../src/db/schema.js';
+import { content, instanceSettings, INSTANCE_SETTINGS_ID, shopTransactions } from '../src/db/schema.js';
 import { GLOBAL_SCOPE_ID, ensureGlobalProject } from '../src/repo/global-library.js';
 
 const KEY = Buffer.alloc(32, 7);
@@ -141,7 +141,7 @@ describe('★★ the dry run is the only thing that marks a gateway verified', (
   it('performs a REAL test-mode checkout and flips the flag', async () => {
     await configure();
     scripted.push({ body: { id: 'sess_v', url: 'https://mock-pay.invalid/s/v' } });
-    const res = await admin.post('/admin/payment-gateways/acme/verify', { projectId, mode: 'test' });
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ verified: true, redirectUrl: 'https://mock-pay.invalid/s/v' });
     // A template can be syntactically perfect and still produce a request the provider rejects; the
@@ -153,7 +153,7 @@ describe('★★ the dry run is the only thing that marks a gateway verified', (
 
   it('★ REFUSES to verify in live mode — proving a gateway must never take a real payment', async () => {
     await configure();
-    const res = await admin.post('/admin/payment-gateways/acme/verify', { projectId, mode: 'live' });
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'live' });
     expect(res.statusCode).toBe(400);
     expect(calls).toHaveLength(0);
   });
@@ -161,7 +161,7 @@ describe('★★ the dry run is the only thing that marks a gateway verified', (
   it('does NOT flip the flag when the provider rejects the request', async () => {
     await configure();
     scripted.push({ ok: false, status: 400, body: { error: 'bad template' } });
-    const res = await admin.post('/admin/payment-gateways/acme/verify', { projectId, mode: 'test' });
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
     expect(res.statusCode).toBe(422);
     expect(res.json().verified).toBe(false);
     const gw = (await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme');
@@ -170,7 +170,7 @@ describe('★★ the dry run is the only thing that marks a gateway verified', (
 
   it('refuses when the named project has no credentials for the gateway', async () => {
     await admin.put('/admin/payment-gateways/acme', GATEWAY);
-    const res = await admin.post('/admin/payment-gateways/acme/verify', { projectId, mode: 'test' });
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
     expect(res.statusCode).toBe(409);
     expect(res.json().reason).toBe('not-configured');
   });
@@ -239,7 +239,7 @@ describe('level 2 — a project’s own credentials', () => {
     expect(offered).toHaveLength(0);
     await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'a', webhookSecret: 'b' } });
     scripted.push({ body: { id: 's', url: 'https://mock-pay.invalid/s' } });
-    await admin.post('/admin/payment-gateways/acme/verify', { projectId, mode: 'test' });
+    await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
     offered = (await admin.get(`/projects/${projectId}/payment-gateways`)).json().gateways;
     expect(offered.map((g: { id: string }) => g.id)).toEqual(['acme']);
     // ★ And the offer carries public metadata only — no templates, no origins, no verification.
@@ -278,5 +278,203 @@ describe('★ the gateway record is never reachable through the generic content 
       .from(content)
       .where(and(eq(content.kind, 'payment_gateway'), eq(content.entityId, 'acme')));
     expect(row?.projectId).toBe(GLOBAL_SCOPE_ID);
+  });
+});
+
+// ---- the transactions inbox ---------------------------------------------------------------------
+// ★ These five endpoints are the entire data source for the editor's orders inbox. They were the
+// untested half of this file, which is how a reader of the coverage data finds them.
+
+/** Inserts one order directly: the inbox reads rows, it does not care how they were created. */
+async function insertTxn(over: Partial<Record<string, unknown>> = {}): Promise<string> {
+  const id = `txn_${String(over.id ?? Math.abs(Number(over.seq ?? 1)))}`;
+  await h.db.insert(shopTransactions).values({
+    id,
+    projectId,
+    channelKey: 'pay',
+    gatewayId: 'mock',
+    mode: 'test',
+    status: 'paid',
+    fulfilment: 'new',
+    currency: 'EUR',
+    subtotalMinor: 1999,
+    shippingMinor: 0,
+    taxMinor: 0,
+    totalMinor: 1999,
+    lines: [{ sku: 'mug', name: 'Mug', unitMinor: 1999, qty: 1, lineMinor: 1999 }],
+    buyer: { email: 'ada@example.com' },
+    catalogDigest: 'cat_1',
+    publicToken: `tok_${id}`,
+    createdAt: new Date(1_700_000_000_000 + Number(over.seq ?? 1) * 1000),
+    updatedAt: new Date(),
+    ...(over.values as Record<string, unknown>),
+  } as never);
+  return id;
+}
+
+describe('the transactions inbox', () => {
+  it('lists the project orders, newest first, with a total', async () => {
+    await insertTxn({ seq: 1 });
+    await insertTxn({ id: 2, seq: 2 });
+    const res = await admin.get(`/projects/${projectId}/transactions`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().total).toBe(2);
+    expect(res.json().items).toHaveLength(2);
+  });
+
+  it('filters by status and honours limit/offset', async () => {
+    await insertTxn({ seq: 1 });
+    await insertTxn({ id: 2, seq: 2, values: { status: 'failed' } });
+    expect((await admin.get(`/projects/${projectId}/transactions?status=failed`)).json().items).toHaveLength(1);
+    expect((await admin.get(`/projects/${projectId}/transactions?limit=1`)).json().items).toHaveLength(1);
+    const paged = await admin.get(`/projects/${projectId}/transactions?limit=1&offset=1`);
+    expect(paged.json().items).toHaveLength(1);
+    expect(paged.json().total).toBe(2);
+  });
+
+  it('reads one order by id, and 404s an unknown one', async () => {
+    const id = await insertTxn({ seq: 1 });
+    const res = await admin.get(`/projects/${projectId}/transactions/${id}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().transaction).toMatchObject({ id, totalMinor: 1999, fulfilment: 'new' });
+    expect((await admin.get(`/projects/${projectId}/transactions/txn_nope`)).statusCode).toBe(404);
+  });
+
+  it('counts the two undelivered mail kinds SEPARATELY', async () => {
+    await insertTxn({ seq: 1, values: { notifyState: 'failed', notifyError: 'smtp refused' } });
+    await insertTxn({ id: 2, seq: 2, values: { receiptState: 'pending' } });
+    const res = await admin.get(`/projects/${projectId}/transactions-undelivered`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ notify: 1, receipt: 1 });
+  });
+
+  it('re-queues one mail kind without touching the other', async () => {
+    const id = await insertTxn({ seq: 1, values: { notifyState: 'failed', receiptState: 'failed' } });
+    const res = await admin.post(`/projects/${projectId}/transactions/${id}/resend`, { kind: 'notify' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ queued: true, kind: 'notify' });
+    const [row] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.id, id));
+    expect(row?.notifyState).toBe('pending');
+    expect(row?.receiptState).toBe('failed');
+    expect((await admin.post(`/projects/${projectId}/transactions/txn_nope/resend`, { kind: 'receipt' })).statusCode).toBe(404);
+  });
+
+  it('moves fulfilment forward, and refuses a BACKWARDS move with a 409', async () => {
+    const id = await insertTxn({ seq: 1 });
+    const ok = await admin.patch(`/projects/${projectId}/transactions/${id}/fulfilment`, { to: 'packed', note: 'boxed' });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().transaction).toMatchObject({ fulfilment: 'packed', fulfilmentNote: 'boxed' });
+    // `packed` may go to shipped or cancelled — never back to `new`.
+    const back = await admin.patch(`/projects/${projectId}/transactions/${id}/fulfilment`, { to: 'new' });
+    expect(back.statusCode).toBe(409);
+    expect((await admin.patch(`/projects/${projectId}/transactions/txn_nope/fulfilment`, { to: 'packed' })).statusCode).toBe(404);
+  });
+
+  it('★ a terminal fulfilment state cannot be moved at all', async () => {
+    const id = await insertTxn({ seq: 1, values: { fulfilment: 'done' } });
+    for (const to of ['packed', 'shipped', 'cancelled', 'new']) {
+      expect((await admin.patch(`/projects/${projectId}/transactions/${id}/fulfilment`, { to })).statusCode, to).toBe(409);
+    }
+  });
+
+  it('★ a non-member of the project reads nothing from the inbox', async () => {
+    const id = await insertTxn({ seq: 1 });
+    for (const res of [
+      await member.get(`/projects/${projectId}/transactions`),
+      await member.get(`/projects/${projectId}/transactions/${id}`),
+      await member.get(`/projects/${projectId}/transactions-undelivered`),
+      await member.post(`/projects/${projectId}/transactions/${id}/resend`, { kind: 'notify' }),
+      await member.patch(`/projects/${projectId}/transactions/${id}/fulfilment`, { to: 'packed' }),
+    ]) {
+      expect(res.statusCode).toBeGreaterThanOrEqual(403);
+    }
+  });
+});
+
+// ---- the two cross-tenant holes the security review found ---------------------------------------
+
+describe('★★ a dry run can only spend the credentials of a project the caller belongs to', () => {
+  it('refuses a project the caller is not a member of', async () => {
+    // A second owner, with their own project and their own stored credentials.
+    const victim = await h.signup();
+    const victimProject = await victim.createProject('Victim', 'victim');
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+
+    // The attacker here is an INSTANCE ADMIN — the strongest caller the level-1 gate recognises —
+    // and must still be refused, because instance admin is not membership of someone's shop.
+    const res = await admin.post(`/projects/${victimProject}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
+    expect(res.statusCode).toBeGreaterThanOrEqual(403);
+    // ★ And nothing was sent to the provider on the victim's behalf.
+    expect(calls).toEqual([]);
+  });
+
+  it('★ the route no longer accepts a projectId in the body at all', async () => {
+    const victim = await h.signup();
+    const victimProject = await victim.createProject('Victim', 'victim');
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    // The old shape: name someone else's project in the body while addressing your own.
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, {
+      gatewayId: 'acme',
+      mode: 'test',
+      projectId: victimProject,
+    });
+    // Whatever this answers, it must never have resolved the VICTIM's credentials — the only
+    // project id that can reach `resolveCredentials` is the one in the path.
+    expect(res.statusCode).not.toBe(200);
+    expect(calls).toEqual([]);
+  });
+
+  it('a project writer who is not a gateway author cannot mark a definition verified', async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    // `member` is an owner of their OWN project but not an instance admin.
+    const theirs = await member.createProject('Theirs', 'theirs');
+    const res = await member.post(`/projects/${theirs}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
+    expect(res.statusCode).toBeGreaterThanOrEqual(403);
+  });
+});
+
+describe('★★ `payments:provider:write` is not enough on its own', () => {
+  it('a key minted by a non-admin project owner cannot author gateway definitions', async () => {
+    // `member` is an owner of their own project, so they may mint a key for it — with any
+    // capability. That key must not reach instance-wide gateway definitions.
+    const theirs = await member.createProject('Theirs', 'theirs');
+    const made = await member.post(`/projects/${theirs}/api-keys`, {
+      name: 'agent',
+      role: 'owner',
+      capabilities: ['content:read', 'content:write', 'payments:provider:write'],
+    });
+    expect(made.statusCode).toBe(201);
+    const token = made.json().token as string;
+    expect(token).toBeTruthy();
+
+    const bearer = (method: 'GET' | 'PUT', url: string, payload?: unknown) =>
+      h.app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload: payload as never });
+
+    for (const res of [
+      await bearer('GET', '/admin/payment-gateways'),
+      await bearer('PUT', '/admin/payment-gateways/evil', GATEWAY),
+    ]) {
+      expect(res.statusCode).toBeGreaterThanOrEqual(403);
+    }
+    // The definition really was not written.
+    const [row] = await h.db.select().from(content).where(and(eq(content.kind, 'payment_gateway'), eq(content.entityId, 'evil')));
+    expect(row).toBeUndefined();
+  });
+
+  it("★ the same capability on an ADMIN's key still works — the capability keeps its purpose", async () => {
+    const made = await admin.post(`/projects/${projectId}/api-keys`, {
+      name: 'admin agent',
+      role: 'owner',
+      capabilities: ['content:read', 'content:write', 'payments:provider:write'],
+    });
+    expect(made.statusCode).toBe(201);
+    const token = made.json().token as string;
+    const res = await h.app.inject({
+      method: 'PUT',
+      url: '/admin/payment-gateways/agentmade',
+      headers: { authorization: `Bearer ${token}` },
+      payload: GATEWAY as never,
+    });
+    expect(res.statusCode).toBe(200);
   });
 });

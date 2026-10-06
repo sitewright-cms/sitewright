@@ -718,6 +718,18 @@ export interface TransactionPublic {
   lines: TransactionLine[];
   /** The buyer's OWN submitted fields, echoed back so the page can greet them. */
   buyer: Record<string, string>;
+  /**
+   * The amounts ALREADY FORMATTED, by the same ISO-4217 exponent that produced them.
+   *
+   * ★★ The thank-you page used to divide `totalMinor` by `10 ** data-currency-decimals`, but that
+   * attribute is the merchant's DISPLAY-decimals preference — unrelated to the settlement currency
+   * and defaulting to 2. A shop settling in KWD (exponent 3) or JPY (0) therefore reported a total
+   * 10× or 100× wrong on the one page whose whole job is reassuring a buyer what they were charged.
+   * Formatting belongs wherever the exponent is known, which is here.
+   */
+  display: { subtotal: string; shipping: string; tax: string; total: string };
+  /** Per-line totals, formatted the same way and in the same order as `lines`. */
+  lineDisplay: string[];
   createdAt: string;
   paidAt?: string;
 }

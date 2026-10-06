@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CurrencyCodeSchema, ShopPricingSchema } from './payments.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 import { targetsPrivateHost, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
@@ -102,6 +103,22 @@ export const ShopCurrencySchema = z.object({
   position: z.enum(['before', 'after']).default('before'),
   /** Fraction digits shown (0 for JPY, 2 for most). */
   decimals: z.number().int().min(0).max(4).default(2),
+  /**
+   * ★ THE SETTLEMENT CURRENCY — ISO-4217, e.g. `EUR`. Required once a `checkout` channel exists.
+   *
+   * ★ This is NOT a reversal of the change that moved `code`/`symbol` out of here and into the
+   * translation catalog. That change was right, and the catalog keys stay exactly where they are:
+   * `cart.currency_symbol` / `cart.currency_code` are DISPLAY TEXT, resolved per locale, so a
+   * multi-region site can show `$`/`USD` to one visitor and `€`/`EUR` to another.
+   *
+   * A settlement currency is a different thing wearing a similar name. A charge has exactly one
+   * currency, it is not a presentation choice, and it cannot be per-locale — a German visitor to a
+   * euro shop is charged in euros whichever language they read. It also fixes the minor-unit
+   * exponent used to build the provider request (see `minorUnitExponent`), which `decimals` must
+   * never be used for: that field is clamped to [0,4] for formatting and a wrong exponent is a
+   * factor-of-100 error in a real payment.
+   */
+  code: CurrencyCodeSchema.optional(),
 });
 export type ShopCurrency = z.infer<typeof ShopCurrencySchema>;
 
@@ -290,12 +307,71 @@ const FormChannelSchema = z.object({
   captcha: z.boolean().default(false),
 });
 
+/**
+ * A same-site path the buyer is returned to — e.g. `/thank-you/`.
+ *
+ * Deliberately a PATH, not a URL: the return destination is a page of this site, and accepting an
+ * absolute URL here would make the stored config the place an attacker aims a buyer at. The host
+ * joins it to the site's own origin.
+ */
+const ShopReturnPathSchema = z
+  .string()
+  .max(300)
+  .refine((p) => p.startsWith('/'), 'must start with /')
+  .refine((p) => !p.startsWith('//'), 'must not start with //')
+  .refine((p) => !/[\r\n\t]/.test(p), 'must not contain control characters')
+  .refine((p) => !/^\/+\w+:/.test(p), 'must not contain a scheme');
+
+/**
+ * ★ PROCESSED PAYMENT — the real thing, as distinct from the `payment` channel above.
+ *
+ * `payment` opens a deep link and the platform learns nothing; `checkout` creates a provider session
+ * server-side, re-prices the cart from the publish-time catalog snapshot, records a transaction,
+ * waits for a verified webhook, and then notifies the shop and the buyer. The editor must label
+ * these two differently ("Payment link (no processing)" vs "Checkout (processed payment)") — two
+ * channel kinds that both read as "payment" is a support ticket waiting to happen.
+ *
+ * ★ The buyer FIELDS declared here are the same list the server validates a submission against, so
+ * an authored checkout form that omits one makes every order fail validation. That is the defect the
+ * `form` channel already shipped and then fixed by deriving its Form from this config; the fork
+ * validator warns about it at authoring time.
+ */
+const CheckoutChannelSchema = z.object({
+  kind: z.literal('checkout'),
+  key: ShopItemKeySchema,
+  /** Which stored gateway processes this channel. Resolved server-side; never emitted to the page. */
+  gatewayId: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-z][a-z0-9_-]*$/, 'must be a gateway id'),
+  /** Where ORDER NOTIFICATIONS go. SERVER-SIDE ONLY — it must never reach the markup. */
+  email: z.string().email().max(320),
+  /** Optional subject; lands in a mail Subject header → reject control characters. */
+  subject: z
+    .string()
+    .max(200)
+    .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
+    .optional(),
+  /** The buyer fields the cart collects before redirecting. Labels live in the catalog as `shop.<key>`. */
+  fields: z.array(ShopChannelFieldSchema).max(SHOP_MAX_ORDER_FIELDS).optional(),
+  /** Require a captcha solve, exactly as a contact form can. WHICH captcha is a project setting. */
+  captcha: z.boolean().default(false),
+  /** Require a proof-of-work solve. Self-hosted, no third party — as for forms. */
+  pow: z.boolean().default(false),
+  /** Where the buyer lands after paying. The status is read from the platform, never from this URL. */
+  returnPath: ShopReturnPathSchema.optional(),
+  /** Where the buyer lands if they abandon the provider's page. */
+  cancelPath: ShopReturnPathSchema.optional(),
+});
+
 /** A submission channel the cart hands its contents to. */
 export const ShopChannelSchema = z.discriminatedUnion('kind', [
   WhatsappChannelSchema,
   MailtoChannelSchema,
   PaymentChannelSchema,
   FormChannelSchema,
+  CheckoutChannelSchema,
 ]);
 export type ShopChannel = z.infer<typeof ShopChannelSchema>;
 
@@ -325,10 +401,28 @@ export const ShopSchema = z.object({
       z.array(ShopChannelSchema).max(8),
     )
     .optional(),
+  /**
+   * Shipping and tax, applied SERVER-SIDE to the authoritative total (see `composeAmounts`).
+   *
+   * ★ Shop-level, not per channel. They are properties of the merchant, not of a button: two checkout
+   * channels disagreeing about VAT would be a real defect, and the deep-link channels want the same
+   * figures in their order message.
+   */
+  pricing: ShopPricingSchema.optional(),
   // NOTE: the cart's display TEXT (add-to-cart button, drawer title/note/etc., currency symbol/code, and
   // each channel/field label) is all TRANSLATABLE — it lives in the translation catalog (reserved cart_*
   // keys + per-channel/field `shop.<key>` keys), NOT here. Settings holds only non-text STRUCTURE.
-});
+})
+  /**
+   * ★ A `checkout` channel needs a SETTLEMENT CURRENCY, and the check lives here because this is the
+   * only scope that can see both. Refused at the input boundary rather than at checkout: without it
+   * the minor-unit exponent is unknowable, and the first a merchant would otherwise hear of it is a
+   * buyer unable to pay.
+   */
+  .refine(
+    (shop) => !(shop.channels ?? []).some((c) => c.kind === 'checkout') || typeof shop.currency?.code === 'string',
+    { message: 'a checkout channel requires currency.code (the ISO-4217 settlement currency)', path: ['currency', 'code'] },
+  );
 export type Shop = z.infer<typeof ShopSchema>;
 
 /** The OPTIONAL consent categories (Necessary is implicit + always granted). */

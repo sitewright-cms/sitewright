@@ -245,13 +245,85 @@ describe('WebsiteSettingsSchema', () => {
       expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'whatsapp', key: 'whatsapp' });
     });
 
-    it('currency holds only formatting (position/decimals) — defaults before/2; symbol/code are not stored here', () => {
+    it('currency holds formatting (position/decimals) plus the SETTLEMENT code; the display SYMBOL is still catalog-only', () => {
       const parsed = WebsiteSettingsSchema.parse({ shop: { currency: {} } });
       expect(parsed.shop?.currency).toMatchObject({ position: 'before', decimals: 2 });
-      // symbol/code are translatable (catalog) → stripped if passed here
-      const stripped = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$' } as never } });
-      expect(stripped.shop?.currency && 'code' in stripped.shop.currency).toBe(false);
+      expect(parsed.shop?.currency && 'code' in parsed.shop.currency).toBe(false); // optional, not defaulted
       expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { decimals: 9 } } })).toThrow(); // out of [0,4]
+
+      // ★ `code` IS stored here now, and that is NOT a reversal of the change that moved the display
+      // symbol/code into the translation catalog. A SETTLEMENT currency is a different thing wearing a
+      // similar name: a charge has exactly one currency, it is not a per-locale presentation choice,
+      // and it fixes the ISO minor-unit exponent used to build a real payment request. The DISPLAY
+      // symbol stays catalog-only — passing it here is still stripped.
+      const withCode = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$' } as never } });
+      expect(withCode.shop?.currency?.code).toBe('USD');
+      expect(withCode.shop?.currency && 'symbol' in withCode.shop.currency).toBe(false);
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'usd' } } })).toThrow(); // must be uppercase ISO-4217
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'DOLLAR' } } })).toThrow();
+    });
+
+    describe('checkout channel (processed payment)', () => {
+      const checkout = { kind: 'checkout', key: 'pay', gatewayId: 'stripe', email: 'orders@example.com' } as const;
+
+      it('accepts a checkout channel when a settlement currency is set', () => {
+        const parsed = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'EUR' }, channels: [checkout] } });
+        expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'checkout', gatewayId: 'stripe', captcha: false, pow: false });
+      });
+
+      it('★ REFUSES a checkout channel with no settlement currency — the exponent would be unknowable', () => {
+        const r = WebsiteSettingsSchema.safeParse({ shop: { channels: [checkout] } });
+        expect(r.success).toBe(false);
+        if (!r.success) expect(JSON.stringify(r.error.issues)).toContain('settlement currency');
+      });
+
+      it('leaves the deep-link `payment` channel untouched (it needs no currency)', () => {
+        const link = { kind: 'payment', key: 'tip', urlTemplate: 'https://paypal.me/acme/{total}' };
+        expect(WebsiteSettingsSchema.safeParse({ shop: { channels: [link] } }).success).toBe(true);
+      });
+
+      it('requires a notification address and a gateway id', () => {
+        expect(WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, email: undefined }] } }).success).toBe(false);
+        expect(WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, gatewayId: 'Stripe' }] } }).success).toBe(false);
+      });
+
+      it('rejects control characters in the mail subject', () => {
+        const bad = { shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, subject: 'New\r\nBcc: x@y.z' }] } };
+        expect(WebsiteSettingsSchema.safeParse(bad).success).toBe(false);
+      });
+
+      it('★ returnPath is a same-site PATH, never a URL an attacker could aim a buyer at', () => {
+        const ok = WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, returnPath: '/thank-you/' }] } });
+        expect(ok.success).toBe(true);
+        for (const returnPath of ['https://evil.test/', '//evil.test/', 'thank-you/', '/x\r\ny', '/\tx']) {
+          const r = WebsiteSettingsSchema.safeParse({ shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, returnPath }] } });
+          expect(r.success, returnPath).toBe(false);
+        }
+      });
+
+      it('caps buyer fields at the order-field maximum', () => {
+        const mk = (n: number) => ({
+          shop: { currency: { code: 'EUR' }, channels: [{ ...checkout, fields: Array.from({ length: n }, (_, i) => ({ key: `f${i}` })) }] },
+        });
+        expect(WebsiteSettingsSchema.safeParse(mk(SHOP_MAX_ORDER_FIELDS)).success).toBe(true);
+        expect(WebsiteSettingsSchema.safeParse(mk(SHOP_MAX_ORDER_FIELDS + 1)).success).toBe(false);
+      });
+    });
+
+    describe('shop pricing', () => {
+      it('stores shipping and a single tax rate as non-text structure', () => {
+        const parsed = WebsiteSettingsSchema.parse({
+          shop: { pricing: { shipping: { flatMinor: 499, freeOverMinor: 5000 }, tax: { rateBp: 1900, mode: 'inclusive' } } },
+        });
+        expect(parsed.shop?.pricing?.shipping).toEqual({ flatMinor: 499, freeOverMinor: 5000 });
+        expect(parsed.shop?.pricing?.tax).toEqual({ rateBp: 1900, mode: 'inclusive' });
+      });
+
+      it('rejects a negative charge and an out-of-range rate', () => {
+        expect(WebsiteSettingsSchema.safeParse({ shop: { pricing: { shipping: { flatMinor: -1 } } } }).success).toBe(false);
+        expect(WebsiteSettingsSchema.safeParse({ shop: { pricing: { tax: { rateBp: 10_001 } } } }).success).toBe(false);
+        expect(WebsiteSettingsSchema.safeParse({ shop: { pricing: { tax: { rateBp: 19.5 } } } }).success).toBe(false); // basis points are integral
+      });
     });
 
     it('requires a stable channel key (its label lives in the catalog) and rejects proto keys', () => {

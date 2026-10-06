@@ -76,6 +76,6 @@
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",
     "vanilla-calendar-pro": "3.4.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.1"
   }
 }

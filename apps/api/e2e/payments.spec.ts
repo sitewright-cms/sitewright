@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { createHmac } from 'node:crypto';
-import { adminContext, ADMIN_EMAIL, ADMIN_PASSWORD } from './helpers.js';
+import { adminContext } from './helpers.js';
 
 /**
  * PAYMENTS, over real HTTP against a deployed container.

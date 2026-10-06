@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { PaymentGatewayStoredSchema, type PaymentGatewayStored } from '@sitewright/schema';
 import {

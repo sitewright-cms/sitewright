@@ -18,7 +18,6 @@ import {
   ShopPricingSchema,
   TRANSACTION_STATUSES,
   type CredentialField,
-  type PaymentGatewayStored,
   type TransactionLine,
 } from '../src/payments.js';
 

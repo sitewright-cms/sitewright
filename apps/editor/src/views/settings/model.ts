@@ -732,8 +732,12 @@ export const newConsentIntegration = (): ConsentIntegration => ({ id: `int-${row
 const SHOP_KIND_LABEL: Record<KeyedShopChannel['kind'], string> = {
   whatsapp: 'WhatsApp button',
   mailto: 'Email button',
-  payment: 'Payment button',
+  // ★ These two must never read alike. `payment` opens a deep link and the platform learns nothing;
+  // `checkout` takes an actual payment, records a transaction and notifies the shop. Two options
+  // that both say "payment" is a support ticket waiting to happen.
+  payment: 'Payment link button (no processing)',
   form: 'Order-form button',
+  checkout: 'Checkout button (processed payment)',
 };
 
 /**

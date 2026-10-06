@@ -24,7 +24,7 @@ vi.mock('../src/api', () => ({
 import { InstanceSettings } from '../src/views/InstanceSettings';
 
 const DEFAULTS: InstanceSettingsPublic = {
-  formModes: DEFAULT_FORM_MODES,
+  formModes: DEFAULT_FORM_MODES, paymentsEnabled: false,
 };
 
 beforeEach(() => {
@@ -147,7 +147,7 @@ describe('InstanceSettings', () => {
 
   it('omits the password when an SMTP edit leaves it blank, but sends it when filled', async () => {
     const withSmtp: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false,
       smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@acme.com', hasPassword: true },
     };
     getInstanceSettings.mockResolvedValue({ settings: withSmtp });
@@ -228,7 +228,7 @@ describe('InstanceSettings', () => {
 
   it('keeps an existing key (placeholder) and omits it when left blank', async () => {
     const withStock: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false,
       stock: { hasUnsplash: true, hasPexels: false, hasPixabay: false },
     };
     getInstanceSettings.mockResolvedValue({ settings: withStock });
@@ -310,7 +310,7 @@ describe('InstanceSettings', () => {
 
   it('hydrates and saves the per-provider PKCE toggle', async () => {
     const withProvider: InstanceSettingsPublic = {
-      formModes: DEFAULTS.formModes,
+      formModes: DEFAULTS.formModes, paymentsEnabled: false,
       oidcProviders: [
         { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'cid', scopes: ['openid', 'email'], enabled: true, hasClientSecret: true, usePkce: true },
       ],

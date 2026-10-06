@@ -449,7 +449,22 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'MINI SHOP: the cart mount — a floating cart button + a drawer (line items, total, the checkout channel buttons). Drop it ONCE per site (e.g. in the footer slot) so it shows on every page; it reads the currency + channels from Settings → Website → Shop. A WhatsApp/email channel can ask for buyer details first (name, address…) — add them under that channel’s “Order fields” in Shop settings; they’re appended to the message as “Label: value” lines below the order, and an email order opens with “Hi <brand> — I’d like to order:”.',
         example: '{{sw-cart}}',
-        note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
+        note: 'Drop it bare and the platform builds the drawer. Wrap your OWN markup — {{#sw-cart}}…{{/sw-cart}} — and the runtime binds to that instead and builds nothing: give elements data-sw-part="toggle|drawer|items|line-template|foot|total|empty|count", fields data-sw-field="name|price|qty|subtotal|image", and controls data-sw-action="open|close|clear|inc|dec|remove|channel:<key>". drawer, items and line-template are required; anything you leave out is simply absent. Copy the global “cart-drawer” snippet to start from the default. A `checkout` channel takes a REAL payment (server-priced, recorded, with a confirmation step); the other channels send an order inquiry.',
+      },
+      {
+        id: 'h-order-status',
+        syntax: '{{sw-order-status}} or {{#sw-order-status}}…{{/sw-order-status}}',
+        name: 'sw-order-status',
+        keywords: 'thank you order status payment confirmation receipt checkout return',
+        description:
+          'The THANK-YOU panel, for the page a payment provider returns a buyer to. Your own copy renders server-side and stands alone — the script only ENRICHES it with the order summary — so a buyer on a flaky connection still lands on a complete page rather than a blank one. Parts: data-sw-part="status-paid|status-failed|status-unknown|status-pending|status-summary|status-line-template|status-total".',
+        example:
+          '{{#sw-order-status}}\n' +
+          '  <p data-sw-part="status-paid">Thank you — your payment is confirmed.</p>\n' +
+          '  <ul data-sw-part="status-summary"></ul>\n' +
+          '  <template data-sw-part="status-line-template"><li><span data-sw-field="qty"></span>x <span data-sw-field="name"></span></li></template>\n' +
+          '{{/sw-order-status}}',
+        note: 'Arriving on the page is NEVER treated as proof of payment — the status is read from the platform, because the return from a provider is a navigation a buyer can forge. Point a checkout channel’s “return path” at this page; copy the global “thank-you” template to start.',
       },
       {
         id: 'h-consent-settings',

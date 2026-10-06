@@ -34,6 +34,122 @@ import { shopOrderFormId } from '@sitewright/schema';
 // isn't detected). So we match two substrings that cover every form: `sw-cart` (covers `{{sw-cart}}`,
 // `data-sw-cart`, and `data-sw-cart-add`) and `sw-add-to-cart` (covers `{{sw-add-to-cart}}`). A stray
 // prose match only over-ships a few KB — benign, like the other runtimes.
+/**
+ * The attribute the `{{sw-add-to-cart}}` helper puts on a buy button.
+ *
+ * ★ Exported so the publish-time catalog harvest reads the SAME name the helper writes and the
+ * runtime binds to. A private copy on the build side would drift, and the failure would be silent —
+ * a SKU that renders a buy button and cannot be priced. (Same reasoning as search-index.ts keeping
+ * its tokenizer and file format in this package.)
+ */
+export const CART_ADD_MARKER = 'data-sw-cart-add';
+
+/**
+ * ★★ THE PART CONTRACT — the vocabulary an AUTHORED cart drawer binds to.
+ *
+ * The cart runtime used to CONSTRUCT its whole drawer: nothing an author wrote could participate, so
+ * the only way to change the markup was to not use the cart. Now the mount DESCRIBES ITSELF:
+ *
+ *  - an **empty** mount (a bare `{{sw-cart}}`, which is every existing site) gets the platform
+ *    default built exactly as before — no migration, no behaviour change;
+ *  - a mount that already contains **any** `[data-sw-part]` is AUTHORED, and the runtime binds to
+ *    what it finds and builds nothing. A part the author left out is a feature they left out.
+ *
+ * Self-describing rather than flagged, because a flag is a second thing to keep in step with the
+ * markup it describes. And both halves are predictable, which matters more here than purity: an
+ * author who deletes the clear button must not find the platform has put one back.
+ *
+ * ★ This const is the ONE source of truth for these names. The helper that emits the default markup,
+ * the runtime that binds it, the fork validator and the drift tests all read it — a private copy on
+ * any of those sides would drift, and the failure is silent: a drawer that renders and does nothing.
+ */
+export const CART_PARTS = Object.freeze({
+  /** The floating open-the-drawer control. */
+  toggle: 'toggle',
+  /** The item-count badge inside the toggle. */
+  count: 'count',
+  /** The `<dialog>` itself. */
+  drawer: 'drawer',
+  /** The close control inside the drawer. */
+  close: 'close',
+  /** The `<ul>` lines are cloned into. */
+  items: 'items',
+  /** An inert `<template>` holding ONE line's markup. */
+  lineTemplate: 'line-template',
+  /** Shown when the cart is empty. */
+  empty: 'empty',
+  /** The block holding totals and channel buttons; hidden when the cart is empty. */
+  foot: 'foot',
+  /** Where the grand total is written. */
+  total: 'total',
+  /** The post-order confirmation, kept OUTSIDE the foot so it survives the cart emptying. */
+  sentMsg: 'sent-msg',
+  /** The clear-the-cart control. */
+  clear: 'clear',
+  /**
+   * A buyer-input control's wrapper — one per declared channel field.
+   *
+   * ★ Named here because an AUTHORED cart must be able to carry the channel's fields: the checkout
+   * endpoint validates against them and refuses an order missing a required one. The runtime reads
+   * every control inside a wrapper and keys it by the control's `name`.
+   */
+  orderField: 'order-field',
+  /** A checkbox field's wrapper (its own part, because a checkbox contributes only when ticked). */
+  orderToggle: 'order-toggle',
+  /** A radio group's `<fieldset>` wrapper. */
+  orderChoice: 'order-choice',
+  /** The `<form>` holding the buyer-input controls; its validity is checked before a checkout POST. */
+  channelForm: 'channel-form',
+  /** Where a checkout writes progress and refusals. */
+  checkoutStatus: 'checkout-status',
+  /** The pre-payment review panel the server's authoritative breakdown is rendered into. */
+  review: 'review',
+} as const);
+
+/**
+ * Field names inside a line template, filled with `textContent` / `setAttribute` ONLY.
+ *
+ * ★ Never innerHTML. Cart contents are author- and buyer-influenced strings, and the whole reason a
+ * line can be author-controlled at all is that filling it cannot introduce a markup sink.
+ */
+export const CART_FIELDS = Object.freeze({
+  name: 'name',
+  price: 'price',
+  qty: 'qty',
+  subtotal: 'subtotal',
+  image: 'image',
+} as const);
+
+/** Fields inside an ORDER-STATUS line template (the thank-you page), same textContent-only rule. */
+export const ORDER_STATUS_FIELDS = Object.freeze({
+  name: 'name',
+  qty: 'qty',
+  /** The line's total, already formatted by the server's ISO-4217 exponent. */
+  lineTotal: 'line-total',
+} as const);
+
+/**
+ * Behaviours an authored control can request, via `data-sw-action`.
+ *
+ * `channel:<key>` names a configured submission channel; the runtime refuses an unknown key rather
+ * than wiring a button to nothing.
+ */
+export const CART_ACTIONS = Object.freeze({
+  open: 'open',
+  close: 'close',
+  clear: 'clear',
+  increment: 'inc',
+  decrement: 'dec',
+  remove: 'remove',
+} as const);
+
+/** Required for a drawer to function at all. A fork missing one of these is warned about. */
+export const CART_REQUIRED_PARTS: readonly string[] = Object.freeze([
+  CART_PARTS.drawer,
+  CART_PARTS.items,
+  CART_PARTS.lineTemplate,
+]);
+
 function hasCartMarker(s: string): boolean {
   return s.includes('sw-cart') || s.includes('sw-add-to-cart');
 }
@@ -203,6 +319,24 @@ export const CART_JS = `(function(){
   'use strict';
   var MAX_LINES=50, MAX_QTY=99;
   function q(sel,root){return Array.prototype.slice.call((root||document).querySelectorAll(sel));}
+  // When this page loaded — the /pay time-trap's reference point, shared by every mount.
+  var CART_STARTED=Date.now();
+  // The /pay INTERACTION gate wants evidence that a human touched the page at all. Collected here,
+  // once, from TRUSTED events only (isTrusted is false for anything a script dispatches), passively
+  // so it never delays typing. Deliberately the weakest possible test: a keyboard-only visitor
+  // produces no pointer events, autofill produces no keystrokes, and anything sharper costs real
+  // buyers — which is far more expensive than a spam order getting through.
+  var CART_IX_P=0,CART_IX_K=0,CART_IX_F={};
+  function ixGlobal(e,kind){
+    if(!e||e.isTrusted===false)return;
+    if(kind==='p')CART_IX_P++;else CART_IX_K++;
+    var t=e.target;if(t&&t.name)CART_IX_F[t.name]=1;
+  }
+  document.addEventListener('pointerdown',function(e){ixGlobal(e,'p');},{passive:true});
+  document.addEventListener('touchstart',function(e){ixGlobal(e,'p');},{passive:true});
+  document.addEventListener('keydown',function(e){ixGlobal(e,'k');},{passive:true});
+  document.addEventListener('input',function(e){ixGlobal(e,'k');},{passive:true});
+  function ixSnapshot(){var n=0;for(var k in CART_IX_F){if(Object.prototype.hasOwnProperty.call(CART_IX_F,k))n++;}return CART_IX_P+'.'+CART_IX_K+'.'+n;}
   function mk(tag,cls,txt){var n=document.createElement(tag);if(cls){n.className=cls;}if(txt!=null){n.textContent=txt;}return n;}
   function part(tag,name,txt){var n=mk(tag,null,txt);n.setAttribute('data-sw-part',name);return n;}
   // A self-contained "waves" ripple on a control (pointerdown → an expanding circle from the click
@@ -258,10 +392,24 @@ export const CART_JS = `(function(){
       toggleLabel:mount.getAttribute('data-toggle-label')||'Shopping Cart',
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
+      checkoutNote:mount.getAttribute('data-checkout-note')||'You\\u2019ll see the final total, including any shipping and tax, before you pay.',
       emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
       totalLabel:mount.getAttribute('data-total-label')||'Total',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
+      // CHECKOUT strings. Every one is a reserved catalog key, so a multilingual shop localizes the
+      // whole payment flow without touching a page.
+      reviewLabel:mount.getAttribute('data-review-label')||'Confirm your order',
+      payLabel:mount.getAttribute('data-pay-label')||'Pay now',
+      backLabel:mount.getAttribute('data-back-label')||'Back',
+      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
+      shippingLabel:mount.getAttribute('data-shipping-label')||'Shipping',
+      taxLabel:mount.getAttribute('data-tax-label')||'Tax',
+      checkingLabel:mount.getAttribute('data-checking-label')||'Checking availability\\u2026',
+      redirectingLabel:mount.getAttribute('data-redirecting-label')||'Taking you to the payment page\\u2026',
+      outOfStockLabel:mount.getAttribute('data-oos-label')||'Sorry, that is out of stock.',
+      goneLabel:mount.getAttribute('data-gone-label')||'An item in your cart is no longer available.',
+      checkoutFailedLabel:mount.getAttribute('data-checkout-failed-label')||'Checkout is unavailable right now. Please try again.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       yesLabel:mount.getAttribute('data-yes-label')||'Yes', // the value a ticked checkbox order field contributes
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
@@ -300,6 +448,32 @@ export const CART_JS = `(function(){
   }
   function itemsSummary(items){var p=[];for(var i=0;i<items.length;i++){p.push(items[i].qty+'x '+items[i].name);}return p.join(', ');}
   // Collected buyer-input fields → "Label: value" lines (blank values dropped). '' when there are none.
+  // Reads whatever buyer-input controls exist under the host, in BOTH shapes the runtime needs: an
+  // object keyed by the field's 'name' (what the checkout endpoint validates against) and a
+  // label/value list (what a deep-link channel writes into its message). One reader, so an authored
+  // cart and the default one can never collect different things.
+  function collectFields(host,cfg){
+    var out={values:{},list:[]};
+    if(!host||!host.querySelectorAll){return out;}
+    var wraps=host.querySelectorAll('[data-sw-part="order-field"],[data-sw-part="order-toggle"],[data-sw-part="order-choice"]');
+    for(var w=0;w<wraps.length;w++){
+      var wrap=wraps[w];
+      var ctrls=wrap.querySelectorAll('input,select,textarea');
+      var lab=wrap.querySelector('span,legend');
+      var label=lab?String(lab.textContent||'').replace(/\\s*\\*$/,''):'';
+      for(var c=0;c<ctrls.length;c++){
+        var el=ctrls[c];
+        // A radio group contributes only the checked member; an unticked checkbox contributes nothing.
+        if(el.type==='radio'||el.type==='checkbox'){if(!el.checked){continue;}}
+        var val=(el.type==='checkbox')?((cfg&&cfg.yesLabel)||'Yes'):String(el.value||'');
+        val=val.replace(/^\\s+|\\s+$/g,'');
+        if(!val){continue;}
+        if(el.name){out.values[el.name]=val;}
+        out.list.push({label:label||el.name||'',value:val});
+      }
+    }
+    return out;
+  }
   function fieldLines(values){
     if(!values||!values.length){return '';}
     var lines=[];for(var i=0;i<values.length;i++){var v=values[i];if(v&&v.value){lines.push(v.label+': '+v.value);}}
@@ -392,9 +566,307 @@ export const CART_JS = `(function(){
     for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
     return svg;
   }
+  // ---- CHECKOUT (a processed payment) ---------------------------------------------------------
+  //
+  // ★★ TWO STEPS, AND THE SECOND ONE SHOWS THE SERVER'S NUMBERS. The drawer computes a total for
+  // display, but the amount actually charged is recomputed server-side from the publish-time catalog
+  // snapshot — the browser never sends a price. So the review step renders the breakdown the SERVER
+  // returned, not the one the cart was showing. A drawer showing one total while the provider charges
+  // another is the single worst defect this feature can have, and a confirmation step on the server's
+  // own figures removes the whole class rather than trying to keep two of them in step.
+  //
+  // ★ The cart is NOT cleared on redirect. The buyer is leaving for the provider's page and may well
+  // come back without paying; clearing here would lose their basket for an abandoned payment. The
+  // thank-you page clears it, on a confirmed paid status.
+  function postCheckout(ch,items,cfg,values,onDone,prior){
+    if(!window.__swp){onDone({error:'unavailable'});return;}
+    var lines=[];
+    for(var i=0;i<items.length;i++){lines.push({sku:items[i].sku,qty:items[i].qty});}
+    var payload={items:lines,fields:values||{},_hpt:'',_elapsed:String(Date.now()-CART_STARTED),_ix:ixSnapshot()};
+    // ★ Hands back the token of this buyer's own previous unpaid attempt so the server can cancel it
+    // and return its units before reserving again. Without it, Checkout -> Back -> Checkout holds a
+    // fresh reservation on every click.
+    if(prior){payload.supersede=prior;}
+    fetch(window.__swp(ch.key),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
+      .then(function(res){return res.json().then(function(body){return {status:res.status,body:body};});})
+      .then(function(r){
+        if(r.status===200&&r.body&&r.body.redirectUrl){onDone({ok:true,data:r.body});return;}
+        onDone({error:(r.body&&r.body.error)||'failed',sku:r.body&&r.body.sku,available:r.body&&r.body.available});
+      })
+      .catch(function(){onDone({error:'network'});});
+  }
+
+  // Hands the buyer to the provider. ★ A TOP-LEVEL NAVIGATION, not window.open: a popup opened after
+  // an await is blocked by every browser, and the result would be a buyer who clicked Pay and saw
+  // nothing happen. Re-checks https even though the server already did — this is the last place the
+  // URL is ours to refuse.
+  function goToProvider(url,token,key){
+    if(!/^https:\\/\\//i.test(String(url||''))){return false;}
+    try{if(token){localStorage.setItem(key+':txn',String(token));localStorage.removeItem(key+':pending');}}catch(e){}
+    window.location.assign(url);
+    return true;
+  }
+
+  // Renders the server's authoritative breakdown and a confirm button. Returns the panel element.
+  // ★ Built from the RESPONSE, never from the cart's own arithmetic — that is the whole point of the
+  // step. Every value goes in through textContent.
+  function reviewPanel(data,cfg,onConfirm,onCancel){
+    var panel=part('div','review');
+    var h=part('div','review-title',cfg.reviewLabel||'Confirm your order');
+    panel.appendChild(h);
+    var rows=part('dl','review-lines');
+    function row(label,value){
+      var dt=document.createElement('dt');dt.textContent=label;
+      var dd=document.createElement('dd');dd.textContent=value;
+      rows.appendChild(dt);rows.appendChild(dd);
+    }
+    var lines=(data&&data.lines)||[];
+    // Every value here came from the server already formatted; the panel adds no arithmetic of its own.
+    for(var i=0;i<lines.length;i++){row(lines[i].qty+' x '+lines[i].name,String(lines[i].amount||''));}
+    var d=(data&&data.display)||{};
+    if(d.subtotal!==undefined){row(cfg.subtotalLabel||'Subtotal',d.subtotal);}
+    if(d.shipping!==undefined&&d.shipping!=='0.00'&&d.shipping!=='0'){row(cfg.shippingLabel||'Shipping',d.shipping);}
+    if(d.tax!==undefined&&d.tax!=='0.00'&&d.tax!=='0'){row(cfg.taxLabel||'Tax',d.tax);}
+    panel.appendChild(rows);
+    var totalRow=part('div','review-total');
+    totalRow.appendChild(mk('span',null,cfg.totalLabel));
+    totalRow.appendChild(mk('span',null,String(d.total!==undefined?d.total:'')));
+    panel.appendChild(totalRow);
+    var pay=part('button','review-pay',cfg.payLabel||'Pay now');pay.type='button';pay.className='btn btn-primary btn-block';ripple(pay,true);
+    pay.addEventListener('click',onConfirm);
+    var back=part('button','review-cancel',cfg.backLabel||'Back');back.type='button';
+    back.addEventListener('click',onCancel);
+    panel.appendChild(pay);panel.appendChild(back);
+    return panel;
+  }
+
+  // The whole checkout interaction, shared by the default drawer and an authored one.
+  function startCheckout(ch,btn,mount,items,cfg,key){
+    if(!items.length){return;}
+    var host=btn.parentNode;if(!host){return;}
+    var prior=host.querySelector('[data-sw-part="review"]');
+    if(prior){host.removeChild(prior);}
+    var status=btn.nextSibling&&btn.nextSibling.getAttribute&&btn.nextSibling.getAttribute('data-sw-part')==='checkout-status'
+      ? btn.nextSibling
+      : (function(){var p2=part('p','checkout-status');host.insertBefore(p2,btn.nextSibling);return p2;})();
+    status.textContent=cfg.checkingLabel||'Checking availability...';
+    btn.disabled=true;
+
+    // Buyer fields, when the channel declares any: collected by the SAME inline form a deep-link
+    // channel uses, so one control vocabulary covers every channel kind.
+    //
+    // ★ VALIDATE FIRST. The server validates against the channel's declared fields and refuses the
+    // order if a required one is missing — and a new field defaults to required — so without this a
+    // merchant who adds one field turns their own Checkout button into a control that always fails
+    // with a generic message. The browser's own bubbles say which field and why.
+    var fform=host.querySelector('[data-sw-part="channel-form"]');
+    if(fform&&typeof fform.reportValidity==='function'&&!fform.reportValidity()){
+      btn.disabled=false;status.textContent='';
+      return;
+    }
+    var values=collectFields(host,cfg).values;
+
+    // The previous attempt's token, if this buyer already started one and came back.
+    var prior='';
+    try{prior=localStorage.getItem(key+':pending')||'';}catch(e){}
+
+    postCheckout(ch,items,cfg,values,function(r){
+      btn.disabled=false;
+      if(!r.ok){
+        // ★ Named, actionable refusals. "Something went wrong" is what a buyer gets today from most
+        // shops and it is why they leave; "the mug is out of stock" is a cart they can fix.
+        if(r.error==='out_of_stock'){status.textContent=(cfg.outOfStockLabel||'Sorry, this is out of stock.')+(r.sku?' ('+r.sku+')':'');}
+        else if(r.error==='unknown-sku'){status.textContent=cfg.goneLabel||'An item in your cart is no longer available.';}
+        else{status.textContent=cfg.checkoutFailedLabel||'Checkout is unavailable right now. Please try again.';}
+        return;
+      }
+      status.textContent='';
+      // ★ Remembered HERE, not at redirect: a buyer who reaches the review panel and goes back has
+      // already cost a provider session and a stock hold, and this is what lets the next attempt
+      // reclaim them.
+      try{if(r.data.token){localStorage.setItem(key+':pending',String(r.data.token));}}catch(e){}
+      var panel=reviewPanel(r.data,cfg,function(){
+        status.textContent=cfg.redirectingLabel||'Taking you to the payment page...';
+        if(!goToProvider(r.data.redirectUrl,r.data.token,key)){
+          status.textContent=cfg.checkoutFailedLabel||'Checkout is unavailable right now. Please try again.';
+        }
+      },function(){
+        if(panel.parentNode){panel.parentNode.removeChild(panel);}
+        btn.hidden=false;
+      });
+      btn.hidden=true;
+      host.insertBefore(panel,status.nextSibling);
+    },prior);
+  }
+
+  // ---- authored-markup binding ----
+  //
+  // ★★ BIND, DO NOT BUILD. Everything below attaches behaviour to markup that already exists. It
+  // creates exactly one kind of node — a clone of the author's own line <template> — and fills it
+  // with textContent and setAttribute only, so an author-controlled line can never become a markup
+  // sink.
+  //
+  // A part the author omitted is a feature they omitted: every lookup is tolerant, and nothing is
+  // injected to compensate. That is the difference between "you may edit this" and "you may edit
+  // this and the platform will put bits back".
+  function bindAuthored(mount){
+    mount.setAttribute('data-sw-enhanced','true');
+    var cfg=readConfig(mount);
+    var key='sw-cart:'+siteKey(mount);
+    var items=load(key);
+    var sent=false;
+
+    var drawer=part$(mount,'drawer');
+    var list=part$(mount,'items');
+    var tpl=part$(mount,'line-template');
+    var count=part$(mount,'count');
+    var empty=part$(mount,'empty');
+    var foot=part$(mount,'foot');
+    var totalEl=part$(mount,'total');
+    var sentMsg=part$(mount,'sent-msg');
+    var toggle=part$(mount,'toggle');
+
+    // Without these three there is nothing to drive. Say so once, in the console, rather than
+    // failing silently: a drawer that renders and does nothing is the hardest kind of bug to see.
+    if(!drawer||!list||!tpl){
+      if(window.console&&console.warn){console.warn('sitewright cart: the drawer is missing a required part (drawer / items / line-template) — see data-sw-part');}
+      return;
+    }
+
+    function removeSku(sku){for(var i=0;i<items.length;i++){if(items[i].sku===sku){items.splice(i,1);return;}}}
+    function persist(){save(key,items);render();}
+
+    // ---- open / close -------------------------------------------------------------------------
+    var scrollLocked=false,prevOverflow='';
+    function lockScroll(){if(scrollLocked){return;}scrollLocked=true;prevOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';}
+    function unlockScroll(){if(!scrollLocked){return;}scrollLocked=false;document.documentElement.style.overflow=prevOverflow;}
+    function openDrawer(){
+      if(drawer.showModal){try{drawer.showModal();}catch(e){drawer.setAttribute('open','');}}
+      else{drawer.setAttribute('open','');}
+      lockScroll();
+    }
+    function closeDrawer(){if(drawer.close){drawer.close();}else{drawer.removeAttribute('open');unlockScroll();}}
+    drawer.addEventListener('close',unlockScroll);
+    if(toggle){toggle.addEventListener('click',openDrawer);}
+    var openers=actions$(mount,'open');for(var oi=0;oi<openers.length;oi++){openers[oi].addEventListener('click',openDrawer);}
+    var closers=actions$(mount,'close').concat(parts$(mount,'close'));
+    for(var ci2=0;ci2<closers.length;ci2++){closers[ci2].addEventListener('click',closeDrawer);}
+    // Backdrop click: a click whose coordinates fall OUTSIDE the dialog's own box is the backdrop.
+    // A plain target check is not enough — the backdrop is the dialog element itself.
+    drawer.addEventListener('click',function(e){
+      if(e.target!==drawer){return;}
+      var r=drawer.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){closeDrawer();}
+    });
+    var clears=actions$(mount,'clear').concat(parts$(mount,'clear'));
+    for(var cl=0;cl<clears.length;cl++){clears[cl].addEventListener('click',function(){items.length=0;persist();});}
+
+    // ---- channel buttons ----------------------------------------------------------------------
+    // An authored button declares which channel it fires. An unknown key is REFUSED rather than
+    // wired to nothing: a dead checkout button is worse than a missing one, because it looks fine.
+    var chButtons=q('[data-sw-action^="channel:"]',mount);
+    for(var cb=0;cb<chButtons.length;cb++){
+      (function(btn){
+        var wanted=String(btn.getAttribute('data-sw-action')||'').slice('channel:'.length);
+        var ch=null;
+        for(var k=0;k<cfg.channels.length;k++){if(cfg.channels[k].key===wanted){ch=cfg.channels[k];break;}}
+        if(!ch){
+          if(window.console&&console.warn){console.warn('sitewright cart: no channel named "'+wanted+'" is configured');}
+          btn.setAttribute('data-sw-unconfigured','');
+          return;
+        }
+        if(ch.kind==='checkout'){
+          btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key);});
+          return;
+        }
+        // ★ The author's own order-field controls, in the deep-link message shape. The default
+        // drawer collects these for whatsapp/mailto through its inline form; an authored drawer that
+        // dropped them silently sent an order with the buyer's answers missing.
+        btn.addEventListener('click',function(){runChannel(ch,items,cfg,collectFields(btn.parentNode||mount,cfg).list);});
+      })(chButtons[cb]);
+    }
+
+    // ---- render -------------------------------------------------------------------------------
+    function render(){
+      var n=countOf(items);
+      if(count){count.textContent=String(n);if(n>0){count.removeAttribute('hidden');}else{count.setAttribute('hidden','');}}
+      if(sentMsg){sentMsg.style.display=sent?'':'none';}
+      if(empty){empty.style.display=(!items.length&&!sent)?'':'none';}
+      list.style.display=(items.length&&!sent)?'':'none';
+      if(foot){foot.style.display=(items.length&&!sent)?'':'none';}
+      while(list.firstChild){list.removeChild(list.firstChild);}
+      for(var i=0;i<items.length;i++){
+        (function(it){
+          // ★ The ONE node this function creates: a clone of the author's own template.
+          var frag=tpl.content?tpl.content.cloneNode(true):null;
+          if(!frag){return;}
+          var nameEl=frag.querySelector('[data-sw-field="name"]');if(nameEl){nameEl.textContent=it.name;}
+          var priceEl=frag.querySelector('[data-sw-field="price"]');if(priceEl){priceEl.textContent=money(it.price,cfg);}
+          var qtyEl=frag.querySelector('[data-sw-field="qty"]');if(qtyEl){qtyEl.textContent=String(it.qty);}
+          var subEl=frag.querySelector('[data-sw-field="subtotal"]');if(subEl){subEl.textContent=money(lineTotal(it,cfg),cfg);}
+          var imgEl=frag.querySelector('[data-sw-field="image"]');
+          if(imgEl){
+            if(it.image){
+              // src via setAttribute; no referrer leak, and a broken image removes itself rather
+              // than leaving an empty box in the author's layout.
+              imgEl.setAttribute('referrerpolicy','no-referrer');
+              imgEl.setAttribute('loading','lazy');
+              imgEl.onerror=function(){if(imgEl.parentNode){imgEl.parentNode.removeChild(imgEl);}};
+              imgEl.setAttribute('src',it.image);
+            }else if(imgEl.parentNode){imgEl.parentNode.removeChild(imgEl);}
+          }
+          var inc=frag.querySelector('[data-sw-action="inc"]');
+          if(inc){inc.addEventListener('click',function(){if(it.qty<MAX_QTY){it.qty+=1;}persist();});}
+          var dec=frag.querySelector('[data-sw-action="dec"]');
+          if(dec){dec.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});}
+          var rm=frag.querySelector('[data-sw-action="remove"]');
+          if(rm){rm.addEventListener('click',function(){removeSku(it.sku);persist();});}
+          // The clone is a DocumentFragment; appending it moves its children into the list.
+          list.appendChild(frag);
+        })(items[i]);
+      }
+      if(totalEl){totalEl.textContent=money(totalOf(items,cfg),cfg);}
+    }
+
+    // ---- add to cart --------------------------------------------------------------------------
+    function add(btn){
+      sent=false;
+      var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
+      var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
+      var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}
+      if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
+      else{
+        if(items.length>=MAX_LINES){return;}
+        items.push({sku:String(sku).slice(0,200),name:(btn.getAttribute('data-name')||sku).slice(0,300),price:price,image:(btn.getAttribute('data-image')||'').slice(0,2048),qty:1});
+      }
+      persist();
+      if(toggle){
+        // Same affordance as the default drawer: pulse rather than popping the modal open, so a
+        // visitor can add several things without the overlay swallowing their next click.
+        toggle.setAttribute('data-sw-pulse','');
+        void toggle.offsetWidth;
+        setTimeout(function(){toggle.removeAttribute('data-sw-pulse');},700);
+      }
+    }
+    var adders=q('[data-sw-cart-add]');
+    for(var ai=0;ai<adders.length;ai++){(function(b){b.addEventListener('click',function(){add(b);});})(adders[ai]);}
+
+    render();
+  }
+
+
+  // Find a part WITHIN this mount, never across mounts.
+  function part$(root,name){return root.querySelector('[data-sw-part="'+name+'"]');}
+  function parts$(root,name){return q('[data-sw-part="'+name+'"]',root);}
+  function field$(root,name){return root.querySelector('[data-sw-field="'+name+'"]');}
+  function actions$(root,name){return q('[data-sw-action="'+name+'"]',root);}
+  // True when the author supplied their own drawer markup. Self-describing: no flag to keep in step.
+  function isAuthored(mount){return !!mount.querySelector('[data-sw-part]');}
+
   // ---- enhance one mount ----
   function enhance(mount){
     if(mount.getAttribute('data-sw-enhanced')==='true'){return;}
+    if(isAuthored(mount)){bindAuthored(mount);return;}
     var cfg=readConfig(mount);
     var key='sw-cart:'+siteKey(mount);
     var items=load(key);
@@ -426,7 +898,11 @@ export const CART_JS = `(function(){
     var empty=part('p','empty',cfg.emptyLabel);
     var foot=part('div','foot');
     var totalRow=part('div','total');var stLabel=mk('span',null,cfg.totalLabel);var stVal=mk('span',null,'');totalRow.appendChild(stLabel);totalRow.appendChild(stVal);
-    var note=part('p','note',cfg.note);
+    // ★ The note has to match what the button DOES. "Prices are indicative, the seller confirms the
+    // final price" is true of a WhatsApp/email cart and false above a Pay button that charges a card.
+    var takesPayment=false;
+    for(var ni=0;ni<cfg.channels.length;ni++){if(cfg.channels[ni].kind==='checkout'){takesPayment=true;break;}}
+    var note=part('p','note',takesPayment?cfg.checkoutNote:cfg.note);
     foot.appendChild(totalRow);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
     // inline order form that POSTs to the resolved /f endpoint (the first form channel wins). A whatsapp/
@@ -448,6 +924,14 @@ export const CART_JS = `(function(){
             if(opening){cf.open();}
           });
           foot.appendChild(b);foot.appendChild(cf.form);
+        }else if(ch.kind==='checkout'){
+          // ★ The fields go in BEFORE the button, inside the same parent: startCheckout reads them
+          // from the button's own parentNode. A checkout channel that declares fields and rendered
+          // none was a button that could only ever fail.
+          var kf=buildChannelForm(ch,null,true);
+          if(kf){foot.appendChild(kf.form);}
+          b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key);});
+          foot.appendChild(b);
         }else{
           b.addEventListener('click',function(){runChannel(ch,items,cfg);});
           foot.appendChild(b);
@@ -469,10 +953,13 @@ export const CART_JS = `(function(){
     // Returns { form, open } or null when the channel declares no fields (then the button fires directly).
     // "toggleBtn" is the channel button that shows/hides this form — its aria-expanded is re-synced on
     // submit. Values flow through input .value into the (URL-encoded) deep link — never HTML; no new sink.
-    function buildChannelForm(ch,toggleBtn){
+    // 'bare' builds the FIELDS ONLY — visible, with no submit button and no submit handler. That is
+    // what a checkout needs: the buyer fills the fields in place and the channel's own Checkout
+    // button reads them, rather than the form submitting itself.
+    function buildChannelForm(ch,toggleBtn,bare){
       var fields=(ch&&ch.fields&&ch.fields.length)?ch.fields:null;
       if(!fields){return null;}
-      var form=part('form','channel-form');form.hidden=true;
+      var form=part('form','channel-form');if(!bare){form.hidden=true;}
       var inputs=[];
       for(var i=0;i<fields.length;i++){
         (function(f,idx){
@@ -489,6 +976,7 @@ export const CART_JS = `(function(){
           if(type==='select'&&opts){
             var wrapS=part('label','order-field');wrapS.appendChild(mk('span',null,prompt));
             var sel=document.createElement('select');if(req){sel.required=true;sel.appendChild(mk('option',null,''));}
+            if(f&&f.name){sel.name=String(f.name);}
             for(var s=0;s<opts.length;s++){var o=mk('option',null,String(opts[s]));o.value=String(opts[s]);sel.appendChild(o);}
             wrapS.appendChild(sel);form.appendChild(wrapS);
             inputs.push({label:label,read:function(){return sel.value||'';},focus:function(){sel.focus();}});
@@ -504,7 +992,7 @@ export const CART_JS = `(function(){
             var radios=[];
             for(var r=0;r<opts.length;r++){
               var rowL=part('label','order-option');
-              var ri=document.createElement('input');ri.type='radio';ri.name=gname;ri.value=String(opts[r]);
+              var ri=document.createElement('input');ri.type='radio';ri.name=(f&&f.name)?String(f.name):gname;ri.value=String(opts[r]);
               if(req){ri.required=true;}
               rowL.appendChild(ri);rowL.appendChild(mk('span',null,String(opts[r])));
               fs.appendChild(rowL);radios.push(ri);
@@ -519,6 +1007,7 @@ export const CART_JS = `(function(){
           if(type==='checkbox'){
             var wrapC=part('label','order-toggle');
             var cb=document.createElement('input');cb.type='checkbox';if(req){cb.required=true;}
+            if(f&&f.name){cb.name=String(f.name);}
             wrapC.appendChild(cb);wrapC.appendChild(mk('span',null,prompt));
             form.appendChild(wrapC);
             inputs.push({label:label,read:function(){return cb.checked?cfg.yesLabel:'';},focus:function(){cb.focus();}});
@@ -532,10 +1021,14 @@ export const CART_JS = `(function(){
           var wrap=part('label','order-field');wrap.appendChild(mk('span',null,prompt));
           var inp=t==='textarea'?document.createElement('textarea'):document.createElement('input');
           if(t!=='textarea'){inp.type=t;}if(req){inp.required=true;}
+          if(f&&f.name){inp.name=String(f.name);}
           wrap.appendChild(inp);form.appendChild(wrap);
           inputs.push({label:label,read:function(){return inp.value||'';},focus:function(){inp.focus();}});
         })(fields[i],i);
       }
+      // ★ A bare form owns no submit: returning here leaves a form whose only job is to hold the
+      // controls, so reportValidity() still guards required fields before the checkout POST.
+      if(bare){return {form:form,open:function(){if(inputs[0]){inputs[0].focus();}}};}
       var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','channel-status');
       form.appendChild(submit);form.appendChild(status);

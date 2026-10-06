@@ -51,7 +51,9 @@ describe('reserved translations registry', () => {
   // Every key carries exactly ONE scope, so the editor can group them. A key that lost its prefix would
   // otherwise land silently among the operator's free rows.
   it('every reserved key is scoped to a known group prefix', () => {
-    const SCOPES = new Set(['system', 'cart', 'theme', 'consent']);
+    // `order` is the THANK-YOU page's scope — deliberately separate from `cart`, because those
+    // strings are read at a different moment by someone who has already paid.
+    const SCOPES = new Set(['system', 'cart', 'theme', 'consent', 'order']);
     for (const group of RESERVED_TRANSLATION_GROUPS) {
       for (const { key } of group.keys) {
         const [scope, ...rest] = key.split('.');

@@ -1451,6 +1451,86 @@
         "comp_search.n3_d": {
           "de": "Jeder Treffer ist ein Link mit Seitentitel, Beschreibung und einem Ausschnitt der Fundstelle. Vor Suchmaschinen verborgene Seiten erscheinen nie.",
           "es": "Cada resultado es un enlace con el título de la página, su descripción y un fragmento con la coincidencia. Las páginas ocultas a los buscadores nunca aparecen."
+        },
+        "cart.review": {
+          "en": "Confirm your order",
+          "de": "Bestellung bestätigen",
+          "es": "Confirma tu pedido"
+        },
+        "cart.pay": {
+          "en": "Pay now",
+          "de": "Jetzt bezahlen",
+          "es": "Pagar ahora"
+        },
+        "cart.back": {
+          "en": "Back",
+          "de": "Zurück",
+          "es": "Volver"
+        },
+        "cart.subtotal": {
+          "en": "Subtotal",
+          "de": "Zwischensumme",
+          "es": "Subtotal"
+        },
+        "cart.shipping": {
+          "en": "Shipping",
+          "de": "Versand",
+          "es": "Envío"
+        },
+        "cart.tax": {
+          "en": "Tax",
+          "de": "MwSt.",
+          "es": "Impuestos"
+        },
+        "cart.checking": {
+          "en": "Checking availability…",
+          "de": "Verfügbarkeit wird geprüft…",
+          "es": "Comprobando disponibilidad…"
+        },
+        "cart.redirecting": {
+          "en": "Taking you to the payment page…",
+          "de": "Weiterleitung zur Zahlungsseite…",
+          "es": "Te llevamos a la página de pago…"
+        },
+        "cart.out_of_stock": {
+          "en": "Sorry, that is out of stock.",
+          "de": "Leider ausverkauft.",
+          "es": "Lo sentimos, está agotado."
+        },
+        "cart.gone": {
+          "en": "An item in your cart is no longer available.",
+          "de": "Ein Artikel in Ihrem Warenkorb ist nicht mehr verfügbar.",
+          "es": "Un artículo de tu carrito ya no está disponible."
+        },
+        "cart.checkout_note": {
+          "en": "You\u2019ll see the final total, including any shipping and tax, before you pay.",
+          "de": "Den Endbetrag inklusive Versand und Steuern sehen Sie vor der Zahlung.",
+          "es": "Ver\u00e1s el total final, con env\u00edo e impuestos, antes de pagar."
+        },
+        "cart.checkout_failed": {
+          "en": "Checkout is unavailable right now. Please try again.",
+          "de": "Die Kasse ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.",
+          "es": "El pago no está disponible ahora. Inténtalo de nuevo."
+        },
+        "order.paid": {
+          "en": "Thank you — your payment is confirmed.",
+          "de": "Vielen Dank — Ihre Zahlung ist bestätigt.",
+          "es": "Gracias: tu pago está confirmado."
+        },
+        "order.failed": {
+          "en": "That payment did not go through. Nothing has been charged.",
+          "de": "Die Zahlung ist fehlgeschlagen. Es wurde nichts abgebucht.",
+          "es": "El pago no se realizó. No se ha cobrado nada."
+        },
+        "order.unknown": {
+          "en": "We have not had confirmation yet. We will email you as soon as we do.",
+          "de": "Wir haben noch keine Bestätigung. Wir melden uns per E-Mail, sobald sie vorliegt.",
+          "es": "Aún no tenemos confirmación. Te escribiremos en cuanto la tengamos."
+        },
+        "order.keep_shopping": {
+          "en": "Continue shopping",
+          "de": "Weiter einkaufen",
+          "es": "Seguir comprando"
         }
       },
       "siteUrl": "https://example.com",

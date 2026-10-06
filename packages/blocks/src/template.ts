@@ -1410,11 +1410,48 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       const safe = safeUrl(img); // blocks javascript:/data:/protocol-relative → '#'
       if (safe && safe !== '#') attrs += ` data-image="${escapeAttr(safe)}"`;
     }
+    // `stock=` — the quantity the AUTHOR declares available. Optional; a SKU without it is
+    // untracked and never refused for being out of stock.
+    //
+    // ★ It is emitted for the PUBLISH-TIME HARVEST, not for the browser: the cart runtime ignores it
+    // and must keep ignoring it, because a client-side stock check is advice, not a guard. The
+    // server refuses an oversell against its own ledger (see reconcileStock / the stock repo).
+    // Non-integral or negative values are dropped rather than coerced — `stock="many"` must not
+    // become a number nobody authored.
+    const rawStock = str(h.stock).trim();
+    if (/^\d{1,9}$/.test(rawStock)) attrs += ` data-stock="${escapeAttr(String(Number(rawStock)))}"`;
     // Default to the vendored .btn (btn-primary); an explicit `class=` overrides it per-button.
     const cls = str(h.class) || 'btn btn-sm';
     attrs += ` class="${escapeAttr(cls)}"`;
     return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
   });
+  /**
+   * {{sw-order-status}} / {{#sw-order-status}}…{{/sw-order-status}} → the THANK-YOU panel mount.
+   *
+   * ★ Block form is the authoring surface, exactly as for the cart: your own copy and layout, with
+   * `data-sw-part` names the runtime fills in. The inline form emits a minimal default.
+   *
+   * ★★ WHATEVER YOU WRITE RENDERS SERVER-SIDE AND STANDS ALONE. The runtime only enriches it. A
+   * buyer has just paid; a page that is blank until a fetch resolves is blank on a flaky connection,
+   * at the worst possible moment to show someone nothing.
+   */
+  hb.registerHelper('sw-order-status', function swOrderStatus(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown>; t?: Record<string, unknown> } };
+    const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
+    // Same master switch as the cart: with the shop off there is no order to report on.
+    if (shop.enabled !== true) return new Handlebars.SafeString('');
+    const currency = (shop.currency ?? {}) as Record<string, unknown>;
+    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
+    let attrs = 'data-sw-order-status';
+    // The currency formatting the panel needs, from the same place the cart gets it.
+    attrs += ` data-currency-symbol="${escapeAttr(tr('cart.currency_symbol'))}"`;
+    if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
+    if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
+    const inner = typeof options.fn === 'function' ? options.fn(this) : defaultOrderStatusMarkup(tr);
+    return new Handlebars.SafeString(`<div ${attrs}>${inner}</div>`);
+  });
+
   // {{sw-cart}} → the cart MOUNT: a single <div data-sw-cart> carrying the currency + submission
   // channels (read from `website.shop`) as escaped data-* attributes. cart.js (shipped only when this
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
@@ -1454,11 +1491,33 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart.title'))}"`;
     attrs += ` data-toggle-label="${escapeAttr(str(h.toggle) || rt('cart.toggle'))}"`;
     attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart.note'))}"`;
+    // ★ Emitted alongside, not instead: one mount can carry both kinds of channel, and the runtime
+    // decides from what is actually configured rather than the page guessing.
+    attrs += ` data-checkout-note="${escapeAttr(str(h.checkoutNote) || tr('cart.checkout_note'))}"`;
     attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart.added'))}"`;
     attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart.empty'))}"`;
     attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart.total'))}"`;
     attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart.clear'))}"`;
     attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart.sent'))}"`;
+    // ★ CHECKOUT strings, emitted only when the shop actually has a checkout channel — a shop with no
+    // processed payments should not carry eleven unused attributes on every page that has a cart.
+    if ((shop.channels as Array<{ kind?: string }> | undefined)?.some((c) => c?.kind === 'checkout')) {
+      for (const [attr, key] of [
+        ['data-review-label', 'cart.review'],
+        ['data-pay-label', 'cart.pay'],
+        ['data-back-label', 'cart.back'],
+        ['data-subtotal-label', 'cart.subtotal'],
+        ['data-shipping-label', 'cart.shipping'],
+        ['data-tax-label', 'cart.tax'],
+        ['data-checking-label', 'cart.checking'],
+        ['data-redirecting-label', 'cart.redirecting'],
+        ['data-oos-label', 'cart.out_of_stock'],
+        ['data-gone-label', 'cart.gone'],
+        ['data-checkout-failed-label', 'cart.checkout_failed'],
+      ] as const) {
+        attrs += ` ${attr}="${escapeAttr(rt(key))}"`;
+      }
+    }
     // The word a ticked `checkbox` order field contributes to the message ("Gift wrap: Yes").
     attrs += ` data-yes-label="${escapeAttr(str(h.yes) || rt('cart.yes'))}"`;
     // The order-message lead-in ({{sw-cart}} → cart.js prepends it to the deep-link order summary). The
@@ -1522,9 +1581,22 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       .map((c): Record<string, unknown> | null => {
         if (!c || typeof c !== 'object') return null;
         const label = shopLabel(str(c.key));
-        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
-        if (c.kind === 'mailto') return { kind: 'mailto', label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
-        if (c.kind === 'payment') return { kind: 'payment', label, urlTemplate: c.urlTemplate };
+        // ★★ The KEY travels on every channel. An AUTHORED cart resolves `data-sw-action="channel:<key>"`
+        // by looking the key up in this very list, and a checkout POSTs to `window.__swp(ch.key)` — so
+        // without it an authored button could never match any channel at all (it marked every one
+        // `data-sw-unconfigured`), and a checkout had no endpoint to call. It is not a secret: for a
+        // checkout it is already the last path segment of the public pay URL. What stays out of this
+        // attribute is the form channel's ENDPOINT, which is a different thing.
+        const key = str(c.key);
+        if (c.kind === 'whatsapp') return { kind: 'whatsapp', key, label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
+        if (c.kind === 'mailto') return { kind: 'mailto', key, label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
+        if (c.kind === 'payment') return { kind: 'payment', key, label, urlTemplate: c.urlTemplate };
+        // ★★ The CHECKOUT channel — the one this whole module exists for. Omitting it here meant a
+        // correctly-configured, gateway-verified shop rendered a drawer with NO pay button (default)
+        // or a permanently-"unconfigured" one (authored), with every server-side layer built and
+        // working behind it. The runtime needs the key (the endpoint), the label, and the buyer
+        // fields; nothing about the gateway or its credentials belongs in a page attribute.
+        if (c.kind === 'checkout') return { kind: 'checkout', key, label, fields: projFields(c.fields) };
         // The form channel carries its form ID, never the resolved URL: cart.js assembles the address
         // from the encoded blob (window.__swf), so the endpoint stays out of this attribute — it used to
         // ship the full `/f/…` URL in `data-channels` for any scraper to read. `endpoint` is still what
@@ -1534,7 +1606,7 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
         // attribute. `captcha` is a flag; the provider + site key ride on the mount, not per channel.
         if (c.kind === 'form') {
           return typeof c.endpoint === 'string' && typeof c.formId === 'string'
-            ? { kind: 'form', label, formId: c.formId, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}) }
+            ? { kind: 'form', key, label, formId: c.formId, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}) }
             : null;
         }
         return null;
@@ -1547,7 +1619,16 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
       const channelsJson = JSON.stringify(clean).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
       attrs += ` data-channels="${escapeAttr(channelsJson)}"`;
     }
-    return new Handlebars.SafeString(`<div ${attrs}></div>`);
+    // ★ BLOCK FORM: `{{#sw-cart}}…your markup…{{/sw-cart}}` puts the author's own drawer inside the
+    // mount, and the runtime then BINDS to it rather than building its own (see CART_PARTS). The
+    // inline form `{{sw-cart}}` keeps its original meaning — an empty mount the runtime fills — so
+    // every existing page is byte-identical.
+    //
+    // The config attributes are identical either way: an authored drawer still needs the currency,
+    // the channel list and the localized labels, and making the author restate them would be a
+    // second source of truth for things that already live in settings.
+    const inner = typeof options.fn === 'function' ? options.fn(this) : '';
+    return new Handlebars.SafeString(`<div ${attrs}>${inner}</div>`);
   });
   // (The CONSENT MANAGER banner mount is AUTO-INJECTED by the publish pipeline whenever
   // website.consent.enabled — there is no `{{sw-consent}}` helper. See consentMountMarkup + renderDocument.)
@@ -1942,6 +2023,25 @@ const DEFAULT_MAX_OUTPUT = 1_048_576; // 1 MiB
  * Prototype access is disabled; only curated helpers + per-render partials are available.
  * Throws {@link TemplateError} on an unsafe context, a compile error, or a render error.
  */
+/**
+ * The default thank-you panel, for a bare `{{sw-order-status}}`.
+ *
+ * ★ Deliberately plain, and deliberately COMPLETE without JavaScript: the paid message is what a
+ * buyer sees the instant the page paints, and the pending line is removed by the runtime rather than
+ * being the only thing there. An author who wants more forks the `order-status` snippet.
+ */
+function defaultOrderStatusMarkup(tr: (key: string) => string): string {
+  const t = (key: string, fallback: string): string => escapeHtml(tr(key) || fallback);
+  return (
+    `<p data-sw-part="status-paid" style="display:none">${t('order.paid', 'Thank you — your payment is confirmed.')}</p>` +
+    `<p data-sw-part="status-failed" style="display:none">${t('order.failed', 'That payment did not go through. Nothing has been charged.')}</p>` +
+    `<p data-sw-part="status-unknown" style="display:none">${t('order.unknown', 'We have not had confirmation yet. We will email you as soon as we do.')}</p>` +
+    `<ul data-sw-part="status-summary"></ul>` +
+    `<template data-sw-part="status-line-template"><li><span data-sw-field="qty"></span>&#215; <span data-sw-field="name"></span></li></template>` +
+    `<p><strong data-sw-part="status-total"></strong></p>`
+  );
+}
+
 export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: RenderOptions = {}): string {
   validateTemplate(source);
   // Partials are rendered verbatim too — validate each so a malicious `{{> snippet}}`

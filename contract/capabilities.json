@@ -3,5 +3,6 @@
   "content:read",
   "content:write",
   "deploy",
+  "payments:provider:write",
   "publish"
 ]

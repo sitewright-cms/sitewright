@@ -104,6 +104,15 @@ import {
 } from './seo.js';
 import { renderContactPhp, hasContactPhpForm, hasPhpSmtpForm, PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { buildSearchIndex, type SearchPageInput } from './search-index.js';
+import {
+  validateAuthoredCart,
+  cartMountContents,
+  createCatalogAccumulator,
+  harvestCatalogPage,
+  finishCatalog,
+  describeCatalogProblems,
+  type ShopCatalog,
+} from '@sitewright/blocks';
 import { buildDataFiles } from './data-files.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
@@ -218,6 +227,36 @@ export interface ReleaseManifest {
    * locale's index on first search, so this is the number that matters — not the site total.
    */
   searchLargeLocales?: Array<{ locale: string; pages: number }>;
+  /**
+   * Problems found building the SHOP CATALOG SNAPSHOT that did NOT fail the publish.
+   *
+   * ★ They only fail a publish when the shop has a `checkout` channel, i.e. when a price is about to
+   * become a real charge. For a mini-shop the prices were never authoritative, so a malformed one
+   * costs a cart line rather than a wrong amount, and refusing to publish the whole site over it
+   * would be a worse trade. Reported either way — a buy button nobody can use is owed a reason.
+   */
+  shopCatalogWarnings?: string[];
+  /**
+   * Problems with an AUTHORED cart drawer — a fork that has lost a part the runtime needs, or a
+   * button naming a channel that no longer exists.
+   *
+   * ★ Warnings, never publish errors. A half-forked drawer must not block deploying the rest of a
+   * site: the cart is one feature on one page, and refusing the whole publish over it would make
+   * forking feel dangerous, which is the opposite of the point. But it must not be SILENT either —
+   * the failure mode is a drawer that renders beautifully and does nothing.
+   */
+  shopCartWarnings?: string[];
+  /**
+   * The sealed SHOP CATALOG SNAPSHOT — the price list the payment endpoints charge against.
+   *
+   * ★★ ATTACHED AFTER release.json IS WRITTEN, AND DELIBERATELY NEVER IN IT. release.json is part of
+   * the published output and is served to anybody who asks; this object carries every SKU's price AND
+   * the author's declared stock levels, which is competitive information no visitor is owed. It rides
+   * back to the caller in memory (and through the worker's JSON result) purely so the main process
+   * can persist it — the same "attached afterwards" arrangement `pageFailures` uses, for the same
+   * reason: the published manifest describes the release, not the platform's bookkeeping.
+   */
+  shopCatalog?: ShopCatalog;
   /**
    * Problems with `website.dataFiles` that did NOT fail the publish: a source that resolved to nothing,
    * a duplicate path, a file over the size cap. Each one means the site shipped a data file that is
@@ -960,6 +999,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const sitemapUrls: Array<{ loc: string; lastmod?: string }> = [];
     // Locales whose corpus passed the size ceiling — reported on the manifest, not silently grown.
     const searchLargeLocales: Array<{ locale: string; pages: number }> = [];
+    // SHOP CATALOG SNAPSHOT — the authoritative price list a processed payment is charged against.
+    // Harvested from the RENDERED html of every route (the markers are emitted by a Handlebars
+    // helper, so they do not exist in a page's source), then sealed after the loop.
+    //
+    // Built only when the shop declares a settlement currency: without one the minor-unit exponent
+    // is unknowable, and a mini-shop that takes no payments has no use for a price list.
+    const shopSettlementCurrency = website?.shop?.enabled === true ? website.shop.currency?.code : undefined;
+    // ★ Whether a bad price must STOP the publish. True only once a real charge depends on it.
+    const shopTakesPayments = (website?.shop?.channels ?? []).some((c) => c.kind === 'checkout');
+    const catalogAcc = shopSettlementCurrency ? createCatalogAccumulator(shopSettlementCurrency) : undefined;
+    let shopCatalog: ShopCatalog | undefined;
+    const shopCatalogWarnings: string[] = [];
+    const shopCartWarnings: string[] = [];
+    const shopChannelKeys = (website?.shop?.channels ?? []).map((c) => c.key);
     const dataFileWarnings: string[] = [];
     let dataFiles: ReturnType<typeof buildDataFiles>['files'] = [];
     // Site-search corpus, collected per rendered route and emitted per locale after the loop.
@@ -1272,7 +1325,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared registry: the inline CSS for every body-effect runtime THIS page uses (animation,
           // parallax, svg-anim, marquee, lazyload, ripple, cart, consent) — same set + order the editor
           // preview inlines for this page.
-          ...pageBodyEffects.flatMap((r) => (r.css ? [r.css] : [])),
+          // ★ The cart sheet is dropped when the shop asks for it — the escape hatch for a drawer
+          // forked far enough that the platform's rules are things to undo.
+          ...pageBodyEffects.flatMap((r) => (r.css && !(r.key === 'cart' && website?.shop?.platformCartStyles === false) ? [r.css] : [])),
           ...(pageThemeToggle ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
           ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
@@ -1293,6 +1348,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const cspScanHtml = [bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml, website?.head, website?.scripts]
           .filter((s): s is string => Boolean(s))
           .join('\n');
+        // Harvest this route's buy buttons from the SAME string the CSP scan reads — body plus every
+        // chrome slot, so a product tile in a footer is priced exactly as one in a page body is.
+        if (catalogAcc) harvestCatalogPage(catalogAcc, cspScanHtml, pageFullPath);
+        // An AUTHORED cart drawer on this page, checked against the contract and the shop's own
+        // channel keys. Only pages that actually mount a cart cost anything here.
+        if (website?.shop?.enabled === true) {
+          for (const inner of cartMountContents(cspScanHtml)) {
+            for (const problem of validateAuthoredCart(inner, { channelKeys: shopChannelKeys })) {
+              shopCartWarnings.push(`${pageFullPath}: ${problem.message}`);
+            }
+          }
+        }
         const authorCspOrigins = authorContentCspOrigins(cspScanHtml);
         // …and the origins the PLATFORM injects into the very same page. The publisher used to contradict
         // itself here: it bakes an ABSOLUTE `/f/` endpoint into every platform-routed form, and a published
@@ -1656,6 +1723,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(sitemap);
     }
 
+    // Seal the catalog snapshot. A problem here is a price that cannot be charged exactly, or one SKU
+    // carrying two different prices — the latter would make "which price is authoritative" depend on
+    // the order routes happened to render in, which is the one thing a charge may never depend on.
+    if (catalogAcc) {
+      const sealed = finishCatalog(catalogAcc);
+      shopCatalog = sealed.catalog;
+      if (sealed.problems.length > 0) {
+        const message = describeCatalogProblems(sealed.problems);
+        // ★ Fail the publish only when a real charge depends on these prices (see shopTakesPayments).
+        if (shopTakesPayments && !previewMode) throw new PublishError(message);
+        shopCatalogWarnings.push(message);
+      }
+    }
+
     // Site-search index — ONE PAIR PER LOCALE, beside the sitemap. Emitted from the corpus collected
     // during the route loop, so the index and the HTML come from the same render and cannot drift
     // (docs/site-search.md §3.7). The default locale keeps the unsuffixed names; the runtime picks
@@ -1819,6 +1900,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...(searchSkippedRawHtml > 0 ? { searchSkippedRawHtml } : {}),
       ...(searchLargeLocales.length > 0 ? { searchLargeLocales } : {}),
       ...(dataFileWarnings.length > 0 ? { dataFileWarnings } : {}),
+      ...(shopCatalogWarnings.length > 0 ? { shopCatalogWarnings } : {}),
+      ...(shopCartWarnings.length > 0 ? { shopCartWarnings: [...new Set(shopCartWarnings)].slice(0, 50) } : {}),
       ...(childrenTruncated.size > 0 ? { childrenTruncated: [...childrenTruncated.values()] } : {}),
     };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
@@ -1827,6 +1910,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // (a publish throws on the first). This rides back to the caller so a draft build can be REPORTED
     // as partial rather than passing for clean.
     if (pageFailures.length > 0) manifest.pageFailures = pageFailures;
+    // Same placement, same reason: this must not be in the file that was just written.
+    if (shopCatalog) manifest.shopCatalog = shopCatalog;
 
     // Swap the completed build into place (brief gap only between rm and rename).
     await rm(base, { recursive: true, force: true });

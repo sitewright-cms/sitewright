@@ -51,6 +51,10 @@ export const CONTENT_KIND_VALUES = [
   'project_captcha',
   'ai_config',
   'preview_share',
+  /** Level 1 — a payment gateway definition. Instance-wide; stored under the reserved global scope. */
+  'payment_gateway',
+  /** Level 2 — one project's credentials for a gateway. Values encrypted at rest, per mode. */
+  'project_payment',
 ] as const;
 
 export const projects = sqliteTable(
@@ -312,7 +316,25 @@ export const oidcLoginStates = sqliteTable(
  * `deploy` (external egress) is never granted by default. Order is canonical
  * (it drives the OAuth granted-scope order in oauth-routes).
  */
-export const API_KEY_CAPABILITIES = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'] as const;
+/**
+ * Bearer-token capabilities. The single source of truth: the zod validator, the OAuth
+ * `scopes_supported`, `parseScope`, `RequiredAccess` and `CAPABILITY_SET` all derive from this, and
+ * it is a JSON text column rather than a DB enum, so adding one needs no migration.
+ *
+ * ★ `payments:provider:write` is OPT-IN and never implied by `content:write` — the `content:delete`
+ * precedent. It authors GATEWAY DEFINITIONS (level 1), which is what makes "an agent adds a payment
+ * provider" work. It deliberately does NOT cover a project's own payment credentials (level 2):
+ * those are session-only, because an agent that can mint a live key into a project can redirect that
+ * project's revenue.
+ */
+export const API_KEY_CAPABILITIES = [
+  'content:read',
+  'content:write',
+  'content:delete',
+  'publish',
+  'deploy',
+  'payments:provider:write',
+] as const;
 export type ApiKeyCapability = (typeof API_KEY_CAPABILITIES)[number];
 
 /**
@@ -746,6 +768,211 @@ export const formSubmissions = sqliteTable(
     // submission ever stored on every tick.
     index('form_submissions_delivery_idx').on(t.deliveryState, t.deliveryNextAt),
   ],
+);
+
+/**
+ * The SHOP CATALOG SNAPSHOT, one row per project per mode.
+ *
+ * ★ The authoritative price list. Written by the publish build (`live`) and the draft-preview build
+ * (`draft`); read by the checkout endpoint to re-price `{sku, qty}` into an amount. The browser
+ * never sends a price, so this table is the only thing that decides what a buyer is charged.
+ *
+ * ★ A `draft` row is usable ONLY by a test-mode checkout. That is what lets an author rehearse a
+ * real payment flow against a provider sandbox without a published site, and what stops a preview
+ * transacting against the live account.
+ *
+ * Derived, not authored — hence its own table rather than a `content` kind: it is regenerated whole
+ * on every publish and carries no revision history worth keeping.
+ */
+export const shopCatalog = sqliteTable(
+  'shop_catalog',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** `live` (published) or `draft` (preview). */
+    mode: text('mode', { enum: ['live', 'draft'] }).notNull(),
+    /** ISO-4217 settlement currency the prices below are denominated in. */
+    currency: text('currency').notNull(),
+    /** sku → { name, priceMinor, image?, stock? }. Prices are integer MINOR units. */
+    items: text('items', { mode: 'json' })
+      .$type<Record<string, { sku: string; name: string; priceMinor: number; image?: string; stock?: number }>>()
+      .notNull(),
+    /** Content digest — stamped onto each transaction so an order records which price list priced it. */
+    digest: text('digest').notNull(),
+    publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.mode] })],
+);
+
+/**
+ * The STOCK LEDGER — the platform's own record of availability, per SKU.
+ *
+ * ★★ THE OWNERSHIP SPLIT. The AUTHOR owns the restock number (`stock=` in the markup, harvested into
+ * `authored_at_publish`); the PLATFORM owns `sold`. `on_stock` is rewritten by a publish ONLY when
+ * the authored value CHANGED since the last one — an explicit restock. An unchanged republish must
+ * never reset a sold-down quantity, or the first price refresh silently restocks everything that had
+ * sold out. See `reconcileStock`.
+ *
+ * `reserved` holds units during the redirect to the provider, so two buyers cannot both be sold the
+ * last one while each is away paying. A reservation expires (`reserved_until`) and is swept, because
+ * an abandoned checkout must not hold stock for ever.
+ */
+export const shopStock = sqliteTable(
+  'shop_stock',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    sku: text('sku').notNull(),
+    /** Units on the shelf. NULL = untracked: this SKU is never refused for being out of stock. */
+    onStock: integer('on_stock'),
+    /** Units sold (paid). Platform-owned; a publish never writes this. */
+    sold: integer('sold').notNull().default(0),
+    /** Units held by in-flight checkouts. */
+    reserved: integer('reserved').notNull().default(0),
+    /** When the oldest live reservation lapses, so the sweeper knows there is work. */
+    reservedUntil: integer('reserved_until', { mode: 'timestamp_ms' }),
+    /** What the author declared at the LAST publish. The hinge of the restock rule above. */
+    authoredAtPublish: integer('authored_at_publish'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.sku] })],
+);
+
+/**
+ * ONE PAYMENT. Created when a checkout session is requested, advanced only by a VERIFIED webhook or
+ * by reconciliation against the provider — never by the buyer's return navigation, which is a
+ * navigation they can forge.
+ */
+export const shopTransactions = sqliteTable(
+  'shop_transactions',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** Which `checkout` shop channel produced this. */
+    channelKey: text('channel_key').notNull(),
+    gatewayId: text('gateway_id').notNull(),
+    /** ★ Stamped at creation: a test transaction can never be confused for a live one afterwards. */
+    mode: text('mode', { enum: ['test', 'live'] }).notNull(),
+    /**
+     * Whether this came from a DRAFT PREVIEW checkout rather than the published site.
+     *
+     * ★ Distinct from `mode`, and both are needed. A project legitimately running in `test` mode is
+     * still running its real shop, so its checkouts must hold and commit real stock; a PREVIEW is a
+     * rehearsal against the draft catalog and holds nothing. Without this flag the paid webhook would
+     * commit `sold` for a rehearsal that never reserved, permanently understating availability.
+     */
+    preview: integer('preview', { mode: 'boolean' }).notNull().default(false),
+    status: text('status', {
+      enum: ['created', 'pending', 'paid', 'failed', 'expired', 'refunded', 'partially_refunded', 'cancelled'],
+    })
+      .notNull()
+      .default('created'),
+    /** Operator-moved, deliberately separate from `status`: different owner, different meaning. */
+    fulfilment: text('fulfilment', { enum: ['new', 'packed', 'shipped', 'done', 'cancelled'] }).notNull().default('new'),
+    fulfilmentNote: text('fulfilment_note'),
+    currency: text('currency').notNull(),
+    subtotalMinor: integer('subtotal_minor').notNull(),
+    shippingMinor: integer('shipping_minor').notNull().default(0),
+    taxMinor: integer('tax_minor').notNull().default(0),
+    totalMinor: integer('total_minor').notNull(),
+    refundedMinor: integer('refunded_minor').notNull().default(0),
+    /**
+     * ★ A FROZEN COPY of the lines as priced. The catalog is replaced on every publish; an order must
+     * not be. A row that re-derived its lines from the current catalog would silently rewrite history
+     * the first time a name or a price changed.
+     */
+    lines: text('lines', { mode: 'json' })
+      .$type<Array<{ sku: string; name: string; unitMinor: number; qty: number; lineMinor: number }>>()
+      .notNull(),
+    /** The buyer's submitted fields. Text only, as for a form submission — never card data. */
+    buyer: text('buyer', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+    /** Which price list priced this order. */
+    catalogDigest: text('catalog_digest').notNull(),
+    /** The provider's id for the session/order. Unique per gateway: the webhook's join key. */
+    providerRef: text('provider_ref'),
+    /** The provider's id for the payment itself, when it differs from the session. */
+    providerPaymentRef: text('provider_payment_ref'),
+    /**
+     * ★ Opaque token for the thank-you page — SEPARATE from `id` so a shared return URL cannot be
+     * walked to enumerate other people's orders, and so it can be rotated independently.
+     */
+    publicToken: text('public_token').notNull(),
+    /**
+     * ★ TWO INDEPENDENT delivery state sets, not one. The shop-admin notification and the customer
+     * receipt fail independently: a bouncing merchant address must not block the buyer's receipt, and
+     * retrying one must never re-send the other. A single shared column would make "the merchant was
+     * not told" and "the customer was not told" indistinguishable, and those differ in urgency.
+     */
+    notifyState: text('notify_state', { enum: ['pending', 'sent', 'failed', 'na', 'abandoned'] }).notNull().default('na'),
+    notifyAttempts: integer('notify_attempts').notNull().default(0),
+    notifyNextAt: integer('notify_next_at', { mode: 'timestamp_ms' }),
+    notifyError: text('notify_error'),
+    notifyClaimedAt: integer('notify_claimed_at', { mode: 'timestamp_ms' }),
+    receiptState: text('receipt_state', { enum: ['pending', 'sent', 'failed', 'na', 'abandoned'] }).notNull().default('na'),
+    receiptAttempts: integer('receipt_attempts').notNull().default(0),
+    receiptNextAt: integer('receipt_next_at', { mode: 'timestamp_ms' }),
+    receiptError: text('receipt_error'),
+    receiptClaimedAt: integer('receipt_claimed_at', { mode: 'timestamp_ms' }),
+    /** Where the receipt goes: the provider's verified payer email, else a submitted field. */
+    customerEmail: text('customer_email'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    paidAt: integer('paid_at', { mode: 'timestamp_ms' }),
+    /** When an unpaid session stops being reconcilable and may be swept to `expired`. */
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [
+    uniqueIndex('shop_txn_public_token_idx').on(t.publicToken),
+    // The webhook's lookup. Per GATEWAY, not global: two providers may legitimately mint the same id.
+    uniqueIndex('shop_txn_provider_ref_idx').on(t.gatewayId, t.providerRef),
+    index('shop_txn_project_created_idx').on(t.projectId, t.createdAt),
+    index('shop_txn_project_status_idx').on(t.projectId, t.status),
+    // The notification runners' hot queries, and the reconciler's.
+    index('shop_txn_notify_idx').on(t.notifyState, t.notifyNextAt),
+    index('shop_txn_receipt_idx').on(t.receiptState, t.receiptNextAt),
+    index('shop_txn_reconcile_idx').on(t.status, t.updatedAt),
+  ],
+);
+
+/**
+ * SPENT WEBHOOK EVENTS — replay defence, the same shape as `form_pow_spent`.
+ *
+ * A provider retries a webhook until it gets a 2xx, and some retry anyway. Without this, a replayed
+ * `paid` would re-run everything that follows a payment: a second notification, a second receipt, a
+ * second stock commit. Keyed per gateway because event ids are only unique within a provider.
+ */
+export const shopPaymentEvents = sqliteTable(
+  'shop_payment_events',
+  {
+    gatewayId: text('gateway_id').notNull(),
+    eventId: text('event_id').notNull(),
+    seenAt: integer('seen_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.gatewayId, t.eventId] }), index('shop_payment_events_seen_idx').on(t.seenAt)],
+);
+
+/**
+ * Counters for checkouts the bot gates REFUSED, per project/channel/reason.
+ *
+ * Mirrors `form_filtered`, and exists for the same reason: a silent drop makes "we blocked 40 bots"
+ * and "we lost 40 sales" indistinguishable.
+ */
+export const shopFiltered = sqliteTable(
+  'shop_filtered',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    channelKey: text('channel_key').notNull(),
+    reason: text('reason').notNull(),
+    count: integer('count').notNull().default(0),
+    lastAt: integer('last_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.channelKey, t.reason] })],
 );
 
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */

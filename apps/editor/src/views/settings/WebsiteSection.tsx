@@ -27,6 +27,9 @@ import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { api, type EffectForks } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
+import { PaymentCredentialsModal } from './PaymentCredentialsModal';
+import { TransactionsInbox } from './TransactionsInbox';
+import type { AvailableGateway } from './ShopChannelsEditor';
 import { ConsentSettingsModal } from './ConsentSettingsModal';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
@@ -168,6 +171,24 @@ export function WebsiteSection({
   const [slotEdit, setSlotEdit] = useState<ChromeSlotKey | null>(null);
   const SLOT_BUTTONS: ReadonlyArray<readonly [ChromeSlotKey, string]> = CHROME_SLOTS.map((s) => [s.key, s.label] as const);
   const [shopOpen, setShopOpen] = useState(false);
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  // Gateways this project may bind to. Fetched once so the checkout channel row can offer them by
+  // NAME — an operator should pick "Stripe Checkout", not type an id they have to know.
+  const [gateways, setGateways] = useState<AvailableGateway[]>([]);
+  useEffect(() => {
+    let live = true;
+    void api
+      .projectPaymentGateways(projectId)
+      .then((r) => {
+        if (live) setGateways(r.gateways.map((g) => ({ id: g.id, name: g.name })));
+      })
+      // A project with no payment surface is the normal case, not an error worth surfacing.
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [projectId]);
   const [consentOpen, setConsentOpen] = useState(false);
   // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
   // effect's code editor is open. The forks are static platform data, fetched once.
@@ -933,9 +954,37 @@ export function WebsiteSection({
                 <Pencil className="h-4 w-4" /> Edit
               </span>
             </button>
+            <button
+              type="button"
+              onClick={() => setPaymentsOpen(true)}
+              className="waves-effect group mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Payments</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Gateway keys, test / live mode, webhook URL</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                <Pencil className="h-4 w-4" /> Edit
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrdersOpen(true)}
+              className="waves-effect group mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Orders</span>
+                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Paid orders, fulfilment, resend a notification</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                <Pencil className="h-4 w-4" /> Open
+              </span>
+            </button>
           </div>
         )}
-        {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} />}
+        {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} gateways={gateways} />}
+        {paymentsOpen && <PaymentCredentialsModal projectId={projectId} onClose={() => setPaymentsOpen(false)} />}
+        {ordersOpen && <TransactionsInbox projectId={projectId} onClose={() => setOrdersOpen(false)} />}
       </GlassCard>
 
       <GlassCard

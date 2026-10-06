@@ -10,7 +10,7 @@ import { newId, isShortAssetId } from '../id.js';
 import { readTemplateConfig, readTemplateImage } from '../imagemap-assets.js';
 import { readTexture } from '../textures.js';
 import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -235,6 +235,26 @@ import { buildEffectForks } from './effect-forks.js';
 import { buttonPreviewCss } from './button-preview.js';
 import { tailwindReferencePayload } from './tailwind-reference.js';
 import { registerFormRoutes } from './form-routes.js';
+import { registerPaymentRoutes } from './payment-routes.js';
+import { registerPaymentAdminRoutes } from './payment-admin-routes.js';
+
+/**
+ * How long an unresolved payment waits before the platform asks the provider about it.
+ *
+ * Long enough that an ordinary buyer is still on the provider's page (so reconciliation does not
+ * race the webhook for every normal checkout), short enough that a merchant is not left unaware of a
+ * real payment for long.
+ */
+const PAYMENT_RECONCILE_AFTER_MS = 10 * 60 * 1000;
+import { GatewayRepository } from '../payments/gateways.js';
+import { ShopTransactionRepository } from '../repo/shop-transactions.js';
+import { ShopStockRepository } from '../repo/shop-stock.js';
+import { shopCatalog as shopCatalogTable } from '../db/schema.js';
+import { reconcileStock } from '../publish/shop-catalog.js';
+import { fetchProviderStatus } from '../payments/executor.js';
+import { runOrderMail } from '../payments/notify-runner.js';
+import { fromMinorUnits } from '@sitewright/schema';
+import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
 import type { DeliveryRunResult } from '../mail/delivery-runner.js';
@@ -717,7 +737,21 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp', 'project_captcha', 'ai_config']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set([
+  'media',
+  'mediafolder',
+  'deploy_target',
+  'project_smtp',
+  'project_captcha',
+  'ai_config',
+  // ★ Payments. `project_payment` holds a project's ENCRYPTED gateway credentials, and
+  // `payment_gateway` is instance-wide admin-only infrastructure — neither may be reachable through
+  // the generic, member-accessible content API. Without this, a project member could read a
+  // credential envelope or write one, and `content:write` would silently become "configure
+  // payments".
+  'payment_gateway',
+  'project_payment',
+]);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -1005,6 +1039,12 @@ interface PreviewShell {
   preloader?: string;
   /** Emit the brand's text-on-brand tokens (custom effect code references them). */
   emitBrandContentTokens?: boolean;
+  /**
+   * `website.shop.platformCartStyles`. False drops the platform cart sheet entirely — the escape
+   * hatch for a fully-forked drawer. Threaded through the shell so the EDITOR PREVIEW agrees with
+   * publish: a drawer that looks right in the editor and wrong on the site is the worst of both.
+   */
+  platformCartStyles?: boolean;
   /** `<html lang>` for the preview — the previewed page's locale (publish parity). */
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
@@ -1139,7 +1179,7 @@ async function styledSourceDocument(
         ...(componentCss ? [componentCss] : []),
         // Shared registry: every marker-gated body-effect runtime's CSS (animation, parallax, svg-anim,
         // marquee, lazyload, ripple, cart, consent) — same set + order as the publish path.
-        ...bodyEffectStyles(scanHtml),
+        ...bodyEffectStyles(scanHtml, { platformCartStyles: shell.platformCartStyles }),
         ...(fixedBg ? [FIXED_BG_PREVIEW_CSS] : []),
         ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
       ];
@@ -1444,6 +1484,14 @@ export interface AppOptions {
    * Unset → derived per-request (same-origin `/f/…`; request-derived issuer).
    */
   publicUrl?: string;
+  /**
+   * Outbound HTTP for PAYMENT GATEWAY calls only.
+   *
+   * ★ Injected so a suite can script a provider instead of reaching the network — the same seam
+   * `StockProvider` uses, and for the same reason: a test that mocks the module under test proves
+   * nothing about the exchange. Defaults to the platform `fetch`.
+   */
+  paymentFetch?: (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
   /**
    * `Contact` URIs for this instance's `/.well-known/security.txt`, most-preferred first
    * (`SW_SECURITY_CONTACT`). Empty/unset → the upstream advisory channel; see `security-txt.ts`.
@@ -4849,6 +4897,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bottom,
           head: website?.head,
           criticalCss: website?.criticalCss,
+          platformCartStyles: website?.shop?.platformCartStyles,
           containerWidth: website?.containerWidth,
           customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
           // NO preloader in the single-page canvas — for CUSTOM code either, now. A preloader is
@@ -7463,6 +7512,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // build, so reaping the build (see the retention rule below) cannot destroy the answer to
           // "is the published site out of date?".
           await releasesRepo.record(project.id, release);
+          // ★ The LIVE price list, and the only build allowed to reconcile the stock ledger. The
+          // snapshot never travels in release.json (it holds every price and the author's declared
+          // stock levels, and release.json is published output), so it rides back on the manifest and
+          // is persisted here, in the process that has the database.
+          await persistShopCatalog(project.id, 'live', release);
 
           // ★ For a LOCAL Hosting target this route IS the deploy — there is no separate upload step,
           // so nothing else was ever going to stamp it. Only the remote deploy path recorded
@@ -7904,6 +7958,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
           : undefined,
       });
+      await persistShopCatalog(project.id, 'draft', manifest);
       previewBuiltVersion.set(project.id, version);
       // A draft build no longer aborts on a page it cannot render — it serves an error document at
       // that page's own route and carries on. Remember which pages those were, so the failure is
@@ -8953,6 +9008,139 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     rl,
   });
 
+  // ---- PAYMENTS -------------------------------------------------------------------------------
+  //
+  // ★ Registered only when an encryption key is configured: a project's gateway credentials are
+  // encrypted at rest, and an instance with no key cannot store one. The same gate `project_smtp`
+  // uses — and it means an instance without the key has no payment surface at all rather than one
+  // that silently stores secrets in the clear.
+  const shopTransactionsRepo = new ShopTransactionRepository(db);
+  const shopStockRepo = new ShopStockRepository(db);
+  const gatewayRepo = opts.encryptionKey ? new GatewayRepository(contentRepo, opts.encryptionKey) : undefined;
+  if (gatewayRepo) {
+    registerPaymentRoutes(app, {
+      transactions: shopTransactionsRepo,
+      stock: shopStockRepo,
+      gateways: gatewayRepo,
+      captcha: captchaVerifier,
+      getProjectCaptcha: async (projectId: string) => {
+        const stored = await loadProjectCaptchaById(db, projectId);
+        if (!stored) return null;
+        const secret = stored.secret && opts.encryptionKey ? decryptSecret(stored.secret, opts.encryptionKey) : null;
+        return { provider: stored.provider, secret, ...(stored.minScore !== undefined ? { minScore: stored.minScore } : {}) };
+      },
+      getPowSecret: () => currentCookieSecret,
+      claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
+      getShop: async (projectId: string) => {
+        // ★ The same reserved-scope refusal `systemContext` makes. These deps build their own
+        // context from the untrusted route param, so leaving the check to the sibling closure would
+        // put the isolation back on "nothing project-shaped is ever stored under __global__" —
+        // exactly the invariant the guard exists to stop depending on.
+        if (projectId === GLOBAL_SCOPE_ID) return null;
+        const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
+          | { website?: { shop?: unknown } }
+          | null;
+        const shop = settings?.website?.shop;
+        return (shop ?? null) as never;
+      },
+      getCatalog: async (projectId: string, mode: 'live' | 'draft') => {
+        if (projectId === GLOBAL_SCOPE_ID) return null;
+        const [row] = await db
+          .select()
+          .from(shopCatalogTable)
+          .where(and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode)));
+        return row ? { currency: row.currency, items: row.items, digest: row.digest } : null;
+      },
+      // ★ The reserved GLOBAL scope is refused here too, mirroring `resolveProject`.
+      //
+      // These three routes are UNAUTHENTICATED and run as `owner`, so without this the isolation of
+      // `__global__` would rest on "nothing sensitive is ever stored under it" rather than on a
+      // check. That is precisely the fragile invariant `resolveProject`'s own 404 exists to avoid
+      // relying on, and a later feature storing anything project-shaped there would silently open it.
+      systemContext: (projectId: string) => {
+        if (projectId === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
+        return { userId: 'system', projectId, role: 'owner' };
+      },
+      publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+      siteBaseUrl: async (projectId: string) => {
+        const project = await projects.get(projectId).catch(() => null);
+        if (!project) return null;
+        const base = (opts.publicUrl ?? '').replace(/\/+$/, '');
+        if (!base) return null;
+        // A locally hosted site answers at `<slug>.<sitesDomain>` when subdomain routing is on, and
+        // at `/sites/<slug>/` otherwise. A site deployed elsewhere uses its configured siteUrl, which
+        // the caller prefers when present.
+        return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
+      },
+      paymentsEnabled: () => instanceSettingsRepo.getPaymentsEnabled(),
+      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      rl,
+    });
+  }
+
+  /**
+   * Persists a build's shop catalog snapshot, and reconciles the stock ledger from it.
+   *
+   * ★ Called AFTER the build, in the main process, because the build worker runs with no network and
+   * no database. Best-effort by design: the site is already built and served, so a failure here must
+   * not turn a successful publish into an error — it is logged and corrected on the next one.
+   *
+   * ★ Stock is reconciled only from a LIVE build. A draft preview must not be able to restock a
+   * shop, and an author rebuilding a preview twenty times while editing must not touch the ledger at
+   * all.
+   */
+  async function persistShopCatalog(projectId: string, mode: 'live' | 'draft', manifest: { shopCatalog?: ShopCatalog }): Promise<void> {
+    const catalog = manifest.shopCatalog;
+    if (!catalog) return;
+    try {
+      await db
+        .insert(shopCatalogTable)
+        .values({ projectId, mode, currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() })
+        .onConflictDoUpdate({
+          target: [shopCatalogTable.projectId, shopCatalogTable.mode],
+          set: { currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() },
+        });
+      if (mode === 'live') {
+        const ledger = await shopStockRepo.all(projectId);
+        await shopStockRepo.applyReconciliation(projectId, reconcileStock(catalog, ledger));
+      }
+    } catch (err) {
+      app.log.warn({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not persist the shop catalog snapshot');
+    }
+  }
+
+  if (gatewayRepo) {
+    registerPaymentAdminRoutes(app, {
+      gateways: gatewayRepo,
+      transactions: shopTransactionsRepo,
+      stock: shopStockRepo,
+      requireInstanceAdmin,
+      // A bearer token carrying the one capability that authors GATEWAY DEFINITIONS. Exact-string
+      // check, as for every other capability — no prefix matching.
+      hasProviderWriteScope: async (req) => {
+        const token = bearerToken(req);
+        if (token === undefined) return false;
+        const key = await apiKeysRepo.resolve(token).catch(() => null);
+        if (key?.capabilities.includes('payments:provider:write') !== true) return false;
+        // ★★ The capability is NECESSARY BUT NOT SUFFICIENT. A gateway definition is instance-wide
+        // infrastructure, while an API key is bound to ONE project and may be minted by that
+        // project's owner at any role — so the capability alone would let a member of any single
+        // tenant rewrite every other tenant's checkout. It is also pre-checked by the OAuth consent
+        // screen for a client that requests no scope, which is how an invited client would obtain it
+        // without ever asking. The requirement is "only admins author gateway code", so the KEY'S
+        // OWNER must be an instance admin as well; the capability then does its intended job of
+        // keeping a routine agent token from reaching this by accident.
+        return await isInstanceAdmin(key.createdBy);
+      },
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      rl,
+    });
+  }
+
   // ---- AI (online generation — agency-funded, metered, quota-gated) ----
   // Resolves the org+user's month-to-date token usage against the configured caps.
   async function aiQuotaStatus(ctx: ProjectContext): Promise<{
@@ -9947,7 +10135,129 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // between them (permanent project deletion), so anything ever published, previewed or imported
     // grew forever — 1.35 GB on a real instance, almost none of it reachable.
     void reapDerivedStorage().catch((err) => app.log.warn(err, 'derived-storage reap failed'));
+    // ★★ THE PAYMENTS SAFETY NET. Every one of these exists because the module's other invariants
+    // assume it runs — they were written, tested, and then not connected to anything, which is worse
+    // than not having them: the code reads as though an abandoned checkout self-heals.
+    //
+    // Chained, in this order, on purpose: expiring a stale transaction is what releases the stock it
+    // was holding, so the reservation sweep must see those releases or it would zero reservations a
+    // moment before the transaction reaper could account for them.
+    void runPaymentSweeps().catch((err) => app.log.warn(err, 'payments maintenance sweep failed'));
   };
+
+  /**
+   * Housekeeping that keeps the payment invariants true.
+   *
+   * - **Reconciliation** is the safeguard that makes "the webhook is the only truth" survivable: a
+   *   webhook lost to a firewall, an outage or a misconfigured endpoint would otherwise leave a
+   *   genuinely PAID order permanently invisible to the merchant.
+   * - **Expiry** moves an abandoned session (a buyer who simply closed the tab — the most common
+   *   outcome of any checkout page) to `expired` and gives its stock back.
+   * - **The reservation sweep** is the backstop for a hold whose release never happened because the
+   *   process died mid-checkout. Zeroing can only ever FREE stock, so the failure mode is a brief
+   *   oversell window rather than inventory nobody can ever sell.
+   * - **Event reaping** bounds `shop_payment_events`; an expired event cannot be replayed anyway,
+   *   because the transaction's own state machine refuses the transition.
+   */
+  async function runPaymentSweeps(): Promise<void> {
+    if (!gatewayRepo) return; // no encryption key ⇒ no payment surface ⇒ nothing to sweep
+    const now = new Date();
+    const expired = await shopTransactionsRepo.expireStale(now);
+    // A preview rehearsal held nothing, so there is nothing to give back for one.
+    for (const txn of expired.filter((t) => !t.preview)) {
+      await shopStockRepo
+        .release(
+          txn.projectId,
+          txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })),
+        )
+        .catch((err: unknown) => app.log.warn({ err, txnId: txn.id }, 'could not release stock for an expired checkout'));
+    }
+    await shopStockRepo.sweepExpiredReservations(now);
+    // Keep spent event ids for a week: long enough to cover any provider's retry schedule, short
+    // enough that the table stays small.
+    await shopTransactionsRepo.reapEvents(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
+    await reconcileDuePayments(now);
+    // ★ The two order mails. Last in the chain on purpose: reconciliation can turn an unresolved
+    // order into a paid one, and a payment recovered this pass should be notified in the same pass
+    // rather than waiting for the next.
+    await runOrderMail(
+      {
+        transactions: shopTransactionsRepo,
+        globalMailer: mailer,
+        projectMailer,
+        resolveChannel: async (projectId, channelKey) => {
+          const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+          const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
+            | { identity?: { name?: string }; website?: { shop?: { channels?: Array<{ kind: string; key: string; email?: string; subject?: string }> } } }
+            | null;
+          const channel = settings?.website?.shop?.channels?.find((c) => c.kind === 'checkout' && c.key === channelKey);
+          if (!channel?.email) return null;
+          const modes = await instanceSettingsRepo.getFormModes();
+          return {
+            email: channel.email,
+            ...(channel.subject ? { subject: channel.subject } : {}),
+            // Same preference the provisioned order Forms make: the operator's own SMTP first.
+            mode: modes.globalSmtp ? ('globalSmtp' as const) : ('userSmtp' as const),
+            shopName: settings?.identity?.name ?? 'Shop',
+          };
+        },
+        log: { warn: (o, m) => app.log.warn(o, m), info: (o, m) => app.log.info(o, m) },
+      },
+      now,
+    );
+  }
+
+  /**
+   * Asks the provider about transactions whose webhook never arrived.
+   *
+   * Bounded per pass, and each one is independent: a single gateway being down must not stop the
+   * others from being reconciled.
+   */
+  async function reconcileDuePayments(now: Date): Promise<void> {
+    if (!gatewayRepo) return;
+    const due = await shopTransactionsRepo.dueForReconciliation(now, PAYMENT_RECONCILE_AFTER_MS, 25);
+    for (const txn of due) {
+      try {
+        const resolved = await gatewayRepo.resolveCredentials({ userId: 'system', projectId: txn.projectId, role: 'owner' });
+        if (!resolved.ok || resolved.gateway.id !== txn.gatewayId || !resolved.gateway.status) continue;
+        const status = await fetchProviderStatus(resolved.gateway, txn.mode, {
+          cred: resolved.cred,
+          amount: { minor: txn.amounts.totalMinor, decimal: fromMinorUnits(txn.amounts.totalMinor, txn.currency), currency: txn.currency },
+          txn: { id: txn.id, publicToken: txn.publicToken, reference: txn.providerRef ?? txn.id },
+          url: { return: '', cancel: '', webhook: '' },
+          field: {},
+          text: {},
+        }, { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now() });
+        // `recheck` means the provider still has no answer — leave it for the next pass.
+        if (status.kind === 'recheck') continue;
+        if (status.kind === 'paid') {
+          const advanced = await shopTransactionsRepo.advance(txn.id, 'paid', {
+            owesNotification: true,
+            ...(txn.customerEmail ? { customerEmail: txn.customerEmail } : {}),
+          });
+          if (advanced.outcome === 'advanced' && !txn.preview) {
+            await shopStockRepo.commit(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+            app.log.warn({ projectId: txn.projectId, txnId: txn.id }, 'a paid order was recovered by reconciliation — its webhook never arrived');
+          }
+          continue;
+        }
+        // ★ `refunded` here means the provider says the money went back on an order this platform
+        // never recorded as paid. Record the BALANCE alongside the status, or the row reads as fully
+        // refunded while `refundedMinor` still says zero — and every total built from that column
+        // then disagrees with the status beside it. (The ternary this replaces was a no-op.)
+        const advanced = await shopTransactionsRepo.advance(
+          txn.id,
+          status.kind,
+          status.kind === 'refunded' ? { refundedMinor: txn.amounts.totalMinor } : {},
+        );
+        if (advanced.outcome === 'advanced' && !txn.preview) {
+          await shopStockRepo.release(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+        }
+      } catch (err) {
+        app.log.warn({ txnId: txn.id, errMsg: err instanceof Error ? err.message : String(err) }, 'could not reconcile a payment');
+      }
+    }
+  }
 
   if (sweepMs > 0) {
     // Well inside the shortest interval any caller sets, so the two never overlap on the first pass.

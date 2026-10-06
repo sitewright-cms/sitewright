@@ -297,7 +297,7 @@ describe('cart channel order fields (whatsapp/mailto)', () => {
   });
 
   it('renders a collapsible input form for a fielded channel with native required-field validation', () => {
-    expect(CART_JS).toContain('function buildChannelForm(ch,toggleBtn)');
+    expect(CART_JS).toContain('function buildChannelForm(ch,toggleBtn,bare)');
     expect(CART_JS).toContain("'channel-form'");
     expect(CART_JS).toContain("'channel-submit'");
     expect(CART_JS).toContain("'channel-status'");

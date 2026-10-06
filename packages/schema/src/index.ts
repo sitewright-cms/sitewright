@@ -21,6 +21,7 @@ export * from './json-store.js';
 export * from './media.js';
 export * from './page.js';
 export * from './password.js';
+export * from './payments.js';
 export * from './project.js';
 export * from './project-export.js';
 export * from './screenshot-viewports.js';

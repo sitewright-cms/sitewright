@@ -550,13 +550,39 @@ describe('consent-page scope selection', () => {
       url: `/oauth/authorize?${new URLSearchParams({ client_id: CLIENT, redirect_uri: REDIRECT, response_type: 'code', code_challenge: CHALLENGE, code_challenge_method: 'S256', state: 's', ...extra })}`,
     });
 
-  it('pre-checks ALL capabilities when the client requests no scope', async () => {
+  it('pre-checks the DEFAULTABLE capabilities when the client requests no scope', async () => {
     const { session } = await setup();
     const page = await authzGet(session);
     expect(page.statusCode).toBe(200);
     for (const cap of ALL_CAPS) expect(page.body).toContain(`name="scope_${cap}" value="1" checked`);
-    // The two destructive/externally-visible caps (content:delete, deploy) are flagged as elevated.
-    expect(page.body.match(/class="scope-warn"/g) ?? []).toHaveLength(2);
+    // Three elevated caps now: content:delete, deploy, payments:provider:write.
+    expect(page.body.match(/class="scope-warn"/g) ?? []).toHaveLength(3);
+  });
+
+  /**
+   * ★★ `payments:provider:write` IS OFFERED BUT NEVER PRE-CHECKED.
+   *
+   * The all-capabilities default exists so a generic MCP client that names no Sitewright scope does
+   * not dead-end at `invalid_scope` — but it means "Approve" grants whatever is in that list. This
+   * one capability edits INSTANCE-WIDE gateway definitions, i.e. every other tenant's checkout, so
+   * pre-checking it let an invited client acquire it by clicking through a consent screen the way it
+   * is designed to be clicked. It has to be asked for by name.
+   */
+  it('★★ never pre-checks payments:provider:write, and flags it as elevated', async () => {
+    const { session } = await setup();
+    const page = await authzGet(session);
+    expect(page.body).toContain('name="scope_payments:provider:write" value="1">');
+    expect(page.body).not.toContain('name="scope_payments:provider:write" value="1" checked');
+    // Offered, flagged, and adjacent to its own warning.
+    expect(page.body).toMatch(/scope_payments:provider:write[\s\S]{0,200}scope-warn/);
+  });
+
+  it('★ a client that explicitly ASKS for it still gets it pre-checked — it asked', async () => {
+    const { session } = await setup();
+    const page = await authzGet(session, { scope: 'content:read payments:provider:write' });
+    expect(page.body).toContain('name="scope_payments:provider:write" value="1" checked');
+    // And nothing else came along for the ride.
+    expect(page.body).not.toContain('name="scope_deploy" value="1" checked');
   });
 
   it('honors a specific requested scope by pre-checking only those (others unchecked)', async () => {

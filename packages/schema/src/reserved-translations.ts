@@ -83,11 +83,43 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
         default:
           'Prices are indicative. This sends an order request — the seller confirms availability and final price.',
       },
+      {
+        // ★★ A SEPARATE note for a cart that can actually take payment. The line above is true of a
+        // deep-link cart (WhatsApp/email): nothing is charged, and the seller confirms the price. It
+        // is FALSE, and misleading at the worst moment, directly above a Pay button that charges a
+        // card — the amount is server-computed and authoritative, and the buyer confirms it on the
+        // review step before anything is taken.
+        key: 'cart.checkout_note',
+        label: 'Cart note when the cart takes payment',
+        default: 'You’ll see the final total, including any shipping and tax, before you pay.',
+      },
       { key: 'cart.added', label: '“Added” confirmation', default: 'Added' },
       { key: 'cart.empty', label: 'Empty-cart message', default: 'Your cart is empty.' },
       { key: 'cart.total', label: 'Cart total label', default: 'Total' },
       { key: 'cart.clear', label: 'Clear-cart button', default: 'Clear cart' },
       { key: 'cart.sent', label: 'Order-sent confirmation', default: 'Order sent — we will be in touch.' },
+      // ★ CHECKOUT (a processed payment). Separate keys from the deep-link channels: a buyer being
+      // taken to a real payment page needs different words from one whose order is being emailed, and
+      // a merchant must be able to say so in every language they sell in.
+      { key: 'cart.review', label: 'Review-order heading', default: 'Confirm your order' },
+      { key: 'cart.pay', label: 'Pay-now button', default: 'Pay now' },
+      { key: 'cart.back', label: 'Back-from-review button', default: 'Back' },
+      { key: 'cart.subtotal', label: 'Subtotal row', default: 'Subtotal' },
+      { key: 'cart.shipping', label: 'Shipping row', default: 'Shipping' },
+      { key: 'cart.tax', label: 'Tax row', default: 'Tax' },
+      { key: 'cart.checking', label: 'Checking-availability status', default: 'Checking availability…' },
+      { key: 'cart.redirecting', label: 'Redirecting-to-payment status', default: 'Taking you to the payment page…' },
+      // ★ Each refusal says WHAT is wrong. "Something went wrong" is what most shops give a buyer and
+      // it is why they leave; "the mug is out of stock" is a cart they can fix.
+      { key: 'cart.out_of_stock', label: 'Out-of-stock message', default: 'Sorry, that is out of stock.' },
+      { key: 'cart.gone', label: 'Item-no-longer-sold message', default: 'An item in your cart is no longer available.' },
+      { key: 'cart.checkout_failed', label: 'Checkout-unavailable message', default: 'Checkout is unavailable right now. Please try again.' },
+      // THANK-YOU PAGE. Separate from the cart keys because they are read at a different moment, by
+      // someone who has already paid — and the wrong tone there is expensive.
+      { key: 'order.paid', label: 'Payment-confirmed message', default: 'Thank you — your payment is confirmed.' },
+      { key: 'order.failed', label: 'Payment-failed message', default: 'That payment did not go through. Nothing has been charged.' },
+      { key: 'order.unknown', label: 'Payment-pending message', default: 'We have not had confirmation yet. We will email you as soon as we do.' },
+      { key: 'order.keep_shopping', label: 'Continue-shopping link', default: 'Continue shopping' },
       { key: 'cart.order_lead', label: 'Order message lead-in', default: 'I’d like to order:' },
       { key: 'cart.currency_symbol', label: 'Currency symbol', default: '$' },
       { key: 'cart.currency_code', label: 'Currency code (ISO 4217)', default: 'USD' },

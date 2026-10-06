@@ -16,6 +16,10 @@ import {
   oauthRefreshTokens,
   projectMembers,
   projects,
+  shopCatalog,
+  shopStock,
+  shopTransactions,
+  shopFiltered,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError } from './context.js';
 
@@ -189,6 +193,13 @@ export class ProjectRepository {
       await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.projectId, id));
       await tx.delete(projectMembers).where(eq(projectMembers.projectId, id));
       await tx.delete(invites).where(eq(invites.projectId, id));
+      // Shop payments. `shop_payment_events` is deliberately absent: it is keyed by GATEWAY and
+      // event id with no FK to projects (event ids are only unique within a provider), and it is
+      // swept by age instead.
+      await tx.delete(shopCatalog).where(eq(shopCatalog.projectId, id));
+      await tx.delete(shopStock).where(eq(shopStock.projectId, id));
+      await tx.delete(shopTransactions).where(eq(shopTransactions.projectId, id));
+      await tx.delete(shopFiltered).where(eq(shopFiltered.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });
   }

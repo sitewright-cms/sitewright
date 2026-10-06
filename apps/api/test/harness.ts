@@ -35,6 +35,7 @@ export interface TestClient {
   get(url: string): Promise<Resp>;
   post(url: string, payload?: unknown): Promise<Resp>;
   put(url: string, payload?: unknown): Promise<Resp>;
+  patch(url: string, payload?: unknown): Promise<Resp>;
   del(url: string): Promise<Resp>;
   /**
    * Creates a project owned by this client; returns its id. By default it also configures a `local`
@@ -102,6 +103,7 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
       get: (url) => inject({ method: 'GET', url }),
       post: (url, payload) => inject({ method: 'POST', url, payload: payload as InjectOptions['payload'] }),
       put: (url, payload) => inject({ method: 'PUT', url, payload: payload as InjectOptions['payload'] }),
+      patch: (url, payload) => inject({ method: 'PATCH', url, payload: payload as InjectOptions['payload'] }),
       del: (url) => inject({ method: 'DELETE', url }),
       async createProject(name = 'Site', slug = `s-${randomUUID().slice(0, 8)}`, opts = {}) {
         // Project creation is agency-staff-only now (admin/developer). Tests just want a project, so

@@ -19,7 +19,11 @@ const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   // ordinary form pipeline — stored in the inbox, emailed to the form's recipient, and behind the
   // same honeypot, interaction gate, proof-of-work and rate limits as a contact form.
   { value: 'mailto', label: 'Email — opens buyer’s mail app (mailto)' },
-  { value: 'payment', label: 'Payment link' },
+  // ★ These two must never read alike. `payment` opens a link and the platform learns nothing;
+  // `checkout` takes an actual payment, records a transaction and notifies the shop and the buyer.
+  // Two options that both say "payment" is a support ticket waiting to happen.
+  { value: 'payment', label: 'Payment link — opens a URL, nothing is recorded' },
+  { value: 'checkout', label: 'Checkout — a real payment, recorded by the platform' },
   // Still called a FORM, on purpose: orders land in the Submissions inbox, and naming it anything
   // else would hide where to look for them.
   { value: 'form', label: 'Order form — emailed by the server (recommended)' },
@@ -147,7 +151,22 @@ function OrderFieldsEditor({
  * Translations & Labels under `shop.<key>`), and that kind's config fields. whatsapp/mailto rows also gain
  * an Order-fields sub-editor. Rows are keyed on a stable id so add/remove animate cleanly.
  */
-export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[]; onChange: (rows: KeyedShopChannel[]) => void }) {
+/** A gateway this project may bind to — public metadata only, from /projects/:id/payment-gateways. */
+export interface AvailableGateway {
+  id: string;
+  name: string;
+}
+
+export function ShopChannelsEditor({
+  rows,
+  onChange,
+  gateways = [],
+}: {
+  rows: KeyedShopChannel[];
+  onChange: (rows: KeyedShopChannel[]) => void;
+  /** Gateways the instance has enabled AND proven. Empty is a normal state, and the row says so. */
+  gateways?: AvailableGateway[];
+}) {
   const set = (id: string, patch: Partial<KeyedShopChannel>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const { dragId, dragProps, move } = useReorder(rows, onChange);
   return (
@@ -226,6 +245,77 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                   </select>
                 </>
               )}
+              {r.kind === 'checkout' && (
+                <>
+                  <select
+                    aria-label={`Channel ${i + 1} payment gateway`}
+                    className={glassInput}
+                    value={r.gatewayId}
+                    onChange={(e) => set(r.id, { gatewayId: e.target.value })}
+                  >
+                    <option value="">Choose a payment gateway…</option>
+                    {gateways.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label={`Channel ${i + 1} order email`}
+                    className={glassInput}
+                    type="email"
+                    value={r.email}
+                    placeholder="orders@acme.com"
+                    onChange={(e) => set(r.id, { email: e.target.value })}
+                  />
+                  <input
+                    aria-label={`Channel ${i + 1} return path`}
+                    className={glassInput}
+                    value={r.returnPath}
+                    placeholder="/thank-you/ (where the buyer lands after paying)"
+                    onChange={(e) => set(r.id, { returnPath: e.target.value })}
+                  />
+                  <input
+                    aria-label={`Channel ${i + 1} cancel path`}
+                    className={glassInput}
+                    value={r.cancelPath}
+                    placeholder="/cart/ (where they land if they back out)"
+                    onChange={(e) => set(r.id, { cancelPath: e.target.value })}
+                  />
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className={toggleInput}
+                      aria-label={`Channel ${i + 1} require captcha`}
+                      checked={r.captcha}
+                      onChange={(e) => set(r.id, { captcha: e.target.checked })}
+                    />
+                    Require a captcha
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className={toggleInput}
+                      aria-label={`Channel ${i + 1} require proof of work`}
+                      checked={r.pow}
+                      onChange={(e) => set(r.id, { pow: e.target.checked })}
+                    />
+                    Require proof of work
+                  </label>
+                  {gateways.length === 0 && (
+                    <p className="sm:col-span-2 rounded-md bg-amber-50 dark:bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+                      No payment gateway is available to this project yet. An instance admin enables one, and
+                      you then add this project's own keys under <strong>Payments</strong> — until both are
+                      done, a checkout button cannot take money.
+                    </p>
+                  )}
+                  <p className="sm:col-span-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    The buyer pays on the provider's own page and comes back to your return path. The amount is
+                    recomputed on the server from your published prices — a tampered cart cannot change it — and
+                    the order is only recorded once the provider confirms the payment.
+                  </p>
+                </>
+              )}
               {r.kind === 'form' && (
                 <>
                   <input
@@ -260,14 +350,14 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                 </>
               )}
             </div>
-            {(r.kind === 'whatsapp' || r.kind === 'mailto' || r.kind === 'form') && (
+            {r.kind !== 'payment' && (
               <OrderFieldsEditor
                 fields={r.fields}
                 onChange={(fields) => set(r.id, { fields })}
                 channelIndex={i}
                 // A deep-link channel packs its answers into a URL, which must stay short; a posted
                 // order form has no such limit, so it may ask for more.
-                max={r.kind === 'form' ? SHOP_MAX_ORDER_FIELDS : SHOP_MAX_CHANNEL_FIELDS}
+                max={r.kind === 'form' || r.kind === 'checkout' ? SHOP_MAX_ORDER_FIELDS : SHOP_MAX_CHANNEL_FIELDS}
               />
             )}
             </div>

@@ -49,6 +49,85 @@ export interface GlobalSnippet {
 }
 
 export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
+  // ── Shop (the cart drawer, authorable) ──────────────────────────────────────────────────────────
+  {
+    name: 'cart-drawer',
+    label: 'Shop — cart drawer (the platform default, forkable)',
+    category: 'shop',
+    description:
+      'The whole cart drawer as MARKUP: copy it into your project to restyle or restructure it. The runtime binds to the data-sw-part names rather than building anything, so what you write is what ships.',
+    demonstrates: ['sw-cart', 'data-sw-part', 'data-sw-field', 'data-sw-action', 'line-template'],
+    // ★ THIS IS THE FORK TARGET. `{{sw-cart}}` with no children builds the platform drawer in JS;
+    // drop this inside it instead and the runtime BINDS to these elements and builds nothing — so
+    // every tag, class and ordering below is yours to change.
+    //
+    // ★ The three parts the runtime cannot do without are `drawer`, `items` and `line-template`.
+    // Delete any of the others and that feature is simply absent; delete one of those three and the
+    // runtime warns in the console rather than rendering a drawer that silently does nothing.
+    //
+    // ★ `line-template` is an inert <template> cloned once per cart line. Its `data-sw-field`
+    // elements are filled with textContent only — never HTML — which is what lets the line be fully
+    // author-controlled without becoming an injection sink.
+    source: `{{#sw-cart}}
+  <button type="button" data-sw-part="toggle" class="btn btn-primary">
+    {{sw-icon "shopping-cart"}}
+    <span>{{sw-translate "cart.toggle" default="Shopping Cart"}}</span>
+    <span data-sw-part="count" class="badge badge-sm" hidden>0</span>
+  </button>
+
+  <dialog data-sw-part="drawer" class="sw-cart-drawer" aria-label="{{sw-translate "cart.title" default="Your cart"}}">
+    <div class="flex items-center justify-between p-4 border-b">
+      <div class="font-semibold">{{sw-translate "cart.title" default="Your cart"}}</div>
+      <button type="button" data-sw-action="close" class="btn btn-ghost btn-sm" aria-label="{{sw-translate "system.close" default="Close"}}">
+        {{sw-icon "x"}}
+      </button>
+    </div>
+
+    <p data-sw-part="empty" class="p-4 opacity-70">{{sw-translate "cart.empty" default="Your cart is empty."}}</p>
+
+    <ul data-sw-part="items" class="flex-1 overflow-y-auto p-4 space-y-3"></ul>
+
+    <template data-sw-part="line-template">
+      <li class="flex gap-3 items-start">
+        <img data-sw-field="image" alt="" class="w-14 h-14 object-cover rounded">
+        <div class="flex-1 min-w-0">
+          <div data-sw-field="name" class="font-medium truncate"></div>
+          <div class="flex items-center gap-2 mt-1">
+            <span data-sw-field="price" class="opacity-70 text-sm"></span>
+            <span class="join">
+              <button type="button" data-sw-action="dec" class="btn btn-xs join-item" aria-label="Decrease quantity">&minus;</button>
+              <output data-sw-field="qty" class="btn btn-xs join-item no-animation pointer-events-none"></output>
+              <button type="button" data-sw-action="inc" class="btn btn-xs join-item" aria-label="Increase quantity">+</button>
+            </span>
+            <button type="button" data-sw-action="remove" class="btn btn-ghost btn-xs text-error" aria-label="Remove">{{sw-icon "trash-2"}}</button>
+            <span data-sw-field="subtotal" class="ms-auto font-semibold"></span>
+          </div>
+        </div>
+      </li>
+    </template>
+
+    <div data-sw-part="foot" class="p-4 border-t space-y-3">
+      <div class="flex justify-between font-semibold">
+        <span>{{sw-translate "cart.total" default="Total"}}</span>
+        <span data-sw-part="total"></span>
+      </div>
+      {{!-- One button per configured channel. The key must match the channel key in Shop settings;
+            an unknown key is refused by the runtime and marked data-sw-unconfigured. --}}
+      {{#each website.shop.channels}}
+        <button type="button" data-sw-action="channel:{{key}}" class="btn btn-primary btn-block">
+          {{sw-translate (sw-concat "shop." key) default=key}}
+        </button>
+      {{/each}}
+      <button type="button" data-sw-action="clear" class="btn btn-ghost btn-sm btn-block">
+        {{sw-translate "cart.clear" default="Clear cart"}}
+      </button>
+    </div>
+
+    <p data-sw-part="sent-msg" class="p-4">{{sw-translate "cart.sent" default="Thank you — your order has been sent."}}</p>
+  </dialog>
+{{/sw-cart}}`,
+  },
+
   // ── Sliders (data-sw-component="carousel") ──────────────────────────────────────────────────────
   {
     name: 'slider-fullscreen',

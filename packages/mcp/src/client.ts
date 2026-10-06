@@ -7,7 +7,25 @@
 
 import type { ScreenshotViewportName } from '@sitewright/schema';
 
-export type Capability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
+/**
+ * Bearer-token capabilities, as the MCP bridge knows them.
+ *
+ * ★ A hand-maintained MIRROR of `API_KEY_CAPABILITIES` in apps/api/src/db/schema.ts, which is the
+ * single source of truth. They have to be kept in step by hand because this package must not depend
+ * on the API's internals — so when a capability is added there, add it here too, or the bridge will
+ * refuse a scope the server happily issues.
+ *
+ * `payments:provider:write` authors GATEWAY DEFINITIONS. It deliberately does NOT cover a project's
+ * own payment credentials, which are session-only: an agent that can mint a live key into a project
+ * can redirect that project's revenue.
+ */
+export type Capability =
+  | 'content:read'
+  | 'content:write'
+  | 'content:delete'
+  | 'publish'
+  | 'deploy'
+  | 'payments:provider:write';
 
 export interface Scope {
   projectId: string;

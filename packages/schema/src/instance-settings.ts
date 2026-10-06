@@ -385,6 +385,14 @@ export const InstanceSettingsStoredSchema = z.object({
   ai: AiStoredSchema.optional(),
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
   /**
+   * Whether this instance permits PROCESSED PAYMENTS at all.
+   *
+   * ★ Off by default, and the `formModes` precedent: an operator who does not want a payment surface
+   * on their box keeps it off, and an instance that merely upgraded gains nothing it has to think
+   * about. When off, the public `/pay/...` endpoints refuse and no gateway can be bound.
+   */
+  paymentsEnabled: z.boolean().optional(),
+  /**
    * The session-cookie signing key (hex). Auto-generated + persisted on first boot when no
    * `COOKIE_SECRET` env is set, and live-rotatable by an admin. INTERNAL-only: never accepted via the
    * public Input schema, and stripped from the masked public view (`maskInstanceSettings` is a
@@ -532,6 +540,7 @@ export const InstanceSettingsInputSchema = z.object({
   // So the patch shape is derived from FormModesSchema's keys as plain optional booleans — no
   // defaults to leak, and it picks up any mode added later instead of drifting.
   formModes: FormModesPatchSchema.optional(),
+  paymentsEnabled: z.boolean().optional(),
   // Agent instructions override: a string sets it, `null` clears it (revert to the built-in
   // default), and an absent (undefined) value leaves the stored override unchanged.
   agentInstructions: AgentInstructionsSchema.nullable().optional(),
@@ -631,6 +640,8 @@ export interface InstanceSettingsPublic {
   stock?: StockKeysPublic;
   ai?: AiPublic;
   formModes: FormModes;
+  /** Whether the instance permits processed payments (see paymentsEnabled above). */
+  paymentsEnabled: boolean;
   /** The admin override for agent instructions (NOT a secret), or absent when using the default. */
   agentInstructions?: string;
   /** The agent session cap in hours, or absent when using the 8h default. */
@@ -683,7 +694,7 @@ export function maskOidcProvider(p: OidcProviderStored): OidcProviderPublic {
 
 /** Projects the persisted document to its masked public view (no secrets). */
 export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSettingsPublic {
-  const result: InstanceSettingsPublic = { formModes: stored.formModes };
+  const result: InstanceSettingsPublic = { formModes: stored.formModes, paymentsEnabled: stored.paymentsEnabled === true };
   if (stored.smtp) result.smtp = maskSmtp(stored.smtp);
   if (stored.stock) {
     result.stock = {

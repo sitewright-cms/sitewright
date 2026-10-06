@@ -279,7 +279,15 @@ function formApiScript(api: { base: string; project: string; preview?: boolean }
   const payload = Buffer.from(JSON.stringify({ b: api.base.replace(/\/+$/, ''), p: api.project, v: api.preview ? 1 : 0 }), 'utf8').toString('base64');
   return (
     `<script data-sw-f>(function(){try{var o=JSON.parse(atob(${JSON.stringify(payload)}));` +
-    `window.__swf=function(i){return o.b+"/"+"f"+"/"+o.p+"/"+i+(o.v?"/preview":"")}}catch(e){}})()</script>`
+    `window.__swf=function(i){return o.b+"/"+"f"+"/"+o.p+"/"+i+(o.v?"/preview":"")};` +
+    // ★ The PAY endpoint rides in the SAME blob, for the same reason the form one does: a checkout
+    // URL sitting in the markup is a URL a harvester can POST to without reading anything. The
+    // preview flag becomes a query parameter rather than a path segment, because a preview checkout
+    // is the same endpoint in a different MODE — it prices against the draft snapshot, forces test
+    // credentials and touches no stock — not a separate dry-run route like the form one.
+    `window.__swp=function(k){return o.b+"/"+"p"+"ay"+"/"+o.p+"/"+k+(o.v?"?preview=1":"")};` +
+    `window.__swt=function(t){return o.b+"/"+"p"+"ay"+"/"+o.p+"/txn/"+encodeURIComponent(t)}` +
+    `}catch(e){}})()</script>`
   );
 }
 

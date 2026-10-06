@@ -44,6 +44,38 @@ export interface TranslationRow {
  * the ones relevant to `kind` are surfaced + persisted (the rest stay blank). Mirrors the schema's
  * `ShopChannel` discriminated union (whatsapp/mailto/payment/form).
  */
+/**
+ * Minor units → the major-unit string a merchant types.
+ *
+ * ★ The editor speaks in major units throughout. The schema stores integer minor units because that
+ * is what a payment provider charges, but a merchant setting a shipping fee should never have to do
+ * that arithmetic — and a field that silently wanted cents would produce a €499 delivery charge.
+ */
+function minorToMajor(minor: number, currencyCode?: string): string {
+  const places = minorPlaces(currencyCode);
+  return (minor / 10 ** places).toFixed(places);
+}
+
+/** Major-unit string → integer minor units, or undefined when blank/unparseable. */
+export function majorToMinor(value: string, currencyCode?: string): number | undefined {
+  const raw = value.trim();
+  if (raw === '') return undefined;
+  if (!/^\d+(\.\d+)?$/.test(raw)) return undefined;
+  const places = minorPlaces(currencyCode);
+  // Rounded rather than truncated: a merchant typing 4.999 means five, not four-ninety-nine.
+  return Math.round(Number(raw) * 10 ** places);
+}
+
+/** Decimal places for a currency. Mirrors the ISO exponent the server charges in. */
+export function minorPlaces(currencyCode?: string): number {
+  const zero = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK', 'XOF', 'XAF', 'XPF', 'BIF', 'DJF', 'GNF', 'KMF', 'PYG', 'RWF', 'UGX', 'VUV']);
+  const three = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
+  const c = (currencyCode ?? '').toUpperCase();
+  if (zero.has(c)) return 0;
+  if (three.has(c)) return 3;
+  return 2;
+}
+
 export interface KeyedShopChannel {
   id: string;
   kind: ShopChannel['kind'];
@@ -55,6 +87,13 @@ export interface KeyedShopChannel {
   subject: string; // mailto
   urlTemplate: string; // payment
   provider: string; // payment ('' | paypal | stripe | custom)
+  /** checkout: which stored gateway processes it. Resolved server-side; never emitted to the page. */
+  gatewayId: string;
+  /** checkout: where the buyer lands after paying / after abandoning. Same-site PATHS, never URLs. */
+  returnPath: string;
+  cancelPath: string;
+  /** checkout: require a proof-of-work solve, as a contact form can. */
+  pow: boolean;
   /** form: require a captcha solve, exactly as a contact form can. */
   captcha: boolean;
   /** Buyer-input fields collected in the cart. whatsapp/mailto append them to the deep link; the
@@ -187,6 +226,17 @@ export interface SettingsForm {
   shopEnabled: boolean;
   shopCurrencyPosition: 'before' | 'after';
   shopCurrencyDecimals: string;
+  /** ISO-4217 SETTLEMENT currency — required once a checkout channel exists. Distinct from the
+   *  translatable display code; see the schema note on ShopCurrencySchema.code. */
+  shopCurrencyCode: string;
+  /** Shipping, in MAJOR units as typed; converted on save. Blank = no shipping charge. */
+  shopShippingFlat: string;
+  shopShippingFreeOver: string;
+  /** Tax as a percentage as typed (19 = 19%); converted to basis points on save. Blank = no tax line. */
+  shopTaxRate: string;
+  shopTaxMode: 'inclusive' | 'exclusive';
+  /** False ships NO platform cart CSS — the escape hatch for a fully-forked drawer. */
+  shopPlatformCartStyles: boolean;
   shopChannels: KeyedShopChannel[];
   // CONSENT MANAGER (website.consent): preserved verbatim through the form so a settings save never drops
   // it. PR2 ships the engine; the dedicated config panel + enable toggle land in a later PR (set via API/MCP
@@ -365,6 +415,14 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
     shopCurrencyDecimals: w?.shop?.currency?.decimals != null ? String(w.shop.currency.decimals) : '2',
+    shopCurrencyCode: w?.shop?.currency?.code ?? '',
+    // Shown in MAJOR units because that is how a merchant thinks about a shipping charge; the minor
+    // units the schema stores are an implementation detail they should never have to do arithmetic in.
+    shopShippingFlat: w?.shop?.pricing?.shipping?.flatMinor != null ? minorToMajor(w.shop.pricing.shipping.flatMinor, w?.shop?.currency?.code) : '',
+    shopShippingFreeOver: w?.shop?.pricing?.shipping?.freeOverMinor != null ? minorToMajor(w.shop.pricing.shipping.freeOverMinor, w?.shop?.currency?.code) : '',
+    shopTaxRate: w?.shop?.pricing?.tax?.rateBp != null ? String(w.shop.pricing.tax.rateBp / 100) : '',
+    shopTaxMode: w?.shop?.pricing?.tax?.mode ?? 'inclusive',
+    shopPlatformCartStyles: w?.shop?.platformCartStyles !== false,
     shopChannels: (w?.shop?.channels ?? []).map((c) => ({
       id: rowId(),
       kind: c.kind,
@@ -372,12 +430,17 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
       number: c.kind === 'whatsapp' ? c.number : '',
       intro: c.kind === 'whatsapp' ? c.intro ?? '' : '',
       // `email`/`subject` are shared by mailto (a deep link) and form (a server-side send).
-      email: c.kind === 'mailto' || c.kind === 'form' ? c.email ?? '' : '',
-      subject: c.kind === 'mailto' || c.kind === 'form' ? c.subject ?? '' : '',
+      email: c.kind === 'mailto' || c.kind === 'form' || c.kind === 'checkout' ? c.email ?? '' : '',
+      subject: c.kind === 'mailto' || c.kind === 'form' || c.kind === 'checkout' ? c.subject ?? '' : '',
       urlTemplate: c.kind === 'payment' ? c.urlTemplate : '',
       provider: c.kind === 'payment' ? c.provider ?? '' : '',
-      captcha: c.kind === 'form' ? c.captcha === true : false,
-      fields: c.kind === 'whatsapp' || c.kind === 'mailto' || c.kind === 'form' ? (c.fields ?? []).map(shopFieldToForm) : [],
+      gatewayId: c.kind === 'checkout' ? c.gatewayId : '',
+      returnPath: c.kind === 'checkout' ? c.returnPath ?? '' : '',
+      cancelPath: c.kind === 'checkout' ? c.cancelPath ?? '' : '',
+      pow: c.kind === 'checkout' ? c.pow === true : false,
+      // `email`/`subject`/`captcha` are shared by mailto, form and checkout.
+      captcha: c.kind === 'form' || c.kind === 'checkout' ? c.captcha === true : false,
+      fields: c.kind !== 'payment' ? (c.fields ?? []).map(shopFieldToForm) : [],
     })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
@@ -430,6 +493,27 @@ function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
           ...(provider === 'paypal' || provider === 'custom' ? { provider } : {}),
         }
       : null;
+  }
+  if (c.kind === 'checkout') {
+    // A CHECKOUT needs a gateway and an address: the gateway is what takes the money, the address is
+    // where the order lands. Without either it is a button that cannot work, so the row is dropped
+    // rather than persisted as a dead checkout — which looks identical to a working one.
+    const gatewayId = c.gatewayId.trim();
+    const email = c.email.trim();
+    if (!gatewayId || !email) return null;
+    const fields = formFieldsToShop(c.fields);
+    return {
+      kind: 'checkout',
+      key,
+      gatewayId,
+      email,
+      ...(c.subject.trim() ? { subject: c.subject.trim() } : {}),
+      ...(c.returnPath.trim() ? { returnPath: c.returnPath.trim() } : {}),
+      ...(c.cancelPath.trim() ? { cancelPath: c.cancelPath.trim() } : {}),
+      captcha: c.captcha === true,
+      pow: c.pow === true,
+      ...(fields.length ? { fields } : {}),
+    };
   }
   // FORM: an address is what makes it dispatchable now. A row that still carries only a legacy
   // formId is preserved rather than dropped — dropping it would silently delete a working channel
@@ -570,8 +654,24 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // mini shop: currency FORMATTING (symbol/code are translatable → catalog, not here) + channels. Emit
   // `currency` only when it deviates from the schema defaults (position 'before', decimals 2) to stay minimal.
   const shopDecimals = decimalsOf(form.shopCurrencyDecimals);
+  const shopCode = form.shopCurrencyCode.trim().toUpperCase();
   const shopCurrency: ShopCurrency | undefined =
-    form.shopCurrencyPosition !== 'before' || shopDecimals !== 2 ? { position: form.shopCurrencyPosition, decimals: shopDecimals } : undefined;
+    form.shopCurrencyPosition !== 'before' || shopDecimals !== 2 || shopCode
+      ? { position: form.shopCurrencyPosition, decimals: shopDecimals, ...(shopCode ? { code: shopCode } : {}) }
+      : undefined;
+  // Shipping + tax, converted from what the merchant typed. Each half is emitted only when it has a
+  // value, so an untouched shop stays byte-identical.
+  const flatMinor = majorToMinor(form.shopShippingFlat, shopCode);
+  const freeOverMinor = majorToMinor(form.shopShippingFreeOver, shopCode);
+  const taxPercent = form.shopTaxRate.trim();
+  const rateBp = /^\d+(\.\d+)?$/.test(taxPercent) ? Math.round(Number(taxPercent) * 100) : undefined;
+  const shopPricing =
+    flatMinor !== undefined || rateBp !== undefined
+      ? {
+          ...(flatMinor !== undefined ? { shipping: { flatMinor, ...(freeOverMinor !== undefined ? { freeOverMinor } : {}) } } : {}),
+          ...(rateBp !== undefined ? { tax: { rateBp, mode: form.shopTaxMode } } : {}),
+        }
+      : undefined;
   const shopChannels = form.shopChannels
     .map(formChannelToShop)
     .filter((c): c is ShopChannel => c !== null);
@@ -579,10 +679,14 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // schema default), so a fresh/disabled shop stays minimal. The object is built when enabled OR any
   // config is present (so toggling off keeps the config but drops `enabled` → the cart is gated off).
   const shop =
-    form.shopEnabled || shopCurrency || shopChannels.length
+    form.shopEnabled || shopCurrency || shopPricing || shopChannels.length || !form.shopPlatformCartStyles
       ? {
           ...(form.shopEnabled ? { enabled: true } : {}),
           ...(shopCurrency ? { currency: shopCurrency } : {}),
+          ...(shopPricing ? { pricing: shopPricing } : {}),
+          // Emitted only when turned OFF: `true` is the default, and writing it would churn the
+          // settings of every project that never touched the switch.
+          ...(form.shopPlatformCartStyles ? {} : { platformCartStyles: false }),
           ...(shopChannels.length ? { channels: shopChannels } : {}),
         }
       : undefined;
@@ -715,6 +819,10 @@ export const newShopChannel = (): KeyedShopChannel => ({
   subject: '',
   urlTemplate: '',
   provider: '',
+  gatewayId: '',
+  returnPath: '',
+  cancelPath: '',
+  pow: false,
   captcha: false,
   fields: [],
 });
@@ -732,8 +840,12 @@ export const newConsentIntegration = (): ConsentIntegration => ({ id: `int-${row
 const SHOP_KIND_LABEL: Record<KeyedShopChannel['kind'], string> = {
   whatsapp: 'WhatsApp button',
   mailto: 'Email button',
-  payment: 'Payment button',
+  // ★ These two must never read alike. `payment` opens a deep link and the platform learns nothing;
+  // `checkout` takes an actual payment, records a transaction and notifies the shop. Two options
+  // that both say "payment" is a support ticket waiting to happen.
+  payment: 'Payment link button (no processing)',
   form: 'Order-form button',
+  checkout: 'Checkout button (processed payment)',
 };
 
 /**

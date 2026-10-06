@@ -9,6 +9,114 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.58.0] — 2026-10-06
+
+### Added
+
+- **Processed payments for the shop — the server, not the cart, decides what you are charged.** The
+  mini-shop could only ever hand a cart to a deep link or an order form, because its prices live in
+  the markup and are client-tamperable by design: fine for an order inquiry, unusable as a charge
+  amount. A new `checkout` shop channel takes a real payment instead. The browser posts only
+  `{sku, qty}` — there is nowhere in the request to put a price — and the server re-prices from a
+  **catalog snapshot** harvested at publish time from the rendered HTML, so a tampered cart can at
+  worst order a different quantity of a real product at the real price. One consequence is worth
+  stating plainly: a price change becomes chargeable only after a republish.
+
+  Two things stop a publish rather than being resolved quietly: a price that cannot be represented
+  exactly in the currency's minor units (rounding it would charge an amount appearing nowhere in the
+  project), and one SKU carrying two different prices (which would make the authoritative price
+  depend on the order pages happened to render in). Both only *fail* a publish once a checkout
+  channel exists — for a mini-shop they are warnings, because those prices were never authoritative.
+
+- **Payment gateways live in the database, not in this repo.** An instance admin authors a gateway as
+  a declarative record — request templates, which response field holds the session id, which webhook
+  scheme to use — and an MCP agent holding the new opt-in `payments:provider:write` capability can
+  write one too. Stripe, PayPal and Mollie ship as built-in, read-only records that can be **forked**
+  and edited, the same model the global snippet library already uses.
+
+  The host keeps everything that can be lied about. A record never holds a credential (it writes
+  `${CRED:key}` placeholders the host substitutes), never verifies a signature (it *names* a scheme
+  the host implements — a record allowed to verify would simply return true), and never decides where
+  a buyer is sent: the admin-approved origin allowlist is a separate field, and the provider's own
+  returned checkout URL is re-checked against it, so the author of a gateway is not the approver of
+  its destinations.
+
+- **Each project supplies its own keys.** A gateway is defined once instance-wide; every project
+  stores its own credentials, encrypted, **keyed by mode** — because a project holds a test key and a
+  live key at the same time, and a draft preview is forced to test mode. A gateway cannot take live
+  money until a test-mode checkout has actually succeeded against it, and editing a gateway clears
+  that proof, since a template change can break a request shape in a way only a real round trip
+  reveals.
+
+- **Stock that survives a republish.** `stock=` on an add-to-cart button is the quantity *you*
+  declare; the platform owns the count sold. A publish rewrites availability only when you actually
+  change that number, so an unrelated republish can never silently restock everything that had sold
+  out. Units are held while a buyer is away on the provider's page, so two people cannot both be sold
+  the last one, and a hold is given back if the provider never opens a session.
+
+- **A verified webhook is the only thing that resolves a payment.** The buyer's return from the
+  provider is a navigation they can forge, so the thank-you page reads its status from the platform
+  instead. A replayed webhook changes nothing, a webhook whose amount disagrees with the order is
+  refused and flagged rather than believed, and a payment whose webhook never arrives at all is
+  recovered by a reconciliation pass that asks the provider directly — the safeguard that makes
+  "the webhook is the truth" survivable when a firewall or an outage eats one.
+
+- **Refunds, full or partial.** The gateway records carried refund templates and the status machine
+  had `paid → refunded | partially_refunded`, but nothing drove them. An operator can now refund an
+  order from the inbox, or `POST /projects/<id>/transactions/<txn>/refund` — session-only, like the
+  credential routes, because `content:write` is handed to agents routinely and money leaving a
+  merchant's account is not an agent capability at any role. The amount defaults to everything still
+  outstanding, and the order settles from the *balance*, so two partials that happen to close it out
+  settle as fully refunded without anyone having to notice.
+
+  The claim is taken **before** the provider is called, as a conditional `UPDATE` whose `WHERE`
+  carries `refunded_minor + amount <= total_minor`: refund-then-record has a window where a crash
+  leaves the customer paid and the platform believing otherwise, so the shop pays twice, while
+  claim-then-refund fails the other way and merely refuses a further refund. A failure is rolled back
+  only when the provider *definitely* refused (nothing sent, or a 4xx); a timeout or a 5xx may mean
+  it happened, so the claim stands and the operator is told to go and look.
+
+  Restocking is an explicit, unticked checkbox: a refund says money went back, not that a sellable
+  item did. A `refunded` webhook — a refund issued in the provider's own dashboard — now honours the
+  amount it reports, instead of marking an order fully refunded because €5 of €50 came back.
+
+- The orders inbox had its own currency table that knew five zero-decimal currencies and nothing
+  about the three-decimal ones, so a KWD order rendered ten times its value. It now uses the shared
+  ISO exponent — the same mistake the thank-you page had, which is the argument for one table.
+
+- The cart drawer's disclaimer now matches what its button does. "Prices are indicative — the seller
+  confirms availability and final price" is true of a WhatsApp or email cart and false above a Pay
+  button that charges a card, so a cart carrying a `checkout` channel uses `cart.checkout_note`
+  instead ("You'll see the final total, including any shipping and tax, before you pay").
+
+- Payments are **off by default** on every instance (`paymentsEnabled`), and the endpoints are not
+  registered at all without an encryption key.
+
+### Security
+
+- **A gateway dry run can no longer spend another project's credentials.** The verify endpoint took
+  the project id from the request *body* and built a `role: 'owner'` context from it, so any caller
+  authorised to author gateways could name any tenant's project and have the server decrypt that
+  tenant's stored secret and spend it on a real request to their connected provider account — and
+  tell them apart by the differentiated refusals. It is now `POST /projects/:projectId/payment/verify`,
+  with the project resolved through the ordinary session membership check. Unreleased in 0.57.0, so
+  the old path never shipped.
+
+- **Five dependency advisories cleared** — 2 critical, 2 high, 1 moderate, all fixed rather than
+  accepted. `proxy-addr` (IP spoofing via IPv4-mapped IPv6, reachable because the platform makes
+  trust decisions from client IPs), `shell-quote` (`quote()` command injection — the previous pin had
+  been outgrown and our own tree had floated into the new affected range), `@fastify/busboy` (CRLF
+  injection via a multipart filename, and every upload goes through it), `sharp` (a librsvg CVE), and
+  `source-map-js` (toolchain only, pinned anyway).
+
+- **`payments:provider:write` now requires the key's owner to be an instance admin.** The capability
+  alone passed the gate, while an API key is bound to one project and may be minted by that project's
+  owner at any role — and the OAuth consent screen pre-checks every capability for a client that
+  requests no scope, with this one unflagged. An invited client could acquire platform-wide control
+  of every tenant's gateway configuration by approving an ordinary MCP connection. The capability is
+  also now excluded from the pre-checked default and marked elevated on the consent page.
+
+
 ## [0.57.0] — 2026-10-02
 
 ### Added
@@ -4208,7 +4316,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.57.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.58.0...HEAD
+[0.58.0]: https://github.com/sitewright-cms/sitewright/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...v0.57.0
 [0.56.0]: https://github.com/sitewright-cms/sitewright/compare/v0.55.0...v0.56.0
 [0.55.0]: https://github.com/sitewright-cms/sitewright/compare/v0.54.0...v0.55.0

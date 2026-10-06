@@ -10,7 +10,7 @@ import { newId, isShortAssetId } from '../id.js';
 import { readTemplateConfig, readTemplateImage } from '../imagemap-assets.js';
 import { readTexture } from '../textures.js';
 import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -235,6 +235,13 @@ import { buildEffectForks } from './effect-forks.js';
 import { buttonPreviewCss } from './button-preview.js';
 import { tailwindReferencePayload } from './tailwind-reference.js';
 import { registerFormRoutes } from './form-routes.js';
+import { registerPaymentRoutes } from './payment-routes.js';
+import { GatewayRepository } from '../payments/gateways.js';
+import { ShopTransactionRepository } from '../repo/shop-transactions.js';
+import { ShopStockRepository } from '../repo/shop-stock.js';
+import { shopCatalog as shopCatalogTable } from '../db/schema.js';
+import { reconcileStock } from '../publish/shop-catalog.js';
+import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
 import type { DeliveryRunResult } from '../mail/delivery-runner.js';
@@ -1444,6 +1451,14 @@ export interface AppOptions {
    * Unset → derived per-request (same-origin `/f/…`; request-derived issuer).
    */
   publicUrl?: string;
+  /**
+   * Outbound HTTP for PAYMENT GATEWAY calls only.
+   *
+   * ★ Injected so a suite can script a provider instead of reaching the network — the same seam
+   * `StockProvider` uses, and for the same reason: a test that mocks the module under test proves
+   * nothing about the exchange. Defaults to the platform `fetch`.
+   */
+  paymentFetch?: (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
   /**
    * `Contact` URIs for this instance's `/.well-known/security.txt`, most-preferred first
    * (`SW_SECURITY_CONTACT`). Empty/unset → the upstream advisory channel; see `security-txt.ts`.
@@ -7463,6 +7478,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // build, so reaping the build (see the retention rule below) cannot destroy the answer to
           // "is the published site out of date?".
           await releasesRepo.record(project.id, release);
+          // ★ The LIVE price list, and the only build allowed to reconcile the stock ledger. The
+          // snapshot never travels in release.json (it holds every price and the author's declared
+          // stock levels, and release.json is published output), so it rides back on the manifest and
+          // is persisted here, in the process that has the database.
+          await persistShopCatalog(project.id, 'live', release);
 
           // ★ For a LOCAL Hosting target this route IS the deploy — there is no separate upload step,
           // so nothing else was ever going to stamp it. Only the remote deploy path recorded
@@ -7904,6 +7924,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
           : undefined,
       });
+      await persistShopCatalog(project.id, 'draft', manifest);
       previewBuiltVersion.set(project.id, version);
       // A draft build no longer aborts on a page it cannot render — it serves an error document at
       // that page's own route and carries on. Remember which pages those were, so the failure is
@@ -8952,6 +8973,93 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
     rl,
   });
+
+  // ---- PAYMENTS -------------------------------------------------------------------------------
+  //
+  // ★ Registered only when an encryption key is configured: a project's gateway credentials are
+  // encrypted at rest, and an instance with no key cannot store one. The same gate `project_smtp`
+  // uses — and it means an instance without the key has no payment surface at all rather than one
+  // that silently stores secrets in the clear.
+  const shopTransactionsRepo = new ShopTransactionRepository(db);
+  const shopStockRepo = new ShopStockRepository(db);
+  const gatewayRepo = opts.encryptionKey ? new GatewayRepository(contentRepo, opts.encryptionKey) : undefined;
+  if (gatewayRepo) {
+    registerPaymentRoutes(app, {
+      transactions: shopTransactionsRepo,
+      stock: shopStockRepo,
+      gateways: gatewayRepo,
+      captcha: captchaVerifier,
+      getProjectCaptcha: async (projectId: string) => {
+        const stored = await loadProjectCaptchaById(db, projectId);
+        if (!stored) return null;
+        const secret = stored.secret && opts.encryptionKey ? decryptSecret(stored.secret, opts.encryptionKey) : null;
+        return { provider: stored.provider, secret, ...(stored.minScore !== undefined ? { minScore: stored.minScore } : {}) };
+      },
+      getPowSecret: () => currentCookieSecret,
+      claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
+      getShop: async (projectId: string) => {
+        const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
+          | { website?: { shop?: unknown } }
+          | null;
+        const shop = settings?.website?.shop;
+        return (shop ?? null) as never;
+      },
+      getCatalog: async (projectId: string, mode: 'live' | 'draft') => {
+        const [row] = await db
+          .select()
+          .from(shopCatalogTable)
+          .where(and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode)));
+        return row ? { currency: row.currency, items: row.items, digest: row.digest } : null;
+      },
+      systemContext: (projectId: string) => ({ userId: 'system', projectId, role: 'owner' }),
+      publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+      siteBaseUrl: async (projectId: string) => {
+        const project = await projects.get(projectId).catch(() => null);
+        if (!project) return null;
+        const base = (opts.publicUrl ?? '').replace(/\/+$/, '');
+        if (!base) return null;
+        // A locally hosted site answers at `<slug>.<sitesDomain>` when subdomain routing is on, and
+        // at `/sites/<slug>/` otherwise. A site deployed elsewhere uses its configured siteUrl, which
+        // the caller prefers when present.
+        return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
+      },
+      paymentsEnabled: () => instanceSettingsRepo.getPaymentsEnabled(),
+      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      rl,
+    });
+  }
+
+  /**
+   * Persists a build's shop catalog snapshot, and reconciles the stock ledger from it.
+   *
+   * ★ Called AFTER the build, in the main process, because the build worker runs with no network and
+   * no database. Best-effort by design: the site is already built and served, so a failure here must
+   * not turn a successful publish into an error — it is logged and corrected on the next one.
+   *
+   * ★ Stock is reconciled only from a LIVE build. A draft preview must not be able to restock a
+   * shop, and an author rebuilding a preview twenty times while editing must not touch the ledger at
+   * all.
+   */
+  async function persistShopCatalog(projectId: string, mode: 'live' | 'draft', manifest: { shopCatalog?: ShopCatalog }): Promise<void> {
+    const catalog = manifest.shopCatalog;
+    if (!catalog) return;
+    try {
+      await db
+        .insert(shopCatalogTable)
+        .values({ projectId, mode, currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() })
+        .onConflictDoUpdate({
+          target: [shopCatalogTable.projectId, shopCatalogTable.mode],
+          set: { currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() },
+        });
+      if (mode === 'live') {
+        const ledger = await shopStockRepo.all(projectId);
+        await shopStockRepo.applyReconciliation(projectId, reconcileStock(catalog, ledger));
+      }
+    } catch (err) {
+      app.log.warn({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not persist the shop catalog snapshot');
+    }
+  }
 
   // ---- AI (online generation — agency-funded, metered, quota-gated) ----
   // Resolves the org+user's month-to-date token usage against the configured caps.

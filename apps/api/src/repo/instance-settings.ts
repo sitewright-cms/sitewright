@@ -110,6 +110,11 @@ export class InstanceSettingsRepository {
     return (await this.getStored()).formModes;
   }
 
+  /** Whether this instance permits processed payments. Off until an admin turns it on. */
+  async getPaymentsEnabled(): Promise<boolean> {
+    return (await this.getStored()).paymentsEnabled === true;
+  }
+
   /** The agent (MCP) instructions actually served to bridges — the admin override or the default. */
   async getEffectiveAgentInstructions(): Promise<string> {
     return (await this.getStored()).agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
@@ -242,6 +247,9 @@ export class InstanceSettingsRepository {
     const current = await this.getStored();
     const next: InstanceSettingsStored = {
       formModes: { ...current.formModes, ...(input.formModes ?? {}) },
+      // Merge-only, like formModes: an absent field leaves the setting unchanged, so a partial PUT
+      // from one settings panel cannot silently turn off a payment surface configured in another.
+      ...(input.paymentsEnabled !== undefined ? { paymentsEnabled: input.paymentsEnabled } : current.paymentsEnabled !== undefined ? { paymentsEnabled: current.paymentsEnabled } : {}),
     };
     // The cookie secret is INTERNAL (never in the Input schema). Preserve it across a settings save —
     // `next` is rebuilt from scratch, so without this an admin's PUT would silently drop it.

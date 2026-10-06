@@ -54,7 +54,8 @@ describe('create', () => {
   it('sets a TTL so an abandoned session can be swept', async () => {
     const row = await repo.create(input());
     const [raw] = await db.select().from(shopTransactions).where(eq(shopTransactions.id, row.id));
-    expect(raw?.expiresAt!.getTime() - row.createdAt.getTime()).toBe(TRANSACTION_TTL_MS);
+    expect(raw?.expiresAt).toBeTruthy();
+    expect(raw!.expiresAt!.getTime() - row.createdAt.getTime()).toBe(TRANSACTION_TTL_MS);
   });
 });
 

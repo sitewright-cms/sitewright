@@ -1988,6 +1988,19 @@ export const api = {
     request<{ queued: boolean }>('POST', `/projects/${projectId}/transactions/${id}/resend`, { kind }),
   setOrderFulfilment: (projectId: string, id: string, to: string, note?: string) =>
     request<{ transaction: ShopTransaction }>('PATCH', `/projects/${projectId}/transactions/${id}/fulfilment`, { to, ...(note ? { note } : {}) }),
+
+  /**
+   * Refunds part or all of a paid order.
+   *
+   * ★ `amountMinor` omitted means everything still outstanding. `restock` is explicit because a
+   * refund says money went back, not that a sellable item did — see the server's `uncommit`.
+   */
+  refundTransaction: (projectId: string, id: string, body: { amountMinor?: number; restock?: boolean } = {}) =>
+    request<{ transaction: ShopTransaction; refundedMinor: number; refunded: string; restocked: boolean }>(
+      'POST',
+      `/projects/${projectId}/transactions/${id}/refund`,
+      body,
+    ),
   /** Opens a real session to the saved SMTP and authenticates, sending nothing. */
   testProjectSmtp: (projectId: string) =>
     request<{ ok: boolean; error?: string }>('POST', `/projects/${projectId}/smtp/test`),

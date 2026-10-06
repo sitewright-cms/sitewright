@@ -14,8 +14,10 @@ import {
 import type { ProjectContext } from '../repo/context.js';
 import type { GatewayRepository } from '../payments/gateways.js';
 import type { ShopTransactionRepository } from '../repo/shop-transactions.js';
+import type { ShopStockRepository } from '../repo/shop-stock.js';
 import { isBuiltinGateway } from '../payments/builtin-gateways.js';
-import { createCheckoutSession, GatewayError, type ExecutorIo } from '../payments/executor.js';
+import { createCheckoutSession, refundPayment, GatewayError, type ExecutorIo } from '../payments/executor.js';
+import type { InterpolationScope } from '../payments/interpolate.js';
 import type { ApiKeyCapability } from '../db/schema.js';
 
 /**
@@ -39,6 +41,8 @@ type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 export interface PaymentAdminDeps {
   gateways: GatewayRepository;
   transactions: ShopTransactionRepository;
+  /** Only used to put units back when an operator says a refunded order's goods are sellable. */
+  stock: ShopStockRepository;
   /** Throws unless the caller is an instance admin on an interactive session. */
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
   /** True when the caller holds `payments:provider:write` on a bearer token. */
@@ -53,6 +57,18 @@ export interface PaymentAdminDeps {
   io: ExecutorIo;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
+
+/**
+ * Body of a refund request.
+ *
+ * `amountMinor` absent means "everything still outstanding". `restock` is explicit and defaults to
+ * FALSE: the platform must never silently invent inventory, and only the operator knows whether the
+ * goods came back in a state anyone can sell.
+ */
+const RefundBodySchema = z.object({
+  amountMinor: z.number().int().min(1).max(100_000_000).optional(),
+  restock: z.boolean().optional(),
+});
 
 /** Body of a fork request. */
 const ForkBodySchema = z.object({ id: GatewayIdSchema, name: z.string().min(1).max(120).optional() });
@@ -76,7 +92,7 @@ const VerifyBodySchema = z.object({
 });
 
 export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAdminDeps): void {
-  const { gateways, requireInstanceAdmin, hasProviderWriteScope, resolveProject, isWriter, io, rl, transactions } = deps;
+  const { gateways, requireInstanceAdmin, hasProviderWriteScope, resolveProject, isWriter, io, rl, transactions, stock } = deps;
 
   /**
    * Authorises a LEVEL 1 write.
@@ -324,6 +340,119 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     return reply.send({ transaction: moved.row });
   });
 
+  /**
+   * REFUNDS part or all of a paid order.
+   *
+   * ★★ SESSION-ONLY, like the credential routes and for the same reason. Every other operator
+   * action here moves a label; this one moves money OUT of the merchant's account. `content:write`
+   * is handed to agents routinely, and no agent task is worth the ability to drain a shop's
+   * balance — a human with the project's writer role does this, in a browser.
+   *
+   * ★ The amount is optional and defaults to everything still outstanding, because "refund this
+   * order" is overwhelmingly the common case and making an operator compute the remainder of a
+   * partially-refunded order by hand is how the wrong number gets typed.
+   */
+  app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/transactions/:id/refund', { config: rl(20) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'session-only');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const body = RefundBodySchema.parse(req.body ?? {});
+
+    const txn = await transactions.byId(project.id, req.params.id);
+    if (!txn) return reply.code(404).send({ error: 'transaction not found' });
+    // ★ A PREVIEW order never took money, so there is nothing to give back and asking the provider
+    // would be a real request about an order it has never heard of.
+    if (txn.preview) return reply.code(409).send({ error: 'a preview order never took a payment' });
+
+    const outstanding = txn.amounts.totalMinor - txn.refundedMinor;
+    const amountMinor = body.amountMinor ?? outstanding;
+
+    const resolved = await gateways.resolveCredentials(ctx);
+    if (!resolved.ok) return reply.code(409).send({ error: 'the project has no usable payment credentials', reason: resolved.reason });
+    // ★ The order's OWN gateway, not whatever the project is bound to today. A shop that switched
+    // providers must not have last month's orders refunded through the new one's API.
+    if (resolved.gateway.id !== txn.gatewayId) {
+      return reply.code(409).send({ error: 'this order was taken through a different gateway, which the project is no longer bound to' });
+    }
+    if (!resolved.gateway.refund) return reply.code(409).send({ error: 'this gateway cannot issue refunds' });
+    // ★ Refund in the mode the ORDER was taken in. Refunding a live payment with test credentials
+    // reaches a provider that has never seen it.
+    if (resolved.mode !== txn.mode) {
+      return reply.code(409).send({ error: `this order was taken in ${txn.mode} mode and the project is now in ${resolved.mode} mode` });
+    }
+
+    // ★★ CLAIM BEFORE CALLING. See `claimRefund`: this is what makes a double-click, two operators,
+    // or a retry unable to refund the same money twice.
+    const claim = await transactions.claimRefund(project.id, req.params.id, amountMinor);
+    if (!claim.ok) {
+      if (claim.reason === 'not-found') return reply.code(404).send({ error: 'transaction not found' });
+      if (claim.reason === 'not-refundable') {
+        return reply.code(409).send({ error: `an order with status "${txn.status}" cannot be refunded` });
+      }
+      return reply.code(409).send({
+        error: 'that is more than the order has left to refund',
+        outstandingMinor: outstanding,
+        outstanding: fromMinorUnits(outstanding, txn.currency),
+      });
+    }
+
+    try {
+      await refundPayment(resolved.gateway, resolved.mode, refundScope(resolved.cred, txn, amountMinor), io);
+    } catch (err) {
+      const kind = err instanceof GatewayError ? err.kind : 'upstream';
+      const status = err instanceof GatewayError ? err.status : undefined;
+      // ★★ ROLL BACK ONLY ON A DEFINITE REFUSAL. `config` means nothing was ever sent; a 4xx means
+      // the provider looked at it and said no. A timeout, a 5xx or an unreadable reply may mean the
+      // refund HAPPENED, and releasing the claim there would let the next attempt pay it again — so
+      // the claim stands and an operator is told to go and look.
+      const definitelyRefused = kind === 'config' || (kind === 'upstream' && status !== undefined && status >= 400 && status < 500);
+      if (definitelyRefused) await transactions.releaseRefundClaim(req.params.id, amountMinor);
+      app.log.error(
+        { projectId: project.id, txnId: txn.id, kind, status, released: definitelyRefused, errMsg: err instanceof Error ? err.message : 'unknown' },
+        'a refund failed',
+      );
+      return reply.code(502).send({
+        error: definitelyRefused
+          ? 'the payment provider refused the refund — nothing was refunded'
+          : 'the refund could not be confirmed. Check the provider dashboard before trying again: it may have gone through.',
+        settled: definitelyRefused,
+      });
+    }
+
+    const row = await transactions.settleRefund(project.id, req.params.id);
+    // ★ Only when the operator said so — a refund is a money event and says nothing about whether
+    // the goods came back sellable. See `uncommit`.
+    if (body.restock && !txn.preview) {
+      await stock.uncommit(project.id, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty }))).catch(() => undefined);
+    }
+    return reply.send({
+      transaction: row ?? claim.row,
+      refundedMinor: amountMinor,
+      refunded: fromMinorUnits(amountMinor, txn.currency),
+      restocked: body.restock === true,
+    });
+  });
+
+}
+
+/** Scope for a refund: credentials, the REFUND amount, and the payment's reference. */
+function refundScope(
+  cred: Readonly<Record<string, string>>,
+  txn: { amounts: { totalMinor: number }; currency: string; id: string; publicToken: string; providerRef: string | null; providerPaymentRef?: string | null },
+  amountMinor: number,
+): InterpolationScope {
+  return {
+    cred,
+    // ★★ The REFUND amount, not the order total. A template saying `${AMOUNT:minor}` means "the
+    // amount of this operation", and handing it the total here would refund the whole order every
+    // time somebody asked for part of it.
+    amount: { minor: amountMinor, decimal: fromMinorUnits(amountMinor, txn.currency), currency: txn.currency },
+    // ★ `reference` prefers the PAYMENT ref over the session ref: Stripe refunds a payment_intent,
+    // not a checkout session, and the two are different ids.
+    txn: { id: txn.id, publicToken: txn.publicToken, reference: txn.providerPaymentRef ?? txn.providerRef ?? txn.id },
+    url: { return: '', cancel: '', webhook: '' },
+    field: {},
+    text: {},
+  };
 }
 
 /** Re-exported so app.ts does not reach past this module. */

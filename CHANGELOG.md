@@ -59,6 +59,29 @@ The running version of an instance is reported at `GET /version` (baked into the
   recovered by a reconciliation pass that asks the provider directly — the safeguard that makes
   "the webhook is the truth" survivable when a firewall or an outage eats one.
 
+- **Refunds, full or partial.** The gateway records carried refund templates and the status machine
+  had `paid → refunded | partially_refunded`, but nothing drove them. An operator can now refund an
+  order from the inbox, or `POST /projects/<id>/transactions/<txn>/refund` — session-only, like the
+  credential routes, because `content:write` is handed to agents routinely and money leaving a
+  merchant's account is not an agent capability at any role. The amount defaults to everything still
+  outstanding, and the order settles from the *balance*, so two partials that happen to close it out
+  settle as fully refunded without anyone having to notice.
+
+  The claim is taken **before** the provider is called, as a conditional `UPDATE` whose `WHERE`
+  carries `refunded_minor + amount <= total_minor`: refund-then-record has a window where a crash
+  leaves the customer paid and the platform believing otherwise, so the shop pays twice, while
+  claim-then-refund fails the other way and merely refuses a further refund. A failure is rolled back
+  only when the provider *definitely* refused (nothing sent, or a 4xx); a timeout or a 5xx may mean
+  it happened, so the claim stands and the operator is told to go and look.
+
+  Restocking is an explicit, unticked checkbox: a refund says money went back, not that a sellable
+  item did. A `refunded` webhook — a refund issued in the provider's own dashboard — now honours the
+  amount it reports, instead of marking an order fully refunded because €5 of €50 came back.
+
+- The orders inbox had its own currency table that knew five zero-decimal currencies and nothing
+  about the three-decimal ones, so a KWD order rendered ten times its value. It now uses the shared
+  ISO exponent — the same mistake the thank-you page had, which is the argument for one table.
+
 - The cart drawer's disclaimer now matches what its button does. "Prices are indicative — the seller
   confirms availability and final price" is true of a WhatsApp or email cart and false above a Pay
   button that charges a card, so a cart carrying a `checkout` channel uses `cart.checkout_note`

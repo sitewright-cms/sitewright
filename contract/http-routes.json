@@ -232,6 +232,7 @@
   "POST /projects/:projectId/smtp/test",
   "POST /projects/:projectId/stock/import",
   "POST /projects/:projectId/submissions/:id/resend",
+  "POST /projects/:projectId/transactions/:id/refund",
   "POST /projects/:projectId/transactions/:id/resend",
   "POST /projects/import/zip",
   "PUT /account/email",

@@ -260,6 +260,61 @@ export async function fetchProviderStatus(
   return { kind: mapped ?? 'recheck', raw };
 }
 
+/** What a provider said about a refund we asked for. */
+export interface RefundResult {
+  /** The provider's id for the refund, when it returns one. Recorded for reconciliation by hand. */
+  ref?: string;
+}
+
+/**
+ * Asks the provider to refund part or all of a payment.
+ *
+ * ★★ THE AMOUNT COMES FROM `scope.amount`, which the CALLER has already claimed against the
+ * transaction's remaining refundable balance. Nothing here decides how much to send back — this
+ * function's whole job is to shape the request, sign it, and report whether the provider accepted.
+ *
+ * ★ A failure must be distinguishable, because the caller rolls its claim back on a definite refusal
+ * and deliberately does NOT on an ambiguous one (a timeout may mean the refund happened). That is
+ * what `GatewayError.kind` carries: `config` is a template problem, `upstream` is the provider
+ * saying no or being unreachable, `response` is a reply we cannot read.
+ */
+export async function refundPayment(
+  gateway: PaymentGatewayStored,
+  mode: PaymentMode,
+  scope: InterpolationScope,
+  io: ExecutorIo,
+): Promise<RefundResult> {
+  const cfg = gateway.refund;
+  // ★ Refused rather than silently succeeding. A gateway with no refund template cannot refund, and
+  // reporting success would leave an order marked refunded with the customer's money still taken.
+  if (!cfg) throw new GatewayError('this gateway cannot issue refunds', 'config');
+  const req = cfg.request;
+  let url: string;
+  let headers: Record<string, string>;
+  let body: string | undefined;
+  try {
+    url = buildUrl(gateway, mode, interpolateString(req.path, scope));
+    headers = {
+      accept: 'application/json',
+      ...(req.format === 'form' ? { 'content-type': 'application/x-www-form-urlencoded' } : { 'content-type': 'application/json' }),
+      ...(interpolateValue(req.headers, scope) as Record<string, string>),
+      ...(await authHeaders(gateway, mode, scope.cred, io)),
+    };
+    if (req.method !== 'GET' && req.body !== undefined) {
+      const interpolated = interpolateValue(req.body, scope);
+      body = req.format === 'form' ? formEncode(interpolated) : JSON.stringify(interpolated);
+    }
+  } catch (err) {
+    if (err instanceof InterpolationError) throw new GatewayError(err.message, 'config');
+    throw err;
+  }
+  const json = await callProvider(io, url, req.method, headers, body);
+  // The id is optional: several providers answer a refund with the PAYMENT object rather than a
+  // refund object, and the platform's record of the refund is its own row either way.
+  const ref = readStringPath(json, 'id');
+  return ref ? { ref } : {};
+}
+
 /** What a verified webhook turned out to mean. */
 export interface WebhookVerdict {
   eventId: string;

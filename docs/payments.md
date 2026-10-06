@@ -195,7 +195,55 @@ text part), and a **test order says so in the subject and the body**.
 
 ---
 
-## 8. Operating it
+## 8. Refunds
+
+`POST /projects/<id>/transactions/<txn>/refund`, or the **Refund…** control on an order in the inbox.
+`amountMinor` is optional and defaults to everything still outstanding; `restock` is explicit and
+defaults to false. The order settles to `refunded` or `partially_refunded` from the BALANCE, so two
+partials that happen to close it out settle correctly without anyone noticing that they did.
+
+**Session-only, like the credential routes.** Every other operator action moves a label; this one
+moves money out of the merchant's account, and `content:write` is handed to agents routinely. A human
+with the project's writer role does this, in a browser.
+
+### ★★ Claim first, then call the provider
+
+The order of those two steps is the whole design, and it is not interchangeable:
+
+- **Refund, then record** has a window where a crash leaves the provider having paid the customer and
+  the platform believing it did not — so an operator refunds again and the shop is out twice.
+- **Claim, then refund** inverts it: a crash leaves the balance looking *more* spent than it is,
+  which refuses a further refund until somebody looks.
+
+Both are wrong; only one of them loses money. The claim is a conditional `UPDATE` whose `WHERE`
+carries both the legal statuses and `refunded_minor + amount <= total_minor`, so no set of concurrent
+refunds can sum past the order. (Measured: move that check out of the `WHERE` and two overlapping
+claims both win, doubling the balance — `payments-refund.test.ts` pins it.)
+
+A failure is rolled back **only when the provider definitely refused**: a `config` error (nothing was
+ever sent) or a 4xx (it looked and said no). A timeout, a 5xx or an unreadable reply may mean the
+refund *happened*, so the claim stands and the operator is told to check the dashboard.
+
+### What a refund refuses to attempt
+
+A preview order (never took money), a gateway with no `refund` template, an order taken through a
+gateway the project is no longer bound to, and an order whose mode no longer matches the project's —
+refunding a live payment with test credentials reaches a provider that has never heard of it.
+
+### Restocking is the operator's call
+
+A refund is a money event and says nothing about whether the goods came back sellable: a returned
+unopened order should restock, a damaged one must not, and a goodwill partial involves no goods at
+all. The platform cannot tell those apart, so it never guesses — `restock` is a checkbox, unticked.
+
+### A refund issued in the provider's dashboard
+
+Merchants do this. A `refunded` webhook event carries an amount when the provider reports one, and
+that amount decides full vs partial: marking an order fully refunded because €5 of €50 came back
+tells the shop it owes nothing more and hides the other €45. An event with no amount means the whole
+outstanding balance, and a repeated event cannot drive the balance past the order.
+
+## 9. Operating it
 
 - `paymentsEnabled` is an instance setting, **off by default**. The routes are not registered at all
   without `SW_ENCRYPTION_KEY`.

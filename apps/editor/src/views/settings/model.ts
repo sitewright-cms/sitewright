@@ -57,7 +57,7 @@ function minorToMajor(minor: number, currencyCode?: string): string {
 }
 
 /** Major-unit string → integer minor units, or undefined when blank/unparseable. */
-function majorToMinor(value: string, currencyCode?: string): number | undefined {
+export function majorToMinor(value: string, currencyCode?: string): number | undefined {
   const raw = value.trim();
   if (raw === '') return undefined;
   if (!/^\d+(\.\d+)?$/.test(raw)) return undefined;
@@ -67,7 +67,7 @@ function majorToMinor(value: string, currencyCode?: string): number | undefined 
 }
 
 /** Decimal places for a currency. Mirrors the ISO exponent the server charges in. */
-function minorPlaces(currencyCode?: string): number {
+export function minorPlaces(currencyCode?: string): number {
   const zero = new Set(['JPY', 'KRW', 'VND', 'CLP', 'ISK', 'XOF', 'XAF', 'XPF', 'BIF', 'DJF', 'GNF', 'KMF', 'PYG', 'RWF', 'UGX', 'VUV']);
   const three = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND']);
   const c = (currencyCode ?? '').toUpperCase();

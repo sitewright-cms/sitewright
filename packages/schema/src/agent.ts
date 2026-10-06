@@ -833,6 +833,10 @@ gateway an instance admin has enabled AND proven, and that project's own keys (c
 in Settings -> Website -> Payments; that route is session-only and no token can reach it). Point
 returnPath at a page carrying {{sw-order-status}}. A "payment" channel is NOT this: it opens a link
 and the platform learns nothing.
+★ REFUNDS are operator-only and session-only: POST /projects/<id>/transactions/<txn>/refund, or the
+Refund control on an order in the inbox. No token reaches it — money leaving a merchant's account is
+not an agent capability at any role. Omit amountMinor to refund everything outstanding; restock is an
+explicit choice (a refund says money went back, not that a sellable item did).
 ★ The cart drawer and the thank-you panel are AUTHORABLE: {{#sw-cart}}…{{/sw-cart}} and
 {{#sw-order-status}}…{{/sw-order-status}} bind to YOUR markup via data-sw-part / data-sw-field /
 data-sw-action instead of the platform building its own. Copy the global "cart-drawer" snippet or the
@@ -842,8 +846,9 @@ currency symbol & code, and each channel/field label — comes from website.tran
 cart_* keys (cart_add, cart_title, cart_note, cart_currency_symbol, cart_currency_code, …) and each
 channel/field's \`shop.<key>\` key (e.g. shop.whatsapp, shop.name). Set those per locale to localize.
 The cart builds the order in the browser (localStorage) and hands it to a channel (WhatsApp/mailto/
-payment deep link, or a "form" channel that POSTs to that Form's inbox). Prices are NON-AUTHORITATIVE
-— an order INQUIRY; the seller confirms price + collects payment. (Runtime ships only on pages that use it.)
+payment deep link, or a "form" channel that POSTs to that Form's inbox). For THOSE kinds prices are
+NON-AUTHORITATIVE — an order INQUIRY; the seller confirms price + collects payment. A "checkout"
+channel is the opposite: the server re-prices and charges. (Runtime ships only on pages that use it.)
 A whatsapp/mailto channel may declare \`fields\` (key + type text|textarea|tel|email + optional required):
 the cart collects them before opening the link and appends them as "Label: value" lines below the order
 (each label from shop.<field-key>). An email order's body also starts with the localized cart_order_lead

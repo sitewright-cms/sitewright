@@ -1576,6 +1576,31 @@ describe('payments api', () => {
     await expect(api.verifyProjectPayment('p1', 'stripe')).rejects.toBeInstanceOf(ApiError);
   });
 
+  it('★ a refund with no amount sends no amount — the server owns the "everything outstanding" default', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { transaction: { id: 't1' }, refundedMinor: 2000, refunded: '20.00', restocked: false }));
+    const res = await api.refundTransaction('p1', 't1');
+    const s = sent();
+    expect(s.method).toBe('POST');
+    expect(s.url).toContain('/projects/p1/transactions/t1/refund');
+    // ★ An empty body, not `{ amountMinor: null }` or a client-computed remainder: one place decides
+    // what is outstanding, and it is the one holding the row.
+    expect(s.body).toEqual({});
+    expect(res.refundedMinor).toBe(2000);
+  });
+
+  it('sends a partial amount and the restock choice only when they were made', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { transaction: { id: 't1' }, refundedMinor: 750, refunded: '7.50', restocked: true }));
+    await api.refundTransaction('p1', 't1', { amountMinor: 750, restock: true });
+    expect(sent().body).toEqual({ amountMinor: 750, restock: true });
+  });
+
+  it('surfaces the server’s refusal, including what is left to refund', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(409, { error: 'that is more than the order has left to refund', details: { outstandingMinor: 500, outstanding: '5.00' } }),
+    );
+    await expect(api.refundTransaction('p1', 't1', { amountMinor: 9999 })).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('lists transactions, passing only the filters that were set', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listTransactions('p1', { limit: 50, status: 'paid' });

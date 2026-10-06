@@ -537,7 +537,25 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
           return reply.send({ ok: true });
         }
 
-        const advanced = await transactions.advance(txn.id, kind === 'refunded' ? 'refunded' : kind);
+        // ★★ A REFUND REPORTED BY THE PROVIDER — almost always one issued in their own dashboard,
+        // which is a thing merchants really do. The event's amount decides whether this is a full or
+        // a PARTIAL refund: marking an order fully refunded because a provider sent back €5 of €50
+        // tells the shop it owes nothing more and hides the other €45 from every total.
+        if (kind === 'refunded') {
+          // An event with no amount means the whole order: a provider that reports an amount is
+          // telling us something, and one that does not is reporting the only refund it can express.
+          const reported = verdict.amountMinor ?? txn.amounts.totalMinor - txn.refundedMinor;
+          // Clamped: a provider repeating an event, or reporting a cumulative figure where we
+          // expected an increment, must not drive the balance past the order.
+          const add = Math.max(0, Math.min(reported, txn.amounts.totalMinor - txn.refundedMinor));
+          if (add > 0) await transactions.claimRefund(projectId, txn.id, add);
+          await transactions.settleRefund(projectId, txn.id);
+          // ★ No restock. The platform cannot know whether goods came back, and here there is not
+          // even an operator in the loop to ask — see `uncommit`.
+          return reply.send({ ok: true });
+        }
+
+        const advanced = await transactions.advance(txn.id, kind);
         if (advanced.outcome === 'advanced' && !txn.preview && (kind === 'failed' || kind === 'expired' || kind === 'cancelled')) {
           // Give the hold back — this order will never be paid.
           await stock.release(projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));

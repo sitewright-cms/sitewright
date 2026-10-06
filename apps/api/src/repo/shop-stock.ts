@@ -219,6 +219,31 @@ export class ShopStockRepository {
     }
   }
 
+  /**
+   * Puts sold units back on the shelf — a REFUND whose operator said the goods are sellable again.
+   *
+   * ★ Never automatic. A refund is a money event and says nothing about whether the thing came back
+   * in a state anyone can sell: a returned-unopened order should restock, a damaged one must not,
+   * and a goodwill partial refund involves no goods at all. The platform cannot tell those apart, so
+   * the operator decides and this runs only when they said yes. Guessing either way is wrong, and
+   * guessing "restock" is the expensive direction — it sells inventory that does not exist.
+   */
+  async uncommit(projectId: string, items: readonly { sku: string; qty: number }[]): Promise<void> {
+    for (const item of items) {
+      await this.queue.run(`${projectId}:${item.sku}`, async () => {
+        await this.db
+          .update(shopStock)
+          .set({
+            // `max(0, …)`: `sold` is a counter the catalog reconciler also writes, so a decrement
+            // that would go negative means the two disagree — clamp rather than invent inventory.
+            sold: sql`max(0, ${shopStock.sold} - ${item.qty})`,
+            updatedAt: new Date(),
+          })
+          .where(and(eq(shopStock.projectId, projectId), eq(shopStock.sku, item.sku)));
+      });
+    }
+  }
+
   /** Gives back held units — a failed, expired or cancelled checkout. */
   async release(projectId: string, items: readonly { sku: string; qty: number }[]): Promise<void> {
     for (const item of items) {

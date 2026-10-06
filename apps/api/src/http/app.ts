@@ -9114,6 +9114,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerPaymentAdminRoutes(app, {
       gateways: gatewayRepo,
       transactions: shopTransactionsRepo,
+      stock: shopStockRepo,
       requireInstanceAdmin,
       // A bearer token carrying the one capability that authors GATEWAY DEFINITIONS. Exact-string
       // check, as for every other capability — no prefix matching.
@@ -10240,7 +10241,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           continue;
         }
-        const advanced = await shopTransactionsRepo.advance(txn.id, status.kind === 'refunded' ? 'refunded' : status.kind);
+        // ★ `refunded` here means the provider says the money went back on an order this platform
+        // never recorded as paid. Record the BALANCE alongside the status, or the row reads as fully
+        // refunded while `refundedMinor` still says zero — and every total built from that column
+        // then disagrees with the status beside it. (The ternary this replaces was a no-op.)
+        const advanced = await shopTransactionsRepo.advance(
+          txn.id,
+          status.kind,
+          status.kind === 'refunded' ? { refundedMinor: txn.amounts.totalMinor } : {},
+        );
         if (advanced.outcome === 'advanced' && !txn.preview) {
           await shopStockRepo.release(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
         }

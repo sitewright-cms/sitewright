@@ -385,6 +385,89 @@ export class ShopTransactionRepository {
     return res.rowsAffected ?? 0;
   }
 
+  /**
+   * CLAIMS a refund amount against a transaction, before any money moves.
+   *
+   * ★★ CLAIM FIRST, THEN CALL THE PROVIDER. The alternative — refund, then record — has a window
+   * where a crash leaves the provider having paid the customer and the platform believing it did
+   * not, so an operator refunds again and the shop is out twice. Claiming first inverts the failure:
+   * a crash leaves the balance looking more spent than it is, which REFUSES a further refund. Both
+   * are wrong, but only one of them loses money, and it is not this one.
+   *
+   * The whole decision lives in the WHERE, evaluated against the live row at write time:
+   *   - the status must still be `paid` or `partially_refunded` (never `refunded`, never unpaid),
+   *   - and `refunded_minor + amount` must not exceed the total.
+   * So two operators clicking Refund at the same moment cannot both win, and no sequence of
+   * concurrent partial refunds can sum past the order.
+   *
+   * `rolled back` is `releaseRefundClaim`, called only on a DEFINITE provider refusal.
+   */
+  async claimRefund(
+    projectId: string,
+    id: string,
+    amountMinor: number,
+  ): Promise<{ ok: true; row: TransactionRow } | { ok: false; reason: 'not-found' | 'not-refundable' | 'exceeds-remaining' }> {
+    const row = await this.byId(projectId, id);
+    if (!row) return { ok: false, reason: 'not-found' };
+    if (row.status !== 'paid' && row.status !== 'partially_refunded') return { ok: false, reason: 'not-refundable' };
+    if (amountMinor <= 0 || row.refundedMinor + amountMinor > row.amounts.totalMinor) {
+      return { ok: false, reason: 'exceeds-remaining' };
+    }
+    const now = new Date();
+    const res = await this.db
+      .update(shopTransactions)
+      .set({ refundedMinor: sql`${shopTransactions.refundedMinor} + ${amountMinor}`, updatedAt: now })
+      .where(
+        and(
+          eq(shopTransactions.id, id),
+          inArray(shopTransactions.status, ['paid', 'partially_refunded']),
+          // ★ Re-checked HERE, not only above: the read is advisory, this is the decision.
+          lte(sql`${shopTransactions.refundedMinor} + ${amountMinor}`, shopTransactions.totalMinor),
+        ),
+      );
+    if ((res.rowsAffected ?? 0) === 0) return { ok: false, reason: 'exceeds-remaining' };
+    const after = await this.byId(projectId, id);
+    return after ? { ok: true, row: after } : { ok: false, reason: 'not-found' };
+  }
+
+  /**
+   * Gives a claimed amount back after the provider DEFINITELY refused.
+   *
+   * ★ Never called on a timeout or an unreadable reply: those may mean the refund happened, and
+   * releasing the claim there would let a second attempt refund the same money again.
+   */
+  async releaseRefundClaim(id: string, amountMinor: number): Promise<void> {
+    await this.db
+      .update(shopTransactions)
+      .set({
+        // `max(0, …)` for the same reason the stock release uses it: a floor that can only ever be
+        // generous to the customer is the safe direction for a counter nobody is watching.
+        refundedMinor: sql`max(0, ${shopTransactions.refundedMinor} - ${amountMinor})`,
+        updatedAt: new Date(),
+      })
+      .where(eq(shopTransactions.id, id));
+  }
+
+  /**
+   * Records that a claimed refund actually happened, settling the status.
+   *
+   * ★ The status is derived from the BALANCE, not from what the caller thinks it did: whatever the
+   * row now says has been refunded decides whether this is `refunded` or `partially_refunded`. Two
+   * partials that happen to sum to the total therefore settle as fully refunded without anybody
+   * having to notice that they did.
+   */
+  async settleRefund(projectId: string, id: string): Promise<TransactionRow | undefined> {
+    const row = await this.byId(projectId, id);
+    if (!row) return undefined;
+    const to: TransactionStatus = row.refundedMinor >= row.amounts.totalMinor ? 'refunded' : 'partially_refunded';
+    if (row.status === to) return row;
+    await this.db
+      .update(shopTransactions)
+      .set({ status: to, updatedAt: new Date() })
+      .where(and(eq(shopTransactions.id, id), inArray(shopTransactions.status, ['paid', 'partially_refunded'])));
+    return this.byId(projectId, id);
+  }
+
   /** Moves an operator's fulfilment state, refusing an illegal or backwards move. */
   async setFulfilment(
     projectId: string,

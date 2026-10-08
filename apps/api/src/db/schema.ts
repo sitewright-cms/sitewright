@@ -218,6 +218,64 @@ export const mfaLoginTickets = sqliteTable(
 );
 
 /**
+ * A CUSTOM DOMAIN a locally-hosted project is served at (`www.clientbrand.com` → that project's site),
+ * in addition to `<slug>.<SW_SITES_DOMAIN>`.
+ *
+ * ★ `host` is UNIQUE across the whole instance, enforced by the index rather than by application code.
+ * Two projects claiming one hostname is not a validation nicety: whichever won the lookup would be
+ * served a different tenant's site. App-level uniqueness provably drifts here — the integrity checker
+ * carries a "duplicate dataset slugs" check precisely because `put` enforces that in code — so this one
+ * is a database constraint.
+ *
+ * Rows key on `projectId`, never on the slug, so a project rename needs no migration (the standing
+ * invariant is that anything keyed BY the slug must move or die when the slug changes — this is not).
+ * There is no ON DELETE CASCADE anywhere in this schema, so `ProjectRepository.remove()` must delete
+ * these rows and `REAPED_TABLES` in test/project-reap.test.ts must list the table; missing either makes
+ * the project permanently un-reapable, which has already happened twice (`agent_grants`, `form_filtered`).
+ */
+export const projectDomains = sqliteTable(
+  'project_domains',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** The hostname, lowercased with any trailing dot stripped. Instance-unique. No scheme, no port. */
+    host: text('host').notNull().unique(),
+    /**
+     * The project's CANONICAL host when several are verified — what "View live" advertises and what the
+     * other verified hosts redirect to. Apex + `www` is the ordinary case, and only one of them can be
+     * the address the site calls itself.
+     */
+    isPrimary: integer('is_primary', { mode: 'boolean' }).notNull(),
+    /**
+     * The value the operator must publish at `_sitewright.<host>` as a TXT record. Not a secret (it
+     * goes into public DNS); it only has to be unguessable enough that it cannot be predicted for a
+     * domain somebody else is about to claim.
+     */
+    verificationToken: text('verification_token').notNull(),
+    /**
+     * When DNS ownership was confirmed. NULL = claimed but NOT SERVING: an unverified host never enters
+     * the routing map.
+     *
+     * ★ This is the whole security model, and it is why there is no re-claim cooldown. A claim is inert
+     * until DNS points here, so the only attack a claim enables is taking over a hostname that ALREADY
+     * resolves to this instance — the dangling-DNS / subdomain-takeover class. Requiring a TXT record
+     * closes it directly: whoever cannot publish DNS for the host cannot serve it, released by a previous
+     * project or not. A time window would add nothing on top.
+     *
+     * It also makes DNS control the tiebreaker for a squatted name: an UNVERIFIED claim does not block a
+     * claimant who can verify (see the claim route), because the unverified holder proved nothing.
+     */
+    verifiedAt: integer('verified_at', { mode: 'timestamp_ms' }),
+    /** The user who claimed it, so a squat is attributable. */
+    createdBy: text('created_by').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('project_domains_project_idx').on(t.projectId)],
+);
+
+/**
  * A registered passkey (WebAuthn credential) — an alternative first factor. One row per credential;
  * a user may have several. The credential id and COSE public key are non-secret (base64url); the
  * private key never leaves the authenticator. `counter` is the signature counter (clone-detection);

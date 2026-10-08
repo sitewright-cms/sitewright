@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CustomDomainsPanel } from './CustomDomainsPanel';
 import {
   api,
   type Project,
@@ -62,6 +63,7 @@ function Toggle({ label, checked, onChange, hint, disabled = false }: { label: s
 export function TargetConfigForm({
   project,
   sitesDomain,
+  isStaff,
   protocol,
   editing,
   onCancel,
@@ -70,6 +72,8 @@ export function TargetConfigForm({
   project: Project;
   /** `SW_SITES_DOMAIN` when subdomain routing is on — see `localSiteUrl`. */
   sitesDomain?: string;
+  /** Agency staff — gates the force-verify escape hatch in the custom-domains panel. */
+  isStaff?: boolean;
   protocol: WizardProtocol;
   editing: DeployTargetView | null;
   onCancel: () => void;
@@ -335,6 +339,13 @@ export function TargetConfigForm({
             <p className="break-all rounded-lg bg-slate-50 dark:bg-white/5 p-2 text-xs text-slate-500 dark:text-slate-400">
               Unlisted link: <code className="rounded bg-white dark:bg-slate-900 px-1">{siteUrl}?token={previewToken}</code>
             </p>
+          )}
+          {/* Edit-only: claiming a hostname for a site this platform is not yet serving would advertise
+              an address that cannot work. Once Local Hosting exists, the domain is the useful next step. */}
+          {isEdit && (
+            <div className="border-t border-slate-200 pt-3 dark:border-white/10">
+              <CustomDomainsPanel projectId={project.id} isStaff={!!isStaff} />
+            </div>
           )}
         </>
       )}

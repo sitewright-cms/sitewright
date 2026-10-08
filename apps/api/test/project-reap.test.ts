@@ -41,6 +41,7 @@ describe('project reap', () => {
     'invites',
     'oauth_auth_codes',
     'oauth_refresh_tokens',
+    'project_domains',
     'project_members',
     'project_releases',
     'shop_catalog',

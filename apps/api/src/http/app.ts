@@ -300,6 +300,9 @@ import {
 import { MfaError, MfaRepository } from '../repo/mfa.js';
 import { sweepExpiredAuthRows, reapDeletedMedia, reapUnusedOAuthClients, reapDeadPats } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
+import { ProjectDomainRepository } from '../repo/project-domains.js';
+import { registerProjectDomainRoutes } from './project-domain-routes.js';
+import type { TxtLookup } from '../net/dns-verify.js';
 import { OidcRepository } from '../repo/oidc.js';
 import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
 import {
@@ -1515,6 +1518,11 @@ export interface AppOptions {
   sitesDomain?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
   aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number; projectMonthlyTokens?: number };
+  /**
+   * TXT lookup used to verify a custom domain. Defaults to a real DNS resolver; tests inject a fake.
+   * (A DNS query, not an HTTP fetch — there is no SSRF surface to guard here.)
+   */
+  txtLookup?: TxtLookup;
 }
 
 /**
@@ -1738,6 +1746,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // label, not the apex and not `www`); used by `rewriteUrl` below (to route the request into the
   // existing `/sites/:slug/*` handler) and by that handler (to emit root-relative redirects/cookies).
   const sitesDomain = opts.sitesDomain?.replace(/^\.+|\.+$/g, '').toLowerCase() || undefined;
+  // Custom domains (`www.clientbrand.com` → a project's locally-hosted site).
+  const projectDomainsRepo = new ProjectDomainRepository(db);
+  /**
+   * host → project, for VERIFIED domains of live projects.
+   *
+   * ★ An in-process Map and not a query, because the only place that can consult it — Fastify's
+   * `rewriteUrl` — is SYNCHRONOUS (it receives the raw IncomingMessage before routing, so there is no
+   * await and no request context). Rebuilt wholesale on every claim/verify/release and on project
+   * rename/soft-delete/restore/reap; a wholesale rebuild rather than a patch so a missed edge leaves the
+   * map merely stale rather than wrong. Single-process, like every other cache here.
+   */
+  let customDomainRoutes = new Map<string, { projectId: string; slug: string }>();
+  /** slug → the project's PRIMARY verified host, for the canonical address the site advertises. */
+  let primaryCustomHostBySlug = new Map<string, string>();
+  async function refreshCustomDomainRoutes(): Promise<void> {
+    const rows = await projectDomainsRepo.listVerifiedRoutes();
+    customDomainRoutes = new Map(rows.map((r) => [r.host, { projectId: r.projectId, slug: r.slug }]));
+    primaryCustomHostBySlug = new Map(rows.filter((r) => r.isPrimary).map((r) => [r.slug, r.host]));
+  }
+  await refreshCustomDomainRoutes();
+  /** Hosts the INSTANCE answers on — what a project may never claim. Read live (settings can change). */
+  const platformHostsNow = (): string[] =>
+    allPlatformOrigins(platformOrigins()).map((o) => new URL(o).hostname);
   const siteSubdomainSlug = (host: string | undefined): string | null => {
     if (!sitesDomain || !host) return null;
     const h = (host.split(':')[0] ?? '').toLowerCase(); // strip any :port
@@ -1747,31 +1778,56 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (label.length > 63 || !/^[a-z0-9-]+$/.test(label) || label === 'www') return null;
     return label;
   };
+  /**
+   * The project slug a Host serves, by EITHER route into the site namespace: a verified custom domain,
+   * or `<slug>.<sitesDomain>`. Null when the Host belongs to the platform itself.
+   *
+   * ★ Both arms answer the same question — "is this request addressed to a client's SITE rather than to
+   * the app?" — and every decision downstream (the URL rewrite, whether the site's own JS may execute,
+   * whether to 301 the path form) depends on that one answer. Keeping them in one function is what stops
+   * the two kinds of site host from drifting apart in behaviour.
+   */
+  const siteHostSlug = (host: string | undefined): string | null => {
+    if (!host) return null;
+    const bare = (host.split(':')[0] ?? '').toLowerCase();
+    const custom = customDomainRoutes.get(bare);
+    if (custom) return custom.slug;
+    return siteSubdomainSlug(host);
+  };
   /** The canonical "View live" URL for a locally-hosted site. When a sites domain is configured the site
    *  RUNS on its isolated `<slug>.<sitesDomain>` subdomain (author JS included) and the `/sites/<slug>/`
    *  path form only 301-redirects there — so the advertised link is the subdomain itself. Scheme + any
    *  non-standard port come from `SW_PUBLIC_URL` (the app's public origin); with no public URL set we emit
    *  a protocol-relative link (inherits the editor's scheme). No sites domain → the path form fallback. */
   const servedSiteUrl = (slug: string): string => {
-    if (!sitesDomain) return `/sites/${slug}/`;
+    // A VERIFIED primary custom domain wins: it is the address the client actually gave out, and the
+    // other verified hosts 301 to it. Unverified claims are not here — they serve nothing, so
+    // advertising one would name an address that 404s (the exact false-completion `hostingState` exists
+    // to avoid).
+    const custom = primaryCustomHostBySlug.get(slug);
+    const host = custom ?? (sitesDomain ? `${slug}.${sitesDomain}` : null);
+    if (!host) return `/sites/${slug}/`;
     if (opts.publicUrl) {
       const u = new URL(opts.publicUrl);
-      return `${u.protocol}//${slug}.${sitesDomain}${u.port ? `:${u.port}` : ''}/`;
+      // A non-standard port belongs to the platform origin, not to a client's own domain.
+      const port = custom ? '' : u.port ? `:${u.port}` : '';
+      return `${u.protocol}//${host}${port}/`;
     }
-    return `//${slug}.${sitesDomain}/`;
+    return `//${host}/`;
   };
 
   const app = Fastify({
-    // A `<slug>.<sitesDomain>` request is rewritten (BEFORE routing) into the existing path-based
-    // site route, so subdomain + `/sites/<slug>/` share one serving code path. The Host header is
-    // untouched, so the handler can still tell it was reached via the subdomain.
+    // A request to a SITE host — a verified custom domain or `<slug>.<sitesDomain>` — is rewritten
+    // (BEFORE routing) into the existing path-based site route, so all three ways of reaching a site
+    // share one serving code path. The Host header is untouched, so the handler can still tell which
+    // way it arrived (see `isolatedSiteHost`).
     rewriteUrl(req) {
-      const slug = siteSubdomainSlug(req.headers.host);
+      const slug = siteHostSlug(req.headers.host);
       if (!slug) return req.url ?? '/';
       const url = req.url && req.url !== '/' ? req.url : '/';
       // The PUBLIC form-submission API (`POST /f/<projectId>/<formId>` + its OPTIONS preflight) must
-      // reach the platform route even on a site subdomain: a published page posts to the root-relative
-      // `/f/<id>/<form>`, which on `<slug>.<sitesDomain>` resolves to THIS origin. Don't rewrite it into
+      // reach the platform route even on a site host: a published page posts to the root-relative
+      // `/f/<id>/<form>`, which on a site host (custom domain included) resolves to THIS origin. Don't rewrite it into
       // the site namespace (it isn't a site asset → would 404). Gated to POST/OPTIONS (the only verbs
       // the endpoint serves) + the exact 2-segment shape (optional trailing slash) so a real site page
       // path under `/f/…` is unaffected. A GET `/f/<a>/<b>` still rewrites to the site namespace — if the
@@ -2297,16 +2353,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   // Platform STAFF = the agency: an instance admin OR a developer. Session-only. Gates actions that are
-  // the agency's to take rather than a client's — currently creating projects (invited clients, who are
-  // project `member`s, must never self-provision new projects).
-  async function requirePlatformStaff(req: FastifyRequest): Promise<string> {
+  // the agency's to take rather than a client's: creating projects (invited clients, who are project
+  // `member`s, must never self-provision new projects) and force-verifying a custom domain (the one
+  // call that asserts domain ownership with no DNS evidence). `action` completes the refusal message.
+  async function requirePlatformStaff(req: FastifyRequest, action = 'create projects'): Promise<string> {
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }
     const userId = await requireUserId(req);
     const role = await getPlatformRole(db, userId);
     if (role !== 'admin' && role !== 'developer') {
-      throw new ForbiddenError('only agency staff can create projects');
+      throw new ForbiddenError(`only agency staff can ${action}`);
     }
     return userId;
   }
@@ -3214,6 +3271,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const project = await projects.get(req.params.id); // NotFound if absent
       if (!project.deletedAt) throw new NotFoundError('project not found'); // only deleted projects restore
       await projects.restore(req.params.id);
+      // A restored project's verified domains start serving again (the map excludes soft-deleted ones).
+      await refreshCustomDomainRoutes();
       return reply.code(204).send();
     },
   );
@@ -3523,6 +3582,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // 404, but ALL rows + on-disk artifacts are RETAINED so an instance admin can restore it. The
       // permanent REAP (rows + disk + orphaned client accounts) happens from the admin surface.
       await projects.softDelete(req.params.id, userId);
+      // A soft-deleted project's site already 404s; its custom domains must stop serving too, or they
+      // would be the one remaining way to reach a project the owner believes is gone.
+      await refreshCustomDomainRoutes();
       // Drop the in-memory preview-build bookkeeping so a hidden project keeps no stale builds.
       previewBuiltVersion.delete(project.id);
       previewBuilds.delete(project.id);
@@ -3599,6 +3661,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (settings) await contentRepo.put(ctx, 'settings', 'settings', { ...settings, identity: { ...(settings.identity ?? {}), name: body.name } }, { op: 'put', note: 'project rename' });
     }
     if (slugChanged) {
+      // ★ The custom-domain map stores each host's target SLUG, so a rename leaves it pointing at the
+      // OLD one — every custom domain would 404 until the next restart. The standing invariant: anything
+      // keyed by the slug must move or die when the slug changes.
+      await refreshCustomDomainRoutes();
       await mediaStorage?.removeProject(project.slug).catch((err: unknown) => app.log.warn({ err, project: project.id }, 'old media dir cleanup after slug rename failed (orphaned, harmless)'));
       // The BUILT OUTPUT is keyed by slug too, and used to be left behind: the old directory kept a full
       // copy of the site under a slug nothing points at any more. It is unreachable (serving resolves the
@@ -3634,6 +3700,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const project = await projects.get(id); // NotFound if absent
     const clientIds = await listProjectClientUserIds(db, id); // snapshot BEFORE membership rows go
     await projects.remove(id);
+    await refreshCustomDomainRoutes();
     const onCleanupError = (what: string) => (err: unknown) =>
       app.log.warn(
         { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
@@ -4308,6 +4375,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
   registerMcpRoutes(app, { rl, rlAgent, origins: platformOrigins });
+
+  // ---- Custom domains for locally-hosted sites ----
+  registerProjectDomainRoutes(app, {
+    domains: projectDomainsRepo,
+    requireOwner: async (req, projectId) => ({ userId: (await requireProjectAccess(req, projectId, true)).userId }),
+    requireStaff: (req, action) => requirePlatformStaff(req, action),
+    platformHosts: platformHostsNow,
+    ...(sitesDomain ? { sitesDomain } : {}),
+    refreshRoutes: refreshCustomDomainRoutes,
+    ...(opts.txtLookup ? { txtLookup: opts.txtLookup } : {}),
+    rl,
+  });
 
   app.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/export',
@@ -7764,41 +7843,60 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       async (req, reply) => {
         const { slug } = req.params;
         const path = req.params['*'] ?? '';
-        // Reached via `<slug>.<sitesDomain>` (rewritten into this route)? Then this host serves the
-        // site at its ROOT, so redirects + the token cookie must be root-relative, not `/sites/<slug>/`.
-        // That subdomain is also a SEPARATE origin from the editor/API — the host-only session cookie
-        // is never sent to it — so it's safe to RUN the imported site's own JS there. The `/sites/<slug>/`
-        // PATH form shares the cookie-bearing app origin, so it stays script-inert (download-only).
-        const viaSubdomain = siteSubdomainSlug(req.headers.host) === slug;
-        // RETIRE the app-origin `/sites/<slug>/` PATH form. A published page now carries the OWNER's
-        // authored inline JS (permissive published CSP), which must run ONLY on the ISOLATED
-        // `<slug>.<sitesDomain>` subdomain (the host-only session cookie is never sent there) — never on
-        // the cookie-bearing app origin. When a sites domain is configured, 301 the whole path-form
-        // request to the subdomain. Without one, the path form still serves (edge case: self-host with no
-        // wildcard DNS) but SCRIPT-INERT — the CSP below strips `'unsafe-inline'` so author JS can't run
-        // on the app origin. The subdomain rewrite lands here as `viaSubdomain` → no redirect (no loop).
-        // The redirect embeds `slug` in the target's AUTHORITY, and find-my-way percent-DECODES the path
-        // param AFTER matching — so `/sites/evil.com%2Fx/…` would arrive as slug `evil.com/x` and the `/`
-        // would terminate the authority → an OPEN REDIRECT off the trusted app origin. Only ever redirect a
-        // slug shaped like a real project slug; anything else falls through to the normal 404 project lookup.
-        if (!viaSubdomain && sitesDomain && /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) {
+        // Reached via one of this site's own HOSTS — a verified custom domain or `<slug>.<sitesDomain>`
+        // (both rewritten into this route)? Then this host serves the site at its ROOT, so redirects +
+        // the token cookie must be root-relative, not `/sites/<slug>/`.
+        //
+        // ★ It is also the predicate for whether the site's OWN JavaScript may execute, and the real
+        // question there is "is this a separate origin from the editor/API, one the host-only session
+        // cookie is never sent to?" — NOT "did the Host end in the sites domain". A custom domain
+        // satisfies it exactly as a subdomain does, so both arms must answer the same way: narrower and
+        // author JS silently dies on custom domains; wider and foreign JS runs on the cookie-bearing app
+        // origin, where it could read a visitor's session. The `/sites/<slug>/` PATH form shares the app
+        // origin, so it alone stays script-inert (download-only).
+        const isolatedSiteHost = siteHostSlug(req.headers.host) === slug;
+        // RETIRE the app-origin `/sites/<slug>/` PATH form, and funnel the site's extra hosts onto its
+        // canonical one. A published page carries the OWNER's authored inline JS (permissive published
+        // CSP), which must run ONLY on an ISOLATED host (the host-only session cookie is never sent
+        // there) — never on the cookie-bearing app origin. So when the site has any isolated host at all,
+        // 301 the whole path-form request to it. With none (edge case: self-host, no wildcard DNS and no
+        // custom domain) the path form still serves but SCRIPT-INERT — the CSP below strips
+        // `'unsafe-inline'` so author JS cannot run on the app origin.
+        //
+        // The canonical target is the project's PRIMARY verified custom domain when it has one, else
+        // `<slug>.<sitesDomain>`. A request already on a non-primary verified domain is redirected too,
+        // so one site has one address rather than N interchangeable ones (duplicate content otherwise).
+        // Arriving on the canonical host itself → no redirect, hence no loop.
+        //
+        // ★ The subdomain form embeds `slug` in the target's AUTHORITY, and find-my-way percent-DECODES
+        // the path param AFTER matching — so `/sites/evil.com%2Fx/…` would arrive as slug `evil.com/x` and
+        // the `/` would terminate the authority → an OPEN REDIRECT off the trusted app origin. Only ever
+        // build that form from a slug shaped like a real project slug; anything else falls through to the
+        // normal 404 project lookup. (A custom-domain target is a stored, verified host — never
+        // request-derived — so it carries no such risk.)
+        const primaryCustomHost = primaryCustomHostBySlug.get(slug);
+        const canonicalSiteHost =
+          primaryCustomHost ?? (sitesDomain && /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug) ? `${slug}.${sitesDomain}` : null);
+        const arrivedHost = (req.headers.host?.split(':')[0] ?? '').toLowerCase();
+        if (canonicalSiteHost && arrivedHost !== canonicalSiteHost) {
           const fwdProto = firstForwardedValue(req.headers['x-forwarded-proto']);
           const proto = fwdProto === 'http' || fwdProto === 'https' ? fwdProto : req.protocol;
           const q = req.url.indexOf('?');
           const query = q === -1 ? '' : req.url.slice(q);
           const safePath = path.replace(/[\r\n\0]/g, '');
-          // Preserve a non-standard port from the current host (`dind.local:2003` → `:2003`); sitesDomain
-          // itself carries no port. Standard-port prod hosts (sitewright.buchweitz.house) have none.
+          // Preserve a non-standard port from the current host (`dind.local:2003` → `:2003`) only for the
+          // sites-domain form: that port belongs to the PLATFORM origin, whereas a client's own domain is
+          // reached on whatever port their DNS/proxy publishes.
           const fwdHost = firstForwardedValue(req.headers['x-forwarded-host']) ?? req.headers.host ?? '';
-          const port = /:(\d+)$/.exec(fwdHost)?.[0] ?? '';
-          return reply.redirect(`${proto}://${slug}.${sitesDomain}${port}/${safePath}${query}`, 301);
+          const port = primaryCustomHost ? '' : (/:(\d+)$/.exec(fwdHost)?.[0] ?? '');
+          return reply.redirect(`${proto}://${canonicalSiteHost}${port}/${safePath}${query}`, 301);
         }
-        const siteBase = viaSubdomain ? '/' : `/sites/${slug}/`;
+        const siteBase = isolatedSiteHost ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the
         // isolated subdomain origin — never on the app origin; everything else download-only).
         let binary = null;
         try {
-          binary = await store.readBinary(slug, path, { executableScripts: viaSubdomain });
+          binary = await store.readBinary(slug, path, { executableScripts: isolatedSiteHost });
         } catch {
           /* invalid slug → fall through to 404 below */
         }
@@ -7922,7 +8020,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `default-src 'self'` floor to EXACTLY the site's registered origins for both the subdomain and the
         // path form (they share this handler); route-scoped, so the editor/app origin CSP is untouched.
         const metaCsp = siteCspHeaderFromHtml(html);
-        if (viaSubdomain) {
+        if (isolatedSiteHost) {
           // Isolated subdomain origin: the OWNER's authored inline JS RUNS. An embed page carries the
           // permissive CSP in its meta; a plain page has none → apply the base permissive published CSP.
           reply

@@ -34,7 +34,8 @@ export type IntegrityIssueCode =
   | 'missing_page_parent'
   | 'missing_page_template'
   | 'orphan_translation'
-  | 'deleted_project_holding_slug';
+  | 'deleted_project_holding_slug'
+  | 'domain_on_deleted_project';
 
 /** A repair an operator may run. Everything here is opt-in and re-verified at execution time. */
 export type IntegrityActionId =
@@ -106,6 +107,7 @@ const CHECKS: Array<{ id: string; label: string }> = [
   { id: 'page_templates', label: 'Page templates resolve' },
   { id: 'translations', label: 'Translations reach their page' },
   { id: 'deleted_projects', label: 'Deleted projects holding slugs' },
+  { id: 'custom_domains', label: 'Custom domains resolve to a live project' },
 ];
 
 export const INTEGRITY_CHECK_COUNT = CHECKS.length;
@@ -468,6 +470,40 @@ export async function checkDatabaseIntegrity(
               sample: held.slice(0, SAMPLE_LIMIT).map((p) => p.slug),
               detail:
                 'These projects are deleted but still reserve their slug so they can be restored. That is intended — but the slug cannot be reused until they are permanently removed from Deleted projects.',
+              actions: [],
+            },
+          ]
+        : [],
+    );
+  }
+
+  // ---- 12. Custom domains. A verified host is in the routing map and therefore serving traffic, so a
+  // row whose project is soft-deleted is worth naming: the map excludes it (the site 404s), but the
+  // claim still holds that hostname against every other project, which looks like a platform bug from
+  // the outside. A row with no live project at all would be an FK violation and is caught by check 2.
+  begin(CHECKS[11]!.label);
+  {
+    const domainRows = (await db.all(
+      sql`select d.host as host, d.project_id as projectId, d.verified_at as verifiedAt, p.slug as slug, p.deleted_at as deletedAt
+          from project_domains d join projects p on p.id = d.project_id`,
+    )) as Array<{ host: string; projectId: string; verifiedAt: number | null; slug: string; deletedAt: number | null }>;
+    const stranded = domainRows.filter((r) => r.deletedAt !== null);
+    record(
+      'custom_domains',
+      CHECKS[11]!.label,
+      domainRows.length,
+      stranded.length
+        ? [
+            {
+              code: 'domain_on_deleted_project',
+              severity: 'warning',
+              projectId: null,
+              projectSlug: null,
+              subject: 'custom domains',
+              count: stranded.length,
+              sample: stranded.slice(0, SAMPLE_LIMIT).map((r) => `${r.host} → ${r.slug}`),
+              detail:
+                'These hostnames are claimed by projects that are deleted. They are NOT being served (a deleted project 404s), but the claim still reserves the hostname, so no other project can use it until the project is restored or permanently removed.',
               actions: [],
             },
           ]

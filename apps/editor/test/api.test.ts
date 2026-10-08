@@ -40,6 +40,60 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'Pw-secret-1' });
   });
 
+  // ── custom domains ────────────────────────────────────────────────────────────────────────────────
+  // Each wrapper is asserted on its METHOD + URL: these are the six calls the domains panel makes, and a
+  // wrong verb or a missing path segment would fail only at runtime against a real server.
+
+  it('GETs a project\u2019s custom domains', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    expect(await api.listProjectDomains('p1')).toEqual({ items: [] });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/domains');
+    expect(init.method).toBe('GET');
+  });
+
+  it('POSTs a domain claim with the host in the body', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { domain: { host: 'www.client.com' } }));
+    await api.claimProjectDomain('p1', 'www.client.com');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/domains');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ host: 'www.client.com' });
+  });
+
+  it('POSTs a verify check and returns the pending answer as data, not an error', async () => {
+    // `verified: false` is a 200 with a reason — the panel shows it as status. If the client treated it
+    // as a failure the operator would be told their correct DNS record was wrong.
+    fetchMock.mockResolvedValue(jsonResponse(200, { verified: false, state: 'pending', detail: 'not yet', domain: {} }));
+    const res = await api.verifyProjectDomain('p1', 'd1');
+    expect(res).toMatchObject({ verified: false, state: 'pending' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/domains/d1/verify');
+  });
+
+  it('POSTs a staff force-verify to its own path (not the DNS-checked one)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { verified: true, domain: {} }));
+    await api.forceVerifyProjectDomain('p1', 'd1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/domains/d1/force-verify');
+  });
+
+  it('PUTs the primary-domain change and DELETEs a release', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.setPrimaryProjectDomain('p1', 'd1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/domains/d1/primary');
+    expect(fetchMock.mock.calls[0]![1].method).toBe('PUT');
+
+    fetchMock.mockResolvedValue(jsonResponse(204, null));
+    await api.releaseProjectDomain('p1', 'd1');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/domains/d1');
+    expect(fetchMock.mock.calls[1]![1].method).toBe('DELETE');
+  });
+
+  it('percent-encodes ids in a domain path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.setPrimaryProjectDomain('p/1', 'd 1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p%2F1/domains/d%201/primary');
+  });
+
   it('throws ApiError with the server error message on failure', async () => {
     fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
     await expect(api.projects()).rejects.toMatchObject({ status: 403, message: 'forbidden' });

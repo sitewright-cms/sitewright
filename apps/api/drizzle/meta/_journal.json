@@ -225,6 +225,13 @@
       "when": 1791492160881,
       "tag": "0031_passkey_rp_id",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1791498665334,
+      "tag": "0032_project_domains",
+      "breakpoints": true
     }
   ]
 }

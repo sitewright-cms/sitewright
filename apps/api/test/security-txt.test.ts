@@ -44,12 +44,26 @@ describe('platform security.txt (RFC 9116)', () => {
   });
 
   it('emits Canonical from the configured public URL, trailing slash normalized', () => {
-    expect(renderPlatformSecurityTxt({ now: NOW, publicUrl: 'https://cms.agency.com' })).toContain(
+    expect(renderPlatformSecurityTxt({ now: NOW, canonicals: ['https://cms.agency.com'] })).toContain(
       'Canonical: https://cms.agency.com/.well-known/security.txt',
     );
-    expect(renderPlatformSecurityTxt({ now: NOW, publicUrl: 'https://cms.agency.com/' })).toContain(
+    expect(renderPlatformSecurityTxt({ now: NOW, canonicals: ['https://cms.agency.com/'] })).toContain(
       'Canonical: https://cms.agency.com/.well-known/security.txt',
     );
+  });
+
+  it('emits one Canonical per configured origin, canonical first (RFC 9116 permits repeats)', () => {
+    const out = renderPlatformSecurityTxt({
+      now: NOW,
+      canonicals: ['https://cms.agency.com', 'https://edit.clientbrand.com'],
+    });
+    expect(out.match(/^Canonical: /gm)).toHaveLength(2);
+    expect(out.indexOf('cms.agency.com')).toBeLessThan(out.indexOf('edit.clientbrand.com'));
+  });
+
+  it('emits no Canonical at all when the instance has no configured origin', () => {
+    expect(renderPlatformSecurityTxt({ now: NOW, canonicals: [] })).not.toContain('Canonical:');
+    expect(renderPlatformSecurityTxt({ now: NOW })).not.toContain('Canonical:');
   });
 
   describe('parseSecurityContacts', () => {

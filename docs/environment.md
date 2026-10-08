@@ -13,7 +13,7 @@ put these together, and `apps/api/.env.example` for a copy-paste starting point.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SW_DATA_DIR` | `./data` (Docker: `/app/data`) | The **one** persistent directory — SQLite DB, media, published sites, preview builds, and pre-migration backups all live under it. Mount a single volume here. |
-| `SW_PUBLIC_URL` | — | The public URL the instance is served at (e.g. `https://sites.example.com`). Setting this to an **https** URL turns on Secure cookies + the `__Host-` cookie prefix, becomes the WebAuthn/passkey relying-party origin, and is baked into exported forms as the absolute submission endpoint. Leave unset for a local/plain-HTTP instance. |
+| `SW_PUBLIC_URL` | — | The **canonical** public URL the instance is served at (e.g. `https://sites.example.com`). Setting this to an **https** URL turns on Secure cookies + the `__Host-` cookie prefix, and it is baked into exported forms as the absolute submission endpoint. Leave unset for a local/plain-HTTP instance. To answer on *more* hostnames than this one, see [Additional hostnames](#additional-hostnames) — they are an admin setting, not an env var. |
 
 ## Core
 
@@ -28,6 +28,40 @@ put these together, and `apps/api/.env.example` for a copy-paste starting point.
 | `COOKIE_SECURE` | derived from `SW_PUBLIC_URL` | Override the Secure-cookie flag (`true`/`false`). Normally you don't set this — an https `SW_PUBLIC_URL` turns it on. |
 | `LOG_LEVEL` | `info` | Initial pino log level (`fatal`..`trace`). The admin **Log level** setting overrides it live. Only applies when logging is on (production). |
 
+## Additional hostnames
+
+One instance can answer on several hostnames. `SW_PUBLIC_URL` is the **canonical** one; the others are added
+at runtime under **System Settings → Security → Additional hostnames** (stored in the database, so no restart
+and no env var).
+
+The canonical origin keeps every job whose answer must be the same for everyone:
+
+- the absolute `/f/…` submission endpoint baked into published contact forms;
+- `Canonical` in `/.well-known/security.txt` (each approved hostname gets its own `Canonical` line, canonical first);
+- the fallback OAuth issuer.
+
+An approved hostname is used where the right answer is "wherever this request arrived":
+
+- the **WebAuthn relying party**, so a passkey created on an approved hostname works there;
+- the **OIDC callback base**, so a user who starts signing in on one hostname is returned to it;
+- the **OAuth/MCP issuer** for agents that connected via that hostname.
+
+A hostname that is *not* approved falls back to the canonical origin, so a spoofed `Host` header cannot steer
+any of these.
+
+**What to expect when you add one:**
+
+- DNS for the hostname must point at this instance, and your reverse proxy must hold a certificate for it.
+- All hostnames must use the **same scheme** as `SW_PUBLIC_URL`. Secure cookies are one instance-wide posture,
+  so a hostname on the other scheme would be sent cookies it cannot carry — a login that never sticks. The
+  setting refuses it.
+- A hostname inside `SW_SITES_DOMAIN`'s namespace (`<label>.<SW_SITES_DOMAIN>`) is refused: such a request is
+  rewritten into a hosted client site before routing, so the app would be unreachable there.
+- **Each hostname is a separate login.** The session cookie is host-only by design.
+- **A passkey is bound to one hostname** and will not sign you in on another. The Security tab names the
+  hostname of each passkey so this is visible rather than silent.
+- For OIDC, register every hostname's `…/auth/oidc/<provider>/callback` URL with your provider.
+
 ## Secrets & auth
 
 | Variable | Default | Notes |
@@ -35,8 +69,8 @@ put these together, and `apps/api/.env.example` for a copy-paste starting point.
 | `SW_ENCRYPTION_KEY` | — | A 32-byte base64 key that encrypts stored credentials at rest (saved deploy targets, project SMTP, OIDC, stock keys, TOTP MFA). **Kept env-only on purpose** — out of the DB, so a DB dump can't decrypt. Without it, those secret-bearing features are disabled; the rest of the app works. Generate with `openssl rand -base64 32`. |
 | `SW_ADMIN_EMAIL` | `admin@sitewright.example` | The first-boot admin's email. |
 | `SW_ADMIN_PASSWORD` | `123456` (with a loud warning) | The first-boot admin's password. In production the admin is **forced to change** the default on first login; set your own here to skip that. |
-| `SW_WEBAUTHN_RP_ID` | derived from `SW_PUBLIC_URL` (else request host) | Override the WebAuthn relying-party id. Set explicitly only when the instance is reached via multiple hostnames. |
-| `SW_WEBAUTHN_ORIGIN` | derived from `SW_PUBLIC_URL` (else request host) | Override the WebAuthn origin. |
+| `SW_WEBAUTHN_RP_ID` | resolved per request (see below) | **Pins** the WebAuthn relying-party id for every request. Normally leave unset: the relying party is resolved from the hostname a request arrived on when that hostname is approved, falling back to `SW_PUBLIC_URL`. Setting this disables that resolution, so passkeys work on one hostname only. |
+| `SW_WEBAUTHN_ORIGIN` | resolved per request (see below) | Pins the WebAuthn origin. Same caveat. |
 | `SW_DEPLOY_ALLOWED_HOSTS` | — (all allowed) | Comma-separated SSRF allowlist for saved deploy-target hosts. |
 | `SW_SMTP_ALLOWED_HOSTS` | — (all allowed) | Comma-separated SSRF allowlist for per-project SMTP hosts. |
 

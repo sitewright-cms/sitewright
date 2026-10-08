@@ -29,7 +29,16 @@ export interface RuntimeConfig {
   readonly publicUrl?: string;
   /** Add the `Secure` cookie flag + `__Host-` prefix + emit HSTS. Derived from an https public URL. */
   readonly secureCookies: boolean;
-  /** WebAuthn relying-party id/origin; derived from {@link publicUrl} unless overridden. */
+  /**
+   * EXPLICIT WebAuthn relying-party overrides (`SW_WEBAUTHN_RP_ID` / `SW_WEBAUTHN_ORIGIN`) and nothing
+   * else — these PIN the relying party for every request.
+   *
+   * ★ Deliberately NOT derived from {@link publicUrl} any more. The app resolves the relying party from
+   * the origin a request actually arrived on when that origin is one the operator approved, falling back
+   * to the canonical public URL otherwise. Baking the canonical host in here would pin it first and that
+   * per-request resolution could never run — which is what multi-hostname access needs. A single-origin
+   * instance is unaffected: its only approved origin IS the canonical one.
+   */
   readonly webauthnRpId?: string;
   readonly webauthnOrigin?: string;
   readonly trustProxy: boolean | string[];
@@ -122,10 +131,10 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
 
     publicUrl: parsedPublicUrl ? parsedPublicUrl.href.replace(/\/$/, '') : undefined,
     secureCookies,
-    // Behind a proxy the request host can be wrong; prefer the public URL's host/origin when set. An
-    // explicit SW_WEBAUTHN_* override still wins; both unset ⇒ undefined (resolved from the request).
-    webauthnRpId: env.SW_WEBAUTHN_RP_ID?.trim() || parsedPublicUrl?.hostname,
-    webauthnOrigin: env.SW_WEBAUTHN_ORIGIN?.trim() || parsedPublicUrl?.origin,
+    // ONLY the explicit overrides (see the field docs): the canonical public URL is applied by the app
+    // as the FALLBACK for an unrecognized request origin, not as a pin that pre-empts resolution.
+    webauthnRpId: env.SW_WEBAUTHN_RP_ID?.trim() || undefined,
+    webauthnOrigin: env.SW_WEBAUTHN_ORIGIN?.trim() || undefined,
     trustProxy: parseTrustProxy(env.TRUST_PROXY),
     securityContacts: parseSecurityContacts(env.SW_SECURITY_CONTACT),
 

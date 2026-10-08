@@ -12,6 +12,7 @@ import {
   DEFAULT_BRAND_SECONDARY,
   DEFAULT_HSTS,
   FrameAncestorOriginSchema,
+  PlatformOriginSchema,
   DEFAULT_BACKUP_RETENTION,
   DEFAULT_FORM_MODES,
   DEFAULT_LOG_LEVEL,
@@ -209,6 +210,9 @@ export function InstanceSettings() {
   const [embedOrigins, setEmbedOrigins] = useState<string[]>([]);
   const [embedDraft, setEmbedDraft] = useState('');
   const [embedError, setEmbedError] = useState<string | null>(null);
+  const [extraOrigins, setExtraOrigins] = useState<string[]>([]);
+  const [originDraft, setOriginDraft] = useState('');
+  const [originError, setOriginError] = useState<string | null>(null);
 
   // Ops: server log verbosity + DB backup management (retention + live storage usage + purge).
   const [logLevel, setLogLevel] = useState<LogLevel>(DEFAULT_LOG_LEVEL);
@@ -430,6 +434,7 @@ export function InstanceSettings() {
     setEmbedEnabled(s.embedding?.enabled ?? false);
     setEmbedAllowSelf(s.embedding?.allowSelf ?? false);
     setEmbedOrigins(s.embedding?.origins ?? []);
+    setExtraOrigins(s.additionalOrigins ?? []);
     setEmbedDraft('');
     setEmbedError(null);
     setLogLevel(s.logLevel ?? DEFAULT_LOG_LEVEL);
@@ -519,6 +524,9 @@ export function InstanceSettings() {
     // HSTS: send the full policy (no secrets). enabled=false stores an OFF policy (preserves the other
     // fields for when it's re-enabled) rather than clearing the section.
     input.embedding = { enabled: embedEnabled, origins: embedOrigins, allowSelf: embedAllowSelf };
+    // An empty list CLEARS the setting (back to single-origin) rather than storing `[]`, matching how
+    // every other optional setting reverts to its default.
+    input.additionalOrigins = extraOrigins.length > 0 ? extraOrigins : null;
     const hstsMaxAgeClamped = clampHstsMaxAge(hstsMaxAge);
     input.hsts = {
       enabled: hstsEnabled,
@@ -649,6 +657,19 @@ export function InstanceSettings() {
    * second regex here would drift and reject or accept the wrong thing) and appends it. Duplicates are
    * ignored rather than erroring: adding one twice is a no-op, not a mistake worth a message.
    */
+  function addExtraOrigin() {
+    const value = originDraft.trim();
+    if (!value) return;
+    const parsed = PlatformOriginSchema.safeParse(value);
+    if (!parsed.success) {
+      setOriginError(parsed.error.issues[0]?.message ?? 'not a valid origin');
+      return;
+    }
+    setExtraOrigins((prev) => (prev.includes(parsed.data) ? prev : [...prev, parsed.data]));
+    setOriginDraft('');
+    setOriginError(null);
+  }
+
   function addEmbedOrigin() {
     const value = embedDraft.trim();
     if (!value) return;
@@ -1234,6 +1255,73 @@ export function InstanceSettings() {
           </button>
         </div>
         {rotateMsg && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{rotateMsg}</p>}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Additional hostnames
+          <SectionHelp tip="Other hostnames this platform answers on, besides its configured public URL. Sign-in with a passkey, OIDC sign-in and connected agents all work on an approved hostname; a hostname that is not listed falls back to the public URL. Each hostname is a separate login, because the session cookie is host-only." />
+        </legend>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          The public URL stays the canonical address — it is what published contact forms post back to. Add an
+          origin here to let the platform also answer on it:{' '}
+          <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">https://edit.clientbrand.com</code>. No paths, no
+          wildcards, and all hostnames must use the same scheme as the public URL.
+        </p>
+        <div className="flex flex-col gap-3">
+          <div>
+            <span className="mb-1 block text-sm font-medium">Approved hostnames</span>
+            {extraOrigins.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                None — the platform answers only on its public URL.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {extraOrigins.map((o) => (
+                  <li key={o} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white/80 px-2.5 py-1.5 text-sm dark:border-white/10 dark:bg-white/5">
+                    <code className="truncate">{o}</code>
+                    <button
+                      type="button"
+                      className={`${ghostButton} px-2 py-0.5 text-xs`}
+                      aria-label={`Remove ${o}`}
+                      onClick={() => setExtraOrigins((prev) => prev.filter((x) => x !== o))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex flex-wrap items-start gap-2">
+            <input
+              className={`${glassInput} min-w-[16rem] flex-1`}
+              aria-label="Hostname to approve"
+              placeholder="https://edit.clientbrand.com"
+              value={originDraft}
+              onChange={(e) => {
+                setOriginDraft(e.target.value);
+                setOriginError(null);
+              }}
+              onKeyDown={(e) => {
+                // Enter adds the hostname rather than submitting the whole settings form.
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addExtraOrigin();
+                }
+              }}
+            />
+            <button type="button" className={ghostButton} onClick={addExtraOrigin} disabled={!originDraft.trim()}>
+              Add hostname
+            </button>
+          </div>
+          {originError && <p className="text-xs text-rose-600 dark:text-rose-400">{originError}</p>}
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            DNS for each hostname must point here and your reverse proxy must hold a certificate for it. A passkey is
+            bound to the hostname it was created on, so it will not sign you in on a different one — the Security tab
+            names the hostname of each passkey. For OIDC, register each hostname&apos;s callback URL with your provider.
+          </p>
+        </div>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

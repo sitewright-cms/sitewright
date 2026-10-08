@@ -180,6 +180,29 @@ export const FrameAncestorOriginSchema = z
   }, 'port must be <= 65535');
 
 /**
+ * An additional ORIGIN this instance answers on, beyond `SW_PUBLIC_URL`.
+ *
+ * No wildcards, unlike the frame-ancestors list above: these origins are used to derive values that
+ * must name one exact host — a WebAuthn rpID, an OIDC `redirect_uri`, an OAuth issuer — and none of
+ * those can be expressed as a pattern.
+ */
+export const PlatformOriginSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  // Case-insensitive and a trailing slash is tolerated: this is typed into a settings form, and the
+  // server normalizes what it stores (see `dedupeAdditionalOrigins`). Rejecting `https://Example.com/`
+  // would be a validation error about nothing.
+  .regex(
+    /^https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*(?::[0-9]{1,5})?\/?$/i,
+    'must be scheme://host[:port] — e.g. https://edit.example.com',
+  )
+  .refine((v) => {
+    const port = v.replace(/\/$/, '').split(':')[2];
+    return port === undefined || Number(port) <= 65535;
+  }, 'port must be <= 65535');
+
+/**
  * Who may EMBED the admin panel in an iframe. Off by default: the platform ships `frame-ancestors
  * 'none'` + `X-Frame-Options: DENY`, and an operator opts specific origins in.
  *
@@ -439,6 +462,15 @@ export const InstanceSettingsStoredSchema = z.object({
   hsts: HstsSchema.optional(),
   /** Who may iframe the admin panel (admin opt-in; unset → framing denied). See {@link EmbeddingSchema}. */
   embedding: EmbeddingSchema.optional(),
+  /**
+   * Additional origins this instance answers on, beyond the canonical `SW_PUBLIC_URL`.
+   *
+   * Widens only the decisions whose right answer is "wherever this request arrived": the OIDC callback
+   * base, the OAuth/MCP issuer, and the WebAuthn relying party. The canonical origin still owns
+   * everything that must be stable for every caller — the absolute form endpoint baked into published
+   * sites, and `security.txt`'s `Canonical`. Unset/empty → single-origin behaviour.
+   */
+  additionalOrigins: z.array(PlatformOriginSchema).max(10).optional(),
   /** How many pre-migration DB snapshots to keep (oldest pruned). Unset → DEFAULT_BACKUP_RETENTION (2). */
   backupRetention: z.number().int().min(1).max(100).optional(),
   /** Server log verbosity (pino level). Unset → the LOG_LEVEL env, else 'info'. Applied live on save. */
@@ -578,6 +610,11 @@ export const InstanceSettingsInputSchema = z.object({
   // Embedding allowlist: an object sets it (all fields defaulted), `null` clears it (revert to
   // framing DENIED), and an absent (undefined) value leaves the stored one unchanged.
   embedding: EmbeddingSchema.nullable().optional(),
+  // Additional platform origins: an array REPLACES the whole list, `null` clears it (back to
+  // single-origin), and an absent value leaves the stored one unchanged. The server additionally
+  // refuses a list that mixes schemes or lands inside the hosted-sites domain — see
+  // `validateAdditionalOrigins`, which needs runtime config the schema cannot see.
+  additionalOrigins: z.array(PlatformOriginSchema).max(10).nullable().optional(),
   // Pre-migration DB snapshot retention: a number sets it, `null` reverts to the default (2), undefined leaves it.
   backupRetention: z.number().int().min(1).max(100).nullable().optional(),
   // Log verbosity: a level sets it, `null` reverts to the env/'info' default, undefined leaves it.
@@ -668,6 +705,8 @@ export interface InstanceSettingsPublic {
   hsts?: Hsts;
   /** Embedding allowlist (not a secret), or absent when unset (framing denied). */
   embedding?: Embedding;
+  /** Additional origins this instance answers on (not a secret), or absent when single-origin. */
+  additionalOrigins?: string[];
   /** Pre-migration DB snapshot retention, or absent when using the default (2). */
   backupRetention?: number;
   /** Server log verbosity (pino level), or absent when using the env/'info' default. */
@@ -718,6 +757,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.platformBackground !== undefined) result.platformBackground = stored.platformBackground;
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
+  if (stored.additionalOrigins !== undefined) result.additionalOrigins = stored.additionalOrigins; // non-secret
   if (stored.embedding !== undefined) result.embedding = stored.embedding; // non-secret — surfaced as-is
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
   if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;

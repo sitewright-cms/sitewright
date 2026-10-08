@@ -63,6 +63,38 @@ describe('OIDC single sign-on', () => {
     expect(cfg.json().oidcProviders).toEqual([{ id: 'acme', label: 'Acme SSO' }]);
   });
 
+  // ── the redirect_uri base under multi-hostname access ─────────────────────────────────────────────
+  // The redirect_uri is NOT stored with the login state: /start mints it and /callback reconstructs it,
+  // each from its OWN request. They agree because the browser follows the URI /start handed the IdP — so
+  // what matters is that /start picks the right host.
+
+  it('mints the redirect_uri on the APPROVED hostname the login started from', async () => {
+    await admin.put('/admin/settings', { additionalOrigins: ['http://edit.clientbrand.test'] });
+    await harness.app.inject({ method: 'GET', url: '/auth/oidc/acme/start', headers: { host: 'edit.clientbrand.test' } });
+    // Not the canonical/first origin: a user who began on this hostname must come back to it, or the
+    // host-only session cookie lands on an origin they were not using and they stay signed out here.
+    expect(startOidcAuth).toHaveBeenCalledWith(expect.anything(), 'http://edit.clientbrand.test/auth/oidc/acme/callback');
+  });
+
+  it('an UNAPPROVED Host falls back to the canonical public URL', async () => {
+    // Otherwise anyone who can set a header could aim the IdP redirect at a host of their choosing.
+    // Needs its own instance: this suite's harness has no public URL, and with none configured the
+    // request origin is the only thing there is to use (unchanged from before the allowlist).
+    const pinned = await makeHarness({ encryptionKey: randomBytes(32), publicUrl: 'https://cms.agency.test' });
+    try {
+      const owner = await pinned.signup({ email: 'a@test.local', password: 'Pw-secret-1', admin: true });
+      await owner.put('/admin/settings', {
+        oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', clientSecret: 'shh', enabled: true }],
+        additionalOrigins: ['https://edit.clientbrand.test'],
+      });
+      startOidcAuth.mockClear();
+      await pinned.app.inject({ method: 'GET', url: '/auth/oidc/acme/start', headers: { host: 'evil.example.net', 'x-forwarded-proto': 'https' } });
+      expect(startOidcAuth).toHaveBeenCalledWith(expect.anything(), 'https://cms.agency.test/auth/oidc/acme/callback');
+    } finally {
+      await pinned.close();
+    }
+  });
+
   it('signs in an EXISTING account by verified email and links the identity', async () => {
     const user = await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
     const res = await login({ sub: 'sub-1', email: 'member@test.local', emailVerified: true });

@@ -29,8 +29,12 @@ export interface PlatformSecurityTxtOptions {
   readonly now: Date;
   /** `SW_SECURITY_CONTACT`, already split. Empty/absent → the upstream default above. */
   readonly contacts?: readonly string[];
-  /** `SW_PUBLIC_URL`, used for `Canonical`. Omitted when the instance has no configured origin. */
-  readonly publicUrl?: string;
+  /**
+   * Every origin this instance is configured to answer on (canonical first), each of which gets its own
+   * `Canonical` line. Empty when the operator configured no public URL — these come only from
+   * configuration, never from a request Host, which a caller controls.
+   */
+  readonly canonicals?: readonly string[];
 }
 
 /** Render the instance's security.txt. Pure — the route just sends what this returns. */
@@ -43,7 +47,7 @@ export function renderPlatformSecurityTxt(opts: PlatformSecurityTxtOptions): str
   return renderSecurityTxt({
     contacts,
     expires: securityTxtExpiresInDays(opts.now, PLATFORM_SECURITY_TXT_DAYS),
-    canonical: opts.publicUrl ? `${opts.publicUrl.replace(/\/+$/, '')}/.well-known/security.txt` : undefined,
+    canonical: (opts.canonicals ?? []).map((o) => `${o.replace(/\/+$/, '')}/.well-known/security.txt`),
     // The policy describes the SOFTWARE's disclosure process and holds for every instance, so it is
     // emitted even when the operator has redirected the contact to themselves.
     policy: UPSTREAM_SECURITY_POLICY,

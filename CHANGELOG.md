@@ -11,6 +11,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **One instance can now answer on several hostnames.** `SW_PUBLIC_URL` stays the canonical address —
+  it is what published contact forms post back to, and what `security.txt` names — and **System
+  Settings → Additional hostnames** adds the others at runtime, no restart and no new environment
+  variable. An approved hostname becomes its own passkey relying party, returns an OIDC sign-in to the
+  hostname it started on (previously you were force-landed on the canonical host and, because the
+  session cookie is host-only, ended up signed in somewhere you were not looking), and serves as the
+  OAuth issuer for agents that connected through it. A hostname that is not on the list falls back to
+  the canonical address, so a spoofed `Host` header cannot steer any of them. `security.txt` now
+  carries one `Canonical` line per configured hostname.
+
+  Two shapes are refused when you save, because each fails silently and locks you out of the very form
+  you saved it from: a hostname on a different scheme than the public URL (secure cookies are one
+  instance-wide posture, so it would be sent cookies it cannot carry — a login that never sticks), and
+  a hostname inside `SW_SITES_DOMAIN`, where every request is served as a hosted client site and the
+  app would be unreachable.
+
+  Each hostname is a separate sign-in — the session cookie is host-only by design — and a passkey works
+  only on the hostname it was created on, which the Security tab now tells you.
+
 - **Each passkey now names the hostname it belongs to.** A passkey is bound to its WebAuthn relying
   party, so one created on `cms.example.com` is simply not offered by the browser on
   `admin.example.com` — the user saw "no passkey available" with nothing anywhere explaining why. The

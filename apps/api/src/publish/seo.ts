@@ -147,7 +147,8 @@ export function securityTxtContacts(selection: SecurityTxtSelection): {
 export interface SecurityTxtOptions {
   readonly contacts: readonly string[];
   readonly expires: string;
-  readonly canonical?: string;
+  /** `Canonical` URI(s). RFC 9116 §2.5.2 permits the field to repeat, so a list emits one line each. */
+  readonly canonical?: string | readonly string[];
   readonly policy?: string;
   readonly acknowledgments?: string;
   readonly preferredLanguages?: string;
@@ -164,7 +165,7 @@ export function renderSecurityTxt(opts: SecurityTxtOptions): string {
   for (const contact of opts.contacts) lines.push(`Contact: ${oneLine(contact)}`);
   lines.push(`Expires: ${oneLine(opts.expires)}`);
   if (opts.preferredLanguages) lines.push(`Preferred-Languages: ${oneLine(opts.preferredLanguages)}`);
-  if (opts.canonical) lines.push(`Canonical: ${oneLine(opts.canonical)}`);
+  for (const c of typeof opts.canonical === 'string' ? [opts.canonical] : (opts.canonical ?? [])) lines.push(`Canonical: ${oneLine(c)}`);
   if (opts.policy) lines.push(`Policy: ${oneLine(opts.policy)}`);
   if (opts.acknowledgments) lines.push(`Acknowledgments: ${oneLine(opts.acknowledgments)}`);
   return `${lines.join('\n')}\n`;

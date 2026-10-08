@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **handlebars upgraded to 4.7.10** — three advisories (two critical, one moderate) describing
+  JavaScript injection through template compilation: unsafe inline embedding of precompiled templates
+  (GHSA-xw65-4hp5-5hc7), AST type confusion in `compile` (GHSA-8r5x-fm3f-whwj, a bypass of
+  CVE-2026-33937), and an own-property check bypass (GHSA-p8wg-vrv2-v86f). handlebars **is** the
+  template engine here and the platform compiles author-supplied templates, so these are reachable
+  rather than theoretical — upgraded rather than accepted in the audit gate.
+
 ## [0.58.0] — 2026-10-06
 
 ### Added

@@ -45,11 +45,18 @@ describe('resolveRuntimeConfig — secure cookies derive from the hosting URL', 
   });
 });
 
-describe('resolveRuntimeConfig — WebAuthn RP derives from the hosting URL', () => {
-  it('derives rpId + origin from SW_PUBLIC_URL', () => {
+describe('resolveRuntimeConfig — WebAuthn RP carries ONLY the explicit overrides', () => {
+  // ★ The config used to derive rpId/origin from SW_PUBLIC_URL. It no longer does, because a value here
+  // PINS the relying party for every request and would pre-empt the per-request resolution that
+  // multi-hostname access needs. The canonical URL is still the fallback — applied in `createApp`, where
+  // the approved-origin list is also available. `multi-hostname.test.ts` proves the end-to-end result for
+  // a single-origin instance is unchanged, which is what this test originally protected.
+  it('does NOT derive rpId/origin from SW_PUBLIC_URL (resolved per-request downstream)', () => {
     const cfg = resolveRuntimeConfig({ SW_PUBLIC_URL: 'https://app.example.com' });
-    expect(cfg.webauthnRpId).toBe('app.example.com');
-    expect(cfg.webauthnOrigin).toBe('https://app.example.com');
+    expect(cfg.webauthnRpId).toBeUndefined();
+    expect(cfg.webauthnOrigin).toBeUndefined();
+    // …and the public URL itself is still resolved, since that is what the fallback reads.
+    expect(cfg.publicUrl).toBe('https://app.example.com');
   });
 
   it('explicit SW_WEBAUTHN_* overrides win', () => {

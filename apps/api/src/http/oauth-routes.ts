@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { resolvePlatformOrigin, type PlatformOriginSet } from './platform-origins.js';
 import type { Database } from '../db/client.js';
 import { OAuthError, OAuthRepository, type Grant } from '../repo/oauth.js';
 import { isValidS256Challenge } from '../auth/pkce.js';
@@ -39,9 +40,10 @@ export interface OAuthDeps {
     /** The admin's branding + animated background, so the consent screen looks like the platform. */
     getChrome(): Promise<ConsentChrome>;
   };
-  /** The instance's public origin (`SW_PUBLIC_URL`). When set, it is the OAuth issuer / `resource`
-   *  regardless of proxy headers — the fix for `http://` metadata behind a TLS-terminating proxy. */
-  publicUrl?: string;
+  /** The instance's approved origins, read live (the additional list is an admin setting). The issuer /
+   *  `resource` is the approved origin a request arrived on, else the canonical `SW_PUBLIC_URL` — which
+   *  is also the fix for `http://` metadata behind a TLS-terminating proxy. */
+  origins: () => PlatformOriginSet;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -78,8 +80,13 @@ function escapeHtml(value: string): string {
 // the real browser origin when trustProxy is enabled — otherwise a proxied HTTPS request looks like
 // `http://…` here, and MCP/OAuth clients reject the resulting `http://` metadata (set SW_PUBLIC_URL or
 // TRUST_PROXY). The security boundary is the loopback/exact redirect allowlist, not this URL.
-export function issuerOf(req: FastifyRequest, publicUrl?: string): string {
-  if (publicUrl) return publicUrl.replace(/\/$/, '');
+export function issuerOf(req: FastifyRequest, origins?: PlatformOriginSet): string {
+  // With an origin set configured, the issuer is the APPROVED origin this request arrived on, falling
+  // back to the canonical one. ★ A client pins the issuer it registered against, so a client that
+  // discovered us on one approved hostname keeps getting that same issuer on every later request to it —
+  // what must never happen is the issuer moving under an existing client.
+  const resolved = origins ? resolvePlatformOrigin(req, origins) : undefined;
+  if (resolved) return resolved.replace(/\/$/, '');
   const host = req.headers.host ?? 'localhost';
   return `${req.protocol}://${host}`;
 }
@@ -414,7 +421,7 @@ function redirectWith(redirectUri: string, params: Record<string, string>): stri
  * rest of the API validates.
  */
 export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void {
-  const { oauth, clients, db, projects, currentUserId, instanceSettings, publicUrl, rl } = deps;
+  const { oauth, clients, db, projects, currentUserId, instanceSettings, origins, rl } = deps;
   /** Absolute refresh-token expiry for a NEWLY-issued grant = now + the admin's agent-session cap. */
   const sessionExpiry = async (): Promise<Date> => new Date(Date.now() + (await instanceSettings.getAgentSessionMs()));
 
@@ -472,7 +479,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
 
   // ---- Discovery (RFC 8414 + RFC 9728) ----
   app.get('/.well-known/oauth-authorization-server', async (req, reply) => {
-    const issuer = issuerOf(req, publicUrl);
+    const issuer = issuerOf(req, origins());
     return reply.send({
       issuer,
       authorization_endpoint: `${issuer}/oauth/authorize`,
@@ -492,7 +499,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
   });
 
   app.get('/.well-known/oauth-protected-resource', async (req, reply) => {
-    const issuer = issuerOf(req, publicUrl);
+    const issuer = issuerOf(req, origins());
     return reply.send({ resource: issuer, authorization_servers: [issuer] });
   });
 
@@ -705,7 +712,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       // authorization-code consent page instead.
       const scope = parseScope(b.scope);
       if (scope.length === 0) return reply.code(400).send({ error: 'invalid_scope' });
-      const issuer = issuerOf(req, publicUrl);
+      const issuer = issuerOf(req, origins());
       const { deviceCode, userCode, expiresAt, interval } = await oauth.startDeviceAuthorization({ clientId, scope });
       return reply.send({
         device_code: deviceCode,

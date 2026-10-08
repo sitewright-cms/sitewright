@@ -312,6 +312,15 @@ import {
   verifyRegistration,
   type RpConfig,
 } from '../auth/webauthn.js';
+import {
+  normalizePlatformOrigin,
+  requestOriginOf,
+  resolvePlatformOrigin,
+  allPlatformOrigins,
+  validateAdditionalOrigins,
+  dedupeAdditionalOrigins,
+  type PlatformOriginSet,
+} from './platform-origins.js';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import {
   acceptInvite,
@@ -1536,6 +1545,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
   // Per-IP failed-login throttle (in-memory, per-process) for the /auth/login(/totp) routes.
   const loginThrottle = new LoginThrottle();
+  // The canonical origin (`SW_PUBLIC_URL`), normalized for comparison against request origins. The ONE
+  // origin that must mean the same thing to every caller — see platform-origins.ts.
+  const canonicalOrigin = normalizePlatformOrigin(opts.publicUrl) ?? undefined;
   // Session-cookie signing secret. An explicit `cookieSecret` (from `COOKIE_SECRET` env) PINS it;
   // otherwise it's auto-generated + persisted on first boot and live-rotatable from System Settings.
   // Held in a mutable ref so a rotation takes effect immediately — existing cookies stop verifying,
@@ -1551,6 +1563,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // mutable-ref style as hstsPolicy, and pre-resolved to the `frame-ancestors` source list (or null =
   // stay denied) so the per-response hook does no work beyond a null check.
   let frameAncestors = frameAncestorsFor(await instanceSettingsRepo.getEmbedding());
+  // Additional origins this instance answers on (admin instance setting; empty = single-origin). Same
+  // mutable-ref style as hstsPolicy — loaded at boot, refreshed after a settings PUT — so the per-request
+  // resolution below does no DB work and an admin change applies without a restart.
+  let additionalOrigins = await instanceSettingsRepo.getAdditionalOrigins();
+  /** The instance's origin set as of right now. Read through a function so every caller sees a rotation. */
+  const platformOrigins = (): PlatformOriginSet => ({
+    ...(canonicalOrigin ? { canonical: canonicalOrigin } : {}),
+    additional: additionalOrigins,
+  });
   // Custom HMAC sign/verify for the session cookie (NOT @fastify/cookie's `signed`, whose secret is
   // fixed at plugin-registration time) so a runtime rotation of `currentCookieSecret` applies live.
   const signSession = (token: string): string =>
@@ -1651,21 +1672,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // TOTP second factor: the shared secret is encrypted at rest under the operator's key (same key as
   // instance secrets) — so TOTP enrolment/verification is unavailable (503) when no key is configured.
   const mfaRepo = new MfaRepository(db, opts.encryptionKey);
-  // Passkeys (WebAuthn). The Relying Party is resolved per-request from the host (overridable via
-  // opts) — passkeys bind to that rpID, so they don't transfer across deploy hosts. Behind a
-  // TLS-terminating reverse proxy the connection to the container is plain HTTP, so req.protocol/host
-  // describe the proxy→app hop, not the browser's real origin; honor the standard X-Forwarded-Proto /
-  // X-Forwarded-Host the proxy sets (else expectedOrigin is `http://…` while the browser sent
-  // `https://…` → verifyRegistration rejects → "could not verify this passkey"). The env override wins.
+  // Passkeys (WebAuthn). The Relying Party is the APPROVED origin a request arrived on — the canonical
+  // public URL or one of the admin-approved additional hostnames — falling back to the canonical origin
+  // for anything else, so an unrecognized (or spoofed) Host cannot choose the rpID a credential binds to.
+  // A passkey binds to ONE rpID, so it does not transfer between hostnames; `user_passkeys.rp_id` records
+  // which one, and the Security tab names it. An explicit SW_WEBAUTHN_* env override pins it instead.
   const passkeyRepo = new PasskeyRepository(db);
   const rpFor = (req: FastifyRequest): RpConfig => {
-    // Constrain the forwarded values (a spoofed scheme/host can't bypass the ceremony — the browser
-    // binds origin/rpID — but validating keeps attacker-controlled junk out of the rpID + logs).
-    const fwdProto = firstForwardedValue(req.headers['x-forwarded-proto']);
-    const protocol = fwdProto === 'http' || fwdProto === 'https' ? fwdProto : req.protocol;
-    const fwdHost = firstForwardedValue(req.headers['x-forwarded-host']);
-    const host = fwdHost && /^[a-zA-Z0-9.-]+(:\d+)?$/.test(fwdHost) ? fwdHost : req.headers.host;
-    return resolveRp(host, protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
+    // Forwarded-aware scheme + host. Behind a TLS-terminating proxy the connection to this process is
+    // plain HTTP to an internal host, so req.protocol/req.headers.host describe the proxy→app hop and not
+    // the browser's origin. Shape-checked, never trusted (see requestOriginOf).
+    const arrived = requestOriginOf(req);
+    const arrivedUrl = arrived ? new URL(arrived) : undefined;
+    // An explicit SW_WEBAUTHN_* override PINS the relying party for every request and wins outright. It
+    // still derives whatever it does NOT override from the forwarded values — setting only
+    // SW_WEBAUTHN_RP_ID behind a proxy must not leave the ORIGIN pointing at the internal hop.
+    if (opts.webauthnRpId || opts.webauthnOrigin) {
+      return resolveRp(arrivedUrl?.host ?? req.headers.host, arrivedUrl?.protocol.slice(0, -1) ?? req.protocol, {
+        rpID: opts.webauthnRpId,
+        origin: opts.webauthnOrigin,
+      });
+    }
+    // Otherwise the relying party is the origin this request ARRIVED on, when that is one the operator
+    // approved — so a passkey registered on an approved hostname works on that hostname. An unrecognized
+    // Host falls back to the canonical origin, which makes a spoofed one fail cleanly rather than mint a
+    // credential under an attacker-chosen rpID. (A passkey still binds to ONE rpID, so one registered on
+    // host A is not offered on host B; `user_passkeys.rp_id` is what lets the UI explain that.)
+    const resolved = resolvePlatformOrigin(req, platformOrigins());
+    if (resolved) {
+      const url = new URL(resolved);
+      return { rpID: url.hostname, origin: resolved };
+    }
+    // No approved origin and no Host to derive from: the pre-allowlist behaviour.
+    return resolveRp(req.headers.host, req.protocol, {});
   };
   // OIDC single sign-on (the platform as a Relying Party). Provider config (incl. the encrypted
   // client secret) lives in instance settings; this repo holds the single-use login state + identities.
@@ -1673,7 +1712,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The public base used for BOTH the redirect_uri and the callback-URL reconstruction, so they
   // agree (openid-client matches the redirect_uri at token exchange). Prefer the configured public
   // URL; fall back to the request origin.
-  const oidcPublicBase = (req: FastifyRequest): string => (opts.publicUrl ?? `${req.protocol}://${req.headers.host}`).replace(/\/$/, '');
+  // Prefer the origin the request arrived on when it is an approved one, so a user who started the login
+  // on a second hostname is returned THERE. (Returning them to the canonical host would land the
+  // host-only session cookie on an origin they were not using — i.e. a successful login that leaves the
+  // browser they are looking at still signed out.) Each origin's redirect_uri must be registered at the
+  // IdP. Unapproved/unknown Host → the canonical origin, as before.
+  const oidcPublicBase = (req: FastifyRequest): string =>
+    (resolvePlatformOrigin(req, platformOrigins()) ?? `${req.protocol}://${req.headers.host}`).replace(/\/$/, '');
   const oidcRedirectUri = (req: FastifyRequest, providerId: string): string =>
     `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
@@ -2926,6 +2971,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {
     const userId = await requireInstanceAdmin(req);
     const input = InstanceSettingsInputSchema.parse(req.body);
+    // Additional origins are checked against the RUNTIME config (the canonical scheme, the hosted-sites
+    // domain) which the schema cannot see. Both rules exist because the failure is otherwise silent and
+    // self-inflicted from this very form — see validateAdditionalOrigins.
+    if (input.additionalOrigins) {
+      const reason = validateAdditionalOrigins(input.additionalOrigins, {
+        ...(canonicalOrigin ? { canonical: canonicalOrigin } : {}),
+        ...(sitesDomain ? { sitesDomain } : {}),
+      });
+      if (reason) return reply.code(400).send({ error: reason });
+      input.additionalOrigins = dedupeAdditionalOrigins(input.additionalOrigins, canonicalOrigin);
+    }
     try {
       const settings = await instanceSettingsRepo.put(input);
       // Refresh the cached HSTS policy from the just-written settings (non-secret, surfaced as-is) so the
@@ -2934,6 +2990,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // single-container by design); a multi-replica deployment would need cross-replica invalidation.
       hstsPolicy = settings.hsts ?? { ...DEFAULT_HSTS };
       frameAncestors = frameAncestorsFor(settings.embedding);
+      additionalOrigins = settings.additionalOrigins ?? [];
       // Apply a log-level change live (pino's level is mutable) so an admin can dial verbosity without a
       // restart. On CLEAR (settings.logLevel undefined) fall back to the raw ENV level (not opts.logLevel,
       // which has any prior stored value baked in at boot). Only meaningful when the logger is active.
@@ -4247,10 +4304,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
-  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, publicUrl: opts.publicUrl, rl });
+  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, origins: platformOrigins, rl });
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
-  registerMcpRoutes(app, { rl, rlAgent, publicUrl: opts.publicUrl });
+  registerMcpRoutes(app, { rl, rlAgent, origins: platformOrigins });
 
   app.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/export',
@@ -9687,9 +9744,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         renderPlatformSecurityTxt({
           now: new Date(),
           contacts: opts.securityContacts,
-          // Canonical ONLY from the configured public URL — never derived from the request Host,
-          // which is caller-supplied and would reflect an arbitrary origin into a published file.
-          publicUrl: opts.publicUrl,
+          // Canonical ONLY from the CONFIGURED origins — never derived from the request Host, which is
+          // caller-supplied and would reflect an arbitrary origin into a published file. RFC 9116 allows
+          // `Canonical` to repeat, so an instance answering on several hostnames names them all.
+          canonicals: allPlatformOrigins(platformOrigins()),
         }),
       );
   });

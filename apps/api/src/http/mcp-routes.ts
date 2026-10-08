@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { PlatformOriginSet } from './platform-origins.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { createSitewrightMcpServer, staticAuth, SitewrightClient, SitewrightApiError, type FetchLike } from '@sitewright/mcp';
 import { hashApiToken } from '../auth/api-keys.js';
@@ -57,9 +58,9 @@ export function registerMcpRoutes(
     rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
     /** Like `rl`, but lifts the cap for a VERIFIED API key only (see app.ts). */
     rlAgent: (max: number) => { rateLimit: { max: (req: FastifyRequest) => number; timeWindow: string } };
-    /** The instance's public origin (`SW_PUBLIC_URL`); used to build the OAuth challenge's
+    /** The instance's approved origins (canonical + admin-set additional); used to build the challenge's
      *  resource-metadata URL correctly behind a TLS-terminating proxy. See `issuerOf`. */
-    publicUrl?: string;
+    origins: () => PlatformOriginSet;
   },
 ): void {
   // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token.
@@ -129,7 +130,7 @@ export function registerMcpRoutes(
     const challenge = (): FastifyReply =>
       reply
         .code(401)
-        .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req, opts.publicUrl)}/.well-known/oauth-protected-resource"`)
+        .header('WWW-Authenticate', `Bearer resource_metadata="${issuerOf(req, opts.origins())}/.well-known/oauth-protected-resource"`)
         .send({ error: 'unauthorized', error_description: 'Authenticate via OAuth to use the Sitewright MCP endpoint.' });
 
     const token = bearerOf(req);
@@ -175,7 +176,7 @@ export function registerMcpRoutes(
         if (typeof v === 'string') headers.set(k, v);
         else if (Array.isArray(v)) headers.set(k, v.join(', '));
       }
-      const webReq = new Request(`${issuerOf(req, opts.publicUrl)}${req.url}`, { method: req.method, headers });
+      const webReq = new Request(`${issuerOf(req, opts.origins())}${req.url}`, { method: req.method, headers });
       const webRes = await transport.handleRequest(webReq, { parsedBody: req.body });
       reply.code(webRes.status);
       webRes.headers.forEach((value, key) => reply.header(key, value));

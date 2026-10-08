@@ -150,6 +150,11 @@ export class InstanceSettingsRepository {
     return (await this.getStored()).embedding ?? { ...DEFAULT_EMBEDDING, origins: [] };
   }
 
+  /** Additional origins this instance answers on (empty when single-origin). */
+  async getAdditionalOrigins(): Promise<string[]> {
+    return (await this.getStored()).additionalOrigins ?? [];
+  }
+
   /** How many pre-migration DB snapshots to keep — the admin setting or the built-in default (2). */
   async getBackupRetention(): Promise<number> {
     return (await this.getStored()).backupRetention ?? DEFAULT_BACKUP_RETENTION;
@@ -339,6 +344,17 @@ export class InstanceSettingsRepository {
       if (current.embedding) next.embedding = current.embedding;
     } else {
       next.embedding = input.embedding;
+    }
+
+    // Additional platform origins: an array REPLACES the whole list (so removing one is possible),
+    // `null` clears it (back to single-origin), and undefined keeps whatever was stored. The route
+    // validates the list against the runtime config (scheme parity, hosted-sites domain) before this.
+    if (input.additionalOrigins === null) {
+      // cleared — leave next.additionalOrigins undefined (→ single-origin)
+    } else if (input.additionalOrigins === undefined) {
+      if (current.additionalOrigins) next.additionalOrigins = current.additionalOrigins;
+    } else {
+      next.additionalOrigins = input.additionalOrigins;
     }
 
     // Agent instructions: a string sets the override, `null` clears it (revert to default),

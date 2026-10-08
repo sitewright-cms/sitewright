@@ -13,7 +13,17 @@ const { listProjectDomains, claimProjectDomain, verifyProjectDomain, forceVerify
 const { confirmFn } = vi.hoisted(() => ({ confirmFn: vi.fn() }));
 
 vi.mock('../src/api', () => ({
-  ApiError: class ApiError extends Error {},
+  // ★ Mirrors the REAL constructor `(status, message, …)`. A single-argument stub passes at runtime
+  // (the panel only reads `.message`) while failing typecheck against the real class — and worse, it
+  // would put the STATUS in `message` the moment a caller passed both.
+  ApiError: class ApiError extends Error {
+    constructor(
+      public readonly status: number,
+      message: string,
+    ) {
+      super(message);
+    }
+  },
   api: {
     listProjectDomains: (p: string) => listProjectDomains(p),
     claimProjectDomain: (p: string, h: string) => claimProjectDomain(p, h),
@@ -123,7 +133,7 @@ describe('CustomDomainsPanel', () => {
 
   it('surfaces a refused claim inline rather than silently doing nothing', async () => {
     const { ApiError } = await import('../src/api');
-    claimProjectDomain.mockRejectedValue(new ApiError('is an address of this platform itself'));
+    claimProjectDomain.mockRejectedValue(new ApiError(409, 'is an address of this platform itself'));
     render(<CustomDomainsPanel projectId="p1" isStaff={false} />);
 
     fireEvent.change(await screen.findByLabelText('Custom domain to add'), { target: { value: 'cms.agency.test' } });

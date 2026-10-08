@@ -42,6 +42,40 @@ describe('PasskeysSection', () => {
     expect(await screen.findByText('Work Laptop')).toBeInTheDocument();
   });
 
+  it('names the host of a passkey bound elsewhere, and stands the row down', async () => {
+    // jsdom serves pages from `localhost`, so a credential whose rpId is another host cannot be used
+    // here — the browser simply will not offer it. The row has to SAY so; a silent list is the bug.
+    listPasskeys.mockResolvedValue({
+      items: [{ id: 'c1', name: 'Other Host Key', rpId: 'admin.example.com', createdAt: '2026-01-01T00:00:00Z', lastUsedAt: null }],
+    });
+    render(<PasskeysSection />);
+
+    expect(await screen.findByText(/for admin\.example\.com/)).toBeInTheDocument();
+    expect(screen.getByText('Other Host Key').className).toMatch(/text-slate-400/);
+  });
+
+  it('leaves a passkey bound to THIS host unlabelled and fully live', async () => {
+    listPasskeys.mockResolvedValue({
+      items: [{ id: 'c1', name: 'This Host Key', rpId: window.location.hostname, createdAt: '2026-01-01T00:00:00Z', lastUsedAt: null }],
+    });
+    render(<PasskeysSection />);
+
+    expect(await screen.findByText('This Host Key')).toBeInTheDocument();
+    expect(screen.queryByText(/sign in there to use it/)).not.toBeInTheDocument();
+    expect(screen.getByText('This Host Key').className).not.toMatch(/text-slate-400/);
+  });
+
+  it('treats an unknown rpId (a pre-column passkey) as usable rather than greying out a working key', async () => {
+    listPasskeys.mockResolvedValue({
+      items: [{ id: 'c1', name: 'Legacy Key', rpId: null, createdAt: '2026-01-01T00:00:00Z', lastUsedAt: null }],
+    });
+    render(<PasskeysSection />);
+
+    expect(await screen.findByText('Legacy Key')).toBeInTheDocument();
+    expect(screen.queryByText(/sign in there to use it/)).not.toBeInTheDocument();
+    expect(screen.getByText('Legacy Key').className).not.toMatch(/text-slate-400/);
+  });
+
   it('adds a passkey: prompt name → startRegistration → verify → reload', async () => {
     promptFn.mockResolvedValue('My Phone');
     passkeyRegisterOptions.mockResolvedValue({ options: { challenge: 'c' }, handle: 'h1' });

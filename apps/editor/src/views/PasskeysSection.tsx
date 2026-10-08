@@ -6,9 +6,23 @@ import { useDialogs } from './ui/Dialogs';
 import { dangerButton, ghostButton, glassCard, glassPanel, primaryButton } from '../theme';
 
 /**
+ * Whether a credential can actually be used on the page's current host. An unknown rpID (null — the
+ * passkey predates the column) is treated as usable: we cannot prove otherwise, and greying out a
+ * working passkey is worse than leaving it unlabelled.
+ */
+function usableHere(rpId: string | null): boolean {
+  return rpId === null || rpId === window.location.hostname;
+}
+
+/**
  * The Security tab's Passkeys section: list, add (WebAuthn registration), rename, and remove the
  * user's passkeys. Registration runs entirely in the browser via @simplewebauthn/browser; the server
  * only sees the public attestation. Independent of the TOTP section.
+ *
+ * A passkey is bound to the hostname (rpID) it was registered on, and the browser silently declines to
+ * offer it anywhere else — so when an instance is reachable at more than one hostname, a perfectly good
+ * passkey looks broken. Each row therefore names its host and visibly stands down when that host is not
+ * the current one. `location.hostname` is the exact comparison: an rpID is the host without its port.
  */
 export function PasskeysSection() {
   const toast = useToast();
@@ -84,7 +98,12 @@ export function PasskeysSection() {
         <ul className="flex flex-col gap-2">
           {items.map((pk) => (
             <li key={pk.id} className={`flex items-center gap-3 ${glassPanel} px-4 py-2.5 text-sm`}>
-              <span className="min-w-0 truncate font-medium text-slate-800 dark:text-slate-100">{pk.name}</span>
+              <span className={`min-w-0 truncate font-medium ${usableHere(pk.rpId) ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>{pk.name}</span>
+              {pk.rpId !== null && !usableHere(pk.rpId) && (
+                <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                  for {pk.rpId} — sign in there to use it
+                </span>
+              )}
               <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">added {new Date(pk.createdAt).toLocaleDateString()}</span>
               <span className="ml-auto flex shrink-0 gap-1">
                 <button type="button" className={ghostButton} onClick={() => void rename(pk)}>Rename</button>

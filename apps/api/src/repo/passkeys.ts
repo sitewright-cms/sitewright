@@ -12,6 +12,12 @@ export type ChallengeType = 'reg' | 'auth';
 export interface PasskeyView {
   id: string;
   name: string;
+  /**
+   * The Relying Party id (bare hostname) the credential was registered against, or null for one
+   * registered before the column existed. The browser only offers a passkey on its own rpID, so this
+   * is what lets the UI explain an otherwise silent "no passkey available" on a second hostname.
+   */
+  rpId: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
 }
@@ -60,7 +66,7 @@ export class PasskeyRepository {
 
   async listForUser(userId: string): Promise<PasskeyView[]> {
     return this.db
-      .select({ id: userPasskeys.id, name: userPasskeys.name, createdAt: userPasskeys.createdAt, lastUsedAt: userPasskeys.lastUsedAt })
+      .select({ id: userPasskeys.id, name: userPasskeys.name, rpId: userPasskeys.rpId, createdAt: userPasskeys.createdAt, lastUsedAt: userPasskeys.lastUsedAt })
       .from(userPasskeys)
       .where(eq(userPasskeys.userId, userId));
   }
@@ -78,7 +84,7 @@ export class PasskeyRepository {
   }
 
   async create(
-    p: { id: string; userId: string; publicKey: string; counter: number; transports?: string[]; deviceType?: string; backedUp: boolean; name: string },
+    p: { id: string; userId: string; publicKey: string; counter: number; transports?: string[]; deviceType?: string; backedUp: boolean; name: string; rpId?: string },
     now: Date = new Date(),
   ): Promise<void> {
     await this.db.insert(userPasskeys).values({
@@ -90,6 +96,8 @@ export class PasskeyRepository {
       deviceType: p.deviceType ?? null,
       backedUp: p.backedUp,
       name: p.name,
+      // The rpID the ceremony actually ran against — recorded so the Security tab can name the host.
+      rpId: p.rpId ?? null,
       createdAt: now,
       lastUsedAt: null,
     });

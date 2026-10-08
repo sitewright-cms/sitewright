@@ -2678,6 +2678,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       deviceType: credentialDeviceType,
       backedUp: credentialBackedUp,
       name: body.name,
+      // Record the rpID this ceremony actually bound the credential to. The browser will only ever
+      // offer the passkey back on this same rpID, so without it a user reaching the instance on a
+      // second hostname gets "no passkey available" with nothing able to explain why.
+      rpId: rpFor(req).rpID,
     });
     return reply.code(201).send({ id: credential.id, name: body.name });
   });

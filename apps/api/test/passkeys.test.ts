@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { sql } from 'drizzle-orm';
 import { generateSync } from 'otplib';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +62,76 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
     const list = await client.get('/account/passkeys');
     expect(list.json().items).toHaveLength(1);
     expect(list.json().items[0]).toMatchObject({ id: 'cred-a', name: 'Work Laptop' });
+  });
+
+  // ── rpID: which HOST a credential belongs to ───────────────────────────────────────────────────
+  // A passkey is bound to its rpID, so the browser silently declines to offer it on any other
+  // hostname. Recording the rpID is what lets the Security tab explain that instead of the user
+  // seeing an unexplained "no passkey available".
+
+  it('records the rpID the ceremony ran against, and lists it', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    await registerPasskey(client, 'cred-rp', 'Desk');
+
+    const [item] = (await client.get('/account/passkeys')).json().items as Array<{ rpId: string | null }>;
+    // light-my-request injects `localhost` as the authority; rpID is the host WITHOUT its port.
+    expect(item?.rpId).toBe('localhost');
+  });
+
+  it('records the rpID per HOST, so two hostnames yield two differently-bound credentials', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    await registerPasskey(client, 'cred-primary', 'On primary');
+
+    // Same user, same instance, reached on a second hostname (what multi-host access makes routine).
+    verifyReg.mockResolvedValue({
+      verified: true,
+      registrationInfo: { credential: { id: 'cred-second', publicKey: new Uint8Array([9]), counter: 0, transports: ['internal'] }, credentialDeviceType: 'singleDevice', credentialBackedUp: false },
+    });
+    const opts = await client.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'admin.example.com' } });
+    const { handle } = opts.json() as { handle: string };
+    const res = await client.inject({
+      method: 'POST',
+      url: '/account/passkeys/register/verify',
+      headers: { host: 'admin.example.com' },
+      payload: { handle, response: { id: 'cred-second' }, name: 'On second host' },
+    });
+    expect(res.statusCode).toBe(201);
+
+    const items = (await client.get('/account/passkeys')).json().items as Array<{ id: string; rpId: string | null }>;
+    expect(new Map(items.map((i) => [i.id, i.rpId]))).toEqual(
+      new Map([
+        ['cred-primary', 'localhost'],
+        ['cred-second', 'admin.example.com'],
+      ]),
+    );
+  });
+
+  it('honors X-Forwarded-Host for the recorded rpID (TLS-terminating proxy)', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    const opts = await client.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { 'x-forwarded-host': 'cms.example.com', 'x-forwarded-proto': 'https' } });
+    const { handle } = opts.json() as { handle: string };
+    await client.inject({
+      method: 'POST',
+      url: '/account/passkeys/register/verify',
+      headers: { 'x-forwarded-host': 'cms.example.com', 'x-forwarded-proto': 'https' },
+      payload: { handle, response: { id: 'cred-default' }, name: 'Behind a proxy' },
+    });
+
+    const [item] = (await client.get('/account/passkeys')).json().items as Array<{ rpId: string | null }>;
+    // Not the container-facing `localhost` the proxy connected to: the browser bound the credential to
+    // the public host, so that is the only value that can explain a later mismatch.
+    expect(item?.rpId).toBe('cms.example.com');
+  });
+
+  it('reports a pre-existing credential as rpId null rather than guessing the current host', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    await registerPasskey(client, 'cred-legacy', 'Older key');
+    // Simulate a row registered before the column existed. Stamping it with the CURRENT host would be
+    // a confident lie about the one fact the column records, so null must survive to the client.
+    await harness.db.run(sql`update user_passkeys set rp_id = null where id = 'cred-legacy'`);
+
+    const [item] = (await client.get('/account/passkeys')).json().items as Array<{ rpId: string | null }>;
+    expect(item?.rpId).toBeNull();
   });
 
   it('rejects registration when verification fails (403)', async () => {

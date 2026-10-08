@@ -49,6 +49,12 @@ import type {
 export interface PasskeyView {
   id: string;
   name: string;
+  /**
+   * The hostname (WebAuthn rpID) this passkey was registered against, or null when it predates the
+   * column. A browser only offers a passkey back on its own rpID, so one registered elsewhere cannot
+   * be used on the current host — the section labels that rather than letting it fail silently.
+   */
+  rpId: string | null;
   createdAt: string;
   lastUsedAt: string | null;
 }

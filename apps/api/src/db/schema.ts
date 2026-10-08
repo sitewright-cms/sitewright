@@ -241,6 +241,19 @@ export const userPasskeys = sqliteTable(
     backedUp: integer('backed_up', { mode: 'boolean' }).notNull(),
     /** User-facing label, e.g. "MacBook Touch ID". */
     name: text('name').notNull(),
+    /**
+     * The WebAuthn Relying Party id (a bare hostname) this credential was registered against.
+     *
+     * A passkey is bound to its rpID by the authenticator, so one registered on `cms.example.com` is
+     * simply NOT OFFERED by the browser on `admin.example.com` — the user sees "no passkey available"
+     * and nothing anywhere explains why. Recording the rpID lets the Security tab name the host each
+     * credential belongs to, which is the only thing that makes that failure legible.
+     *
+     * NULLABLE on purpose: credentials registered before this column existed have an rpID we cannot
+     * know, and stamping them with the CURRENT host would be a confident lie about the one fact the
+     * column exists to record. Null renders as "unknown", never as the current host.
+     */
+    rpId: text('rp_id'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
   },

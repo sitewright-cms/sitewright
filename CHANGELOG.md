@@ -9,6 +9,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Each passkey now names the hostname it belongs to.** A passkey is bound to its WebAuthn relying
+  party, so one created on `cms.example.com` is simply not offered by the browser on
+  `admin.example.com` — the user saw "no passkey available" with nothing anywhere explaining why. The
+  Security tab now labels each credential with its hostname and visibly stands down the ones that
+  cannot sign you in here. Credentials registered before this release report an unknown hostname
+  rather than being relabelled with a guess: their relying party is not recoverable, and naming the
+  wrong one would be worse than naming none.
+
+### Fixed
+
+- **A pre-existing migration drift that would have broken the next schema change.**
+  `0030_shop_payments.sql` creates `shop_transactions` with a `preview` column, but the migration
+  snapshot never recorded it — so `drizzle-kit generate` re-emitted `ALTER TABLE … ADD preview` into
+  the next migration anyone wrote, which fails with "duplicate column name" on every already-migrated
+  database. Existing instances were never affected; the hazard was entirely in the next migration.
+
 ### Security
 
 - **handlebars upgraded to 4.7.10** — three advisories (two critical, one moderate) describing

@@ -218,6 +218,13 @@
       "when": 1791294539581,
       "tag": "0030_shop_payments",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1791492160881,
+      "tag": "0031_passkey_rp_id",
+      "breakpoints": true
     }
   ]
 }

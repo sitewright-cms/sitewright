@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { listDeployTargets, createDeployTarget, updateDeployTarget, deleteDeployTarget } = vi.hoisted(() => ({
+const { listDeployTargets, createDeployTarget, updateDeployTarget, deleteDeployTarget, listProjectDomains } = vi.hoisted(() => ({
+  listProjectDomains: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
   listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
   createDeployTarget: vi.fn<(id: string, cfg: unknown) => Promise<{ target: { id: string } }>>(() => Promise.resolve({ target: { id: 't1' } })),
   updateDeployTarget: vi.fn<(id: string, tid: string, cfg: unknown) => Promise<{ target: { id: string } }>>(() => Promise.resolve({ target: { id: 't1' } })),
@@ -10,6 +11,7 @@ const { listDeployTargets, createDeployTarget, updateDeployTarget, deleteDeployT
 vi.mock('../src/api', () => ({
   api: {
     listDeployTargets: (id: string) => listDeployTargets(id),
+    listProjectDomains: (id: string) => listProjectDomains(id),
     createDeployTarget: (id: string, cfg: unknown) => createDeployTarget(id, cfg),
     updateDeployTarget: (id: string, tid: string, cfg: unknown) => updateDeployTarget(id, tid, cfg),
     deleteDeployTarget: (id: string, tid: string) => deleteDeployTarget(id, tid),
@@ -154,6 +156,54 @@ describe('DeployTargetWizard', () => {
     expect(tid).toBe('g1');
     expect(cfg).toMatchObject({ branch: 'gh-pages', token: 'ghp_new' });
     expect(cfg).not.toHaveProperty('protocol');
+  });
+
+  // ── custom-domain discoverability ─────────────────────────────────────────────────────────────────
+  // The panel itself lives inside the target's EDIT form. Nothing on the list hinted the feature
+  // existed, which is how a shipped feature went unnoticed — so the Local Hosting row speaks for it.
+
+  it('★ offers the idea on the Local Hosting row when no domain is claimed', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    listProjectDomains.mockResolvedValue({ items: [] });
+    render(<DeployTargetWizard project={project} />);
+    expect(await screen.findByText(/serve this site at a custom domain/)).toBeInTheDocument();
+  });
+
+  it('names the VERIFIED primary host, and counts the extras', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    listProjectDomains.mockResolvedValue({
+      items: [
+        { id: 'd1', host: 'www.client.com', isPrimary: true, verified: true },
+        { id: 'd2', host: 'client.com', isPrimary: false, verified: true },
+      ],
+    });
+    render(<DeployTargetWizard project={project} />);
+    expect(await screen.findByText(/www\.client\.com \+ 1 more/)).toBeInTheDocument();
+  });
+
+  it('★ an UNVERIFIED claim says it is waiting on DNS rather than looking configured', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    listProjectDomains.mockResolvedValue({ items: [{ id: 'd1', host: 'www.client.com', isPrimary: true, verified: false }] });
+    render(<DeployTargetWizard project={project} />);
+    // It serves nothing yet — saying only the hostname would advertise an address that 404s.
+    expect(await screen.findByText(/www\.client\.com — waiting on DNS/)).toBeInTheDocument();
+  });
+
+  it('stays silent when the domains route refuses (a non-owner member)', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 'L', name: 'Local Hosting', protocol: 'local' }] });
+    listProjectDomains.mockRejectedValue(new Error('403'));
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('Local Hosting')).toBeInTheDocument());
+    // Degrades to the offer rather than an error: the row is not the place to explain authorization.
+    expect(screen.getByText(/serve this site at a custom domain/)).toBeInTheDocument();
+  });
+
+  it('only the LOCAL row carries a domain line', async () => {
+    listDeployTargets.mockResolvedValue({ items: [{ id: 's1', name: 'Prod', protocol: 'sftp', host: 'h.example', user: 'u' }] });
+    listProjectDomains.mockResolvedValue({ items: [] });
+    render(<DeployTargetWizard project={project} />);
+    await waitFor(() => expect(screen.getByText('Prod')).toBeInTheDocument());
+    expect(screen.queryByText(/serve this site at a custom domain/)).toBeNull();
   });
 
   it('hides the Local Hosting card once a local target exists, and edits a remote target in place', async () => {

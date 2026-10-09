@@ -31,6 +31,10 @@ export function exportBundleOverCap(bundle: ProjectExportBundle): string | null 
 
 /** Sections a project export intentionally never carries (documented in the manifest). */
 const OMITTED = [
+  // A custom domain is a claim on an INSTANCE-UNIQUE hostname, so it cannot travel with the project:
+  // importing the bundle elsewhere (or duplicating it here) would otherwise produce two projects
+  // asserting the same address, and only one of them can ever be served it.
+  'custom_domains',
   'deploy_target_credentials',
   'project_smtp_password',
   'project_captcha_secret',

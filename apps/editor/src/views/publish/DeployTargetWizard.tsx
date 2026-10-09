@@ -35,7 +35,7 @@ type Mode = { kind: 'list' } | { kind: 'configure'; protocol: WizardProtocol; ed
  * entry points to ADD one — Local Hosting / FTP-FTPS / SSH-SFTP / Git. Picking a type (or Edit) opens
  * {@link TargetConfigForm}. Local Hosting is a singleton, so its card is hidden once one exists.
  */
-export function DeployTargetWizard({ project, sitesDomain }: { project: Project; sitesDomain?: string }) {
+export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project: Project; sitesDomain?: string; isStaff?: boolean }) {
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null); // null = feature unavailable
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [deploying, setDeploying] = useState<DeployTargetView | null>(null);
@@ -70,6 +70,7 @@ export function DeployTargetWizard({ project, sitesDomain }: { project: Project;
         <TargetConfigForm
           project={project}
           sitesDomain={sitesDomain}
+          isStaff={isStaff}
           protocol={mode.protocol}
           editing={mode.editing}
           onCancel={() => setMode({ kind: 'list' })}

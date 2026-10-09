@@ -97,7 +97,42 @@ server {
 
 **Hosting client sites on subdomains (optional):** set `SW_SITES_DOMAIN=sites.example.com` and give the proxy
 a wildcard cert + `*.sites.example.com` route to the same container; each published site is then served at
-`<slug>.sites.example.com`. (The `/sites/<slug>/` path form always works without any of this.)
+`<slug>.sites.example.com`.
+
+> ⚠️ Keep the app's own host **outside** `SW_SITES_DOMAIN`. A `Host` matching `<label>.<SW_SITES_DOMAIN>`
+> is routed as a hosted client site before it reaches the app, so `SW_PUBLIC_URL=https://cms.example.com`
+> together with `SW_SITES_DOMAIN=example.com` makes the editor and API unreachable. The server warns about
+> this at boot. Use a dedicated subdomain for sites (`sites.example.com`) and the app will never collide
+> with it.
+
+Note that once a sites domain (or a custom domain, below) is configured, the `/sites/<slug>/` path form
+**301-redirects** to it rather than serving: a published page carries the owner's own inline JavaScript,
+which must only ever run on an origin the platform's session cookie is not sent to. With neither configured
+the path form still serves, but script-inert.
+
+### Custom domains per site
+
+A locally-hosted site can also be served at the client's own hostname. In the project's **Deploy targets →
+Local Hosting** panel, add the hostname, publish the TXT record it shows, then verify:
+
+1. point the hostname's DNS at this instance (A/AAAA or CNAME, same as the sites domain);
+2. publish `_sitewright.<host>` **TXT** with the token shown in the panel;
+3. choose **Check DNS**. Until it verifies, the hostname is reserved but serves nothing — a claim alone
+   never routes traffic.
+
+A project may hold several hostnames (apex plus `www` is the usual pair). One is the **primary**: it is the
+address "View live" advertises, and the others 301 to it so the site has one canonical address rather than
+several interchangeable ones.
+
+**Your proxy must terminate TLS for each custom domain.** The platform routes by `Host` and cannot issue
+certificates. With Caddy, [on-demand TLS](https://caddyserver.com/docs/caddyfile/options#on-demand-tls) is
+the least work; otherwise add each hostname to the proxy with its own certificate. If you use on-demand TLS,
+restrict issuance to hostnames you have actually configured — an unrestricted `ask` endpoint lets failed
+issuance attempts burn your Let's Encrypt failed-validation budget.
+
+Agency staff (platform **admin** or **developer**) can also mark a hostname verified without the DNS check,
+for a domain you control out-of-band or a provider whose TXT records the resolver cannot see. It is the one
+action that asserts ownership with no evidence, so it is logged.
 
 ## First run
 

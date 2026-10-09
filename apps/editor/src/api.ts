@@ -45,6 +45,21 @@ import type {
   RegistrationResponseJSON,
 } from '@simplewebauthn/browser';
 
+/**
+ * A custom domain claimed for a locally-hosted project. `dns` is the record the operator must publish —
+ * built server-side so the panel never has to assemble it.
+ */
+export interface ProjectDomainView {
+  id: string;
+  host: string;
+  isPrimary: boolean;
+  verified: boolean;
+  verificationToken: string;
+  verifiedAt: string | null;
+  createdAt: string;
+  dns: { type: string; name: string; value: string };
+}
+
 /** A registered passkey as shown in the Security tab. */
 export interface PasskeyView {
   id: string;
@@ -1794,6 +1809,28 @@ export const api = {
       `/projects/${projectId}/publish/deploy`,
       config,
     ),
+
+  // --- custom domains (Local Hosting) ---
+  listProjectDomains: (projectId: string) =>
+    request<{ items: ProjectDomainView[] }>('GET', `/projects/${encodeURIComponent(projectId)}/domains`),
+  claimProjectDomain: (projectId: string, host: string) =>
+    request<{ domain: ProjectDomainView }>('POST', `/projects/${encodeURIComponent(projectId)}/domains`, { host }),
+  /** Re-check DNS. `verified: false` with a `state` is the normal "not published yet" answer, not an error. */
+  verifyProjectDomain: (projectId: string, id: string) =>
+    request<{ verified: boolean; state?: 'pending' | 'failed'; detail?: string; domain: ProjectDomainView }>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(id)}/verify`,
+    ),
+  /** Agency staff only: mark verified without a DNS check. */
+  forceVerifyProjectDomain: (projectId: string, id: string) =>
+    request<{ verified: boolean; domain: ProjectDomainView }>(
+      'POST',
+      `/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(id)}/force-verify`,
+    ),
+  setPrimaryProjectDomain: (projectId: string, id: string) =>
+    request<{ items: ProjectDomainView[] }>('PUT', `/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(id)}/primary`),
+  releaseProjectDomain: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${encodeURIComponent(projectId)}/domains/${encodeURIComponent(id)}`),
 
   // --- saved deploy targets ---
   listDeployTargets: (projectId: string) =>

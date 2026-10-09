@@ -66,6 +66,23 @@ if (cfg.isProduction && !cfg.secureCookies) {
       '(or COOKIE_SECURE=true) when serving behind TLS\n',
   );
 }
+// ★ SELF-CAPTURE: a Host inside `<label>.<SW_SITES_DOMAIN>` is rewritten BEFORE routing into the site
+// namespace, so if the app's own public host sits there, EVERY request to it — the admin panel included —
+// is served as a (probably nonexistent) client site. Setting `SW_PUBLIC_URL=https://cms.agency.com` with
+// `SW_SITES_DOMAIN=agency.com` is enough to do it. The admin settings form refuses this shape for the
+// additional-hostname list, but the env pair is read before any of that exists, so warn loudly here
+// rather than let the instance come up unreachable with nothing explaining why.
+if (cfg.publicUrl && cfg.sitesDomain) {
+  const appHost = new URL(cfg.publicUrl).hostname.toLowerCase();
+  const sitesDomain = cfg.sitesDomain.replace(/^\.+|\.+$/g, '').toLowerCase();
+  if (sitesDomain && appHost.endsWith(`.${sitesDomain}`)) {
+    process.stderr.write(
+      `[sitewright/api] WARNING: SW_PUBLIC_URL host "${appHost}" is inside SW_SITES_DOMAIN ".${sitesDomain}" — ` +
+        'requests to it are routed as a hosted client site, so the editor and API will NOT be reachable there. ' +
+        'Move the app to a host outside the sites domain (or point SW_SITES_DOMAIN at a dedicated subdomain).\n',
+    );
+  }
+}
 // In development the forced default-password change is OFF (admin@sitewright.example / 123456 just works);
 // say so loudly so a dev instance is never left internet-reachable on the default credentials.
 if (!cfg.isProduction) {

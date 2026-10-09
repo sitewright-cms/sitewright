@@ -11,6 +11,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **A locally-hosted site can be served at the client's own domain.** Until now a site hosted on the
+  platform could only live at `<slug>.<SW_SITES_DOMAIN>`; anything else meant deploying it out over
+  FTP/SFTP/git to the client's own server. In a project's **Deploy targets → Local Hosting** panel you
+  can now add the client's hostname, publish the TXT record it shows you, and verify — the platform
+  starts serving the site there.
+
+  A claim serves nothing until DNS proves you control the hostname, and the panel distinguishes a
+  record that has not propagated yet (the normal state for the first few minutes) from one that is
+  actually wrong, so you are not sent re-editing DNS that is already correct. A project can hold
+  several hostnames — apex plus `www` is the usual pair — one of which is the primary: it is the
+  address "View live" gives you, and the others redirect to it so the site has one canonical address.
+
+  An unverified claim does not block another project from claiming the same hostname, because holding
+  one proves nothing; a verified claim does. Agency staff can mark a hostname verified without the DNS
+  check, for a domain you control out of band.
+
+  **Your reverse proxy must hold a TLS certificate for each custom domain** — the platform routes the
+  hostname but cannot issue certificates. See [deployment.md](docs/deployment.md).
+
 - **One instance can now answer on several hostnames.** `SW_PUBLIC_URL` stays the canonical address —
   it is what published contact forms post back to, and what `security.txt` names — and **System
   Settings → Additional hostnames** adds the others at runtime, no restart and no new environment
@@ -39,6 +58,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   wrong one would be worse than naming none.
 
 ### Fixed
+
+- **An app host inside `SW_SITES_DOMAIN` now warns at boot instead of silently disappearing.** A
+  request whose `Host` matches `<label>.<SW_SITES_DOMAIN>` is routed as a hosted client site before it
+  reaches the app, so configuring `SW_PUBLIC_URL=https://cms.example.com` alongside
+  `SW_SITES_DOMAIN=example.com` made the editor and API unreachable with nothing explaining why. The
+  server now says so on startup, naming both values and the fix.
 
 - **A pre-existing migration drift that would have broken the next schema change.**
   `0030_shop_payments.sql` creates `shop_transactions` with a `preview` column, but the migration

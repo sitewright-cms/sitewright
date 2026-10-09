@@ -597,6 +597,7 @@ function MainApp({
         <PublishDeployModal
           project={inProject}
           sitesDomain={sitesDomain}
+          isStaff={canCreateProjects}
           initialTab={publishModalTab}
           onClose={() => setPublishModalTab(null)}
           onSaved={() => setPublishRefresh((n) => n + 1)}

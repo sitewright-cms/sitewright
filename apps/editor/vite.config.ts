@@ -17,6 +17,11 @@ export default defineConfig({
     // longest in-test waitFor/findBy poll) makes the suite load-tolerant without slowing the fast
     // path — quick tests still finish quickly; only the failure ceiling rises.
     testTimeout: 20000,
+    // ★ A quiet reporter in CI. The default one prints a line per test FILE plus every stderr warning,
+    // and with this many files the step log hit GitHub's per-step limit — which truncated the failure
+    // summary itself off the end, leaving a red build whose log contained no reason anywhere. A gate
+    // nobody can read the result of is not a gate. `dot` keeps the failures and drops the roll-call.
+    reporters: process.env.CI ? ['dot'] : ['default'],
     coverage: {
       provider: 'v8',
       // Gate the pure logic (API client + dataset/preview helpers). UI flows are covered

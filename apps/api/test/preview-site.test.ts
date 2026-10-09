@@ -333,17 +333,25 @@ describe('preview-site API (signed path)', () => {
     const projectId = (proj.json() as { project: { id: string } }).project.id;
     return { t, projectId, slug };
   }
-  /** Plant N share rows directly. The create route is rate-limited to 30/min; these tests need more. */
+  /**
+   * Plant N share rows directly. The create route is rate-limited to 30/min and these tests need more.
+   *
+   * ★ ONE multi-row INSERT, not N awaited round-trips. 100 sequential awaits measured 360ms alone here
+   * and is fine — but `turbo run test` runs every package's suite in parallel, so on a 2-core runner the
+   * workers oversubscribe the CPU and per-statement latency stops resembling the local number (the api
+   * config raised testTimeout to 20s over exactly this). A single statement removes the variable rather
+   * than betting on the ceiling.
+   */
   async function plantShares(projectId: string, n: number, expiresAt: number): Promise<void> {
-    for (let i = 0; i < n; i++) {
+    const now = Date.now();
+    const values = Array.from({ length: n }, (_, i) => {
       const id = `pl${expiresAt}x${i}`;
-      await db.run(
-        sql`insert into content (id, project_id, kind, entity_id, scope, data, created_at, updated_at)
-            values (${`c-${id}`}, ${projectId}, ${'preview_share'}, ${id}, ${''},
-                    ${JSON.stringify({ id, label: `planted ${i}`, createdAt: Date.now(), expiresAt })},
-                    ${Date.now()}, ${Date.now()})`,
-      );
-    }
+      const data = JSON.stringify({ id, label: `planted ${i}`, createdAt: now, expiresAt });
+      return sql`(${`c-${id}`}, ${projectId}, ${'preview_share'}, ${id}, ${''}, ${data}, ${now}, ${now})`;
+    });
+    await db.run(
+      sql`insert into content (id, project_id, kind, entity_id, scope, data, created_at, updated_at) values ${sql.join(values, sql`, `)}`,
+    );
   }
   const putPage = (base: string, cookies: Record<string, string>, page: Record<string, unknown>) =>
     app.inject({ method: 'PUT', url: `${base}/content/page/${page.id}`, cookies, payload: page });

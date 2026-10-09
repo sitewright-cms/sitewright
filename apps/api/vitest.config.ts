@@ -10,6 +10,11 @@ export default defineConfig({
     // passing alone seconds later. That is a scheduling artefact being reported as a broken build.
     // Costs the fast path nothing: a quick test still finishes quickly, only the failure ceiling moves.
     testTimeout: 20000,
+    // ★ A quiet reporter in CI. The default one prints a line per test FILE plus every stderr warning,
+    // and with this many files the step log hit GitHub's per-step limit — which truncated the failure
+    // summary itself off the end, leaving a red build whose log contained no reason anywhere. A gate
+    // nobody can read the result of is not a gate. `dot` keeps the failures and drops the roll-call.
+    reporters: process.env.CI ? ['dot'] : ['default'],
     coverage: {
       provider: 'v8',
       include: ['src/**'],

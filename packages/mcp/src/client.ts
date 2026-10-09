@@ -772,6 +772,21 @@ export class SitewrightClient {
     return this.request('GET', this.projectPath('/publish'));
   }
 
+  async listPreviewShares(): Promise<unknown> {
+    return this.request('GET', this.projectPath('/preview-shares'));
+  }
+
+  async createPreviewShare(label: string, expiryDays?: number): Promise<unknown> {
+    return this.request('POST', this.projectPath('/preview-shares'), {
+      label,
+      ...(expiryDays !== undefined ? { expiryDays } : {}),
+    });
+  }
+
+  async revokePreviewShare(shareId: string): Promise<unknown> {
+    return this.request('DELETE', this.projectPath(`/preview-shares/${encodeURIComponent(shareId)}`));
+  }
+
   async listSubmissions(opts: { formId?: string; limit?: number; offset?: number } = {}): Promise<unknown> {
     const params = new URLSearchParams();
     if (opts.formId) params.set('formId', opts.formId);

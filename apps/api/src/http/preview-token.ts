@@ -41,18 +41,38 @@ export function verifyPreview(projectId: string, sig: string, secret: string, no
 // A share token is `<shareId>~<hmac>`: the shareId is a stored, revocable handle; the hmac binds it to the
 // project + secret so the token is self-verifying (no secret stored, DB leak exposes no usable token).
 
-/** Mint the share TOKEN string for a given (already stored) shareId. */
+/**
+ * Mint the share TOKEN string for a given (already stored) shareId: `<shareId>-<mac>`.
+ *
+ * ★ ONE path segment, and the separator is a DASH. The token travels by email, where plain-text
+ * autolinkers decide for themselves where a URL ends — the previous `~` is RFC 3986 unreserved but a
+ * known rough edge there, and a `/` would split the credential across two path segments and make the
+ * serving route ambiguous against its trailing wildcard. A dash costs nothing and reads cleanly.
+ *
+ * ★ Split on the FIRST dash, never the last: the MAC is base64url, whose alphabet INCLUDES `-`, while a
+ * `shareId` comes from `newId()` and is strict base62 (`[0-9A-Za-z]`), so it can never contain one.
+ * First-dash is therefore the only correct split, and it is unambiguous.
+ */
 export function signShare(projectId: string, shareId: string, secret: string): string {
   const mac = createHmac('sha256', secret).update(`sw-share:${projectId}:${shareId}`).digest('base64url').slice(0, 27);
-  return `${shareId}~${mac}`;
+  return `${shareId}-${mac}`;
+}
+
+/** The `shareId` a share token names, or null when it is not shaped like one. Pure string work — it
+ *  proves NOTHING about validity; the caller still has to verify the MAC (see {@link verifyShare}). */
+export function shareIdOf(token: string): string | null {
+  const sep = token.indexOf('-');
+  if (sep <= 0) return null;
+  const shareId = token.slice(0, sep);
+  // Must look like a newId(): strict base62. Anything else cannot be a shareId we minted.
+  return /^[0-9A-Za-z]+$/.test(shareId) ? shareId : null;
 }
 
 /** Constant-time check that `token` is a valid, NON-revoked share token for `projectId`. `activeShareIds`
  *  is the set of share entries that still exist (deleting the entry revokes the link). */
 export function verifyShare(projectId: string, token: string, secret: string, activeShareIds: ReadonlySet<string>): boolean {
-  const sep = token.indexOf('~');
-  if (sep <= 0) return false;
-  const shareId = token.slice(0, sep);
+  const shareId = shareIdOf(token);
+  if (shareId === null) return false;
   if (!activeShareIds.has(shareId)) return false; // revoked / unknown → reject before the HMAC compare
   return eq(token, signShare(projectId, shareId, secret));
 }

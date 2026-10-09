@@ -1093,6 +1093,44 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'list_preview_shares',
+    {
+      description:
+        'List this project’s preview SHARE links. Each carries its `url` — a draft preview of the whole site that needs no login and does NOT expire — plus the `label` it was created with and its `id` (pass that to revoke_preview_share). Distinct from the `previewUrl` on get_publish_status / get_page: that one is time-bucketed and stops working within 24h, which is fine for looking at your own work and useless for sending to somebody.',
+    },
+    gate('content:read', () => client.listPreviewShares()),
+  );
+
+  server.registerTool(
+    'create_preview_share',
+    {
+      description:
+        'Create a preview SHARE link for this project and return its url. ★ Understand what this mints before calling it: a BEARER CREDENTIAL in a URL that does not expire, grants anyone holding it read access to the project’s whole DRAFT site, and stays valid until somebody revokes it. Create one when the user has asked for a link to send to a client or reviewer — not as a convenience for yourself. To just LOOK at the site, use the `previewUrl` on get_publish_status (member-only, expires in under 24h). `label` is how a human later recognises which link to revoke, so name the recipient or purpose ("Client review", "Acme sign-off"), never something generic. It EXPIRES after the instance default (30 days unless an admin changed it) unless you pass `expiryDays`. Max 25 per project, counting only links that still work. Revoke with revoke_preview_share.',
+      inputSchema: {
+        label: z.string().min(1).max(120).describe('Who or what this link is for — shown in the editor’s share-link list.'),
+        expiryDays: z
+          .number()
+          .int()
+          .min(0)
+          .max(3650)
+          .optional()
+          .describe('Days until the link stops working. Omit to use the instance default (30 days unless an admin changed it). 0 means NEVER expires — only pass it when the user explicitly asked for a permanent link.'),
+      },
+    },
+    gate('content:write', ({ label, expiryDays }) => client.createPreviewShare(label, expiryDays)),
+  );
+
+  server.registerTool(
+    'revoke_preview_share',
+    {
+      description:
+        'Revoke a preview share link by its `id` (from list_preview_shares). The URL stops working immediately for everyone holding it — this is the ONLY way to withdraw one, since share links do not expire. Idempotent: revoking an unknown id succeeds.',
+      inputSchema: { shareId: z.string().min(1).max(128).describe('The share link’s id, from list_preview_shares.') },
+    },
+    gate('content:write', ({ shareId }) => client.revokePreviewShare(shareId)),
+  );
+
+  server.registerTool(
     'list_submissions',
     {
       description:

@@ -15,6 +15,10 @@ vi.mock('../src/api', () => ({
     archiveUrl: (id: string) => archiveUrl(id),
     listDeployTargets: (id: string) => listDeployTargets(id),
     listAgentConnections: (id: string) => listAgentConnections(id),
+    // The preview dropdown reads the project's share links when it opens. Present here even though no
+    // test opens the menu today: without it, the first test that does would die on `undefined(...)`
+    // inside an effect, and the failure would point at the menu rather than at this mock.
+    listPreviewShares: vi.fn(() => Promise.resolve({ defaultExpiryDays: 30, items: [] })),
     disconnectAgent: vi.fn(() => Promise.resolve()),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,

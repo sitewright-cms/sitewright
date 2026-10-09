@@ -44,6 +44,12 @@
     "required": []
   },
   {
+    "name": "create_preview_share",
+    "required": [
+      "label"
+    ]
+  },
+  {
     "name": "delete_content",
     "required": [
       "id",
@@ -163,6 +169,10 @@
     "required": []
   },
   {
+    "name": "list_preview_shares",
+    "required": []
+  },
+  {
     "name": "list_revisions",
     "required": [
       "id",
@@ -270,6 +280,12 @@
       "id",
       "kind",
       "revisionId"
+    ]
+  },
+  {
+    "name": "revoke_preview_share",
+    "required": [
+      "shareId"
     ]
   },
   {

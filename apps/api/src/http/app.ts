@@ -218,7 +218,7 @@ import { PublishStore, PDF_MEDIA_CSP, SVG_MEDIA_CSP } from '../publish/store.js'
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { draftPageForPath, draftPageNotice } from './preview-draft-page.js';
 import { isPreviewAssetPath } from './preview-asset-path.js';
-import { signPreview, verifyPreview, signShare, verifyShare } from './preview-token.js';
+import { signPreview, verifyPreview, signShare, verifyShare, shareIdOf } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { UploadTicketStore } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
@@ -347,7 +347,7 @@ import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.
 import { hashApiToken } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
-import { registerOAuthRoutes } from './oauth-routes.js';
+import { registerOAuthRoutes, htmlPage, DEFAULT_CONSENT_CHROME } from './oauth-routes.js';
 import { renderPlatformSecurityTxt } from './security-txt.js';
 import { registerMcpRoutes } from './mcp-routes.js';
 import { registerRevisionRoutes } from './revisions-routes.js';
@@ -1016,6 +1016,28 @@ const MfaPasswordBody = z.object({ currentPassword: z.string().min(1).max(200) }
 const WebAuthnResponse = z.object({ id: z.string().min(1) }).passthrough();
 const PasskeyRegisterVerifyBody = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse, name: z.string().trim().min(1).max(80) });
 const PasskeyRenameBody = z.object({ name: z.string().trim().min(1).max(80) });
+
+/**
+ * Creating a share link. `expiresAt` (an explicit date) wins over `expiryDays`; with neither, the
+ * instance default applies. `expiryDays: 0` is the explicit "never expires" choice, which is why the
+ * minimum is 0 rather than 1 — and why it must not be confused with "the field was omitted".
+ */
+/**
+ * How long an EXPIRED share link's row is kept before it is reclaimed. Long enough to answer "why did
+ * the link I sent stop working?" — which is the whole reason expired rows are not deleted on the spot —
+ * and short enough that the rows cannot accumulate.
+ */
+const SHARE_EXPIRY_GRACE_MS = 30 * 86_400_000; // 30 days past expiry
+
+/** Hard ceiling on share rows per project, live + within the grace window. A backstop, not the limit
+ *  people are meant to feel: the 25-live cap is that. */
+const MAX_SHARE_ROWS = 100;
+
+const PreviewShareCreateBody = z.object({
+  label: z.string().max(120).optional(),
+  expiryDays: z.number().int().min(0).max(3650).optional(),
+  expiresAt: z.number().int().positive().optional(),
+});
 const PasskeyAuthVerifyBody = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse });
 /** Upper bound on passkeys per user (prevents unbounded credential accumulation from one session). */
 const MAX_PASSKEYS_PER_USER = 20;
@@ -8280,23 +8302,88 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // An unexpected store error propagates to the app's global handler (clean 500), rather than being
       // swallowed here into a misleading "no share links" — the same reason the count read below isn't
       // swallowed (that would fail the max-25 limit OPEN).
-      const rows = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; label: string; createdAt: number }>;
+      const rows = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; label: string; createdAt: number; expiresAt?: number }>;
       return {
+        // The instance default, so the editor can preselect it. Exposed HERE rather than read from
+        // /admin/settings because this panel belongs to a project OWNER, who is not necessarily an
+        // instance admin and cannot read that route at all.
+        defaultExpiryDays: await instanceSettingsRepo.getShareExpiryDays(),
         items: rows
           .slice()
           .sort((a, b) => b.createdAt - a.createdAt)
-          .map((r) => ({ id: r.id, label: r.label, createdAt: r.createdAt, url: `/preview-site/${project.id}/${signShare(project.id, r.id, currentCookieSecret)}/` })),
+          .map((r) => ({
+            id: r.id,
+            label: r.label,
+            createdAt: r.createdAt,
+            ...(r.expiresAt !== undefined ? { expiresAt: r.expiresAt } : {}),
+            // Computed server-side: the client must not decide what "expired" means, since the serving
+            // route is the thing that actually refuses it.
+            expired: r.expiresAt !== undefined && r.expiresAt <= Date.now(),
+            url: `/preview-site/${project.slug}/${signShare(project.id, r.id, currentCookieSecret)}/`,
+          })),
       };
     });
-    app.post<{ Params: { projectId: string }; Body: { label?: string } }>('/projects/:projectId/preview-shares', { config: rl(30) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:write');
-      const existing = await contentRepo.list(ctx, 'preview_share');
-      if (existing.length >= 25) return reply.code(400).send({ error: 'too many share links (max 25) — revoke some first' });
-      const id = newId();
-      const row = { id, label: String(req.body?.label ?? '').slice(0, 120), createdAt: Date.now(), createdBy: ctx.userId };
-      await contentRepo.put(ctx, 'preview_share', id, row);
-      return reply.send({ id, label: row.label, createdAt: row.createdAt, url: `/preview-site/${project.id}/${signShare(project.id, id, currentCookieSecret)}/` });
-    });
+    app.post<{ Params: { projectId: string }; Body: { label?: string; expiryDays?: number; expiresAt?: number } }>(
+      '/projects/:projectId/preview-shares',
+      { config: rl(30) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:write');
+        let existing = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; expiresAt?: number }>;
+
+        // ★★ RECLAIM long-dead rows before counting anything.
+        //
+        // Two individually-sensible rules combine into unbounded growth: an expired row is KEPT (so the
+        // editor can say WHICH link lapsed, rather than a client's dead URL being unexplainable), and the
+        // 25-link cap counts only links that still WORK (so dead ones cannot block a new one). Together
+        // they let a project create 25, wait, create 25 more, for ever — and nothing else sweeps this
+        // kind. So the grace window ends here: an expired row is dropped once it is well past any
+        // conversation about it, and the cost is paid by whoever is adding a link rather than by a
+        // background job that has to be remembered.
+        const expiredBefore = Date.now() - SHARE_EXPIRY_GRACE_MS;
+        const stale = existing.filter((e) => e.expiresAt !== undefined && e.expiresAt <= expiredBefore);
+        if (stale.length > 0) {
+          for (const row of stale) await contentRepo.remove(ctx, 'preview_share', row.id).catch(() => {});
+          const staleIds = new Set(stale.map((r) => r.id));
+          existing = existing.filter((e) => !staleIds.has(e.id));
+          req.log.info({ projectId: project.id, reclaimed: stale.length }, 'pruned long-expired share links');
+        }
+
+        // ★ The cap counts only links that still WORK. An expired row inside the grace window is kept so
+        // the editor can show which one lapsed, and counting those toward the limit would let dead links
+        // block a new one.
+        const live = existing.filter((e) => e.expiresAt === undefined || e.expiresAt > Date.now());
+        if (live.length >= 25) return reply.code(400).send({ error: 'too many share links (max 25) — revoke some first' });
+        // Backstop: even INSIDE the grace window a project cannot grow without limit. Hitting this means
+        // dozens of links lapsed in the last month, which is worth stopping to look at rather than
+        // absorbing silently.
+        if (existing.length >= MAX_SHARE_ROWS) {
+          return reply
+            .code(400)
+            .send({ error: `too many share links including recently expired ones (max ${MAX_SHARE_ROWS}) — revoke some first` });
+        }
+        const parsed = PreviewShareCreateBody.parse(req.body ?? {});
+        // Expiry precedence: an explicit date, else a day count, else the instance default. `0` days is
+        // the deliberate "never expires" choice and is NOT treated as "unset".
+        const days = parsed.expiryDays ?? (await instanceSettingsRepo.getShareExpiryDays());
+        const expiresAt = parsed.expiresAt ?? (days > 0 ? Date.now() + days * 86_400_000 : undefined);
+        const id = newId();
+        const row = {
+          id,
+          label: (parsed.label ?? '').slice(0, 120),
+          createdAt: Date.now(),
+          createdBy: ctx.userId,
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+        };
+        await contentRepo.put(ctx, 'preview_share', id, row);
+        return reply.send({
+          id,
+          label: row.label,
+          createdAt: row.createdAt,
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+          url: `/preview-site/${project.slug}/${signShare(project.id, id, currentCookieSecret)}/`,
+        });
+      },
+    );
     app.delete<{ Params: { projectId: string; shareId: string } }>('/projects/:projectId/preview-shares/:shareId', { config: rl(30) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       await contentRepo.remove(ctx, 'preview_share', req.params.shareId).catch(() => {});
@@ -8854,25 +8941,98 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/preview-site/:projectId/:sig/*',
       { config: rl(PREVIEW_SITE_RL_MAX) },
       async (req, reply) => {
-        const { projectId, sig } = req.params;
+        /**
+         * The branded "this link does not work" page, 404.
+         *
+         * ★ ONE page for EVERY rejection — expired, revoked, forged MAC, unknown id, deleted project —
+         * and the wording says "Expired Or Invalid" precisely because it must not distinguish them. A
+         * page that said "expired" would confirm to anyone probing ids that a project exists there, and
+         * a 404 with no body left a client staring at the browser's own error wondering if they had
+         * mistyped. The owner learns which link lapsed from the editor, where they are entitled to know.
+         */
+        const expiredNotice = async () => {
+          const chrome = await instanceSettingsRepo.getChrome().catch(() => DEFAULT_CONSENT_CHROME);
+          return reply
+            .code(404)
+            .type('text/html; charset=utf-8')
+            .header('cache-control', 'no-store')
+            .send(
+              htmlPage(
+                'Preview link expired or invalid',
+                `<div class="card"><h1>Preview link expired or invalid</h1>
+                 <p class="muted">This preview link is no longer valid. It may have expired, or been withdrawn by whoever shared it.</p>
+                 <p class="muted">Ask them for a fresh link.</p></div>`,
+                chrome,
+              ),
+            );
+        };
+        const { projectId: handle, sig } = req.params;
         // Access: a valid (unexpired) DEFAULT signature — member-minted + time-bucketed, so the default
         // preview is effectively logged-in-only (a random visitor can't mint one and a leaked URL expires)
         // — OR a valid, NON-revoked SHARE token the owner created to hand the draft to an UNAUTHENTICATED
-        // client. Check the cheap default sig first (no DB read); only load the share handles when it fails.
-        if (!verifyPreview(projectId, sig, currentCookieSecret)) {
-          const shareRows = await contentRepo.list(
-            { userId: 'system', projectId, role: 'owner' as const },
-            'preview_share',
-          );
-          const shareIds = new Set(shareRows.map((s) => (s as { id: string }).id));
-          if (!verifyShare(projectId, sig, currentCookieSecret, shareIds)) return reply.code(404).send();
+        // client.
+        //
+        // ★ The first segment is a HANDLE, not necessarily a project id. For a SHARE token the owning
+        // project is resolved from the token's own `shareId`, which makes the handle decoration: the URL
+        // can carry the project SLUG (what people want to send) and a later RENAME cannot break a link
+        // already in someone's inbox. For the default signature there is no shareId to resolve from, so
+        // the handle must identify the project — an id, else a slug. Those expire within 24h, so a
+        // rename invalidating one is immaterial.
+        const shareId = shareIdOf(sig);
+        let projectId: string | null = null;
+        // ★ Whether this request was actually AUTHENTICATED as a share — not merely whether the token is
+        // SHAPED like one. A default signature is base64url and can easily start with alphanumerics
+        // followed by a dash, so `shareIdOf` returns a plausible-looking prefix for it; treating that as
+        // "this is a share" made every default preview URL redirect to the slug form.
+        let viaShare = false;
+        if (shareId) {
+          const owner = await contentRepo.findPreviewShareOwner(shareId);
+          // No row = never existed or REVOKED. Verify the MAC against the owner the row names, never
+          // against the caller-supplied handle — that is what makes the handle untrusted decoration.
+          // ★ EXPIRY is checked here, before the MAC, and fails exactly like a revocation: a lapsed link
+          // is a 404, not a different error. Telling a visitor "this link expired" would confirm the
+          // project exists to anyone guessing ids, and the owner learns it from the editor (which keeps
+          // the row and labels it) rather than from the public URL.
+          const lapsed = owner?.expiresAt !== undefined && owner.expiresAt <= Date.now();
+          if (owner && !lapsed) {
+            const shareIds = new Set([shareId]);
+            if (verifyShare(owner.projectId, sig, currentCookieSecret, shareIds)) {
+              projectId = owner.projectId;
+              viaShare = true;
+            }
+          }
         }
+        if (!projectId) {
+          // Default (time-bucketed) signature: resolve the handle to a project, id first then slug.
+          const byHandle =
+            (await projects.get(handle).catch(() => null)) ?? (await projects.getBySlug(handle).catch(() => null));
+          if (byHandle && verifyPreview(byHandle.id, sig, currentCookieSecret)) projectId = byHandle.id;
+        }
+        if (!projectId) return expiredNotice();
         const project = await projects.get(projectId).catch(() => null);
         // A soft-deleted project's draft preview goes offline too, even for a previously-minted signed
         // URL — otherwise a held link would keep serving the (now-deleted) draft site.
-        if (!project || project.deletedAt) return reply.code(404).send();
+        if (!project || project.deletedAt) return expiredNotice();
         const path = req.params['*'] ?? '';
-        const base = `/preview-site/${projectId}/${sig}/`;
+        // ★ Canonicalize the handle to the CURRENT slug. A share link minted before a rename (or one
+        // carrying the legacy project-id form) still verifies — the token resolved its own owner — so
+        // rather than serving it under a stale handle, send the visitor to the address the project
+        // actually has. One redirect, and every relative link inside the preview then resolves against
+        // the canonical base instead of propagating the old one.
+        // Only a SHARE link is canonicalized: its handle is decoration, so pointing it at the current
+        // slug is free. The DEFAULT preview URL legitimately carries the project id (it is built from an
+        // id alone, in many places, and is member-only + expiring) — redirecting those would put a hop in
+        // front of every editor preview load for no gain.
+        if (viaShare && handle !== project.slug) {
+          const q = req.url.indexOf('?');
+          const query = q === -1 ? '' : req.url.slice(q);
+          const safePath = path.replace(/[\r\n\0]/g, '');
+          return reply.redirect(`/preview-site/${project.slug}/${sig}/${safePath}${query}`, 301);
+        }
+        // Built from the handle the request ARRIVED on, so relative links and the trailing-slash
+        // canonicalization below stay on that form. A share request has already been redirected to the
+        // canonical slug above, so `handle` IS the slug there; a default preview keeps its id form.
+        const base = `/preview-site/${handle}/${sig}/`;
 
         // ── Static asset: cross-origin headers so the opaque-origin frame can load it (still signed) ──
         if (isPreviewAssetPath(path)) {

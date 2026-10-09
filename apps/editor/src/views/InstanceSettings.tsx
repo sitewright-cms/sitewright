@@ -210,6 +210,7 @@ export function InstanceSettings() {
   const [embedOrigins, setEmbedOrigins] = useState<string[]>([]);
   const [embedDraft, setEmbedDraft] = useState('');
   const [embedError, setEmbedError] = useState<string | null>(null);
+  const [shareExpiryDays, setShareExpiryDays] = useState<number>(30);
   const [extraOrigins, setExtraOrigins] = useState<string[]>([]);
   const [originDraft, setOriginDraft] = useState('');
   const [originError, setOriginError] = useState<string | null>(null);
@@ -435,6 +436,7 @@ export function InstanceSettings() {
     setEmbedAllowSelf(s.embedding?.allowSelf ?? false);
     setEmbedOrigins(s.embedding?.origins ?? []);
     setExtraOrigins(s.additionalOrigins ?? []);
+    setShareExpiryDays(s.shareExpiryDays ?? 30);
     setEmbedDraft('');
     setEmbedError(null);
     setLogLevel(s.logLevel ?? DEFAULT_LOG_LEVEL);
@@ -527,6 +529,7 @@ export function InstanceSettings() {
     // An empty list CLEARS the setting (back to single-origin) rather than storing `[]`, matching how
     // every other optional setting reverts to its default.
     input.additionalOrigins = extraOrigins.length > 0 ? extraOrigins : null;
+    input.shareExpiryDays = shareExpiryDays;
     const hstsMaxAgeClamped = clampHstsMaxAge(hstsMaxAge);
     input.hsts = {
       enabled: hstsEnabled,
@@ -1255,6 +1258,33 @@ export function InstanceSettings() {
           </button>
         </div>
         {rotateMsg && <p className="mt-2 text-sm text-rose-600 dark:text-rose-400">{rotateMsg}</p>}
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Preview share links
+          <SectionHelp tip="How long a NEW preview share link lasts. A share link lets an unauthenticated client view a project's draft — it is a credential in a URL, so it expires by default. Existing links keep whatever expiry they were created with; this only sets the starting choice for new ones." />
+        </legend>
+        <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+          The default lifetime offered when someone creates a share link. They can still pick another value
+          (or a custom date) per link. <strong>Unlimited</strong> makes a link a permanent credential — it keeps
+          working until somebody revokes it.
+        </p>
+        <label className="block max-w-xs">
+          <span className="mb-1 block text-sm font-medium">Default expiry for new share links</span>
+          <select
+            aria-label="Default expiry for new share links"
+            className={glassInput}
+            value={String(shareExpiryDays)}
+            onChange={(e) => setShareExpiryDays(Number(e.target.value))}
+          >
+            <option value="1">1 day</option>
+            <option value="7">1 week</option>
+            <option value="30">30 days</option>
+            <option value="365">1 year</option>
+            <option value="0">Unlimited (never expires)</option>
+          </select>
+        </label>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

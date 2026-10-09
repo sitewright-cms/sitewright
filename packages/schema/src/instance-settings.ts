@@ -244,6 +244,12 @@ export function frameAncestorsFor(embedding: Embedding | undefined): string | nu
   return sources.length > 0 ? sources.join(' ') : null;
 }
 
+/**
+ * How long a new preview share link lasts when the admin has set no default. 30 days: long enough for a
+ * client review cycle, short enough that a link forgotten in an inbox stops working by itself.
+ */
+export const DEFAULT_SHARE_EXPIRY_DAYS = 30;
+
 /** Server log verbosity — the pino levels, most-verbose last. Admin-settable; live-applied. */
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export const LogLevelSchema = z.enum(LOG_LEVELS);
@@ -470,6 +476,12 @@ export const InstanceSettingsStoredSchema = z.object({
    * everything that must be stable for every caller — the absolute form endpoint baked into published
    * sites, and `security.txt`'s `Canonical`. Unset/empty → single-origin behaviour.
    */
+  /**
+   * How long a NEW preview share link lasts, in DAYS. Unset → DEFAULT_SHARE_EXPIRY_DAYS (30).
+   * **0 means never expires** — the one value that turns a share link into a permanent bearer
+   * credential, so it is opt-in rather than the default.
+   */
+  shareExpiryDays: z.number().int().min(0).max(3650).optional(),
   additionalOrigins: z.array(PlatformOriginSchema).max(10).optional(),
   /** How many pre-migration DB snapshots to keep (oldest pruned). Unset → DEFAULT_BACKUP_RETENTION (2). */
   backupRetention: z.number().int().min(1).max(100).optional(),
@@ -614,6 +626,8 @@ export const InstanceSettingsInputSchema = z.object({
   // single-origin), and an absent value leaves the stored one unchanged. The server additionally
   // refuses a list that mixes schemes or lands inside the hosted-sites domain — see
   // `validateAdditionalOrigins`, which needs runtime config the schema cannot see.
+  // Default share-link lifetime in days: a number sets it, `null` reverts to 30, undefined keeps. 0 = never.
+  shareExpiryDays: z.number().int().min(0).max(3650).nullable().optional(),
   additionalOrigins: z.array(PlatformOriginSchema).max(10).nullable().optional(),
   // Pre-migration DB snapshot retention: a number sets it, `null` reverts to the default (2), undefined leaves it.
   backupRetention: z.number().int().min(1).max(100).nullable().optional(),
@@ -707,6 +721,8 @@ export interface InstanceSettingsPublic {
   embedding?: Embedding;
   /** Additional origins this instance answers on (not a secret), or absent when single-origin. */
   additionalOrigins?: string[];
+  /** Default share-link lifetime in days (0 = never expires), or absent when using the 30-day default. */
+  shareExpiryDays?: number;
   /** Pre-migration DB snapshot retention, or absent when using the default (2). */
   backupRetention?: number;
   /** Server log verbosity (pino level), or absent when using the env/'info' default. */
@@ -758,6 +774,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.defaultImageFormat !== undefined) result.defaultImageFormat = stored.defaultImageFormat;
   if (stored.hsts !== undefined) result.hsts = stored.hsts; // non-secret — surfaced as-is
   if (stored.additionalOrigins !== undefined) result.additionalOrigins = stored.additionalOrigins; // non-secret
+  if (stored.shareExpiryDays !== undefined) result.shareExpiryDays = stored.shareExpiryDays; // non-secret
   if (stored.embedding !== undefined) result.embedding = stored.embedding; // non-secret — surfaced as-is
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
   if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;

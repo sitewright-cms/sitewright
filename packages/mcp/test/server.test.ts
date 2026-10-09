@@ -128,6 +128,9 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
+    listPreviewShares: vi.fn(async () => ({ defaultExpiryDays: 30, items: [] })),
+    createPreviewShare: vi.fn(async () => ({ id: 'sh1', label: 'Client', url: '/preview-site/site/sh1-mac/' })),
+    revokePreviewShare: vi.fn(async () => ({ ok: true })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
@@ -1391,6 +1394,37 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     const errRes = await (await connect(boom, readScope)).callTool({ name: 'preview_page', arguments: { page } });
     expect(errRes.isError).toBe(true);
     expect(text(errRes)).toContain('bad page');
+  });
+
+  it('list_preview_shares forwards to the client (content:read)', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_preview_shares', arguments: {} });
+    expect(calls(client).listPreviewShares).toHaveBeenCalled();
+  });
+
+  it('create_preview_share passes the label, and omits expiryDays when not given', async () => {
+    const client = fakeClient();
+    await (await connect(client, writeScope)).callTool({ name: 'create_preview_share', arguments: { label: 'Client review' } });
+    expect(calls(client).createPreviewShare).toHaveBeenCalledWith('Client review', undefined);
+  });
+
+  it('★ create_preview_share passes expiryDays 0 through — it means NEVER expires, not "unset"', async () => {
+    const client = fakeClient();
+    await (await connect(client, writeScope)).callTool({ name: 'create_preview_share', arguments: { label: 'Forever', expiryDays: 0 } });
+    expect(calls(client).createPreviewShare).toHaveBeenCalledWith('Forever', 0);
+  });
+
+  it('create_preview_share needs content:write — a read-only token cannot mint a credential', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'create_preview_share', arguments: { label: 'Nope' } });
+    expect(res.isError).toBe(true);
+    expect(calls(client).createPreviewShare).not.toHaveBeenCalled();
+  });
+
+  it('revoke_preview_share forwards the id (content:write)', async () => {
+    const client = fakeClient();
+    await (await connect(client, writeScope)).callTool({ name: 'revoke_preview_share', arguments: { shareId: 'sh1' } });
+    expect(calls(client).revokePreviewShare).toHaveBeenCalledWith('sh1');
   });
 
   it('get_publish_status forwards to publishStatus', async () => {

@@ -198,7 +198,9 @@ function backgroundHost(bg: PlatformBackground | null): string {
  * `script` opts into `/oauth/consent.js` (project search + copy-to-clipboard + the shader runtime).
  * It is loaded only by the pages that need it, and every one of them works without it.
  */
-function htmlPage(title: string, body: string, chrome: ConsentChrome = DEFAULT_CONSENT_CHROME, opts?: { script?: boolean }): string {
+/** Shared branded shell: the OAuth consent screen and the expired-preview notice both render through
+ *  this, so a platform that has been white-labelled looks like itself on every server-rendered page. */
+export function htmlPage(title: string, body: string, chrome: ConsentChrome = DEFAULT_CONSENT_CHROME, opts?: { script?: boolean }): string {
   const primary = cssColor(chrome.primary, DEFAULT_BRAND_PRIMARY);
   const secondary = cssColor(chrome.secondary, DEFAULT_BRAND_SECONDARY);
   const mark = chrome.logoUrl

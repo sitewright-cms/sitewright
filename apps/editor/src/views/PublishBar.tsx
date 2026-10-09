@@ -92,6 +92,10 @@ export function PublishBar({
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const [previewMenuOpen, setPreviewMenuOpen] = useState(false);
   const [shareLinksOpen, setShareLinksOpen] = useState(false);
+  /** Share links listed IN the Preview dropdown, like the Deploy dropdown lists its targets. Empty when
+   *  there are none, or when the read fails (a non-owner) — the menu then shows only the manage item. */
+  const [shareLinks, setShareLinks] = useState<Array<{ id: string; label: string; url: string }>>([]);
+  const [copiedShare, setCopiedShare] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const previewMenuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -244,6 +248,12 @@ export function PublishBar({
   // Close the preview dropdown on an outside click.
   useEffect(() => {
     if (!previewMenuOpen) return;
+    // Read on OPEN rather than on mount: the menu is the only place these are shown, and a project with
+    // no share links should not pay for a request on every page load.
+    void api
+      .listPreviewShares(project.id)
+      .then((r) => setShareLinks(r.items.map((i) => ({ id: i.id, label: i.label, url: i.url }))))
+      .catch(() => setShareLinks([]));
     const onDown = (e: MouseEvent) => {
       if (previewMenuRef.current && !previewMenuRef.current.contains(e.target as Node)) setPreviewMenuOpen(false);
     };
@@ -368,6 +378,29 @@ export function PublishBar({
         </div>
         {previewMenuOpen && (
           <div role="menu" className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-lg">
+            {/* Each share link, like the Deploy dropdown lists its targets — clicking COPIES the URL,
+                because the only thing anyone does with a share link is paste it to somebody. */}
+            {shareLinks.map((l) => (
+              <button
+                key={l.id}
+                role="menuitem"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(new URL(l.url, window.location.origin).toString());
+                  setCopiedShare(l.id);
+                  window.setTimeout(() => setCopiedShare((c) => (c === l.id ? null : c)), 1500);
+                }}
+                className="flex w-full cursor-pointer items-start gap-2 px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
+              >
+                <Link2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-slate-400" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{l.label || 'Untitled link'}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400">
+                    {copiedShare === l.id ? 'Copied' : 'Click to copy the link'}
+                  </span>
+                </span>
+              </button>
+            ))}
+            {shareLinks.length > 0 && <div className="my-1 border-t border-slate-200 dark:border-slate-700" />}
             <button
               role="menuitem"
               onClick={() => {
@@ -377,7 +410,7 @@ export function PublishBar({
               className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5"
             >
               <Link2 className="h-4 w-4 text-slate-500 dark:text-slate-400" />
-              Preview share links…
+              Manage share links…
             </button>
           </div>
         )}
@@ -522,7 +555,7 @@ export function PublishBar({
         />
       )}
       {shareLinksOpen && (
-        <Modal title="Preview share links" size="lg" onClose={() => setShareLinksOpen(false)}>
+        <Modal title="Manage share links" size="lg" onClose={() => setShareLinksOpen(false)}>
           <div className="p-5">
             <PreviewShareLinks projectId={project.id} />
           </div>

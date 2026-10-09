@@ -8,6 +8,7 @@ import {
   DEFAULT_REVISION_COALESCE_MS,
   DEFAULT_REVISION_RETENTION_DAYS,
   DEFAULT_AUTH_MAX_FAILURES,
+  DEFAULT_SHARE_EXPIRY_DAYS,
   DEFAULT_FORM_MODES,
   DEFAULT_HSTS,
   DEFAULT_EMBEDDING,
@@ -148,6 +149,11 @@ export class InstanceSettingsRepository {
   /** The effective embedding policy (admin setting or the DENIED default) — read by the security-headers hook. */
   async getEmbedding(): Promise<Embedding> {
     return (await this.getStored()).embedding ?? { ...DEFAULT_EMBEDDING, origins: [] };
+  }
+
+  /** The default lifetime for a NEW share link, in days (0 = never expires). */
+  async getShareExpiryDays(): Promise<number> {
+    return (await this.getStored()).shareExpiryDays ?? DEFAULT_SHARE_EXPIRY_DAYS;
   }
 
   /** Additional origins this instance answers on (empty when single-origin). */
@@ -349,6 +355,10 @@ export class InstanceSettingsRepository {
     // Additional platform origins: an array REPLACES the whole list (so removing one is possible),
     // `null` clears it (back to single-origin), and undefined keeps whatever was stored. The route
     // validates the list against the runtime config (scheme parity, hosted-sites domain) before this.
+    // Default share-link lifetime: a number sets it (0 = never expires), `null` reverts to the 30-day
+    // default, undefined keeps whatever was stored.
+    mergeNullable(input.shareExpiryDays, current.shareExpiryDays, (v) => { next.shareExpiryDays = v; });
+
     if (input.additionalOrigins === null) {
       // cleared — leave next.additionalOrigins undefined (→ single-origin)
     } else if (input.additionalOrigins === undefined) {

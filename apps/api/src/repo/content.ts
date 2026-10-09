@@ -107,6 +107,15 @@ const PreviewShareSchema = z.object({
   label: z.string().max(120).default(''),
   createdAt: z.number().int(),
   createdBy: z.string().max(200).optional(),
+  /**
+   * When the link stops working (epoch ms). ABSENT = never expires.
+   *
+   * ★ Enforced where the token is checked, not by a sweep: an expired row keeps existing (so the editor
+   * can show WHICH link lapsed and when, rather than it vanishing) while the serving route refuses it.
+   * A link that silently disappeared would leave the owner unable to tell a revoked link from a lapsed
+   * one, and unable to explain to a client why their URL stopped working.
+   */
+  expiresAt: z.number().int().optional(),
 });
 
 const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
@@ -302,6 +311,30 @@ export class ContentRepository {
    */
   private normalizeOnRead(kind: ContentKind, data: unknown): unknown {
     return kind === 'settings' ? mergeLegacyTranslations(data) : data;
+  }
+
+  /**
+   * Find which project owns a `preview_share` row, by its id alone — ACROSS projects.
+   *
+   * ★ The one deliberately project-less read in this repo, and the reason is the share URL. A share
+   * token is `<shareId>-<mac>` where the MAC binds the PROJECT ID, so historically the URL had to carry
+   * that id for the check to be possible. Resolving the owner from the id instead frees the first path
+   * segment to be the project SLUG — which is what people want to see and send — and makes the link
+   * RENAME-PROOF, because the slug in it is then decoration rather than the lookup key.
+   *
+   * Safe without a project context precisely because it grants nothing: it returns only an owning
+   * project id, and the caller still has to verify the MAC against it (a forged token fails) and that
+   * the row exists (a deleted row is the revocation). Scoped to `preview_share` so it can never be
+   * repurposed into a cross-tenant read of authored content.
+   */
+  async findPreviewShareOwner(shareId: string): Promise<{ projectId: string; expiresAt?: number } | null> {
+    const [row] = await this.db
+      .select({ projectId: content.projectId, data: content.data })
+      .from(content)
+      .where(and(eq(content.kind, 'preview_share'), eq(content.entityId, shareId)));
+    if (!row) return null;
+    const expiresAt = (row.data as { expiresAt?: unknown } | null)?.expiresAt;
+    return { projectId: row.projectId, ...(typeof expiresAt === 'number' ? { expiresAt } : {}) };
   }
 
   async list(ctx: ProjectContext, kind: ContentKind, filter: ListFilter = {}): Promise<unknown[]> {

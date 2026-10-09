@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.60.0] — 2026-10-09
+
 ### Changed
 
 - **Corporate Identity and Website Settings are boards now, not a long stack of cards.** Each page is
@@ -67,6 +69,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 - **Escape in a colour picker no longer closes the dialog around it.** Escape closes the innermost
   layer only, as it already did for stacked dialogs.
+
+- **Custom domains are findable.** The feature shipped in 0.59.0 but its panel only appeared inside a
+  saved Local Hosting target's edit form, so nothing on any screen hinted that a site could be served
+  at the client's own hostname. The Local Hosting row now names a verified host (or says a claim is
+  waiting on DNS, since it serves nothing yet), and the create form says what it is waiting for instead
+  of hiding the section until after the first save.
+
 ## [0.59.0] — 2026-10-09
 
 ### Added
@@ -4447,7 +4456,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.59.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.60.0...HEAD
+[0.60.0]: https://github.com/sitewright-cms/sitewright/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/sitewright-cms/sitewright/compare/v0.58.0...v0.59.0
 [0.58.0]: https://github.com/sitewright-cms/sitewright/compare/v0.57.0...v0.58.0
 [0.57.0]: https://github.com/sitewright-cms/sitewright/compare/v0.56.0...v0.57.0

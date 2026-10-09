@@ -1022,6 +1022,17 @@ const PasskeyRenameBody = z.object({ name: z.string().trim().min(1).max(80) });
  * instance default applies. `expiryDays: 0` is the explicit "never expires" choice, which is why the
  * minimum is 0 rather than 1 — and why it must not be confused with "the field was omitted".
  */
+/**
+ * How long an EXPIRED share link's row is kept before it is reclaimed. Long enough to answer "why did
+ * the link I sent stop working?" — which is the whole reason expired rows are not deleted on the spot —
+ * and short enough that the rows cannot accumulate.
+ */
+const SHARE_EXPIRY_GRACE_MS = 30 * 86_400_000; // 30 days past expiry
+
+/** Hard ceiling on share rows per project, live + within the grace window. A backstop, not the limit
+ *  people are meant to feel: the 25-live cap is that. */
+const MAX_SHARE_ROWS = 100;
+
 const PreviewShareCreateBody = z.object({
   label: z.string().max(120).optional(),
   expiryDays: z.number().int().min(0).max(3650).optional(),
@@ -8317,11 +8328,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       { config: rl(30) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
-        const existing = (await contentRepo.list(ctx, 'preview_share')) as Array<{ expiresAt?: number }>;
-        // ★ The cap counts only links that still WORK. An expired row is kept so the editor can show
-        // which one lapsed, and counting those toward the limit would let dead links block a new one.
+        let existing = (await contentRepo.list(ctx, 'preview_share')) as Array<{ id: string; expiresAt?: number }>;
+
+        // ★★ RECLAIM long-dead rows before counting anything.
+        //
+        // Two individually-sensible rules combine into unbounded growth: an expired row is KEPT (so the
+        // editor can say WHICH link lapsed, rather than a client's dead URL being unexplainable), and the
+        // 25-link cap counts only links that still WORK (so dead ones cannot block a new one). Together
+        // they let a project create 25, wait, create 25 more, for ever — and nothing else sweeps this
+        // kind. So the grace window ends here: an expired row is dropped once it is well past any
+        // conversation about it, and the cost is paid by whoever is adding a link rather than by a
+        // background job that has to be remembered.
+        const expiredBefore = Date.now() - SHARE_EXPIRY_GRACE_MS;
+        const stale = existing.filter((e) => e.expiresAt !== undefined && e.expiresAt <= expiredBefore);
+        if (stale.length > 0) {
+          for (const row of stale) await contentRepo.remove(ctx, 'preview_share', row.id).catch(() => {});
+          const staleIds = new Set(stale.map((r) => r.id));
+          existing = existing.filter((e) => !staleIds.has(e.id));
+          req.log.info({ projectId: project.id, reclaimed: stale.length }, 'pruned long-expired share links');
+        }
+
+        // ★ The cap counts only links that still WORK. An expired row inside the grace window is kept so
+        // the editor can show which one lapsed, and counting those toward the limit would let dead links
+        // block a new one.
         const live = existing.filter((e) => e.expiresAt === undefined || e.expiresAt > Date.now());
         if (live.length >= 25) return reply.code(400).send({ error: 'too many share links (max 25) — revoke some first' });
+        // Backstop: even INSIDE the grace window a project cannot grow without limit. Hitting this means
+        // dozens of links lapsed in the last month, which is worth stopping to look at rather than
+        // absorbing silently.
+        if (existing.length >= MAX_SHARE_ROWS) {
+          return reply
+            .code(400)
+            .send({ error: `too many share links including recently expired ones (max ${MAX_SHARE_ROWS}) — revoke some first` });
+        }
         const parsed = PreviewShareCreateBody.parse(req.body ?? {});
         // Expiry precedence: an explicit date, else a day count, else the instance default. `0` days is
         // the deliberate "never expires" choice and is NOT treated as "unset".

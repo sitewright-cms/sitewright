@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { ProjectBundle } from '@sitewright/core';
 import type { Database } from '../src/db/client.js';
+import { sql } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
@@ -332,6 +333,18 @@ describe('preview-site API (signed path)', () => {
     const projectId = (proj.json() as { project: { id: string } }).project.id;
     return { t, projectId, slug };
   }
+  /** Plant N share rows directly. The create route is rate-limited to 30/min; these tests need more. */
+  async function plantShares(projectId: string, n: number, expiresAt: number): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      const id = `pl${expiresAt}x${i}`;
+      await db.run(
+        sql`insert into content (id, project_id, kind, entity_id, scope, data, created_at, updated_at)
+            values (${`c-${id}`}, ${projectId}, ${'preview_share'}, ${id}, ${''},
+                    ${JSON.stringify({ id, label: `planted ${i}`, createdAt: Date.now(), expiresAt })},
+                    ${Date.now()}, ${Date.now()})`,
+      );
+    }
+  }
   const putPage = (base: string, cookies: Record<string, string>, page: Record<string, unknown>) =>
     app.inject({ method: 'PUT', url: `${base}/content/page/${page.id}`, cookies, payload: page });
   // Mint the signed preview base (member-only) → `/preview-site/<id>/<sig>/`.
@@ -532,6 +545,67 @@ describe('preview-site API (signed path)', () => {
     for (const leak of ['revoked', 'expired on', projectId, share.id]) {
       expect(gone.body).not.toContain(leak);
     }
+  });
+
+  it('★★ a LONG-expired row is RECLAIMED — keeping expired rows must not become unbounded growth', async () => {
+    // The bug this exists for: "expired rows are kept" (so the owner can see which link lapsed) plus
+    // "the 25 cap counts only LIVE links" (so dead ones cannot block a new one) together allowed
+    // 25-wait-25-forever, with nothing else sweeping this kind.
+    const { t, projectId } = await setup('prune@acme.test', 'prune-site');
+    const cookies = { sw_session: t };
+    const create = (payload: Record<string, unknown>) =>
+      app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload });
+
+    // Three rows well past the 30-day grace window, and one only just expired.
+    const old1 = (await create({ label: 'ancient 1', expiresAt: Date.now() - 95 * 86_400_000 })).json() as { id: string };
+    const old2 = (await create({ label: 'ancient 2', expiresAt: Date.now() - 60 * 86_400_000 })).json() as { id: string };
+    const recent = (await create({ label: 'just lapsed', expiresAt: Date.now() - 1000 })).json() as { id: string };
+    const live = (await create({ label: 'live', expiryDays: 7 })).json() as { id: string };
+
+    // The NEXT create is what reclaims — the cost sits with whoever is adding a link.
+    await create({ label: 'trigger' });
+
+    const ids = ((await app.inject({ method: 'GET', url: `/projects/${projectId}/preview-shares`, cookies })).json() as {
+      items: Array<{ id: string }>;
+    }).items.map((i) => i.id);
+    expect(ids).not.toContain(old1.id);
+    expect(ids).not.toContain(old2.id);
+    // Inside the grace window it STAYS — that visibility is the reason expired rows are not deleted at once.
+    expect(ids).toContain(recent.id);
+    expect(ids).toContain(live.id);
+  });
+
+  it('a project cannot grow past the total-row backstop even inside the grace window', async () => {
+    const { t, projectId } = await setup('backstop@acme.test', 'backstop-site');
+    const cookies = { sw_session: t };
+    // Planted directly: the create ROUTE is rate-limited to 30/min and this needs 100 rows. These all
+    // expired yesterday — inside the grace window, so none is reclaimed, and none counts toward the
+    // 25-LIVE cap either, which is exactly the gap the backstop closes.
+    await plantShares(projectId, 100, Date.now() - 86_400_000);
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview-shares`,
+      cookies,
+      payload: { label: 'one too many' },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toMatch(/including recently expired/);
+  });
+
+  it('the 25-LIVE cap still refuses, and still ignores expired rows', async () => {
+    const { t, projectId } = await setup('livecap@acme.test', 'livecap-site');
+    const cookies = { sw_session: t };
+    // 5 expired (must NOT consume the live budget) + 25 live, planted to stay under the route's limit.
+    await plantShares(projectId, 5, Date.now() - 1000);
+    await plantShares(projectId, 25, Date.now() + 7 * 86_400_000);
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview-shares`,
+      cookies,
+      payload: { label: '26th live' },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toMatch(/max 25/);
   });
 
   it('★ an EXPIRED share link stops serving, and the row survives so the owner can see which lapsed', async () => {

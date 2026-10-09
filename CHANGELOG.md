@@ -17,7 +17,8 @@ The running version of an instance is reported at `GET /version` (baked into the
   links expire after **30 days** by default; when you create one you can pick 1 day, 1 week, 30 days,
   1 year, a specific date, or unlimited. The default for new links is set under **System Settings →
   Preview share links**. An expired link is kept in the list, labelled with the date it lapsed, so you
-  can tell a link that expired from one somebody revoked.
+  can tell a link that expired from one somebody revoked — and reclaimed for good 30 days after that,
+  so keeping them never becomes clutter.
 
 - **Share links appear in the Preview button's dropdown**, each one click-to-copy, above a renamed
   **Manage share links…** — the same shape as the Deploy dropdown.

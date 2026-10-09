@@ -9,6 +9,31 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Preview share links now expire, and show the project's name in their URL.** A share link reads
+  `/preview-site/<your-project>/…` instead of carrying an internal id, and it **survives a project
+  rename** — a link already sent to a client keeps working and simply redirects to the new name. New
+  links expire after **30 days** by default; when you create one you can pick 1 day, 1 week, 30 days,
+  1 year, a specific date, or unlimited. The default for new links is set under **System Settings →
+  Preview share links**. An expired link is kept in the list, labelled with the date it lapsed, so you
+  can tell a link that expired from one somebody revoked.
+
+- **Share links appear in the Preview button's dropdown**, each one click-to-copy, above a renamed
+  **Manage share links…** — the same shape as the Deploy dropdown.
+
+- **Agents can create, list and revoke share links.** Previously an agent could only hand over the
+  member-only preview URL, which expires within a day — fine for "look at what I built", useless for
+  "send this to the client". The tool states plainly that a share link is a credential in a URL that
+  anyone holding it can read.
+
+### Changed
+
+- **A preview link that does not work now says so.** An expired, revoked or malformed preview or share
+  link renders a styled page in your platform's own branding — *"Preview link expired or invalid"* —
+  instead of the browser's bare error. It deliberately does not say which of those it was: the same
+  page answers every case, so the URL cannot be used to discover whether a project exists.
+
 ## [0.60.0] — 2026-10-09
 
 ### Changed

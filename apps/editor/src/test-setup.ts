@@ -9,7 +9,13 @@ import { configure } from '@testing-library/react';
 // intermittent failure that says nothing true about the component. Raising the async ceiling costs
 // the fast path nothing (a resolved query still returns on its first poll); it only stops a loaded
 // machine from being reported as a broken one.
-configure({ asyncUtilTimeout: 5000 });
+// ★ 15s, not 5s. 5s was ALREADY this reasoning once, and it was still not enough: `SettingsView >
+// discards unsaved edits` timed out finding a drill-in dialog during a full `pnpm verify`, where eleven
+// package suites each spawn their own worker pool. The same file passes 8/8 run alone and 3/3 under
+// synthetic CPU load, so the dialog is not failing to render — the query is being starved of the poll
+// it needs. A resolved query still returns on its first poll, so the fast path is unchanged; this only
+// stops an oversubscribed machine being reported as a broken component.
+configure({ asyncUtilTimeout: 15000 });
 
 // jsdom has no EventSource. Components that subscribe to the project's SSE change-stream
 // (PublishBar, LivePreview) only need a no-op constructor in unit tests — real streaming is

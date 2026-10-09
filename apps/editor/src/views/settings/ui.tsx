@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { glassCard, glassInput, fieldLabel, accentChip } from '../../theme';
 import { cardVariants } from './motion';
 import { SectionHelp } from '../ui/SectionHelp';
@@ -28,8 +28,31 @@ export function GlassCard({ title, icon, tooltip, children, wide = false }: { ti
   );
 }
 
-/** A labeled single-line input. An optional `hint` shows muted helper text under the input; an
- *  optional `error` replaces it with a red validation message (and reddens the border). */
+/** A label with its "?" beside it. Not a `<label>` around the "?": a label's first labelable descendant
+ *  is what it activates, so a help button inside it would steal the click meant for the field. */
+function LabelRow({ children, tip, htmlFor }: { children: ReactNode; tip: string; htmlFor?: string }) {
+  return (
+    <span className="mb-1 flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+      {htmlFor ? <label htmlFor={htmlFor}>{children}</label> : <span>{children}</span>}
+      <SectionHelp tip={tip} />
+    </span>
+  );
+}
+
+/** A labelled control: the label (with an optional "?") on top, the control below. The control carries
+ *  its own `aria-label`; this is the visual label. */
+export function Labelled({ label, tip, children }: { label: ReactNode; tip?: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col">
+      {tip ? <LabelRow tip={tip}>{label}</LabelRow> : <span className={fieldLabel}>{label}</span>}
+      {children}
+    </div>
+  );
+}
+
+/** A labeled single-line input. An optional `hint` shows muted helper text under the input, or `tip`
+ *  puts it in a "?" beside the label instead; an optional `error` shows a red validation message under
+ *  the input (and reddens the border) — an error is never tucked into the "?". */
 export function Field({
   label,
   value,
@@ -39,6 +62,7 @@ export function Field({
   required = false,
   error,
   hint,
+  tip,
 }: {
   label: string;
   value: string;
@@ -48,13 +72,24 @@ export function Field({
   required?: boolean;
   error?: string | null;
   hint?: string;
+  tip?: string;
 }) {
   // Stable id so aria-describedby can point a screen reader at the inline error text.
   const errorId = error ? `${label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-error` : undefined;
+  const inputId = useId();
+  // With a "?" the wrapper can't be the <label> (see LabelRow); the label then points at the input by id.
+  const Wrapper = tip ? 'div' : 'label';
   return (
-    <label className="block">
-      <span className={fieldLabel}>{label}</span>
+    <Wrapper className="block">
+      {tip ? (
+        <LabelRow tip={tip} htmlFor={inputId}>
+          {label}
+        </LabelRow>
+      ) : (
+        <span className={fieldLabel}>{label}</span>
+      )}
       <input
+        id={tip ? inputId : undefined}
         // `sw-invalid-focus` (defined after `sw-brand-focus`) turns the focus border + ring rose
         // instead of brand; `!border-red-400` reddens the resting border.
         className={`${glassInput} ${error ? '!border-red-400 sw-invalid-focus' : ''}`}
@@ -74,10 +109,10 @@ export function Field({
       />
       {error ? (
         <span id={errorId} className="mt-1 block text-[11px] font-medium text-red-500 dark:text-red-400">{error}</span>
-      ) : hint ? (
+      ) : hint && !tip ? (
         <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">{hint}</span>
       ) : null}
-    </label>
+    </Wrapper>
   );
 }
 

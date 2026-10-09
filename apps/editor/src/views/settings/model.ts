@@ -110,6 +110,9 @@ export interface KeyedShopField {
   required: boolean;
 }
 
+/** A security.txt phone/email source: off, the Corporate Identity value (`ci`), or a value of its own. */
+export type SecurityContactMode = 'off' | 'ci' | 'custom';
+
 /** A typography slot (heading/body/custom) as edited in the form — mirrors schema `FontSlot`. */
 export interface FontSlotForm {
   source: 'system' | 'asset';
@@ -216,10 +219,18 @@ export interface SettingsForm {
   // SELECTED from what the project already holds (a page + Corporate Identity), never retyped here.
   securityEnabled: boolean;
   securityContactPageId: string; // '' = no page contact
-  securityUsePhone: boolean;
-  securityUseEmail: boolean;
+  /** A custom Contact URL, used when no contact page is chosen. */
+  securityContactUrl: string;
+  /** Phone contact: none, the Corporate Identity number, or a number typed for security.txt alone. */
+  securityPhoneMode: SecurityContactMode;
+  securityPhone: string;
+  securityEmailMode: SecurityContactMode;
+  securityEmail: string;
   securityExpiryYears: SecurityTxtExpiryYears;
+  /** Policy / Acknowledgments: a page of this site (wins) or a typed URL. */
+  securityPolicyPageId: string;
   securityPolicyUrl: string;
+  securityAcknowledgmentsPageId: string;
   securityAcknowledgmentsUrl: string;
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -407,10 +418,16 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     securityEnabled: w?.security?.enabled === true,
     securityContactPageId: w?.security?.contactPageId ?? '',
-    securityUsePhone: w?.security?.usePhone === true,
-    securityUseEmail: w?.security?.useEmail === true,
+    securityContactUrl: w?.security?.contactUrl ?? '',
+    // A value of its own wins over the company one, exactly as the publish resolves it.
+    securityPhoneMode: w?.security?.phone ? 'custom' : w?.security?.usePhone === true ? 'ci' : 'off',
+    securityPhone: w?.security?.phone ?? '',
+    securityEmailMode: w?.security?.email ? 'custom' : w?.security?.useEmail === true ? 'ci' : 'off',
+    securityEmail: w?.security?.email ?? '',
     securityExpiryYears: w?.security?.expiryYears ?? DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
+    securityPolicyPageId: w?.security?.policyPageId ?? '',
     securityPolicyUrl: w?.security?.policyUrl ?? '',
+    securityAcknowledgmentsPageId: w?.security?.acknowledgmentsPageId ?? '',
     securityAcknowledgmentsUrl: w?.security?.acknowledgmentsUrl ?? '',
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -694,13 +711,30 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // SELECTION is kept either way, so toggling the feature off and on again doesn't lose the setup.
   // Emitting the object at all is gated on there being something in it, so an untouched project
   // stays byte-identical. (`expiryYears` is emitted only when it deviates from the 5-year default.)
+  // Each choice is EXCLUSIVE in the editor (a page OR a URL; off OR company OR custom), and only the
+  // chosen half is written — so the stored record never carries a stale alternative the publish would
+  // then have to rank.
   const securitySelection = {
-    ...(form.securityContactPageId ? { contactPageId: form.securityContactPageId } : {}),
-    ...(form.securityUsePhone ? { usePhone: true as const } : {}),
-    ...(form.securityUseEmail ? { useEmail: true as const } : {}),
+    ...(form.securityContactPageId
+      ? { contactPageId: form.securityContactPageId }
+      : trimmed(form.securityContactUrl)
+        ? { contactUrl: form.securityContactUrl.trim() }
+        : {}),
+    ...(form.securityPhoneMode === 'ci' ? { usePhone: true as const } : {}),
+    ...(form.securityPhoneMode === 'custom' && trimmed(form.securityPhone) ? { phone: form.securityPhone.trim() } : {}),
+    ...(form.securityEmailMode === 'ci' ? { useEmail: true as const } : {}),
+    ...(form.securityEmailMode === 'custom' && trimmed(form.securityEmail) ? { email: form.securityEmail.trim() } : {}),
     ...(form.securityExpiryYears !== DEFAULT_SECURITY_TXT_EXPIRY_YEARS ? { expiryYears: form.securityExpiryYears } : {}),
-    ...(trimmed(form.securityPolicyUrl) ? { policyUrl: form.securityPolicyUrl.trim() } : {}),
-    ...(trimmed(form.securityAcknowledgmentsUrl) ? { acknowledgmentsUrl: form.securityAcknowledgmentsUrl.trim() } : {}),
+    ...(form.securityPolicyPageId
+      ? { policyPageId: form.securityPolicyPageId }
+      : trimmed(form.securityPolicyUrl)
+        ? { policyUrl: form.securityPolicyUrl.trim() }
+        : {}),
+    ...(form.securityAcknowledgmentsPageId
+      ? { acknowledgmentsPageId: form.securityAcknowledgmentsPageId }
+      : trimmed(form.securityAcknowledgmentsUrl)
+        ? { acknowledgmentsUrl: form.securityAcknowledgmentsUrl.trim() }
+        : {}),
   };
   const security =
     form.securityEnabled || Object.keys(securitySelection).length > 0

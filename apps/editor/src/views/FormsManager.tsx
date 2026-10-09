@@ -7,6 +7,7 @@ import { ProjectSmtp } from './ProjectSmtp';
 import { ProjectCaptcha } from './ProjectCaptcha';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { FormEditorModal } from './FormEditorModal';
+import { Modal } from './ui/Modal';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
 import { glassCard, glassInput, primaryButton, ghostButton, dangerButton, gradientHover } from '../theme';
@@ -49,8 +50,9 @@ export function FormsManager({ project }: { project: Project }) {
   const [owed, setOwed] = useState<{ count: number; lastError: string | null }>({ count: 0, lastError: null });
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Which form's submissions are expanded inline (the folded-in inbox).
+  // Which form's submissions are open in the inbox modal.
   const [submissionsFor, setSubmissionsFor] = useState<string | null>(null);
+  const submissionsForm = submissionsFor ? forms.find((f) => f.id === submissionsFor) : undefined;
   // What the bot traps filtered, per form. The inbox shows only what got THROUGH, so without this an
   // operator cannot tell a QUIET form (nobody is writing) from a FILTERED one (everybody is, and
   // something is eating it) — and cannot answer a client who says they submitted and heard nothing.
@@ -178,7 +180,6 @@ export function FormsManager({ project }: { project: Project }) {
       {saved && <p className="text-sm text-green-600 dark:text-green-400">Saved.</p>}
       <ul className="flex flex-col gap-2">
         {forms.map((f, i) => {
-          const showing = submissionsFor === f.id;
           return (
             <li
               key={f.id}
@@ -246,15 +247,15 @@ export function FormsManager({ project }: { project: Project }) {
                   );
                 })()}
                 <button
-                  aria-label={`${showing ? 'Hide' : 'Show'} submissions for ${f.id}`}
-                  aria-expanded={showing}
+                  aria-label={`Show submissions for ${f.id}`}
+                  aria-haspopup="dialog"
                   className={`${ghostButton} ml-auto text-xs`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSubmissionsFor(showing ? null : f.id);
+                    setSubmissionsFor(f.id);
                   }}
                 >
-                  {showing ? 'Hide submissions' : 'Show submissions'}
+                  Show submissions
                 </button>
                 <button
                   aria-label={`Delete form ${f.id}`}
@@ -267,16 +268,21 @@ export function FormsManager({ project }: { project: Project }) {
                   Delete
                 </button>
               </div>
-              {showing && (
-                <div className={`${glassCard} px-4 py-3`}>
-                  <SubmissionsInbox key={f.id} project={project} formId={f.id} />
-                </div>
-              )}
             </li>
           );
         })}
         {forms.length === 0 && <li className="text-sm text-slate-500 dark:text-slate-400">No forms yet. Create one, then add a Form block to a page.</li>}
       </ul>
+      {/* A form's inbox opens over the list rather than expanding under its row, so reading leads never
+          shoves the other forms down the page. */}
+      {submissionsForm && (
+        <Modal title={`${submissionsForm.name} — submissions`} size="xl" onClose={() => setSubmissionsFor(null)}>
+          {/* The Modal shell supplies no padding (a full-bleed surface must reach its edge); a list owns its own. */}
+          <div className="p-5">
+            <SubmissionsInbox key={submissionsForm.id} project={project} formId={submissionsForm.id} />
+          </div>
+        </Modal>
+      )}
 
       <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">

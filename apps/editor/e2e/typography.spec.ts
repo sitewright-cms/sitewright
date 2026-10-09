@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { deployLocally, fetchLiveSite, liveSiteRequest, signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, liveSiteRequest, openSettingsTile, closeSettingsSheet, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -14,27 +14,31 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   await page.getByLabel('Project slug').fill(SLUG);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Corporate Identity → Typography card. Defaults: heading Serif/700, body Sans-serif/400.
+  // Corporate Identity → the Typography tile's drill-in. Defaults: heading Serif/700, body Sans-serif/400.
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Heading font family')).toHaveValue('serif');
-  await expect(page.getByLabel('Body font family')).toHaveValue('sans-serif');
+  const ty1 = await openSettingsTile(page, 'Typography');
+  await expect(ty1.getByLabel('Heading font family')).toHaveValue('serif');
+  await expect(ty1.getByLabel('Body font family')).toHaveValue('sans-serif');
 
   // Change the BODY font to a serif at 700, and the HEADING to monospace.
-  await page.getByLabel('Body font family').selectOption('serif');
-  await page.getByLabel('Body font weight').selectOption('700');
-  await page.getByLabel('Heading font family').selectOption('monospace');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await ty1.getByLabel('Body font family').selectOption('serif');
+  await ty1.getByLabel('Body font weight').selectOption('700');
+  await ty1.getByLabel('Heading font family').selectOption('monospace');
+  await ty1.getByRole('button', { name: 'Save and close' }).click();
+  await expect(ty1).toBeHidden();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → reopen → the selections persisted.
   await page.reload();
   await page.getByRole('button', { name: /Type Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Body font family')).toHaveValue('serif');
-  await expect(page.getByLabel('Body font weight')).toHaveValue('700');
-  await expect(page.getByLabel('Heading font family')).toHaveValue('monospace');
+  const ty2 = await openSettingsTile(page, 'Typography');
+  await expect(ty2.getByLabel('Body font family')).toHaveValue('serif');
+  await expect(ty2.getByLabel('Body font weight')).toHaveValue('700');
+  await expect(ty2.getByLabel('Heading font family')).toHaveValue('monospace');
 
   // Publish → the home page's typography CSS reflects the slots (applied to body + h1–h6).
+  await closeSettingsSheet(ty2);
   await deployLocally(page);
   const live = await fetchLiveSite(page, SLUG);
   expect(live.status, `live site for ${SLUG}`).toBe(200);
@@ -66,10 +70,11 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  const ty3 = await openSettingsTile(page, 'Typography');
 
   // Open the heading slot's font picker → Google tab → search → pick weight 700 (downloads + self-hosts
   // it as a kind:font library asset).
-  await page.getByRole('button', { name: 'Choose a font for the heading font' }).click();
+  await ty3.getByRole('button', { name: 'Choose a font for the heading font' }).click();
   const picker = page.getByRole('dialog', { name: 'Choose a heading font' });
   // Google Fonts is the default tab — its search field shows immediately, no tab switch needed.
   await expect(picker.getByLabel('Search Google Fonts')).toBeVisible();
@@ -78,19 +83,22 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await picker.locator('[data-tip="Use Playfair Display 700"]').first().click();
 
   // On select the slot becomes an `asset` slot (select value '__asset__') referencing the new font.
-  await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__', { timeout: 30000 });
-  await expect(page.getByLabel('Heading font family')).toContainText('Playfair Display');
+  await expect(ty3.getByLabel('Heading font family')).toHaveValue('__asset__', { timeout: 30000 });
+  await expect(ty3.getByLabel('Heading font family')).toContainText('Playfair Display');
 
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await ty3.getByRole('button', { name: 'Save and close' }).click();
+  await expect(ty3).toBeHidden();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → the asset slot persisted.
   await page.reload();
   await page.getByRole('button', { name: /Font Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__');
+  const ty4 = await openSettingsTile(page, 'Typography');
+  await expect(ty4.getByLabel('Heading font family')).toHaveValue('__asset__');
 
   // Publish → the page self-hosts the woff2 (bundled _assets path) and carries ZERO Google references.
+  await closeSettingsSheet(ty4);
   await deployLocally(page);
   const live = await fetchLiveSite(page, SLUG);
   expect(live.status, `live site for ${SLUG}`).toBe(200);
@@ -123,19 +131,23 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await page.getByRole('button', { name: '+ Add custom font' }).click();
-  await page.getByLabel('Custom font name').fill('boombox');
-  await page.getByLabel('boombox font weight').selectOption('700');
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const ty5 = await openSettingsTile(page, 'Typography');
+  await ty5.getByRole('button', { name: '+ Add custom font' }).click();
+  await ty5.getByLabel('Custom font name').fill('boombox');
+  await ty5.getByLabel('boombox font weight').selectOption('700');
+  await ty5.getByRole('button', { name: 'Save and close' }).click();
+  await expect(ty5).toBeHidden();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → the named slot persisted.
   await page.reload();
   await page.getByRole('button', { name: /Named Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Custom font name')).toHaveValue('boombox');
+  const ty6 = await openSettingsTile(page, 'Typography');
+  await expect(ty6.getByLabel('Custom font name')).toHaveValue('boombox');
 
   // Publish → the page exposes the --sw-font-boombox var (+ weight) for the font-boombox utility.
+  await closeSettingsSheet(ty6);
   await deployLocally(page);
   const live = await fetchLiveSite(page, SLUG);
   expect(live.status, `live site for ${SLUG}`).toBe(200);
@@ -154,8 +166,9 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  const ty7 = await openSettingsTile(page, 'Typography');
   // Open the body slot's font picker → Upload tab → attach a ttf + name it → upload.
-  await page.getByRole('button', { name: 'Choose a font for the body font' }).click();
+  await ty7.getByRole('button', { name: 'Choose a font for the body font' }).click();
   const picker = page.getByRole('dialog', { name: 'Choose a body font' });
   await picker.getByRole('button', { name: 'Upload', exact: true }).click();
   await picker.getByLabel('Font file').setInputFiles({ name: 'uploadtest.ttf', mimeType: 'font/ttf', buffer: TTF_BYTES });
@@ -163,8 +176,9 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   await picker.getByRole('button', { name: 'Upload + use' }).click();
 
   // On success the body slot becomes an `asset` slot referencing the uploaded font.
-  await expect(page.getByLabel('Body font family')).toHaveValue('__asset__', { timeout: 20000 });
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(ty7.getByLabel('Body font family')).toHaveValue('__asset__', { timeout: 20000 });
+  await ty7.getByRole('button', { name: 'Save and close' }).click();
+  await expect(ty7).toBeHidden();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Publish → the page self-hosts the ttf (bundled _assets path + format("truetype")), zero Google refs.

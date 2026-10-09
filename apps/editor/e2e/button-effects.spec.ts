@@ -50,7 +50,8 @@ test('website Button effects modal: effect, accent and shape all reach the previ
   await signUpWithProject(page, `btnfx-${stamp}@e2e.test`, 'Btn Site', `btnfx-${stamp}`);
 
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await page.getByRole('button', { name: /accent ·/ }).click();
+  const effects = page.getByRole('group', { name: 'Nav, buttons & preloader tile' });
+  await effects.getByRole('button', { name: /accent ·/ }).click();
   const modal = page.getByRole('dialog', { name: 'Button effects' });
   await expect(modal).toBeVisible();
 
@@ -86,7 +87,7 @@ test('website Button effects modal: effect, accent and shape all reach the previ
 
   // ── The picked axes are what gets applied to the site, not just to the preview.
   await modal.getByRole('button', { name: 'Apply' }).click();
-  await expect(page.getByRole('button', { name: /Lift · Neutral accent · Sharp/ })).toBeVisible();
+  await expect(effects.getByRole('button', { name: /Lift · Neutral accent · Sharp/ })).toBeVisible();
 });
 
 test('library Button builder: the composed button previews with its effect and shape live', async ({ page }) => {

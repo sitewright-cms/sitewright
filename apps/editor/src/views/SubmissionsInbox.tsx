@@ -11,7 +11,7 @@ import { Tooltip } from './ui/Tooltip';
  * first. Values are plain text (the engine stores text only) and rendered via
  * React (escaped by default), so visitor-supplied content cannot inject markup.
  *
- * `formId` scopes the inbox to one form (the Forms tab folds this in per-row); omitted,
+ * `formId` scopes the inbox to one form (the Forms tab opens it in a modal per form); omitted,
  * it shows every form's submissions.
  */
 export function SubmissionsInbox({ project, formId }: { project: Project; formId?: string }) {

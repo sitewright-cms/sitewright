@@ -111,6 +111,19 @@ describe('security.txt (RFC 9116)', () => {
     expect(txt.match(/^Canonical:/gm)).toHaveLength(1);
   });
 
+  it('★ also strips the OTHER line breaks (NEL, LS, PS) and control characters — tools that split on them see no new field', () => {
+    const txt = renderSecurityTxt({
+      contacts: ['https://acme.com/contact/\u0085Contact: mailto:evil@example.com'],
+      expires: '2031-05-31T00:00:00Z',
+      policy: 'https://acme.com/policy/\u2028Acknowledgments: https://evil.example.com/\u2029x\u000bY\u001eZ',
+    });
+    // Nothing survives that ANY common splitter (incl. Python's str.splitlines) treats as a line boundary.
+    // eslint-disable-next-line no-control-regex -- the control chars ARE the subject: this asserts they are stripped
+    expect(txt).not.toMatch(/[\u0085\u2028\u2029\u000b\u000c\u001c-\u001e]/);
+    expect(txt.split(/\r?\n/).filter((l) => l.startsWith('Contact:'))).toHaveLength(1);
+    expect(txt).toContain('Contact: https://acme.com/contact/Contact: mailto:evil@example.com');
+  });
+
   it('securityTxtExpires is RFC 3339 UTC, N years out, to the second', () => {
     expect(securityTxtExpires(new Date('2026-05-31T12:34:56.789Z'), 5)).toBe('2031-05-31T12:34:56Z');
     expect(securityTxtExpires(new Date('2026-05-31T12:34:56.789Z'), 1)).toBe('2027-05-31T12:34:56Z');
@@ -333,6 +346,99 @@ describe('buildSite — security.txt', () => {
       bundle: withSecurity({ security: { enabled: true, useEmail: true } }, { email: 'hello@acme.com' }),
     });
     expect(await read()).toContain('Contact: mailto:hello@acme.com');
+  });
+
+  it('publishes CUSTOM contacts in place of the company ones — a contact URL, phone and email of its own', async () => {
+    await buildSite({
+      publishedAt: '2026-05-31T00:00:00.000Z',
+      outDir,
+      bundle: withSecurity(
+        {
+          siteUrl: 'https://acme.com',
+          security: {
+            enabled: true,
+            contactUrl: 'https://hackerone.com/acme',
+            // The custom values WIN over the Corporate Identity ones even when both are selected.
+            usePhone: true,
+            phone: '+1 (415) 555-0100',
+            useEmail: true,
+            email: 'security@acme.com',
+          },
+        },
+        { telephone: '+49 30 1234567', email: 'hello@acme.com' },
+      ),
+    });
+    const contacts = (await read()).split('\n').filter((l) => l.startsWith('Contact:'));
+    expect(contacts).toEqual(['Contact: https://hackerone.com/acme', 'Contact: tel:+14155550100', 'Contact: mailto:security@acme.com']);
+  });
+
+  it('a chosen contact PAGE wins over a custom contact URL', async () => {
+    await buildSite({
+      publishedAt: '2026-05-31T00:00:00.000Z',
+      outDir,
+      bundle: withSecurity({ siteUrl: 'https://acme.com', security: { enabled: true, contactPageId: 'contact', contactUrl: 'https://hackerone.com/acme' } }),
+    });
+    const txt = await read();
+    expect(txt).toContain('Contact: https://acme.com/contact/');
+    expect(txt).not.toContain('hackerone');
+  });
+
+  it('resolves the Policy and Acknowledgments PAGES to absolute URLs, winning over typed URLs', async () => {
+    await buildSite({
+      publishedAt: '2026-05-31T00:00:00.000Z',
+      outDir,
+      bundle: withSecurity({
+        siteUrl: 'https://acme.com',
+        security: {
+          enabled: true,
+          contactPageId: 'contact',
+          policyPageId: 'contact',
+          policyUrl: 'https://elsewhere.example/policy/',
+          acknowledgmentsUrl: 'https://acme.com/thanks/',
+        },
+      }),
+    });
+    const txt = await read();
+    expect(txt).toContain('Policy: https://acme.com/contact/');
+    expect(txt).not.toContain('elsewhere.example');
+    expect(txt).toContain('Acknowledgments: https://acme.com/thanks/');
+  });
+
+  it('FAILS the publish when a selected Policy/Acknowledgments page cannot be resolved, naming which', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-31T00:00:00.000Z',
+        outDir,
+        bundle: withSecurity({ siteUrl: 'https://acme.com', security: { enabled: true, contactPageId: 'contact', policyPageId: 'gone' } }),
+      }),
+    ).rejects.toThrow(/policy page is not in this publish/);
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-31T00:00:00.000Z',
+        outDir,
+        bundle: withSecurity({ security: { enabled: true, useEmail: true, acknowledgmentsPageId: 'contact' } }, { email: 'a@acme.com' }),
+      }),
+    ).rejects.toThrow(/acknowledgments page needs a Site URL/);
+    // …and in the always-on preview it is simply left out rather than blanking the site.
+    await buildSite({
+      publishedAt: '2026-05-31T00:00:00.000Z',
+      outDir,
+      previewRuntime: 'window.__SW_PREVIEW__=1;',
+      bundle: withSecurity({ security: { enabled: true, useEmail: true, acknowledgmentsPageId: 'contact' } }, { email: 'a@acme.com' }),
+    });
+    const txt = await read();
+    expect(txt).toContain('Contact: mailto:a@acme.com');
+    expect(txt).not.toContain('Acknowledgments:');
+  });
+
+  it('FAILS the publish on a custom phone number with no country code, naming the number', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-31T00:00:00.000Z',
+        outDir,
+        bundle: withSecurity({ security: { enabled: true, phone: '030 1234567' } }),
+      }),
+    ).rejects.toThrow(/security\.txt phone number \("030 1234567"\) has no country code/);
   });
 
   it('FAILS the publish when a selected contact source resolves to nothing, naming the source', async () => {

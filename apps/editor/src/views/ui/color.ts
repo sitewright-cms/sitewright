@@ -249,3 +249,27 @@ export function formatColor(c: Rgba, fmt: ColorFormat): string {
   const base = `${round(l, 3)} ${round(chroma, 3)} ${round(h, 2)}`;
   return c.a >= 1 ? `oklch(${base})` : `oklch(${base} / ${alphaStr(c.a)})`;
 }
+
+// ----------------------------------------------------------------- legible text on a colour
+/** WCAG relative luminance of an opaque sRGB colour (0 = black, 1 = white). */
+function relativeLuminance(c: Rgba): number {
+  const lin = (v: number): number => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+}
+
+/**
+ * Black or white — whichever has the higher WCAG contrast ratio against `color`. A translucent colour is
+ * judged as it shows over a light surface (it is composited over white first), and anything unparseable
+ * gets black, the safe choice on the light editor.
+ */
+export function readableTextOn(color: string): '#000000' | '#ffffff' {
+  const c = parseColor(color);
+  if (!c) return '#000000';
+  const over = (v: number): number => v * c.a + 255 * (1 - c.a);
+  const l = relativeLuminance({ r: over(c.r), g: over(c.g), b: over(c.b), a: 1 });
+  // Contrast ratio = (lighter + 0.05) / (darker + 0.05); black has luminance 0, white 1.
+  return (l + 0.05) / 0.05 >= 1.05 / (l + 0.05) ? '#000000' : '#ffffff';
+}

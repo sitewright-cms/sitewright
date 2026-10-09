@@ -19,11 +19,26 @@ const CATS: Array<{ id: 'functional' | 'analytics' | 'marketing'; label: string 
  * third-party integrations to gate (each loaded only after its category is consented — the publish step
  * derives the CSP origin allow-list from them). ALL banner COPY is translatable (reserved consent_* keys).
  */
-export function ConsentSettingsModal({ form, patch, onClose }: { form: SettingsForm; patch: Patch; onClose: () => void }) {
+export function ConsentSettingsModal({
+  form,
+  patch,
+  onClose,
+  onEditLabels,
+}: {
+  form: SettingsForm;
+  patch: Patch;
+  onClose: () => void;
+  /** Opens Translations & Labels. Absent falls back to scrolling to the on-page anchor. */
+  onEditLabels?: () => void;
+}) {
   const c: Consent = form.consent ?? {};
   const setConsent = (partial: Partial<Consent>): void => patch({ consent: { ...c, ...partial } });
   const editLabels = (): void => {
     onClose();
+    if (onEditLabels) {
+      onEditLabels();
+      return;
+    }
     setTimeout(() => document.getElementById('translations-labels')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   };
   // Which optional categories are offered (unset = all three).

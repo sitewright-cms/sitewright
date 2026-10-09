@@ -51,9 +51,21 @@ export function renderRobots(sitemapUrl?: string): string {
 /** The relative path of the published file. RFC 9116 §3 — the location is normative, not a choice. */
 export const SECURITY_TXT_PATH = '.well-known/security.txt';
 
-/** Strip CR/LF so a stored value can never inject an extra field into the generated file. */
+/**
+ * Strip every line break so a stored value can never inject an extra field into the generated file.
+ *
+ * Not just CR/LF: NEL (U+0085), the Unicode line/paragraph separators and the other C0/C1 controls are
+ * line boundaries to some consumers (Python's `str.splitlines` among them). This is the one choke point
+ * every field passes through, so it is complete here regardless of what each field's own validator caught.
+ */
 function oneLine(value: string): string {
-  return value.replace(/[\r\n]/g, '');
+  let out = '';
+  for (const ch of value) {
+    const n = ch.codePointAt(0) ?? 0;
+    if (n < 0x20 || (n >= 0x7f && n <= 0x9f) || n === 0x2028 || n === 0x2029) continue;
+    out += ch;
+  }
+  return out;
 }
 
 /**

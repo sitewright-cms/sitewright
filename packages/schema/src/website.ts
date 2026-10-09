@@ -1033,6 +1033,15 @@ export type SecurityTxtExpiryYears = (typeof SECURITY_TXT_EXPIRY_YEARS)[number];
  */
 export const DEFAULT_SECURITY_TXT_EXPIRY_YEARS: SecurityTxtExpiryYears = 5;
 
+/** Whether a value holds a C0/C1 control character (incl. NEL U+0085) or a Unicode line/paragraph separator. */
+function hasControlChar(value: string): boolean {
+  for (const ch of value) {
+    const n = ch.codePointAt(0) ?? 0;
+    if (n < 0x20 || (n >= 0x7f && n <= 0x9f) || n === 0x2028 || n === 0x2029) return true;
+  }
+  return false;
+}
+
 /**
  * Validate a security.txt link field (`Policy` / `Acknowledgments`), returning a human-readable
  * error or `null`. Shared by the schema (server, on save) and the editor's inline field check so
@@ -1045,6 +1054,10 @@ export function securityLinkIssue(value: string): string | null {
   if (value.length > 2048) return 'URL is too long (max 2048 characters).';
   if (!/^https:\/\//i.test(value)) return 'Enter an absolute URL that starts with https:// — RFC 9116 requires https here.';
   if (/\s/.test(value)) return 'Remove the spaces from the URL.';
+  // `\s` misses NEL (U+0085) and the other C0/C1 controls, which some security.txt consumers (Python's
+  // `str.splitlines`, for one) treat as a LINE BREAK — so a value could smuggle a second field past
+  // anything that only stops CR/LF.
+  if (hasControlChar(value)) return 'Remove the line breaks or control characters from the URL.';
   if (/["<>'&]/.test(value)) return `Remove special characters from the URL (" < > ' &).`;
   try {
     new URL(value);
@@ -1060,6 +1073,48 @@ const SecurityLinkSchema = z.string().superRefine((u, ctx) => {
 });
 
 /**
+ * Validate a CUSTOM security.txt phone number (one typed for security.txt alone, instead of the
+ * company's). Only the characters people type into a phone number — which also rules out the CR/LF that
+ * would inject a field. Whether it is expressible as a `tel:` URI (it needs a country code) is decided at
+ * publish, by the same rule the company number goes through, so the error can name the actual number.
+ */
+export function securityPhoneIssue(value: string): string | null {
+  if (value.length > 40) return 'Phone number is too long (max 40 characters).';
+  if (!/^[+0-9 ()./-]+$/.test(value) || !/\d/.test(value)) {
+    return 'Use digits, spaces and + ( ) . / - only — with a country code, e.g. +49 30 1234567.';
+  }
+  return null;
+}
+
+/**
+ * Validate a CUSTOM security.txt email address.
+ *
+ * ★ An ALLOW-list, not a block-list: it is published verbatim as `mailto:<value>`, and anything a mail
+ * client reads as part of a mailto URI — `?bcc=x%40evil.com`, `&subject=`, a percent-escape — would
+ * silently add recipients to every report a researcher sends. A security contact needs none of it, so
+ * the local part is letters, digits and `. _ + -`, and the domain is dot-separated labels. Checked in
+ * code rather than one big regex so nothing can backtrack.
+ */
+export function securityEmailIssue(value: string): string | null {
+  const message = 'Enter a valid email address, e.g. security@acme.com — letters, digits and . _ + - only.';
+  if (value.length > 254) return 'Email address is too long.';
+  const at = value.indexOf('@');
+  if (at <= 0 || at !== value.lastIndexOf('@')) return message;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!/^[A-Za-z0-9._+-]+$/.test(local) || local.startsWith('.') || local.endsWith('.') || local.includes('..')) return message;
+  const labels = domain.split('.');
+  if (labels.length < 2 || labels.some((l) => !/^[A-Za-z0-9-]+$/.test(l) || l.startsWith('-') || l.endsWith('-'))) return message;
+  return null;
+}
+
+const issueSchema = (issueOf: (v: string) => string | null) =>
+  z.string().superRefine((v, ctx) => {
+    const issue = issueOf(v);
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
+  });
+
+/**
  * Opt-in RFC 9116 `security.txt`, published at `/.well-known/security.txt`.
  *
  * Contacts are SELECTED from identity the project already holds rather than retyped, so they can't
@@ -1073,23 +1128,33 @@ export const WebsiteSecuritySchema = z
     enabled: z.boolean().optional(),
     /** Page whose URL is published as the preferred `Contact` (typically the contact-form page). */
     contactPageId: z.string().max(200).optional(),
+    /** A CUSTOM `Contact` URL instead of a page — a bug-bounty programme, say. Ignored while `contactPageId` is set. */
+    contactUrl: SecurityLinkSchema.optional(),
     /** Publish `company.telephone` as a `tel:` contact (requires an E.164 number). */
     usePhone: z.boolean().optional(),
+    /** A CUSTOM phone number for security.txt alone, published as `tel:`. Wins over `usePhone`. */
+    phone: issueSchema(securityPhoneIssue).optional(),
     /** Publish `company.email` as a `mailto:` contact. Off by default — a public file gets harvested. */
     useEmail: z.boolean().optional(),
+    /** A CUSTOM email address for security.txt alone, published as `mailto:`. Wins over `useEmail`. */
+    email: issueSchema(securityEmailIssue).optional(),
     /** Years until `Expires`, recomputed on every publish. Unset → {@link DEFAULT_SECURITY_TXT_EXPIRY_YEARS}. */
     expiryYears: z.union([z.literal(1), z.literal(2), z.literal(5)]).optional(),
     /** Optional `Policy` link — the disclosure policy for this site. */
     policyUrl: SecurityLinkSchema.optional(),
+    /** The `Policy` as a PAGE of this site, resolved to its absolute URL at publish. Wins over `policyUrl`. */
+    policyPageId: z.string().max(200).optional(),
     /** Optional `Acknowledgments` link — a page thanking past reporters. */
     acknowledgmentsUrl: SecurityLinkSchema.optional(),
+    /** The `Acknowledgments` as a PAGE of this site. Wins over `acknowledgmentsUrl`. */
+    acknowledgmentsPageId: z.string().max(200).optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.enabled && !v.contactPageId && !v.usePhone && !v.useEmail) {
+    if (v.enabled && !v.contactPageId && !v.contactUrl && !v.usePhone && !v.phone && !v.useEmail && !v.email) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['enabled'],
-        message: 'security.txt needs at least one contact — choose a contact page, or the company phone or email.',
+        message: 'security.txt needs at least one contact — choose a contact page or URL, or a phone number or email address.',
       });
     }
   });

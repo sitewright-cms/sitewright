@@ -118,6 +118,7 @@ describe('security.txt (RFC 9116)', () => {
       policy: 'https://acme.com/policy/\u2028Acknowledgments: https://evil.example.com/\u2029x\u000bY\u001eZ',
     });
     // Nothing survives that ANY common splitter (incl. Python's str.splitlines) treats as a line boundary.
+    // eslint-disable-next-line no-control-regex -- the control chars ARE the subject: this asserts they are stripped
     expect(txt).not.toMatch(/[\u0085\u2028\u2029\u000b\u000c\u001c-\u001e]/);
     expect(txt.split(/\r?\n/).filter((l) => l.startsWith('Contact:'))).toHaveLength(1);
     expect(txt).toContain('Contact: https://acme.com/contact/Contact: mailto:evil@example.com');

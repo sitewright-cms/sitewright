@@ -42,7 +42,18 @@ test('preview keeps scroll across a reload; bottom rails stay visible over the t
   await page.keyboard.type('<!--r-->');
   await reload;
   // Poll until the freshly-loaded doc's bridge restores scroll (near 700) — definitively NOT the top.
-  await expect
-    .poll(async () => (await frameOf()).evaluate(() => Math.round(window.scrollY)), { timeout: 6000 })
-    .toBeGreaterThan(300);
+  //
+  // ★ The read has to survive a navigation. `frameOf()` resolves the content frame and `evaluate` then
+  // runs in it as a SECOND step, so a reload landing between the two throws "Execution context was
+  // destroyed" — and that throw propagates out of `expect.poll` instead of being retried, failing the
+  // test on a race rather than on the behaviour under test. Treating it as "no reading yet" (-1, which
+  // cannot satisfy the assertion) lets the poll do its job. Measured ~20% failure before this.
+  const scrollYOrNavigating = async (): Promise<number> => {
+    try {
+      return await (await frameOf()).evaluate(() => Math.round(window.scrollY));
+    } catch {
+      return -1; // mid-navigation — poll again
+    }
+  };
+  await expect.poll(scrollYOrNavigating, { timeout: 6000 }).toBeGreaterThan(300);
 });

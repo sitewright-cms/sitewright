@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Globe } from 'lucide-react';
 import { CustomDomainsPanel } from './CustomDomainsPanel';
 import {
   api,
@@ -340,13 +341,27 @@ export function TargetConfigForm({
               Unlisted link: <code className="rounded bg-white dark:bg-slate-900 px-1">{siteUrl}?token={previewToken}</code>
             </p>
           )}
-          {/* Edit-only: claiming a hostname for a site this platform is not yet serving would advertise
-              an address that cannot work. Once Local Hosting exists, the domain is the useful next step. */}
-          {isEdit && (
-            <div className="border-t border-slate-200 pt-3 dark:border-white/10">
+          {/* ★ The panel needs a SAVED target — a hostname claimed for a site this platform is not yet
+              serving would advertise an address that cannot work. But HIDING the section while creating
+              one made the whole feature undiscoverable: nothing on any screen hinted that a site could be
+              served at the client's own domain. So it is always present, and simply says what it is
+              waiting for. */}
+          <div className="border-t border-slate-200 pt-3 dark:border-white/10">
+            {isEdit ? (
               <CustomDomainsPanel projectId={project.id} isStaff={!!isStaff} />
-            </div>
-          )}
+            ) : (
+              <div>
+                <h4 className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">
+                  <Globe className="h-4 w-4" aria-hidden /> Custom domains
+                </h4>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Save Local Hosting first, then reopen it to serve this site at the client&apos;s own hostname —
+                  e.g. <code className="rounded bg-white px-1 dark:bg-slate-900">www.clientbrand.com</code>. You point its
+                  DNS here and publish a TXT record to prove you control it.
+                </p>
+              </div>
+            )}
+          </div>
         </>
       )}
 

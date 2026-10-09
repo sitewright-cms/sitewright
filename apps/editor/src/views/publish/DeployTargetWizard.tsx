@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Server, Upload, TerminalSquare, GitBranch, Pencil, X, type LucideIcon } from 'lucide-react';
-import { api, type DeployTargetView, type Project } from '../../api';
+import { api, type ProjectDomainView, type DeployTargetView, type Project } from '../../api';
 import { useDialogs } from '../ui/Dialogs';
 import { ghostButton, dangerButton, glassPanel, accentChip } from '../../theme';
 import { DeployModal } from './DeployModal';
@@ -28,6 +28,36 @@ function whereLabel(t: DeployTargetView, slug?: string, sitesDomain?: string): s
   return `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
 }
 
+/**
+ * The Local Hosting row's custom-domain line.
+ *
+ * ★ Exists because the feature was otherwise invisible: the domains panel lives inside the target's EDIT
+ * form, so nothing on any screen a person normally looks at hinted that a site could be served at the
+ * client's own hostname. A verified host is named here; an unverified claim says it is waiting on DNS
+ * rather than looking configured; none at all offers the idea once.
+ */
+function CustomDomainLine({ domains }: { domains: ProjectDomainView[] }) {
+  const verified = domains.filter((d) => d.verified);
+  const primary = verified.find((d) => d.isPrimary) ?? verified[0];
+  if (primary) {
+    const extra = verified.length - 1;
+    return (
+      <span className="text-xs text-emerald-700 dark:text-emerald-400">
+        {primary.host}
+        {extra > 0 ? ` + ${extra} more` : ''}
+      </span>
+    );
+  }
+  if (domains.length > 0) {
+    return (
+      <span className="text-xs text-amber-600 dark:text-amber-400">
+        {domains.length === 1 ? `${domains[0]!.host} — waiting on DNS` : `${domains.length} custom domains — waiting on DNS`}
+      </span>
+    );
+  }
+  return <span className="text-xs text-slate-400 dark:text-slate-500">Edit to serve this site at a custom domain</span>;
+}
+
 type Mode = { kind: 'list' } | { kind: 'configure'; protocol: WizardProtocol; editing: DeployTargetView | null };
 
 /**
@@ -37,6 +67,9 @@ type Mode = { kind: 'list' } | { kind: 'configure'; protocol: WizardProtocol; ed
  */
 export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project: Project; sitesDomain?: string; isStaff?: boolean }) {
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null); // null = feature unavailable
+  /** This project's custom-domain claims, for the Local Hosting row. Empty when none, or when the
+   *  caller is not an owner (the route is owner-only) — in both cases the row just says nothing. */
+  const [domains, setDomains] = useState<ProjectDomainView[]>([]);
   const [mode, setMode] = useState<Mode>({ kind: 'list' });
   const [deploying, setDeploying] = useState<DeployTargetView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,6 +81,14 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
     } catch {
       setTargets(null);
     }
+    void loadDomains();
+  }
+  async function loadDomains() {
+    try {
+      setDomains((await api.listProjectDomains(project.id)).items);
+    } catch {
+      setDomains([]); // not an owner, or an older server — the row simply omits the domain line
+    }
   }
   useEffect(() => {
     let active = true;
@@ -55,6 +96,10 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
       .listDeployTargets(project.id)
       .then((res) => active && setTargets(res.items))
       .catch(() => active && setTargets(null));
+    api
+      .listProjectDomains(project.id)
+      .then((res) => active && setDomains(res.items))
+      .catch(() => active && setDomains([]));
     return () => {
       active = false;
     };
@@ -96,6 +141,7 @@ export function DeployTargetWizard({ project, sitesDomain, isStaff }: { project:
               <li key={t.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                 <span className="font-medium text-slate-800 dark:text-slate-100">{t.name}</span>
                 <span className="text-xs text-slate-500 dark:text-slate-400">{whereLabel(t, project.slug, sitesDomain)}</span>
+                {t.protocol === 'local' && <CustomDomainLine domains={domains} />}
                 {t.minifyHtml && <span className="rounded bg-slate-100 dark:bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">minified</span>}
                 <div className="ml-auto flex items-center gap-1">
                   {/* A `local` target is served via the header's Publish action, not the deploy transport. */}

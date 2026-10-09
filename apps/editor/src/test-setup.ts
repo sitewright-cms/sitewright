@@ -24,3 +24,8 @@ if (typeof (globalThis as { EventSource?: unknown }).EventSource === 'undefined'
   }
   (globalThis as { EventSource?: unknown }).EventSource = MockEventSource;
 }
+
+// jsdom has no layout, so `window.scrollTo` only logs "Not implemented". The app resets the page to the top
+// on every tab switch; a no-op keeps that from spamming every test that changes tab. A test that cares
+// spies on it (App.test.tsx does).
+if (typeof window !== 'undefined') window.scrollTo = () => undefined;

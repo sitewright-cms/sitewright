@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useScrollTopOnChange } from '../lib/scroll-top';
 import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type JsonValue, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
@@ -20,6 +21,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
+import { OrdersView } from './OrdersView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
 import { dropTargetForEvent } from '../lib/drag-drop';
@@ -30,6 +32,10 @@ interface ProjectViewProps {
   project: Project;
   /** The active top-level tab (lifted to App so the tablist can live in the header bar). */
   tab: Tab;
+  /** Switches the top-level tab — lets a view inside send the author to another (Shop → Orders). */
+  onSelectTab?: (tab: Tab) => void;
+  /** Whether the Orders tab is showing (the project's payments are active). */
+  ordersAvailable?: boolean;
   /** Fired ONCE when this project's opening data (pages, locales, templates) has settled — success
    *  or failure. The selector modal holds a spinner until then, so picking a project no longer drops
    *  the author into a visibly empty editor that fills in piece by piece. */
@@ -40,20 +46,29 @@ interface ProjectViewProps {
 // lifted into the two leading tabs (Corporate Identity / Website Settings); the submissions Inbox is
 // folded into Forms. Administration (Clients / Team / Access / System Settings) lives in the header
 // gear menu (opened as modals), not a tab — and Clients/Team stay owner/agency-only there.
+// `orders` is CONDITIONAL: the header shows it only while the project's payments are actually active
+// (see lib/payments-active), so it sits last and its appearing never moves another tab.
 export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
   'pages',
   'forms',
   'history',
+  'orders',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
+/** The tabs laid out as wide boards rather than a reading column. */
+const BOARD_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings', 'orders']);
+/** The two tabs ONE SettingsView serves (see the render below). It animates between them itself. */
+const SETTINGS_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings']);
+const sameSettingsView = (prev: Tab, next: Tab): boolean => SETTINGS_TABS.has(prev) && SETTINGS_TABS.has(next);
 export const TAB_LABELS: Record<Tab, string> = {
   'corporate-identity': 'Corporate Identity',
   'website-settings': 'Website Settings',
   pages: 'Pages',
   forms: 'Forms',
   history: 'History',
+  orders: 'Orders',
 };
 /**
  * The same five tabs, named for a strip that scrolls. Two of the labels are two-word phrases whose
@@ -161,8 +176,11 @@ const LINK_ICON = rowIcon(
 const ROW_ACTION =
   'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
-export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
+export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false, onLoaded }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
+  // A new tab starts at the top. Most tabs swap their content in one commit, so the jump lands before
+  // paint; between the two settings tabs SettingsView fades the old board out first and jumps then.
+  useScrollTopOnChange(tab, sameSettingsView);
   // Phone-sized viewport: page rows drop their action toolbar in favour of the long-press menu they
   // already carry (see the row's action <div>).
   const isMobile = useIsMobile();
@@ -933,7 +951,9 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
       // `pl-14` reserves room for the LEFT edge rails' collapsed tabs. A phone mounts none of those —
       // its two rails dock to the bottom corners — so on mobile that 56px is pure waste at the exact
       // width where waste hurts most, and the gutters shrink with it.
-      className={`mx-auto max-w-5xl ${isMobile ? 'px-3 py-4' : 'px-6 py-8 pl-14'}`}
+      // The settings boards and the orders table are 12-column dashboards; the pages list keeps its
+      // reading width.
+      className={`mx-auto ${BOARD_TABS.has(tab) ? 'max-w-6xl' : 'max-w-5xl'} ${isMobile ? 'px-3 py-4' : 'px-6 py-8 pl-14'}`}
     >
       {dialog}
       {/* The project name, tablist, and Publish control now live in the App header bar. */}
@@ -945,7 +965,12 @@ export function ProjectView({ project, tab, onLoaded }: ProjectViewProps) {
           project={project}
           section={tab === 'corporate-identity' ? 'identity' : 'website'}
           onLocalesChanged={() => void onLocalesChangedInSettings()}
+          onOpenOrders={ordersAvailable && onSelectTab ? () => onSelectTab('orders') : undefined}
         />
+      ) : tab === 'orders' && ordersAvailable ? (
+        // Guarded HERE too, not only in the tab list: the content must assert the same invariant the
+        // strip does, so no future way of setting `tab` (a deep link, a new caller) can open it early.
+        <OrdersView key={project.id} project={project} />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />

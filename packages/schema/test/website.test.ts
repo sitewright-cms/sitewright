@@ -8,6 +8,8 @@ import {
   navEffectUsesRuntime,
   NAV_EFFECTS,
   securityLinkIssue,
+  securityPhoneIssue,
+  securityEmailIssue,
   SECURITY_TXT_EXPIRY_YEARS,
   DEFAULT_SECURITY_TXT_EXPIRY_YEARS,
   NAV_EFFECT_LABELS,
@@ -731,6 +733,59 @@ describe('WebsiteSettingsSchema', () => {
       expect(securityLinkIssue('https://acme.com/\nContact: mailto:evil@example.com')).toMatch(/spaces/i);
       expect(securityLinkIssue(`https://acme.com/<script>`)).toMatch(/special characters/i);
       expect(securityLinkIssue(`https://acme.com/${'x'.repeat(2100)}`)).toMatch(/too long/i);
+    });
+
+    it('accepts CUSTOM contacts — a contact URL, phone or email of its own — each satisfying "at least one"', () => {
+      for (const sel of [{ contactUrl: 'https://hackerone.com/acme' }, { phone: '+49 30 1234567' }, { email: 'security@acme.com' }]) {
+        expect(() => WebsiteSettingsSchema.parse({ security: { enabled: true, ...sel } })).not.toThrow();
+      }
+      const parsed = WebsiteSettingsSchema.parse({
+        security: { enabled: true, contactUrl: 'https://hackerone.com/acme', phone: '+49 30 1234567', email: 'security@acme.com' },
+      });
+      expect(parsed.security).toMatchObject({ contactUrl: 'https://hackerone.com/acme', phone: '+49 30 1234567', email: 'security@acme.com' });
+    });
+
+    it('★ a custom email is a PLAIN address — nothing that adds recipients or parameters to the mailto:', () => {
+      // security.txt publishes it as `mailto:<value>`, so `?bcc=` would silently copy every report elsewhere.
+      expect(securityEmailIssue('first.last+sec@sub.acme.co')).toBeNull();
+      for (const bad of [
+        'security@acme.com?bcc=hacker%40evil.com',
+        'security@acme.com?cc=x@evil.com',
+        'a%40b@acme.com',
+        'a@acme.com&subject=hi',
+        'a@b@acme.com',
+        '.a@acme.com',
+        'a..b@acme.com',
+        'a@acme',
+        'a@-acme.com',
+        'a@acme..com',
+        'a\u0085b@acme.com',
+      ]) {
+        expect(securityEmailIssue(bad), bad).toMatch(/email/i);
+      }
+    });
+
+    it('★ a link with a hidden line break (NEL, LS/PS) or control character is refused', () => {
+      expect(securityLinkIssue('https://evil.example/\u0085Contact:mailto:x@evil.example')).toMatch(/control/i);
+      expect(securityLinkIssue('https://evil.example/\u0007bell')).toMatch(/control/i);
+      expect(securityLinkIssue('https://evil.example/\u2028x')).not.toBeNull();
+    });
+
+    it('accepts the Policy and Acknowledgments as PAGES as well as URLs', () => {
+      const parsed = WebsiteSettingsSchema.parse({ security: { policyPageId: 'p-policy', acknowledgmentsPageId: 'p-thanks' } });
+      expect(parsed.security).toMatchObject({ policyPageId: 'p-policy', acknowledgmentsPageId: 'p-thanks' });
+    });
+
+    it('custom contacts are validated like the links — nothing that could inject a field into the file', () => {
+      expect(securityPhoneIssue('+49 (0)30 123-4567')).toBeNull();
+      expect(securityPhoneIssue('call us')).toMatch(/digits/i);
+      expect(securityPhoneIssue('+49 30\nContact: x')).toMatch(/digits/i);
+      expect(securityEmailIssue('security@acme.com')).toBeNull();
+      expect(securityEmailIssue('not-an-email')).toMatch(/email/i);
+      expect(securityEmailIssue('a@b.com\nContact: x')).toMatch(/email/i);
+      expect(() => WebsiteSettingsSchema.parse({ security: { phone: '+1\r\nExpires: 1999' } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ security: { email: 'x@y.z\nContact: tel:+1' } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ security: { contactUrl: 'http://insecure.example' } })).toThrow(/https/);
     });
 
     it('rejects a CR/LF-bearing policy or acknowledgments URL through the schema', () => {

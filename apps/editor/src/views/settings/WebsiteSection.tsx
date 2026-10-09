@@ -1,30 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
+import { siteUrlIssue, type JsonValue, type PaymentBindingPublic } from '@sitewright/schema';
 import {
-  NAV_EFFECTS,
-  NAV_EFFECT_LABELS,
-  BUTTON_EFFECT_LABELS,
-  BUTTON_SHAPE_LABELS,
-  PRELOADER_EFFECTS,
-  STICKY_HEADER_MODES,
-  STICKY_HEADER_LABELS,
-  siteUrlIssue,
-  securityLinkIssue,
-  SECURITY_TXT_EXPIRY_YEARS,
-  type JsonValue,
-  type NavEffect,
-  type PreloaderEffect,
-  type SecurityTxtExpiryYears,
-  type StickyHeaderMode,
-} from '@sitewright/schema';
+  Globe, Sparkles, PanelTop, Signpost, ShoppingCart, Languages, MoonStar, MoveHorizontal,
+  ShieldAlert, ShieldCheck, Image as ImageIcon, Trash2, Search, BookOpenText,
+} from 'lucide-react';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
-import { Field, GlassCard } from './ui';
-import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal, ShieldCheck, ShieldAlert, Image as ImageIcon, Trash2 } from 'lucide-react';
-import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
-import { CodeField } from '../ui/CodeField';
-import { CodeEditorModal } from '../ui/CodeEditorModal';
-import { api, type EffectForks } from '../../api';
+import { Field, Labelled } from './ui';
+import { api, type EffectForks, type Project } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
 import { PaymentCredentialsModal } from './PaymentCredentialsModal';
@@ -34,100 +17,46 @@ import { ConsentSettingsModal } from './ConsentSettingsModal';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
-import { ghostButton, glassInput, fieldLabel, toggleInput } from '../../theme';
+import { SlotEditor, type ChromeSlotKey } from '../SlotEditor';
+import { ghostButton, glassInput, toggleInput } from '../../theme';
 import { cardStagger } from './motion';
+import { notifyPaymentsChanged } from '../../lib/payments-active';
+import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, Tile } from './board/Tile';
+import { SettingsSheet, type SheetSave } from './board/Sheet';
+import { JsonDataStatus } from './website/JsonDataStatus';
+import { EffectsControls, EFFECTS_HELP } from './website/EffectsControls';
+import { SecuritySheet } from './website/SecuritySheet';
+import { SkeletonMap } from './website/SkeletonMap';
+import {
+  consentStatus,
+  contentWidthLabel,
+  contentWidthStatus,
+  effectsStatus,
+  imagesStatus,
+  languagesStatus,
+  localeCodesOf,
+  redirectsExtra,
+  redirectsStatus,
+  searchStatus,
+  securityContacts,
+  securityStatus,
+  shopStatus,
+  siteStatus,
+  skeletonStatus,
+  themesStatus,
+  translationCoverage,
+  translationsStatus,
+} from './board/summaries';
 
-/** Human bytes for the JSON-data readout — the number is what separates "works" from "works and is empty". */
-const jsonBytes = (n: number): string => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / (1024 * 1024)).toFixed(2)} MB`);
-
-/**
- * What the preview will actually render for `{{ website.json_data }}`.
- *
- * ★ Worth its own line because BOTH failure modes are invisible in the preview itself: a source that
- * 404s and a source that returns `{}` each render as nothing at all, and until this existed the first
- * signal either way was a publish 409. Re-reads whenever the saved URL changes.
- */
-function JsonDataStatus({ projectId, url }: { projectId: string; url: string }) {
-  const [state, setState] = useState<Awaited<ReturnType<typeof api.jsonDataStatus>> | null>(null);
-  useEffect(() => {
-    if (!url.trim()) {
-      setState(null);
-      return;
-    }
-    let active = true;
-    // The save warms the cache without blocking its own response, so a just-saved URL can still be in
-    // flight — re-ask a few times rather than reporting "waiting" and leaving it there.
-    let tries = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const read = (): void => {
-      api
-        .jsonDataStatus(projectId)
-        .then((r) => {
-          if (!active) return;
-          setState(r);
-          if (r.awaiting && tries++ < 6) timer = setTimeout(read, 1000);
-        })
-        .catch(() => {
-          /* status is a courtesy — an older instance without the route just shows nothing */
-        });
-    };
-    read();
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [projectId, url]);
-
-  if (!state?.configured) return null;
-  if (state.awaiting) {
-    return <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Reading the source…</p>;
-  }
-  if (!state.ok) {
-    return (
-      <p className="mt-1 rounded-lg bg-rose-500/10 px-3 py-2 text-[11px] text-rose-700 dark:text-rose-400">
-        Could not read this source: {state.error}. The preview and the published site will render{' '}
-        <code>{'{{ website.json_data }}'}</code> empty until it resolves.
-      </p>
-    );
-  }
-  if (state.bytes === 0) {
-    return (
-      <p className="mt-1 rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-        Read, but the source is empty — nothing will render.
-      </p>
-    );
-  }
-  return (
-    <p className="mt-1 text-[11px] text-emerald-700 dark:text-emerald-400">
-      Read {jsonBytes(state.bytes ?? 0)} — available in the preview now.
-    </p>
-  );
-}
-
-/** "logo-pulse" → "Logo pulse" for the preloader picker option labels. */
-const effectLabel = (s: string): string => {
-  const t = s.replace(/-/g, ' ');
-  return t[0]!.toUpperCase() + t.slice(1);
-};
-
-// The effect pickers list their options alphabetically by the label the user sees (the source-of-truth
-// arrays keep their own curated order). Sorted once at module load, not per render.
-const NAV_EFFECTS_SORTED = [...NAV_EFFECTS].sort((a, b) => NAV_EFFECT_LABELS[a].localeCompare(NAV_EFFECT_LABELS[b]));
-const PRELOADER_EFFECTS_SORTED = [...PRELOADER_EFFECTS].sort((a, b) => effectLabel(a).localeCompare(effectLabel(b)));
-
-/** Shared bindings hint for the validated skeleton-slot editors. */
-const SLOT_HINT =
-  'HTML + Tailwind/DaisyUI (no JS). The skeleton wraps this slot in its own landmark (main-nav/footer/…), so do NOT use <nav>/<main>/<footer>/<aside> here — use <div>. Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
-
-/** A one-line summary of the current `website.data` value for the "Edit data" row. */
+/** A one-line summary of the current `website.data` value. */
 function dataSummary(v: JsonValue): string {
-  if (v == null) return 'empty';
-  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length === 1 ? '' : 's'}` : 'empty';
+  if (v == null) return 'Empty';
+  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length === 1 ? '' : 's'}` : 'Empty';
   if (typeof v === 'object') {
     const n = Object.keys(v).length;
-    return n ? `${n} key${n === 1 ? '' : 's'}` : 'empty';
+    return n ? `${n} key${n === 1 ? '' : 's'}` : 'Empty';
   }
-  return 'a value';
+  return 'A value';
 }
 
 /** Content-width presets (value = the `--sw-container` value; '' = platform default 1200px). */
@@ -138,25 +67,56 @@ const CW_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
   { label: 'Full width', value: 'none' },
 ];
 
-/** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
-import { CHROME_SLOTS, SlotEditor, type ChromeSlotKey } from '../SlotEditor';
-import type { Project } from '../../api';
-import { Tooltip } from '../ui/Tooltip';
+/** Width of the content-width demo bar: the chosen width as a share of a 1600px reference screen. */
+function widthDemoPct(value: string): number {
+  if (value === 'none') return 100;
+  const px = value === '' ? 1200 : parseInt(value, 10) || 1200;
+  return Math.max(20, Math.min(100, Math.round((px / 1600) * 100)));
+}
 
+const HELP = {
+  site: 'Where the site lives, and the data every template can read. The production URL is what sitemap.xml, robots.txt and every absolute link are built from.',
+  themes:
+    'Opt-in light + dark themes for the published site. When on, the platform adds a dark variant of your theme; pick whether visitors start on light, dark, or follow their device (auto). Add a {{sw-theme-toggle}} to your nav to let visitors switch. For best results use theme color classes (bg-base-100, text-base-content, text-primary) rather than fixed colors so your content adapts automatically.',
+  width:
+    'The max-width of the main content area, applied site-wide so every section’s content aligns to one width. Pick a preset or a custom pixel width; Full width removes the cap (edge-to-edge).',
+  images: 'How images are stored when uploaded, and how {{sw-image}} delivers them.',
+  skeleton:
+    'Everything that wraps a page. The chrome slots are shared Handlebars partials, validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}. Head HTML and Scripts are raw, owner-only HTML.',
+  redirects: 'Emitted to .htaccess + _redirects on publish. Reorderable, because the first match wins.',
+  search:
+    'Scripts where marks carry meaning (Thai, Devanagari, Hebrew, Arabic) are never affected either way.',
+  shop: "A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). The shop's wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels.",
+  consent:
+    'A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled. Add a “Cookie settings” re-open link anywhere with <a href="#sw-consent">.',
+  translations:
+    'Shared phrases + UI labels ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Scoped keys (home.*, shop.*) group into collapsible sections. Inline preview edits land here too.',
+};
+
+type SheetKey = 'redirects' | 'security' | 'languages' | 'translations';
+
+/**
+ * Website Settings as a BOARD: four fixed bands — Delivery, Document, Site behaviour, Modules. Small
+ * sections are edited on their tile; real forms drill in; the document skeleton and the shop are maps
+ * whose parts each open their own editor. Every control the old cards held is still here.
+ */
 export function WebsiteSection({
   form,
   patch,
   saveNow,
+  save,
   projectId,
   project,
   onLocalesChanged,
   onReloadSettings,
+  onOpenOrders,
 }: {
   form: SettingsForm;
   patch: Patch;
-  /** Apply a change AND persist it in the same gesture — for a code editor's own Save / Ctrl+S. */
   /** Persist immediately (and stage). Rejects when the save failed, so a code editor can keep its draft. */
   saveNow: (p: Partial<SettingsForm>) => void | Promise<void>;
+  /** The section save the drill-ins' own Save uses. */
+  save: SheetSave;
   projectId: string;
   /** The project — the slot editor previews through its slug. Optional so the section still renders
    *  in contexts that don't have it (the full-editor entry points are then simply not offered). */
@@ -165,14 +125,32 @@ export function WebsiteSection({
   onLocalesChanged?: () => void;
   /** Re-hydrate the whole settings form after a server-side change (e.g. main-language relabel). */
   onReloadSettings?: () => Promise<void> | void;
+  /** Switches to the project's Orders tab — passed exactly while that tab is showing (payments active). */
+  onOpenOrders?: () => void;
 }) {
+  const [sheet, setSheet] = useState<SheetKey | null>(null);
+  const close = () => setSheet(null);
   const [dataOpen, setDataOpen] = useState(false);
   // The chrome slot opened in the FULL editor (code + live preview + devices), or null.
   const [slotEdit, setSlotEdit] = useState<ChromeSlotKey | null>(null);
-  const SLOT_BUTTONS: ReadonlyArray<readonly [ChromeSlotKey, string]> = CHROME_SLOTS.map((s) => [s.key, s.label] as const);
   const [shopOpen, setShopOpen] = useState(false);
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
+  const [pruning, setPruning] = useState(false);
+  const [pruneMsg, setPruneMsg] = useState('');
+
+  // The "fork existing effect" snippets (built-in effects as ready-to-run custom code). Static platform
+  // data, fetched once.
+  const [forks, setForks] = useState<EffectForks | null>(null);
+  useEffect(() => {
+    let on = true;
+    api.listEffectForks().then((f) => on && setForks(f)).catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, []);
+
   // Gateways this project may bind to. Fetched once so the checkout channel row can offer them by
   // NAME — an operator should pick "Stripe Checkout", not type an id they have to know.
   const [gateways, setGateways] = useState<AvailableGateway[]>([]);
@@ -189,438 +167,78 @@ export function WebsiteSection({
       live = false;
     };
   }, [projectId]);
-  const [consentOpen, setConsentOpen] = useState(false);
-  // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
-  // effect's code editor is open. The forks are static platform data, fetched once.
-  const [forks, setForks] = useState<EffectForks | null>(null);
-  // Pages for the security.txt contact picker. Fetched lazily — only once the feature is switched on,
-  // so an untouched project never pays for a request it doesn't use.
-  const [pageOptions, setPageOptions] = useState<Array<{ id: string; title: string }>>([]);
-  const [editing, setEditing] = useState<null | 'nav' | 'button' | 'preloader'>(null);
-  const [btnModalOpen, setBtnModalOpen] = useState(false);
-  const [pruning, setPruning] = useState(false);
-  const [pruneMsg, setPruneMsg] = useState('');
+
+  // What the shop's Payments part reports, and whether any orders exist. `undefined` = not known (the
+  // shop is off, or this member may not read payments — the endpoint is owner/admin only).
+  const [binding, setBinding] = useState<PaymentBindingPublic | null | undefined>(undefined);
+  const [ordersTotal, setOrdersTotal] = useState(0);
+  const refreshPayments = useCallback(() => {
+    if (!form.shopEnabled) return;
+    // Promise.resolve().then(...) so even a synchronous throw (an older API without the route) lands in
+    // the catch — the shop tile is a reader of this state, never a casualty of it.
+    void Promise.resolve()
+      .then(() => api.getProjectPayment(projectId))
+      .then((r) => setBinding(r.binding))
+      .catch(() => setBinding(undefined));
+    void Promise.resolve()
+      .then(() => api.listTransactions(projectId, { limit: 1 }))
+      .then((r) => setOrdersTotal(r.total))
+      .catch(() => setOrdersTotal(0));
+  }, [projectId, form.shopEnabled]);
   useEffect(() => {
-    let on = true;
-    api.listEffectForks().then((f) => on && setForks(f)).catch(() => {});
-    return () => {
-      on = false;
-    };
-  }, []);
-  // The contact-page options. A failure leaves the list empty rather than breaking the panel — the
-  // publish-time check is the real guard that the selected page exists.
-  useEffect(() => {
-    if (!form.securityEnabled) return;
-    let on = true;
-    api
-      .listPages(projectId)
-      .then((r) => on && setPageOptions(r.items.map((p) => ({ id: p.id, title: p.title || p.path || p.id }))))
-      .catch(() => {});
-    return () => {
-      on = false;
-    };
-  }, [form.securityEnabled, projectId]);
-  const slotCfg = {
-    nav: {
-      title: 'Custom nav effect code',
-      code: form.navCode,
-      set: (v: string) => saveNow({ navCode: v }),
-      forks: forks?.nav ?? [],
-      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. .menu a — the built-in schemes only style links inside a .menu) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
-    },
-    button: {
-      title: 'Custom button effect code',
-      code: form.buttonCode,
-      set: (v: string) => saveNow({ buttonCode: v }),
-      forks: forks?.button ?? [],
-      hint: 'Applied site-wide while Button effect is “None / Custom Code”. Target buttons (.btn) and use --sw-color-* tokens for dark-mode safety.',
-    },
-    preloader: {
-      title: 'Custom preloader code',
-      code: form.preloaderCode,
-      set: (v: string) => saveNow({ preloaderCode: v }),
-      forks: forks?.preloader ?? [],
-      hint: 'A full-screen overlay injected as the first body child while Preloader is “None / Custom Code”. Mark it data-sw-preloader and hide it once loaded — fork a preset for a complete, working example.',
-    },
-  };
-  // The configured locales, default first (deduped) — for the locale manager.
-  const localeCodes = Array.from(
-    new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
-  );
-  // Inline siteUrl validation — same rule/message the server enforces on save. Empty is valid (it
-  // just skips the sitemap), so only a non-blank value is checked.
+    refreshPayments();
+  }, [refreshPayments]);
+
+  const localeCodes = localeCodesOf(form);
   const siteUrlError = form.siteUrl.trim() ? siteUrlIssue(form.siteUrl.trim()) : null;
-  // security.txt: the same shared validators the schema uses, so the inline error matches the save
-  // error exactly; and the "no contact picked" state the schema rejects, surfaced BEFORE the save.
-  const securityPolicyError = form.securityPolicyUrl.trim() ? securityLinkIssue(form.securityPolicyUrl.trim()) : null;
-  const securityAcknowledgmentsError = form.securityAcknowledgmentsUrl.trim()
-    ? securityLinkIssue(form.securityAcknowledgmentsUrl.trim())
-    : null;
-  const hasSecurityContact = Boolean(form.securityContactPageId) || form.securityUsePhone || form.securityUseEmail;
+  const gatewayName = binding ? gateways.find((g) => g.id === binding.gatewayId)?.name ?? binding.gatewayId : '';
+  const paymentsValue =
+    binding === undefined ? '—' : binding === null ? 'Not connected' : binding.complete ? `${gatewayName} · ${binding.mode}` : `${gatewayName} · keys incomplete`;
+  // The Shop and Consent modals send the operator to the labels — which now live in a drill-in.
+  const editLabels = () => {
+    setShopOpen(false);
+    setConsentOpen(false);
+    setSheet('translations');
+  };
+  const cwIsPreset = CW_PRESETS.some((o) => o.value === form.containerWidth);
+  const coverage = translationCoverage(form);
+
   return (
-    <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
-      <GlassCard title="Site" icon={<Globe className="h-4 w-4" />} wide>
-        <Field
-          label="Production URL (for sitemap.xml + robots.txt)"
-          value={form.siteUrl}
-          onChange={(v) => patch({ siteUrl: v })}
-          type="url"
-          placeholder="https://acme.com"
-          error={siteUrlError}
-          hint="Absolute URL, e.g. https://acme.com — a trailing slash is optional; no path query or #fragment."
-        />
-        <div className="mt-3">
+    <motion.div variants={cardStagger} className="flex flex-col gap-8">
+      <Band title="Delivery">
+        <Tile title="Site" icon={<Globe className="h-4 w-4" />} status={siteStatus(form)} span="c6" md={6} help={HELP.site}>
           <Field
-            label="JSON data URL → {{ website.json_data }}"
-            value={form.jsonDataUrl}
-            onChange={(v) => patch({ jsonDataUrl: v })}
+            label="Production URL (for sitemap.xml + robots.txt)"
+            value={form.siteUrl}
+            onChange={(v) => patch({ siteUrl: v })}
             type="url"
-            placeholder="https://api.example.com/data.json"
-            hint="Public https only. Read on save and kept for the preview, so the data renders before you publish; publish re-reads it fresh."
+            placeholder="https://acme.com"
+            error={siteUrlError}
+            tip="An absolute URL, e.g. https://acme.com — a trailing slash is optional; no path, query or #fragment. Without it, publish skips sitemap.xml and robots.txt gets no Sitemap line."
           />
-          <JsonDataStatus projectId={projectId} url={form.jsonDataUrl} />
-        </div>
-        <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Site data → {'{{ website.data }}'} (edited here, in preview + publish)
-          </label>
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={() => setDataOpen(true)} className={ghostButton}>
-              Edit data
-            </button>
-            <span className="text-xs text-slate-500 dark:text-slate-400">{dataSummary(form.data)}</span>
-          </div>
-        </div>
-      </GlassCard>
-
-      {dataOpen && (
-        <WebsiteDataModal
-          value={form.data}
-          // Its own Save is the only Save an author sees from inside that modal, so it persists too —
-          // the same reasoning as the code editors, applied to the structured-data one.
-          onSave={(data) => saveNow({ data })}
-          onClose={() => setDataOpen(false)}
-        />
-      )}
-
-      <GlassCard
-        title="Nav, Buttons & Preloader Effects"
-        icon={<Sparkles className="h-4 w-4" />}
-        tooltip="CI-themed, contrast-safe nav/button hover-active schemes + a page preloader overlay (shown on load and during navigation), applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own look? Pick “None / Custom Code” and click Edit to write it (or fork a built-in effect as a starting point)."
-        wide
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col">
-            <span className={fieldLabel}>Nav effect</span>
-            <div className="flex items-center gap-2">
-              <select
-                aria-label="Nav effect"
-                className={`${glassInput} min-w-0 flex-1`}
-                value={form.navEffect || 'none'}
-                onChange={(e) => patch({ navEffect: e.target.value === 'none' ? 'none' : (e.target.value as NavEffect) })}
-              >
-                <option value="none">None / Custom Code</option>
-                {NAV_EFFECTS_SORTED.map((n) => (
-                  <option key={n} value={n}>
-                    {NAV_EFFECT_LABELS[n]}
-                  </option>
-                ))}
-              </select>
-              {form.navEffect === 'none' && (
-                <Tooltip tip="Edit the custom nav effect code" className="shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setEditing('nav')}
-                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  >
-                    <Code className="h-3.5 w-3.5" /> {form.navCode.trim() ? 'Edit code' : 'Add code'}
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          </label>
-          <div className="flex flex-col">
-            <span className={fieldLabel}>Buttons</span>
-            <div className="flex items-center gap-2">
-              <Tooltip tip="Configure button effect, hover accent + shape with a live preview" className="min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => setBtnModalOpen(true)}
-                  className={`${glassInput} flex min-w-0 flex-1 items-center justify-between gap-2 text-left`}
-                >
-                  <span className="truncate">
-                    {form.buttonEffect === 'none' ? 'Baseline' : BUTTON_EFFECT_LABELS[form.buttonEffect]}
-                    {' · '}
-                    {(form.buttonAccent || 'secondary')[0]!.toUpperCase() + (form.buttonAccent || 'secondary').slice(1)}
-                    {' accent · '}
-                    {BUTTON_SHAPE_LABELS[form.buttonShape || 'rounded']}
-                  </span>
-                  <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                </button>
-              </Tooltip>
-              {form.buttonEffect === 'none' && (
-                <Tooltip tip="Edit the custom button effect code" className="shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setEditing('button')}
-                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  >
-                    <Code className="h-3.5 w-3.5" /> {form.buttonCode.trim() ? 'Edit code' : 'Add code'}
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-          <label className="flex flex-col">
-            <span className={fieldLabel}>Preloader</span>
-            <div className="flex items-center gap-2">
-              <select
-                aria-label="Preloader effect"
-                className={`${glassInput} min-w-0 flex-1`}
-                value={form.preloaderEffect || 'none'}
-                onChange={(e) =>
-                  patch({ preloaderEffect: e.target.value === 'none' ? 'none' : (e.target.value as PreloaderEffect) })
-                }
-              >
-                <option value="none">None / Custom Code</option>
-                {PRELOADER_EFFECTS_SORTED.map((p) => (
-                  <option key={p} value={p}>
-                    {effectLabel(p)}
-                  </option>
-                ))}
-              </select>
-              {form.preloaderEffect === 'none' && (
-                <Tooltip tip="Edit the custom preloader code" className="shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setEditing('preloader')}
-                    className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
-                  >
-                    <Code className="h-3.5 w-3.5" /> {form.preloaderCode.trim() ? 'Edit code' : 'Add code'}
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          </label>
-          {/* Only meaningful once there IS custom code — the built-in effects always carry the backdrop. */}
-          {form.preloaderEffect === 'none' && form.preloaderCode.trim() !== '' && (
-            <label className="mt-3 flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className={fieldLabel}>Solid backdrop behind your code</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                  Fills the screen with the page background so nothing shows through while loading. Leave
-                  it off if your overlay draws its own (or is meant to be see-through).
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                aria-label="Solid backdrop behind the custom preloader"
-                className={toggleInput}
-                checked={form.preloaderBackdrop}
-                onChange={(e) => patch({ preloaderBackdrop: e.target.checked })}
-              />
-            </label>
-          )}
-        </div>
-        <label className="mt-4 flex flex-col">
-          <span className={fieldLabel}>Sticky header</span>
-          <span className="mb-1 block text-[11px] text-slate-500 dark:text-slate-400">
-            Fix the top navigation to the viewport so it stays visible as the page scrolls. Content clears the bar
-            automatically — add{' '}
-            <code className="rounded bg-slate-700/60 px-1">sw-top-padding</code> only to move that offset onto an inner
-            element, so a full-bleed hero bleeds under the header. It is defeated by any padding class or inline padding
-            on the same element, so give that element{' '}
-            <code className="rounded bg-slate-700/60 px-1">px-4 pb-4</code> rather than{' '}
-            <code className="rounded bg-slate-700/60 px-1">p-4</code>. A custom header must set its real height —{' '}
-            <code className="rounded bg-slate-700/60 px-1">--sw-header-h</code> — in Custom CSS at every breakpoint.
+          <span className="flex flex-col">
+            <Field
+              label="JSON data URL → {{ website.json_data }}"
+              value={form.jsonDataUrl}
+              onChange={(v) => patch({ jsonDataUrl: v })}
+              type="url"
+              placeholder="https://api.example.com/data.json"
+              tip="Public https only. Read on save and kept for the preview; publish re-reads it fresh."
+            />
+            <JsonDataStatus projectId={projectId} url={form.jsonDataUrl} />
           </span>
-          <select
-            aria-label="Sticky header mode"
-            className={`${glassInput} min-w-0`}
-            value={form.stickyHeader}
-            onChange={(e) =>
-              patch({
-                stickyHeader: e.target.value === 'none' ? 'none' : (e.target.value as StickyHeaderMode),
-              })
-            }
-          >
-            <option value="none">Off — static header</option>
-            {STICKY_HEADER_MODES.map((m) => (
-              <option key={m} value={m}>
-                {STICKY_HEADER_LABELS[m]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="mt-4 flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Back-to-top button</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              Shows a chevron-up button after the first screen of scrolling that scrolls back to the top.
+          <Labelled label={<>Site data → {'{{ website.data }}'}</>} tip="Your own JSON, edited here and read in any template as {{ website.data.* }}.">
+            <span className="flex items-center gap-3">
+              <button type="button" onClick={() => setDataOpen(true)} className={ghostButton}>
+                Edit data
+              </button>
+              <span className="min-w-0 truncate pr-0.5 text-sm text-slate-500 dark:text-slate-400">{dataSummary(form.data).toLowerCase()}</span>
             </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Enable back-to-top button"
-            className={toggleInput}
-            checked={form.backToTop}
-            onChange={(e) => patch({ backToTop: e.target.checked })}
-          />
-        </label>
-        <label className="mt-4 flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>ScrollSpy (highlight section in view)</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              Highlights the main &amp; mobile nav link whose in-page section (a link to{' '}
-              <code className="rounded bg-slate-700/60 px-1">#about</code> → a{' '}
-              <code className="rounded bg-slate-700/60 px-1">&lt;section id=&quot;about&quot;&gt;</code>) is scrolled
-              into view. Best for one-page / landing layouts — on the page that holds the sections it takes over the
-              nav&apos;s active state; pages without in-page sections keep normal link highlighting. For a custom
-              on-page nav, add the <code className="rounded bg-slate-700/60 px-1">data-sw-scrollspy</code> attribute
-              instead.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Enable scrollspy"
-            className={toggleInput}
-            checked={form.scrollSpy}
-            onChange={(e) => patch({ scrollSpy: e.target.checked })}
-          />
-        </label>
-      </GlassCard>
+          </Labelled>
+        </Tile>
 
-      {editing && (
-        <CodeEditorModal
-          title={slotCfg[editing].title}
-          value={slotCfg[editing].code}
-          language="html"
-          hint={slotCfg[editing].hint}
-          fork={
-            slotCfg[editing].forks.length
-              ? {
-                  // alphabetical by label, like the effect pickers (None / source order aside).
-                  options: slotCfg[editing].forks
-                    .map((f) => ({ value: f.name, label: f.label }))
-                    .sort((a, b) => a.label.localeCompare(b.label)),
-                  snippetFor: (v) => slotCfg[editing].forks.find((f) => f.name === v)?.code ?? '',
-                }
-              : undefined
-          }
-          onSave={(v) => slotCfg[editing].set(v)}
-          onClose={() => setEditing(null)}
-        />
-      )}
-
-      {btnModalOpen && (
-        <ButtonEffectsModal
-          form={form}
-          onApply={(v) =>
-            patch({ buttonEffect: v.buttonEffect, buttonAccent: v.buttonAccent, buttonShape: v.buttonShape })
-          }
-          onClose={() => setBtnModalOpen(false)}
-        />
-      )}
-
-      <GlassCard
-        title="Themes (light / dark)"
-        icon={<MoonStar className="h-4 w-4" />}
-        tooltip="Opt-in light + dark themes for the published site. When on, the platform adds a dark variant of your theme; pick whether visitors start on light, dark, or follow their device (auto). Add a {{sw-theme-toggle}} to your nav to let visitors switch. For best results use theme color classes (bg-base-100, text-base-content, text-primary) rather than fixed colors so your content adapts automatically."
-        wide
-      >
-        {/* Master switch. OFF (default) = single-theme site, byte-identical output; gates the
-            {{sw-theme-toggle}} helper (renders nothing) + the reserved theme.toggle ghost row. */}
-        <label className="flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Enable themes</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              Adds a dark variant of your theme. When off, the site stays single-theme.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Enable themes"
-            className={toggleInput}
-            checked={form.enableThemes}
-            onChange={(e) => patch({ enableThemes: e.target.checked })}
-          />
-        </label>
-        {form.enableThemes && (
-          <label className="mt-3 flex flex-col">
-            <span className={fieldLabel}>Default theme</span>
-            <select
-              aria-label="Default theme"
-              className={glassInput}
-              value={form.defaultTheme}
-              onChange={(e) => patch({ defaultTheme: e.target.value as 'auto' | 'light' | 'dark' })}
-            >
-              <option value="auto">Auto — follow the visitor’s device</option>
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-            </select>
-            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-              The starting theme. A <code>{'{{sw-theme-toggle}}'}</code> in your nav lets visitors override it.
-            </span>
-          </label>
-        )}
-      </GlassCard>
-
-      <GlassCard
-        title="Content width"
-        icon={<MoveHorizontal className="h-4 w-4" />}
-        tooltip="The max-width of the main content area, applied site-wide so every section's content aligns to one width. Pick a preset or a custom pixel width; Full width removes the cap (edge-to-edge). Full-bleed section backgrounds still span the viewport."
-        wide
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex flex-1 flex-col">
-            <span className={fieldLabel}>Width</span>
-            <select
-              aria-label="Content width"
-              className={glassInput}
-              value={CW_PRESETS.some((o) => o.value === form.containerWidth) ? form.containerWidth : 'custom'}
-              onChange={(e) => patch({ containerWidth: e.target.value === 'custom' ? '1080px' : e.target.value })}
-            >
-              {CW_PRESETS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-              <option value="custom">Custom…</option>
-            </select>
-          </label>
-          {!CW_PRESETS.some((o) => o.value === form.containerWidth) && (
-            <label className="flex flex-col">
-              <span className={fieldLabel}>Custom (px)</span>
-              <input
-                type="number"
-                min={320}
-                max={2560}
-                aria-label="Custom content width in pixels"
-                className={glassInput}
-                value={parseInt(form.containerWidth, 10) || ''}
-                onChange={(e) => patch({ containerWidth: e.target.value ? `${e.target.value}px` : '' })}
-              />
-            </label>
-          )}
-        </div>
-        <span className="mt-2 block text-[11px] text-slate-500 dark:text-slate-400">
-          Sets the content container width used by every section, so the whole site aligns to one width.
-        </span>
-      </GlassCard>
-
-      <GlassCard
-        title="Images"
-        icon={<ImageIcon className="h-4 w-4" />}
-        tooltip="How {{sw-image}} delivers responsive images (WebP, or an added AVIF tier), the upload cap for retained originals, and a button to clear the on-demand thumbnail cache (regenerated on the next view)."
-        wide
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col">
-            <span className={fieldLabel}>Delivery format</span>
+        <Tile title="Images" icon={<ImageIcon className="h-4 w-4" />} status={imagesStatus(form)} span="c3" md={3} help={HELP.images}>
+          <Labelled label="Delivery format" tip="How {{sw-image}} serves responsive images: WebP, or an added AVIF tier — smaller on browsers that support it, at about twice the generated files.">
             <select
               aria-label="Image delivery format"
               className={glassInput}
@@ -631,13 +249,8 @@ export function WebsiteSection({
               <option value="webp">WebP only</option>
               <option value="avif">AVIF + WebP</option>
             </select>
-            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-              AVIF is smaller on supporting browsers, at ~2× the generated files. <code>{'{{sw-image}}'}</code> then emits a{' '}
-              <code>&lt;picture&gt;</code> with an AVIF source.
-            </span>
-          </label>
-          <label className="flex flex-col">
-            <span className={fieldLabel}>Upload size cap (px width)</span>
+          </Labelled>
+          <Labelled label="Upload size cap (px width)" tip="Originals wider than this are scaled down on upload. Blank keeps full resolution; delivery tops out at 2400px either way.">
             <input
               type="number"
               min={200}
@@ -648,448 +261,355 @@ export function WebsiteSection({
               value={form.imageUploadCap}
               onChange={(e) => patch({ imageUploadCap: e.target.value })}
             />
-            <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-              Caps the retained ORIGINAL (→ WebP when it bites). Blank keeps full resolution; delivery tops out at 2400px either way.
-            </span>
-          </label>
-        </div>
-        <div className="mt-3 flex items-center gap-3">
-          <button
-            type="button"
-            className={ghostButton}
-            disabled={pruning}
-            onClick={async () => {
-              setPruning(true);
-              setPruneMsg('');
-              try {
-                const { removed } = await api.pruneThumbnails(projectId);
-                setPruneMsg(`Cleared ${removed} cached thumbnail${removed === 1 ? '' : 's'}.`);
-              } catch {
-                setPruneMsg('Could not clear the cache.');
-              } finally {
-                setPruning(false);
-              }
-            }}
-          >
-            <Trash2 className="mr-1.5 inline h-3.5 w-3.5" /> {pruning ? 'Clearing…' : 'Clear thumbnail cache'}
-          </button>
-          {pruneMsg && <span className="text-xs text-slate-500 dark:text-slate-400">{pruneMsg}</span>}
-        </div>
-      </GlassCard>
-
-      <GlassCard title="Critical CSS" icon={<Paintbrush className="h-4 w-4" />} wide>
-        <CodeField
-          label="Project-wide CSS inlined in <head> (after brand tokens)"
-          title="Critical CSS"
-          language="css"
-          value={form.criticalCss}
-          onChange={(v) => saveNow({ criticalCss: v })}
-          placeholder=".hero { ... }"
-        />
-      </GlassCard>
-
-      <GlassCard title="Head HTML" icon={<Code className="h-4 w-4" />}>
-        <CodeField
-          label="Raw HTML injected into <head> (analytics, meta)"
-          title="Head HTML"
-          value={form.head}
-          onChange={(v) => saveNow({ head: v })}
-          placeholder="<meta ... />"
-        />
-      </GlassCard>
-
-      <GlassCard title="Scripts" icon={<Braces className="h-4 w-4" />}>
-        <CodeField
-          label="Raw HTML injected after the page body (3rd-party scripts/widgets)"
-          title="Scripts"
-          value={form.scripts}
-          onChange={(v) => saveNow({ scripts: v })}
-          placeholder="<script ... ></script>"
-        />
-      </GlassCard>
-
-      {/* ONE card, not five loose ones. The five slots are a single concept — the chrome rendered
-          around every page — and as separate cards in a two-column grid they interleaved with the
-          unrelated sections after them, so the group had a heading but no edges. */}
-      <GlassCard
-        title="Skeleton slots"
-        icon={<PanelTop className="h-4 w-4" />}
-        tooltip="Shared Handlebars partials rendered around every page. Validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}."
-        wide
-      >
-        <div className="flex flex-col gap-2">
-          {project && (
-            <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-slate-500 dark:text-slate-400">Open in the full editor:</span>
-              {SLOT_BUTTONS.map(([key, label]) => (
-                <button
-                  key={key}
-                  type="button"
-                  className={`${ghostButton} px-2 py-1 text-xs`}
-                  onClick={() => setSlotEdit(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <CodeField
-            label="mainNav — desktop bar + mobile drawer, on every page"
-            title="Main Navigation"
-            hint={SLOT_HINT}
-            value={form.mainNav}
-            onChange={(v) => saveNow({ mainNav: v })}
-            starter={{ label: 'Insert the default navigation', code: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '' }}
-            placeholder={'<div class="navbar">{{ company.name }}</div>'}
-          />
-          <CodeField
-            label="sidebarLeft — after the page body (position via classes)"
-            title="sidebarLeft partial"
-            hint={SLOT_HINT}
-            value={form.sidebarLeft}
-            onChange={(v) => saveNow({ sidebarLeft: v })}
-            placeholder={'<div class="menu">…</div>'}
-          />
-          <CodeField
-            label="sidebarRight — after the page body (position via classes)"
-            title="sidebarRight partial"
-            hint={SLOT_HINT}
-            value={form.sidebarRight}
-            onChange={(v) => saveNow({ sidebarRight: v })}
-            placeholder={'<div class="menu">…</div>'}
-          />
-          <CodeField
-            label="footer — below body + sidebars"
-            title="footer partial"
-            hint={SLOT_HINT}
-            value={form.footer}
-            onChange={(v) => saveNow({ footer: v })}
-            starter={{ label: 'Insert the default footer', code: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' }}
-            placeholder={'<div class="footer">© {{ company.name }}</div>'}
-          />
-          <CodeField
-            label="bottom — after the footer (global modals, schema.org microdata)"
-            title="bottom partial"
-            hint={SLOT_HINT}
-            value={form.bottom}
-            onChange={(v) => saveNow({ bottom: v })}
-            placeholder={'<div class="modal">…</div>'}
-          />
-        </div>
-      </GlassCard>
-
-      <GlassCard
-        title="Redirects"
-        icon={<Signpost className="h-4 w-4" />}
-        tooltip="Emitted to .htaccess + _redirects on publish."
-        wide
-      >
-        <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
-      </GlassCard>
-
-      <GlassCard
-        title="security.txt"
-        icon={<ShieldAlert className="h-4 w-4" />}
-        tooltip="Publishes .well-known/security.txt (RFC 9116) — the standard place a security researcher looks for how to report a vulnerability in this site. Contacts are taken from the page and Corporate Identity you select, so they can't drift from your real details."
-        wide
-      >
-        <label className="flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Publish security.txt</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              Adds <code>/.well-known/security.txt</code> on publish, telling researchers how to reach you.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            className={toggleInput}
-            aria-label="Publish security.txt"
-            checked={form.securityEnabled}
-            onChange={(e) => patch({ securityEnabled: e.target.checked })}
-          />
-        </label>
-
-        {form.securityEnabled && (
-          <div className="mt-4 flex flex-col gap-3">
-            <label className="flex flex-col">
-              <span className={fieldLabel}>Contact page</span>
-              <select
-                aria-label="Contact page"
-                className={glassInput}
-                value={form.securityContactPageId}
-                onChange={(e) => patch({ securityContactPageId: e.target.value })}
-              >
-                <option value="">— none —</option>
-                {pageOptions.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
-              </select>
-              <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-                Preferred: a page with your contact form. It keeps working for as long as the site is up, and
-                submissions are stored here even if the notification email fails. Needs the Production URL above.
+          </Labelled>
+          {/* One line, whatever happens: the label names the action and never changes, and the outcome
+              sits beside it (truncating), so a result can't grow the tile or rename the button. */}
+          <span className="flex min-w-0 items-center gap-2 text-sm">
+            <button
+              type="button"
+              className="inline-flex shrink-0 items-center gap-1.5 font-medium text-indigo-700 transition hover:underline disabled:opacity-60 dark:text-indigo-300"
+              disabled={pruning}
+              onClick={async () => {
+                setPruning(true);
+                setPruneMsg('');
+                try {
+                  const { removed } = await api.pruneThumbnails(projectId);
+                  setPruneMsg(`Cleared ${removed} cached thumbnail${removed === 1 ? '' : 's'}.`);
+                } catch {
+                  setPruneMsg('Could not clear the cache.');
+                } finally {
+                  setPruning(false);
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              {pruning ? 'Clearing…' : 'Clear thumbnail cache'}
+            </button>
+            {pruneMsg && (
+              <span role="status" className="min-w-0 truncate pr-1 text-slate-500 dark:text-slate-400" title={pruneMsg}>
+                {pruneMsg}
               </span>
-            </label>
-
-            <label className="flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className={fieldLabel}>Also publish the company phone</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                  From Corporate Identity. Needs a country code (e.g. +49 30 1234567) to be a valid <code>tel:</code> link.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={toggleInput}
-                aria-label="Publish the company phone number"
-                checked={form.securityUsePhone}
-                onChange={(e) => patch({ securityUsePhone: e.target.checked })}
-              />
-            </label>
-
-            <label className="flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className={fieldLabel}>Also publish the company email</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-                  From Corporate Identity. This file is public and machine-read — expect the address to be harvested
-                  for spam.
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                className={toggleInput}
-                aria-label="Publish the company email address"
-                checked={form.securityUseEmail}
-                onChange={(e) => patch({ securityUseEmail: e.target.checked })}
-              />
-            </label>
-
-            {!hasSecurityContact && (
-              <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
-                Pick at least one contact — a security.txt without one is invalid, and the publish will fail.
-              </p>
             )}
+          </span>
+        </Tile>
 
-            <label className="flex flex-col">
-              <span className={fieldLabel}>Valid for</span>
+        <Tile title="Content width" icon={<MoveHorizontal className="h-4 w-4" />} status={contentWidthStatus(form)} span="c3" md={3} help={HELP.width}>
+          <span className="grid h-11 place-items-center rounded-lg border border-dashed border-slate-300 p-1.5 dark:border-slate-600" aria-hidden>
+            <span
+              className="grid h-full place-items-center overflow-hidden whitespace-nowrap rounded-md border border-indigo-300/80 bg-indigo-50/80 font-mono text-xs font-semibold text-slate-700 transition-[width] dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-slate-200"
+              style={{ width: `${widthDemoPct(form.containerWidth)}%` }}
+            >
+              {contentWidthLabel(form.containerWidth)}
+            </span>
+          </span>
+          <Labelled label="Width" tip="Sets the width of the .sw-container class — the content column every section aligns to.">
+            {/* A grid, not flex: the shared input style carries `w-full`, which out-ranked a width on the
+                custom input — it took the row and squeezed the select down to its arrow. Fixed tracks. */}
+            <span className={`grid gap-2 ${cwIsPreset ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_5.5rem]'}`}>
               <select
-                aria-label="security.txt expiry window"
-                className={glassInput}
-                value={String(form.securityExpiryYears)}
-                onChange={(e) => patch({ securityExpiryYears: Number(e.target.value) as SecurityTxtExpiryYears })}
+                aria-label="Content width"
+                className={`${glassInput} min-w-0`}
+                value={cwIsPreset ? form.containerWidth : 'custom'}
+                onChange={(e) => patch({ containerWidth: e.target.value === 'custom' ? '1080px' : e.target.value })}
               >
-                {SECURITY_TXT_EXPIRY_YEARS.map((y) => (
-                  <option key={y} value={y}>
-                    {y} year{y === 1 ? '' : 's'}
+                {CW_PRESETS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
                   </option>
                 ))}
+                <option value="custom">Custom…</option>
               </select>
-              <span className="mt-1 block text-[11px] text-slate-500 dark:text-slate-400">
-                The file states an expiry date. It is recalculated from scratch on every publish, so republishing
-                always renews it.
-              </span>
-            </label>
-
-            <Field
-              label="Security policy URL (optional)"
-              value={form.securityPolicyUrl}
-              onChange={(v) => patch({ securityPolicyUrl: v })}
-              type="url"
-              placeholder="https://acme.com/security-policy/"
-              error={securityPolicyError}
-              hint="A page describing how you handle reports. https only."
-            />
-            <Field
-              label="Acknowledgments URL (optional)"
-              value={form.securityAcknowledgmentsUrl}
-              onChange={(v) => patch({ securityAcknowledgmentsUrl: v })}
-              type="url"
-              placeholder="https://acme.com/hall-of-fame/"
-              error={securityAcknowledgmentsError}
-              hint="A page thanking researchers who reported responsibly. https only."
-            />
-          </div>
-        )}
-      </GlassCard>
-
-      <GlassCard
-        title="Shop"
-        icon={<ShoppingCart className="h-4 w-4" />}
-        tooltip="A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). This card holds the shop's structure; its wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels. Prices are non-authoritative — the cart sends an order inquiry; you confirm availability and collect payment."
-        wide
-      >
-        {/* Master switch. OFF (default) collapses the whole section — no settings, no Edit — and gates the
-            cart helpers (they render nothing) + the translation table's reserved cart-string ghost rows. */}
-        <label className="flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Enable shop</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              A front-end cart for static sites. When off, <code>{'{{sw-cart}}'}</code> /{' '}
-              <code>{'{{sw-add-to-cart}}'}</code> render nothing.
+              {!cwIsPreset && (
+                <input
+                  type="number"
+                  min={320}
+                  max={2560}
+                  aria-label="Custom content width in pixels"
+                  className={`${glassInput} min-w-0 tabular-nums`}
+                  value={parseInt(form.containerWidth, 10) || ''}
+                  onChange={(e) => patch({ containerWidth: e.target.value ? `${e.target.value}px` : '' })}
+                />
+              )}
             </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Enable shop"
-            className={toggleInput}
-            checked={form.shopEnabled}
-            onChange={(e) => patch({ shopEnabled: e.target.checked })}
-          />
-        </label>
-        {form.shopEnabled && (
-          <div className="mt-3">
-            <button
-              type="button"
-              aria-label="Edit shop settings"
-              onClick={() => setShopOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Shop settings</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Currency, labels, checkout channels</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                <Pencil className="h-4 w-4" /> Edit
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentsOpen(true)}
-              className="waves-effect group mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Payments</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Gateway keys, test / live mode, webhook URL</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                <Pencil className="h-4 w-4" /> Edit
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setOrdersOpen(true)}
-              className="waves-effect group mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Orders</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Paid orders, fulfilment, resend a notification</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                <Pencil className="h-4 w-4" /> Open
-              </span>
-            </button>
-          </div>
-        )}
-        {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} gateways={gateways} />}
-        {paymentsOpen && <PaymentCredentialsModal projectId={projectId} onClose={() => setPaymentsOpen(false)} />}
-        {ordersOpen && <TransactionsInbox projectId={projectId} onClose={() => setOrdersOpen(false)} />}
-      </GlassCard>
+          </Labelled>
+        </Tile>
+      </Band>
 
-      <GlassCard
-        title="Consent / cookies"
-        icon={<ShieldCheck className="h-4 w-4" />}
-        tooltip="A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled."
-        wide
-      >
-        <label className="flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Enable consent manager</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              A cookie banner that loads analytics / chatbots / embeds only after consent. Off by default — the
-              banner appears on every page once you turn it on.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Enable consent manager"
-            className={toggleInput}
-            checked={form.consent?.enabled === true}
-            onChange={(e) => patch({ consent: { ...(form.consent ?? {}), enabled: e.target.checked } })}
-          />
-        </label>
-        <label className="mt-3 flex items-center justify-between gap-3">
-          <span className="min-w-0">
-            <span className={fieldLabel}>Search: match accented letters loosely</span>
-            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
-              On (default), a search for “Muller” also finds “Müller”. Turn OFF for a language where accented
-              characters are separate letters — Swedish å/ä/ö, for instance. Scripts where marks carry meaning
-              (Thai, Devanagari, Hebrew, Arabic) are never affected either way.
-            </span>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="Search: match accented letters loosely"
-            className={toggleInput}
-            checked={form.searchFoldDiacritics}
-            onChange={(e) => patch({ searchFoldDiacritics: e.target.checked })}
-          />
-        </label>
-        {form.consent?.enabled === true && (
-          <div className="mt-3">
-            <button
-              type="button"
-              aria-label="Edit consent settings"
-              onClick={() => setConsentOpen(true)}
-              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-3 py-2.5 text-left shadow-sm backdrop-blur-3xl transition hover:border-indigo-400 hover:bg-white dark:hover:bg-white/10 hover:shadow-md"
-            >
-              <span className="min-w-0">
-                <span className="block truncate text-xs font-medium text-slate-700 dark:text-slate-200">Consent settings</span>
-                <span className="block text-[11px] text-slate-500 dark:text-slate-400">Banner, categories, third-party integrations</span>
-              </span>
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 text-xs font-medium text-slate-700 dark:text-slate-200 transition group-hover:border-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
-                <Pencil className="h-4 w-4" /> Edit
-              </span>
-            </button>
-            <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
-              The banner appears automatically on every page. Any third-party <code>&lt;iframe&gt;</code> you paste
-              (YouTube, Vimeo, Maps, Calendly…) is held click-to-load until consent. Add a “Cookie settings” re-open
-              link anywhere with <code>&lt;a href=&quot;#sw-consent&quot;&gt;</code>.
-            </p>
-          </div>
-        )}
-        {consentOpen && <ConsentSettingsModal form={form} patch={patch} onClose={() => setConsentOpen(false)} />}
-      </GlassCard>
+      <Band title="Document">
+        <Tile title="Document skeleton" icon={<PanelTop className="h-4 w-4" />} status={skeletonStatus(form)} span="c8" md={6} tall help={HELP.skeleton}>
+          <SkeletonMap form={form} saveNow={saveNow} onOpenFullEditor={project ? setSlotEdit : undefined} />
+        </Tile>
 
-      <GlassCard title="Localization" icon={<Languages className="h-4 w-4" />} wide>
-        <LocaleManager
-          projectId={projectId}
-          locales={localeCodes}
-          defaultLocale={form.defaultLocale}
-          onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
-          onLocalesChanged={onLocalesChanged}
-          onReloadSettings={onReloadSettings}
-        />
-      </GlassCard>
+        <Tile title="Nav, buttons & preloader" icon={<Sparkles className="h-4 w-4" />} status={effectsStatus(form)} span="c4" md={3} help={EFFECTS_HELP}>
+          <EffectsControls form={form} patch={patch} saveNow={saveNow} forks={forks} />
+        </Tile>
 
-      <div id="translations-labels" className="scroll-mt-20 sm:col-span-2">
-        <GlassCard
-          title="Translations & Labels"
-          icon={<Languages className="h-4 w-4" />}
-          tooltip="Shared phrases + UI labels ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Scoped keys (home.*, shop.*) group into collapsible sections. Inline preview edits land here too."
+        <Tile
+          title="Light / dark themes"
+          icon={<MoonStar className="h-4 w-4" />}
+          status={themesStatus(form)}
+          span="c4"
+          md={3}
+          help={HELP.themes}
+          off={!form.enableThemes}
+          control={
+            // Master switch. OFF (default) = single-theme site, byte-identical output; gates the
+            // {{sw-theme-toggle}} helper (renders nothing) + the reserved theme.toggle ghost row.
+            <input type="checkbox" role="switch" aria-label="Enable themes" className={toggleInput} checked={form.enableThemes} onChange={(e) => patch({ enableThemes: e.target.checked })} />
+          }
         >
-          <TranslationsEditor
-            rows={form.translations}
-            localeCodes={localeCodes}
-            defaultLocale={form.defaultLocale}
-            shopEnabled={form.shopEnabled}
-            themesEnabled={form.enableThemes}
-            consentEnabled={form.consent?.enabled === true}
-            // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
-            // the wording here instead of hand-typing the keys — only while the shop is on.
-            extraGhostGroups={
-              form.shopEnabled ? [{ id: 'shop_labels', label: 'Shop · Channels & fields', keys: shopLabelKeys(form.shopChannels) }] : []
-            }
-            onChange={(translations) => patch({ translations })}
+          <Labelled label="Default theme" tip="The starting theme. A {{sw-theme-toggle}} in your nav lets visitors switch.">
+            <select
+              aria-label="Default theme"
+              className={glassInput}
+              disabled={!form.enableThemes}
+              value={form.defaultTheme}
+              onChange={(e) => patch({ defaultTheme: e.target.value as 'auto' | 'light' | 'dark' })}
+            >
+              <option value="auto">Auto — follow the visitor’s device</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </Labelled>
+        </Tile>
+      </Band>
+
+      <Band title="Site behaviour">
+        <Tile title="Redirects" icon={<Signpost className="h-4 w-4" />} status={redirectsStatus(form)} span="c4" md={6} onOpen={() => setSheet('redirects')}>
+          <BudgetRows
+            n={3}
+            items={form.redirects.filter((r) => r.from.trim())}
+            empty="None. Add one when a page moves, so old links keep working."
+            extra={redirectsExtra(form)}
+            render={(r) => <Row key={r.id} mono title={`${r.from} → ${r.to} · ${r.status}`} label={`${r.from} → ${r.to}`} value={String(r.status)} />}
           />
-        </GlassCard>
-      </div>
-      {/* The full slot editor, stacked over Settings — same subject as the inline field above, but with
-          the live preview, device widths and click-to-code the page editor has. Saving goes through
-          `saveNow` so it persists exactly like an inline edit. */}
+        </Tile>
+
+        <Tile
+          title="security.txt"
+          icon={<ShieldAlert className="h-4 w-4" />}
+          status={securityStatus(form)}
+          span="c4"
+          md={3}
+          off={!form.securityEnabled}
+          control={<input type="checkbox" role="switch" className={toggleInput} aria-label="Publish security.txt" checked={form.securityEnabled} onChange={(e) => patch({ securityEnabled: e.target.checked })} />}
+        >
+          {form.securityEnabled ? (
+            <RowBlock n={4}>
+              <Row label="Contacts" value={securityContacts(form).join(' · ') || 'none chosen'} />
+              <Row label="Valid for" value={`${form.securityExpiryYears} year${form.securityExpiryYears === 1 ? '' : 's'}`} />
+              <Row label="Policy" value={form.securityPolicyPageId ? 'a page of this site' : form.securityPolicyUrl.trim() || 'none'} />
+              <PartRow label="Contacts & links" ariaLabel="Edit security.txt" onClick={() => setSheet('security')} />
+            </RowBlock>
+          ) : (
+            <EmptyRows n={4}>The RFC 9116 contact file for security researchers. Turn it on, then choose a contact.</EmptyRows>
+          )}
+        </Tile>
+
+        <Tile title="Site search" icon={<Search className="h-4 w-4" />} status={searchStatus(form)} span="c4" md={3} help={HELP.search}>
+          <label className="flex items-start justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Match accented letters loosely</span>
+              <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                On (default), a search for “Muller” also finds “Müller”. Turn it off where å, ä and ö are separate letters, as in Swedish.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Search: match accented letters loosely"
+              className={`${toggleInput} mt-0.5 shrink-0`}
+              checked={form.searchFoldDiacritics}
+              onChange={(e) => patch({ searchFoldDiacritics: e.target.checked })}
+            />
+          </label>
+        </Tile>
+      </Band>
+
+      <Band title="Modules">
+        <Tile
+          title="Shop"
+          icon={<ShoppingCart className="h-4 w-4" />}
+          status={shopStatus(form)}
+          span="c3"
+          md={3}
+          help={HELP.shop}
+          off={!form.shopEnabled}
+          control={
+            // Master switch. OFF (default) gates the cart helpers (they render nothing) + the translation
+            // table's reserved cart-string ghost rows.
+            <input type="checkbox" role="switch" aria-label="Enable shop" className={toggleInput} checked={form.shopEnabled} onChange={(e) => patch({ shopEnabled: e.target.checked })} />
+          }
+        >
+          {form.shopEnabled ? (
+            <RowBlock n={5}>
+              <Row
+                label="Currency"
+                value={
+                  form.shopCurrencyCode
+                    ? `${form.shopCurrencyCode}${form.shopTaxRate ? ` · ${form.shopTaxRate}% ${form.shopTaxMode === 'inclusive' ? 'incl.' : 'added'}` : ''}`
+                    : 'not set'
+                }
+              />
+              <Row label="Shipping" value={form.shopShippingFlat ? `${form.shopShippingFlat}${form.shopShippingFreeOver ? ` · free over ${form.shopShippingFreeOver}` : ''}` : 'no charge'} />
+              <PartRow label="Shop settings" value={`${form.shopChannels.length} channel${form.shopChannels.length === 1 ? '' : 's'}`} ariaLabel="Edit shop settings" onClick={() => setShopOpen(true)} />
+              <PartRow label="Payments" value={paymentsValue} ariaLabel="Edit payments" onClick={() => setPaymentsOpen(true)} />
+              {onOpenOrders ? (
+                <PartRow label="Orders" value="in the Orders tab" ariaLabel="Open the Orders tab" onClick={onOpenOrders} />
+              ) : ordersTotal > 0 ? (
+                // Payments are not active, but orders exist — they stay reachable here rather than stranded.
+                <PartRow label="Orders" value={`${ordersTotal}`} ariaLabel="Open orders" onClick={() => setOrdersOpen(true)} />
+              ) : (
+                <Row label="Orders" value="once payments are on" />
+              )}
+            </RowBlock>
+          ) : (
+            <EmptyRows n={5}>Prices, tax, shipping, checkout channels and payments. None of it applies until the site sells something.</EmptyRows>
+          )}
+        </Tile>
+
+        <Tile
+          title="Consent"
+          icon={<ShieldCheck className="h-4 w-4" />}
+          status={consentStatus(form)}
+          span="c3"
+          md={3}
+          help={HELP.consent}
+          off={form.consent?.enabled !== true}
+          control={
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Enable consent manager"
+              className={toggleInput}
+              checked={form.consent?.enabled === true}
+              onChange={(e) => patch({ consent: { ...(form.consent ?? {}), enabled: e.target.checked } })}
+            />
+          }
+        >
+          {form.consent?.enabled === true ? (
+            <RowBlock n={5}>
+              {(form.consent.integrations ?? []).length === 0 ? (
+                <>
+                  <Row label="No integrations gated yet" />
+                  <Row label="Embeds wait for consent" />
+                </>
+              ) : (
+                <BudgetRows
+                  n={4}
+                  items={form.consent.integrations ?? []}
+                  empty=""
+                  render={(i) => <Row key={i.id} label={i.name || 'Integration'} value={i.category} />}
+                />
+              )}
+              <PartRow label="Consent settings" ariaLabel="Edit consent settings" onClick={() => setConsentOpen(true)} />
+            </RowBlock>
+          ) : (
+            <EmptyRows n={5}>A cookie banner that holds analytics, chat and embeds until the visitor agrees.</EmptyRows>
+          )}
+        </Tile>
+
+        <Tile title="Languages" icon={<Languages className="h-4 w-4" />} status={languagesStatus(form)} span="c3" md={3} onOpen={() => setSheet('languages')}>
+          <BudgetRows
+            n={5}
+            items={localeCodes}
+            empty="No language set."
+            render={(l) => <Row key={l} label={l.toUpperCase()} value={l === form.defaultLocale ? 'main language' : 'translated'} />}
+          />
+        </Tile>
+
+        <Tile title="Translations" icon={<BookOpenText className="h-4 w-4" />} status={translationsStatus(form)} span="c3" md={3} onOpen={() => setSheet('translations')}>
+          {coverage.length > 0 ? (
+            <BudgetRows
+              n={5}
+              items={coverage}
+              empty=""
+              extra={coverage.slice(4).map((c) => `${c.locale.toUpperCase()} ${c.pct}%`).join(', ')}
+              render={(c) => (
+                <span key={c.locale} className="flex shrink-0 items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm dark:border-slate-700/70 dark:bg-white/5" style={{ height: 30 }}>
+                  <span className="w-8 shrink-0 text-xs font-bold text-slate-700 dark:text-slate-200">{c.locale.toUpperCase()}</span>
+                  <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700" aria-hidden>
+                    <span className={`block h-full rounded-full ${c.pct < 90 ? 'bg-amber-500' : 'sw-brand-gradient'}`} style={{ width: `${c.pct}%` }} />
+                  </span>
+                  <span className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">{c.pct}%</span>
+                </span>
+              )}
+            />
+          ) : (
+            <BudgetRows
+              n={5}
+              items={form.translations.filter((r) => r.key.trim())}
+              empty="No custom keys yet. The cart, consent and theme labels are edited here too."
+              render={(r) => <Row key={r.id} mono title={r.key} label={r.key} value={r.cells[form.defaultLocale] ?? ''} />}
+            />
+          )}
+        </Tile>
+      </Band>
+
+      {/* ── Drill-ins: each section's existing form, unchanged. ── */}
+      {sheet === 'redirects' && (
+        <SettingsSheet title="Redirects" help={HELP.redirects} onClose={close} save={save} size="xl">
+          <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
+        </SettingsSheet>
+      )}
+      {sheet === 'security' && <SecuritySheet form={form} patch={patch} projectId={projectId} save={save} onClose={close} />}
+      {sheet === 'languages' && (
+        <SettingsSheet title="Languages" onClose={close} save={save} size="xl">
+          <LocaleManager
+            projectId={projectId}
+            locales={localeCodes}
+            defaultLocale={form.defaultLocale}
+            onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
+            onLocalesChanged={onLocalesChanged}
+            onReloadSettings={onReloadSettings}
+          />
+        </SettingsSheet>
+      )}
+      {sheet === 'translations' && (
+        <SettingsSheet title="Translations & Labels" help={HELP.translations} onClose={close} save={save}>
+          <div id="translations-labels">
+            <TranslationsEditor
+              rows={form.translations}
+              localeCodes={localeCodes}
+              defaultLocale={form.defaultLocale}
+              shopEnabled={form.shopEnabled}
+              themesEnabled={form.enableThemes}
+              consentEnabled={form.consent?.enabled === true}
+              // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
+              // the wording here instead of hand-typing the keys — only while the shop is on.
+              extraGhostGroups={form.shopEnabled ? [{ id: 'shop_labels', label: 'Shop · Channels & fields', keys: shopLabelKeys(form.shopChannels) }] : []}
+              onChange={(translations) => patch({ translations })}
+            />
+          </div>
+        </SettingsSheet>
+      )}
+
+      {dataOpen && (
+        <WebsiteDataModal
+          value={form.data}
+          // Its own Save is the only Save an author sees from inside that modal, so it persists too —
+          // the same reasoning as the code editors, applied to the structured-data one.
+          onSave={(data) => saveNow({ data })}
+          onClose={() => setDataOpen(false)}
+        />
+      )}
+      {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} gateways={gateways} onEditLabels={editLabels} />}
+      {paymentsOpen && (
+        <PaymentCredentialsModal
+          projectId={projectId}
+          onClose={() => {
+            setPaymentsOpen(false);
+            // Keys or the mode may have changed: re-read what the tile reports, and let the project tabs
+            // re-decide whether Orders should be showing.
+            refreshPayments();
+            notifyPaymentsChanged(projectId);
+          }}
+        />
+      )}
+      {ordersOpen && <TransactionsInbox projectId={projectId} onClose={() => setOrdersOpen(false)} />}
+      {consentOpen && <ConsentSettingsModal form={form} patch={patch} onClose={() => setConsentOpen(false)} onEditLabels={editLabels} />}
+      {/* The full slot editor, stacked over Settings — the same slot as the map's part, with the live
+          preview, device widths and click-to-code the page editor has. Saves through `saveNow`. */}
       {project && slotEdit && (
         <SlotEditor
           key={slotEdit}

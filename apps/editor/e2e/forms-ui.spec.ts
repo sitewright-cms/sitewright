@@ -35,13 +35,15 @@ test('author a form in the editor and see a submission in its submissions list',
   });
   expect(submit.status()).toBe(200);
 
-  // Submissions are now folded into the Forms tab: expand the Contact form's inline
-  // submissions list (the only form here, so a single match is unambiguous).
+  // A form's submissions open in a modal over the Forms list (the only form here, so a single match
+  // is unambiguous).
   await page.getByRole('button', { name: /Show submissions/ }).click();
+  const inbox = page.getByRole('dialog', { name: 'Contact — submissions' });
+  await expect(inbox).toBeVisible();
   // `exact`: the slot has no SMTP configured, so the row also carries the delivery warning
   // "1 submission was not emailed" — a substring match hits both.
-  await expect(page.getByText('1 submission', { exact: true })).toBeVisible();
-  await expect(page.getByText('visitor@example.com')).toBeVisible();
+  await expect(inbox.getByText('1 submission', { exact: true })).toBeVisible();
+  await expect(inbox.getByText('visitor@example.com')).toBeVisible();
   // Expanding the submission reveals the field breakdown. A field the definition KNOWS renders under
   // its label ("Email" — a new form is seeded with that one field), keeping the raw key on its tooltip;
   // only keys the definition doesn't declare fall back to the raw name in monospace.

@@ -19,11 +19,14 @@ export function ShopSettingsModal({
   patch,
   onClose,
   gateways = [],
+  onEditLabels,
 }: {
   form: SettingsForm;
   patch: Patch;
   onClose: () => void;
   gateways?: AvailableGateway[];
+  /** Opens Translations & Labels. Absent falls back to scrolling to the on-page anchor. */
+  onEditLabels?: () => void;
 }) {
   // A checkout channel cannot be saved without a settlement currency — the schema refuses it, so the
   // form says so BEFORE the save fails rather than after.
@@ -31,6 +34,10 @@ export function ShopSettingsModal({
   // Jump to the always-visible "Translations & Labels" card: close this modal, then scroll it into view.
   const editLabels = (): void => {
     onClose();
+    if (onEditLabels) {
+      onEditLabels();
+      return;
+    }
     setTimeout(() => document.getElementById('translations-labels')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
   };
   return (

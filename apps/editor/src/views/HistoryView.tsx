@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { motion, MotionConfig } from 'motion/react';
 import { RotateCcw, FileSearch } from 'lucide-react';
 import { api, eventsUrl, type Project, type ProjectRevisionRow } from '../api';
 import { useDialogs } from './ui/Dialogs';
@@ -9,6 +10,17 @@ import { Tooltip } from './ui/Tooltip';
 import { RevisionDetailsModal } from './RevisionDetailsModal';
 
 const PAGE = 50;
+
+/**
+ * A row's entrance: a short fade-and-rise, staggered within its PAGE and capped, so the first rows of a
+ * long list are not kept waiting behind the fiftieth. Keyed rows already on screen are not remounted by
+ * the live refresh, so only genuinely new rows (a fresh filter, the next page, a live append) animate.
+ */
+const rowEntrance = (index: number) => ({
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  transition: { type: 'spring' as const, stiffness: 320, damping: 30, delay: Math.min(index % PAGE, 12) * 0.035 },
+});
 const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings'];
 const OP_FILTERS = [
   { value: '', label: 'All actions' },
@@ -128,11 +140,12 @@ export function HistoryView({ project }: { project: Project }) {
       ) : items.length === 0 ? (
         <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">No revisions yet for this filter.</p>
       ) : (
+        <MotionConfig reducedMotion="user">
         <ul className="flex flex-col gap-2">
-          {items.map((r) => {
+          {items.map((r, i) => {
             const pill = OP_PILL[r.op];
             return (
-              <li key={r.id} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
+              <motion.li key={r.id} {...rowEntrance(i)} className={`${glassCard} flex items-center gap-3 px-4 py-3 text-sm`}>
                 <span className={`shrink-0 rounded-lg px-1.5 py-0.5 text-[11px] font-medium ${pill.cls}`}>{pill.label}</span>
                 <div className="min-w-0 flex-1">
                   <Tooltip tip={new Date(r.revisionAt).toLocaleString()}>
@@ -162,10 +175,11 @@ export function HistoryView({ project }: { project: Project }) {
                 >
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden /> {restoringId === r.id ? 'Restoring…' : 'Restore'}
                 </button>
-              </li>
+              </motion.li>
             );
           })}
         </ul>
+        </MotionConfig>
       )}
 
       {nextBefore && (

@@ -35,7 +35,12 @@ const STATUS_TONE: Record<string, string> = {
   partially_refunded: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300',
 };
 
-export function TransactionsInbox({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+/**
+ * The inbox body — reused by the project's Orders TAB (while payments are active) and by the modal
+ * below, which the Shop tile still opens when orders exist but payments are not active, so no order is
+ * ever stranded behind a hidden tab.
+ */
+export function OrdersPanel({ projectId }: { projectId: string }) {
   const [rows, setRows] = useState<ShopTransaction[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState('');
@@ -105,7 +110,6 @@ export function TransactionsInbox({ projectId, onClose }: { projectId: string; o
   };
 
   return (
-    <Modal title="Orders" size="screen" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
         {/* ★ Emailing somebody about broken email is circular, so this has to be where they already look. */}
         {undelivered && (undelivered.notify > 0 || undelivered.receipt > 0) && (
@@ -283,6 +287,13 @@ export function TransactionsInbox({ projectId, onClose }: { projectId: string; o
           </div>
         )}
       </div>
+  );
+}
+
+export function TransactionsInbox({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  return (
+    <Modal title="Orders" size="screen" onClose={onClose}>
+      <OrdersPanel projectId={projectId} />
     </Modal>
   );
 }

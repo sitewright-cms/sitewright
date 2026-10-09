@@ -37,6 +37,7 @@ import { parsePreviewTarget } from './lib/preview-target';
 import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
+import { usePaymentsActive } from './lib/payments-active';
 import { Tooltip } from './views/ui/Tooltip';
 
 /**
@@ -254,6 +255,14 @@ function MainApp({
   // Delegated ripple ("waves") feedback for every `.waves-effect` element across the admin UI.
   useEffect(() => installRipple(), []);
 
+  // The Orders tab exists only while the open project's payments are actually active. Called up here,
+  // with the other hooks, because the render below has early returns.
+  const paymentsActive = usePaymentsActive(stage.name === 'project' ? stage.project.id : null);
+  // A tab that disappears (payments switched off, or a different project) must not stay selected.
+  useEffect(() => {
+    if (tab === 'orders' && !paymentsActive) setTab('website-settings');
+  }, [tab, paymentsActive]);
+
   // Strip the OIDC callback artifacts from the URL once captured, so a refresh doesn't resubmit
   // them and the ticket doesn't linger in history.
   useEffect(() => {
@@ -365,7 +374,7 @@ function MainApp({
         isMobile ? 'mx-auto w-max flex-nowrap snap-x snap-mandatory' : 'flex-wrap justify-center'
       }`}
     >
-      {MANAGE_TABS.map((t) => (
+      {MANAGE_TABS.filter((t) => t !== 'orders' || paymentsActive).map((t) => (
         <button
           key={t}
           role="tab"
@@ -519,6 +528,8 @@ function MainApp({
           key={stage.project.id}
           project={stage.project}
           tab={tab}
+          onSelectTab={setTab}
+          ordersAvailable={paymentsActive}
           onLoaded={() => finishOpening(stage.project.id)}
         />
       )}

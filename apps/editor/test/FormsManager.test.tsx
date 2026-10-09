@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Form } from '@sitewright/schema';
 
 const listForms = vi.fn();
@@ -27,6 +27,9 @@ vi.mock('../src/api', () => ({
   },
 }));
 
+// The inbox has its own suite (SubmissionsInbox.test.tsx); here only WHERE it opens matters.
+vi.mock('../src/views/SubmissionsInbox', () => ({ SubmissionsInbox: ({ formId }: { formId?: string }) => <div>INBOX {formId}</div> }));
+
 import { FormsManager } from '../src/views/FormsManager';
 import { tipOf } from './tooltip-helpers';
 
@@ -51,6 +54,21 @@ beforeEach(() => {
 });
 
 describe('FormsManager', () => {
+  it('Show submissions opens that form’s inbox in a modal, not inline under the row', async () => {
+    listForms.mockResolvedValue({
+      items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }],
+    });
+    render(<FormsManager project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Show submissions for contact' }));
+    const modal = await screen.findByRole('dialog', { name: 'Contact — submissions' });
+    expect(within(modal).getByText('INBOX contact')).toBeInTheDocument();
+    // Exactly one inbox, and it is the modal's: nothing expanded under the row any more.
+    expect(screen.getAllByText(/^INBOX/)).toHaveLength(1);
+    fireEvent.click(within(modal).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Contact — submissions' })).toBeNull());
+    expect(screen.queryByText(/^INBOX/)).toBeNull();
+  });
+
   it('lists existing forms', async () => {
     listForms.mockResolvedValue({
       items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }],

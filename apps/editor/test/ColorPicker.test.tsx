@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useState } from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ColorPicker, ColorField, ColorCard } from '../src/views/ui/ColorPicker';
+import { Modal } from '../src/views/ui/Modal';
 
 // A stateful host: onChange feeds `value` back in, mirroring how the settings form drives the
 // picker — so the live cross-space conversion is exercised end to end.
@@ -102,6 +103,31 @@ describe('ColorField (swatch + popover)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('a picker inside a modal', () => {
+  it('★ Escape closes only the picker, not the modal around it — one Escape per layer', async () => {
+    // The brand colours are edited in a settings drill-in (a Modal). Both listen for Escape on the
+    // document, and the modal registered first — so without the picker claiming the key, one Escape
+    // closed the picker AND the whole drill-in.
+    const onClose = vi.fn();
+    render(
+      <Modal title="Brand colors" onClose={onClose}>
+        <ColorCard title="Primary Color" value="#0ea5e9" onChange={() => {}} />
+      </Modal>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Primary Color' }));
+    const hex = screen.getByLabelText('HEX');
+    fireEvent.keyDown(hex, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Primary Color picker' })).toBeNull();
+    // The modal closes AFTER its exit animation, so "not called yet" proves nothing on its own: give a
+    // close every chance to land first, and require that it did not.
+    await expect(waitFor(() => expect(onClose).toHaveBeenCalled(), { timeout: 800 })).rejects.toThrow();
+    expect(screen.getByRole('dialog', { name: 'Brand colors' })).toBeInTheDocument();
+    // …and the NEXT Escape is the modal's.
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1), { timeout: 5000 });
   });
 });
 

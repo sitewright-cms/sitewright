@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useUnsavedWork } from '../../lib/unsaved-work';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
+import { scrollToTopNow } from '../../lib/scroll-top';
 import { History } from 'lucide-react';
 import { ApiError, api, type Project, type SettingsBundle } from '../../api';
 import { useExternalEdit } from '../../lib/use-external-edit';
@@ -13,6 +14,7 @@ import { sectionVariants } from './motion';
 import { SkeletonList } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { saveSurface } from '../../theme';
+import { notifyPaymentsChanged } from '../../lib/payments-active';
 
 type Section = 'identity' | 'website';
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -37,8 +39,9 @@ export const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'navCode', 'buttonCode', 'preloaderCode', 'preloaderBackdrop',
   // website.security (the RFC 9116 security.txt block) — these were missing, so the whole block was
   // unsavable on its own and Identity's Discard silently reverted it.
-  'securityEnabled', 'securityContactPageId', 'securityUsePhone', 'securityUseEmail',
-  'securityExpiryYears', 'securityPolicyUrl', 'securityAcknowledgmentsUrl',
+  'securityEnabled', 'securityContactPageId', 'securityContactUrl', 'securityPhoneMode', 'securityPhone',
+  'securityEmailMode', 'securityEmail', 'securityExpiryYears', 'securityPolicyPageId', 'securityPolicyUrl',
+  'securityAcknowledgmentsPageId', 'securityAcknowledgmentsUrl',
   'enableThemes', 'defaultTheme', 'containerWidth', 'imageDelivery', 'imageUploadCap',
   // ★ Every shop key belongs here because every one of them writes to `website.shop`. A key missing
   // from this set is UNSAVABLE on its own and silently reverted by the other section's Discard —
@@ -107,11 +110,14 @@ export function SettingsView({
   project,
   section: fixedSection,
   onLocalesChanged,
+  onOpenOrders,
 }: {
   project: Project;
   section?: Section;
   /** Notifies the parent (the pages list) when a language is added/removed here, so it can refresh. */
   onLocalesChanged?: () => void;
+  /** Switches to the project's Orders tab — offered on the Shop tile while payments are active. */
+  onOpenOrders?: () => void;
 }) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // The last-loaded bundle — the baseline for fields the form doesn't surface
@@ -246,6 +252,8 @@ export function SettingsView({
       setBaseVersion(res?.version); // re-arm from what was stored; absent just means the next save is unguarded
       // Clear ONLY this section's dirty state; the other section's pending edits remain dirty.
       setBaseline((b) => (b ? mergeSection(b, snapshot, section) : toForm(res.item)));
+      // The shop switch is a Website field, and it is half of whether the Orders tab shows.
+      if (section === 'website') notifyPaymentsChanged(project.id);
       toast.show('Settings saved', 'success');
       return true;
     } catch (err) {
@@ -272,6 +280,9 @@ export function SettingsView({
     // eslint-disable-next-line security/detect-object-injection -- next is a typed Section literal
     tabRefs.current[next]?.focus();
   }
+
+  // What a drill-in's own Save needs: the same section save the floating bar runs.
+  const sheetSave = { onSave: () => save(), dirty, saving };
 
   if (loadError) return <p className="p-6 text-sm text-red-600 dark:text-red-400">{loadError}</p>;
   if (!form) return <SkeletonList rows={5} className="max-w-2xl" label="Loading settings…" />;
@@ -331,8 +342,10 @@ export function SettingsView({
               at full height underneath; only the buttons are interactive. It stays visible while
               scrolling. Both are enabled ONLY when the ACTIVE section has unsaved changes, and they
               act on that section alone. Outcomes are reported via toasts. */}
-          <div className="pointer-events-none sticky top-20 z-10 flex h-0 justify-end">
-            <div className="pointer-events-auto mt-7 mr-4 flex items-center gap-2">
+          {/* Sticks at 108px, and the buttons hang BELOW that line (`items-start`): centred on it, as they
+              used to be, their top 19px tucked under the phone header (101px tall with its tab strip). */}
+          <div className="pointer-events-none sticky top-[6.75rem] z-10 flex h-0 items-start justify-end">
+            <div className="pointer-events-auto flex items-center gap-2">
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.96 }}
@@ -368,10 +381,16 @@ export function SettingsView({
             </div>
           </div>
 
-          {/* Active section — fades/slides, cards cascade in via stagger. */}
-          <AnimatePresence mode="wait">
+          {/* Active section — fades/slides, cards cascade in via stagger. `pt-14` keeps the board's first
+              row clear of the floating bar at rest: on a board every tile head carries state, so the bar may
+              float over content while scrolling but must never sit on a tile the author has not reached. */}
+          {/* Switching section: the old board fades out, THEN the page jumps to the top, THEN the new board
+              fades in. Jumping on the click instead flashed the top of the board being left. */}
+          <AnimatePresence mode="wait" onExitComplete={scrollToTopNow}>
             <motion.div
               key={section}
+              // `pb-28`: the last band's tiles stay clear of the floating rail buttons along the bottom edge.
+              className="pt-14 pb-28"
               role="tabpanel"
               id={`settings-panel-${section}`}
               aria-labelledby={`settings-tab-${section}`}
@@ -382,7 +401,7 @@ export function SettingsView({
               exit="exit"
             >
               {section === 'identity' ? (
-                <IdentitySection form={form} patch={patch} projectId={project.id} />
+                <IdentitySection form={form} patch={patch} projectId={project.id} save={sheetSave} />
               ) : (
                 <WebsiteSection
                   form={form}
@@ -398,9 +417,11 @@ export function SettingsView({
                     // work as stored when it is not.
                     if (!(await save(p))) throw new Error('settings save failed');
                   }}
+                  save={sheetSave}
                   projectId={project.id}
                   onLocalesChanged={onLocalesChanged}
                   onReloadSettings={reloadSettings}
+                  onOpenOrders={onOpenOrders}
                 />
               )}
             </motion.div>

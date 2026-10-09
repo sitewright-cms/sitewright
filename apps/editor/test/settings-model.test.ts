@@ -568,8 +568,8 @@ describe('settings model — security.txt', () => {
         ...toForm(base),
         securityEnabled: true,
         securityContactPageId: 'page-contact',
-        securityUsePhone: true,
-        securityUseEmail: true,
+        securityPhoneMode: 'ci',
+        securityEmailMode: 'ci',
         securityExpiryYears: 1,
         securityPolicyUrl: 'https://acme.com/policy/',
         securityAcknowledgmentsUrl: 'https://acme.com/thanks/',
@@ -595,14 +595,14 @@ describe('settings model — security.txt', () => {
 
   it('emits the default expiry implicitly, so an untouched window adds no key', () => {
     const base = empty();
-    const saved = toBundle({ ...toForm(base), securityEnabled: true, securityUseEmail: true }, base);
+    const saved = toBundle({ ...toForm(base), securityEnabled: true, securityEmailMode: 'ci' }, base);
     expect(saved.website?.security).toEqual({ enabled: true, useEmail: true });
   });
 
   it('KEEPS the selection when the feature is switched off, so toggling back does not lose the setup', () => {
     const base = empty();
     const saved = toBundle(
-      { ...toForm(base), securityEnabled: false, securityContactPageId: 'page-contact', securityUsePhone: true },
+      { ...toForm(base), securityEnabled: false, securityContactPageId: 'page-contact', securityPhoneMode: 'ci' },
       base,
     );
     // No `enabled` key → the publisher emits nothing; the selection survives for the next toggle.
@@ -613,10 +613,68 @@ describe('settings model — security.txt', () => {
   it('drops blank optional links rather than saving empty strings', () => {
     const base = empty();
     const saved = toBundle(
-      { ...toForm(base), securityEnabled: true, securityUseEmail: true, securityPolicyUrl: '   ', securityAcknowledgmentsUrl: '' },
+      { ...toForm(base), securityEnabled: true, securityEmailMode: 'ci', securityPolicyUrl: '   ', securityAcknowledgmentsUrl: '' },
       base,
     );
     expect(saved.website?.security).toEqual({ enabled: true, useEmail: true });
+  });
+
+  it('round-trips CUSTOM contacts and PAGE links — and writes only the chosen half of each choice', () => {
+    const base = empty();
+    const saved = toBundle(
+      {
+        ...toForm(base),
+        securityEnabled: true,
+        // No contact page → the custom URL is the contact.
+        securityContactUrl: ' https://hackerone.com/acme ',
+        securityPhoneMode: 'custom',
+        securityPhone: '+1 415 555 0100',
+        securityEmailMode: 'custom',
+        securityEmail: 'security@acme.com',
+        // A page is chosen for the policy, so the typed URL beside it is NOT written.
+        securityPolicyPageId: 'page-policy',
+        securityPolicyUrl: 'https://stale.example/policy/',
+        securityAcknowledgmentsPageId: 'page-thanks',
+      },
+      base,
+    );
+    expect(saved.website?.security).toEqual({
+      enabled: true,
+      contactUrl: 'https://hackerone.com/acme',
+      phone: '+1 415 555 0100',
+      email: 'security@acme.com',
+      policyPageId: 'page-policy',
+      acknowledgmentsPageId: 'page-thanks',
+    });
+    const back = toForm({ ...base, website: saved.website });
+    expect(back).toMatchObject({
+      securityContactUrl: 'https://hackerone.com/acme',
+      securityPhoneMode: 'custom',
+      securityPhone: '+1 415 555 0100',
+      securityEmailMode: 'custom',
+      securityEmail: 'security@acme.com',
+      securityPolicyPageId: 'page-policy',
+      securityAcknowledgmentsPageId: 'page-thanks',
+    });
+  });
+
+  it('a contact page wins over a typed contact URL; "custom" with nothing typed writes nothing', () => {
+    const base = empty();
+    const saved = toBundle(
+      {
+        ...toForm(base),
+        securityEnabled: true,
+        securityContactPageId: 'page-contact',
+        securityContactUrl: 'https://hackerone.com/acme',
+        securityPhoneMode: 'custom',
+        securityPhone: '  ',
+      },
+      base,
+    );
+    expect(saved.website?.security).toEqual({ enabled: true, contactPageId: 'page-contact' });
+    // A stored company selection reads back as the company mode.
+    expect(toForm({ ...base, website: { security: { usePhone: true } } }).securityPhoneMode).toBe('ci');
+    expect(toForm({ ...base, website: { security: { useEmail: true, email: 'x@y.zz' } } }).securityEmailMode).toBe('custom');
   });
 });
 

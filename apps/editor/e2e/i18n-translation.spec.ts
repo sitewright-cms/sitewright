@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { deployLocally, fetchLiveSite, signUp } from './helpers.js';
+import { deployLocally, fetchLiveSite, signUp, openSettingsTile, closeSettingsSheet } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -56,9 +56,10 @@ test('add translation scaffolds a locale that inherits the main language layout,
 test('Website Settings: removing a language warns about page deletion and cascades', async ({ page }) => {
   await newProject(page, 'i18nrm');
 
-  // Add German from the Website Settings → Localization manager.
+  // Add German from the Website Settings → Languages tile's locale manager.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await page.getByRole('button', { name: '+ Add language' }).click();
+  const languages = await openSettingsTile(page, 'Languages');
+  await languages.getByRole('button', { name: '+ Add language' }).click();
   const picker = page.getByRole('dialog', { name: 'Add a language' });
   await expect(picker).toBeVisible();
   await picker.getByRole('button', { name: /German/ }).click();
@@ -81,9 +82,13 @@ test('the pages list reflects a language added or removed in Website Settings �
 
   // Add German from Website Settings.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await page.getByRole('button', { name: '+ Add language' }).click();
+  let languages = await openSettingsTile(page, 'Languages');
+  await languages.getByRole('button', { name: '+ Add language' }).click();
   await page.getByRole('dialog', { name: 'Add a language' }).getByRole('button', { name: /German/ }).click();
   await expect(page.getByRole('button', { name: 'Remove German' })).toBeVisible();
+  await closeSettingsSheet(languages);
+  // The tile counts it without a reload.
+  await expect(page.getByRole('button', { name: 'Open Languages' })).toContainText('2 languages');
 
   // Switch to Pages → the language switcher already shows DE (no page reload needed).
   await page.getByRole('tab', { name: 'Pages' }).click();
@@ -93,9 +98,11 @@ test('the pages list reflects a language added or removed in Website Settings �
 
   // Remove German back in Website Settings.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await page.getByRole('button', { name: 'Remove German' }).click();
+  languages = await openSettingsTile(page, 'Languages');
+  await languages.getByRole('button', { name: 'Remove German' }).click();
   await page.getByRole('dialog', { name: /Remove German/ }).getByRole('button', { name: 'Remove language' }).click();
   await expect(page.getByRole('button', { name: 'Remove German' })).toBeHidden();
+  await closeSettingsSheet(languages);
 
   // Switch to Pages → the switcher is gone again (single language), still no reload.
   await page.getByRole('tab', { name: 'Pages' }).click();

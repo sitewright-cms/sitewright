@@ -7,6 +7,12 @@ import { newPair, type KeyedPair } from './model';
 const MANDATORY = new Set<string>(MANDATORY_COLOR_TOKENS);
 const labelFor = (key: string): string => Object.entries(COLOR_TOKEN_LABELS).find(([k]) => k === key)?.[1] ?? key;
 
+/** `rows` with token `key` set to `value` — updated in place in the list, or appended when absent. Shared by
+ *  this editor and the Brand colors tile, so a core colour is written the same way from either. */
+export function withColorToken(rows: KeyedPair[], key: string, value: string): KeyedPair[] {
+  return rows.some((r) => r.key === key) ? rows.map((r) => (r.key === key ? { ...r, value } : r)) : [...rows, { ...newPair(), key, value }];
+}
+
 /**
  * Brand colors editor. The MANDATORY tokens (primary/secondary/accent/neutral + Background/Text)
  * render as fixed, labeled rows with NO delete button — they cannot be removed (clearing a value
@@ -16,10 +22,7 @@ export function BrandColorsEditor({ rows, onChange }: { rows: KeyedPair[]; onCha
   const valueOf = (key: string): string => rows.find((r) => r.key === key)?.value ?? '';
   const custom = rows.filter((r) => !MANDATORY.has(r.key));
 
-  const setMandatory = (key: string, value: string) => {
-    const exists = rows.some((r) => r.key === key);
-    onChange(exists ? rows.map((r) => (r.key === key ? { ...r, value } : r)) : [...rows, { ...newPair(), key, value }]);
-  };
+  const setMandatory = (key: string, value: string) => onChange(withColorToken(rows, key, value));
   // Replace only the custom portion; mandatory rows are preserved (and stay first). A custom row
   // whose key collides with a mandatory token is dropped here, so it can't shadow (and silently
   // override) the labeled row above it.

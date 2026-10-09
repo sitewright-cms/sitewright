@@ -1788,24 +1788,42 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // schema already rejects "enabled with nothing selected", so an empty selection can't get here.)
     const security = website?.security;
     if (security?.enabled) {
-      const contactRoute = security.contactPageId ? routes.find((r) => r.page.id === security.contactPageId) : undefined;
+      /** A selected PAGE as an absolute URL: `undefined` = none selected · `null` = selected but unusable. */
+      const pageUrl = (id: string | undefined): string | null | undefined => {
+        if (!id) return undefined;
+        const route = routes.find((r) => r.page.id === id);
+        return siteUrl && route ? siteUrlFor(siteUrl, route.slug) : null;
+      };
       // `undefined` = not selected · `null` = selected but unusable. That distinction is what lets
-      // the error below name the exact source instead of a generic "no contacts".
+      // the error below name the exact source instead of a generic "no contacts". A CUSTOM value (a
+      // contact URL, phone or email typed for security.txt alone) stands in for the page / company one;
+      // a chosen page still wins over a typed URL, as the editor presents it.
       const { contacts, unresolved } = securityTxtContacts({
-        contactPageUrl: security.contactPageId
-          ? siteUrl && contactRoute
-            ? siteUrlFor(siteUrl, contactRoute.slug)
-            : null
-          : undefined,
-        telephone: security.usePhone ? (identity.telephone ?? null) : undefined,
-        email: security.useEmail ? (identity.email ?? null) : undefined,
+        contactPageUrl: security.contactPageId ? pageUrl(security.contactPageId) : security.contactUrl,
+        telephone: security.phone ? security.phone : security.usePhone ? (identity.telephone ?? null) : undefined,
+        email: security.email ? security.email : security.useEmail ? (identity.email ?? null) : undefined,
       });
+      // Policy / Acknowledgments: a chosen PAGE resolves like the contact page and wins over a typed URL.
+      const policy = security.policyPageId ? pageUrl(security.policyPageId) : security.policyUrl;
+      const acknowledgments = security.acknowledgmentsPageId ? pageUrl(security.acknowledgmentsPageId) : security.acknowledgmentsUrl;
+      const linkProblems = (
+        [
+          ['policy', policy],
+          ['acknowledgments', acknowledgments],
+        ] as const
+      )
+        .filter(([, url]) => url === null)
+        .map(([name]) =>
+          siteUrl
+            ? `the selected ${name} page is not in this publish (deleted, or still a draft)`
+            : `the selected ${name} page needs a Site URL (Website settings) so its link can be absolute`,
+        );
       // A misconfigured contact fails a PUBLISH but must never take down the always-on draft preview
       // — that preview is a whole-site working surface, and one unrelated setting should not blank it
       // (the same reason a broken page renders an error document there instead of aborting the build).
       // The author still learns about it: the publish they are previewing FOR will fail, loudly and
       // specifically. In preview, the file is simply skipped.
-      if (unresolved.length > 0 && !previewMode) {
+      if ((unresolved.length > 0 || linkProblems.length > 0) && !previewMode) {
         const why = unresolved.map((source) => {
           if (source === 'page') {
             return siteUrl
@@ -1813,13 +1831,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
               : 'the selected contact page needs a Site URL (Website settings) so its link can be absolute';
           }
           if (source === 'phone') {
+            if (security.phone) {
+              return `the security.txt phone number ("${security.phone}") has no country code — RFC 9116 needs a tel: URI, e.g. +49 30 1234567`;
+            }
             return identity.telephone
               ? `the company phone number ("${identity.telephone}") has no country code — RFC 9116 needs a tel: URI, e.g. +49 30 1234567`
               : 'the company phone number is not set (Corporate Identity)';
           }
           return 'the company email address is not set (Corporate Identity)';
         });
-        throw new PublishError(`security.txt is enabled but ${why.join('; ')}`);
+        throw new PublishError(`security.txt is enabled but ${[...why, ...linkProblems].join('; ')}`);
       }
       // Only ever write a file that HAS a contact. On a publish that is guaranteed by the throw
       // above; in preview it is not (nothing resolved → nothing to say), and a `Contact`-less
@@ -1837,8 +1858,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Recomputed from THIS publish's timestamp, so republishing always rolls the window forward.
           expires: securityTxtExpires(new Date(publishedAt), security.expiryYears ?? DEFAULT_SECURITY_TXT_EXPIRY_YEARS),
           canonical: siteUrl ? `${siteBase(siteUrl)}/${SECURITY_TXT_PATH}` : undefined,
-          policy: security.policyUrl,
-          acknowledgments: security.acknowledgmentsUrl,
+          // An unresolvable page link can only reach here in PREVIEW (a publish threw above) — left out.
+          policy: policy ?? undefined,
+          acknowledgments: acknowledgments ?? undefined,
           preferredLanguages: [...new Set(locales)].join(', ') || undefined,
         });
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir

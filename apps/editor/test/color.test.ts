@@ -5,6 +5,7 @@ import {
   formatHex,
   rgbToHsv,
   hsvToRgb,
+  readableTextOn,
   type Rgba,
 } from '../src/views/ui/color';
 
@@ -101,5 +102,29 @@ describe('color kernel — round-trips', () => {
   it('alpha survives a hex round-trip within 1/255', () => {
     const c = RGBA(14, 165, 233, 0.5);
     expect(parseColor(formatHex(c))!.a).toBeCloseTo(0.5, 2);
+  });
+});
+
+describe('readableTextOn — black or white text, whichever contrasts more', () => {
+  it('picks white on dark colours and black on light ones', () => {
+    expect(readableTextOn('#000000')).toBe('#ffffff');
+    expect(readableTextOn('#1e3a8a')).toBe('#ffffff');
+    expect(readableTextOn('#ffffff')).toBe('#000000');
+    expect(readableTextOn('#fde047')).toBe('#000000');
+  });
+  it('decides a mid-tone by the actual WCAG contrast ratio, not by eye', () => {
+    // #3b82f6: 5.71:1 against black, 3.68:1 against white.
+    expect(readableTextOn('#3b82f6')).toBe('#000000');
+    // #dc2626: 4.83:1 against white, 4.35:1 against black.
+    expect(readableTextOn('#dc2626')).toBe('#ffffff');
+  });
+  it('reads a translucent colour as it shows over a light surface', () => {
+    expect(readableTextOn('#00000000')).toBe('#000000'); // fully transparent: the surface shows through
+    expect(readableTextOn('#000000ff')).toBe('#ffffff');
+  });
+  it('takes any format the picker understands, and falls back to black when it cannot parse', () => {
+    expect(readableTextOn('rgb(0 0 0)')).toBe('#ffffff');
+    expect(readableTextOn('white')).toBe('#000000');
+    expect(readableTextOn('not a colour')).toBe('#000000');
   });
 });

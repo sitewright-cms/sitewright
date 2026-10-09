@@ -4,8 +4,9 @@ import { ACCEPT, type AcceptFilter } from './FileBrowser';
 import { fieldLabel, glassInput, ghostButton } from '../../theme';
 
 /** Heuristic: does this value look like an image URL (for the inline thumbnail)? Never thumbnail a
- *  `javascript:`/`data:` value (display-only safety; `<img src>` can't execute, but don't render it). */
-const looksLikeImage = (v: string) =>
+ *  `javascript:`/`data:` value (display-only safety; `<img src>` can't execute, but don't render it).
+ *  Shared with the settings board's logo wells, so a well previews exactly what this field would. */
+export const looksLikeImage = (v: string) =>
   !/^\s*(javascript|data):/i.test(v) &&
   (/\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(v) || /^\/media\/[^?#]+\.(jpg|jpeg|png|webp|avif|gif)/i.test(v));
 

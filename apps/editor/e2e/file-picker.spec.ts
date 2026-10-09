@@ -24,7 +24,9 @@ test('file picker: use a URL as-is, then upload + pick a library image for the l
   await picker.getByRole('button', { name: 'URL', exact: true }).click();
   await picker.getByLabel('URL').fill('https://cdn.example.com/remote-logo.svg');
   await picker.getByRole('button', { name: 'Use URL as-is' }).click();
-  await expect(page.getByRole('textbox', { name: 'Logo', exact: true })).toHaveValue('https://cdn.example.com/remote-logo.svg');
+  // The well IS the field now: its value rides on the well, and the picked artwork previews in it.
+  const logoWell = page.getByRole('button', { name: 'Browse for Logo', exact: true });
+  await expect(logoWell).toHaveAttribute('data-value', 'https://cdn.example.com/remote-logo.svg');
 
   // --- Library tab: upload an image through the picker, then select it ---
   await page.getByRole('button', { name: 'Browse for Logo', exact: true }).click();
@@ -33,15 +35,16 @@ test('file picker: use a URL as-is, then upload + pick a library image for the l
   // The upload lands in the (pick-mode) browser; switch to list view + pick it.
   await picker2.getByRole('button', { name: 'list view' }).click();
   await picker2.getByRole('button', { name: `Use lib-${stamp}.png` }).click();
-  await expect(page.getByRole('textbox', { name: 'Logo', exact: true })).toHaveValue(/^\/media\//);
+  await expect(logoWell).toHaveAttribute('data-value', /^\/media\//);
+  await expect(logoWell.locator('img')).toHaveAttribute('src', /^\/media\//);
 
-  // The newly-surfaced "Logo (light bg)" field shares the same AssetField/picker — set it via URL.
+  // The "Logo (light bg)" well shares the same picker — set it via URL.
   await page.getByRole('button', { name: 'Browse for Logo (light bg)' }).click();
   const lightPicker = page.getByRole('dialog', { name: 'Choose logo (light bg)' });
   await lightPicker.getByRole('button', { name: 'URL', exact: true }).click();
   await lightPicker.getByLabel('URL').fill('https://cdn.example.com/logo-light.svg');
   await lightPicker.getByRole('button', { name: 'Use URL as-is' }).click();
-  await expect(page.getByRole('textbox', { name: 'Logo (light bg)' })).toHaveValue('https://cdn.example.com/logo-light.svg');
+  await expect(page.getByRole('button', { name: 'Browse for Logo (light bg)' })).toHaveAttribute('data-value', 'https://cdn.example.com/logo-light.svg');
 
   // Persist + reload → both the self-hosted logo and the light-bg variant survive.
   await page.getByRole('button', { name: 'Save', exact: true }).click();
@@ -49,6 +52,6 @@ test('file picker: use a URL as-is, then upload + pick a library image for the l
   await page.reload();
   await page.getByRole('button', { name: /Picker Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByRole('textbox', { name: 'Logo', exact: true })).toHaveValue(/^\/media\//);
-  await expect(page.getByRole('textbox', { name: 'Logo (light bg)' })).toHaveValue('https://cdn.example.com/logo-light.svg');
+  await expect(page.getByRole('button', { name: 'Browse for Logo', exact: true })).toHaveAttribute('data-value', /^\/media\//);
+  await expect(page.getByRole('button', { name: 'Browse for Logo (light bg)' })).toHaveAttribute('data-value', 'https://cdn.example.com/logo-light.svg');
 });

@@ -257,3 +257,20 @@ export async function hoverForHud(page: Page, region: Locator, badge: Locator): 
     await expect(badge).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 20_000 });
 }
+
+/**
+ * Opens a settings BOARD tile's drill-in and waits until it is on screen — a query made during a modal's
+ * fade-in finds nothing, which reads exactly like a missing control.
+ */
+export async function openSettingsTile(page: Page, title: string, dialogName: string = title): Promise<Locator> {
+  await page.getByRole('button', { name: `Open ${title}`, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: dialogName, exact: true });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Closes a settings drill-in WITHOUT saving — its edits stay pending for the page's own Save. */
+export async function closeSettingsSheet(dialog: Locator): Promise<void> {
+  await dialog.getByRole('button', { name: 'Close', exact: true }).first().click();
+  await expect(dialog).toBeHidden();
+}

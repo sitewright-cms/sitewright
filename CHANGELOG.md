@@ -9,6 +9,64 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Corporate Identity and Website Settings are boards now, not a long stack of cards.** Each page is
+  a fixed set of named bands (Identity & Brand Assets · Business details · Design tokens, and Delivery ·
+  Document · Site behaviour · Modules), and every section is a tile that says something true about
+  itself: *Set* with the count that matters, *Default* when untouched is the right answer, *Off* for
+  an opt-in, and *Needs attention* only when the published site or the next save will show the gap —
+  a missing production URL (publish skips `sitemap.xml`), a security.txt with no contact, a CSS token
+  the schema would refuse, a checkout channel with no currency. Small sections are edited on the tile
+  (content width, images, themes, site search); real forms open as a drill-in holding the section's
+  existing form, whose ✓ saves the section; closing a drill-in keeps its edits pending for the page's
+  Save. The Site tile (production URL, JSON data URL, site data) and the nav / button / preloader
+  effects are edited right on their tiles, and so are the six core brand colours: each swatch opens
+  the colour picker and shows its value inside it, in black or white by actual contrast (custom
+  colours still open the full editor). Field descriptions on the tiles sit in a "?" beside the
+  label rather than under the field. Every list on a tile has a fixed row budget with a "+N
+  more" row and a designed empty state, so a tile holding 2 redirects and one holding 148 are the
+  same size and nothing reflows.
+
+  The document skeleton became a map of the page in render order — Critical CSS (with its 256 KB
+  meter) and Head HTML in `<head>`, then the nav, the sidebars around the page content, footer,
+  bottom and Scripts. The chrome a visitor sees — nav, sidebars, footer — opens straight into the
+  full editor (live preview, in code mode); the other parts open in the code editor, and the Scripts
+  editor now says plainly that nothing is wrapped for you (put JavaScript in `<script>` tags). The five
+  brand images are wells that open the media picker directly. Site search got its own tile; its
+  setting used to sit inside the Consent card. Nothing was removed: every control the old cards held
+  is reachable, and a unit test sweeps them.
+
+- **Orders are a project tab, shown while payments are active.** The orders inbox moved out of
+  Website Settings into its own tab after History. It appears only when the shop is on *and* a
+  payment gateway is bound with every required credential for its current mode, and only for
+  members the server lets read payments. If orders exist while payments are not active, the Shop
+  tile still opens them, so no order is stranded behind a hidden tab.
+
+- **security.txt contacts and links can be your own, and pages can be picked by name.** The contact,
+  security policy and acknowledgments are each a searchable list of the site's pages — published as
+  the page's absolute URL, so it follows a renamed page — or a custom https URL (a bug-bounty
+  programme, say). The phone and email are each *Disabled*, the Corporate Identity value, or a value
+  of security.txt's own. A chosen page that can't be resolved fails the publish with a named reason,
+  as the contact page always has; the editor warns up front when the production URL is missing.
+  New optional fields on `website.security`: `contactUrl`, `phone`, `email`, `policyPageId`,
+  `acknowledgmentsPageId` — existing records load and publish exactly as before.
+
+- **History rows animate in.** New rows fade and rise in, staggered; rows already on screen stay put
+  when the live feed refreshes.
+
+- **Switching tabs starts the new tab at the top.** Corporate Identity, Website Settings, Pages and
+  the rest used to open wherever the previous tab had been scrolled to; the page now jumps to the
+  top at once, with no scroll animation.
+
+- **A form's submissions open in a modal.** *Show submissions* on the Forms tab opens that form's
+  inbox over the list instead of expanding it under the row, so reading leads no longer pushes the
+  other forms down the page.
+
+### Fixed
+
+- **Escape in a colour picker no longer closes the dialog around it.** Escape closes the innermost
+  layer only, as it already did for stacked dialogs.
 ## [0.59.0] — 2026-10-09
 
 ### Added

@@ -7,6 +7,7 @@ import {
   formatHex,
   hsvToRgb,
   parseColor,
+  readableTextOn,
   rgbToHsv,
   SAFE_COLOR,
   type Hsva,
@@ -243,14 +244,19 @@ function PickerPopover({
       // (pointerdown fires first); only a press truly outside both anchor and panel dismisses.
       if (!anchor.contains(t) && !panelRef.current?.contains(t)) onClose();
     };
+    // Escape belongs to the innermost layer. Taken in the CAPTURE phase and stopped there, because a
+    // Modal around this picker (the brand colours live in a settings drill-in) listens on the same
+    // document and registered first — without this one Escape closed the picker AND the drill-in.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      onClose();
     };
     document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
     };
   }, [anchor, onClose]);
 
@@ -337,6 +343,38 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
         <PickerPopover anchor={btnRef.current} label={title} value={value} onChange={onChange} onClose={close} />
       )}
     </div>
+  );
+}
+
+/**
+ * A colour PREVIEW that is itself the picker trigger, with its value written inside it in black or white,
+ * whichever reads better on that colour. For a summary surface (the Brand colors tile), where the colour
+ * is the content and the picker is one click away.
+ */
+export function ColorSwatchButton({ label, value, onChange, className = '' }: { label: string; value: string; onChange: (v: string) => void; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // Stable so PickerPopover's listener effect doesn't re-bind on every emit-driven re-render.
+  const close = useCallback(() => setOpen(false), []);
+  const valid = SAFE_COLOR.test(value);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label={`Pick ${label} color`}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`relative grid place-items-center overflow-hidden border border-slate-200 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible dark:border-slate-700 ${className}`}
+        style={valid ? { ...CHECKER } : undefined}
+      >
+        <span aria-hidden className="absolute inset-0" style={{ background: valid ? value : 'transparent' }} />
+        <span className="relative max-w-full truncate px-1.5 font-mono text-xs font-medium" style={{ color: readableTextOn(valid ? value : '') }}>
+          {value}
+        </span>
+      </button>
+      {open && btnRef.current && <PickerPopover anchor={btnRef.current} label={label} value={value} onChange={onChange} onClose={close} />}
+    </>
   );
 }
 

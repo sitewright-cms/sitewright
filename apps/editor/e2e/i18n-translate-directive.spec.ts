@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signUp } from './helpers.js';
+import { signUp, openSettingsTile } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -79,10 +79,13 @@ test('the inline-edited cell appears in the Settings → Translations grid', asy
   await saved;
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
-  // The project view exposes the settings as top tabs → Website Settings → the Translations grid.
+  // The project view exposes the settings as top tabs → Website Settings → the Translations tile.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  const keyCell = page.getByLabel('Translation key');
+  // The tile already lists the key the preview edit created.
+  await expect(page.getByRole('button', { name: 'Open Translations' })).toContainText('tagline');
+  const translations = await openSettingsTile(page, 'Translations', 'Translations & Labels');
+  const keyCell = translations.getByLabel('Translation key');
   await keyCell.scrollIntoViewIfNeeded();
   await expect(keyCell).toHaveValue('tagline'); // the key row
-  await expect(page.getByLabel(/^tagline .* en$/)).toHaveValue('Catalog-backed tagline'); // its en cell
+  await expect(translations.getByLabel(/^tagline .* en$/)).toHaveValue('Catalog-backed tagline'); // its en cell
 });

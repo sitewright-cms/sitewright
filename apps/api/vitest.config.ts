@@ -15,6 +15,11 @@ export default defineConfig({
     // summary itself off the end, leaving a red build whose log contained no reason anywhere. A gate
     // nobody can read the result of is not a gate. `dot` keeps the failures and drops the roll-call.
     reporters: process.env.CI ? ['dot'] : ['default'],
+    // ★ And drop console/stderr output from PASSING tests in CI. The `dot` reporter removed the
+    // per-file roll-call but not this: React's `act(...)` warnings alone run to hundreds of lines
+    // across the component suites, which still pushed the step log past GitHub's limit and truncated
+    // the failure off the end. Output from a FAILING test is kept — that is the whole point.
+    silent: process.env.CI ? 'passed-only' : false,
     coverage: {
       provider: 'v8',
       include: ['src/**'],

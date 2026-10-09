@@ -630,6 +630,44 @@ describe('SitewrightClient optimistic concurrency', () => {
   const ifMatchOf = (calls: Array<{ init?: { headers?: Record<string, string> } }>): string | undefined =>
     calls.at(-1)?.init?.headers?.['if-match'];
 
+  // ── preview share links ───────────────────────────────────────────────────────────────────────────
+
+  it('preview-share calls hit the project-scoped routes with the right verbs', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ ok: true }) }));
+    const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+
+    await client.listPreviewShares();
+    await client.createPreviewShare('Client review');
+    await client.revokePreviewShare('sh1');
+
+    expect(fake.calls.map((c) => `${c.init?.method ?? 'GET'} ${c.input}`)).toEqual([
+      'GET https://cms.test/projects/p1/preview-shares',
+      'POST https://cms.test/projects/p1/preview-shares',
+      'DELETE https://cms.test/projects/p1/preview-shares/sh1',
+    ]);
+    // The label travels in the body; with no expiry given the field is OMITTED so the server applies
+    // the instance default — sending `undefined` explicitly would be indistinguishable from `0` once
+    // JSON-serialized, and `0` means "never expires".
+    expect(JSON.parse(String(fake.calls[1]!.init?.body))).toEqual({ label: 'Client review' });
+  });
+
+  it('★ createPreviewShare sends expiryDays 0 — "never expires" must survive serialization', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ ok: true }) }));
+    const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.createPreviewShare('Forever', 0);
+    expect(JSON.parse(String(fake.calls[0]!.init?.body))).toEqual({ label: 'Forever', expiryDays: 0 });
+  });
+
+  it('percent-encodes a share id in the revoke path', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: '{}' }));
+    const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.revokePreviewShare('a/b');
+    expect(fake.calls[0]!.input).toBe('https://cms.test/projects/p1/preview-shares/a%2Fb');
+  });
+
   it('sends the version it read back as If-Match on the next full replace', async () => {
     const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ item: { id: 'home' }, version: 'v1' }) }));
     const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);

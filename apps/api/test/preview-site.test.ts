@@ -466,8 +466,11 @@ describe('preview-site API (signed path)', () => {
     expect(created.statusCode).toBe(200);
     const share = created.json() as { id: string; label: string; createdAt: number; url: string };
     expect(share.label).toBe('Client review');
-    expect(share.url.startsWith(`/preview-site/${projectId}/`)).toBe(true);
-    expect(share.url).toContain('~'); // signShare token shape: <shareId>~<hmac>
+    // ★ The URL carries the project SLUG, not its id — this is what gets emailed to a client.
+    expect(share.url.startsWith('/preview-site/site/')).toBe(true);
+    expect(share.url).not.toContain(projectId);
+    expect(share.url).toContain(`${share.id}-`); // token shape: <shareId>-<hmac>, ONE segment
+    expect(share.url).not.toContain('~');
 
     // A SECOND share so the list has >1 row (exercises the newest-first sort comparator).
     const created2 = await app.inject({
@@ -502,6 +505,156 @@ describe('preview-site API (signed path)', () => {
     expect(del.json()).toEqual({ ok: true });
     expect((await app.inject({ method: 'GET', url: share.url })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: share2.url })).statusCode).toBe(200);
+  });
+
+  it('★ an invalid, revoked or expired link renders a BRANDED 404 notice — one page for every reason', async () => {
+    const { t, projectId } = await setup('notice@acme.test', 'notice-site');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Client' } })
+    ).json() as { id: string; url: string };
+
+    // Revoke it, then ask for it as an unauthenticated visitor would.
+    await app.inject({ method: 'DELETE', url: `/projects/${projectId}/preview-shares/${share.id}`, cookies });
+    const gone = await app.inject({ method: 'GET', url: share.url });
+    expect(gone.statusCode).toBe(404); // still a 404 — the status does not soften
+    expect(gone.headers['content-type']).toContain('text/html');
+    expect(gone.body).toContain('Preview link expired or invalid');
+    expect(gone.headers['cache-control']).toContain('no-store');
+
+    // ★ The SAME page for a token that never existed. Anything that distinguished them would confirm
+    // to someone probing ids whether a project is there.
+    const forged = await app.inject({ method: 'GET', url: `/preview-site/notice-site/abc123-forgedmac/` });
+    expect(forged.statusCode).toBe(404);
+    expect(forged.body).toContain('Preview link expired or invalid');
+    // It must not name the reason, the project, or the id.
+    for (const leak of ['revoked', 'expired on', projectId, share.id]) {
+      expect(gone.body).not.toContain(leak);
+    }
+  });
+
+  it('★ an EXPIRED share link stops serving, and the row survives so the owner can see which lapsed', async () => {
+    const { t, projectId } = await setup('expiry@acme.test', 'expiry-site');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+
+    // An explicit past date is the cleanest way to land on "already expired" without waiting.
+    const created = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview-shares`,
+      cookies,
+      payload: { label: 'Lapsed', expiresAt: Date.now() - 1000 },
+    });
+    const share = created.json() as { id: string; url: string; expiresAt: number };
+    expect(share.expiresAt).toBeLessThan(Date.now());
+
+    const res = await app.inject({ method: 'GET', url: share.url });
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toContain('Preview link expired or invalid');
+
+    // The row is KEPT and reported as expired — a link that vanished would leave the owner unable to
+    // tell a revoked link from a lapsed one, or to explain to a client why their URL died.
+    const listed = (await app.inject({ method: 'GET', url: `/projects/${projectId}/preview-shares`, cookies })).json() as {
+      items: Array<{ id: string; expired: boolean; expiresAt?: number }>;
+    };
+    expect(listed.items.find((i) => i.id === share.id)).toMatchObject({ expired: true });
+  });
+
+  it('a link with an expiry in the FUTURE serves normally', async () => {
+    const { t, projectId } = await setup('future@acme.test', 'future-site');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Live', expiryDays: 7 } })
+    ).json() as { url: string; expiresAt: number };
+    expect(share.expiresAt).toBeGreaterThan(Date.now());
+    const res = await app.inject({ method: 'GET', url: share.url });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('Shared Draft');
+  });
+
+  it('★ expiryDays 0 means NEVER expires, and is not confused with "omitted"', async () => {
+    const { t, projectId } = await setup('never@acme.test', 'never-site');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Forever', expiryDays: 0 } })
+    ).json() as { url: string; expiresAt?: number };
+    expect(share.expiresAt).toBeUndefined(); // no expiry stored at all
+    expect((await app.inject({ method: 'GET', url: share.url })).statusCode).toBe(200);
+  });
+
+  it('defaults a new link to the instance default (30 days unless an admin changed it)', async () => {
+    const { t, projectId } = await setup('default-exp@acme.test', 'default-exp-site');
+    const cookies = { sw_session: t };
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Default' } })
+    ).json() as { expiresAt?: number };
+    expect(share.expiresAt).toBeDefined();
+    const days = Math.round(((share.expiresAt as number) - Date.now()) / 86_400_000);
+    expect(days).toBe(30);
+  });
+
+  it('★ a share link SURVIVES a project rename — the slug in it is decoration, not the lookup key', async () => {
+    // The whole reason the owner is resolved from the token's own shareId. A link already emailed to a
+    // client must not die because somebody renamed the project; previously the URL carried the project
+    // id precisely because the MAC binds it.
+    const { t, projectId } = await setup('rename-share@acme.test', 'before-rename');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Client' } })
+    ).json() as { url: string };
+    expect(share.url.startsWith('/preview-site/before-rename/')).toBe(true);
+    expect((await app.inject({ method: 'GET', url: share.url })).statusCode).toBe(200);
+
+    // Rename the project. The emailed URL still names the OLD slug.
+    expect((await app.inject({ method: 'PATCH', url: `/projects/${projectId}`, cookies, payload: { slug: 'after-rename' } })).statusCode).toBe(200);
+
+    // It is canonicalized to the new slug rather than 404ing, and the redirect target serves.
+    const stale = await app.inject({ method: 'GET', url: share.url });
+    expect(stale.statusCode).toBe(301);
+    expect(stale.headers.location).toBe(share.url.replace('before-rename', 'after-rename'));
+    const followed = await app.inject({ method: 'GET', url: String(stale.headers.location) });
+    expect(followed.statusCode).toBe(200);
+    expect(followed.body).toContain('Shared Draft');
+  });
+
+  it('a LEGACY project-id share URL still serves (links already sent keep working)', async () => {
+    const { t, projectId } = await setup('legacy-share@acme.test', 'legacy-site');
+    const cookies = { sw_session: t };
+    await putPage(`/projects/${projectId}`, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>Shared Draft</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${projectId}/preview-shares`, cookies, payload: { label: 'Old' } })
+    ).json() as { url: string };
+    // Rewrite the handle back to the id form a pre-change instance would have emitted.
+    const legacy = share.url.replace('/preview-site/legacy-site/', `/preview-site/${projectId}/`);
+    const res = await app.inject({ method: 'GET', url: legacy });
+    expect(res.statusCode).toBe(301); // canonicalized to the slug…
+    expect((await app.inject({ method: 'GET', url: String(res.headers.location) })).statusCode).toBe(200); // …and serves
+  });
+
+  it('★ the handle is NOT trusted: a share token does not open another project', async () => {
+    // The MAC is verified against the project the share ROW names, never against the URL segment — so
+    // swapping the slug for a different project's cannot cross tenants.
+    const a = await setup('cross-a@acme.test', 'project-a');
+    const b = await setup('cross-b@acme.test', 'project-b');
+    const cookiesA = { sw_session: a.t };
+    await putPage(`/projects/${a.projectId}`, cookiesA, { id: 'home', path: '', title: 'A', source: '<h1>Project A</h1>' });
+    await putPage(`/projects/${b.projectId}`, { sw_session: b.t }, { id: 'home', path: '', title: 'B', source: '<h1>Project B</h1>' });
+    const share = (
+      await app.inject({ method: 'POST', url: `/projects/${a.projectId}/preview-shares`, cookies: cookiesA, payload: { label: 'A' } })
+    ).json() as { url: string };
+
+    // Point A's token at B's slug: it resolves to A (the row's owner) and canonicalizes BACK to A.
+    const swapped = share.url.replace('/preview-site/project-a/', '/preview-site/project-b/');
+    const res = await app.inject({ method: 'GET', url: swapped });
+    expect(res.statusCode).toBe(301);
+    expect(String(res.headers.location)).toContain('/preview-site/project-a/');
+    const followed = await app.inject({ method: 'GET', url: String(res.headers.location) });
+    expect(followed.body).toContain('Project A');
+    expect(followed.body).not.toContain('Project B');
   });
 
   it('rebuilds on the next request after content changes', async () => {

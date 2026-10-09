@@ -1583,9 +1583,12 @@ export const api = {
     }>('GET', `/projects/${projectId}/json-data`),
   /** Revocable, stable SHARE links for the draft preview (viewable by UNAUTHENTICATED clients). */
   listPreviewShares: (projectId: string) =>
-    request<{ items: Array<{ id: string; label: string; createdAt: number; url: string }> }>('GET', `/projects/${projectId}/preview-shares`),
-  createPreviewShare: (projectId: string, label: string) =>
-    request<{ id: string; label: string; createdAt: number; url: string }>('POST', `/projects/${projectId}/preview-shares`, { label }),
+    request<{ defaultExpiryDays: number; items: Array<{ id: string; label: string; createdAt: number; url: string; expiresAt?: number; expired?: boolean }> }>(
+      'GET',
+      `/projects/${projectId}/preview-shares`,
+    ),
+  createPreviewShare: (projectId: string, label: string, expiry: { expiryDays?: number; expiresAt?: number } = {}) =>
+    request<{ id: string; label: string; createdAt: number; url: string; expiresAt?: number }>('POST', `/projects/${projectId}/preview-shares`, { label, ...expiry }),
   deletePreviewShare: (projectId: string, shareId: string) =>
     request<{ ok: boolean }>('DELETE', `/projects/${projectId}/preview-shares/${shareId}`),
   /** Member-safe agent presence COUNT for the preview surface's pill (no connection details). */

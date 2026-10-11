@@ -51,7 +51,7 @@
   "devDependencies": {
     "@playwright/test": "^1.63",
     "@types/html-minifier-terser": "^7",
-    "@types/node": "^26.6.2",
+    "@types/node": "^26.6.3",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/yauzl": "^2.10.3",
     "@vitest/coverage-v8": "^4.1.11",

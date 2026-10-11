@@ -146,3 +146,35 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   await expect(panelR.getByText('renamedcard', { exact: true })).toBeVisible();
   await expect(panelR.getByText('previewcard', { exact: true })).toHaveCount(0);
 });
+
+// Promoting a page to a template is a write made by the PAGES list, while the Templates rail is a
+// sibling view with its own list. The rail listens to the project change-stream, but it skipped any
+// change the SPA had written itself — and "itself" is tracked per TAB, not per view. So the rail
+// swallowed the echo of a promote it had not made and sat on a stale list until a full browser reload.
+test('templates rail: a page promoted to a template appears WITHOUT a reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await signUp(page, `tplpromote-${stamp}@e2e.test`);
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Promote Site');
+  await page.getByLabel('Project slug').fill(`tplpromote-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  // Open the Templates rail FIRST, so it is mounted and holding a list that predates the promote —
+  // the exact state the bug needed. Wait for it to finish loading (the create button is its loaded
+  // state) before asserting the template is absent, so that absence can't be vacuously true.
+  await page.getByRole('button', { name: 'Open Templates' }).click();
+  const panel = page.locator('[role="region"][aria-label="Templates"]');
+  await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  await expect(panel.getByRole('button', { name: '+ New template' })).toBeVisible();
+  await expect(panel.getByText('Home layout', { exact: true })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Promote the seeded Home page from the pages list (its row's "save as template" action).
+  await page.getByRole('button', { name: 'Save Home as template' }).click();
+  // The action completed: the row's promote button is gone (the page is templated now).
+  await expect(page.getByRole('button', { name: 'Save Home as template' })).toHaveCount(0);
+
+  // ★ The regression: re-open the rail and the new template is listed — no page.reload() anywhere.
+  await page.getByRole('button', { name: 'Open Templates' }).click();
+  await expect(panel.getByText('Home layout', { exact: true })).toBeVisible();
+});

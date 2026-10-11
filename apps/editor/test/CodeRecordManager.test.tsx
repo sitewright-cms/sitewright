@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeRecordManager, type CodeRecord, type MakeId } from '../src/views/code/CodeRecordManager';
+import { SidePanelOpen } from '../src/views/ui/SidePanel';
 
 // Mock the CodeMirror-backed editor modal (CodeMirror doesn't render in jsdom). It exposes the
 // title as a dialog, an optional NAME field (uncontrolled — closure-tracked, no re-render), and a
@@ -157,5 +158,75 @@ describe('CodeRecordManager', () => {
     expect(await screen.findByText('A snippet with that name already exists.')).toBeInTheDocument();
     expect(save).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
+  });
+});
+
+// A rail's children stay MOUNTED while the drawer is parked off-screen, so the list it fetched when the
+// project view mounted is what it keeps serving. That goes stale as soon as another view in this tab
+// writes a record — promoting a page to a template from the pages list creates one, and its
+// change-stream echo is indistinguishable from the rail's own save, so nothing else refetches. Opening
+// the drawer must therefore re-read.
+describe('CodeRecordManager — revalidates when its side panel opens', () => {
+  function renderInPanel(open: boolean, load: (projectId: string) => Promise<CodeRecord[]>) {
+    return render(
+      <SidePanelOpen.Provider value={open}>
+        <CodeRecordManager projectId="p1" noun="template" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />
+      </SidePanelOpen.Provider>,
+    );
+  }
+
+  it('re-reads on the closed→open edge, picking up a record written by a sibling view', async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce([{ id: 'hero', name: 'hero', source: '<h1/>' }])
+      // what a sibling view (the pages list "save as template") added while the drawer was closed
+      .mockResolvedValue([
+        { id: 'hero', name: 'hero', source: '<h1/>' },
+        { id: 'home-template', name: 'Home layout', source: '<section/>' },
+      ]);
+    const { rerender } = renderInPanel(false, load);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+    expect(screen.queryByText('Home layout')).toBeNull();
+
+    rerender(
+      <SidePanelOpen.Provider value={true}>
+        <CodeRecordManager projectId="p1" noun="template" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />
+      </SidePanelOpen.Provider>,
+    );
+    expect(await screen.findByText('Home layout')).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the current list on screen while revalidating (no skeleton flash on re-open)', async () => {
+    let release: (v: CodeRecord[]) => void = () => {};
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce(recs)
+      .mockReturnValueOnce(new Promise<CodeRecord[]>((r) => (release = r)));
+    const { rerender } = renderInPanel(false, load);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+
+    rerender(
+      <SidePanelOpen.Provider value={true}>
+        <CodeRecordManager projectId="p1" noun="template" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />
+      </SidePanelOpen.Provider>,
+    );
+    // The refetch is in flight; the records we already have must still be rendered.
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('hero')).toBeInTheDocument();
+    release(recs);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+  });
+
+  it('does not re-read while the panel merely stays open', async () => {
+    const load = vi.fn().mockResolvedValue(recs);
+    const { rerender } = renderInPanel(true, load);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+    rerender(
+      <SidePanelOpen.Provider value={true}>
+        <CodeRecordManager projectId="p1" noun="template" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />
+      </SidePanelOpen.Provider>,
+    );
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
   });
 });

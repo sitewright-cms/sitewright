@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { X, Check } from 'lucide-react';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { useDialogs } from '../ui/Dialogs';
@@ -10,6 +10,7 @@ import { HoverTip } from '../ui/HoverTip';
 import { useProjectEvents } from '../../lib/use-project-events';
 import { isOwnContentChange } from '../../api';
 import { Tooltip } from '../ui/Tooltip';
+import { SidePanelOpen } from '../ui/SidePanel';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -111,19 +112,41 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
   useProjectEvents(projectId, (c) => {
     if (c.kind !== noun) return;
     // Skip the echo of our OWN save (we already hold that version) — it would re-fetch what we wrote.
+    // ★ This only recognises the TAB as the writer, not this panel: a write made by a SIBLING view
+    // looks identical. Re-opening the rail revalidates (below), which is what covers that case.
     if (isOwnContentChange(projectId, c.kind, c.entityId, c.version, c.scope ?? '')) return;
     setReloadNonce((n) => n + 1);
   });
 
+  // REVALIDATE ON OPEN. The rail stays mounted behind its backdrop, so without this it serves whatever
+  // it fetched when the project view mounted. That went stale the moment another view in this tab wrote
+  // a record — promoting a page to a template from the pages list creates one, and the change-stream
+  // echo for it is indistinguishable from our own save (see above), so nothing else refetches. The
+  // panel's backdrop covers the page, so every such write necessarily happens while it is CLOSED: the
+  // false→true edge is both the right moment to re-read and far away from any in-flight write of ours.
+  const panelOpen = useContext(SidePanelOpen);
+  const wasOpen = useRef(panelOpen);
+  useEffect(() => {
+    const opening = panelOpen && !wasOpen.current;
+    wasOpen.current = panelOpen;
+    if (opening) setReloadNonce((n) => n + 1);
+  }, [panelOpen]);
+
+  // `loading` is the FIRST-load skeleton for THIS list only. A revalidation (re-open, change-stream
+  // echo) keeps the current records on screen and swaps them when the fresh ones land — blanking a
+  // list we already have back to a skeleton on every open reads as the rail losing its contents.
+  const hydratedFor = useRef('');
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    const listKey = `${projectId}:${noun}`;
+    if (hydratedFor.current !== listKey) setLoading(true);
     setError(null);
     Promise.all([load(projectId), globalAdapters ? globalAdapters.load(projectId) : Promise.resolve([])])
       .then(([rs, gs]) => {
         if (!alive) return;
         setRecords([...rs].sort(byName));
         setGlobals([...gs].sort(byName));
+        hydratedFor.current = listKey;
         setLoading(false);
       })
       .catch(() => alive && (setError(`Couldn’t load the ${noun}s.`), setLoading(false)));

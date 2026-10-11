@@ -39,6 +39,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   whenever it is opened, and keeps the current list on screen while it does instead of dropping back to
   a loading skeleton. The Snippets rail shares the fix.
 
+- **A red CI build now says why.** A failing `pnpm verify` wrote the gate's output and then exited at
+  once — and when stdout is a pipe, as it is on a CI runner, exiting throws away whatever has not been
+  flushed yet: everything past the first 64 KB or so. That is the END of the output, which is where the
+  failed test's name and assertion are. So red builds arrived with no reason in the log, it read as
+  GitHub truncating an oversized log, and shrinking the output only ever helped a little. The gate
+  now lets its output drain before it exits, prints its verdict after the output rather than above it,
+  and a new first gate proves on every run that a failing gate's output still arrives whole.
+
 ### Changed
 
 - **Dependency refresh** — the five open Dependabot PRs (#1063, #1064, #1065, #1067, #1068), merged

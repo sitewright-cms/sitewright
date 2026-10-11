@@ -8,7 +8,7 @@
 // which is why the audit and gen-check gates account for most of the historical CI failures.
 //
 // Adding a gate? Add it HERE. Do not add a step to ci.yml.
-import { spawnSync } from 'node:child_process';
+import { runGates } from './lib/run-gates.mjs';
 
 /** One gate: a label, the command, and whether a known-infra failure is tolerated. */
 const GATES = [
@@ -16,6 +16,10 @@ const GATES = [
   // failures that point anywhere but at the cause. pnpm only WARNS about `engines` and exits 0,
   // so the field needs something that actually checks it. ~1ms.
   { name: 'Node version', cmd: ['node', 'scripts/node-version-gate.mjs'] },
+  // Before any gate that can fail noisily: proves a FAILING gate's output still reaches the log. It did
+  // not, for months — a red build arrived with its reason cut off the end (see lib/run-gates.mjs) — and
+  // nothing could have noticed, because only a failing run takes that path. ~0.5s.
+  { name: 'Gate output survives a failure', cmd: ['node', 'scripts/gate-output-selftest.mjs'] },
   {
     name: 'Audit dependencies',
     // Was `pnpm audit --audit-level high`, which failed OPEN on a transport error and used a floor
@@ -64,49 +68,6 @@ if (ci) {
   console.log('::remove-matcher owner=eslint-stylish::');
   console.log('::remove-matcher owner=eslint-compact::');
 }
-// Collapsible sections keep the CI log readable now that the gates are one step; locally they are just
-// a heading. Timings are printed either way so a slow gate is obvious without opening the run.
-const open = (n) => console.log(ci ? `::group::${n}` : `\n── ${n} ──`);
-const close = () => ci && console.log('::endgroup::');
-
-const started = Date.now();
-const timings = [];
-for (const gate of GATES) {
-  open(gate.name);
-  const t = Date.now();
-  // `pipe` so a tolerated failure can be inspected; echoed immediately so output still streams in order.
-  //
-  // ★ `maxBuffer: Infinity` IS THE GATE. spawnSync defaults to a 1 MB buffer, and on overflow it KILLS
-  // the child and reports the overflow in `res.error` while leaving `res.status` at 0 — so a `status`-only
-  // check reads a truncated, murdered run as a pass. This gate spent time in exactly that state: the api
-  // suite went red, its failures printed large HTML diffs, the diffs pushed the output past 1 MB, and the
-  // extra output turned the failure into "✔ all gates passed" both locally and in CI. The perverse part
-  // is the direction of the bias — a NOISY failure was more likely to be swallowed than a quiet one, so
-  // the gate got least trustworthy exactly when it mattered most. Never let this go back to a default
-  // buffer, and never check `status` without `error`.
-  const res = spawnSync(gate.cmd[0], gate.cmd.slice(1), { encoding: 'utf8', shell: false, maxBuffer: Infinity });
-  const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
-  process.stdout.write(out);
-  const ms = Date.now() - t;
-  timings.push([gate.name, ms]);
-  close();
-
-  if (res.error) {
-    // The command never ran, or was killed. Not a test result — a broken gate, which must never pass.
-    console.error(`\n✖ ${gate.name} could not be run to completion after ${(ms / 1000).toFixed(1)}s: ${res.error.message}`);
-    process.exit(1);
-  }
-  if (res.status !== 0) {
-    if (gate.tolerate?.(out)) {
-      console.log(ci ? `::warning::${gate.tolerateNote}` : `WARNING: ${gate.tolerateNote}`);
-      continue;
-    }
-    console.error(`\n✖ ${gate.name} failed (exit ${res.status ?? 'signal ' + res.signal}) after ${(ms / 1000).toFixed(1)}s`);
-    console.error('  Gates run in CI order; everything above this line passed.');
-    process.exit(res.status || 1);
-  }
-}
-
-console.log('\n✔ all gates passed');
-for (const [name, ms] of timings) console.log(`   ${String((ms / 1000).toFixed(1)).padStart(7)}s  ${name}`);
-console.log(`   ${String(((Date.now() - started) / 1000).toFixed(1)).padStart(7)}s  TOTAL`);
+// How a gate is run, and how a failure is reported, lives in lib/run-gates.mjs. It ends the process by
+// setting `process.exitCode`, never by `process.exit()` — read the note there before changing that.
+runGates(GATES, { ci });

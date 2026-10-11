@@ -24,21 +24,27 @@ if (process.argv[2] === '--child') {
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--child'], { stdio: ['ignore', 'pipe', 'inherit'] });
   let bytes = 0;
   let tail = '';
+  // Decoded by the stream, not per chunk: the verdict starts with a multi-byte character, and a chunk
+  // boundary inside it would otherwise read as "the verdict is missing".
+  child.stdout.setEncoding('utf8');
   child.stdout.on('data', (chunk) => {
-    bytes += chunk.length;
-    tail = (tail + chunk.toString('utf8')).slice(-400);
+    bytes += Buffer.byteLength(chunk);
+    tail = (tail + chunk).slice(-400);
   });
+  // A runner that never exits must fail this gate, not hang the build until the job times out.
+  const giveUp = setTimeout(() => child.kill('SIGKILL'), 30_000);
   // Do not read straight away. A reader that keeps up hides the bug: the pipe never fills, so nothing
   // is ever queued for an early exit to throw away. A CI runner does not keep up. (Paused WITH the
   // listener attached — a stream nobody listens to is drained and discarded when the child exits.)
   child.stdout.pause();
   setTimeout(() => child.stdout.resume(), 300);
   child.on('close', (code) => {
+    clearTimeout(giveUp);
     const problems = [];
     if (bytes < PAYLOAD_BYTES) problems.push(`only ${bytes} of at least ${PAYLOAD_BYTES} bytes arrived`);
     if (!tail.includes(SENTINEL)) problems.push('the last line the failing gate printed is missing');
     if (!tail.includes('✖ synthetic failing gate failed')) problems.push("the runner's own verdict is missing");
-    if (code !== EXIT_CODE) problems.push(`exit code was ${code}, expected ${EXIT_CODE}`);
+    if (code !== EXIT_CODE) problems.push(`exit code was ${code ?? 'none — it had to be killed after 30s'}, expected ${EXIT_CODE}`);
     if (problems.length > 0) {
       console.log(`✖ a failing gate's output does NOT survive a pipe — ${problems.join('; ')}.`);
       console.log('  Something ends the process before stdout has drained (a `process.exit()`?). See scripts/lib/run-gates.mjs.');

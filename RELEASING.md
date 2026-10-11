@@ -31,6 +31,18 @@ record**, reported at `GET /version`.
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
+   ★ Tag the **merge commit**, not the branch head. A squash merge puts a NEW commit on `main`, and
+   the branch you just pushed is not an ancestor of it — while the trees are identical, so nothing
+   looks wrong. Take the sha from the merge response and assert it:
+   ```bash
+   git merge-base --is-ancestor vX.Y.Z origin/main || echo "OFF-BRANCH — retag"
+   ```
+   ★ A ruleset (**"Protect release tags (v\*)"**) makes a pushed `v*` tag immutable: `deletion` and
+   `non_fast_forward` are blocked, so a released tag cannot be removed or quietly repointed at a
+   different commit. **Creating one is not restricted** — that is the release itself, and a rule the
+   normal path must bypass is a rule nobody reads. Admins can still bypass to repair a mis-tag
+   (delete + retag), and because the happy path no longer trips it, a `Bypassed rule violations` line
+   in the audit log now means something exceptional actually happened.
 6. The **Release** workflow then:
    - builds the image with `--build-arg SW_VERSION=X.Y.Z`,
    - pushes `ghcr.io/sitewright-cms/sitewright:X.Y.Z` (and `:latest` for a stable tag),

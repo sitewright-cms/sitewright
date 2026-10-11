@@ -26,6 +26,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   authors actually want was the one the picker could not give them. All six weights now draw
   distinctly.
 
+- **"Administrators" in the gear menu did nothing until a project was open.** The menu offers it to an
+  instance admin everywhere, including the "Pick a project to get started" screen — but the panel sat
+  behind a check that only a project-scoped panel needs, so the click closed the menu and opened
+  nothing. Platform staff is instance-wide, like System Settings beside it, and now opens with or
+  without a project.
+
 ## [0.61.0] — 2026-10-09
 
 ### Added

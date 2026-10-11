@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { deployLocally, signUp } from './helpers.js';
+import { deployLocally, dismissProjectSelector, signInAsAdmin, signUp } from './helpers.js';
 
 const stamp = Date.now();
 
@@ -62,4 +62,42 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   // shows the remote-HTTP config rather than an install step nobody could follow.
   await expect(agent.getByText(/claude mcp add --transport http/).first()).toBeVisible();
   await expect(agent.getByText('"mcpServers"')).toBeVisible();
+});
+
+// Both ADMINISTRATION items are instance-wide, so both must work from the "Pick a project to get
+// started" home screen — the state an admin lands in by dismissing the project selector. "Administrators"
+// used to be offered there and do nothing: the view sat below SettingsModalHost's project guard.
+test('admin: the instance-wide gear items open with NO project selected', async ({ page }) => {
+  await signInAsAdmin(page);
+
+  // Sign-in auto-opens the project selector, whose full-screen overlay makes the header gear
+  // unreachable; dismissing it is what lands on the home screen.
+  await dismissProjectSelector(page);
+  await expect(page.getByRole('heading', { name: 'Pick a project to get started' })).toBeVisible();
+
+  const gear = page.getByRole('button', { name: 'Settings', exact: true });
+  await gear.click();
+  const menu = page.getByRole('menu', { name: 'Settings' });
+  // No project open → no project-scoped items, and no bare "Project" group header to label an empty group.
+  await expect(menu.getByRole('menuitem', { name: 'Publish & Deploy Options' })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: 'Project Members' })).toHaveCount(0);
+
+  // The staff panel OPENS (the regression) and renders its own body, not just empty modal chrome.
+  await menu.getByRole('menuitem', { name: 'Administrators' }).click();
+  const team = page.getByRole('dialog', { name: 'Administrators' });
+  await expect(team).toBeVisible();
+  // TeamManager's own body, not just the modal chrome (whose <h2> title is the same word — hence the
+  // blurb rather than a heading lookup). Its presence is also what makes the next assertion meaningful.
+  await expect(team.getByText(/Your platform staff/)).toBeVisible();
+  // …and the staff list RESOLVED from /admin/users rather than erroring: the signed-in admin is in it,
+  // carrying an `admin` role badge. (The email itself is env-overridable, so match the badge.)
+  await expect(team.getByText('admin', { exact: true }).first()).toBeVisible();
+  await expect(team.getByText(/failed to load administrators/)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(team).toBeHidden();
+
+  // Its neighbour in the same group still works from here too.
+  await gear.click();
+  await menu.getByRole('menuitem', { name: 'System Settings' }).click();
+  await expect(page.getByRole('dialog', { name: 'System settings' })).toBeVisible();
 });

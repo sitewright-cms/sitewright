@@ -23,6 +23,7 @@ import { cardStagger } from './motion';
 import { notifyPaymentsChanged } from '../../lib/payments-active';
 import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, Tile } from './board/Tile';
 import { SettingsSheet, type SheetSave } from './board/Sheet';
+import { useSheet } from './board/use-sheet';
 import { JsonDataStatus } from './website/JsonDataStatus';
 import { EffectsControls, EFFECTS_HELP } from './website/EffectsControls';
 import { SecuritySheet } from './website/SecuritySheet';
@@ -128,8 +129,7 @@ export function WebsiteSection({
   /** Switches to the project's Orders tab — passed exactly while that tab is showing (payments active). */
   onOpenOrders?: () => void;
 }) {
-  const [sheet, setSheet] = useState<SheetKey | null>(null);
-  const close = () => setSheet(null);
+  const { sheet, openKey, setSheet, close } = useSheet<SheetKey>();
   const [dataOpen, setDataOpen] = useState(false);
   // The chrome slot opened in the FULL editor (code + live preview + devices), or null.
   const [slotEdit, setSlotEdit] = useState<ChromeSlotKey | null>(null);
@@ -548,13 +548,13 @@ export function WebsiteSection({
 
       {/* ── Drill-ins: each section's existing form, unchanged. ── */}
       {sheet === 'redirects' && (
-        <SettingsSheet title="Redirects" help={HELP.redirects} onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Redirects" help={HELP.redirects} onClose={close} save={save} size="xl">
           <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
         </SettingsSheet>
       )}
-      {sheet === 'security' && <SecuritySheet form={form} patch={patch} projectId={projectId} save={save} onClose={close} />}
+      {sheet === 'security' && <SecuritySheet key={openKey} form={form} patch={patch} projectId={projectId} save={save} onClose={close} />}
       {sheet === 'languages' && (
-        <SettingsSheet title="Languages" onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Languages" onClose={close} save={save} size="xl">
           <LocaleManager
             projectId={projectId}
             locales={localeCodes}
@@ -566,7 +566,7 @@ export function WebsiteSection({
         </SettingsSheet>
       )}
       {sheet === 'translations' && (
-        <SettingsSheet title="Translations & Labels" help={HELP.translations} onClose={close} save={save}>
+        <SettingsSheet key={openKey} title="Translations & Labels" help={HELP.translations} onClose={close} save={save}>
           <div id="translations-labels">
             <TranslationsEditor
               rows={form.translations}

@@ -54,10 +54,11 @@ function VersionBadge() {
 }
 
 /**
- * Renders the active header-settings surface AS A MODAL. System Settings is global (no project);
- * Clients / Team are project-scoped. Each view carries its own actions/save — these modals supply
- * only the chrome (title + close). Publish & Deploy lives in its own PublishDeployModal; access keys
- * moved to the user/account menu (UserMenu).
+ * Renders the active header-settings surface AS A MODAL. System Settings and Administrators are both
+ * INSTANCE-WIDE (admin-only, and reachable with no project open — the gear menu offers them on the
+ * project picker too); only Project Members is project-scoped. Each view carries its own
+ * actions/save — these modals supply only the chrome (title + close). Publish & Deploy lives in its
+ * own PublishDeployModal; access keys moved to the user/account menu (UserMenu).
  */
 export function SettingsModalHost({
   view,
@@ -76,7 +77,19 @@ export function SettingsModalHost({
       </Modal>
     );
   }
-  // The remaining surfaces are project-scoped — only reachable with a project open.
+  if (view === 'team') {
+    // Platform staff is INSTANCE-wide (TeamManager reads /admin/users, not the project) — so this must
+    // render above the project guard below. It previously sat underneath it, which made the gear menu's
+    // admin-only "Administrators" item a dead click whenever no project was open.
+    return (
+      <Modal title="Administrators" size="lg" onClose={onClose}>
+        <div className="p-5">
+          <TeamManager />
+        </div>
+      </Modal>
+    );
+  }
+  // Project Members is the one project-scoped surface — only reachable with a project open.
   if (!project) return null;
   if (view === 'clients') {
     return (
@@ -84,15 +97,6 @@ export function SettingsModalHost({
         <div className="p-5">
           {/* Keyed so the data + state reset if the project changes while open. */}
           <ClientsManager key={project.id} project={project} />
-        </div>
-      </Modal>
-    );
-  }
-  if (view === 'team') {
-    return (
-      <Modal title="Administrators" size="lg" onClose={onClose}>
-        <div className="p-5">
-          <TeamManager />
         </div>
       </Modal>
     );

@@ -29,6 +29,16 @@ export const SidePanelHold = createContext<{ hold: () => void; release: () => vo
  */
 export const SidePanelClose = createContext<(() => void) | null>(null);
 
+/**
+ * Whether the enclosing {@link SidePanel} is currently OPEN. False outside any panel.
+ *
+ * A drawer's children stay MOUNTED while it is parked off-screen, so a panel that fetched its list on
+ * mount keeps showing that list for the lifetime of the project view. Content loaded from the server
+ * should therefore revalidate on the false→true edge: whatever happened on the page behind the drawer
+ * — including writes made by a sibling view — is reflected the next time it is opened.
+ */
+export const SidePanelOpen = createContext(false);
+
 export type SidePanelSide = 'left' | 'right' | 'bottom';
 /** Where the collapsed tab sits along its edge (lets several tabs share one edge). `center-left`/
  *  `center-right` are a CLUSTER either side of dead-centre (bottom edge only) — e.g. the paired
@@ -320,7 +330,9 @@ export function SidePanel({ side, label, icon, headerExtra, size, width, align =
         <div className={`min-h-0 flex-1 overflow-auto ${edgeInset}`}>
           <InSidePanel.Provider value={true}>
             <SidePanelHold.Provider value={holdApi}>
-              <SidePanelClose.Provider value={closeApi}>{children}</SidePanelClose.Provider>
+              <SidePanelOpen.Provider value={open}>
+                <SidePanelClose.Provider value={closeApi}>{children}</SidePanelClose.Provider>
+              </SidePanelOpen.Provider>
             </SidePanelHold.Provider>
           </InSidePanel.Provider>
         </div>

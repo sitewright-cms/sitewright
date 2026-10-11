@@ -32,6 +32,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   nothing. Platform staff is instance-wide, like System Settings beside it, and now opens with or
   without a project.
 
+- **A page saved as a template did not show up in the Templates rail until the browser was reloaded.**
+  The rail keeps its list while it is closed, and ignores change notifications for writes this tab made
+  itself — right for its own saves, but "this tab" also covers the pages list, which is where a page
+  gets promoted. So the rail threw away the one notification that would have told it. It now re-reads
+  whenever it is opened, and keeps the current list on screen while it does instead of dropping back to
+  a loading skeleton. The Snippets rail shares the fix.
+
 ## [0.61.0] — 2026-10-09
 
 ### Added

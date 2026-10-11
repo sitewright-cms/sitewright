@@ -36,6 +36,20 @@ describe('IconPicker', () => {
     expect(byTip('gear — gear:bold', dialog)).toBeInTheDocument();
   });
 
+  it('★★ picks regular as `name:regular`, never as a bare name — a bare name renders FILL', () => {
+    const { dialog } = openPicker();
+    const weights = within(dialog).getByRole('radiogroup', { name: 'Icon weight' });
+    fireEvent.click(within(weights).getByRole('radio', { name: 'regular' }));
+    fireEvent.change(within(dialog).getByLabelText('Search icons'), { target: { value: 'gear' } });
+    // The suffix used to be dropped for `regular` on the theory that a bare name is the shortest
+    // spelling of it. It is not: `renderIconSvg` falls back to FILL for an unsuffixed name, so the
+    // Regular pill handed back fill artwork — the one weight most authors want, silently unavailable.
+    expect(byTip('gear — gear:regular', dialog)).toBeInTheDocument();
+    // …and NOT the bare spelling. (`byTip` throws when nothing matches, so the absence is asserted
+    // as a throw rather than as a null.)
+    expect(() => byTip('gear — gear', dialog)).toThrow();
+  });
+
   it('finds a flag by COUNTRY NAME, and labels the tile with it', () => {
     const { dialog, onChange } = openPicker();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Flags' }));

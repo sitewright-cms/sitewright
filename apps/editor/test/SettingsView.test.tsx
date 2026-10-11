@@ -301,6 +301,25 @@ describe('SettingsView', () => {
     expect(putSettings).not.toHaveBeenCalled();
   });
 
+  // ★ A tile clicked while its sheet is still CLOSING must open it. The board used to go on believing the
+  // sheet was open until its close animation had finished, so that click changed nothing — and then the
+  // sheet finished closing, leaving nothing open. Locally the animation is over in a few milliseconds
+  // and nothing ever landed inside it; on a starved CI runner the test above did, about every other run.
+  // (Land in the last instant instead — the dialog gone, the close not yet applied — and the sheet was
+  // left mounted but invisible for good, with the page's scroll lock still on.)
+  it('re-opens a tile that is clicked while its sheet is still closing', async () => {
+    renderView();
+    const first = await openTile('Identity');
+    closeSheet(first);
+    // No waiting: the close has only just begun, which is exactly what a quick second click meets.
+    fireEvent.click(screen.getByRole('button', { name: 'Open Identity', hidden: true }));
+    // Outlast the first sheet. A swallowed click shows here: it finishes closing and nothing is open.
+    await waitFor(() => expect(first).not.toBeInTheDocument());
+    const again = screen.getByRole('dialog', { name: 'Identity' });
+    expect(again).not.toBe(first);
+    expect(within(again).getByLabelText('Legal name')).toHaveValue('Acme Inc.');
+  });
+
   it('switches to the Website section and edits siteUrl — right on the Site tile — into the saved bundle', async () => {
     renderView();
     fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));

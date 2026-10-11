@@ -21,6 +21,7 @@ import { ColorSwatchButton } from '../ui/ColorPicker';
 import { cardStagger } from './motion';
 import { Band, BudgetRows, KV, MoreRow, Note, Row, RowBlock, Tile } from './board/Tile';
 import { SettingsSheet, type SheetSave } from './board/Sheet';
+import { useSheet } from './board/use-sheet';
 import {
   LOGO_WELLS,
   addressLine,
@@ -81,11 +82,10 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
     };
   }, [projectId]);
   const addFont = (font: MediaAsset) => setFontAssets((prev) => [...prev.filter((f) => f.id !== font.id), font]);
-  const [sheet, setSheet] = useState<SheetKey | null>(null);
+  const { sheet, openKey, setSheet, close } = useSheet<SheetKey>();
   const [picking, setPicking] = useState<LogoWellKey | null>(null);
   // The schema.org @type is picked from a searchable modal (a known list + Default/Disabled).
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
-  const close = () => setSheet(null);
   const pickingWell = LOGO_WELLS.find((w) => w.key === picking);
 
   return (
@@ -171,7 +171,7 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
 
       {/* ── Drill-ins: each section's existing form, unchanged. ── */}
       {sheet === 'identity' && (
-        <SettingsSheet title="Identity" onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Identity" onClose={close} save={save} size="xl">
           <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Legal name" value={form.legalName} onChange={(v) => patch({ legalName: v })} placeholder="Acme Inc." />
@@ -183,12 +183,12 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
         </SettingsSheet>
       )}
       {sheet === 'colors' && (
-        <SettingsSheet title="Brand colors" help={HELP.colors} onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Brand colors" help={HELP.colors} onClose={close} save={save} size="xl">
           <BrandColorsEditor rows={form.colors} onChange={(colors) => patch({ colors })} />
         </SettingsSheet>
       )}
       {sheet === 'typography' && (
-        <SettingsSheet title="Typography" help={HELP.typography} onClose={close} save={save}>
+        <SettingsSheet key={openKey} title="Typography" help={HELP.typography} onClose={close} save={save}>
           {fontsError && <p className="text-xs text-rose-500 dark:text-rose-300">Couldn’t load your font library. Saved slots still work; try reloading.</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             <FontSlotEditor label="Heading font" slot={form.heading} onChange={(heading) => patch({ heading })} projectId={projectId} fonts={fontAssets} onAddFont={addFont} />
@@ -201,7 +201,7 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
         </SettingsSheet>
       )}
       {sheet === 'tokens' && (
-        <SettingsSheet title="CSS tokens" help={HELP.tokens} onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="CSS tokens" help={HELP.tokens} onClose={close} save={save} size="xl">
           <TokenEditor
             rows={form.cssTokens}
             onChange={(cssTokens) => patch({ cssTokens })}
@@ -213,7 +213,7 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
         </SettingsSheet>
       )}
       {sheet === 'contact' && (
-        <SettingsSheet title="Contact & location" onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Contact & location" onClose={close} save={save} size="xl">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Email" value={form.email} onChange={(v) => patch({ email: v })} type="email" placeholder="hi@acme.com" />
             <Field label="Telephone" value={form.telephone} onChange={(v) => patch({ telephone: v })} placeholder="+1 555 0100" />
@@ -246,7 +246,7 @@ export function IdentitySection({ form, patch, projectId, save }: { form: Settin
         </SettingsSheet>
       )}
       {sheet === 'social' && (
-        <SettingsSheet title="Social profiles" help={HELP.social} onClose={close} save={save} size="xl">
+        <SettingsSheet key={openKey} title="Social profiles" help={HELP.social} onClose={close} save={save} size="xl">
           <SocialProfilesEditor rows={form.social} onChange={(social) => patch({ social })} />
         </SettingsSheet>
       )}

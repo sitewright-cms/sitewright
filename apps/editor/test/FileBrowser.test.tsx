@@ -306,8 +306,13 @@ describe('FileBrowser at media-library scale', () => {
     // asks for `xs` (150px), which still covers the 4x hover zoom on a 32px box; the GRID tile keeps
     // `sm` because it paints at 96px and the zoom takes it to ~384px.
     render(<FileBrowser projectId={project.id} mode="manage" />);
-    const img = await screen.findByRole('img', { name: '' }).catch(() => null);
-    const el = img ?? document.querySelector('img');
+    // Wait for the ROW, then read its thumbnail. The thumbnail is decorative (`alt=""`), which gives it
+    // no `img` role — so the `findByRole('img')` this used to open with could never match: it sat out
+    // the whole async-query timeout and only then fell back to the selector below. That made this the
+    // slowest test in the suite by construction (15s, once that ceiling went to 15s), 5s short of the
+    // test timeout, and red on any CI runner that was a little starved.
+    await screen.findByText('hero.png');
+    const el = document.querySelector('img');
     expect(el, 'the list row renders a thumbnail').toBeTruthy();
     expect((el as HTMLImageElement).getAttribute('src')).toBe(`${image.url}?size=xs`);
   });

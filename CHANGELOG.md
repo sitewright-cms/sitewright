@@ -39,6 +39,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   whenever it is opened, and keeps the current list on screen while it does instead of dropping back to
   a loading skeleton. The Snippets rail shares the fix.
 
+### Changed
+
+- **Dependency refresh** — the five open Dependabot PRs (#1063, #1064, #1065, #1067, #1068), merged
+  onto current main as one batch because their branches conflicted with each other. Production:
+  `daisyui` 5.7.28 → 5.7.46, `@fastify/multipart`, `isomorphic-git`, `jszip`, `lucide-react`.
+  Development: **`vitest` and `@vitest/coverage-v8` 4 → 5**, **`eslint` 9 → 10**, `typescript-eslint`,
+  `turbo`, `eslint-plugin-security`, `@types/node`, `@types/sanitize-html`, `lucide-static`,
+  `simple-icons`.
+  - The two vitest PRs had each sat red for a reason neither could fix alone: vitest 5 refuses the
+    v4 coverage provider and vice versa, so each bump failed on the other's version. Together they
+    pass with no source or config change — the same 8,534 tests, coverage gates intact.
+
 ## [0.61.0] — 2026-10-09
 
 ### Added

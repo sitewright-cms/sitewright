@@ -36,8 +36,13 @@ The running version of an instance is reported at `GET /version` (baked into the
   - A member token shows up in a project's agent connections once it has acted there. Only its owner
     or an instance admin can revoke it from that list, because revoking is account-wide.
   - `GET /api-key/self` now answers with a `kind` (`project` or `member`); a member token names no
-    project and lists what it can reach with `GET /projects`. The MCP endpoint still drives one
-    project per connection and turns a member token away with a reason — use the REST API with one.
+    project and lists what it can reach with `GET /projects`.
+  - **Over MCP, a member token works across projects from one connection.** Every project tool takes
+    a required `project` argument (an id from the new `list_projects`), so each call names its
+    project and nothing is remembered between calls. `create_project` and `duplicate_project` make a
+    new one and return its id. These three tools and the `project` argument exist only for a member
+    token: a project key's tools are exactly as they were, and it cannot be pointed at another
+    project.
   - The clone agent (`POST /projects/:id/agent/clone`) hands its loop the full authoring set. A
     member token must hold all of it to start one, so `publish` alone cannot become write and delete
     across an account. A project key is unchanged.

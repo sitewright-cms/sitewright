@@ -107,6 +107,95 @@ describe('remote MCP transport (/mcp)', () => {
     expect(text).toContain('content:write');
   });
 
+  // ---- MEMBER tokens: one connection, several projects ----
+  // The whole point of a member token over MCP: an agent connects once, then creates a project and
+  // works in it — and in others — by naming the project on each call.
+  describe('with a member token', () => {
+    async function memberSetup(capabilities: string[]) {
+      const email = `mcp-member-${Date.now()}-${Math.random().toString(36).slice(2)}@e2e.test`;
+      await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+      const cookie = sessionCookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
+      const minted = await app.inject({
+        method: 'POST',
+        url: '/account/member-tokens',
+        cookies: { sw_session: cookie },
+        payload: { name: 'fleet', expiresInDays: 1, currentPassword: 'Pw-secret-1', capabilities },
+      });
+      expect(minted.statusCode).toBe(201);
+      return { cookie, token: (minted.json() as { token: string }).token };
+    }
+    let rpcId = 100;
+    const call = async (token: string, name: string, args: Record<string, unknown> = {}) => {
+      const res = await mcp(token, { jsonrpc: '2.0', id: (rpcId += 1), method: 'tools/call', params: { name, arguments: args } });
+      const result = (res.json() as { result?: { content: Array<{ text: string }>; isError?: boolean } }).result;
+      return { status: res.statusCode, isError: result?.isError === true, text: result?.content[0]?.text ?? '' };
+    };
+
+    it('★ creates a project, writes to it, and to a second one — each call naming its project', async () => {
+      const { token, cookie } = await memberSetup(['content:read', 'content:write', 'projects:create']);
+      const listed = await mcp(token, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} });
+      expect(listed.statusCode).toBe(200);
+      const names = (listed.json() as { result: { tools: Array<{ name: string }> } }).result.tools.map((t) => t.name);
+      expect(names).toEqual(expect.arrayContaining(['list_projects', 'create_project', 'duplicate_project', 'put_page']));
+
+      const scope = await call(token, 'get_scope');
+      expect(scope.text).toContain('"kind": "member"');
+      expect(scope.text).not.toContain('projectId');
+
+      const stamp = Date.now();
+      const first = JSON.parse((await call(token, 'create_project', { name: 'First', slug: `mcp-first-${stamp}` })).text) as { id: string };
+      const second = JSON.parse((await call(token, 'create_project', { name: 'Second', slug: `mcp-second-${stamp}` })).text) as { id: string };
+      expect(first.id).not.toBe(second.id);
+
+      const page = (title: string) => ({ id: 'about', path: 'about', title, source: `<section><h1>${title}</h1></section>\n` });
+      expect((await call(token, 'put_page', { project: first.id, page: page('About First') })).isError).toBe(false);
+      expect((await call(token, 'put_page', { project: second.id, page: page('About Second') })).isError).toBe(false);
+
+      // Each landed where it was sent — read back through the member's own session, not the token.
+      const titleOf = async (projectId: string): Promise<string> =>
+        ((await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page/about`, cookies: { sw_session: cookie } })).json() as { item: { title: string } }).item.title;
+      expect(await titleOf(first.id)).toBe('About First');
+      expect(await titleOf(second.id)).toBe('About Second');
+
+      const projects = JSON.parse((await call(token, 'list_projects')).text) as Array<{ id: string }>;
+      expect(projects.map((p) => p.id).sort()).toEqual([first.id, second.id].sort());
+
+      const copy = JSON.parse((await call(token, 'duplicate_project', { project: first.id })).text) as { id: string; name: string };
+      expect(copy.name).toBe('First (copy)');
+      expect(await titleOf(copy.id)).toBe('About First');
+    });
+
+    it('cannot reach a project its owner cannot, and is told so as a tool error — not a broken connection', async () => {
+      const other = await setup(); // someone else's project
+      const { token } = await memberSetup(['content:read', 'content:write']);
+      const res = await call(token, 'list_pages', { project: other.projectId });
+      expect(res.status).toBe(200);
+      expect(res.isError).toBe(true);
+      expect(res.text).toMatch(/404.*project not found/);
+      // …and the account tools obey the token's capabilities.
+      const denied = await call(token, 'create_project', { name: 'No', slug: `mcp-no-${Date.now()}` });
+      expect(denied.isError).toBe(true);
+      expect(denied.text).toMatch(/lacks the “projects:create” capability/);
+    });
+
+    it('a project tool called without `project` is refused by the schema, before any request is made', async () => {
+      const { token } = await memberSetup(['content:read']);
+      const res = await mcp(token, { jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'list_pages', arguments: {} } });
+      const body = res.json() as { result?: { isError?: boolean; content: Array<{ text: string }> }; error?: { message: string } };
+      const message = body.error?.message ?? body.result?.content[0]?.text ?? '';
+      expect(body.error !== undefined || body.result?.isError === true).toBe(true);
+      // It is the ARGUMENT that was refused — not some other failure that happens to mention projects.
+      expect(message).toMatch(/Invalid arguments for tool list_pages.* at project$/);
+
+      // An id that is not an id never becomes a request either: `..` would otherwise resolve OUT of
+      // /projects/<id>/ once the URL is parsed.
+      const climbing = await mcp(token, { jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name: 'list_pages', arguments: { project: '..' } } });
+      const climbed = climbing.json() as { result?: { isError?: boolean; content: Array<{ text: string }> }; error?: { message: string } };
+      expect(climbed.error !== undefined || climbed.result?.isError === true).toBe(true);
+      expect(climbed.error?.message ?? climbed.result?.content[0]?.text ?? '').toMatch(/Invalid arguments for tool list_pages/);
+    });
+  });
+
   it('writes a page through put_page (capability-enforced via the in-process REST path)', async () => {
     const { token, projectId } = await setup();
     await mcp(token, init);

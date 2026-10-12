@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runStdioBridge } from './run.js';
+import { isMemberScope } from './client.js';
 
 /** Reads `--flag value` / `--flag=value` from argv, falling back to an env var. */
 function arg(name: string, env: string): string | undefined {
@@ -51,7 +52,9 @@ async function main(): Promise<void> {
   }
   if (scope) {
     process.stderr.write(
-      `sitewright-mcp: connected to project ${scope.projectId} (role ${scope.role}, caps ${scope.capabilities.join(',')})\n`,
+      isMemberScope(scope)
+        ? `sitewright-mcp: connected with a member token (caps ${scope.capabilities.join(',')}) — tools take a \`project\` argument\n`
+        : `sitewright-mcp: connected to project ${scope.projectId} (role ${scope.role}, caps ${scope.capabilities.join(',')})\n`,
     );
   }
 }

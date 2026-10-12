@@ -1,0 +1,409 @@
+[
+  {
+    "name": "add_language",
+    "required": [
+      "locale",
+      "project"
+    ]
+  },
+  {
+    "name": "ai_clone",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "clone_audit",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  },
+  {
+    "name": "compare_regions",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  },
+  {
+    "name": "compare_to_source",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  },
+  {
+    "name": "create_media_folder",
+    "required": [
+      "path",
+      "project"
+    ]
+  },
+  {
+    "name": "create_media_replace",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "create_media_upload",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "create_preview_share",
+    "required": [
+      "label",
+      "project"
+    ]
+  },
+  {
+    "name": "create_project",
+    "required": [
+      "name",
+      "slug"
+    ]
+  },
+  {
+    "name": "delete_content",
+    "required": [
+      "id",
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "delete_content_bulk",
+    "required": [
+      "ids",
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "delete_media",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "delete_page",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "duplicate_project",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "fidelity_check",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  },
+  {
+    "name": "get_capabilities",
+    "required": []
+  },
+  {
+    "name": "get_components",
+    "required": []
+  },
+  {
+    "name": "get_content",
+    "required": [
+      "id",
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "get_guide",
+    "required": []
+  },
+  {
+    "name": "get_page",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "get_publish_status",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "get_reference",
+    "required": []
+  },
+  {
+    "name": "get_scope",
+    "required": []
+  },
+  {
+    "name": "import_image",
+    "required": [
+      "project",
+      "url"
+    ]
+  },
+  {
+    "name": "import_status",
+    "required": [
+      "jobId",
+      "project"
+    ]
+  },
+  {
+    "name": "import_stock_image",
+    "required": [
+      "id",
+      "project",
+      "provider"
+    ]
+  },
+  {
+    "name": "import_website",
+    "required": [
+      "project",
+      "url"
+    ]
+  },
+  {
+    "name": "inspect_source",
+    "required": [
+      "pageId",
+      "project",
+      "selectors"
+    ]
+  },
+  {
+    "name": "list_content",
+    "required": [
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "list_media",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_media_folders",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_pages",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_preview_shares",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_projects",
+    "required": []
+  },
+  {
+    "name": "list_revisions",
+    "required": [
+      "id",
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "list_stock_providers",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_submissions",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "login",
+    "required": []
+  },
+  {
+    "name": "move_media",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "move_media_bulk",
+    "required": [
+      "folder",
+      "ids",
+      "project"
+    ]
+  },
+  {
+    "name": "pagespeed_audit",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  },
+  {
+    "name": "patch_critical_css",
+    "required": [
+      "css",
+      "project"
+    ]
+  },
+  {
+    "name": "patch_page",
+    "required": [
+      "page",
+      "project"
+    ]
+  },
+  {
+    "name": "preview_page",
+    "required": [
+      "page",
+      "project"
+    ]
+  },
+  {
+    "name": "publish_project",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "put_content",
+    "required": [
+      "data",
+      "id",
+      "kind",
+      "project"
+    ]
+  },
+  {
+    "name": "put_page",
+    "required": [
+      "page",
+      "project"
+    ]
+  },
+  {
+    "name": "remove_language",
+    "required": [
+      "locale",
+      "project"
+    ]
+  },
+  {
+    "name": "rename_dataset",
+    "required": [
+      "id",
+      "project",
+      "slug"
+    ]
+  },
+  {
+    "name": "rename_media_folder",
+    "required": [
+      "from",
+      "project",
+      "to"
+    ]
+  },
+  {
+    "name": "replace_media",
+    "required": [
+      "content_base64",
+      "filename",
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "restore_revision",
+    "required": [
+      "id",
+      "kind",
+      "project",
+      "revisionId"
+    ]
+  },
+  {
+    "name": "revoke_preview_share",
+    "required": [
+      "project",
+      "shareId"
+    ]
+  },
+  {
+    "name": "search_icons",
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "search_stock_images",
+    "required": [
+      "project",
+      "provider",
+      "query"
+    ]
+  },
+  {
+    "name": "search_textures",
+    "required": [
+      "query"
+    ]
+  },
+  {
+    "name": "switch_project",
+    "required": []
+  },
+  {
+    "name": "transform_image",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "upload_media",
+    "required": [
+      "content_base64",
+      "filename",
+      "project"
+    ]
+  },
+  {
+    "name": "visual_audit",
+    "required": [
+      "pageId",
+      "project"
+    ]
+  }
+]

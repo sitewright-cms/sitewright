@@ -1,0 +1,1 @@
+ALTER TABLE `member_tokens` ADD `daily_project_limit` integer;

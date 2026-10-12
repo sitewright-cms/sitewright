@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { browserSupportsWebAuthn, startRegistration } from '@simplewebauthn/browser';
+import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { api, ApiError, type PasskeyView } from '../api';
 import { useToast } from './ui/Toast';
 import { useDialogs } from './ui/Dialogs';
@@ -24,7 +24,7 @@ function usableHere(rpId: string | null): boolean {
  * passkey looks broken. Each row therefore names its host and visibly stands down when that host is not
  * the current one. `location.hostname` is the exact comparison: an rpID is the host without its port.
  */
-export function PasskeysSection() {
+export function PasskeysSection({ hasPassword }: { hasPassword: boolean }) {
   const toast = useToast();
   const { confirm, prompt, dialog } = useDialogs();
   const [items, setItems] = useState<PasskeyView[]>([]);
@@ -48,9 +48,30 @@ export function PasskeysSection() {
     const name = await prompt({ title: 'Add a passkey', label: 'Name', initial: `Passkey ${items.length + 1}`, placeholder: 'e.g. MacBook Touch ID', confirmLabel: 'Continue' });
     if (name === null) return;
     const label = name.trim() || `Passkey ${items.length + 1}`;
+    // A passkey is a way to sign in, so adding one is confirmed first — with the password, or failing
+    // that with a passkey this browser can already offer. An account with neither has nothing to be
+    // asked for and adds its first on the session alone (the server applies the same rule).
+    let currentPassword: string | undefined;
+    if (hasPassword) {
+      const entered = await prompt({
+        title: 'Confirm it is you',
+        label: 'Your password',
+        secret: true,
+        confirmLabel: 'Continue',
+        note: 'A passkey is a way to sign in to your account, so adding one asks for your password.',
+      });
+      if (entered === null) return;
+      currentPassword = entered;
+    }
     setBusy(true);
     try {
-      const { options, handle } = await api.passkeyRegisterOptions();
+      let proof: Parameters<typeof api.passkeyRegisterOptions>[0];
+      if (currentPassword !== undefined) proof = { currentPassword };
+      else if (items.some((pk) => usableHere(pk.rpId))) {
+        const confirm = await api.passkeyConfirmOptions();
+        proof = { passkey: { handle: confirm.handle, response: await startAuthentication({ optionsJSON: confirm.options }) } };
+      }
+      const { options, handle } = await api.passkeyRegisterOptions(proof);
       const response = await startRegistration({ optionsJSON: options });
       await api.passkeyRegisterVerify(handle, response, label);
       await load();
@@ -97,8 +118,10 @@ export function PasskeysSection() {
       {items.length > 0 && (
         <ul className="flex flex-col gap-2">
           {items.map((pk) => (
-            <li key={pk.id} className={`flex items-center gap-3 ${glassPanel} px-4 py-2.5 text-sm`}>
-              <span className={`min-w-0 truncate font-medium ${usableHere(pk.rpId) ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>{pk.name}</span>
+            // Wraps rather than truncates: at phone width the date and the two buttons took the whole
+            // row and the NAME was squeezed to nothing — a list of passkeys nobody could tell apart.
+            <li key={pk.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${glassPanel} px-4 py-2.5 text-sm`}>
+              <span className={`min-w-0 break-words font-medium ${usableHere(pk.rpId) ? 'text-slate-800 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'}`}>{pk.name}</span>
               {pk.rpId !== null && !usableHere(pk.rpId) && (
                 <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
                   for {pk.rpId} — sign in there to use it

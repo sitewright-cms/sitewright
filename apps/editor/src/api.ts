@@ -779,17 +779,37 @@ export interface MemberTokenView {
   name: string;
   capabilities: MemberTokenCapability[];
   tokenPrefix: string;
+  /** The token's own cap on new projects per day, or null for "the instance maximum". */
+  dailyProjectLimit: number | null;
   expiresAt: string;
   revokedAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
 }
+/** A passkey assertion confirming "it is me": the handle from `passkeyConfirmOptions` + the response. */
+export interface PasskeyProof {
+  handle: string;
+  response: AuthenticationResponseJSON;
+}
 export interface CreateMemberTokenBody {
-  /** Minting re-authenticates — a member token outlives the session that made it. */
-  currentPassword: string;
+  /** Minting re-authenticates — a member token outlives the session that made it. Exactly one of
+   *  `currentPassword` and `passkey`. */
+  currentPassword?: string;
+  passkey?: PasskeyProof;
   name: string;
   capabilities: MemberTokenCapability[];
   expiresInDays: number;
+  /** New projects per day; omitted → the instance maximum. */
+  dailyProjectLimit?: number;
+}
+/** Why a member token does or does not work right now (`suspended`: its owner is no longer staff). */
+export type MemberTokenStatus = 'active' | 'expired' | 'revoked' | 'suspended';
+/** One row of the instance-wide member-token list (System settings → Security). */
+export interface MemberTokenAdminView extends MemberTokenView {
+  owner: { userId: string; email: string; role: 'admin' | 'developer' | null };
+  status: MemberTokenStatus;
+  projectsUsed: number;
+  projectsCreatedToday: number;
 }
 /**
  * A live agent connection (the "AI agent details" modal + header indicator): a project token (`pat`),
@@ -1234,8 +1254,14 @@ export const api = {
   updateEmail: (email: string, currentPassword: string) =>
     request<{ email: string }>('PUT', '/account/email', { email, currentPassword }),
   // `currentPassword` is omitted to SET an initial password for an account that has none (OIDC users).
-  changePassword: (currentPassword: string | undefined, newPassword: string) =>
-    request<void>('PUT', '/account/password', { currentPassword, newPassword }),
+  // `revokeMemberTokens` is the member's answer to "should your member tokens go with the old
+  // password?" — omitted, the server takes the cautious reading and revokes.
+  changePassword: (currentPassword: string | undefined, newPassword: string, revokeMemberTokens?: boolean) =>
+    request<void>('PUT', '/account/password', {
+      currentPassword,
+      newPassword,
+      ...(revokeMemberTokens !== undefined ? { revokeMemberTokens } : {}),
+    }),
   // Two-factor (TOTP). setup → begin enrolment (secret + otpauth URI for the QR); confirm → enable +
   // get recovery codes once; disable / regenerate are password-confirmed.
   mfaSetupTotp: () =>
@@ -1248,14 +1274,19 @@ export const api = {
     request<{ recoveryCodes: string[] }>('POST', '/account/mfa/recovery-codes', { currentPassword }),
   // Passkeys (WebAuthn). The `options`/`response` are the structured WebAuthn JSON; `handle` is the
   // opaque challenge token threaded from options → verify.
-  passkeyRegisterOptions: () =>
-    request<{ options: PublicKeyCredentialCreationOptionsJSON; handle: string }>('POST', '/account/passkeys/register/options'),
+  // Adding a passkey is confirmed with the password or an existing passkey, when the account has
+  // either; `proof` is omitted only for an account with nothing to confirm with.
+  passkeyRegisterOptions: (proof?: { currentPassword?: string; passkey?: PasskeyProof }) =>
+    request<{ options: PublicKeyCredentialCreationOptionsJSON; handle: string }>('POST', '/account/passkeys/register/options', proof),
   passkeyRegisterVerify: (handle: string, response: RegistrationResponseJSON, name: string) =>
     request<{ id: string; name: string }>('POST', '/account/passkeys/register/verify', { handle, response, name }),
   listPasskeys: () => request<{ items: PasskeyView[] }>('GET', '/account/passkeys'),
   renamePasskey: (id: string, name: string) =>
     request<void>('PATCH', `/account/passkeys/${encodeURIComponent(id)}`, { name }),
   deletePasskey: (id: string) => request<void>('DELETE', `/account/passkeys/${encodeURIComponent(id)}`),
+  /** Begin confirming "it is me" with one of my own passkeys (not a sign-in). */
+  passkeyConfirmOptions: () =>
+    request<{ options: PublicKeyCredentialRequestOptionsJSON; handle: string }>('POST', '/account/passkeys/confirm/options'),
   passkeyLoginOptions: () =>
     request<{ options: PublicKeyCredentialRequestOptionsJSON; handle: string }>('POST', '/auth/passkey/options'),
   passkeyLoginVerify: (handle: string, response: AuthenticationResponseJSON) =>
@@ -1288,8 +1319,12 @@ export const api = {
       `/admin/invites/${encodeURIComponent(inviteId)}/approve`,
     ),
   /** Issue a fresh password for another staff account. Returned once — only the hash is stored. */
-  resetStaffPassword: (userId: string) =>
-    request<{ email: string | null; password: string }>('POST', `/admin/users/${encodeURIComponent(userId)}/password`),
+  resetStaffPassword: (userId: string, revokeMemberTokens?: boolean) =>
+    request<{ email: string | null; password: string; revokedMemberTokens: number }>(
+      'POST',
+      `/admin/users/${encodeURIComponent(userId)}/password`,
+      revokeMemberTokens !== undefined ? { revokeMemberTokens } : undefined,
+    ),
   /** A project's pending (client) invites. */
   listProjectInvites: (projectId: string) =>
     request<{ invites: Invite[] }>('GET', `/projects/${projectId}/invites`),
@@ -1634,13 +1669,19 @@ export const api = {
     request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
   deleteApiKey: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/api-keys/${encodeURIComponent(id)}`),
-  /** The signed-in member's own member tokens, plus how many projects one token may create a day. */
+  /** The signed-in member's own member tokens, plus the most projects any one token may create a day. */
   listMemberTokens: () =>
-    request<{ items: MemberTokenView[]; dailyProjectCap: number }>('GET', '/account/member-tokens'),
+    request<{ items: MemberTokenView[]; dailyProjectMax: number }>('GET', '/account/member-tokens'),
   createMemberToken: (body: CreateMemberTokenBody) =>
     request<{ token: string; key: MemberTokenView }>('POST', '/account/member-tokens', body),
   deleteMemberToken: (id: string) =>
     request<void>('DELETE', `/account/member-tokens/${encodeURIComponent(id)}`),
+  /** Every member token on the instance, with its owner. Instance admins only. */
+  listAllMemberTokens: () =>
+    request<{ items: MemberTokenAdminView[]; dailyProjectMax: number }>('GET', '/admin/member-tokens'),
+  /** Revoke anyone's member token. Instance admins only. */
+  revokeMemberTokenAsAdmin: (id: string) =>
+    request<void>('DELETE', `/admin/member-tokens/${encodeURIComponent(id)}`),
 
   // --- datasets ---
   listDatasets: (projectId: string) =>

@@ -241,7 +241,8 @@ const MEMBER_TOKEN_PREFACE =
   'THIS CONNECTION USES A MEMBER TOKEN. It is not tied to one project: it reaches every project its owner can open. ' +
   'Call `list_projects` first, then pass the chosen project\'s `id` as the `project` argument of EVERY project tool — ' +
   'each call names its project, and nothing is remembered between calls. `create_project` and `duplicate_project` make a new one ' +
-  '(if the token allows it) and return its id. Never guess an id, and never act on a project the user did not ask for.';
+  '(if the token allows it) and return its id. `list_members`, `invite_member` and `approve_invite` manage who has access to a project, ' +
+  'again only if the token allows it. Never guess an id, and never act on a project the user did not ask for.';
 
 type AnyRegister = (
   name: string,
@@ -422,6 +423,33 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         inputSchema: { project: IdSchema.describe('The id of the project to copy (from list_projects).') },
       },
       gate('projects:create', ({ project }: { project: string }) => client.duplicateProject(project)),
+    );
+    // People. Project-bound, so each takes `project` like every other project tool.
+    server.registerTool(
+      'list_members',
+      {
+        description:
+          'List who has access to a project — its members (email, role) and its pending invites (id, email, expiry). On projects the token\'s owner owns.',
+      },
+      gate('members:manage', () => client.listMembers()),
+    );
+    server.registerTool(
+      'invite_member',
+      {
+        description:
+          'Invite a person to a project by email, as a member with their own sign-in. Returns the invite (its `id`) and a one-time `token` for the accept link — hand that to the person, or call approve_invite to add them without the link. Only when the user asked for this person to be given access: a member can edit the whole site and stays a member after this token is revoked.',
+        inputSchema: { email: z.string().email().max(254).describe('The address to invite.') },
+      },
+      gate('members:invite', ({ email }: { email: string }) => client.inviteMember(email)),
+    );
+    server.registerTool(
+      'approve_invite',
+      {
+        description:
+          'Add an invited person to the project NOW, without them opening the invite link. If the address has no account yet, one is created and its one-time `password` is returned — it is shown this once, so pass it to the user to hand over and do not store or repeat it. If the account already exists, access is simply granted.',
+        inputSchema: { inviteId: IdSchema.describe('The `id` of a pending invite, from invite_member or list_members.') },
+      },
+      gate('members:invite', ({ inviteId }: { inviteId: string }) => client.approveInvite(inviteId)),
     );
   }
 

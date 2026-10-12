@@ -12,6 +12,8 @@ interface SecurityTabProps {
   recoveryCodesRemaining: number;
   /** Called after enabling/disabling TOTP so the app can refresh its cached `totpEnabled`. */
   onChanged: () => void;
+  /** Whether the account has a password — adding a passkey is confirmed with it when it does. */
+  hasPassword: boolean;
 }
 
 function errMsg(err: unknown, fallback: string): string {
@@ -56,7 +58,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
  * enabled, regenerate recovery codes or disable it (both password-confirmed). The TOTP secret never
  * touches the client beyond the one-time enrolment QR/string.
  */
-export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: SecurityTabProps) {
+export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged, hasPassword }: SecurityTabProps) {
   const toast = useToast();
   const [enrol, setEnrol] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [qr, setQr] = useState('');
@@ -249,7 +251,7 @@ export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: 
           </div>
         )}
       </div>
-      <PasskeysSection />
+      <PasskeysSection hasPassword={hasPassword} />
     </div>
   );
 }

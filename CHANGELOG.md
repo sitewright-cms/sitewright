@@ -23,30 +23,63 @@ The running version of an instance is reported at `GET /version` (baked into the
     `projects:delete` (the recoverable soft-delete), `members:manage` (list and remove a project's
     members, list and revoke its invites) and `members:invite`. Inviting is separate on purpose: an
     invite becomes a person's own sign-in to the project — not narrowed by the token, able to open
-    settings no token can, and still a member after the token is revoked. Issuing a password for a
-    person, staff invites and every other instance-admin action stay interactive whatever is ticked.
+    settings no token can, and still a member after the token is revoked.
+  - `members:invite` also covers **approving an invite without its link**
+    (`POST /projects/:id/invites/:inviteId/approve`), so an agent can add a person in one go. For an
+    address that has no account yet this creates one and returns its one-time password to the caller
+    — which is what "gives someone a sign-in" has to mean for automation, and is why the capability
+    is labelled that way. Replacing the password of an account that already exists, staff invites and
+    every instance-admin action stay interactive whatever is ticked.
   - Staff only, and only while they are staff: a demoted member's tokens stop working on the next
     request and are revoked. Minting, listing and revoking are session-only, so a token can never
-    make another token, and minting asks for the account password, so a stolen session cannot mint
-    one either. Changing that password — or an admin resetting it — revokes the member tokens made
-    with it.
-  - One token may create 50 projects per 24 hours, counted when the project is created — a failed
-    import is not refunded. Nothing else bounded project creation, so an unattended loop would have
-    been limited only by the request rate.
+    make another token.
+  - **Minting asks for the account password or one of the account's passkeys**, so a stolen session
+    cannot mint a token on its own. An account with neither is told to add one first.
+  - **Adding a passkey now asks for your password** (or an existing passkey, for an account that has
+    no password). A passkey is a way to sign in, and it can now stand in for the password when a token
+    is minted — so a session alone must not be able to add one, or a stolen cookie could give itself a
+    permanent login and mint with it. An account with nothing to confirm with (single sign-on only,
+    no passkey on this hostname) still adds its first passkey on the session.
+    `POST /account/passkeys/register/options` takes the confirmation as `currentPassword` or
+    `passkey`.
+  - **Changing your password asks what should happen to your member tokens.** Automation signs in
+    with the token, not the password, so a routine change need not stop it — but a password changed
+    because someone else may know it should. Only the member knows which, so the Password tab asks
+    (when there are tokens to ask about) and will not proceed until answered. An admin issuing a new
+    password for another staff member is asked the same, in the confirmation itself; closing that
+    dialog cancels the reset. A caller that does not say gets the cautious reading: revoke.
+  - **Each token has a daily limit on new projects, chosen when it is minted.** It can be lower than
+    the instance maximum, never higher. The maximum — 50 unless changed — is set under **System
+    settings → Security → Member tokens**, and lowering it tightens existing tokens at once, because
+    the smaller of the two numbers is read when the token is used. A creation is counted when the
+    project is created, so a failed import is not refunded. Nothing else bounded project creation; an
+    unattended loop would have been limited only by the request rate.
+  - **An admin can see and revoke every member token on the instance** (System settings → Security →
+    *View all member tokens*): owner, capabilities, when it was last used, how many projects it has
+    acted on and how much of its daily limit is spent. Revoked and expired tokens stay listed behind
+    a switch until housekeeping removes them. Before this, a token could only be found from a project
+    it happened to have touched.
   - A member token shows up in a project's agent connections once it has acted there. Only its owner
     or an instance admin can revoke it from that list, because revoking is account-wide.
+  - Housekeeping removes a dead token 90 days after it expired or was revoked, with its per-project
+    activity; the project-creation ledger of a token that is still alive is pruned after 30 days, as
+    the daily limit only ever reads back one.
   - `GET /api-key/self` now answers with a `kind` (`project` or `member`); a member token names no
     project and lists what it can reach with `GET /projects`.
   - **Over MCP, a member token works across projects from one connection.** Every project tool takes
     a required `project` argument (an id from the new `list_projects`), so each call names its
     project and nothing is remembered between calls. `create_project` and `duplicate_project` make a
-    new one and return its id. These three tools and the `project` argument exist only for a member
-    token: a project key's tools are exactly as they were, and it cannot be pointed at another
-    project.
+    new one and return its id. `list_members`, `invite_member` and `approve_invite` manage who has
+    access to a project. These six tools and the `project` argument exist only for a member token: a
+    project key's tools are exactly as they were, and it cannot be pointed at another project.
   - The clone agent (`POST /projects/:id/agent/clone`) hands its loop the full authoring set. A
     member token must hold all of it to start one, so `publish` alone cannot become write and delete
     across an account. A project key is unchanged.
-  - Three account routes are new: `GET`, `POST` and `DELETE /account/member-tokens`.
+  - New routes: `GET`, `POST` and `DELETE /account/member-tokens`;
+    `POST /account/passkeys/confirm/options` (begins a passkey confirmation — not a sign-in); and,
+    for instance admins, `GET /admin/member-tokens` and `DELETE /admin/member-tokens/:id`.
+    `PUT /account/password` and the two admin password-reset routes take an optional
+    `revokeMemberTokens`.
 
 ### Fixed
 

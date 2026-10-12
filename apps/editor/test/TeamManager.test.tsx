@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { OrgMember, Invite } from '../src/api';
 
-const { listMembers, listInvites, removeMember, inviteDeveloper, revokeInvite, approveStaffInvite, resetStaffPassword } = vi.hoisted(() => ({
+const { listMembers, listInvites, removeMember, inviteDeveloper, revokeInvite, approveStaffInvite, resetStaffPassword, listAllMemberTokens } = vi.hoisted(() => ({
+  listAllMemberTokens: vi.fn(),
   listMembers: vi.fn(),
   listInvites: vi.fn(),
   removeMember: vi.fn(),
@@ -21,7 +22,8 @@ vi.mock('../src/api', () => ({
     inviteDeveloper: (e: string, role?: string) => inviteDeveloper(e, role),
     revokeInvite: (id: string) => revokeInvite(id),
     approveStaffInvite: (id: string) => approveStaffInvite(id),
-    resetStaffPassword: (u: string) => resetStaffPassword(u),
+    resetStaffPassword: (u: string, revokeMemberTokens?: boolean) => resetStaffPassword(u, revokeMemberTokens),
+    listAllMemberTokens: () => listAllMemberTokens(),
   },
 }));
 
@@ -39,6 +41,7 @@ beforeEach(() => {
   revokeInvite.mockReset();
   approveStaffInvite.mockReset();
   resetStaffPassword.mockReset();
+  listAllMemberTokens.mockReset().mockResolvedValue({ items: [], dailyProjectMax: 50 });
   listMembers.mockResolvedValue({ members: [owner, dev] });
   listInvites.mockResolvedValue({ invites: [] });
   removeMember.mockResolvedValue(undefined);
@@ -98,11 +101,96 @@ describe('TeamManager', () => {
   });
 
   it('issues a replacement password for another staff account', async () => {
-    resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1' });
+    resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1', revokedMemberTokens: 0 });
     render(<TeamManager />);
     fireEvent.click(await screen.findByRole('button', { name: 'Issue a new password for dev@acme.test' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Issue new password' }));
-    await waitFor(() => expect(resetStaffPassword).toHaveBeenCalledWith('u-dev'));
+    // They hold no member tokens, so nothing is asked and nothing is said about them: the server's
+    // cautious default applies, which revokes nothing when there is nothing.
+    await waitFor(() => expect(resetStaffPassword).toHaveBeenCalledWith('u-dev', undefined));
     expect(await screen.findByText('Kd8!wRt3-Zn6qVx1')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Their member tokens' })).toBeNull();
+  });
+
+  describe('issuing a password for someone who has member tokens', () => {
+    const tokenOf = (userId: string, status = 'active') => ({ id: `${userId}-${status}`, status, owner: { userId, email: 'x', role: 'developer' } });
+    beforeEach(() => {
+      // Two working tokens of the dev's; a revoked one of theirs and someone else's do not count.
+      listAllMemberTokens.mockResolvedValue({
+        items: [tokenOf('u-dev'), { ...tokenOf('u-dev'), id: 'second' }, tokenOf('u-dev', 'revoked'), tokenOf('u-other')],
+        dailyProjectMax: 50,
+      });
+      resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1', revokedMemberTokens: 0 });
+    });
+    /** Opens the reset for the dev and returns the one dialog that both confirms and asks. */
+    const open = async () => {
+      render(<TeamManager />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Issue a new password for dev@acme.test' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Issue a new password' });
+      expect(await screen.findByText(/dev@acme\.test has 2 member tokens that agents or automation sign in with/)).toBeInTheDocument();
+      // Neither answer is chosen for the admin, and nothing can be issued until one is.
+      expect((screen.getByRole('radio', { name: 'Keep them working' }) as HTMLInputElement).checked).toBe(false);
+      expect((screen.getByRole('radio', { name: 'Revoke them' }) as HTMLInputElement).checked).toBe(false);
+      expect(screen.getByRole('button', { name: 'Issue new password' })).toBeDisabled();
+      expect(resetStaffPassword).not.toHaveBeenCalled();
+      return dialog;
+    };
+
+    it('★ asks whether to revoke them, and keeps them when told to — a forgotten password is not a breach', async () => {
+      await open();
+      fireEvent.click(screen.getByRole('radio', { name: 'Keep them working' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Issue new password' }));
+      await waitFor(() => expect(resetStaffPassword).toHaveBeenCalledWith('u-dev', false));
+      expect(await screen.findByText('Kd8!wRt3-Zn6qVx1')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Issue a new password' })).toBeNull();
+    });
+
+    it('revokes them when told to', async () => {
+      resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1', revokedMemberTokens: 2 });
+      await open();
+      fireEvent.click(screen.getByRole('radio', { name: 'Revoke them' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Issue new password' }));
+      await waitFor(() => expect(resetStaffPassword).toHaveBeenCalledWith('u-dev', true));
+      expect(await screen.findByText('Kd8!wRt3-Zn6qVx1')).toBeInTheDocument();
+    });
+
+    it('★ backing out — Cancel or Escape — resets NOTHING: a dismissal is not an answer', async () => {
+      await open();
+      fireEvent.click(screen.getByRole('radio', { name: 'Revoke them' }));
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Issue a new password' })).toBeNull());
+      expect(resetStaffPassword).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Issue a new password for dev@acme.test' }));
+      await screen.findByRole('dialog', { name: 'Issue a new password' });
+      // Reopened fresh: the earlier half-made choice is not carried over.
+      expect((screen.getByRole('radio', { name: 'Revoke them' }) as HTMLInputElement).checked).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Issue a new password' })).toBeNull());
+      expect(resetStaffPassword).not.toHaveBeenCalled();
+      expect(screen.queryByText('Kd8!wRt3-Zn6qVx1')).toBeNull();
+    });
+
+    it('when the token list cannot be read it still ASKS, without pretending to know how many', async () => {
+      listAllMemberTokens.mockRejectedValue(new Error('offline'));
+      render(<TeamManager />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Issue a new password for dev@acme.test' }));
+      await screen.findByRole('dialog', { name: 'Issue a new password' });
+      expect(screen.getByText(/dev@acme\.test may have member tokens that agents or automation sign in with/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Issue new password' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('radio', { name: 'Keep them working' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Issue new password' }));
+      await waitFor(() => expect(resetStaffPassword).toHaveBeenCalledWith('u-dev', false));
+    });
+
+    it('speaks of ONE token in the singular', async () => {
+      listAllMemberTokens.mockResolvedValue({ items: [tokenOf('u-dev')], dailyProjectMax: 50 });
+      render(<TeamManager />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Issue a new password for dev@acme.test' }));
+      await screen.findByRole('dialog', { name: 'Issue a new password' });
+      expect(screen.getByText(/dev@acme\.test has a member token that agents/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Keep it working' })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: 'Revoke it' })).toBeInTheDocument();
+    });
   });
 });

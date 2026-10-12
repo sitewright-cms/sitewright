@@ -1,4 +1,4 @@
-import { and, eq, lt } from 'drizzle-orm';
+import { and, eq, isNull, lt, or } from 'drizzle-orm';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { userPasskeys, webauthnChallenges } from '../db/schema.js';
@@ -6,7 +6,8 @@ import { userPasskeys, webauthnChallenges } from '../db/schema.js';
 /** A WebAuthn challenge lives this long between an options request and its verify. */
 const CHALLENGE_TTL_MS = 1000 * 60 * 5; // 5 minutes
 
-export type ChallengeType = 'reg' | 'auth';
+/** `stepup`: a signed-in user proving it is them before something sensitive (never a sign-in). */
+export type ChallengeType = 'reg' | 'auth' | 'stepup';
 
 /** A passkey as shown in the Security tab (no secrets — id/public key are non-secret but omitted). */
 export interface PasskeyView {
@@ -71,9 +72,17 @@ export class PasskeyRepository {
       .where(eq(userPasskeys.userId, userId));
   }
 
-  /** The user's existing credentials, for excludeCredentials / allowCredentials. */
-  async credentialsForUser(userId: string): Promise<{ id: string; transports?: string[] }[]> {
-    const rows = await this.db.select({ id: userPasskeys.id, transports: userPasskeys.transports }).from(userPasskeys).where(eq(userPasskeys.userId, userId));
+  /**
+   * The user's existing credentials, for excludeCredentials / allowCredentials. With `rpId`, only the
+   * ones the browser could offer on that Relying Party: registered there, or registered before the
+   * column existed (unknown, so not ruled out).
+   */
+  async credentialsForUser(userId: string, rpId?: string): Promise<{ id: string; transports?: string[] }[]> {
+    const onThisHost = rpId === undefined ? undefined : or(eq(userPasskeys.rpId, rpId), isNull(userPasskeys.rpId));
+    const rows = await this.db
+      .select({ id: userPasskeys.id, transports: userPasskeys.transports })
+      .from(userPasskeys)
+      .where(and(eq(userPasskeys.userId, userId), onThisHost));
     return rows.map((r) => ({ id: r.id, transports: r.transports ?? undefined }));
   }
 

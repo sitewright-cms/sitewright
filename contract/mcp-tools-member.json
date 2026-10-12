@@ -13,6 +13,13 @@
     ]
   },
   {
+    "name": "approve_invite",
+    "required": [
+      "inviteId",
+      "project"
+    ]
+  },
+  {
     "name": "clone_audit",
     "required": [
       "pageId",
@@ -189,6 +196,13 @@
     ]
   },
   {
+    "name": "invite_member",
+    "required": [
+      "email",
+      "project"
+    ]
+  },
+  {
     "name": "list_content",
     "required": [
       "kind",
@@ -203,6 +217,12 @@
   },
   {
     "name": "list_media_folders",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_members",
     "required": [
       "project"
     ]

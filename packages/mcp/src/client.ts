@@ -672,6 +672,32 @@ export class SitewrightClient {
     return (await this.request<{ project: ProjectSummary }>('POST', `/projects/${encodeURIComponent(projectId)}/duplicate`)).project;
   }
 
+  /** A project's members and its pending invites. Member token with `members:manage`. */
+  async listMembers(): Promise<{ members: unknown[]; invites: unknown[] }> {
+    const [members, invites] = await Promise.all([
+      this.request<{ members: unknown[] }>('GET', this.projectPath('/members')),
+      this.request<{ invites: unknown[] }>('GET', this.projectPath('/invites')),
+    ]);
+    return { members: members.members, invites: invites.invites };
+  }
+
+  /** Invites an address to the project as a member. Member token with `members:invite`. */
+  async inviteMember(email: string): Promise<unknown> {
+    return this.request('POST', this.projectPath('/invites'), { email });
+  }
+
+  /**
+   * Approves a pending invite without its link, making the invitee a member now. Member token with
+   * `members:invite`. For an address with no account the response carries a one-time password.
+   */
+  async approveInvite(inviteId: string): Promise<unknown> {
+    // Same alphabet as a project id, for the same reason: a `..` must never reach the path.
+    if (!PROJECT_ID.test(inviteId)) {
+      throw new SitewrightApiError(400, 'not an invite id — pass an `id` exactly as invite_member or list_members returned it');
+    }
+    return this.request('POST', this.projectPath(`/invites/${encodeURIComponent(inviteId)}/approve`));
+  }
+
   /** Learns (and caches) the token's scope: which project + role + capabilities. */
   async introspect(): Promise<Scope> {
     const scope = await this.request<Scope>('GET', '/api-key/self');

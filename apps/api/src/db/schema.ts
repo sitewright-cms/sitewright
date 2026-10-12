@@ -330,7 +330,9 @@ export const webauthnChallenges = sqliteTable(
     id: text('id').primaryKey(),
     userId: text('user_id'),
     challenge: text('challenge').notNull(),
-    type: text('type', { enum: ['reg', 'auth'] }).notNull(),
+    // `stepup` is a signed-in user confirming it is them (a member token is minted with it). Kept apart
+    // from `auth` so a sign-in challenge can never be replayed as a confirmation, or the other way round.
+    type: text('type', { enum: ['reg', 'auth', 'stepup'] }).notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -472,8 +474,10 @@ export type ApiKeySource = 'pat' | 'oauth';
  * project's payment credentials among them), and stays a member after the token is revoked. Folding
  * it into `members:manage` would have made "may remove a member" quietly mean "may create a login".
  *
- * Issuing a PASSWORD for an account is not a capability at all — that stays an interactive decision
- * for every kind of bearer.
+ * `members:invite` also covers APPROVING an invite without its link. For an address that has no account
+ * yet, that creates one and hands its one-time password to the caller — the same login an invite leads
+ * to, minus the invitee's inbox. Replacing the password of an account that already EXISTS is not a
+ * capability at all: that stays an interactive decision for every kind of bearer.
  */
 export const MEMBER_TOKEN_ADMIN_CAPABILITIES = [
   'projects:create',
@@ -510,6 +514,12 @@ export const memberTokens = sqliteTable(
     tokenHash: text('token_hash').notNull().unique(),
     /** Short, non-secret identifying prefix shown in the UI (e.g. `swm_a1b2c3d4`). */
     tokenPrefix: text('token_prefix').notNull(),
+    /**
+     * The most new projects this token may create per 24 hours, chosen when it was minted. Null means
+     * "whatever the instance allows". Either way the instance maximum still applies on every use, so
+     * an admin who lowers it tightens tokens that already exist.
+     */
+    dailyProjectLimit: integer('daily_project_limit'),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
     lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
@@ -551,6 +561,9 @@ export const memberTokenProjects = sqliteTable(
  * would be refunded from the cap — leaving the most expensive loop there is (create, import, fail,
  * remove) bounded by nothing but the request rate. The row therefore outlives its project, which is
  * also the more useful provenance: it still says who made a project that has since been reaped.
+ *
+ * Rows are kept for MEMBER_TOKEN_LEDGER_RETENTION_DAYS and then pruned by housekeeping: the cap only
+ * ever looks back one day, and a token that lives a year would otherwise keep every row it ever wrote.
  */
 export const memberTokenCreations = sqliteTable(
   'member_token_creations',

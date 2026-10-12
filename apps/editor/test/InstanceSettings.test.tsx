@@ -10,6 +10,14 @@ const testInstanceSmtp = vi.fn();
 const sendInstanceSmtpTest = vi.fn();
 const undeliveredInstanceSubmissions = vi.fn();
 const testStockKey = vi.fn();
+// The instance-wide token list has its own tests; here it only has to open and close.
+vi.mock('../src/views/settings/MemberTokensAdminModal', () => ({
+  MemberTokensAdminModal: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Member tokens">
+      <button onClick={onClose}>close tokens</button>
+    </div>
+  ),
+}));
 vi.mock('../src/api', () => ({
   api: {
     getInstanceSettings: () => getInstanceSettings(),
@@ -264,6 +272,51 @@ describe('InstanceSettings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(2));
     expect((putInstanceSettings.mock.calls[1]![0] as InstanceSettingsInput).agentSessionHours).toBeNull();
+  });
+
+  it('★ member tokens: hydrates the daily project maximum, saves a change, clamps it, and reverts the default as null', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, memberTokenDailyProjectMax: 20 } });
+    // The form re-hydrates from what the server says it stored.
+    putInstanceSettings.mockResolvedValueOnce({ settings: { ...DEFAULTS, memberTokenDailyProjectMax: 5 } });
+    render(<InstanceSettings />);
+    const field = await screen.findByLabelText('Maximum new projects per member token per day');
+    expect(field).toHaveValue(20);
+
+    fireEvent.change(field, { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect((putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput).memberTokenDailyProjectMax).toBe(5);
+
+    // Out of range is clamped to what the server accepts rather than sent and refused.
+    fireEvent.change(field, { target: { value: '999999' } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue(1000);
+    // Zero tightens to the smallest allowed value — it must never spring back to the default of 50.
+    fireEvent.change(field, { target: { value: '0' } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue(1);
+    // Back to the built-in default → null, so the instance follows the default if it ever changes.
+    fireEvent.change(field, { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(2));
+    expect((putInstanceSettings.mock.calls[1]![0] as InstanceSettingsInput).memberTokenDailyProjectMax).toBeNull();
+  });
+
+  it('member tokens: defaults to 50, is not sent when untouched, and opens the instance-wide list', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    expect(await screen.findByLabelText('Maximum new projects per member token per day')).toHaveValue(50);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect(putInstanceSettings.mock.calls[0]![0]).not.toHaveProperty('memberTokenDailyProjectMax');
+
+    expect(screen.queryByRole('dialog', { name: 'Member tokens' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'View all member tokens' }));
+    expect(screen.getByRole('dialog', { name: 'Member tokens' })).toBeInTheDocument();
+    // Opening the list is not a save.
+    expect(putInstanceSettings).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'close tokens' }));
+    expect(screen.queryByRole('dialog', { name: 'Member tokens' })).toBeNull();
   });
 
   it('does not touch agentSessionHours when the admin never edits it', async () => {

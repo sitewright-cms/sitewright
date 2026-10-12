@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSitewrightMcpServer, SitewrightClient, type BridgeAuth, type ScopeHolder } from '@sitewright/mcp';
+import { createSitewrightMcpServer, SitewrightClient, type BridgeAuth, type Scope, type ScopeHolder } from '@sitewright/mcp';
 import { expectContract } from './contract-helpers.js';
 
 /**
@@ -14,8 +14,8 @@ import { expectContract } from './contract-helpers.js';
  * Listed through a real client over an in-memory transport rather than by reading the source or
  * poking at SDK internals, so this asserts what an agent would actually be offered.
  */
-async function listTools() {
-  const holder: ScopeHolder = { scope: null };
+async function listTools(scope: Scope | null = null) {
+  const holder: ScopeHolder = { scope };
   const auth: BridgeAuth = {
     interactive: false,
     token: async () => null,
@@ -46,6 +46,20 @@ describe('contract: MCP tools', () => {
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     expectContract('mcp-tools.json', surface);
+  });
+
+  // A MEMBER token gets a different surface: three account tools more, and a required `project` on
+  // every project tool. Pinned separately so neither can drift unseen — in particular, a project tool
+  // that LOSES its `project` argument here would silently have nothing to act on.
+  it('matches the committed tool surface for a member token', async () => {
+    const tools = await listTools({ kind: 'member', capabilities: ['content:read'] });
+    const surface = tools
+      .map((t) => ({
+        name: t.name,
+        required: ((t.inputSchema as { required?: string[] } | undefined)?.required ?? []).slice().sort(),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    expectContract('mcp-tools-member.json', surface);
   });
 
   it('offers login and orientation before a connection exists', async () => {

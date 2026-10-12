@@ -113,7 +113,7 @@ async function main(): Promise<void> {
         const scope = await runStdioBridge({ url, auth: createBridgeAuth(url) });
         process.stderr.write(
           scope
-            ? `sitewright mcp: connected to project ${scope.projectId}\n`
+            ? `sitewright mcp: connected ${'projectId' in scope ? `to project ${scope.projectId}` : 'with a member token'}\n`
             : `sitewright mcp: ready (not yet signed in — the agent can connect with the login tool)\n`,
         );
       } catch (err) {

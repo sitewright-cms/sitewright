@@ -5,6 +5,7 @@
  * tree-safety) is enforced server-side; this layer only forwards.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { ScreenshotViewportName } from '@sitewright/schema';
 
 /**
@@ -27,12 +28,61 @@ export type Capability =
   | 'deploy'
   | 'payments:provider:write';
 
-export interface Scope {
+/**
+ * Capabilities only a MEMBER token carries — they act across an account rather than inside one
+ * project. A mirror of `MEMBER_TOKEN_ADMIN_CAPABILITIES` in the API's schema, kept by hand for the
+ * same reason as {@link Capability}.
+ */
+export type AccountCapability = 'projects:create' | 'projects:rename' | 'projects:delete' | 'members:manage' | 'members:invite';
+
+/** A PROJECT key's scope: one project, at a fixed role. */
+export interface ProjectScope {
+  kind?: 'project';
   projectId: string;
   role: 'owner' | 'admin' | 'member';
   capabilities: Capability[];
   /** Effective agent (MCP) instructions — the admin override or the built-in default; resolved by the API. */
   agentInstructions?: string;
+}
+
+/**
+ * A MEMBER token's scope. It names no project and no role: the token reaches every project its owner
+ * can, at whatever role they hold there, so each call has to say which project it means.
+ */
+export interface MemberScope {
+  kind: 'member';
+  capabilities: Array<Capability | AccountCapability>;
+  agentInstructions?: string;
+}
+
+export type Scope = ProjectScope | MemberScope;
+
+export function isMemberScope(scope: Scope): scope is MemberScope {
+  return scope.kind === 'member';
+}
+
+/**
+ * What a project id may look like (the platform's `IdSchema` alphabet).
+ *
+ * ★ Checked here, not left to `encodeURIComponent`: that leaves `.` alone, and a URL parser RESOLVES
+ * `/projects/../content/page` to `/content/page`. So a project of `..` would send the member's bearer
+ * to a path outside `/projects/<id>/` altogether — harmless only for as long as nothing happens to be
+ * routed there. An id that cannot contain a dot cannot climb.
+ */
+const PROJECT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+function assertProjectId(projectId: string): void {
+  if (!PROJECT_ID.test(projectId)) {
+    throw new SitewrightApiError(400, 'not a project id — pass an `id` exactly as list_projects returned it');
+  }
+}
+
+/** One project a member token's owner can reach (from `GET /projects`). */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  slug: string;
+  role: 'owner' | 'member';
 }
 
 /** `?dataset=<slug>` suffix for entry-scoped routes (an entry id is only unique within its dataset); ''
@@ -465,6 +515,12 @@ export class SitewrightClient {
    * as `If-Match`. Per client instance, so one agent's session cannot arm another's writes.
    */
   private readonly contentVersions = new Map<string, string>();
+  /**
+   * The project the CURRENT call is addressing, for a member token (see {@link withProject}). Async
+   * local, not a field: one connection can run several tool calls at once, each against a different
+   * project, and a shared field would let them overwrite one another mid-request.
+   */
+  private readonly activeProject = new AsyncLocalStorage<string>();
 
   /**
    * @param tokenProvider returns the current access token, or null when the bridge is not yet
@@ -577,8 +633,43 @@ export class SitewrightClient {
   }
 
   private projectPath(suffix: string): string {
-    const { projectId } = this.requireScope();
+    const scope = this.requireScope();
+    // A project key IS its project — nothing a caller passes can point it elsewhere. Only a member
+    // token takes the project from the call.
+    const projectId = isMemberScope(scope) ? this.activeProject.getStore() : scope.projectId;
+    if (!projectId) {
+      throw new SitewrightApiError(
+        400,
+        'this connection uses a member token, which reaches several projects — pass `project` (an id from list_projects) to say which one',
+      );
+    }
     return `/projects/${encodeURIComponent(projectId)}${suffix}`;
+  }
+
+  /**
+   * Runs `fn` with every project-scoped request addressed to `projectId`. Only meaningful for a member
+   * token — a project key ignores it (see {@link projectPath}). The server still decides whether the
+   * token's owner can reach that project; this only says which one is meant.
+   */
+  async withProject<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+    assertProjectId(projectId);
+    return this.activeProject.run(projectId, fn);
+  }
+
+  /** The projects this token's owner can reach. For a member token; needs `content:read`. */
+  async listProjects(): Promise<ProjectSummary[]> {
+    return (await this.request<{ projects: ProjectSummary[] }>('GET', '/projects')).projects;
+  }
+
+  /** Creates a project owned by the token's owner. Member token with `projects:create`. */
+  async createProject(input: { name: string; slug: string }): Promise<ProjectSummary> {
+    return (await this.request<{ project: ProjectSummary }>('POST', '/projects', input)).project;
+  }
+
+  /** Copies a whole project into a new one. Member token with `projects:create` + `content:read`. */
+  async duplicateProject(projectId: string): Promise<ProjectSummary> {
+    assertProjectId(projectId);
+    return (await this.request<{ project: ProjectSummary }>('POST', `/projects/${encodeURIComponent(projectId)}/duplicate`)).project;
   }
 
   /** Learns (and caches) the token's scope: which project + role + capabilities. */

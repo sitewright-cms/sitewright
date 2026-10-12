@@ -335,7 +335,7 @@ describe('member tokens — reaching projects', () => {
     expect(keySelf.projectId).toBe(projectId);
   });
 
-  it('is turned away from the MCP endpoint with a reason, not a string of failing tool calls', async () => {
+  it('drives the MCP endpoint too — see mcp-http.test.ts for the per-call `project` argument', async () => {
     const { token } = await mint(dev, CONTENT);
     const res = await h.app.inject({
       method: 'POST',
@@ -343,10 +343,9 @@ describe('member tokens — reaching projects', () => {
       headers: { accept: 'application/json, text/event-stream', 'content-type': 'application/json', authorization: `Bearer ${token}` },
       payload: { jsonrpc: '2.0', id: 7, method: 'tools/list', params: {} },
     });
-    expect(res.statusCode).toBe(403);
-    const body = res.json() as { id: number; error: { message: string } };
-    expect(body.id).toBe(7);
-    expect(body.error.message).toMatch(/member token is not bound to one project/);
+    expect(res.statusCode).toBe(200);
+    const names = (res.json() as { result: { tools: Array<{ name: string }> } }).result.tools.map((t) => t.name);
+    expect(names).toContain('list_projects');
   });
 });
 

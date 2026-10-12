@@ -1,8 +1,13 @@
 export {
   SitewrightClient,
   SitewrightApiError,
+  isMemberScope,
   type Scope,
+  type ProjectScope,
+  type MemberScope,
+  type ProjectSummary,
   type Capability,
+  type AccountCapability,
   type FetchLike,
 } from './client.js';
 export { createSitewrightMcpServer } from './server.js';

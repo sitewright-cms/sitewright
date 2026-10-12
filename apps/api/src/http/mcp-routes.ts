@@ -38,7 +38,9 @@ function bearerOf(req: FastifyRequest): string | undefined {
 /**
  * The REMOTE MCP transport (Streamable HTTP, stateless) at `/mcp`. Lets hosted MCP clients
  * (ChatGPT, claude.ai) drive ONE Sitewright project over HTTP, authenticated by an OAuth bearer
- * token — the complement to the local stdio bridge (`sitewright mcp`).
+ * token — the complement to the local stdio bridge (`sitewright mcp`). A MEMBER token (`swm_…`) is
+ * accepted too: it reaches several projects, so in that mode every project tool takes a `project`
+ * argument and the server is built with the account-level tools (see `createSitewrightMcpServer`).
  *
  * We act as an OAuth 2.1 Resource Server (RFC 9728): a missing/invalid token gets a 401 with a
  * `WWW-Authenticate` challenge pointing at our protected-resource metadata, so the host can discover
@@ -159,17 +161,6 @@ export function registerMcpRoutes(
           return rpcError(reply, err.status, `mcp_unavailable: ${err.message}`, rpcIdOf(req.body));
         }
         throw err;
-      }
-      // A MEMBER token introspects with no project: it reaches many. Every tool here addresses "the"
-      // project of the connection, so say so plainly rather than let each call fail on a path built
-      // from an undefined id. (The REST API takes a member token everywhere a project key works.)
-      if (typeof (scope as { projectId?: unknown }).projectId !== 'string') {
-        return rpcError(
-          reply,
-          403,
-          'mcp_unavailable: a member token is not bound to one project and cannot drive this endpoint — connect with a project key, or use the REST API',
-          rpcIdOf(req.body),
-        );
       }
       if (scopeCache.size > 500) scopeCache.clear(); // bound memory on token churn; refill is one introspect
       scopeCache.set(cacheKey, { scope, exp: Date.now() + SCOPE_TTL_MS });

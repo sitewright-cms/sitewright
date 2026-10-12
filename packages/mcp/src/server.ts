@@ -31,7 +31,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type Capability, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -204,6 +204,75 @@ function toolError(text: string): ToolResult {
   return { content: [{ type: 'text', text }], isError: true };
 }
 
+/** How to name the connection in a refusal. A member token has no single project or role to name. */
+function connectionLabel(scope: Scope): string {
+  return isMemberScope(scope) ? 'Your member token' : `Your connection to project ${scope.projectId}`;
+}
+
+/**
+ * Tools that are not about ONE project: the way in, the static reference, and the account-level ones.
+ * In member-token mode every OTHER tool gains a required `project` argument (see
+ * {@link requireProjectArgument}) — so a tool added later is project-bound unless it is listed here,
+ * which is the safe way round: forgetting to list a static tool costs an unused argument, while
+ * forgetting to bind a project tool would leave it with no project to act on.
+ */
+const PROJECT_FREE_TOOLS: ReadonlySet<string> = new Set([
+  'login',
+  'switch_project',
+  'get_scope',
+  'get_components',
+  'search_icons',
+  'search_textures',
+  'get_capabilities',
+  'get_guide',
+  'get_reference',
+  'list_projects',
+  'create_project',
+  // Takes its source project as its own explicit argument.
+  'duplicate_project',
+]);
+
+// `IdSchema`, not a bare string: a project id has no dots or slashes, so the argument cannot be used
+// to climb out of `/projects/<id>/` (the client re-checks; see `assertProjectId`).
+const PROJECT_ARGUMENT = IdSchema.describe('Which project this call is for — an `id` from list_projects. Required: a member token reaches several projects.');
+
+/** Said first to an agent on a member token, ahead of the ordinary authoring instructions. */
+const MEMBER_TOKEN_PREFACE =
+  'THIS CONNECTION USES A MEMBER TOKEN. It is not tied to one project: it reaches every project its owner can open. ' +
+  'Call `list_projects` first, then pass the chosen project\'s `id` as the `project` argument of EVERY project tool — ' +
+  'each call names its project, and nothing is remembered between calls. `create_project` and `duplicate_project` make a new one ' +
+  '(if the token allows it) and return its id. Never guess an id, and never act on a project the user did not ask for.';
+
+type AnyRegister = (
+  name: string,
+  config: { inputSchema?: Record<string, z.ZodTypeAny>; [key: string]: unknown },
+  cb: (...args: unknown[]) => unknown,
+) => unknown;
+
+/**
+ * MEMBER-TOKEN MODE: gives every project tool a required `project` argument and runs the tool with
+ * the client addressed to it. Done once, here, by wrapping registration — so the ~50 tool bodies stay
+ * exactly as they are for a project key, and a project key's tools are not touched at all.
+ *
+ * A tool registered WITHOUT an input schema is called as `cb(extra)`, with one as `cb(args, extra)`;
+ * adding the argument changes which, so the original shape is remembered and restored on the way in.
+ */
+function requireProjectArgument(server: McpServer, client: SitewrightClient): void {
+  const original = server.registerTool.bind(server) as unknown as AnyRegister;
+  (server as unknown as { registerTool: AnyRegister }).registerTool = (name, config, cb) => {
+    if (PROJECT_FREE_TOOLS.has(name)) return original(name, config, cb);
+    const tookArguments = config.inputSchema !== undefined;
+    return original(
+      name,
+      { ...config, inputSchema: { ...(config.inputSchema ?? {}), project: PROJECT_ARGUMENT } },
+      (args: unknown, extra: unknown) => {
+        const { project, ...rest } = args as { project: string } & Record<string, unknown>;
+        return client.withProject(project, async () => (tookArguments ? cb(rest, extra) : cb(extra)));
+      },
+    );
+  };
+}
+
 /** Render the website-import report as a readable next-step summary (the `import_website` tool result). */
 function summarizeImport(r: ImportWebsiteResult): string {
   // The async start: a job id, not a result. Say so plainly, or a model reads "ok:true" as "finished"
@@ -285,20 +354,30 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     // Admin-overridable instructions (instance settings → agent panel), resolved by the API into
     // `scope.agentInstructions`. When the bridge starts unauthenticated we don't have the scope yet,
     // so fall back to the built-in default (a re-launched, already-authenticated bridge gets the override).
-    { instructions: holder.scope?.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS },
+    {
+      instructions:
+        (holder.scope && isMemberScope(holder.scope) ? `${MEMBER_TOKEN_PREFACE}\n\n` : '') +
+        (holder.scope?.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS),
+    },
   );
+  // Decided once, at construction: a connection's token kind does not change under it (a lazy CLI
+  // login always yields a project key, and starts with no scope at all).
+  const memberMode = holder.scope !== null && isMemberScope(holder.scope);
+  if (memberMode) requireProjectArgument(server, client);
 
   /** Gate a content tool on (connected ∧ capability); returns an actionable message otherwise. */
   const gate =
-    <A>(cap: Capability | null, fn: (args: A) => Promise<unknown>) =>
+    <A>(cap: Capability | AccountCapability | null, fn: (args: A) => Promise<unknown>) =>
     async (args: A): Promise<ToolResult> => {
       const scope = holder.scope;
       if (!scope) {
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
-      if (cap && !scope.capabilities.includes(cap)) {
+      if (cap && !(scope.capabilities as string[]).includes(cap)) {
         return toolError(
-          `Your connection to project ${scope.projectId} (role ${scope.role}) lacks the “${cap}” capability — re-connect with the right scope via the \`login\` tool.`,
+          isMemberScope(scope)
+            ? `Your member token lacks the “${cap}” capability — it has to be minted with it (Account → Access keys).`
+            : `Your connection to project ${scope.projectId} (role ${scope.role}) lacks the “${cap}” capability — re-connect with the right scope via the \`login\` tool.`,
         );
       }
       return run(() => fn(args));
@@ -311,6 +390,41 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   let loginInFlight: PendingLogin | null = null;
   let lastLoginError: string | null = null;
 
+  // ---------------------------------------------------------------- the account (member tokens only)
+  // A project key has exactly one project and cannot make another, so these would be dead weight on
+  // its tool list. They exist only where they can work.
+  if (memberMode) {
+    server.registerTool(
+      'list_projects',
+      {
+        description:
+          'List the projects this member token can reach — id, name, slug and your role on each. Call this FIRST: every project tool takes one of these ids as its `project` argument.',
+      },
+      gate('content:read', () => client.listProjects()),
+    );
+    server.registerTool(
+      'create_project',
+      {
+        description:
+          'Create a new, empty project (a home page and default navigation are seeded) and return it. Its `id` is what you pass as `project` from then on. Only when the user asked for a new site: a token may create a limited number per day.',
+        inputSchema: {
+          name: z.string().min(1).max(200).describe('Display name, e.g. the client or site name.'),
+          slug: z.string().min(1).max(64).describe('URL slug: lowercase letters, digits and hyphens; must be unused on this instance.'),
+        },
+      },
+      gate('projects:create', ({ name, slug }: { name: string; slug: string }) => client.createProject({ name, slug })),
+    );
+    server.registerTool(
+      'duplicate_project',
+      {
+        description:
+          'Copy a whole project — pages, content, settings and media — into a NEW project named "<name> (copy)", and return it. The way to start a site from an existing one. Needs content:read as well as projects:create, and counts toward the daily creation limit.',
+        inputSchema: { project: IdSchema.describe('The id of the project to copy (from list_projects).') },
+      },
+      gate('projects:create', ({ project }: { project: string }) => client.duplicateProject(project)),
+    );
+  }
+
   server.registerTool(
     'get_scope',
     { description: 'Show whether this agent is connected and, if so, the project, role, and capabilities. Call this first.' },
@@ -319,7 +433,13 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         // Don't echo the (large) agent instructions — they're delivered via the MCP `instructions` field.
         const rest = { ...holder.scope };
         delete rest.agentInstructions;
-        return ok({ authenticated: true, ...rest });
+        return ok({
+          authenticated: true,
+          ...rest,
+          ...(isMemberScope(holder.scope)
+            ? { hint: 'Member token: call list_projects, then pass a project id as `project` to every project tool.' }
+            : {}),
+        });
       }
       return ok({
         authenticated: false,
@@ -735,7 +855,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId, viewports, refresh }: { pageId: string; viewports?: ScreenshotViewportName[]; refresh?: boolean }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const res = await client.compareToSource(pageId, viewports?.length ? viewports.join(',') : undefined, refresh);
@@ -783,7 +903,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const r = await client.fidelityCheck(pageId);
@@ -815,7 +935,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const r = await client.cloneAudit(pageId);
@@ -852,7 +972,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const raw = await client.pagespeedAudit(pageId, formFactor);
@@ -957,7 +1077,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId }: { pageId: string }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const r = await client.visualAudit(pageId);
@@ -1021,7 +1141,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId, selectors, styles, html, viewport, side }: { pageId: string; selectors: string[]; styles?: string[]; html?: boolean; viewport?: string | number; side?: 'source' | 'build' }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the \u201Ccontent:read\u201D capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the \u201Ccontent:read\u201D capability.`);
       }
       try {
         const r = await client.inspectSource(pageId, { selectors, ...(styles?.length ? { styles } : {}), ...(html ? { html } : {}), ...(viewport ? { viewport } : {}), ...(side ? { side } : {}) });
@@ -1051,7 +1171,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     async ({ pageId, regions }: { pageId: string; regions?: Array<'header' | 'footer'> }): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
-        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+        return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
       try {
         const r = await client.compareRegions(pageId, regions?.length ? regions.join(',') : undefined);

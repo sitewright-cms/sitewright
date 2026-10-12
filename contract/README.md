@@ -21,6 +21,7 @@ tier assignments, the deprecation policy, the rationale — and links here for t
 |---|---|---|
 | `http-routes.json` | Every registered HTTP route (method + path) | `apps/api/test/contract-http.test.ts` |
 | `mcp-tools.json` | MCP tool names + their required inputs | `apps/api/test/contract-mcp.test.ts` |
+| `mcp-tools-member.json` | The same, as a MEMBER token is offered it: account tools added, `project` required on every project tool | `apps/api/test/contract-mcp.test.ts` |
 | `content-kinds.json` | The content-kind vocabulary | `apps/api/test/contract-kinds.test.ts` |
 | `css-api.json` | `--sw-*` custom properties + `.sw-*` classes author CSS may rely on | `packages/blocks/test/contract-css.test.ts` |
 | `golden/content/*.json` | Stored documents that must keep parsing | `packages/schema/test/contract-golden.test.ts` |

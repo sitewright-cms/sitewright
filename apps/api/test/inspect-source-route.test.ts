@@ -205,4 +205,16 @@ describe('abortOnClose', () => {
     onClose?.();
     expect(controller.signal.aborted).toBe(true);
   });
+
+  // Some routes already own a controller — it has other reasons to fire (a deadline, an explicit cancel)
+  // — and only need the disconnect wired onto it.
+  it('wires the disconnect onto a controller the route already owns, and hands that one back', () => {
+    let onClose: (() => void) | undefined;
+    const own = new AbortController();
+    const returned = abortOnClose({ raw: { on: (_e, cb) => (onClose = cb) } }, own);
+    expect(returned).toBe(own);
+    expect(own.signal.aborted).toBe(false);
+    onClose?.();
+    expect(own.signal.aborted).toBe(true);
+  });
 });

@@ -19,6 +19,7 @@ import { isGoogleFamily } from '@sitewright/blocks/google-fonts-catalog';
 import type { ReferencePage, CaptureRefsResult } from '../render/source-ref.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
+import { abortOnClose } from './abort-on-close.js';
 
 const MAX_CONCURRENT_IMPORTS = 2;
 const IMPORT_PAGE_CEIL = 200;
@@ -507,8 +508,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const renderMode = renderModeOf(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
-    const abort = new AbortController();
-    req.raw.on('close', () => abort.abort());
+    const abort = abortOnClose(req);
 
     try {
       await streamImport(
@@ -564,7 +564,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     // ASYNC mode detaches the work from the request, so the caller's socket closing is NOT a cancellation
     // — only an explicit abort is. In sync mode a dropped connection still cancels, as before.
     const wait = parsed.data.wait ?? false;
-    if (!wait) req.raw.on('close', () => abort.abort());
+    if (!wait) abortOnClose(req, abort);
 
     const runImport = async (onProgress: (e: unknown) => void): Promise<Record<string, unknown>> => {
       const fetcher = makeFetcher(abort.signal);
@@ -685,8 +685,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
     const inferDatasets = wantsInferDatasets(req);
-    const abort = new AbortController();
-    req.raw.on('close', () => abort.abort());
+    const abort = abortOnClose(req);
 
     try {
       await streamImport(

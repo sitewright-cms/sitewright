@@ -25,6 +25,56 @@ import { spawnSync } from 'node:child_process';
  * Same family as the `maxBuffer` trap below, with the same perverse bias: only a FAILING run takes the
  * exit path, so the gate was unreadable exactly, and only, when there was something to read.
  */
+/**
+ * Break any over-long line of gate output into shorter ones.
+ *
+ * ★ `gh run view --log` reads a log with a 64 KB line buffer and silently STOPS at the first line that
+ * does not fit — no error, just an earlier end. The `dot` reporter prints one character per test on a
+ * single line, each wrapped in colour codes, so the api suite's line runs to ~100 KB: every log fetched
+ * that way ended there, before the api summary, the coverage table and this script's own verdict. It
+ * looked exactly like the truncation fixed above, and survived it. GitHub's stored log was complete all
+ * along; the tool most often used to read it was not showing it.
+ *
+ * A line is cut only between whole characters and whole escape sequences, so colours survive and
+ * nothing is split mid-code. Lines of ordinary length are returned untouched.
+ */
+const WRAP_ABOVE = 16_000; // characters — far beyond any line a person wrote, far below the 64 KB limit
+const WRAP_AT = 1_000; // "units" per piece: one character or one whole escape sequence each
+// eslint-disable-next-line no-control-regex -- ESC is the subject: this finds terminal colour codes so a line is never cut through one
+const ESCAPE = /\x1b\[[0-9;]*[A-Za-z]/y;
+export function wrapLongLines(text) {
+  if (text.length <= WRAP_ABOVE) return text;
+  return text
+    .split('\n')
+    .map((line) => {
+      if (line.length <= WRAP_ABOVE) return line;
+      let wrapped = '';
+      let start = 0;
+      let units = 0;
+      let i = 0;
+      while (i < line.length) {
+        const code = line.charCodeAt(i);
+        if (code === 0x1b) {
+          ESCAPE.lastIndex = i;
+          const seq = ESCAPE.exec(line);
+          i += seq ? seq[0].length : 1;
+        } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < line.length) {
+          i += 2; // a surrogate pair is one character
+        } else {
+          i += 1;
+        }
+        units += 1;
+        if (units === WRAP_AT && i < line.length) {
+          wrapped += `${line.slice(start, i)}\n`;
+          start = i;
+          units = 0;
+        }
+      }
+      return wrapped + line.slice(start);
+    })
+    .join('\n');
+}
+
 export function runGates(gates, { ci = false } = {}) {
   // Collapsible sections keep the CI log readable now that the gates are one step; locally they are just
   // a heading. Timings are printed either way so a slow gate is obvious without opening the run.
@@ -48,7 +98,7 @@ export function runGates(gates, { ci = false } = {}) {
     // buffer, and never check `status` without `error`.
     const res = spawnSync(gate.cmd[0], gate.cmd.slice(1), { encoding: 'utf8', shell: false, maxBuffer: Infinity });
     const out = `${res.stdout ?? ''}${res.stderr ?? ''}`;
-    process.stdout.write(out);
+    process.stdout.write(wrapLongLines(out));
     const ms = Date.now() - t;
     timings.push([gate.name, ms]);
     close();

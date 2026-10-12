@@ -54,6 +54,15 @@ The running version of an instance is reported at `GET /version` (baked into the
   GitHub truncating an oversized log, and shrinking the output only ever helped a little. The gate
   now lets its output drain before it exits, prints its verdict after the output rather than above it,
   and a new first gate proves on every run that a failing gate's output still arrives whole.
+  - The log could also be whole and still read as cut: `gh run view --log` stops, without saying so, at
+    the first line longer than 64 KB, and the api suite's one-character-per-test progress line is about
+    100 KB. Everything after it — the api result, the coverage table, the verdict — never showed. The
+    gate now wraps over-long lines, between colour codes rather than through them.
+  - And the api coverage gate no longer fails at random. Function coverage sat **2.9 functions** above
+    its 90% floor, and a handful of timing-dependent callbacks not firing was enough to tip it: the
+    same commit measured 90.10% on one run and 89.95% on the next. Eleven routes each carried their own
+    untestable copy of "abort when the client disconnects"; they now share the one tested helper, which
+    leaves 13.8 functions of headroom.
 
 ### Changed
 

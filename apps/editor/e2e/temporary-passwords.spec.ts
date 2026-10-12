@@ -77,11 +77,16 @@ test('a member added without the invite link has to replace the temporary passwo
   await theirs.close();
 });
 
-test('a password an admin issues holds the account’s open session until it has been replaced', async ({ page, browser }) => {
+test('a password an admin issues holds the account’s open sessions, and their open editor says so at once', async ({ page, browser }) => {
   const devEmail = `dev-tp-${stamp}@e2e.test`;
-  // A developer who is signed in somewhere, working.
-  const working = await seedApiUser(baseURL(), devEmail);
-  expect((await working.get('/projects')).status()).toBe(200);
+  // A developer with the editor open, working — and signed in on a second device as well.
+  const theirs = await browser.newContext();
+  const dev = await theirs.newPage();
+  await signUp(dev, devEmail);
+  await expect(dev.getByRole('button', { name: 'New project' })).toBeVisible();
+  const elsewhere = await request.newContext({ baseURL: baseURL() });
+  expect((await elsewhere.post('/auth/login', { data: { email: devEmail, password: E2E_PASSWORD } })).status()).toBe(200);
+  expect((await elsewhere.get('/projects')).status()).toBe(200);
 
   // --- The admin issues them a new password ---
   await signUp(page, `admin-tp-${stamp}@e2e.test`, 'admin');
@@ -100,30 +105,33 @@ test('a password an admin issues holds the account’s open session until it has
   await expect(panel).toContainText(`Temporary password for ${devEmail}`);
   const temporary = (await panel.locator('code').textContent())?.trim() ?? '';
 
-  // --- The session that was already open is no longer an identity ---
-  const held = await working.get('/projects');
+  // --- The sessions that were already open are no longer an identity ---
+  const held = await elsewhere.get('/projects');
   expect(held.status()).toBe(403);
   expect(((await held.json()) as { error: string }).error).toBe('password-change-required');
-  // …and the password it was opened with is gone.
+  // …and the password they were opened with is gone.
   const fresh = await request.newContext({ baseURL: baseURL() });
   expect((await fresh.post('/auth/login', { data: { email: devEmail, password: E2E_PASSWORD } })).status()).toBe(401);
 
-  // --- The developer signs in with what the admin handed over, and replaces it ---
-  const theirs = await browser.newContext();
-  const dev = await theirs.newPage();
-  await dev.goto('/');
-  await dev.getByLabel('Email').fill(devEmail);
-  await dev.getByRole('textbox', { name: 'Password' }).fill(temporary);
-  await dev.getByRole('button', { name: 'Sign in' }).click();
+  // --- In the developer's open editor, the next thing they do is refused — and the editor shows the
+  // forced screen right then, not an error that reads "password-change-required" until they reload ---
+  await dev.getByRole('button', { name: 'New project' }).click();
+  await dev.getByLabel('Project name').fill('Never Made');
+  await dev.getByLabel('Project slug').fill(`never-${stamp}`);
+  await dev.getByRole('button', { name: 'Create project' }).click();
+  await expect(dev.getByText('Choose a new password')).toBeVisible();
   await expect(dev.getByText(/is on a temporary password that someone else issued/)).toBeVisible();
+
+  // They replace it there, with what the admin handed over, and are back in.
   await dev.getByLabel('Temporary password').fill(temporary);
   await dev.getByLabel('New password', { exact: true }).fill(OWN_PASSWORD);
   await dev.getByLabel('Confirm new password').fill(OWN_PASSWORD);
   await dev.getByRole('button', { name: /Set new password/ }).click();
-  // Through: the project selector of a signed-in developer.
   await expect(dev.getByRole('button', { name: 'New project' })).toBeVisible();
-  // Replacing the password signed every OTHER session out, the old one included.
-  expect((await working.get('/projects')).status()).toBe(401);
+  const mine = (await (await dev.request.get('/projects')).json()) as { projects: Array<{ name: string }> };
+  expect(mine.projects.map((p) => p.name), 'the refused request made nothing').not.toContain('Never Made');
+  // Replacing the password signed every OTHER session out.
+  expect((await elsewhere.get('/projects')).status()).toBe(401);
   await theirs.close();
 });
 

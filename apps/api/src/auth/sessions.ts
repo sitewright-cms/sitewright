@@ -27,15 +27,6 @@ export async function createSession(
   return { token, expiresAt };
 }
 
-/** Resolves a raw token to its userId, or null if unknown/expired (expired rows are deleted). */
-export async function validateSession(
-  db: Database,
-  token: string,
-  now: Date = new Date(),
-): Promise<string | null> {
-  return (await resolveSession(db, token, now))?.userId ?? null;
-}
-
 /** A live session, with what the forced-password-change gate needs to know about its account. */
 export interface ResolvedSession {
   userId: string;
@@ -46,9 +37,13 @@ export interface ResolvedSession {
 }
 
 /**
- * {@link validateSession}, plus the account's password state in the SAME query. Every authenticated
- * request asks whether its account still has to replace its password, so reading that here costs
- * nothing extra; a second lookup per request would.
+ * Resolves a raw token to its session, or null if unknown/expired (expired rows are deleted) — with
+ * the account's password state in the SAME query. Every authenticated request asks whether its account
+ * still has to replace its password, so reading that here costs nothing extra; a second lookup per
+ * request would.
+ *
+ * There is deliberately no variant that returns just the user id: a caller that could get an identity
+ * without the password state could not apply the forced-change gate, and would not know it had to.
  */
 export async function resolveSession(
   db: Database,

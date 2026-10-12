@@ -300,10 +300,22 @@ export async function changePassword(
   const passwordHash = await hashPassword(newPassword);
   // Setting a new password always clears any forced-change state — the account is no longer on a
   // credential somebody else knows. (A no-op for the vast majority of accounts.)
-  await db
+  //
+  // The write lands only on the password that was VERIFIED above. Two slow hashes sit between that
+  // check and this line, and the account can change under them — its owner completes a single
+  // sign-on, which discards a temporary password and ends every session, this one included. Writing
+  // regardless would put the caller's password on an account that had just been taken back from it.
+  const written = await db
     .update(users)
     .set({ passwordHash, mustChangePassword: false, passwordExpiresAt: null })
-    .where(eq(users.id, userId));
+    .where(
+      and(
+        eq(users.id, userId),
+        user.passwordHash === null ? isNull(users.passwordHash) : eq(users.passwordHash, user.passwordHash),
+      ),
+    )
+    .returning({ id: users.id });
+  if (written.length === 0) throw new ConflictError('the password changed while this was in progress — sign in again');
   return { replacedTemporary: user.passwordExpiresAt !== null };
 }
 

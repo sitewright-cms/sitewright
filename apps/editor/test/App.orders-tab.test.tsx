@@ -22,6 +22,7 @@ vi.mock('../src/api', () => ({
     listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: () => undefined,
+  setPasswordChangeRequiredHandler: () => undefined,
 }));
 vi.mock('../src/lib/use-session-poll', () => ({ useSessionPoll: () => undefined }));
 vi.mock('../src/views/InstanceSettings', () => ({ InstanceSettings: () => <div /> }));

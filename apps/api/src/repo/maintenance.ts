@@ -37,7 +37,7 @@ export const MEDIA_RECYCLE_RETENTION_DAYS = 90;
  * unbounded — the same shape of leak as the derived-storage one, in the DB instead of on disk.
  */
 export async function sweepExpiredAuthRows(db: Database, now: Date = new Date()): Promise<void> {
-  // `<=` matches the access-path checks (validateSession / resolveLoginTicket treat expiresAt == now
+  // `<=` matches the access-path checks (resolveSession / resolveLoginTicket treat expiresAt == now
   // as expired), so the sweep never removes a row those paths would still accept.
   await db.delete(sessions).where(lte(sessions.expiresAt, now));
   await db.delete(mfaLoginTickets).where(lte(mfaLoginTickets.expiresAt, now));

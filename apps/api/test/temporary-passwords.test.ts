@@ -15,6 +15,22 @@ vi.mock('@simplewebauthn/server', () => ({
   verifyAuthenticationResponse: (args: unknown) => verifyAuth(args),
 }));
 
+// A pass-through with one seam: a test can run something at the moment a password is being hashed —
+// the slow step that sits between "the current password was verified" and "the new one is written".
+const hashing = vi.hoisted(() => ({ before: null as null | (() => Promise<void>) }));
+vi.mock('../src/auth/password.js', async (original) => {
+  const actual = await original<typeof import('../src/auth/password.js')>();
+  return {
+    ...actual,
+    hashPassword: async (password: string) => {
+      const hook = hashing.before;
+      hashing.before = null;
+      if (hook) await hook();
+      return actual.hashPassword(password);
+    },
+  };
+});
+
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 import { users } from '../src/db/schema.js';
 import { discardTemporaryPassword, registerAccount, setPlatformRole } from '../src/repo/accounts.js';
@@ -43,6 +59,7 @@ beforeEach(async () => {
   verifyReg.mockReset();
   verifyAuth.mockReset();
   verifyAuth.mockResolvedValue({ verified: true, authenticationInfo: { newCounter: 7 } });
+  hashing.before = null;
   admin = await h.signup({ email: 'boss@agency.test', password: PASSWORD, admin: true });
   dev = await h.signup({ email: 'dev@agency.test', password: PASSWORD });
   await setPlatformRole(h.db, dev.userId, 'developer');
@@ -182,6 +199,25 @@ describe('a temporary password', () => {
     expect(errorOf(change)).toBe(EXPIRED);
     expect((await client.get('/projects')).statusCode, 'and the session is still held').toBe(403);
     expect((await signIn(email, 'Their-own-pw-9')).statusCode).toBe(401);
+  });
+
+  it('★ a replacement overtaken by the owner’s single sign-on does not land on the account', async () => {
+    // Somebody who saw the temporary password is replacing it at the very moment the real owner
+    // completes a single sign-on, which discards it and ends every session. The replacement was
+    // verified against a password that no longer exists; writing it anyway would hand the account
+    // straight back to whoever it had just been taken from.
+    const { userId, email, password } = await approvedClient();
+    const client = as(sessionToken(await signIn(email, password)));
+    hashing.before = async () => {
+      expect(await discardTemporaryPassword(h.db, userId)).toBe(true);
+    };
+
+    const change = await client.put('/account/password', { currentPassword: password, newPassword: 'Someone-elses-pw-9' });
+    expect(change.statusCode).toBe(409);
+    const [row] = await h.db.select().from(users).where(eq(users.id, userId));
+    expect(row).toMatchObject({ passwordHash: null, mustChangePassword: false, passwordExpiresAt: null });
+    expect((await signIn(email, 'Someone-elses-pw-9')).statusCode).toBe(401);
+    expect((await client.get('/me')).statusCode, 'and that session is gone').toBe(401);
   });
 
   it('leaves exactly three doors open: /me (GET and HEAD), the password change, and signing out', async () => {

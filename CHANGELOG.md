@@ -158,8 +158,10 @@ The running version of an instance is reported at `GET /version` (baked into the
     account must not be a way to throw away the password an admin just issued to take that account
     back.
   - **Issuing a password holds the account's open sessions too**, from their next request, until the
-    new password has been used and replaced. The confirmation says so. Member tokens the admin chose
-    to keep carry on working, and the forced replacement does not revoke them.
+    new password has been used and replaced. The confirmation says so, and an editor that is open at
+    the time shows the "Choose a new password" screen at its next action rather than failing with an
+    error until it is reloaded. Member tokens the admin chose to keep carry on working, and the
+    forced replacement does not revoke them.
   - The responses of `POST /projects/:id/invites/:inviteId/approve`,
     `POST /admin/invites/:inviteId/approve`, `POST /admin/users/:id/password` and
     `POST /projects/:id/members/:userId/password` carry `passwordExpiresAt` beside `password`, and

@@ -23,7 +23,7 @@ function tokenOf(res: LightMyRequestResponse, name = SESSION_COOKIE): string {
  * HTTP-layer auth + session lifecycle and cookie-security coverage.
  *
  * Complements:
- *  - sessions.test.ts  — unit-level createSession/validateSession/revokeSession.
+ *  - sessions.test.ts  — unit-level createSession/resolveSession/revokeSession.
  *  - accounts.test.ts  — repo-level register/login/conflict semantics.
  *  - rate-limit.test.ts — the 429 cap on /auth/login.
  *

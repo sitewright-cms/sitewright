@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FolderOpen } from 'lucide-react';
-import { api, downloadProjectExport, setUnauthorizedHandler, type Project } from './api';
+import { api, downloadProjectExport, setPasswordChangeRequiredHandler, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
 import { useIsMobile } from './lib/use-is-mobile';
@@ -109,6 +109,8 @@ function MainApp({
   // CURRENT stage without re-registering on every change.
   const stageRef = useRef(stage);
   stageRef.current = stage;
+  // A `/me` re-read triggered by a `password-change-required` refusal is in flight.
+  const heldRefresh = useRef(false);
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
   // OIDC callback artifacts (captured once); the notice maps the error code to friendly copy.
   const oidcNotice = oidcError ? OIDC_ERROR_MESSAGES.get(oidcError) ?? 'Sign-in failed. Please try again.' : null;
@@ -236,6 +238,19 @@ function MainApp({
       setTotpEnabled(false);
       setRecoveryCodesRemaining(0);
       setStage({ name: 'auth', expired: true });
+    });
+    // The other way a working session stops being one: an admin issued this account a new password,
+    // and the server now answers everything with `password-change-required`. Re-read `/me`, which
+    // says so and puts the forced screen up — instead of leaving an editor whose every action fails
+    // with that word until the person reloads. One re-read at a time: a screen's worth of requests
+    // can be refused together.
+    setPasswordChangeRequiredHandler(() => {
+      const current = stageRef.current.name;
+      if ((current !== 'home' && current !== 'project') || heldRefresh.current) return;
+      heldRefresh.current = true;
+      void refresh().finally(() => {
+        heldRefresh.current = false;
+      });
     });
   }, []);
 

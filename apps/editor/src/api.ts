@@ -231,6 +231,20 @@ function notifyIfUnauthorized(status: number): void {
   if (status === 401) unauthorizedHandler?.();
 }
 
+/** What the server answers, with a 403, to a session that has to replace its password first. */
+const PASSWORD_CHANGE_REQUIRED = 'password-change-required';
+
+// That answer can arrive in the MIDDLE of a working session: an admin issues this account a new
+// password and every open session is held from its next request. Without telling the app, each action
+// would just fail with that sentinel as its error text until the person thought to reload. The app
+// registers a handler so it can re-read `/me` and put up the forced screen at once.
+let passwordChangeRequiredHandler: (() => void) | undefined;
+
+/** Register (or clear, with `undefined`) the handler invoked when a request is refused that way. */
+export function setPasswordChangeRequiredHandler(handler: (() => void) | undefined): void {
+  passwordChangeRequiredHandler = handler;
+}
+
 async function errorFromResponse(res: Response): Promise<ApiError> {
   let message = res.statusText;
   let details: ApiErrorDetails | undefined;
@@ -252,6 +266,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
     // non-JSON error body — keep statusText
   }
   notifyIfUnauthorized(res.status);
+  if (res.status === 403 && message === PASSWORD_CHANGE_REQUIRED) passwordChangeRequiredHandler?.();
   // `retry-after` is seconds here (the limiter never sends the HTTP-date form).
   const after = Number(res.headers.get('retry-after'));
   return new ApiError(

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
-const { me, createProject, changePassword, acceptInvite, peekInvite, logout, loginConfig, setUnauthorizedHandler, useSessionPoll } = vi.hoisted(() => ({
+const { me, createProject, changePassword, acceptInvite, peekInvite, logout, loginConfig, setUnauthorizedHandler, setPasswordChangeRequiredHandler, useSessionPoll } = vi.hoisted(() => ({
   me: vi.fn(),
   createProject: vi.fn(),
   changePassword: vi.fn(),
@@ -12,6 +12,7 @@ const { me, createProject, changePassword, acceptInvite, peekInvite, logout, log
   logout: vi.fn(),
   loginConfig: vi.fn(),
   setUnauthorizedHandler: vi.fn(),
+  setPasswordChangeRequiredHandler: vi.fn(),
   useSessionPoll: vi.fn(),
 }));
 const loadedHook = vi.hoisted(() => ({ defer: false, pending: [] as Array<(() => void) | undefined> }));
@@ -31,6 +32,7 @@ vi.mock('../src/api', () => ({
     listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
+  setPasswordChangeRequiredHandler: (fn: (() => void) | undefined) => setPasswordChangeRequiredHandler(fn),
 }));
 // The poll mechanics are unit-tested in use-session-poll.test.ts; here we only assert App enables it
 // (active=true) when authenticated and disables it (false) on the login screen.
@@ -276,6 +278,41 @@ describe('App shell', () => {
     expect(handler).toBeTypeOf('function');
     act(() => handler!());
     expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+  });
+
+  it('★ puts the forced screen up at once when a WORKING session starts being refused for its password', async () => {
+    // An admin issues this account a new password while its editor is open: the server answers the
+    // next request with `password-change-required`. Without this the project view stays up and every
+    // action fails with that word as its error until the person reloads.
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    const handler = setPasswordChangeRequiredHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    expect(handler).toBeTypeOf('function');
+
+    me.mockClear();
+    me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, mustChangePassword: true, temporaryPassword: true, projects: [] });
+    // A screen's worth of requests is refused together — that is still ONE re-read of /me.
+    act(() => {
+      handler!();
+      handler!();
+      handler!();
+    });
+    expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+    expect(screen.getByText(/is on a temporary password/)).toBeInTheDocument();
+    expect(screen.queryByText(/PROJECT Acme/)).toBeNull();
+    expect(me).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores that refusal while not signed in', async () => {
+    me.mockRejectedValue(new Error('unauthenticated'));
+    render(<App />);
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+    me.mockClear();
+    const handler = setPasswordChangeRequiredHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    act(() => handler?.());
+    expect(me).not.toHaveBeenCalled();
+    expect(screen.getByText('LOGIN')).toBeInTheDocument();
   });
 
   it('ignores a 401 while not signed in (no spurious redirect / state churn on the auth screen)', async () => {

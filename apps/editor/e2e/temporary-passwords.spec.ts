@@ -127,9 +127,18 @@ test('a password an admin issues holds the account’s open sessions, and their 
   await dev.getByLabel('New password', { exact: true }).fill(OWN_PASSWORD);
   await dev.getByLabel('Confirm new password').fill(OWN_PASSWORD);
   await dev.getByRole('button', { name: /Set new password/ }).click();
-  await expect(dev.getByRole('button', { name: 'New project' })).toBeVisible();
+  // Back where they were — the dialog they had open — but not replayed: the refused request made
+  // nothing, and what they had typed is gone with the screen that replaced it.
+  const newProject = dev.getByRole('dialog', { name: 'New project' });
+  await expect(newProject).toBeVisible();
+  await expect(newProject.getByLabel('Project name')).toHaveValue('');
   const mine = (await (await dev.request.get('/projects')).json()) as { projects: Array<{ name: string }> };
   expect(mine.projects.map((p) => p.name), 'the refused request made nothing').not.toContain('Never Made');
+  // And the editor works again: the same thing, done now, goes through.
+  await newProject.getByLabel('Project name').fill('Made After');
+  await newProject.getByLabel('Project slug').fill(`after-${stamp}`);
+  await newProject.getByRole('button', { name: 'Create project' }).click();
+  await expect.poll(async () => ((await (await dev.request.get('/projects')).json()) as { projects: Array<{ name: string }> }).projects.map((p) => p.name)).toContain('Made After');
   // Replacing the password signed every OTHER session out.
   expect((await elsewhere.get('/projects')).status()).toBe(401);
   await theirs.close();

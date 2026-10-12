@@ -203,8 +203,10 @@ The running version of an instance is reported at `GET /version` (baked into the
     would stop signing in when that instance moved to the published image (Node 22). Nothing changes
     for anyone today; offering a post-quantum algorithm becomes a decision rather than a side effect
     of which Node is installed.
-  - 14.0.2 also carries the fix for GHSA-2g3p-m8c9-hhwh (certificate-revocation handling during
-    attestation). This instance asks for no attestation, so it was not reachable here.
+  - Two advisories exist against `@simplewebauthn/server` **14.0.1 only** (GHSA-j3h4-m3m2-7p7j and
+    GHSA-2g3p-m8c9-hhwh: a rejected registration could make the server fetch a URL of the
+    attacker's choosing and poison its revocation cache). 13.3.3 never had that code and 14.0.3
+    has the fix, so this goes from one unaffected version to another.
 
 ## [0.61.0] — 2026-10-09
 

@@ -10,7 +10,7 @@ import {
   type VerifiedAuthenticationResponse,
   type VerifiedRegistrationResponse,
 } from '@simplewebauthn/server';
-import { cose, isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
+import { cose, decodeAttestationObject, isoBase64URL, isoCBOR, isoUint8Array } from '@simplewebauthn/server/helpers';
 
 /** Fallback Relying Party display name (authenticator/OS passkey UI) when no platform name is set. */
 const DEFAULT_RP_NAME = 'SiteWright';
@@ -118,13 +118,45 @@ export function registrationOptions(params: {
 // an ALTERNATIVE first factor) and, when enabled, the TOTP gate on top.
 const REQUIRE_USER_VERIFICATION = false;
 
-export function verifyRegistration(params: {
+/** Anything the library's CBOR encoder takes (its own type lives in a package we do not depend on). */
+type CborValue = Parameters<typeof isoCBOR.encode>[0];
+
+/**
+ * The registration response with its attestation STATEMENT thrown away — whatever the client sent is
+ * re-encoded as a `none` attestation carrying the same authenticator data.
+ *
+ * We ask every authenticator for no attestation (`attestationType: 'none'`): this is a first-party
+ * login with no policy about which make of authenticator may be used. But the library verifies
+ * whatever statement the CLIENT chooses to send, and a statement is certificates — attacker-supplied
+ * ones, parsed, chained, and (from @simplewebauthn/server 14) checked for revocation by FETCHING the
+ * URL written inside them. For the `android-key` format that fetch happens against a trust anchor
+ * taken from the client's own chain, before the chain is found not to lead to a real root: any
+ * signed-in user could make this server request a URL of their choosing, past every SSRF guard the
+ * rest of the code goes through. Upstream's fix in 14.0.2 does not cover that path.
+ *
+ * Nothing is lost by dropping it. Everything this server relies on — the challenge, the origin, the
+ * relying-party hash, user presence, the credential's public key and its algorithm — is in the
+ * authenticator data and the client data, which are verified exactly as before. Re-encoding ALWAYS
+ * (not only when the format is something other than `none`) keeps this to one code path, the one
+ * every real registration exercises.
+ */
+export function withoutAttestationStatement(response: RegistrationResponseJSON): RegistrationResponseJSON {
+  const decoded = decodeAttestationObject(isoBase64URL.toBuffer(response.response.attestationObject));
+  const bare = new Map<string, CborValue>();
+  bare.set('fmt', 'none');
+  bare.set('attStmt', new Map<string, CborValue>());
+  bare.set('authData', decoded.get('authData'));
+  const attestationObject = isoBase64URL.fromBuffer(toBufferView(isoCBOR.encode(bare)));
+  return { ...response, response: { ...response.response, attestationObject } };
+}
+
+export async function verifyRegistration(params: {
   rp: RpConfig;
   response: RegistrationResponseJSON;
   expectedChallenge: string;
 }): Promise<VerifiedRegistrationResponse> {
   return verifyRegistrationResponse({
-    response: params.response,
+    response: withoutAttestationStatement(params.response),
     expectedChallenge: params.expectedChallenge,
     expectedOrigin: params.rp.origin,
     expectedRPID: params.rp.rpID,

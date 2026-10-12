@@ -17,6 +17,7 @@ vi.mock('@simplewebauthn/server', () => ({
 }));
 
 import { makeHarness, type Harness, type TestClient } from './harness.js';
+import { registrationOf } from './passkey-fixtures.js';
 import { memberTokens, userPasskeys, users } from '../src/db/schema.js';
 import { setPlatformRole } from '../src/repo/accounts.js';
 
@@ -53,7 +54,7 @@ async function registerPasskey(who: TestClient, id: string): Promise<void> {
   const begun = await who.post('/account/passkeys/register/options', { currentPassword: PASSWORD });
   if (begun.statusCode !== 200) throw new Error(`passkey registration could not begin (${begun.statusCode}): ${begun.body}`);
   const { handle } = begun.json() as { handle: string };
-  const res = await who.post('/account/passkeys/register/verify', { handle, response: { id }, name: id });
+  const res = await who.post('/account/passkeys/register/verify', { handle, response: registrationOf(id), name: id });
   if (res.statusCode !== 201) throw new Error(`passkey registration failed (${res.statusCode}): ${res.body}`);
 }
 

@@ -23,7 +23,7 @@
     "@fontsource-variable/space-grotesk": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
     "@lezer/highlight": "^1.2.4",
-    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "@sitewright/blocks": "workspace:*",
     "@sitewright/core": "workspace:*",
     "@sitewright/schema": "workspace:*",

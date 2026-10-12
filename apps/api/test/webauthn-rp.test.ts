@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { resolveRp, firstForwardedValue } from '../src/auth/webauthn.js';
 
 describe('webauthn RP resolution', () => {
@@ -43,5 +43,39 @@ describe('webauthn RP resolution', () => {
     const protocol = firstForwardedValue(undefined) ?? 'http';
     const host = firstForwardedValue(undefined) ?? 'dind.local:2003';
     expect(resolveRp(host, protocol)).toEqual({ rpID: 'dind.local', origin: 'http://dind.local:2003' });
+  });
+});
+
+describe('the algorithms a passkey may be registered with', () => {
+  // Not mocked: these run the real @simplewebauthn/server, because the point is what IT does by default.
+
+  it('offers exactly EdDSA, ES256 and RS256, and passes stored transports straight through', async () => {
+    const { registrationOptions, authenticationOptions, PASSKEY_ALGORITHMS } = await import('../src/auth/webauthn.js');
+    expect(PASSKEY_ALGORITHMS).toEqual([-8, -7, -257]);
+    const rp = resolveRp('example.com', 'https');
+    const reg = await registrationOptions({ rp, userId: 'u1', userName: 'user@x.test', existing: [{ id: 'Y3JlZDE', transports: ['usb', 'hybrid'] }] });
+    expect(reg.pubKeyCredParams.map((p) => p.alg)).toEqual([-8, -7, -257]);
+    expect(reg.excludeCredentials).toEqual([{ id: 'Y3JlZDE', type: 'public-key', transports: ['usb', 'hybrid'] }]);
+    const auth = await authenticationOptions({ rp, allow: [{ id: 'Y3JlZDE', transports: ['internal'] }] });
+    expect(auth.allowCredentials).toEqual([{ id: 'Y3JlZDE', type: 'public-key', transports: ['internal'] }]);
+  });
+
+  it('★ does not start offering a post-quantum algorithm just because the runtime can do one', async () => {
+    // From v14 the library's own default puts ML-DSA-44 first wherever Node supports it (24.7+). A
+    // passkey registered that way only verifies on such a runtime — so it would stop working when an
+    // instance moves from a newer Node to the published image. Pretend to be that newer runtime.
+    const { SettingsService, generateRegistrationOptions } = await import('@simplewebauthn/server');
+    const { registrationOptions } = await import('../src/auth/webauthn.js');
+    const spy = vi.spyOn(SettingsService, 'runtimeSupportsPQC').mockReturnValue(true);
+    try {
+      // The presence guard: left to itself, the library WOULD offer it here…
+      const theirs = await generateRegistrationOptions({ rpName: 'x', rpID: 'example.com', userName: 'user@x.test' });
+      expect(theirs.pubKeyCredParams[0]?.alg).toBe(-48);
+      // …and ours does not.
+      const ours = await registrationOptions({ rp: resolveRp('example.com', 'https'), userId: 'u1', userName: 'user@x.test', existing: [] });
+      expect(ours.pubKeyCredParams.map((p) => p.alg)).toEqual([-8, -7, -257]);
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -188,6 +188,24 @@ The running version of an instance is reported at `GET /version` (baked into the
     v4 coverage provider and vice versa, so each bump failed on the other's version. Together they
     pass with no source or config change — the same 8,534 tests, coverage gates intact.
 
+- **Dependency refresh, second batch** — the five open Dependabot PRs (#1088–#1092), again as one
+  branch. Production: **`@simplewebauthn/server` and `@simplewebauthn/browser` 13 → 14**,
+  `@modelcontextprotocol/sdk` 1.31 → 1.32, `sanitize-html` 2.17 → 2.18, `isomorphic-git`, `nodemailer`,
+  `lucide-react`, `daisyui`, `basic-ftp`, `chrome-launcher`. Development: **`globals` 15 → 17**,
+  `vite`, `@vitejs/plugin-react`, `jsdom`, `turbo`, `eslint-plugin-security`, `@types/node`,
+  `lucide-static`, `simple-icons`. Every package resolves to the version Dependabot proposed.
+  - The server half of SimpleWebAuthn was the one red PR: version 14 no longer exports
+    `AuthenticatorTransportFuture` (transports are plain strings now).
+  - **Passkey algorithms are now stated rather than left to the library** — EdDSA, ES256 and RS256,
+    what every earlier version offered. From 14 the library's default depends on the runtime: where
+    Node can do post-quantum signatures (24.7+) it offers ML-DSA-44 first. A passkey registered that
+    way only verifies on such a runtime, so one made on a from-source install running a newer Node
+    would stop signing in when that instance moved to the published image (Node 22). Nothing changes
+    for anyone today; offering a post-quantum algorithm becomes a decision rather than a side effect
+    of which Node is installed.
+  - 14.0.2 also carries the fix for GHSA-2g3p-m8c9-hhwh (certificate-revocation handling during
+    attestation). This instance asks for no attestation, so it was not reachable here.
+
 ## [0.61.0] — 2026-10-09
 
 ### Added

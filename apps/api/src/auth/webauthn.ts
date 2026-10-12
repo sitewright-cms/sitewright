@@ -4,14 +4,13 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
   type AuthenticationResponseJSON,
-  type AuthenticatorTransportFuture,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
   type VerifiedAuthenticationResponse,
   type VerifiedRegistrationResponse,
 } from '@simplewebauthn/server';
-import { isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
+import { cose, isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
 
 /** Fallback Relying Party display name (authenticator/OS passkey UI) when no platform name is set. */
 const DEFAULT_RP_NAME = 'SiteWright';
@@ -81,7 +80,17 @@ function userHandle(userId: string): Uint8Array<ArrayBuffer> {
   return toBufferView(isoUint8Array.fromUTF8String(userId));
 }
 
-const asTransports = (t?: string[]): AuthenticatorTransportFuture[] | undefined => t as AuthenticatorTransportFuture[] | undefined;
+/**
+ * The public-key algorithms a passkey may be registered with — stated, not left to the library.
+ *
+ * From @simplewebauthn/server 14 the default depends on the RUNTIME: where Node can do post-quantum
+ * signatures (24.7+), ML-DSA-44 is offered first. A passkey made that way only verifies on such a
+ * runtime, so one registered on a from-source install running Node 24 would stop signing in the day
+ * that instance moves to the published image (Node 22) — with no password to fall back on for an
+ * account that has none. These three are what every version before 14 offered, on every runtime.
+ * Adding a post-quantum algorithm is a decision to make here, on purpose, once the image can verify it.
+ */
+export const PASSKEY_ALGORITHMS: number[] = [cose.COSEALG.EdDSA, cose.COSEALG.ES256, cose.COSEALG.RS256];
 
 /** Registration options for a new passkey, excluding the user's existing credentials. */
 export function registrationOptions(params: {
@@ -98,8 +107,9 @@ export function registrationOptions(params: {
     userName: params.userName,
     userID: userHandle(params.userId),
     attestationType: 'none', // first-party login — no attestation policy needed
-    excludeCredentials: params.existing.map((c) => ({ id: c.id, transports: asTransports(c.transports) })),
+    excludeCredentials: params.existing.map((c) => ({ id: c.id, transports: c.transports })),
     authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+    supportedAlgorithmIDs: PASSKEY_ALGORITHMS,
   });
 }
 
@@ -119,6 +129,8 @@ export function verifyRegistration(params: {
     expectedOrigin: params.rp.origin,
     expectedRPID: params.rp.rpID,
     requireUserVerification: REQUIRE_USER_VERIFICATION,
+    // The same list the options offered: a response in any other algorithm was not asked for.
+    supportedAlgorithmIDs: PASSKEY_ALGORITHMS,
   });
 }
 
@@ -129,7 +141,7 @@ export function authenticationOptions(params: {
 }): Promise<PublicKeyCredentialRequestOptionsJSON> {
   return generateAuthenticationOptions({
     rpID: params.rp.rpID,
-    allowCredentials: params.allow.map((c) => ({ id: c.id, transports: asTransports(c.transports) })),
+    allowCredentials: params.allow.map((c) => ({ id: c.id, transports: c.transports })),
     userVerification: 'preferred',
   });
 }
@@ -149,7 +161,7 @@ export function verifyAuthentication(params: {
       id: params.credential.id,
       publicKey: toBufferView(isoBase64URL.toBuffer(params.credential.publicKey)),
       counter: params.credential.counter,
-      transports: asTransports(params.credential.transports),
+      transports: params.credential.transports,
     },
     requireUserVerification: REQUIRE_USER_VERIFICATION,
   });

@@ -90,7 +90,7 @@ describe('MemberTokensManager', () => {
     }
     // Inviting is its own switch, and says what it really hands out — a login, and for a new address
     // its password.
-    expect(screen.getByText(/adds them at once without the invite link.*returns its password to the token.*their own sign-in.*payments included.*after this token is revoked/)).toBeInTheDocument();
+    expect(screen.getByText(/adds them at once without the invite link.*returns a temporary password to the token, which the person replaces at first sign-in.*their own sign-in.*payments included.*after this token is revoked/)).toBeInTheDocument();
     // Rename, delete, managing and inviting only ever work where the member is the owner.
     expect(screen.getAllByText(/projects you own|project you own/)).toHaveLength(4);
     // A limit on creating projects is not asked for until the token may create them.

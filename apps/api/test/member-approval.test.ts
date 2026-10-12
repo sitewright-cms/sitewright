@@ -27,6 +27,22 @@ async function login(email: string, password = 'Pw-secret-1'): Promise<string> {
   return token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } }));
 }
 
+/**
+ * Signs in with a generated password the way its owner has to: it is temporary, so the session can do
+ * nothing until it has been replaced (temporary-passwords.test.ts covers that rule itself).
+ */
+async function firstSignIn(email: string, temporary: string): Promise<string> {
+  const t = await login(email, temporary);
+  const change = await app.inject({
+    method: 'PUT',
+    url: '/account/password',
+    cookies: { sw_session: t },
+    payload: { currentPassword: temporary, newPassword: 'Their-own-pw-9' },
+  });
+  expect(change.statusCode).toBe(204);
+  return t;
+}
+
 /** A staff owner with a project, plus a pending client invite on it. */
 async function setup(): Promise<{ t: string; projectId: string; inviteId: string; inviteToken: string; email: string }> {
   await registerAccount(db, 'owner@agency.test', 'Pw-secret-1', { platformRole: 'developer' });
@@ -43,7 +59,7 @@ async function setup(): Promise<{ t: string; projectId: string; inviteId: string
 }
 
 describe('approving a pending member without the invite link', () => {
-  it('creates the account, grants membership, and returns a one-time password', async () => {
+  it('creates the account, grants membership, and returns a temporary password', async () => {
     const { t, projectId, inviteId, email } = await setup();
     const res = await app.inject({
       method: 'POST',
@@ -150,7 +166,7 @@ describe('approving STAFF the same way, and issuing their passwords', () => {
     return login('boss@agency.test');
   }
 
-  it('creates an ADMIN account from a pending staff invite, with a one-time password', async () => {
+  it('creates an ADMIN account from a pending staff invite, with a temporary password', async () => {
     const t = await admin();
     const inv = await app.inject({
       method: 'POST',
@@ -167,8 +183,9 @@ describe('approving STAFF the same way, and issuing their passwords', () => {
     expect(body.created).toBe(true);
     expect(body.password).toBeTruthy();
 
-    // The new admin can sign in AND reaches instance settings — the role actually landed.
-    const theirs = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'second-admin@agency.test', password: body.password } }));
+    // The new admin can sign in AND — once they have replaced the temporary password, which is all
+    // that session may do first — reaches instance settings: the role actually landed.
+    const theirs = await firstSignIn('second-admin@agency.test', body.password!);
     expect((await app.inject({ method: 'GET', url: '/admin/settings', cookies: { sw_session: theirs } })).statusCode).toBe(200);
   });
 
@@ -179,7 +196,7 @@ describe('approving STAFF the same way, and issuing their passwords', () => {
     const res = await app.inject({ method: 'POST', url: `/admin/invites/${inviteId}/approve`, cookies: { sw_session: t } });
     const body = res.json() as { password?: string };
 
-    const theirs = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'dev@agency.test', password: body.password } }));
+    const theirs = await firstSignIn('dev@agency.test', body.password!);
     // A developer may create a project…
     expect((await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: theirs }, payload: { name: 'D', slug: 'd' } })).statusCode).toBe(201);
     // …but is NOT an instance admin.

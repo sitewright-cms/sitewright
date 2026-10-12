@@ -3,12 +3,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
-const { me, createProject, logout, loginConfig, setUnauthorizedHandler, useSessionPoll } = vi.hoisted(() => ({
+const { me, createProject, changePassword, acceptInvite, peekInvite, logout, loginConfig, setUnauthorizedHandler, setPasswordChangeRequiredHandler, useSessionPoll } = vi.hoisted(() => ({
   me: vi.fn(),
   createProject: vi.fn(),
+  changePassword: vi.fn(),
+  acceptInvite: vi.fn(),
+  peekInvite: vi.fn(),
   logout: vi.fn(),
   loginConfig: vi.fn(),
   setUnauthorizedHandler: vi.fn(),
+  setPasswordChangeRequiredHandler: vi.fn(),
   useSessionPoll: vi.fn(),
 }));
 const loadedHook = vi.hoisted(() => ({ defer: false, pending: [] as Array<(() => void) | undefined> }));
@@ -16,6 +20,9 @@ vi.mock('../src/api', () => ({
   api: {
     me: () => me(),
     createProject: (...a: unknown[]) => createProject(...a),
+    changePassword: (...a: unknown[]) => changePassword(...a),
+    acceptInvite: (...a: unknown[]) => acceptInvite(...a),
+    peekInvite: (...a: unknown[]) => peekInvite(...a),
     logout: () => logout(),
     loginConfig: () => loginConfig(),
     // App wraps its subtree in CiPaletteForProject, which fetches the project's identity for the rich-text
@@ -25,6 +32,7 @@ vi.mock('../src/api', () => ({
     listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
+  setPasswordChangeRequiredHandler: (fn: (() => void) | undefined) => setPasswordChangeRequiredHandler(fn),
 }));
 // The poll mechanics are unit-tested in use-session-poll.test.ts; here we only assert App enables it
 // (active=true) when authenticated and disables it (false) on the login screen.
@@ -139,6 +147,16 @@ describe('App shell', () => {
     expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'SiteWright' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Acme/ })).toBeNull();
+  });
+
+  it('★ tells an account on a TEMPORARY password why it is being asked, and for which password', async () => {
+    // What /me returns while such a session is held: the flag, the reason, and no projects.
+    me.mockResolvedValue({ userId: 'u', email: 'client@x.test', isInstanceAdmin: false, mustChangePassword: true, temporaryPassword: true, projects: [] });
+    render(<App />);
+    expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+    expect(screen.getByText(/is on a temporary password/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Temporary password')).toBeInTheDocument();
+    expect(screen.queryByText(/default password/)).toBeNull();
   });
 
   it('opens a project from the selector → header shows its name + tablist', async () => {
@@ -262,6 +280,41 @@ describe('App shell', () => {
     expect(await screen.findByText('LOGIN')).toBeInTheDocument();
   });
 
+  it('★ puts the forced screen up at once when a WORKING session starts being refused for its password', async () => {
+    // An admin issues this account a new password while its editor is open: the server answers the
+    // next request with `password-change-required`. Without this the project view stays up and every
+    // action fails with that word as its error until the person reloads.
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    const handler = setPasswordChangeRequiredHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    expect(handler).toBeTypeOf('function');
+
+    me.mockClear();
+    me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, mustChangePassword: true, temporaryPassword: true, projects: [] });
+    // A screen's worth of requests is refused together — that is still ONE re-read of /me.
+    act(() => {
+      handler!();
+      handler!();
+      handler!();
+    });
+    expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+    expect(screen.getByText(/is on a temporary password/)).toBeInTheDocument();
+    expect(screen.queryByText(/PROJECT Acme/)).toBeNull();
+    expect(me).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores that refusal while not signed in', async () => {
+    me.mockRejectedValue(new Error('unauthenticated'));
+    render(<App />);
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+    me.mockClear();
+    const handler = setPasswordChangeRequiredHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    act(() => handler?.());
+    expect(me).not.toHaveBeenCalled();
+    expect(screen.getByText('LOGIN')).toBeInTheDocument();
+  });
+
   it('ignores a 401 while not signed in (no spurious redirect / state churn on the auth screen)', async () => {
     // The bootstrap /me rejects → the app sits on the auth screen.
     me.mockRejectedValue(new Error('unauthenticated'));
@@ -350,6 +403,56 @@ describe('the selector is released only by the project it is actually waiting on
     it('follows the return URL once there IS a session', async () => {
       render(<App />);
       await waitFor(() => expect(replace).toHaveBeenCalledWith(AUTHORIZE));
+    });
+
+    it('★ does NOT follow it on a session that still has to replace its password — the same loop — and resumes once it has', async () => {
+      // The consent page does not recognize such a session and bounces it straight back here, exactly
+      // as it does a signed-out one. `/me` succeeds for it, so "signed in" alone is not the guard.
+      me.mockResolvedValue({ userId: 'u', email: 'client@x.test', isInstanceAdmin: false, mustChangePassword: true, temporaryPassword: true, projects: [] });
+      render(<App />);
+      expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+
+      // Replacing the password is what makes the session recognizable — and the authorization resumes.
+      changePassword.mockResolvedValue(undefined);
+      me.mockResolvedValue({ userId: 'u', email: 'client@x.test', isInstanceAdmin: false, mustChangePassword: false, temporaryPassword: false, projects });
+      fireEvent.change(screen.getByLabelText('Temporary password'), { target: { value: 'Xk7$mQp2-Rw9tLz4' } });
+      fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'New-Pw-secret-2' } });
+      fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'New-Pw-secret-2' } });
+      fireEvent.click(screen.getByRole('button', { name: /Set new password/ }));
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(AUTHORIZE));
+      expect(changePassword).toHaveBeenCalledWith('Xk7$mQp2-Rw9tLz4', 'New-Pw-secret-2');
+    });
+  });
+
+  describe('an invite link opened on a session that still has to replace its password', () => {
+    let originalSearch: string;
+    beforeEach(() => {
+      originalSearch = window.location.search;
+      Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, search: '?invite=tok-123' } });
+    });
+    afterEach(() => {
+      Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, search: originalSearch } });
+    });
+
+    it('★ shows the forced screen FIRST, and accepts the invite once the password is replaced', async () => {
+      // Accepting an invite is one of the things such a session may not do. Rendering the invite
+      // screen first would auto-accept, be refused, and show the server's raw sentinel as the error.
+      me.mockResolvedValue({ userId: 'u', email: 'client@x.test', isInstanceAdmin: false, mustChangePassword: true, temporaryPassword: true, projects: [] });
+      peekInvite.mockResolvedValue({ invite: { email: 'client@x.test', role: 'member', projectName: 'Globex', expired: false, accepted: false, hasAccount: true } });
+      acceptInvite.mockResolvedValue({ projectId: 'p2', role: 'member' });
+      render(<App />);
+      expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+      expect(acceptInvite).not.toHaveBeenCalled();
+
+      changePassword.mockResolvedValue(undefined);
+      me.mockResolvedValue({ userId: 'u', email: 'client@x.test', isInstanceAdmin: false, mustChangePassword: false, temporaryPassword: false, projects });
+      fireEvent.change(screen.getByLabelText('Temporary password'), { target: { value: 'Xk7$mQp2-Rw9tLz4' } });
+      fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'New-Pw-secret-2' } });
+      fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'New-Pw-secret-2' } });
+      fireEvent.click(screen.getByRole('button', { name: /Set new password/ }));
+      // The invite was waiting all along.
+      await waitFor(() => expect(acceptInvite).toHaveBeenCalledWith('tok-123'));
     });
   });
 

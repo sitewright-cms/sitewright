@@ -4,6 +4,7 @@ import { InvitePanel } from './InvitePanel';
 import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
 import { OneTimeSecret } from './ui/OneTimeSecret';
+import { resetPasswordQuestion, resetPasswordWarning, TEMPORARY_PASSWORD_CONSEQUENCE } from './ui/temporary-password';
 import { Modal } from './ui/Modal';
 import { glassPanel, dangerButton, ghostButton, primaryButton } from '../theme';
 
@@ -21,7 +22,7 @@ export function TeamManager() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [issued, setIssued] = useState<{ label: string; secret: string } | null>(null);
+  const [issued, setIssued] = useState<{ label: string; secret: string; expiresAt?: string } | null>(null);
   // A password reset waiting on the admin's answer about that account's member tokens.
   const [pendingReset, setPendingReset] = useState<{ userId: string; email: string; liveTokens: number | 'unknown' } | null>(null);
   const { confirm, dialog } = useDialogs();
@@ -68,14 +69,15 @@ export function TeamManager() {
         (invite.role === 'admin'
           ? 'An admin can change instance settings and reaches EVERY project. '
           : 'A developer can create projects and reaches every project they own. ') +
-        'If they have no account yet, one is created and a password is shown ONCE.',
+        'If they have no account yet, one is created and a temporary password is shown ONCE — ' +
+        'they choose their own the first time they sign in.',
       confirmLabel: 'Approve',
     });
     if (!ok) return;
     setError(null);
     try {
       const res = await api.approveStaffInvite(invite.id);
-      if (res.password) setIssued({ label: res.email, secret: res.password });
+      if (res.password) setIssued({ label: res.email, secret: res.password, expiresAt: res.passwordExpiresAt });
       else toast.show(`${res.email} already had an account — the ${invite.role} role was granted.`);
       await load();
     } catch (err) {
@@ -103,7 +105,7 @@ export function TeamManager() {
     }
     const ok = await confirm({
       title: 'Issue a new password',
-      message: `Replace ${email}'s password? Their current one stops working immediately, and the new one is shown ONCE.`,
+      message: resetPasswordWarning(email),
       confirmLabel: 'Issue new password',
     });
     // No tokens, so nothing was asked and nothing is said: the server's cautious default (revoke)
@@ -115,7 +117,7 @@ export function TeamManager() {
     setPendingReset(null);
     try {
       const res = await api.resetStaffPassword(userId, revokeMemberTokens);
-      setIssued({ label: res.email ?? email, secret: res.password });
+      setIssued({ label: res.email ?? email, secret: res.password, expiresAt: res.passwordExpiresAt });
       if (res.revokedMemberTokens > 0) {
         toast.show(`${res.revokedMemberTokens === 1 ? 'Their member token was' : `Their ${res.revokedMemberTokens} member tokens were`} revoked.`);
       }
@@ -133,7 +135,7 @@ export function TeamManager() {
         project on this instance.
       </p>
 
-      {issued && <OneTimeSecret label={issued.label} secret={issued.secret} onDismiss={() => setIssued(null)} />}
+      {issued && <OneTimeSecret label={issued.label} secret={issued.secret} expiresAt={issued.expiresAt} onDismiss={() => setIssued(null)} />}
 
       <ul className="mb-6 flex flex-col gap-2">
         {members.map((m) => (
@@ -218,7 +220,10 @@ function ResetPasswordDialog({
     <Modal title="Issue a new password" size="md" onClose={onCancel}>
       <div className="flex flex-col gap-4 p-5">
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          Replace {email}&rsquo;s password? Their current one stops working immediately, and the new one is shown ONCE.
+          {resetPasswordQuestion(email)}
+        </p>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {TEMPORARY_PASSWORD_CONSEQUENCE}
         </p>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-200">Their member tokens</legend>

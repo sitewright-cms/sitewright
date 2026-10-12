@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, ne } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { sessions } from '../db/schema.js';
+import { sessions, users } from '../db/schema.js';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
@@ -27,20 +27,50 @@ export async function createSession(
   return { token, expiresAt };
 }
 
-/** Resolves a raw token to its userId, or null if unknown/expired (expired rows are deleted). */
-export async function validateSession(
+/** A live session, with what the forced-password-change gate needs to know about its account. */
+export interface ResolvedSession {
+  userId: string;
+  /** The account carries the forced-change flag (the seeded default admin, or a temporary password). */
+  mustChangePassword: boolean;
+  /** The account's password is a temporary one — see `users.passwordExpiresAt`. */
+  passwordTemporary: boolean;
+}
+
+/**
+ * Resolves a raw token to its session, or null if unknown/expired (expired rows are deleted) — with
+ * the account's password state in the SAME query. Every authenticated request asks whether its account
+ * still has to replace its password, so reading that here costs nothing extra; a second lookup per
+ * request would.
+ *
+ * There is deliberately no variant that returns just the user id: a caller that could get an identity
+ * without the password state could not apply the forced-change gate, and would not know it had to.
+ */
+export async function resolveSession(
   db: Database,
   token: string,
   now: Date = new Date(),
-): Promise<string | null> {
+): Promise<ResolvedSession | null> {
   const id = tokenId(token);
-  const [row] = await db.select().from(sessions).where(eq(sessions.id, id));
+  const [row] = await db
+    .select({
+      userId: sessions.userId,
+      expiresAt: sessions.expiresAt,
+      mustChangePassword: users.mustChangePassword,
+      passwordExpiresAt: users.passwordExpiresAt,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(eq(sessions.id, id));
   if (!row) return null;
   if (row.expiresAt.getTime() <= now.getTime()) {
     await db.delete(sessions).where(eq(sessions.id, id));
     return null;
   }
-  return row.userId;
+  return {
+    userId: row.userId,
+    mustChangePassword: row.mustChangePassword,
+    passwordTemporary: row.passwordExpiresAt !== null,
+  };
 }
 
 /** Revokes a session (logout). No-op if the token is unknown. */

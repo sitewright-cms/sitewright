@@ -23,6 +23,17 @@ export const users = sqliteTable('users', {
    * the editor forces a "set a new password" screen. Defaults to false for every normal account.
    */
   mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
+  /**
+   * Set when the password is TEMPORARY — one somebody else generated (an invite approved without its
+   * link, or a password an admin issued), so somebody else has seen it. NULL for every password its
+   * owner chose. While set:
+   *  - the password stops working at this time unless it has been replaced;
+   *  - a session opened with it can do nothing but replace it (`mustChangePassword` is set with it,
+   *    and unlike the default-admin case this is enforced in development too);
+   *  - signing in another way (single sign-on, a passkey) discards it instead.
+   * Cleared whenever the password is replaced or discarded.
+   */
+  passwordExpiresAt: integer('password_expires_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -212,6 +223,12 @@ export const mfaLoginTickets = sqliteTable(
       .notNull()
       .references(() => users.id),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * The first factor was single sign-on rather than a password or a passkey. A completed SSO sign-in
+     * discards an unused temporary password (see `users.passwordExpiresAt`), and "completed" means
+     * AFTER the code — so the step that finishes the sign-in has to know how it began.
+     */
+    viaSso: integer('via_sso', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('mfa_login_tickets_expires_idx').on(t.expiresAt)],
@@ -475,7 +492,7 @@ export type ApiKeySource = 'pat' | 'oauth';
  * it into `members:manage` would have made "may remove a member" quietly mean "may create a login".
  *
  * `members:invite` also covers APPROVING an invite without its link. For an address that has no account
- * yet, that creates one and hands its one-time password to the caller — the same login an invite leads
+ * yet, that creates one and hands its TEMPORARY password to the caller — the same login an invite leads
  * to, minus the invitee's inbox. Replacing the password of an account that already EXISTS is not a
  * capability at all: that stays an interactive decision for every kind of bearer.
  */

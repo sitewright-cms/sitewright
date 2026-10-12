@@ -114,6 +114,87 @@ describe('OIDC single sign-on', () => {
     expect(hasSessionCookie(res)).toBe(true);
   });
 
+  it('★ discards a TEMPORARY password its owner never used — they are not stranded at a screen asking for it', async () => {
+    // An invite approved without its link creates the account with a generated password that somebody
+    // else has seen. Its owner signs in through the provider instead and may never have been given it.
+    const invite = await admin.post('/admin/invites', { email: 'approved@test.local' });
+    const approved = await admin.post(`/admin/invites/${invite.json().invite.id}/approve`);
+    const temporary = approved.json().password as string;
+    expect(temporary).toBeTruthy();
+
+    const res = await login({ sub: 'sub-approved', email: 'approved@test.local', emailVerified: true });
+    expect(res.headers.location).toBe('/');
+    const cookies = { [SESSION_COOKIE]: sessionToken(res) };
+
+    // A working session, not the forced screen — and no password left on the account.
+    const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies })).json();
+    expect(me).toMatchObject({ mustChangePassword: false, temporaryPassword: false, hasPassword: false, platformRole: 'developer' });
+    expect((await harness.app.inject({ method: 'GET', url: '/projects', cookies })).statusCode).toBe(200);
+    // The copy somebody else holds is dead, well before its week is up.
+    const withCopy = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'approved@test.local', password: temporary } });
+    expect(withCopy.statusCode).toBe(401);
+    expect(withCopy.json().error).toBe('invalid credentials');
+  });
+
+  it('★ ends a session somebody ELSE opened with that password — the owner’s arrival must not release it', async () => {
+    // Whoever saw the temporary password signs in with it first and waits. Their session is held, so
+    // it looks harmless. Discarding the password clears the hold on the ACCOUNT — and would hand that
+    // waiting session the whole account the moment the real owner signs in.
+    const invite = await admin.post('/admin/invites', { email: 'approved@test.local' });
+    const approved = await admin.post(`/admin/invites/${invite.json().invite.id}/approve`);
+    const temporary = approved.json().password as string;
+    const waiting = { [SESSION_COOKIE]: sessionToken(await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'approved@test.local', password: temporary } })) };
+    const before = await harness.app.inject({ method: 'GET', url: '/projects', cookies: waiting });
+    expect(before.statusCode).toBe(403);
+    expect(before.json().error).toBe('password-change-required');
+
+    const owner = await login({ sub: 'sub-owner', email: 'approved@test.local', emailVerified: true });
+    const ownerCookies = { [SESSION_COOKIE]: sessionToken(owner) };
+    expect((await harness.app.inject({ method: 'GET', url: '/projects', cookies: ownerCookies })).statusCode).toBe(200);
+
+    // The waiting session is GONE — not held, and above all not working.
+    expect((await harness.app.inject({ method: 'GET', url: '/projects', cookies: waiting })).statusCode).toBe(401);
+    expect((await harness.app.inject({ method: 'GET', url: '/me', cookies: waiting })).statusCode).toBe(401);
+  });
+
+  it('★ with an authenticator app, discards it only once the CODE has been given — the provider alone is not a sign-in', async () => {
+    const { generateSync } = await import('otplib');
+    const { eq } = await import('drizzle-orm');
+    const { users } = await import('../src/db/schema.js');
+    const user = await harness.signup({ email: 'mfa-reset@test.local', password: 'Pw-secret-1' });
+    await harness.db.update(users).set({ platformRole: 'developer' }).where(eq(users.id, user.userId));
+    const { secret } = (await user.post('/account/mfa/totp/setup')).json() as { secret: string };
+    await user.post('/account/mfa/totp/confirm', { code: generateSync({ secret }) });
+    // An admin issues them a new password.
+    expect((await admin.post(`/admin/users/${user.userId}/password`)).statusCode).toBe(200);
+    const row = async () => (await harness.db.select().from(users).where(eq(users.id, user.userId)))[0]!;
+
+    // The provider vouches — but someone holding only that identity has not signed in, and must not
+    // be able to throw away what the admin just issued.
+    const res = await login({ sub: 'sub-mfa-reset', email: 'mfa-reset@test.local', emailVerified: true });
+    const ticket = decodeURIComponent(String(res.headers.location).replace('/?mfa_ticket=', ''));
+    expect(hasSessionCookie(res)).toBe(false);
+    expect((await row()).passwordHash, 'still there after the first factor').not.toBeNull();
+    expect((await row()).passwordExpiresAt).not.toBeNull();
+    const wrong = await harness.app.inject({ method: 'POST', url: '/auth/login/totp', payload: { ticket, code: '000000' } });
+    expect(wrong.statusCode).toBe(401);
+    expect((await row()).passwordHash, 'and after a wrong code').not.toBeNull();
+
+    // The code completes the sign-in: now it goes, and the session is a working one.
+    const done = await harness.app.inject({ method: 'POST', url: '/auth/login/totp', payload: { ticket, code: generateSync({ secret }) } });
+    expect(done.statusCode).toBe(200);
+    expect(await row()).toMatchObject({ passwordHash: null, mustChangePassword: false, passwordExpiresAt: null });
+    const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(done) } })).json();
+    expect(me).toMatchObject({ mustChangePassword: false, temporaryPassword: false, hasPassword: false });
+  });
+
+  it('leaves a password its owner CHOSE alone when they sign in through the provider', async () => {
+    await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
+    await login({ sub: 'sub-chosen', email: 'member@test.local', emailVerified: true });
+    const pw = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@test.local', password: 'Pw-secret-1' } });
+    expect(pw.statusCode).toBe(200);
+  });
+
   it('provisions a passwordless account when a pending invite exists, materializing the invite', async () => {
     await admin.post('/admin/invites', { email: 'invitee@test.local' });
     const res = await login({ sub: 'sub-2', email: 'invitee@test.local', emailVerified: true });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, downloadProjectExport, eventsUrl, previewDocUrl, snippetPreviewUrl, setUnauthorizedHandler } from '../src/api';
+import { api, ApiError, downloadProjectExport, eventsUrl, previewDocUrl, snippetPreviewUrl, setPasswordChangeRequiredHandler, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -9,6 +9,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnauthorizedHandler(undefined);
+  setPasswordChangeRequiredHandler(undefined);
 });
 
 /**
@@ -1275,6 +1276,29 @@ describe('unauthorized (401) handling', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { projects: [] }));
     await api.projects();
     expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('★ tells the app when a request is refused because the password has to be replaced first', async () => {
+    const onHeld = vi.fn();
+    const onUnauthorized = vi.fn();
+    setPasswordChangeRequiredHandler(onHeld);
+    setUnauthorizedHandler(onUnauthorized);
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'password-change-required' }));
+    await expect(api.projects()).rejects.toMatchObject({ status: 403, message: 'password-change-required' });
+    expect(onHeld).toHaveBeenCalledTimes(1);
+    expect(onUnauthorized, 'it is not a sign-out').not.toHaveBeenCalled();
+
+    // Only that exact answer: an ordinary 403 is somebody not being allowed something.
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
+    await expect(api.projects()).rejects.toMatchObject({ status: 403 });
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'password-change-required' }));
+    await expect(api.projects()).rejects.toMatchObject({ status: 400 });
+    expect(onHeld).toHaveBeenCalledTimes(1);
+
+    // …and with no handler registered it still just throws.
+    setPasswordChangeRequiredHandler(undefined);
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'password-change-required' }));
+    await expect(api.projects()).rejects.toBeInstanceOf(ApiError);
   });
 
   it('is a no-op when no handler is registered (401 still throws normally)', async () => {

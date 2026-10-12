@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   aiUsage,
@@ -27,7 +27,7 @@ import {
   type ProjectRole,
 } from '../db/schema.js';
 import { GLOBAL_SCOPE_ID } from './global-library.js';
-import { hashPassword, verifyPassword } from '../auth/password.js';
+import { hashPassword, TEMPORARY_PASSWORD_TTL_MS, verifyPassword } from '../auth/password.js';
 import { acceptPendingInvitesForEmail, hasPendingInvite } from './invites.js';
 import type { OidcRepository } from './oidc.js';
 import {
@@ -92,8 +92,31 @@ export async function registerAccount(
   return { userId };
 }
 
+/**
+ * Said only to a caller who supplied the RIGHT password, so it tells a guesser nothing a correct guess
+ * would not. Naming the reason matters: "invalid credentials" would send the person back to retype a
+ * password that can never work again.
+ */
+export const TEMPORARY_PASSWORD_EXPIRED = 'this temporary password has expired — ask for a new one';
+
+/**
+ * A sign-in with the RIGHT password, refused because that password was temporary and its week is up.
+ * Its own type so the caller can tell it from a failed credential check: it is not one, and counting
+ * it against the sign-in throttle would lock out the very person who has to go and ask for a new one.
+ */
+export class TemporaryPasswordExpiredError extends UnauthorizedError {
+  constructor() {
+    super(TEMPORARY_PASSWORD_EXPIRED);
+    this.name = 'TemporaryPasswordExpiredError';
+  }
+}
+
+function temporaryPasswordExpired(user: { passwordExpiresAt: Date | null }, now: Date): boolean {
+  return user.passwordExpiresAt !== null && user.passwordExpiresAt.getTime() <= now.getTime();
+}
+
 /** Verifies credentials and returns the userId, or throws {@link UnauthorizedError}. */
-export async function login(db: Database, email: string, password: string): Promise<string> {
+export async function login(db: Database, email: string, password: string, now: Date = new Date()): Promise<string> {
   const normalizedEmail = email.trim().toLowerCase();
   const [user] = await db.select().from(users).where(eq(users.email, normalizedEmail));
   if (!user) {
@@ -104,6 +127,7 @@ export async function login(db: Database, email: string, password: string): Prom
   if (!(await verifyPassword(password, user.passwordHash))) {
     throw new UnauthorizedError('invalid credentials');
   }
+  if (temporaryPasswordExpired(user, now)) throw new TemporaryPasswordExpiredError();
   return user.id;
 }
 
@@ -243,13 +267,21 @@ export async function changeEmail(
  * in {@link changeEmail}). When the account has NO password (an OIDC-provisioned user setting one for
  * the first time), the session alone authorizes it — there is nothing to confirm. The caller revokes
  * the user's OTHER sessions afterward.
+ *
+ * An account that MUST replace its password (the default admin, or a temporary password) may not
+ * "replace" it with the same one: whoever else knows it would still know it. An EXPIRED temporary
+ * password cannot be replaced at all — a session opened with it in time must not be a way to keep it
+ * alive past its week.
+ *
+ * `replacedTemporary` tells the caller this change completed a reset somebody else started.
  */
 export async function changePassword(
   db: Database,
   userId: string,
   currentPassword: string | undefined,
   newPassword: string,
-): Promise<void> {
+  now: Date = new Date(),
+): Promise<{ replacedTemporary: boolean }> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) {
     if (currentPassword !== undefined) await hashPassword(currentPassword); // timing parity
@@ -260,21 +292,58 @@ export async function changePassword(
     if (currentPassword === undefined || !(await verifyPassword(currentPassword, user.passwordHash))) {
       throw new ForbiddenError('current password is incorrect');
     }
+    if (temporaryPasswordExpired(user, now)) throw new ForbiddenError(TEMPORARY_PASSWORD_EXPIRED);
+    if ((user.mustChangePassword || user.passwordExpiresAt !== null) && newPassword === currentPassword) {
+      throw new ForbiddenError('choose a new password — the current one has to be replaced');
+    }
   }
   const passwordHash = await hashPassword(newPassword);
-  // Setting a new password always clears any forced-change flag — the account is no longer on the
-  // well-known default. (A no-op for the vast majority of accounts, whose flag is already false.)
-  await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
+  // Setting a new password always clears any forced-change state — the account is no longer on a
+  // credential somebody else knows. (A no-op for the vast majority of accounts.)
+  //
+  // The write lands only on the password that was VERIFIED above. Two slow hashes sit between that
+  // check and this line, and the account can change under them — its owner completes a single
+  // sign-on, which discards a temporary password and ends every session, this one included. Writing
+  // regardless would put the caller's password on an account that had just been taken back from it.
+  const written = await db
+    .update(users)
+    .set({ passwordHash, mustChangePassword: false, passwordExpiresAt: null })
+    .where(
+      and(
+        eq(users.id, userId),
+        user.passwordHash === null ? isNull(users.passwordHash) : eq(users.passwordHash, user.passwordHash),
+      ),
+    )
+    .returning({ id: users.id });
+  if (written.length === 0) throw new ConflictError('the password changed while this was in progress — sign in again');
+  return { replacedTemporary: user.passwordExpiresAt !== null };
 }
 
 /**
- * Whether the user must change their password before doing anything else (set by the first-boot seed
- * for an admin still on the default password; cleared by {@link changePassword}). A missing user
- * resolves to false (the session guard already rejects an unknown user upstream).
+ * Drops a TEMPORARY password that was never replaced, because its owner has just completed a sign-in
+ * through single sign-on. Returns whether there was one.
+ *
+ * Without this the forced-change screen would ask that person for a password they may never have been
+ * given, and a credential somebody else has seen would stay valid for the rest of its week on an
+ * account that does not need it. The account simply has no password afterwards; its owner can set one
+ * in Account → Password. A password its owner CHOSE is never touched — only a temporary one matches.
+ *
+ * EVERY session the account has goes with it, in the same transaction. Whoever else knew the password
+ * may already have signed in with it and be sitting in a held session, waiting: clearing the hold on
+ * the account would otherwise turn that into a working one the moment the real owner arrives. The
+ * caller issues the owner's new session afterwards.
  */
-export async function isPasswordChangeRequired(db: Database, userId: string): Promise<boolean> {
-  const [u] = await db.select({ flag: users.mustChangePassword }).from(users).where(eq(users.id, userId));
-  return u?.flag ?? false;
+export async function discardTemporaryPassword(db: Database, userId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const dropped = await tx
+      .update(users)
+      .set({ passwordHash: null, mustChangePassword: false, passwordExpiresAt: null })
+      .where(and(eq(users.id, userId), isNotNull(users.passwordExpiresAt)))
+      .returning({ id: users.id });
+    if (dropped.length === 0) return false;
+    await tx.delete(sessions).where(eq(sessions.userId, userId));
+    return true;
+  });
 }
 
 /** The user's platform-staff role (`admin`/`developer`), or null for a client. */
@@ -565,12 +634,24 @@ export async function hasAccessBeyondProject(db: Database, userId: string, proje
  * No current-password check, deliberately: the point is that the user CANNOT supply one (lost it, or
  * never had one because the account was federated). Authorization is the caller's job, and
  * {@link hasAccessBeyondProject} is what keeps it from reaching accounts the caller does not own.
- * Clears `mustChangePassword` for the same reason {@link changePassword} does — the account is no
- * longer on a well-known credential.
+ *
+ * The password is TEMPORARY: the admin has seen it, so its owner has to replace it at first sign-in
+ * and it stops working at the returned time if they have not. Any session the account already has
+ * open is held to the same rule from its next request.
  */
-export async function setPasswordAsAdmin(db: Database, userId: string, newPassword: string): Promise<void> {
+export async function setPasswordAsAdmin(
+  db: Database,
+  userId: string,
+  newPassword: string,
+  now: Date = new Date(),
+): Promise<{ expiresAt: Date }> {
   const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
   if (!user) throw new NotFoundError('user not found');
   const passwordHash = await hashPassword(newPassword);
-  await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
+  const expiresAt = new Date(now.getTime() + TEMPORARY_PASSWORD_TTL_MS);
+  await db
+    .update(users)
+    .set({ passwordHash, mustChangePassword: true, passwordExpiresAt: expiresAt })
+    .where(eq(users.id, userId));
+  return { expiresAt };
 }

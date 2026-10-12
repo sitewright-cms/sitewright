@@ -712,12 +712,21 @@ describe('member tokens — members and invites (opt-in)', () => {
 
     const approved = await withToken(token, 'POST', `/projects/${projectId}/invites/${invited.invite.id}/approve`);
     expect(approved.statusCode).toBe(200);
-    const result = approved.json() as { email: string; userId: string; created: boolean; password?: string };
+    const result = approved.json() as { email: string; userId: string; created: boolean; password?: string; passwordExpiresAt?: string };
     expect(result).toMatchObject({ email: 'new@customer.test', created: true });
-    // A new account: the one-time password comes back to the caller, and it really signs in.
+    // A new account: the temporary password comes back to the caller, and it really signs in.
     expect(typeof result.password).toBe('string');
     const login = await h.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'new@customer.test', password: result.password } });
     expect(login.statusCode).toBe(200);
+    // ★ TEMPORARY, because the token's holder has now seen it: the caller is told when it stops
+    // working, and the session it opens is held until its owner has chosen their own (the rule itself
+    // is temporary-passwords.test.ts). Revoking this token does not make the password it saw go away —
+    // this does.
+    expect(new Date(result.passwordExpiresAt!).getTime()).toBeGreaterThan(Date.now());
+    const theirSession = login.cookies.find((c) => c.name === 'sw_session')!.value;
+    const held = await h.app.inject({ method: 'GET', url: '/projects', cookies: { sw_session: theirSession } });
+    expect(held.statusCode).toBe(403);
+    expect((held.json() as { error: string }).error).toBe('password-change-required');
     // They are a MEMBER of that project — a client, not staff.
     const [membership] = await h.db.select().from(projectMembers).where(eq(projectMembers.userId, result.userId));
     expect(membership).toMatchObject({ projectId, role: 'member' });

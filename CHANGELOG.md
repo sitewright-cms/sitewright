@@ -26,10 +26,11 @@ The running version of an instance is reported at `GET /version` (baked into the
     settings no token can, and still a member after the token is revoked.
   - `members:invite` also covers **approving an invite without its link**
     (`POST /projects/:id/invites/:inviteId/approve`), so an agent can add a person in one go. For an
-    address that has no account yet this creates one and returns its one-time password to the caller
-    — which is what "gives someone a sign-in" has to mean for automation, and is why the capability
-    is labelled that way. Replacing the password of an account that already exists, staff invites and
-    every instance-admin action stay interactive whatever is ticked.
+    address that has no account yet this creates one and returns its password to the caller — which
+    is what "gives someone a sign-in" has to mean for automation, and is why the capability is
+    labelled that way. That password is temporary (see *Changed*): the token's holder has seen it,
+    so its owner replaces it at first sign-in. Replacing the password of an account that already
+    exists, staff invites and every instance-admin action stay interactive whatever is ticked.
   - Staff only, and only while they are staff: a demoted member's tokens stop working on the next
     request and are revoked. Minting, listing and revoking are session-only, so a token can never
     make another token.
@@ -137,6 +138,45 @@ The running version of an instance is reported at `GET /version` (baked into the
     leaves 13.8 functions of headroom.
 
 ### Changed
+
+- **A password somebody else generated is now temporary.** Approving an invite without its link, and
+  issuing a new password for a member or a staff account, hand the caller a password to pass on — so
+  the caller has seen it, and when the caller is a member token, so has whatever logs the token's
+  holder keeps. Until now that password simply kept working for as long as its owner did not think
+  to change it, long after the token that produced it had been revoked.
+  - **Its owner has to choose their own the first time they sign in.** A session on a temporary
+    password gets one screen — "Choose a new password" — and the server answers nothing else it asks
+    for, reads included. It may not be "replaced" with itself.
+  - **It stops working after 7 days** (the lifetime of an invite link) if it has not been replaced,
+    and a session opened in time cannot replace it afterwards. Someone then has to issue a new one.
+    The sign-in screen says it has expired — only to a person who typed it correctly.
+  - **Signing in through single sign-on discards it**, so someone who was never given the password
+    is not stopped at a screen asking for it. Every session the account had is ended with it — whoever
+    else knew the password may have signed in first and be waiting, and must not be let in by the
+    owner's arrival. With an authenticator app this happens once the code has been given, not when
+    the provider answers. A passkey sign-in deliberately does not discard it: a passkey planted on an
+    account must not be a way to throw away the password an admin just issued to take that account
+    back.
+  - **Issuing a password holds the account's open sessions too**, from their next request, until the
+    new password has been used and replaced. The confirmation says so, and an editor that is open at
+    the time shows the "Choose a new password" screen at its next action rather than failing with an
+    error until it is reloaded. Member tokens the admin chose to keep carry on working, and the
+    forced replacement does not revoke them.
+  - The responses of `POST /projects/:id/invites/:inviteId/approve`,
+    `POST /admin/invites/:inviteId/approve`, `POST /admin/users/:id/password` and
+    `POST /projects/:id/members/:userId/password` carry `passwordExpiresAt` beside `password`, and
+    the panel that shows the password names the date. `GET /me` reports `temporaryPassword`.
+  - **The forced password change now stops reads as well as writes.** This is the same gate the
+    first-boot admin on the default password goes through, and it used to let every `GET` through:
+    in production, the well-known default credentials could not change anything but could look at
+    everything. A session that has to replace its password now gets `/me` (with no project list),
+    the password change, and sign-out. It cannot approve an OAuth client either.
+  - A password can no longer be issued for **your own** account through a project's member list
+    (the staff list already refused): it would hold the session that asked. An expired temporary
+    password typed correctly is not counted as a failed sign-in.
+  - The panel that shows a generated password no longer cuts it off at phone width.
+  - Passwords generated before this release are not marked — there is no telling them apart from
+    ones their owners chose. Migration `0035_temporary_passwords` adds two columns.
 
 - **Dependency refresh** — the five open Dependabot PRs (#1063, #1064, #1065, #1067, #1068), merged
   onto current main as one batch because their branches conflicted with each other. Production:

@@ -273,12 +273,13 @@ import { repairMediaOrientation } from '../repo/media-orientation.js';
 import { ReleaseRepository } from '../repo/releases.js';
 import { sweepDerivedStorage, projectStorage } from '../repo/storage-reaper.js';
 import { findUnusedMedia } from '../repo/media-usage.js';
-import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
+import { createSession, resolveSession, revokeOtherSessions, revokeSession, type ResolvedSession } from '../auth/sessions.js';
 import { LoginThrottle } from '../auth/login-throttle.js';
 import {
   changeEmail,
   changePassword,
-  isPasswordChangeRequired,
+  discardTemporaryPassword,
+  TemporaryPasswordExpiredError,
   getPlatformRole,
   getUserEmail,
   listPlatformUsers,
@@ -1523,6 +1524,9 @@ export interface AppOptions {
    * passes `NODE_ENV === 'production'`, so a real deployment enforces it but a local DEV run does NOT —
    * the default `admin@sitewright.example` / `123456` just works while developing. The seed still RECORDS
    * the flag regardless (it's a fact about the password), so flipping to production re-enforces it.
+   *
+   * This switch covers the DEFAULT password only. A TEMPORARY password (an invite approved without its
+   * link, a password an admin issued) must be replaced whatever this says.
    */
   forcePasswordChange?: boolean;
   /** Current running version (for the pull-based update check). */
@@ -2320,29 +2324,66 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     allowList: (req) => isActiveAgentToken(bearerToken(req)),
   });
 
-  // Resolve the session user ONCE per request and memoize it for the request's lifetime (keyed by the
+  // Resolve the session ONCE per request and memoize it for the request's lifetime (keyed by the
   // request object; GC'd with it). The forced-password preHandler, requireUserId, and currentUserId all
-  // funnel through here, so a single write request hits the sessions table once, not three times.
-  const sessionUserMemo = new WeakMap<FastifyRequest, string | null>();
-  async function resolveSessionUserId(req: FastifyRequest): Promise<string | null> {
-    const cached = sessionUserMemo.get(req);
+  // funnel through here, so a single write request hits the sessions table once, not three times. It
+  // is the ONLY place a session cookie becomes an identity — which is what lets the gate below hold.
+  const sessionMemo = new WeakMap<FastifyRequest, ResolvedSession | null>();
+  async function resolveSessionOf(req: FastifyRequest): Promise<ResolvedSession | null> {
+    const cached = sessionMemo.get(req);
     if (cached !== undefined) return cached;
     const token = sessionToken(req);
-    const userId = token ? await validateSession(db, token) : null;
-    sessionUserMemo.set(req, userId);
-    return userId;
+    const session = token ? await resolveSession(db, token) : null;
+    sessionMemo.set(req, session);
+    return session;
   }
 
+  // ---- Forced password change ----
+  // Two kinds of account must replace their password before doing ANYTHING else:
+  //  - the seeded admin still on the well-known DEFAULT password (`mustChangePassword`, no expiry);
+  //  - an account on a TEMPORARY password — one somebody else generated and has therefore seen (an
+  //    invite approved without its link, or a password an admin issued).
+  // A session on such an account is not an identity yet: every route that asks who is calling gets the
+  // `password-change-required` sentinel the editor recognizes, READS included. The three exceptions are
+  // what the forced screen needs — `/me` to render it, the password change itself, and signing out.
+  // Reads used to pass, which let whoever held a known password look at everything the account could
+  // see without ever changing it; for a temporary password that would make its use invisible.
+  //
+  // Only the interactive SESSION is gated: a Bearer caller is automation, never a person at a forced
+  // screen. The allowlist matches `req.url` literally (query stripped, trailing slashes dropped) — the
+  // RAW url, not the router's normalized one. That fails closed: an odd spelling of an escape route
+  // (percent-encoding, `//`, different case) does not match here even if the router still finds the
+  // handler, so the gate holds; and nothing that is not literally one of these three paths matches.
+  //
+  // The DEFAULT-admin case is enforced in production only (server.ts passes NODE_ENV==='production'),
+  // so a local dev run on the default admin just works. A TEMPORARY password is enforced everywhere:
+  // it is a property of that credential, not a deployment nicety.
+  const forcePasswordChange = opts.forcePasswordChange ?? true;
+  const PASSWORD_CHANGE_REQUIRED = 'password-change-required';
+  function passwordChangePending(session: ResolvedSession): boolean {
+    return session.passwordTemporary || (forcePasswordChange && session.mustChangePassword);
+  }
+  const passwordChangeEscapes = (req: FastifyRequest): boolean => {
+    const path = (req.url.split('?')[0] ?? '').replace(/\/+$/, '') || '/';
+    if (path === '/me') return req.method === 'GET' || req.method === 'HEAD';
+    return (req.method === 'PUT' && path === '/account/password') || (req.method === 'POST' && path === '/auth/logout');
+  };
+
   async function requireUserId(req: FastifyRequest): Promise<string> {
-    const userId = await resolveSessionUserId(req);
-    if (!userId) throw new UnauthorizedError('authentication required');
-    return userId;
+    const session = await resolveSessionOf(req);
+    if (!session) throw new UnauthorizedError('authentication required');
+    if (passwordChangePending(session) && !passwordChangeEscapes(req)) {
+      throw new ForbiddenError(PASSWORD_CHANGE_REQUIRED);
+    }
+    return session.userId;
   }
 
   // Soft variant for the OAuth authorize page: resolve the session user, or null
-  // (so we can render a sign-in prompt rather than throw a JSON 401).
+  // (so we can render a sign-in prompt rather than throw a JSON 401). A session that still has to
+  // replace its password is nobody here either — it must not be able to approve an OAuth client.
   async function currentUserId(req: FastifyRequest): Promise<string | null> {
-    return resolveSessionUserId(req);
+    const session = await resolveSessionOf(req);
+    return session && !passwordChangePending(session) ? session.userId : null;
   }
 
   // ---- Member tokens (`swm_…`): a bearer that belongs to a staff MEMBER, not to one project ----
@@ -2417,37 +2458,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { userId: await requireUserId(req), token: null };
   }
 
-  // ---- Forced password change (the seeded default-password admin) ----
-  // While a session user still carries the `mustChangePassword` flag (set ONLY for an admin left on
-  // the well-known default password), block every STATE-CHANGING request with a `password-change-
-  // required` sentinel the editor recognizes — so the known default credentials can't actually DO
-  // anything until a new password is set. Reads (GET/HEAD) pass through so the SPA can load `/me` and
-  // render the forced screen. The escape hatch — changing the password — and signing out are
-  // allowlisted. Only the interactive SESSION path is gated: a Bearer (API-key) caller is a project
-  // integration, never a fresh forced-change human, so it's skipped (and would have no flag anyway).
-  // Fastify normalizes the URL (resolves `..`, collapses `//`, decodes) before routing, so a literal
-  // match of the query-stripped path against the two escape routes can't be tricked into mismatching a
-  // real /account/password (or into smuggling another route INTO the allowlist).
-  // ENFORCE the forced change in production; a local DEV run (server.ts passes NODE_ENV==='production')
-  // skips it entirely so the default admin just works. The flag is still recorded at seed time, and
-  // `mustChangePassword` is only ever surfaced/enforced when this is on.
-  const forcePasswordChange = opts.forcePasswordChange ?? true;
-  const passwordChangeEscapes = (req: FastifyRequest): boolean => {
-    const path = (req.url.split('?')[0] ?? '').replace(/\/+$/, '') || '/';
-    return (req.method === 'PUT' && path === '/account/password') || (req.method === 'POST' && path === '/auth/logout');
-  };
-  if (forcePasswordChange) {
-    app.addHook('preHandler', async (req, reply) => {
-      if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
-      if (bearerToken(req) !== undefined) return; // API-key path — not a forced-change human
-      if (passwordChangeEscapes(req)) return; // the change-password + logout escape hatches
-      const userId = await resolveSessionUserId(req);
-      if (!userId) return; // anonymous / expired sessions are each route's own concern (its requireUserId)
-      if (await isPasswordChangeRequired(db, userId)) {
-        return reply.code(403).send({ error: 'password-change-required' });
-      }
-    });
-  }
+  // The forced-change gate lives in requireUserId / currentUserId (above). This hook is the same rule
+  // applied to every STATE-CHANGING request before its handler runs, whatever that handler does about
+  // identity — so a write route that forgot to ask who is calling still cannot be driven by a session
+  // that has to replace its password first. Reads are left to the resolver: a hook cannot tell a data
+  // route from the editor's own static files, which the forced screen needs.
+  app.addHook('preHandler', async (req, reply) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
+    if (bearerToken(req) !== undefined) return; // API-key path — not a forced-change human
+    if (passwordChangeEscapes(req)) return; // the change-password + logout escape hatches
+    const session = await resolveSessionOf(req);
+    if (!session) return; // anonymous / expired sessions are each route's own concern (its requireUserId)
+    if (passwordChangePending(session)) {
+      return reply.code(403).send({ error: PASSWORD_CHANGE_REQUIRED });
+    }
+  });
 
   // Instance/platform admin = a user whose persisted DB `platform_role` is `admin` (the first admin is
   // seeded on first boot — see seed.ts — and further admins are granted via a platform invite with
@@ -2807,6 +2832,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
 
+  /**
+   * The identity provider has vouched for this person and the sign-in is COMPLETE (their second factor
+   * too, if they have one) — so a TEMPORARY password they never used goes, and with it every session
+   * the account had. Call it just before issuing the new session.
+   *
+   * Without it the forced screen would ask them for a password they may never have been given. Only at
+   * completion, not when the provider answers: someone holding the provider identity but not the
+   * authenticator app must not be able to throw away the password an admin just issued. A PASSKEY
+   * sign-in deliberately never does this: a passkey can only predate that password, and if the reset
+   * was to shut somebody out, their passkey must not be what discards it.
+   */
+  async function completedSsoSignIn(req: FastifyRequest, userId: string): Promise<void> {
+    if (await discardTemporaryPassword(db, userId)) {
+      req.log.info({ userId }, 'temporary password discarded, and its sessions ended: the owner signed in with single sign-on');
+    }
+  }
+
   app.post('/auth/login', async (req, reply) => {
     const body = LoginBody.parse(req.body);
     if (await loginThrottleBlocked(reply, req.ip, body.email)) return reply;
@@ -2815,8 +2857,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       userId = await login(db, body.email, body.password);
     } catch (err) {
       // Count only FAILED credential checks. An UNKNOWN email accrues against its account key exactly
-      // like a real one, so the throttle never becomes an account-existence oracle.
-      recordLoginFailure(req.ip, body.email);
+      // like a real one, so the throttle never becomes an account-existence oracle. A temporary
+      // password that has expired was the RIGHT password: not a failed check, and counting it would
+      // throttle the one person who now has to go and ask for a new one.
+      if (!(err instanceof TemporaryPasswordExpiredError)) recordLoginFailure(req.ip, body.email);
       throw err;
     }
     // Password OK. If the user has a CONFIRMED TOTP factor, don't issue a session yet — hand back a
@@ -2849,7 +2893,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       recordLoginFailure(req.ip, userId);
       throw new UnauthorizedError('invalid code');
     }
-    await mfaRepo.consumeLoginTicket(body.ticket);
+    const { viaSso } = await mfaRepo.consumeLoginTicket(body.ticket);
+    if (viaSso) await completedSsoSignIn(req, userId);
     await issueSessionCookie(reply, userId);
     return reply.send({ userId });
   });
@@ -2866,19 +2911,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword] =
+    // The flag is surfaced exactly when the server enforces it (see passwordChangePending) — so the
+    // editor never shows the forced screen for a gate that is not there.
+    const session = await resolveSessionOf(req);
+    const mustChangePassword = session ? passwordChangePending(session) : false;
+    const temporaryPassword = session?.passwordTemporary ?? false;
+    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword] =
       await Promise.all([
         getUserEmail(db, userId),
         getPlatformRole(db, userId),
         // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
-        listProjectAccessForUser(db, userId),
+        // None while the password still has to be replaced: this is the one read such a session gets,
+        // and it is there to render the forced screen, not to list what the account can reach.
+        mustChangePassword ? Promise.resolve([]) : listProjectAccessForUser(db, userId),
         isInstanceAdmin(userId),
         mfaRepo.isTotpEnabled(userId),
         mfaRepo.remainingRecoveryCodes(userId),
         userHasPassword(db, userId),
-        // Only surface the forced-change flag when enforcement is on (off in dev) — so the editor never
-        // shows the forced screen for a feature the server isn't enforcing.
-        forcePasswordChange ? isPasswordChangeRequired(db, userId) : Promise.resolve(false),
       ]);
     // The favicon + production URL per project, for the project selector (one batched query).
     const cards = await projectCardsFor(db, access.map((a) => a.projectId));
@@ -2899,7 +2948,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // With it set the canonical address is `<slug>.<sitesDomain>` and `/sites/<slug>/` only
     // 301s there, so a hardcoded "/sites/…" in the deploy UI advertised an address the author
     // never sees in the bar. Undefined when subdomain routing is off (the path form is then real).
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, projects, ...(sitesDomain ? { sitesDomain } : {}) });
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, temporaryPassword, projects, ...(sitesDomain ? { sitesDomain } : {}) });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----
@@ -2925,7 +2974,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     const userId = await requireUserId(req);
     const body = ChangePasswordBody.parse(req.body);
-    await changePassword(db, userId, body.currentPassword, body.newPassword);
+    const { replacedTemporary } = await changePassword(db, userId, body.currentPassword, body.newPassword);
     // Cut off any other sessions (a leaked/stale token elsewhere) but keep THIS browser signed in.
     const current = sessionToken(req);
     if (current) await revokeOtherSessions(db, userId, current);
@@ -2933,7 +2982,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // year across every project the member reaches, so a password changed to shut someone out has to
     // shut their tokens out too — but a routine change must not silently stop every automation. Only
     // the member knows which this is, so the editor asks. Saying nothing means revoke.
-    if (body.revokeMemberTokens !== false) await memberTokensRepo.revokeAllForUser(userId);
+    //
+    // Except when this replaces a TEMPORARY password: that completes a reset an admin started, and the
+    // admin already answered the question then (the tokens that are left are the ones they chose to
+    // keep — none can have been minted since, a session on a temporary password cannot do anything).
+    // The forced screen has no question to ask, so revoking here would silently overrule that answer.
+    const revoke = body.revokeMemberTokens ?? !replacedTemporary;
+    if (revoke) await memberTokensRepo.revokeAllForUser(userId);
     return reply.code(204).send();
   });
 
@@ -3273,9 +3328,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!resolution.ok) return oidcErrorRedirect(reply, resolution.reason);
 
       if (await mfaRepo.isTotpEnabled(resolution.userId)) {
-        const ticket = await mfaRepo.createLoginTicket(resolution.userId);
+        // The ticket remembers that this sign-in began here, so the step that completes it can do
+        // what the line below does for an account without a second factor.
+        const ticket = await mfaRepo.createLoginTicket(resolution.userId, { viaSso: true });
         return reply.redirect(`/?mfa_ticket=${encodeURIComponent(ticket)}`);
       }
+      await completedSsoSignIn(req, resolution.userId);
       await issueSessionCookie(reply, resolution.userId);
       return reply.redirect('/');
     } catch (err) {
@@ -3715,13 +3773,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!role) throw new NotFoundError('not a platform staff account');
     const { revokeMemberTokens } = ResetPasswordBody.parse(req.body ?? {});
     const password = generatePassword();
-    await setPasswordAsAdmin(db, target, password);
+    const { expiresAt: passwordExpiresAt } = await setPasswordAsAdmin(db, target, password);
     // The account's tokens go with its old password unless the admin chose to keep them (a forgotten
     // password, not a compromised one).
     const revokedMemberTokens = revokeMemberTokens === false ? 0 : await memberTokensRepo.revokeAllForUser(target);
     const email = await getUserEmail(db, target);
     req.log.info({ actor, revokedMemberTokens }, 'staff password reset by an admin');
-    return reply.send({ email, password, revokedMemberTokens });
+    return reply.send({ email, password, passwordExpiresAt, revokedMemberTokens });
   });
 
   app.get('/admin/invites', { config: rl(30) }, async (req, reply) => {
@@ -3825,7 +3883,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // Approve a pending invite WITHOUT the link — the admin vouches for the invitee. Creates the account
-  // if there is none (returning a one-time password to hand over) and burns the outstanding link, so
+  // if there is none (returning a temporary password to hand over) and burns the outstanding link, so
   // the same grant cannot also be redeemed from an email later.
   //
   // A member token may do this with `members:invite`: it is the second half of the same act, and the
@@ -3865,6 +3923,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     async (req, reply) => {
       const ctx = await requireProjectAccess(req, req.params.projectId, true);
       const target = req.params.userId;
+      // Never your own, as on the staff route: your own password is changed in Account settings, which
+      // re-authenticates. Here it would also hold the very session that asked, at a screen wanting a
+      // password that is on a panel that session can no longer load.
+      if (target === ctx.userId) throw new ForbiddenError('change your own password in Account settings');
       // Managing a project does not make its owner the custodian of an ACCOUNT. If the member holds
       // staff rights or belongs to another client's project, a password minted here would hand over
       // that access too — so it takes a platform admin.
@@ -3877,7 +3939,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const { revokeMemberTokens } = ResetPasswordBody.parse(req.body ?? {});
       const password = generatePassword();
-      await setPasswordAsAdmin(db, target, password);
+      const { expiresAt: passwordExpiresAt } = await setPasswordAsAdmin(db, target, password);
       // Staff reached via a project: same rule as the staff route above.
       const revokedMemberTokens = revokeMemberTokens === false ? 0 : await memberTokensRepo.revokeAllForUser(target);
       const email = await getUserEmail(db, target);
@@ -3885,7 +3947,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         { projectId: req.params.projectId, actor: ctx.userId, revokedMemberTokens },
         'member password reset by an admin',
       );
-      return reply.send({ email, password, revokedMemberTokens });
+      return reply.send({ email, password, passwordExpiresAt, revokedMemberTokens });
     },
   );
 

@@ -3,6 +3,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { invites, projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
 import { generateInviteToken, hashInviteToken } from '../auth/invites.js';
+import { TEMPORARY_PASSWORD_TTL_MS } from '../auth/password.js';
 import { ConflictError, ForbiddenError, NotFoundError } from './context.js';
 
 /** How long an invite link stays valid. */
@@ -270,8 +271,14 @@ export interface ApprovedInvite {
   userId: string;
   /** True when this call created the account (and therefore minted a password to show once). */
   created: boolean;
-  /** The one-time password, only for a newly-created account. Never stored in the clear, never re-shown. */
+  /**
+   * The TEMPORARY password, only for a newly-created account. Never stored in the clear, never
+   * re-shown. Its owner has to replace it at first sign-in, and it stops working at
+   * `passwordExpiresAt` if they have not.
+   */
   password?: string;
+  /** When `password` stops working unless it has been replaced. Present exactly when `password` is. */
+  passwordExpiresAt?: Date;
 }
 
 /**
@@ -284,8 +291,10 @@ export interface ApprovedInvite {
  * later — one decision, one grant, no second door left open.
  *
  * An account that already exists is only granted; its password is untouched. A new account is created
- * with a generated password returned ONCE for the admin to hand over. Either way the invitee can then
- * sign in with SSO too, because `resolveOidcUser` federates onto an existing account by verified email.
+ * with a generated password returned ONCE for the admin to hand over. That password is TEMPORARY (see
+ * `users.passwordExpiresAt`): whoever approved has seen it, and when a member token approved, so has
+ * whatever the token's holder logs. Either way the invitee can sign in with SSO instead, because
+ * `resolveOidcUser` federates onto an existing account by verified email — and doing so discards it.
  *
  * Works for a PLATFORM-staff invite as well as a project one — `applyInviteGrant` writes whichever the
  * invite carries (a platform role on the user, or a project membership), so admin/developer accounts
@@ -322,6 +331,7 @@ export async function approveInvite(
   let password: string | undefined;
   let userId = existing?.id;
   let passwordHash: string | undefined;
+  const passwordExpiresAt = new Date(now.getTime() + TEMPORARY_PASSWORD_TTL_MS);
   if (!userId) {
     // Hash OUTSIDE the transaction: scrypt at these parameters takes ~100ms and would hold a write
     // transaction open for it (SQLite serializes writers).
@@ -339,7 +349,8 @@ export async function approveInvite(
         email,
         passwordHash,
         platformRole: null,
-        mustChangePassword: false,
+        mustChangePassword: true,
+        passwordExpiresAt,
         createdAt: now,
       });
     }
@@ -352,5 +363,5 @@ export async function approveInvite(
     await applyInviteGrant(tx, resolvedUserId, invite, now);
   });
 
-  return { email, userId: resolvedUserId, created, ...(password ? { password } : {}) };
+  return { email, userId: resolvedUserId, created, ...(password ? { password, passwordExpiresAt } : {}) };
 }

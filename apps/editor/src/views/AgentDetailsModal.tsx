@@ -239,8 +239,10 @@ export function AgentDetailsModal({
                     c.kind === 'oauth' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300'
                   }`}
                 >
-                  {c.kind === 'oauth' ? 'OAuth / MCP' : 'Personal token'}
+                  {c.kind === 'oauth' ? 'OAuth / MCP' : c.kind === 'member' ? 'Member token' : 'Personal token'}
                 </span>
+                {/* Whose member token it is — sent to the project's owner only. */}
+                {c.owner && <span className="truncate text-[11px] text-slate-500 dark:text-slate-400">{c.owner}</span>}
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
                 {c.capabilities.map((cap) => (
@@ -253,16 +255,20 @@ export function AgentDetailsModal({
                 {c.role} · last active {when(c.lastUsedAt)} · connected {when(c.connectedAt)}
               </div>
             </div>
-            {confirmId === c.id ? (
+            {c.kind === 'member' && !c.canRevoke ? (
+              // A member token is not bound to this project, so there is nothing to disconnect it
+              // FROM — only its owner (or an instance admin) can revoke it, and that ends it everywhere.
+              <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">Managed by its owner</span>
+            ) : confirmId === c.id ? (
               <div className="flex shrink-0 items-center gap-2">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Disconnect?</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{c.kind === 'member' ? 'Revoke on every project?' : 'Disconnect?'}</span>
                 <button
                   type="button"
                   disabled={busyId === c.id}
                   onClick={() => void disconnect(c.id)}
                   className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
                 >
-                  {busyId === c.id ? 'Disconnecting…' : 'Confirm'}
+                  {busyId === c.id ? (c.kind === 'member' ? 'Revoking…' : 'Disconnecting…') : 'Confirm'}
                 </button>
                 <button type="button" onClick={() => setConfirmId(null)} className="px-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100">
                   Cancel
@@ -270,7 +276,7 @@ export function AgentDetailsModal({
               </div>
             ) : (
               <button type="button" onClick={() => setConfirmId(c.id)} className={`${dangerButton} shrink-0`}>
-                Disconnect
+                {c.kind === 'member' ? 'Revoke' : 'Disconnect'}
               </button>
             )}
           </div>

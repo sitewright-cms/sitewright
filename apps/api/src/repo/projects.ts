@@ -5,6 +5,7 @@ import {
   agentGrants,
   aiUsage,
   apiKeys,
+  memberTokenProjects,
   content,
   contentRevisions,
   formFiltered,
@@ -188,6 +189,7 @@ export class ProjectRepository {
       await tx.delete(projectReleases).where(eq(projectReleases.projectId, id));
       await tx.delete(aiUsage).where(eq(aiUsage.projectId, id));
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
+      await tx.delete(memberTokenProjects).where(eq(memberTokenProjects.projectId, id));
       await tx.delete(agentGrants).where(eq(agentGrants.projectId, id));
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
       await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));

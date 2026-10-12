@@ -638,6 +638,8 @@ function MainApp({
           totpEnabled={totpEnabled}
           recoveryCodesRemaining={recoveryCodesRemaining}
           hasPassword={hasPassword}
+          isStaff={canCreateProjects}
+          isInstanceAdmin={isInstanceAdmin}
           onClose={() => setUserMenuOpen(false)}
           onEmailChanged={setEmail}
           onMfaChanged={() => void refresh()}

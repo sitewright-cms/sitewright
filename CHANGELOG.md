@@ -9,6 +9,40 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Member tokens: one token for an agent that works across several projects.** A project key is
+  bound to one project, so automation that creates and manages many sites needed a key per site —
+  and could not create a site at all, because project creation only worked from a logged-in session.
+  A member token (`swm_…`) belongs to a staff member instead. It reaches every project its owner can
+  open, at the role they hold there, **looked up on every request**: a project it has just created is
+  usable at once, and a membership that ends takes the token's access with it. Minted under
+  **Account → Access keys**, which now has a *Project tokens* and a *Member tokens* section.
+  - It carries the same in-project capabilities as a project key, plus five that are **off unless
+    ticked**: `projects:create` (new, duplicated and imported projects), `projects:rename`,
+    `projects:delete` (the recoverable soft-delete), `members:manage` (list and remove a project's
+    members, list and revoke its invites) and `members:invite`. Inviting is separate on purpose: an
+    invite becomes a person's own sign-in to the project — not narrowed by the token, able to open
+    settings no token can, and still a member after the token is revoked. Issuing a password for a
+    person, staff invites and every other instance-admin action stay interactive whatever is ticked.
+  - Staff only, and only while they are staff: a demoted member's tokens stop working on the next
+    request and are revoked. Minting, listing and revoking are session-only, so a token can never
+    make another token, and minting asks for the account password, so a stolen session cannot mint
+    one either. Changing that password — or an admin resetting it — revokes the member tokens made
+    with it.
+  - One token may create 50 projects per 24 hours, counted when the project is created — a failed
+    import is not refunded. Nothing else bounded project creation, so an unattended loop would have
+    been limited only by the request rate.
+  - A member token shows up in a project's agent connections once it has acted there. Only its owner
+    or an instance admin can revoke it from that list, because revoking is account-wide.
+  - `GET /api-key/self` now answers with a `kind` (`project` or `member`); a member token names no
+    project and lists what it can reach with `GET /projects`. The MCP endpoint still drives one
+    project per connection and turns a member token away with a reason — use the REST API with one.
+  - The clone agent (`POST /projects/:id/agent/clone`) hands its loop the full authoring set. A
+    member token must hold all of it to start one, so `publish` alone cannot become write and delete
+    across an account. A project key is unchanged.
+  - Three account routes are new: `GET`, `POST` and `DELETE /account/member-tokens`.
+
 ### Fixed
 
 - **The icon picker stopped at 120 icons and scrolling did nothing.** Every tab ended its list in a

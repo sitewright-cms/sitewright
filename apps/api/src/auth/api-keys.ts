@@ -14,9 +14,25 @@ export interface GeneratedToken {
   tokenPrefix: string;
 }
 
+/**
+ * Prefix of a MEMBER token (`swm_` = SiteWright Member). Distinct from the project-key prefix so the
+ * two can never be mistaken for one another: each resolver looks only at its own prefix, which means a
+ * member token presented where a project key is expected is simply unknown — not "a key for no project".
+ */
+const MEMBER_TOKEN_PREFIX = 'swm_';
+
 /** Mints a new project API token and the material to store for it. */
 export function generateApiToken(): GeneratedToken {
-  const token = TOKEN_PREFIX + randomBytes(32).toString('hex');
+  return mint(TOKEN_PREFIX);
+}
+
+/** Mints a new member token and the material to store for it. */
+export function generateMemberToken(): GeneratedToken {
+  return mint(MEMBER_TOKEN_PREFIX);
+}
+
+function mint(prefix: string): GeneratedToken {
+  const token = prefix + randomBytes(32).toString('hex');
   return {
     token,
     tokenHash: hashApiToken(token),
@@ -32,4 +48,9 @@ export function hashApiToken(token: string): string {
 /** Cheap shape check so we only hit the DB for plausibly-ours tokens. */
 export function isApiTokenFormat(token: string): boolean {
   return token.startsWith(TOKEN_PREFIX);
+}
+
+/** Whether a bearer is shaped like a member token (decides which resolver it goes to). */
+export function isMemberTokenFormat(token: string): boolean {
+  return token.startsWith(MEMBER_TOKEN_PREFIX);
 }

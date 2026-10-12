@@ -39,6 +39,7 @@ describe('project reap', () => {
     'form_filtered',
     'form_submissions',
     'invites',
+    'member_token_projects',
     'oauth_auth_codes',
     'oauth_refresh_tokens',
     'project_domains',

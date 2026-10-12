@@ -762,16 +762,52 @@ export interface CreateApiKeyBody {
   expiresInDays: number;
 }
 /**
- * A live agent connection (the "AI agent details" modal + header indicator): a personal token
- * (`pat`) or an OAuth/MCP agent session (`oauth`, shown for its whole session window). `id` is an
- * opaque disconnect handle (an `oauth:<userId>` form for sessions). No secrets are ever included.
+ * Capabilities only a MEMBER token can carry. They act on the account's reach rather than inside one
+ * project, and each is opt-in when the token is minted.
+ */
+export type MemberTokenAdminCapability =
+  | 'projects:create'
+  | 'projects:rename'
+  | 'projects:delete'
+  | 'members:manage'
+  | 'members:invite';
+export type MemberTokenCapability = ApiKeyCapability | MemberTokenAdminCapability;
+/** Redacted view of a member token (the management list never returns the token). It has no role:
+ *  the token acts at whatever role its owner holds on the project it addresses. */
+export interface MemberTokenView {
+  id: string;
+  name: string;
+  capabilities: MemberTokenCapability[];
+  tokenPrefix: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+export interface CreateMemberTokenBody {
+  /** Minting re-authenticates — a member token outlives the session that made it. */
+  currentPassword: string;
+  name: string;
+  capabilities: MemberTokenCapability[];
+  expiresInDays: number;
+}
+/**
+ * A live agent connection (the "AI agent details" modal + header indicator): a project token (`pat`),
+ * an OAuth/MCP agent session (`oauth`, shown for its whole session window), or a MEMBER token that has
+ * acted on this project (`member`). `id` is an opaque disconnect handle (`oauth:<userId>` for a
+ * session, `member:<tokenId>` for a member token). No secrets are ever included.
  */
 export interface AgentConnection {
   id: string;
-  kind: 'pat' | 'oauth';
+  kind: 'pat' | 'oauth' | 'member';
   name: string;
   role: ProjectRole;
-  capabilities: ApiKeyCapability[];
+  capabilities: MemberTokenCapability[];
+  /** `member` only: whose token it is (sent to the project's owner, not to client members). */
+  owner?: string;
+  /** `member` only: whether THIS viewer may revoke it (its owner, or an instance admin). Revoking is
+   *  account-wide — a member token is not bound to the project it is listed under. */
+  canRevoke?: boolean;
   connectedAt: string;
   expiresAt: string | null;
   lastUsedAt: string | null;
@@ -1598,6 +1634,13 @@ export const api = {
     request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
   deleteApiKey: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/api-keys/${encodeURIComponent(id)}`),
+  /** The signed-in member's own member tokens, plus how many projects one token may create a day. */
+  listMemberTokens: () =>
+    request<{ items: MemberTokenView[]; dailyProjectCap: number }>('GET', '/account/member-tokens'),
+  createMemberToken: (body: CreateMemberTokenBody) =>
+    request<{ token: string; key: MemberTokenView }>('POST', '/account/member-tokens', body),
+  deleteMemberToken: (id: string) =>
+    request<void>('DELETE', `/account/member-tokens/${encodeURIComponent(id)}`),
 
   // --- datasets ---
   listDatasets: (projectId: string) =>

@@ -232,6 +232,13 @@
       "when": 1791498665334,
       "tag": "0032_project_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1791801192594,
+      "tag": "0033_member_tokens",
+      "breakpoints": true
     }
   ]
 }

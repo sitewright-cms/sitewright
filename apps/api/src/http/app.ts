@@ -343,9 +343,10 @@ import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } fro
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
+import { MemberTokenRepository, type ResolvedMemberToken } from '../repo/member-tokens.js';
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
 import { FairGate, GateFullError, TenantShareError } from '../runtime/fair-gate.js';
-import { hashApiToken } from '../auth/api-keys.js';
+import { hashApiToken, isMemberTokenFormat } from '../auth/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes, htmlPage, DEFAULT_CONSENT_CHROME } from './oauth-routes.js';
@@ -391,7 +392,13 @@ import { extractImageRefs, analyzeImageSizing, type ImageSizingReport } from '..
 import { serveBuiltSite, mimeTypeForFilename } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
-import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
+import {
+  API_KEY_CAPABILITIES,
+  MEMBER_TOKEN_CAPABILITIES,
+  type ApiKeyCapability,
+  type ContentKind,
+  type MemberTokenCapability,
+} from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
 const RL_WINDOW = '1 minute';
@@ -1364,6 +1371,18 @@ const CreateApiKeyBody = z.object({
   // the repo enforces the absolute max).
   expiresInDays: z.number().int().min(1).max(365),
 });
+// A member token has no `role`: it carries its owner's CURRENT role on whichever project it addresses.
+const CreateMemberTokenBody = z.object({
+  // Minting re-authenticates: a member token outlives the session that made it and reaches every
+  // project its owner can, so a stolen session alone must not be able to mint one.
+  currentPassword: z.string().min(1).max(200),
+  name: z.string().min(1).max(120),
+  capabilities: z
+    .array(z.enum(MEMBER_TOKEN_CAPABILITIES as unknown as [MemberTokenCapability, ...MemberTokenCapability[]]))
+    .min(1)
+    .max(MEMBER_TOKEN_CAPABILITIES.length),
+  expiresInDays: z.number().int().min(1).max(365),
+});
 
 /**
  * Parse a `Range:` header against a buffer. Returns the slice + its `Content-Range`, `'unsatisfiable'`
@@ -1396,6 +1415,9 @@ declare module 'fastify' {
     runDueFormDeliveries: (opts?: { now?: () => number; limit?: number }) => Promise<DeliveryRunResult>;
   }
 }
+
+/** A member token asked to create more projects than its daily cap allows (→ 429). */
+class ProjectCapError extends Error {}
 
 export interface AppOptions {
   db: Database;
@@ -1454,6 +1476,12 @@ export interface AppOptions {
   webauthnOrigin?: string;
   /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
   deployAllowedHosts?: string[];
+  /**
+   * How many projects ONE member token may create in any 24 hours (default 50). Nothing else bounds
+   * project creation — there is no instance-wide project quota — so an unattended loop holding a
+   * token would otherwise be limited only by the request rate.
+   */
+  memberTokenDailyProjectCap?: number;
   /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
   smtpAllowedHosts?: string[];
   /**
@@ -1690,6 +1718,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const aiUsageRepo = new AiUsageRepository(db);
   const agentGrantsRepo = new AgentGrantsRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
+  const memberTokensRepo = new MemberTokenRepository(db);
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
   // TOTP second factor: the shared secret is encrypted at rest under the operator's key (same key as
@@ -2099,6 +2128,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       });
     }
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message });
+    if (err instanceof ProjectCapError) return reply.code(429).send({ error: err.message });
     // Recoverable MFA-management errors (wrong enrolment code, no setup in progress) → 400.
     if (err instanceof MfaError) return reply.code(400).send({ error: err.message });
     // TOTP needs the at-rest encryption key (to store/read the secret); without it, unavailable.
@@ -2292,6 +2322,78 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return resolveSessionUserId(req);
   }
 
+  // ---- Member tokens (`swm_…`): a bearer that belongs to a staff MEMBER, not to one project ----
+  // Resolved at most once per request — several gates on one route may each ask.
+  const memberTokenMemo = new WeakMap<FastifyRequest, ResolvedMemberToken | null>();
+  /**
+   * The member token this request carries, or null when it carries none (no bearer, or a project key).
+   * A bearer SHAPED like a member token that does not resolve is a 401 here, never a null: falling
+   * through would let a dead member token be tried again as some other kind of credential.
+   */
+  async function memberTokenOf(req: FastifyRequest): Promise<ResolvedMemberToken | null> {
+    const cached = memberTokenMemo.get(req);
+    if (cached !== undefined) return cached;
+    const bearer = bearerToken(req);
+    if (bearer === undefined || !isMemberTokenFormat(bearer)) {
+      memberTokenMemo.set(req, null);
+      return null;
+    }
+    // Same rule as a project key: one credential must never silently win over another.
+    if (sessionToken(req) !== undefined) {
+      throw new UnauthorizedError('supply either a session cookie or a Bearer token, not both');
+    }
+    const token = await memberTokensRepo.resolve(bearer);
+    if (!token) throw new UnauthorizedError('invalid or expired API key');
+    markApiKeyVerified(bearer); // the limiter's agent lane opens only for a token proven live here
+    memberTokenMemo.set(req, token);
+    return token;
+  }
+
+  function requireTokenCapability(token: ResolvedMemberToken, capability: MemberTokenCapability): void {
+    if (!token.capabilities.includes(capability)) {
+      throw new ForbiddenError(`this member token lacks the "${capability}" capability`);
+    }
+  }
+
+  /**
+   * A member token's access to ONE project: its owner's role there RIGHT NOW, narrowed by the token's
+   * capabilities. Nothing is frozen at mint time — a project the member creates is reachable at once,
+   * and a membership that ends takes the token's access with it on the next request.
+   *
+   * 404 (not 403) when the member cannot reach the project, as for a project key on the wrong
+   * project: a token must not be able to probe which projects exist.
+   */
+  async function memberTokenProject(
+    token: ResolvedMemberToken,
+    projectId: string,
+    capability: MemberTokenCapability,
+  ): Promise<{ ctx: ProjectContext; project: Awaited<ReturnType<ProjectRepository['get']>> }> {
+    if (projectId === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
+    // Capability BEFORE the lookup: a token that lacks it gets the same 403 for every id, so it cannot
+    // use "403 here, 404 there" to map which projects its owner reaches.
+    requireTokenCapability(token, capability);
+    const role = await resolveProjectRole(db, token.userId, projectId);
+    if (!role) throw new NotFoundError('project not found');
+    const project = await projects.get(projectId);
+    if (project.deletedAt) throw new NotFoundError('project not found'); // soft-deleted → unreachable
+    memberTokensRepo.recordUse(token.tokenId, project.id);
+    // `actor: 'agent'` — a bearer is automation, whoever owns it (drives the "agent editing" indicator).
+    return { ctx: { userId: token.userId, role, projectId: project.id, actor: 'agent' }, project };
+  }
+
+  /**
+   * Who is asking, on an ACCOUNT-level route (the project list; renaming or deleting a project): the
+   * session user, or the owner of a member token. A project key is not an identity for these routes —
+   * it falls through to the session check exactly as it did before member tokens existed.
+   */
+  async function sessionUserOrMemberToken(
+    req: FastifyRequest,
+  ): Promise<{ userId: string; token: ResolvedMemberToken | null }> {
+    const token = await memberTokenOf(req);
+    if (token) return { userId: token.userId, token };
+    return { userId: await requireUserId(req), token: null };
+  }
+
   // ---- Forced password change (the seeded default-password admin) ----
   // While a session user still carries the `mustChangePassword` flag (set ONLY for an admin left on
   // the well-known default password), block every STATE-CHANGING request with a `password-change-
@@ -2383,6 +2485,84 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return userId;
   }
 
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const memberTokenDailyProjectCap = opts.memberTokenDailyProjectCap ?? 50;
+  /** Creations a token has started but not yet recorded — see {@link requireProjectCreator}. */
+  const creationsInFlight = new Map<string, number>();
+
+  interface ProjectCreator {
+    userId: string;
+    actor: 'user' | 'agent';
+    token: ResolvedMemberToken | null;
+    /**
+     * MUST be called once the attempt is over — with the new project's id if one was created, with
+     * nothing if it failed. Idempotent, so a `finally` can call it unconditionally. For a member token
+     * it records the creation (what the daily cap counts) and frees the in-flight claim; for a session
+     * it does nothing.
+     */
+    settle: (projectId?: string) => Promise<void>;
+  }
+
+  /**
+   * Who may CREATE a project: agency staff in an interactive session, or a member token holding
+   * `projects:create` (a member token is staff-only by construction — MemberTokenRepository.resolve
+   * rejects one whose owner is not staff). A project key still cannot: it is bound to one existing
+   * project. {@link requirePlatformStaff} itself stays session-only, because force-verifying a custom
+   * domain uses it too.
+   *
+   * ★ A token is held to a DAILY CAP. There is no project quota anywhere else, and each new project
+   * seeds content and claims a slug, so an unattended loop would otherwise be bounded only by the
+   * request rate. The claim is taken synchronously, before the count is read, so two concurrent
+   * requests can never both see the same number and both slip under the cap.
+   *
+   * The arithmetic is deliberately CONSERVATIVE. A request counts every claim taken before its own
+   * (`ahead`) plus every creation already recorded; an earlier request that records between this
+   * one's entry and its count is therefore counted twice, and a burst right at the cap can be refused
+   * one creation early. The other choice — reading the claims after the count — has the opposite
+   * window, where a creation is in neither number and the cap is exceeded. A rare early 429 is the
+   * cheaper mistake. A creation is counted once its project row exists, even if the import that
+   * follows fails and the project is removed again: the cap bounds the work, not the survivors.
+   */
+  async function requireProjectCreator(req: FastifyRequest): Promise<ProjectCreator> {
+    const token = await memberTokenOf(req);
+    if (!token) return { userId: await requirePlatformStaff(req), actor: 'user', token: null, settle: async () => {} };
+    requireTokenCapability(token, 'projects:create');
+    const tokenId = token.tokenId;
+    const ahead = creationsInFlight.get(tokenId) ?? 0;
+    creationsInFlight.set(tokenId, ahead + 1);
+    const release = (): void => {
+      const left = (creationsInFlight.get(tokenId) ?? 1) - 1;
+      if (left <= 0) creationsInFlight.delete(tokenId);
+      else creationsInFlight.set(tokenId, left);
+    };
+    try {
+      const used = await memberTokensRepo.countProjectsCreatedSince(tokenId, new Date(Date.now() - DAY_MS));
+      if (used + ahead >= memberTokenDailyProjectCap) {
+        throw new ProjectCapError(
+          `this member token has reached its limit of ${memberTokenDailyProjectCap} new projects per 24 hours`,
+        );
+      }
+    } catch (err) {
+      release();
+      throw err;
+    }
+    let settled = false;
+    return {
+      userId: token.userId,
+      actor: 'agent',
+      token,
+      settle: async (projectId) => {
+        if (settled) return;
+        settled = true;
+        try {
+          if (projectId) await memberTokensRepo.recordProjectCreated(tokenId, projectId);
+        } finally {
+          release();
+        }
+      },
+    };
+  }
+
 
   // The access a project route requires. A `Capability` is enforced for bearer
   // (API-key) requests — the key must hold it — and ignored for interactive
@@ -2421,6 +2601,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (bearer !== undefined) {
       if (access === 'session-only') {
         throw new ForbiddenError('this operation requires an interactive session');
+      }
+      // A MEMBER token: not bound to this project (or any) — it gets whatever role its owner holds
+      // here right now. Checked first, by prefix, so it never reaches the project-key lookup.
+      const memberToken = await memberTokenOf(req);
+      if (memberToken) {
+        const { ctx, project } = await memberTokenProject(memberToken, req.params.projectId, access);
+        // Routes that restrain non-interactive callers read `apiKey`; hand them the shape a project
+        // key has, carrying only the capabilities a project key could (the account-level ones mean
+        // nothing inside a project route).
+        const apiKey: ResolvedApiKey = {
+          keyId: memberToken.tokenId,
+          projectId: project.id,
+          role: ctx.role,
+          capabilities: API_KEY_CAPABILITIES.filter((c) => memberToken.capabilities.includes(c)),
+          createdBy: memberToken.userId,
+          viaMemberToken: true,
+        };
+        return { ctx, project, apiKey };
       }
       const key = await apiKeysRepo.resolve(bearer);
       if (!key) throw new UnauthorizedError('invalid or expired API key');
@@ -2693,6 +2891,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Cut off any other sessions (a leaked/stale token elsewhere) but keep THIS browser signed in.
     const current = sessionToken(req);
     if (current) await revokeOtherSessions(db, userId, current);
+    // …and every member token. One is minted with this password and can outlive it by a year, across
+    // every project the member reaches — so a password changed to shut someone out has to shut their
+    // tokens out too. Automation that stops is the loud failure; a token that survives is the quiet one.
+    await memberTokensRepo.revokeAllForUser(userId);
     return reply.code(204).send();
   });
 
@@ -3184,10 +3386,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (sessionToken(req) !== undefined) {
       throw new UnauthorizedError('supply either a session cookie or a Bearer token, not both');
     }
+    // A member token has no single project: it reports its capabilities and says so with `kind`, and
+    // the client asks GET /projects for what it can reach.
+    const memberToken = await memberTokenOf(req);
+    if (memberToken) {
+      return reply.send({
+        kind: 'member',
+        capabilities: memberToken.capabilities,
+        agentInstructions: await instanceSettingsRepo.getEffectiveAgentInstructions(),
+      });
+    }
     const key = await apiKeysRepo.resolve(bearer);
     if (!key) throw new UnauthorizedError('invalid or expired API key');
     markApiKeyVerified(bearer);
     return reply.send({
+      kind: 'project',
       projectId: key.projectId,
       role: key.role,
       capabilities: key.capabilities,
@@ -3200,11 +3413,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Session-only project access for management ops (invites, members). Resolves the caller's
   // effective project role (platform admin → owner) and, when `ownerOnly`, requires owner. A Bearer
   // token must never reach these interactive operations.
+  //
+  // `memberCapability` opens a route to a MEMBER token that holds it. Omitted (the default), the route
+  // stays session-only for every kind of bearer — which is how issuing a password for a human account
+  // remains an interactive decision even for a token that may otherwise manage members.
   async function requireProjectAccess(
     req: FastifyRequest,
     projectId: string,
     ownerOnly: boolean,
+    memberCapability?: MemberTokenCapability,
   ): Promise<ProjectContext> {
+    const memberToken = memberCapability ? await memberTokenOf(req) : null;
+    if (memberToken && memberCapability) {
+      const { ctx } = await memberTokenProject(memberToken, projectId, memberCapability);
+      if (ownerOnly && ctx.role !== 'owner') throw new ForbiddenError('insufficient role for this operation');
+      return ctx;
+    }
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }
@@ -3216,7 +3440,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   app.get('/projects', { config: rl(60) }, async (req, reply) => {
-    const userId = await requireUserId(req);
+    // A member token lists what its owner can reach — how automation finds the projects it manages.
+    const { userId, token } = await sessionUserOrMemberToken(req);
+    if (token) requireTokenCapability(token, 'content:read');
     const access = await listProjectAccessForUser(db, userId);
     // The favicon + production URL for each project, batch-read in one query, for the project selector.
     const cards = await projectCardsFor(db, access.map((a) => a.projectId));
@@ -3256,6 +3482,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       // Demote to a plain client (revokes admin/developer staff access).
       await setPlatformRole(db, req.params.userId, null);
+      // Member tokens are a staff privilege. They already stop resolving the moment the role is gone;
+      // revoking them as well means a later re-promotion does not quietly bring old tokens back.
+      await memberTokensRepo.revokeAllForUser(req.params.userId);
       return reply.code(204).send();
     },
   );
@@ -3359,6 +3588,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!role) throw new NotFoundError('not a platform staff account');
     const password = generatePassword();
     await setPasswordAsAdmin(db, target, password);
+    await memberTokensRepo.revokeAllForUser(target); // a reset account's old tokens go with its old password
     const email = await getUserEmail(db, target);
     req.log.info({ actor }, 'staff password reset by an admin');
     return reply.send({ email, password });
@@ -3374,13 +3604,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/invites',
     { config: rl(20) },
     async (req, reply) => {
-      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      // `members:invite`, NOT `members:manage`: an invite becomes a person's own login on this
+      // project, which is more than anything else a member token can do (see the schema note).
+      const ctx = await requireProjectAccess(req, req.params.projectId, true, 'members:invite');
       const body = InviteBody.parse(req.body);
       const result = await createInvite(db, ctx.userId, {
         email: body.email,
         role: 'member',
         projectId: req.params.projectId,
       });
+      // A token granting a login is worth a line in the log: the membership it leads to outlives the
+      // token, so this is the only later trace of where that member came from. (No address logged.)
+      const viaToken = await memberTokenOf(req);
+      if (viaToken) {
+        req.log.info(
+          { projectId: req.params.projectId, actor: ctx.userId, tokenId: viaToken.tokenId, inviteId: result.invite.id },
+          'project invite created by a member token',
+        );
+      }
       return reply.code(201).send(result);
     },
   );
@@ -3389,7 +3630,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/invites',
     { config: rl(30) },
     async (req, reply) => {
-      await requireProjectAccess(req, req.params.projectId, true);
+      await requireProjectAccess(req, req.params.projectId, true, 'members:manage');
       return reply.send({ invites: await listInvites(db, { projectId: req.params.projectId }) });
     },
   );
@@ -3398,19 +3639,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/invites/:id',
     { config: rl(20) },
     async (req, reply) => {
-      // Require an authenticated session BEFORE the lookup, so an anonymous caller can't probe
-      // whether an invite id exists (404 vs 401). Revoking is session-only anyway.
-      if (bearerToken(req) !== undefined) {
-        throw new ForbiddenError('this operation requires an interactive session');
+      // Require an authenticated caller BEFORE the lookup, so an anonymous one can't probe whether an
+      // invite id exists (404 vs 401). A member token must already hold the capability at this point,
+      // for the same reason: a token without it learns nothing from the lookup either.
+      const memberToken = await memberTokenOf(req);
+      if (memberToken) {
+        requireTokenCapability(memberToken, 'members:manage');
+      } else {
+        if (bearerToken(req) !== undefined) {
+          throw new ForbiddenError('this operation requires an interactive session');
+        }
+        await requireUserId(req);
       }
-      await requireUserId(req);
       const invite = await getInvite(db, req.params.id);
       if (!invite) throw new NotFoundError('invite not found');
       // A project invite is revocable by that project's owner (or a platform admin); a platform
-      // invite only by a platform admin.
+      // invite only by a platform admin — and never by a token, which sees it as absent: staff
+      // invites grant an instance-wide role and are not a project matter.
       if (invite.projectId) {
-        await requireProjectAccess(req, invite.projectId, true);
+        await requireProjectAccess(req, invite.projectId, true, 'members:manage').catch((err: unknown) => {
+          // For a token, an invite on a project it cannot reach is the same "not found" as an id
+          // that does not exist — otherwise the two answers would tell them apart.
+          if (memberToken && err instanceof NotFoundError) throw new NotFoundError('invite not found');
+          throw err;
+        });
       } else {
+        if (memberToken) throw new NotFoundError('invite not found');
         await requireInstanceAdmin(req);
       }
       await revokeInvite(db, req.params.id);
@@ -3482,6 +3736,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const password = generatePassword();
       await setPasswordAsAdmin(db, target, password);
+      await memberTokensRepo.revokeAllForUser(target); // staff reached via a project: same rule as above
       const email = await getUserEmail(db, target);
       req.log.info({ projectId: req.params.projectId, actor: ctx.userId }, 'member password reset by an admin');
       return reply.send({ email, password });
@@ -3493,7 +3748,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/members',
     { config: rl(30) },
     async (req, reply) => {
-      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const ctx = await requireProjectAccess(req, req.params.projectId, true, 'members:manage');
       return reply.send({ members: await listProjectMembers(db, ctx) });
     },
   );
@@ -3502,77 +3757,98 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/members/:userId',
     { config: rl(20) },
     async (req, reply) => {
-      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const ctx = await requireProjectAccess(req, req.params.projectId, true, 'members:manage');
       await removeProjectMember(db, ctx, req.params.userId);
       return reply.code(204).send();
     },
   );
 
-  app.post('/projects', async (req, reply) => {
+  // A bearer is held to a route-level limit here; a session keeps the ceiling it had (the global one).
+  // The daily cap bounds how MANY projects a token makes — this bounds how fast it can ask.
+  const createProjectRl = {
+    rateLimit: { max: (req: FastifyRequest) => (bearerToken(req) !== undefined ? 30 : 200), timeWindow: RL_WINDOW },
+  };
+  app.post('/projects', { config: createProjectRl }, async (req, reply) => {
     // Project creation is an AGENCY action: only platform staff (admin/developer) may create a project
     // and become its owner. Invited clients are project `member`s and must not self-provision projects.
-    // Session-only (a non-interactive token must not create projects).
-    const userId = await requirePlatformStaff(req);
-    const body = CreateProjectBody.parse(req.body);
-    // Atomic: the project + the creator's owner membership are written together (never an
-    // ownerless, unreachable project).
-    const project = await projects.create(body, userId);
-    const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
-    // The instance-admin's "default locale for new projects" (unset → English) seeds this
-    // project's defaultLocale + sole initial locale. See docs/i18n-content-model.md.
-    const newProjectLocale = (await instanceSettingsRepo.getStored()).defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
-    // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
-    // components are themed out of the box and the preview looks intentional immediately.
-    await contentRepo.put(ownerCtx, 'settings', 'settings', {
-      identity: { name: body.name, colors: { primary: '#2563eb' } },
-      settings: { defaultLocale: newProjectLocale, locales: [newProjectLocale] },
-      // Ship the platform DEFAULT navigation + footer (the nav-header / nav-footer recipes) so a fresh
-      // project has a working, data-driven Main Navigation (desktop bar + mobile drawer) out of the box.
-      //
-      // …and a DEFAULT IMAGE CAP. Uncapped, the retained original of a phone photograph is a 4000px+
-      // file that nothing ever serves: delivery tops out at the `xl` thumbnail, so every pixel past
-      // that width is disk footprint and publish-time decode cost with no visible benefit. Capping at
-      // exactly `xl` is the widest value that costs nothing — the largest variant the site can deliver
-      // is still generated from a same-size original, so no delivered image loses a pixel. Derived from
-      // THUMB_SIZES rather than written as 2400, so raising `xl` cannot silently leave the cap behind.
-      //
-      // NEW projects only: this is seeded state, not a schema default, so every EXISTING project stays
-      // exactly as it was (unset ⇒ uncapped). An owner can raise, lower or clear it in Settings →
-      // Website at any time; clearing it restores full-resolution originals for later uploads.
-      website: {
-        mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '',
-        footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '',
-        imageUploadCap: THUMB_SIZES[DEFAULT_SIZE],
-      },
-    });
-    // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
-    // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold
-    // idea as the editor's "Add page" starter: a brand binding + one client-editable region.
-    await contentRepo.put(ownerCtx, 'page', 'home', {
-      id: 'home',
-      path: '',
-      title: 'Home',
-      // Page content goes inside the skeleton's <main id="page-content"> wrapper, so the source
-      // itself uses a neutral <section> (the validator rejects a nested <main>).
-      source:
-        '<section class="mx-auto max-w-3xl px-6 py-16">\n' +
-        '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
-        '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
-        '</section>\n',
-      order: 0,
-      nav: { slots: ['header'] },
-    });
-    // Carry the creator's ROLE, exactly as GET /projects does. Without it the editor's freshly-created
-    // project has `role: undefined`, and every owner-gated surface reads as NOT-OWNED until something
-    // refetches the list — the Account modal told the creator "open a project you own to manage its
-    // access keys" about the project they had just made.
-    return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
+    // A project key cannot either; a MEMBER token can, with `projects:create` (see requireProjectCreator).
+    const creator = await requireProjectCreator(req);
+    try {
+      const userId = creator.userId;
+      const body = CreateProjectBody.parse(req.body);
+      // Atomic: the project + the creator's owner membership are written together (never an
+      // ownerless, unreachable project).
+      const project = await projects.create(body, userId);
+      try {
+        await creator.settle(project.id);
+      } catch (err) {
+        // The creation could not be recorded, so it would not count against the token's cap. An
+        // uncounted project is exactly what the cap exists to prevent — take it back.
+        await projects.remove(project.id).catch((e: unknown) => req.log.warn({ err: e }, 'create rollback failed'));
+        throw err;
+      }
+      const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
+      // The instance-admin's "default locale for new projects" (unset → English) seeds this
+      // project's defaultLocale + sole initial locale. See docs/i18n-content-model.md.
+      const newProjectLocale = (await instanceSettingsRepo.getStored()).defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
+      // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
+      // components are themed out of the box and the preview looks intentional immediately.
+      await contentRepo.put(ownerCtx, 'settings', 'settings', {
+        identity: { name: body.name, colors: { primary: '#2563eb' } },
+        settings: { defaultLocale: newProjectLocale, locales: [newProjectLocale] },
+        // Ship the platform DEFAULT navigation + footer (the nav-header / nav-footer recipes) so a fresh
+        // project has a working, data-driven Main Navigation (desktop bar + mobile drawer) out of the box.
+        //
+        // …and a DEFAULT IMAGE CAP. Uncapped, the retained original of a phone photograph is a 4000px+
+        // file that nothing ever serves: delivery tops out at the `xl` thumbnail, so every pixel past
+        // that width is disk footprint and publish-time decode cost with no visible benefit. Capping at
+        // exactly `xl` is the widest value that costs nothing — the largest variant the site can deliver
+        // is still generated from a same-size original, so no delivered image loses a pixel. Derived from
+        // THUMB_SIZES rather than written as 2400, so raising `xl` cannot silently leave the cap behind.
+        //
+        // NEW projects only: this is seeded state, not a schema default, so every EXISTING project stays
+        // exactly as it was (unset ⇒ uncapped). An owner can raise, lower or clear it in Settings →
+        // Website at any time; clearing it restores full-resolution originals for later uploads.
+        website: {
+          mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '',
+          footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '',
+          imageUploadCap: THUMB_SIZES[DEFAULT_SIZE],
+        },
+      });
+      // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
+      // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold
+      // idea as the editor's "Add page" starter: a brand binding + one client-editable region.
+      await contentRepo.put(ownerCtx, 'page', 'home', {
+        id: 'home',
+        path: '',
+        title: 'Home',
+        // Page content goes inside the skeleton's <main id="page-content"> wrapper, so the source
+        // itself uses a neutral <section> (the validator rejects a nested <main>).
+        source:
+          '<section class="mx-auto max-w-3xl px-6 py-16">\n' +
+          '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
+          '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
+          '</section>\n',
+        order: 0,
+        nav: { slots: ['header'] },
+      });
+      // Carry the creator's ROLE, exactly as GET /projects does. Without it the editor's freshly-created
+      // project has `role: undefined`, and every owner-gated surface reads as NOT-OWNED until something
+      // refetches the list — the Account modal told the creator "open a project you own to manage its
+      // access keys" about the project they had just made.
+      return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
+    } finally {
+      await creator.settle(); // no-op once settled above; frees the token's claim if anything threw
+    }
   });
 
   app.get<{ Params: { id: string } }>(
     '/projects/:id',
     async (req, reply) => {
-      const userId = await requireUserId(req);
+      const { userId, token } = await sessionUserOrMemberToken(req);
+      if (token) {
+        return reply.send({ project: (await memberTokenProject(token, req.params.id, 'content:read')).project });
+      }
       const role = await resolveProjectRole(db, userId, req.params.id);
       if (!role) throw new ForbiddenError('you do not have access to this project');
       const project = await projects.get(req.params.id);
@@ -3587,9 +3863,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     async (req, reply) => {
       // The reserved global-library scope is not a real, deletable project.
       if (req.params.id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
-      // A project may be deleted by its owner or a platform admin (both resolve to owner).
-      const userId = await requireUserId(req);
-      const role = await resolveProjectRole(db, userId, req.params.id);
+      // A project may be deleted by its owner or a platform admin (both resolve to owner) — in a
+      // session, or with a member token that was given `projects:delete` when it was minted.
+      const { userId, token } = await sessionUserOrMemberToken(req);
+      const role = token
+        ? (await memberTokenProject(token, req.params.id, 'projects:delete')).ctx.role
+        : await resolveProjectRole(db, userId, req.params.id);
       if (role !== 'owner') throw new ForbiddenError('insufficient role to delete this project');
       const project = await projects.get(req.params.id);
       if (project.deletedAt) throw new NotFoundError('project not found'); // already deleted
@@ -3622,13 +3901,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // slug (that loser's rename() throws ConflictError; the copy/rewrite it did are orphaned + retryable).
   app.patch<{ Params: { id: string } }>('/projects/:id', { config: rl(20) }, async (req, reply) => {
     if (req.params.id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
-    const userId = await requireUserId(req);
-    const role = await resolveProjectRole(db, userId, req.params.id);
+    // In a session, or with a member token that was given `projects:rename` when it was minted.
+    const { userId, token } = await sessionUserOrMemberToken(req);
+    const role = token
+      ? (await memberTokenProject(token, req.params.id, 'projects:rename')).ctx.role
+      : await resolveProjectRole(db, userId, req.params.id);
     if (role !== 'owner') throw new ForbiddenError('insufficient role to rename this project');
     const body = UpdateProjectBody.parse(req.body);
     const project = await projects.get(req.params.id);
     if (project.deletedAt) throw new NotFoundError('project not found');
-    const ctx = { userId, projectId: project.id, role, actor: 'user' as const };
+    const ctx = { userId, projectId: project.id, role, actor: token ? ('agent' as const) : ('user' as const) };
     const slugChanged = body.slug !== undefined && body.slug !== project.slug;
     // A slug rename touches THREE things — the media directory, every `/media/<slug>/` reference in the
     // project's content, and the project row itself. They must agree: a project whose slug says one thing
@@ -4250,6 +4532,45 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  // ---- Member tokens (`swm_…`): bearer tokens that belong to a staff member, not to a project ----
+  // Management is session-only, like project keys: a token can never mint, list or revoke tokens.
+  // Minting is staff-only (requirePlatformStaff rejects every bearer and every non-staff session) and
+  // re-authenticates with the password. Listing and revoking need only a session, so a member who
+  // has just lost staff rights can still see — and cut off — whatever they had.
+  app.get('/account/member-tokens', { config: rl(30) }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    return reply.send({ items: await memberTokensRepo.list(userId), dailyProjectCap: memberTokenDailyProjectCap });
+  });
+
+  app.post('/account/member-tokens', { config: authRl }, async (req, reply) => {
+    const userId = await requirePlatformStaff(req, 'create member tokens');
+    const body = CreateMemberTokenBody.parse(req.body);
+    // An account with no password (single sign-on only) cannot confirm anything by password; say so
+    // rather than report a "wrong password" for one that does not exist.
+    if (!(await userHasPassword(db, userId))) {
+      throw new ForbiddenError('set a password in Account → Password first — creating a member token is confirmed with it');
+    }
+    if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
+      throw new ForbiddenError('current password is incorrect');
+    }
+    const expiresAt = new Date(Date.now() + body.expiresInDays * DAY_MS);
+    const { token, key } = await memberTokensRepo.create(userId, {
+      name: body.name,
+      capabilities: body.capabilities,
+      expiresAt,
+    });
+    // Capabilities are logged (they are the token's reach); the secret and its prefix are not.
+    req.log.info({ actor: userId, tokenId: key.id, capabilities: key.capabilities }, 'member token created');
+    // `token` is the ONLY time the raw secret is returned — clients store it now.
+    return reply.code(201).send({ token, key });
+  });
+
+  app.delete<{ Params: { id: string } }>('/account/member-tokens/:id', { config: rl(20) }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    await memberTokensRepo.revoke(userId, req.params.id);
+    return reply.code(204).send();
+  });
+
   // ---- Project API keys (bearer tokens for the CLI / MCP bridge) ----
   // Management is `session-only`: a token can never mint, list, or revoke tokens
   // (no self-escalation / persistence). Owner/admin only (enforced by the repo).
@@ -4308,6 +4629,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  /**
+   * The member tokens connected to a project: those that have ACTED on it (a member token is bound to
+   * no project, so "connected" has to mean "has been used here") and whose owner can still reach it —
+   * with the role they hold there now, read as it is on every use.
+   */
+  async function memberTokenConnections(projectId: string) {
+    const connections = await memberTokensRepo.listConnectionsForProject(projectId);
+    const withRole = await Promise.all(
+      connections.map(async (m) => {
+        const role = await resolveProjectRole(db, m.userId, projectId);
+        return role ? { ...m, role } : null;
+      }),
+    );
+    return withRole.filter((m) => m !== null);
+  }
+
   // Active agent connections for the editor's "AI agent details" modal + header indicator: active
   // PATs PLUS live OAuth/MCP sessions (one row per connected user, shown for the whole session
   // window — not just while a 1h access token is valid). The OAuth connection id is the opaque
@@ -4320,11 +4657,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // owner-only (ApiKeyRepository.WRITE_ROLES). `session-only` still holds: a token must not be able
       // to enumerate the other agents attached to the project it was issued for.
       const { ctx } = await resolveProject(req, 'session-only');
-      const [pats, sessions] = await Promise.all([
+      const [pats, sessions, memberConnections] = await Promise.all([
         apiKeysRepo.listAgentConnections(ctx),
         oauthRepo.listActiveSessions(ctx.projectId),
+        memberTokenConnections(ctx.projectId),
       ]);
+      // Revoking a member token is an account-level act (see the DELETE route below) — tell the
+      // editor whether THIS viewer may, so it does not offer a button that can only fail.
+      const viewerIsAdmin = memberConnections.length > 0 && (await isInstanceAdmin(ctx.userId));
+      const memberItems = memberConnections.map((m) => ({
+        id: `member:${m.tokenId}`,
+        kind: 'member' as const,
+        name: m.name,
+        // Whose automation this is. Shown to the project's owner only: a client member has no need
+        // for a staff address, and the token's name already tells them what it is.
+        ...(ctx.role === 'owner' ? { owner: m.ownerEmail } : {}),
+        canRevoke: viewerIsAdmin || m.userId === ctx.userId,
+        role: m.role,
+        capabilities: m.capabilities,
+        connectedAt: m.firstUsedAt,
+        expiresAt: m.expiresAt,
+        lastUsedAt: m.lastUsedAt as Date | null,
+      }));
       const items = [
+        ...memberItems,
         ...sessions.map((s) => ({
           id: `oauth:${s.userId}`,
           kind: 'oauth' as const,
@@ -4364,6 +4720,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
       const id = req.params.id;
+      if (id.startsWith('member:')) {
+        // A member token belongs to an ACCOUNT, not to this project — there is no "disconnect from
+        // here", only "revoke". So only its owner may, or an instance admin (the kill switch). A
+        // project owner who is neither cannot: they would be cutting a colleague's automation off
+        // from every OTHER project as well.
+        const tokenId = id.slice('member:'.length);
+        const owner = await memberTokensRepo.ownerOf(tokenId);
+        if (!owner) throw new NotFoundError('member token not found');
+        if (owner !== ctx.userId && !(await isInstanceAdmin(ctx.userId))) {
+          throw new ForbiddenError('only the token\'s owner or an instance admin can revoke a member token');
+        }
+        await memberTokensRepo.revoke(owner, tokenId);
+        req.log.info({ actor: ctx.userId, tokenId, projectId: ctx.projectId }, 'member token revoked from a project');
+        return reply.code(204).send();
+      }
       // Owner-only, with ONE exception: a member may sever their OWN agent. They can create that
       // connection (the consent path takes any project role), so being unable to undo it would leave
       // the person who attached ChatGPT waiting on the owner to detach it. Anything else — another
@@ -4482,15 +4853,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  // Import a project export zip as a BRAND-NEW project (staff-only, same gate as creating one).
+  // Import a project export zip as a BRAND-NEW project (same gate as creating one: staff in a
+  // session, or a member token with `projects:create`).
   // Non-destructive: never touches an existing project. Entity ids are preserved inside the fresh
   // project; only the slug is deduped and media URLs rewritten to match. SSE-streamed progress.
   app.post('/projects/import/zip', { config: rl(10) }, async (req, reply) => {
-    const userId = await requirePlatformStaff(req); // 403 unless admin/developer; rejects bearer tokens
+    const creator = await requireProjectCreator(req); // 403 unless staff; a project key is rejected
+    const userId = creator.userId;
     if (!mediaStorage) {
+      await creator.settle();
       return reply.code(400).send({ error: 'media storage is not configured on this instance' });
     }
     if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+      await creator.settle();
       return reply.code(429).send({ error: 'too many imports in progress; retry shortly' });
     }
     // Claim the slot SYNCHRONOUSLY (atomic with the check above — no await intervenes), so two
@@ -4554,7 +4929,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           onProgress({ phase: 'allocate', detail: `creating project “${newName}”` });
           const project = await projects.create({ name: newName, slug: newSlug }, userId);
           try {
-            const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+            // Inside the rollback: a creation that cannot be recorded must not leave a project behind.
+            await creator.settle(project.id);
+            const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
             onProgress({ phase: 'content', detail: 'importing content' });
             const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
             onProgress({ phase: 'media', detail: 'restoring media' });
@@ -4583,32 +4960,42 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       parsedZip?.zip.close();
       if (uploadTemp) await rm(uploadTemp, { recursive: true, force: true }).catch(() => {});
       activeProjectImports -= 1;
+      await creator.settle(); // no-op once a project was recorded; frees the token's claim otherwise
     }
   });
 
-  // Duplicate a project in-instance (staff-only): assemble the source's export bundle, mint a new
-  // project, import the bundle, and copy the media tree. Reuses the export/import core end to end.
+  // Duplicate a project in-instance (same gate as creating one): assemble the source's export bundle,
+  // mint a new project, import the bundle, and copy the media tree. Reuses the export/import core end
+  // to end. A member token needs `content:read` as well as `projects:create` — it is copying a
+  // project's whole content out, and one capability must not quietly imply the other.
   app.post<{ Params: { projectId: string } }>(
     '/projects/:projectId/duplicate',
     { config: rl(10) },
     async (req, reply) => {
-      const userId = await requirePlatformStaff(req);
-      const role = await resolveProjectRole(db, userId, req.params.projectId);
-      if (!role) throw new ForbiddenError('you do not have access to this project');
-      if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
-        return reply.code(429).send({ error: 'too many operations in progress; retry shortly' });
-      }
-      activeProjectImports += 1; // claim the slot synchronously (atomic with the check above)
+      const creator = await requireProjectCreator(req);
+      const userId = creator.userId;
+      let slotClaimed = false;
       try {
+        const role = creator.token
+          ? (await memberTokenProject(creator.token, req.params.projectId, 'content:read')).ctx.role
+          : await resolveProjectRole(db, userId, req.params.projectId);
+        if (!role) throw new ForbiddenError('you do not have access to this project');
+        if (activeProjectImports >= MAX_CONCURRENT_PROJECT_IMPORTS) {
+          return reply.code(429).send({ error: 'too many operations in progress; retry shortly' });
+        }
+        activeProjectImports += 1; // claim the slot synchronously (atomic with the check above)
+        slotClaimed = true;
         const source = await projects.get(req.params.projectId);
         if (source.deletedAt) throw new NotFoundError('project not found');
-        const srcCtx = { userId, projectId: source.id, role, actor: 'user' as const };
+        const srcCtx = { userId, projectId: source.id, role, actor: creator.actor };
         const bundle = await contentRepo.assembleExportBundle(srcCtx, source);
         const newSlug = await projects.availableSlug(source.slug);
         const newName = `${source.name} (copy)`.slice(0, 200);
         const project = await projects.create({ name: newName, slug: newSlug }, userId);
         try {
-          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+          // Inside the rollback: a creation that cannot be recorded must not leave a project behind.
+          await creator.settle(project.id);
+          const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
           await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
           if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
           return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
@@ -4620,7 +5007,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           throw err;
         }
       } finally {
-        activeProjectImports -= 1;
+        if (slotClaimed) activeProjectImports -= 1;
+        await creator.settle(); // no-op once a project was recorded; frees the token's claim otherwise
       }
     },
   );
@@ -8248,8 +8636,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     );
 
     // A members-only presence COUNT for the preview surface's agent pill (no connection details —
-    // the owner-only /agent-connections endpoint carries those). Counts live OAuth/MCP sessions +
-    // active PATs; the transient "working" state is derived client-side from the SSE actor tag.
+    // the /agent-connections endpoint carries those). Counts live OAuth/MCP sessions + active PATs +
+    // member tokens that have acted here — the same three sources that endpoint lists, so the pill
+    // and the modal cannot disagree. The transient "working" state is derived client-side from the
+    // SSE actor tag.
     app.get<{ Params: { projectId: string } }>(
       '/projects/:projectId/agent-presence',
       { config: rl(60) },
@@ -8257,7 +8647,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const { ctx, project } = await resolveProject(req, 'content:read');
         const sessions = await oauthRepo.listActiveSessions(project.id);
         const pats = await apiKeysRepo.listAgentConnections(ctx);
-        return reply.send({ connected: sessions.length + pats.length });
+        const memberConnections = await memberTokenConnections(project.id);
+        return reply.send({ connected: sessions.length + pats.length + memberConnections.length });
       },
     );
 
@@ -9427,6 +9818,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       hasProviderWriteScope: async (req) => {
         const token = bearerToken(req);
         if (token === undefined) return false;
+        // A member token carries the capability the same way and is held to the same rule below: its
+        // OWNER must be an instance admin.
+        const memberToken = await memberTokenOf(req).catch(() => null);
+        if (memberToken) {
+          return memberToken.capabilities.includes('payments:provider:write') && (await isInstanceAdmin(memberToken.userId));
+        }
         const key = await apiKeysRepo.resolve(token).catch(() => null);
         if (key?.capabilities.includes('payments:provider:write') !== true) return false;
         // ★★ The capability is NECESSARY BUT NOT SUFFICIENT. A gateway definition is instance-wide

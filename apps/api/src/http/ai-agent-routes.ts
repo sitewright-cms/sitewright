@@ -128,7 +128,7 @@ export interface AiAgentRoutesDeps {
   resolveProject: (
     req: FastifyRequest<{ Params: { projectId: string } }>,
     access: ApiKeyCapability | 'session-only',
-  ) => Promise<{ ctx: ProjectContext }>;
+  ) => Promise<{ ctx: ProjectContext; apiKey: { capabilities: ApiKeyCapability[]; viaMemberToken?: boolean } | null }>;
   isWriter: (ctx: ProjectContext) => boolean;
   isAdmin: (userId: string) => Promise<boolean>;
   getAgentInstructions: () => Promise<string>;
@@ -487,7 +487,15 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
     // We consume the generator to COMPLETION (no hijack/stream), collect each page's gate outcome, and reply
     // once every page has been driven to (or past its round budget short of) the acceptance gate.
     app.post<{ Params: { projectId: string } }>('/projects/:projectId/agent/clone', { config: deps.rl(3) }, async (req, reply) => {
-      const { ctx } = await deps.resolveProject(req, 'publish');
+      const { ctx, apiKey } = await deps.resolveProject(req, 'publish');
+      // The loop below is handed the FULL authoring set, whatever the caller holds. For a project key
+      // that stays inside the one project it was minted for. A member token reaches every project its
+      // owner can, so it must itself hold everything it is about to be given — otherwise `publish`
+      // alone would become write + delete across the whole account.
+      if (apiKey?.viaMemberToken) {
+        const missing = AGENT_MAX_CAPS.find((c) => !apiKey.capabilities.includes(c));
+        if (missing) return reply.code(403).send({ error: `this member token lacks the "${missing}" capability` });
+      }
       if (!deps.isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const resolved = await deps.resolveAgent(ctx);
       if (!resolved) return reply.code(501).send({ error: 'AI assistant is not configured' });

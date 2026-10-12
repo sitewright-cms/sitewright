@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { X } from 'lucide-react';
 import { api, type ApiKeyCapability, type ApiKeyView, type Project, type ProjectRole } from '../api';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton, toggleInput } from '../theme';
 import { useDialogs } from './ui/Dialogs';
+import { IssuedTokenBanner } from './ui/IssuedTokenBanner';
 
 const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
 
@@ -82,23 +82,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
   return (
     <div className="flex flex-col gap-6">
       {dialog}
-      {issued && (
-        <div className="rounded-2xl border border-amber-300/70 dark:border-amber-500/20 bg-amber-50/80 dark:bg-amber-500/10 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-3xl">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-bold text-amber-900 dark:text-amber-200">Copy your new token now — it won’t be shown again.</p>
-            <button
-              aria-label="Dismiss token"
-              className="text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
-              onClick={() => setIssued(null)}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <code className="mt-2 block break-all rounded-lg border border-amber-200/70 dark:border-amber-500/20 bg-white/80 dark:bg-slate-900/80 px-3 py-2 text-xs" aria-label="New API token">
-            {issued}
-          </code>
-        </div>
-      )}
+      {issued && <IssuedTokenBanner token={issued} label="New API token" onDismiss={() => setIssued(null)} />}
 
       <form onSubmit={create} className={`flex flex-wrap items-end gap-3 ${glassCard} p-4`}>
         <div className="flex flex-col">

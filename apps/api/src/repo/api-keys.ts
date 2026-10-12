@@ -50,6 +50,13 @@ export interface ResolvedApiKey {
   role: ProjectRole;
   capabilities: ApiKeyCapability[];
   createdBy: string;
+  /**
+   * Set when this is not a project key at all but a MEMBER token, presented here in a project key's
+   * shape (see `resolveProject`). Such a token reaches every project its owner can, so a route that
+   * hands a bearer MORE than it asked for has to know — what is tolerable within one project is not
+   * across an account.
+   */
+  viaMemberToken?: boolean;
 }
 
 function toView(row: typeof apiKeys.$inferSelect): ApiKeyView {

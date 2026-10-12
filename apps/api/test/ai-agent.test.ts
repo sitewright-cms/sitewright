@@ -452,6 +452,34 @@ describe('POST /projects/:id/agent/messages (end-to-end)', () => {
     const noPublish = await app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${roToken}` } });
     expect(noPublish.statusCode).toBe(403);
   });
+
+  // The loop is handed the full authoring set whatever the caller holds. Inside one project that is a
+  // project key's business; a MEMBER token reaches every project its owner can.
+  it('★ a MEMBER token must itself hold everything the clone loop is handed — publish alone is refused', async () => {
+    const { cookie, projectId } = await ownerSession();
+    const url = `/projects/${projectId}/agent/clone`;
+    const mintMember = async (capabilities: string[]): Promise<string> => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/account/member-tokens',
+        cookies: { sw_session: cookie },
+        payload: { name: 'm', expiresInDays: 1, capabilities, currentPassword: 'Pw-secret-1' },
+      });
+      expect(res.statusCode).toBe(201);
+      return (res.json() as { token: string }).token;
+    };
+
+    const narrow = await mintMember(['content:read', 'publish']);
+    const refused = await app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${narrow}` } });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'this member token lacks the "content:write" capability' });
+
+    // With all four it gets as far as a project key does: 400 for no imported pages.
+    const full = await mintMember(['content:read', 'content:write', 'content:delete', 'publish']);
+    const accepted = await app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${full}` } });
+    expect(accepted.statusCode).toBe(400);
+    expect((accepted.json() as { error: string }).error).toMatch(/no imported pages/);
+  });
 });
 
 describe('adapter translation + error branches', () => {

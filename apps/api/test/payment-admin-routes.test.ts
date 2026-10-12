@@ -479,4 +479,31 @@ describe('★★ `payments:provider:write` is not enough on its own', () => {
     });
     expect(res.statusCode).toBe(200);
   });
+
+  it('★ a MEMBER token is held to the same rule: the capability AND an instance-admin owner', async () => {
+    const mintMember = async (who: TestClient) => {
+      const res = await who.post('/account/member-tokens', {
+        name: 'fleet',
+        expiresInDays: 1,
+        currentPassword: 'Pw-secret-1',
+        capabilities: ['content:read', 'content:write', 'payments:provider:write'],
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().token as string;
+    };
+    const put = (token: string, id: string) =>
+      h.app.inject({ method: 'PUT', url: `/admin/payment-gateways/${id}`, headers: { authorization: `Bearer ${token}` }, payload: GATEWAY as never });
+
+    // A developer is staff, so may hold a member token — but gateway code is an admin's to write.
+    await member.createProject('Theirs', 'theirs-member-token');
+    const refused = await put(await mintMember(member), 'evilmember');
+    expect(refused.statusCode).toBeGreaterThanOrEqual(403);
+    const [row] = await h.db.select().from(content).where(and(eq(content.kind, 'payment_gateway'), eq(content.entityId, 'evilmember')));
+    expect(row).toBeUndefined();
+
+    expect((await put(await mintMember(admin), 'membermade')).statusCode).toBe(200);
+    // …and without the capability an admin's member token is refused like any other bearer.
+    const plain = await admin.post('/account/member-tokens', { name: 'plain', expiresInDays: 1, currentPassword: 'Pw-secret-1', capabilities: ['content:read'] });
+    expect((await put(plain.json().token as string, 'nocap')).statusCode).toBeGreaterThanOrEqual(403);
+  });
 });

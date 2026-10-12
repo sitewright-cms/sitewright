@@ -160,6 +160,17 @@ export function registerMcpRoutes(
         }
         throw err;
       }
+      // A MEMBER token introspects with no project: it reaches many. Every tool here addresses "the"
+      // project of the connection, so say so plainly rather than let each call fail on a path built
+      // from an undefined id. (The REST API takes a member token everywhere a project key works.)
+      if (typeof (scope as { projectId?: unknown }).projectId !== 'string') {
+        return rpcError(
+          reply,
+          403,
+          'mcp_unavailable: a member token is not bound to one project and cannot drive this endpoint — connect with a project key, or use the REST API',
+          rpcIdOf(req.body),
+        );
+      }
       if (scopeCache.size > 500) scopeCache.clear(); // bound memory on token churn; refill is one introspect
       scopeCache.set(cacheKey, { scope, exp: Date.now() + SCOPE_TTL_MS });
     }

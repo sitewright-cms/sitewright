@@ -4,6 +4,9 @@ import type { Database } from '../db/client.js';
 import {
   aiUsage,
   apiKeys,
+  memberTokenCreations,
+  memberTokenProjects,
+  memberTokens,
   content,
   contentRevisions,
   invites,
@@ -448,6 +451,12 @@ export async function deleteUserAccount(db: Database, userId: string): Promise<v
     await tx.delete(webauthnChallenges).where(eq(webauthnChallenges.userId, userId));
     await tx.delete(oidcIdentities).where(eq(oidcIdentities.userId, userId));
     await tx.delete(apiKeys).where(eq(apiKeys.createdBy, userId));
+    // Member tokens: only staff can mint one, but a member demoted to a client keeps the (revoked) rows,
+    // and they still carry an FK to this user.
+    const ownTokens = tx.select({ id: memberTokens.id }).from(memberTokens).where(eq(memberTokens.userId, userId));
+    await tx.delete(memberTokenProjects).where(inArray(memberTokenProjects.tokenId, ownTokens));
+    await tx.delete(memberTokenCreations).where(inArray(memberTokenCreations.tokenId, ownTokens));
+    await tx.delete(memberTokens).where(eq(memberTokens.userId, userId));
     await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.userId, userId));
     await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.userId, userId));
     await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.userId, userId));

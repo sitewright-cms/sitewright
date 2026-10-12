@@ -221,8 +221,25 @@ The running version of an instance is reported at `GET /version` (baked into the
   - The lockfile is the five Dependabot lockfiles merged, with one exception: they would all have
     moved `legacy-javascript` (Lighthouse's data, pulled in as `latest`) back from 0.0.3 to 0.0.1,
     and it stays at 0.0.3.
-  - The `lucide-static` bump does not change the icons a site can use: `packages/blocks/src/icons.ts`
-    is generated from it and was last regenerated for Lucide 1.31. Nothing checks that it is current.
+  - The `lucide-static` bump on its own does not change the icons a site can use —
+    `packages/blocks/src/icons.ts` is generated from it. See the next entry.
+
+- **The Lucide icon set is regenerated for Lucide 1.52, and can no longer fall behind unnoticed.**
+  `{{sw-icon "name"}}` falls back to a Lucide outline for every name Phosphor has no glyph for, and
+  that set is generated from `lucide-static` — so bumping the package changed nothing until the
+  generator ran, and it had not run for several releases while each bump read as done.
+  - **96 icons added** (2,034 → 2,130), among them `rugby-ball`, `cupcake`, `faucet`, `galaxy`,
+    `credit-card-check`/`-plus`/`-minus`/`-x`, `clef-treble`/`-bass`/`-alto`. They are in the icon
+    picker and in icon search.
+  - **65 existing icons are redrawn** by Lucide (`key`, `leaf`, `cookie`, `ghost`, `credit-card`,
+    `door-open`, `badge-check`, …). A page using one of them as a Lucide outline shows the new
+    drawing after its next publish. None was removed or renamed, and the Lucide → Phosphor alias map
+    is unchanged, so no name resolves differently.
+  - `pnpm verify` now checks the generated file against the installed package, as it already did for
+    brand icons, flags and vendored runtimes. A `lucide-static` bump is therefore red until
+    `pnpm --filter @sitewright/blocks gen:lucide-icons` is run and committed — Dependabot cannot do
+    that, so expect it on its PRs. It is also where an icon Lucide removes shows up as a deleted
+    line, before a client page loses it.
 
 ## [0.61.0] — 2026-10-09
 

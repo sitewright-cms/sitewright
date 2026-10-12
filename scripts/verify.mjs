@@ -43,6 +43,11 @@ const GATES = [
   { name: 'Source files are text', cmd: ['node', 'scripts/text-sources-gate.mjs'] },
   // Guard against hand-edits / upstream drift of the generated icon + vendored-runtime sets.
   { name: 'Check generated brand icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:brand-icons:check'] },
+  // The Lucide set a site can use is GENERATED from lucide-static, so bumping the package changes
+  // nothing until the generator runs. Unchecked, it sat several releases behind while every bump read
+  // as done. A lucide-static bump is now red until `gen:lucide-icons` is run and committed — which is
+  // also where a removed icon shows up as a deleted line, before a client page loses it.
+  { name: 'Check generated Lucide icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:lucide-icons:check'] },
   { name: 'Check generated flag icons', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:flag-icons:check'] },
   { name: 'Check generated vendor runtimes', cmd: ['pnpm', '--filter', '@sitewright/blocks', 'gen:vendor:check'] },
   // The Tailwind reference dataset is derived from the installed `tailwindcss`. Upgrading Tailwind

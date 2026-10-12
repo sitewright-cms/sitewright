@@ -208,6 +208,7 @@ import { JsonDataCache } from './json-data-cache.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import type { AgentProvider } from '../ai/agent-provider.js';
+import { abortOnClose } from './abort-on-close.js';
 import { registerAiAgentRoutes, type ResolvedAgent, type AgentSource } from './ai-agent-routes.js';
 import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js';
 import { buildAgentProvider } from '../ai/build-provider.js';
@@ -823,16 +824,8 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
   return kind;
 }
 
-/**
- * An AbortController that fires when the client disconnects, so an in-flight browser render is torn down
- * instead of holding a render slot for a request nobody is waiting for. Exported (and injectable) so the
- * abort wiring itself is testable — inline `req.raw.on('close', …)` closures never are.
- */
-export function abortOnClose(req: { raw: { on: (event: 'close', cb: () => void) => unknown } }): AbortController {
-  const abort = new AbortController();
-  req.raw.on('close', () => abort.abort());
-  return abort;
-}
+// Re-exported: the helper lived here before it moved to its own module (see the note there).
+export { abortOnClose };
 
 /** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
 const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
@@ -8426,8 +8419,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const refreshQ = ((req.query as { refresh?: string } | undefined)?.refresh ?? '').toLowerCase();
         const wantRefresh = refreshQ === '1' || refreshQ === 'true';
         const wantNames = (target.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS) as ViewportName[];
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
 
         // The BUILD always renders live (it's the agent's current work). Kick it off concurrently.
         const buildP = captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>);
@@ -8487,8 +8479,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
         // Render both sides concurrently (build = the agent's current work, source = the real site) and diff.
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -8530,8 +8521,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // targetPage is non-null (thrown above), so the only reachable error is a missing import source.
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
         // VISUAL leg first: render BUILD + SOURCE and diff (also tells us whether the ORIGINAL has modals).
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -8621,8 +8611,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           originHostPort: `127.0.0.1:${port}`,
         });
         if ('error' in target) return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
         const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
         // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
         const [build, liveSource] = await Promise.all([
@@ -8705,8 +8694,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const dir = await mkdtemp(join(tmpdir(), 'sw-pagespeed-'));
         let served: Awaited<ReturnType<typeof serveBuiltSite>> | undefined;
         // Note when the client goes away (panel closed / navigated) so we don't reply to a dead socket.
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
         try {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
           // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion.
@@ -8823,8 +8811,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Which default regions to capture (unknown names dropped; empty/absent → all defaults).
         const wanted = (req.query.regions ?? '').split(',').map((s) => s.trim()).filter((s) => Object.hasOwn(DEFAULT_COMPARE_REGIONS, s));
         const regions = wanted.length ? Object.fromEntries(wanted.map((n) => [n, DEFAULT_COMPARE_REGIONS[n]!])) : DEFAULT_COMPARE_REGIONS;
-        const abort = new AbortController();
-        req.raw.on('close', () => abort.abort());
+        const abort = abortOnClose(req);
         const [build, source] = await Promise.all([
           captureUrlRegions(target.buildUrl, { mode: 'loopback', regions, signal: abort.signal }),
           captureUrlRegions(target.sourceUrl, { mode: 'pinned', regions, signal: abort.signal }),

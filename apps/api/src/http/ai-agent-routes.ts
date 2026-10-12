@@ -11,6 +11,7 @@ import { McpToolBridge } from '../ai/tool-bridge.js';
 import { mintAgentToken, revokeAgentToken, clearAgentTokenActive } from '../ai/agent-token.js';
 import { runCloneOrchestration, type ClonePageTask, type CloneGateResult } from '../ai/clone-orchestrator.js';
 import type { AgentGrantsRepository } from '../repo/agent-grants.js';
+import { abortOnClose } from './abort-on-close.js';
 
 /** First instant of the current UTC month — the basis for monthly token quotas. */
 function startOfMonthUTC(now: Date): Date {
@@ -333,7 +334,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
       else abort.abort();
     }, 15_000);
-    req.raw.on('close', () => abort.abort());
+    abortOnClose(req, abort);
 
     send('start', { conversationId, model: provider.model });
 
@@ -442,7 +443,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
         if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
         else abort.abort();
       }, 15_000);
-      req.raw.on('close', () => abort.abort());
+      abortOnClose(req, abort);
       send('start', { model: resolved.provider.model, pages: pages.length });
 
       const meter = async (usage: { inputTokens: number; outputTokens: number }): Promise<void> => {

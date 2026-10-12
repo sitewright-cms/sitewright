@@ -7,6 +7,8 @@ import {
 } from '../src/http/platform-origins.js';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
+// Adding a passkey is confirmed with the account password (every harness account has this one).
+const REGISTER_PROOF = { currentPassword: 'Pw-secret-1' };
 const CANONICAL = 'https://cms.agency.com';
 const SECOND = 'https://edit.clientbrand.com';
 
@@ -87,7 +89,7 @@ describe('multi-hostname platform access (end to end)', () => {
   it('single-origin behaviour is UNCHANGED: the canonical host is the relying party', async () => {
     // This is what the old config-level derivation guaranteed. It must still hold, or moving the
     // derivation into createApp silently changed every existing single-host instance.
-    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'cms.agency.com', 'x-forwarded-proto': 'https' } });
+    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'cms.agency.com', 'x-forwarded-proto': 'https' } });
     expect(opts.statusCode).toBe(200);
     expect(opts.json().options.rp.id).toBe('cms.agency.com');
   });
@@ -95,24 +97,24 @@ describe('multi-hostname platform access (end to end)', () => {
   it('an UNAPPROVED Host falls back to the canonical relying party rather than minting its own', async () => {
     // A spoofed Host must not be able to steer the rpID: the credential would bind to an rpID the
     // operator never approved. Falling back to the canonical origin makes the ceremony fail cleanly.
-    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'evil.example.net', 'x-forwarded-proto': 'https' } });
+    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'evil.example.net', 'x-forwarded-proto': 'https' } });
     expect(opts.json().options.rp.id).toBe('cms.agency.com');
   });
 
   it('an APPROVED second hostname becomes its own relying party', async () => {
     expect((await approve(SECOND)).statusCode).toBe(200);
-    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
+    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
     expect(opts.json().options.rp.id).toBe('edit.clientbrand.com');
     // …and the canonical host still resolves to itself.
-    const canonical = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'cms.agency.com', 'x-forwarded-proto': 'https' } });
+    const canonical = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'cms.agency.com', 'x-forwarded-proto': 'https' } });
     expect(canonical.json().options.rp.id).toBe('cms.agency.com');
   });
 
   it('approval applies LIVE — no restart between the settings write and the next request', async () => {
-    const before = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
+    const before = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
     expect(before.json().options.rp.id).toBe('cms.agency.com');
     await approve(SECOND);
-    const after = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
+    const after = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
     expect(after.json().options.rp.id).toBe('edit.clientbrand.com');
   });
 
@@ -125,6 +127,7 @@ describe('multi-hostname platform access (end to end)', () => {
       const opts = await client.inject({
         method: 'POST',
         url: '/account/passkeys/register/options',
+        payload: REGISTER_PROOF,
         headers: { host: 'internal-app:2002', 'x-forwarded-host': 'cms.agency.com', 'x-forwarded-proto': 'https' },
       });
       expect(opts.statusCode).toBe(200);
@@ -180,7 +183,7 @@ describe('multi-hostname platform access (end to end)', () => {
     await admin.put('/admin/settings', { additionalOrigins: null });
     expect((await admin.get('/admin/settings')).json().settings.additionalOrigins).toBeUndefined();
     // …and the second host stops being its own relying party.
-    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
+    const opts = await admin.inject({ method: 'POST', url: '/account/passkeys/register/options', payload: REGISTER_PROOF, headers: { host: 'edit.clientbrand.com', 'x-forwarded-proto': 'https' } });
     expect(opts.json().options.rp.id).toBe('cms.agency.com');
   });
 

@@ -68,7 +68,7 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
         {tab === 'account' && <AccountTab email={email} onEmailChanged={onEmailChanged} />}
         {tab === 'password' && <PasswordTab hasPassword={hasPassword} isStaff={isStaff} onPasswordChanged={onPasswordChanged} />}
         {tab === 'access' && <AccessKeysTab project={project} isStaff={isStaff} isInstanceAdmin={isInstanceAdmin} hasPassword={hasPassword} />}
-        {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} recoveryCodesRemaining={recoveryCodesRemaining} onChanged={onMfaChanged} />}
+        {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} recoveryCodesRemaining={recoveryCodesRemaining} onChanged={onMfaChanged} hasPassword={hasPassword} />}
       </div>
     </Modal>
   );
@@ -161,23 +161,67 @@ function PasswordTab({ hasPassword, isStaff, onPasswordChanged }: { hasPassword:
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // A staff member's working member tokens: how many (a number), not yet known (null), or could not
+  // be read ('unknown' — then the question is still asked, just without a count). A changed password
+  // might mean "someone knows it", in which case the tokens should go too, or might be routine, in
+  // which case stopping every automation would be the surprise. Only the member knows — so they choose.
+  const asksAboutTokens = isStaff && hasPassword;
+  const [liveTokens, setLiveTokens] = useState<number | 'unknown' | null>(null);
+  const [tokenChoice, setTokenChoice] = useState<'keep' | 'revoke' | null>(null);
+  useEffect(() => {
+    if (!asksAboutTokens) return;
+    let active = true;
+    api
+      .listMemberTokens()
+      .then((res) => {
+        if (active) setLiveTokens(res.items.filter((t) => new Date(t.expiresAt).getTime() > Date.now()).length);
+      })
+      .catch(() => {
+        if (active) setLiveTokens('unknown');
+      });
+    return () => {
+      active = false;
+    };
+  }, [asksAboutTokens]);
+  const mustChoose = asksAboutTokens && liveTokens !== null && liveTokens !== 0;
 
   const mismatch = confirm.length > 0 && newPassword !== confirm;
   // When the account has no password (OIDC-provisioned), this is "set a password" — no current one.
   const canSubmit =
-    (!hasPassword || currentPassword.length > 0) && isPasswordValid(newPassword) && newPassword === confirm && !saving;
+    (!hasPassword || currentPassword.length > 0) &&
+    isPasswordValid(newPassword) &&
+    newPassword === confirm &&
+    !saving &&
+    // Not until we know whether there is a question to ask, and not until it is answered.
+    (!asksAboutTokens || liveTokens !== null) &&
+    (!mustChoose || tokenChoice !== null);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSaving(true);
+    // The member's answer when there was a question. With no question to ask, NOTHING is said and
+    // the server takes its cautious reading (revoke) — a no-op when there really are no tokens, and
+    // the right outcome if one was minted in another tab after this form counted none. The one
+    // explicit "keep" is a FIRST password: there is no old password that could have leaked.
+    const answer = mustChoose ? tokenChoice === 'revoke' : !hasPassword && isStaff ? false : undefined;
+    const revoke = answer === true;
     try {
-      await api.changePassword(hasPassword ? currentPassword : undefined, newPassword);
+      await api.changePassword(hasPassword ? currentPassword : undefined, newPassword, answer);
       setCurrentPassword('');
       setNewPassword('');
       setConfirm('');
+      setTokenChoice(null);
+      if (revoke) setLiveTokens(0);
       onPasswordChanged();
-      toast.show(hasPassword ? 'Password changed — other sessions were signed out' : 'Password set', 'success');
+      toast.show(
+        !hasPassword
+          ? 'Password set'
+          : revoke
+            ? 'Password changed — other sessions were signed out and your member tokens revoked'
+            : 'Password changed — other sessions were signed out',
+        'success',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save password');
     } finally {
@@ -185,15 +229,16 @@ function PasswordTab({ hasPassword, isStaff, onPasswordChanged }: { hasPassword:
     }
   }
 
+  const tokenCount = typeof liveTokens === 'number' ? liveTokens : null;
+  const tokensLabel = tokenCount === null ? 'your member tokens' : tokenCount === 1 ? 'your member token' : `your ${tokenCount} member tokens`;
+
   return (
     <form onSubmit={submit} className={`flex flex-col gap-4 ${glassCard} p-5`}>
       <div>
         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{hasPassword ? 'Change password' : 'Set a password'}</h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           {hasPassword
-            ? // Member tokens are minted with the password, so they end with it — said here because
-              // automation stopping is otherwise a surprise.
-              `Changing your password signs out every other session${isStaff ? ' and revokes your member tokens' : ''}.`
+            ? 'Changing your password signs out every other session.'
             : 'Your account signs in via single sign-on. Set a password to also sign in with your email.'}
         </p>
       </div>
@@ -213,6 +258,31 @@ function PasswordTab({ hasPassword, isStaff, onPasswordChanged }: { hasPassword:
         <input id="pw-confirm" type="password" autoComplete="new-password" className={glassInput} value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
         {mismatch && <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Passwords don’t match.</p>}
       </div>
+      {mustChoose && (
+        <fieldset className="flex flex-col gap-2">
+          <legend className={fieldLabel}>Member tokens</legend>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Agents and automation sign in with {tokensLabel}, not with your password. What should happen to {tokenCount === 1 ? 'it' : 'them'}?
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="radio" name="pw-member-tokens" className="mt-0.5" aria-labelledby="pw-tokens-keep" aria-describedby="pw-tokens-keep-hint" checked={tokenChoice === 'keep'} onChange={() => setTokenChoice('keep')} />
+            <span>
+              <span id="pw-tokens-keep" className="font-medium text-slate-800 dark:text-slate-100">Keep {tokenCount === 1 ? 'it' : 'them'} working</span>
+              <span id="pw-tokens-keep-hint" className="block text-xs text-slate-500 dark:text-slate-400">For a routine change. Nothing that uses a token is interrupted.</span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input type="radio" name="pw-member-tokens" className="mt-0.5" aria-labelledby="pw-tokens-revoke" aria-describedby="pw-tokens-revoke-hint" checked={tokenChoice === 'revoke'} onChange={() => setTokenChoice('revoke')} />
+            <span>
+              <span id="pw-tokens-revoke" className="font-medium text-slate-800 dark:text-slate-100">Revoke {tokenCount === 1 ? 'it' : 'them'}</span>
+              <span id="pw-tokens-revoke-hint" className="block text-xs text-slate-500 dark:text-slate-400">
+                If someone else may know your password. Everything using a token stops, on every project, until you create a new one.
+                Check the passkeys on your Security tab as well: a password change does not remove them.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
       {error && <FormError>{error}</FormError>}
       <div>
         <button type="submit" className={primaryButton} disabled={!canSubmit}>

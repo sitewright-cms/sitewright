@@ -254,7 +254,7 @@ import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus } from '../payments/executor.js';
 import { runOrderMail } from '../payments/notify-runner.js';
-import { fromMinorUnits } from '@sitewright/schema';
+import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -1002,7 +1002,12 @@ const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1).max(200).optional(),
   // The new password must satisfy the shared account-password policy (same as registration).
   newPassword: passwordSchema,
+  // Whether the member's tokens go with the old password. The editor ASKS and always sends its answer;
+  // a caller that says nothing gets the cautious reading (revoke).
+  revokeMemberTokens: z.boolean().optional(),
 });
+// An admin issuing a new password for someone else: the same question, the same cautious default.
+const ResetPasswordBody = z.object({ revokeMemberTokens: z.boolean().optional() });
 // MFA. `code` is a 6-digit TOTP OR a recovery code (XXXXX-XXXXX) at login step 2; just a TOTP at
 // enrolment-confirm. Kept loose (≤64) so the route logic — not zod — decides validity.
 const LoginTotpBody = z.object({
@@ -1016,6 +1021,14 @@ const MfaPasswordBody = z.object({ currentPassword: z.string().min(1).max(200) }
 const WebAuthnResponse = z.object({ id: z.string().min(1) }).passthrough();
 const PasskeyRegisterVerifyBody = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse, name: z.string().trim().min(1).max(80) });
 const PasskeyRenameBody = z.object({ name: z.string().trim().min(1).max(80) });
+// A signed-in user confirming it is them with a passkey: the handle from /account/passkeys/confirm/options
+// and the browser's assertion for it.
+const PasskeyProof = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse });
+// Adding a passkey is confirmed with the password or an existing passkey (when the account has either).
+const PasskeyRegisterOptionsBody = z.object({
+  currentPassword: z.string().min(1).max(200).optional(),
+  passkey: PasskeyProof.optional(),
+});
 
 /**
  * Creating a share link. `expiresAt` (an explicit date) wins over `expiryDays`; with neither, the
@@ -1372,17 +1385,26 @@ const CreateApiKeyBody = z.object({
   expiresInDays: z.number().int().min(1).max(365),
 });
 // A member token has no `role`: it carries its owner's CURRENT role on whichever project it addresses.
-const CreateMemberTokenBody = z.object({
-  // Minting re-authenticates: a member token outlives the session that made it and reaches every
-  // project its owner can, so a stolen session alone must not be able to mint one.
-  currentPassword: z.string().min(1).max(200),
-  name: z.string().min(1).max(120),
-  capabilities: z
-    .array(z.enum(MEMBER_TOKEN_CAPABILITIES as unknown as [MemberTokenCapability, ...MemberTokenCapability[]]))
-    .min(1)
-    .max(MEMBER_TOKEN_CAPABILITIES.length),
-  expiresInDays: z.number().int().min(1).max(365),
-});
+const CreateMemberTokenBody = z
+  .object({
+    // Minting re-authenticates: a member token outlives the session that made it and reaches every
+    // project its owner can, so a stolen session alone must not be able to mint one. The account's
+    // password or one of its passkeys — exactly one, so there is never a question of which was checked.
+    currentPassword: z.string().min(1).max(200).optional(),
+    passkey: PasskeyProof.optional(),
+    name: z.string().min(1).max(120),
+    capabilities: z
+      .array(z.enum(MEMBER_TOKEN_CAPABILITIES as unknown as [MemberTokenCapability, ...MemberTokenCapability[]]))
+      .min(1)
+      .max(MEMBER_TOKEN_CAPABILITIES.length),
+    expiresInDays: z.number().int().min(1).max(365),
+    // New projects per 24 hours. Omitted → the instance maximum. Checked against that maximum in the
+    // route, which is the only place that knows it.
+    dailyProjectLimit: z.number().int().min(1).max(MAX_MEMBER_TOKEN_DAILY_PROJECTS).optional(),
+  })
+  .refine((b) => (b.currentPassword !== undefined) !== (b.passkey !== undefined), {
+    message: 'confirm with your password or with a passkey',
+  });
 
 /**
  * Parse a `Range:` header against a buffer. Returns the slice + its `Content-Range`, `'unsatisfiable'`
@@ -1477,9 +1499,10 @@ export interface AppOptions {
   /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
   deployAllowedHosts?: string[];
   /**
-   * How many projects ONE member token may create in any 24 hours (default 50). Nothing else bounds
-   * project creation — there is no instance-wide project quota — so an unattended loop holding a
-   * token would otherwise be limited only by the request rate.
+   * How many projects ONE member token may create in any 24 hours when the admin has not set a
+   * maximum in the instance settings (default 50). Nothing else bounds project creation — there is no
+   * instance-wide project quota — so an unattended loop holding a token would otherwise be limited
+   * only by the request rate.
    */
   memberTokenDailyProjectCap?: number;
   /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
@@ -2486,7 +2509,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   const DAY_MS = 24 * 60 * 60 * 1000;
-  const memberTokenDailyProjectCap = opts.memberTokenDailyProjectCap ?? 50;
+  /**
+   * The most new projects any one member token may create per 24 hours: the admin's setting, read on
+   * every use so a change applies to tokens that already exist.
+   */
+  async function memberTokenDailyProjectMax(): Promise<number> {
+    return (
+      (await instanceSettingsRepo.getMemberTokenDailyProjectMax()) ??
+      opts.memberTokenDailyProjectCap ??
+      DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS
+    );
+  }
   /** Creations a token has started but not yet recorded — see {@link requireProjectCreator}. */
   const creationsInFlight = new Map<string, number>();
 
@@ -2510,10 +2543,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * project. {@link requirePlatformStaff} itself stays session-only, because force-verifying a custom
    * domain uses it too.
    *
-   * ★ A token is held to a DAILY CAP. There is no project quota anywhere else, and each new project
-   * seeds content and claims a slug, so an unattended loop would otherwise be bounded only by the
-   * request rate. The claim is taken synchronously, before the count is read, so two concurrent
-   * requests can never both see the same number and both slip under the cap.
+   * ★ A token is held to a DAILY CAP — the limit chosen when it was minted, never above the maximum an
+   * admin sets for the instance. There is no project quota anywhere else, and each new project seeds
+   * content and claims a slug, so an unattended loop would otherwise be bounded only by the request
+   * rate. The claim is taken synchronously, before the count is read, so two concurrent requests can
+   * never both see the same number and both slip under the cap.
    *
    * The arithmetic is deliberately CONSERVATIVE. A request counts every claim taken before its own
    * (`ahead`) plus every creation already recorded; an earlier request that records between this
@@ -2536,11 +2570,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       else creationsInFlight.set(tokenId, left);
     };
     try {
-      const used = await memberTokensRepo.countProjectsCreatedSince(tokenId, new Date(Date.now() - DAY_MS));
-      if (used + ahead >= memberTokenDailyProjectCap) {
-        throw new ProjectCapError(
-          `this member token has reached its limit of ${memberTokenDailyProjectCap} new projects per 24 hours`,
-        );
+      const [used, max] = await Promise.all([
+        memberTokensRepo.countProjectsCreatedSince(tokenId, new Date(Date.now() - DAY_MS)),
+        memberTokenDailyProjectMax(),
+      ]);
+      // The token's own limit can only LOWER the instance maximum. Both are read now, so a maximum the
+      // admin has since reduced binds a token that was minted under a higher one.
+      const cap = Math.min(token.dailyProjectLimit ?? max, max);
+      if (used + ahead >= cap) {
+        throw new ProjectCapError(`this member token has reached its limit of ${cap} new projects per 24 hours`);
       }
     } catch (err) {
       release();
@@ -2891,10 +2929,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Cut off any other sessions (a leaked/stale token elsewhere) but keep THIS browser signed in.
     const current = sessionToken(req);
     if (current) await revokeOtherSessions(db, userId, current);
-    // …and every member token. One is minted with this password and can outlive it by a year, across
-    // every project the member reaches — so a password changed to shut someone out has to shut their
-    // tokens out too. Automation that stops is the loud failure; a token that survives is the quiet one.
-    await memberTokensRepo.revokeAllForUser(userId);
+    // …and the member's tokens, unless they chose to keep them. A token can outlive this password by a
+    // year across every project the member reaches, so a password changed to shut someone out has to
+    // shut their tokens out too — but a routine change must not silently stop every automation. Only
+    // the member knows which this is, so the editor asks. Saying nothing means revoke.
+    if (body.revokeMemberTokens !== false) await memberTokensRepo.revokeAllForUser(userId);
     return reply.code(204).send();
   });
 
@@ -2957,15 +2996,103 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ recoveryCodes });
   });
 
+  // ---- Confirming "it is you" (a step-up, not a sign-in) ----
+  // Begin confirming with a passkey: authentication options scoped to the caller's OWN credentials on
+  // this hostname, and a challenge bound to them. The challenge type is its own, so the handle is
+  // useless at /auth/passkey/verify and a sign-in handle is useless here.
+  app.post('/account/passkeys/confirm/options', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const rp = rpFor(req);
+    const allow = await passkeyRepo.credentialsForUser(userId, rp.rpID);
+    if (allow.length === 0) throw new ConflictError('you have no passkey registered for this hostname');
+    const options = await authenticationOptions({ rp, allow });
+    const handle = await passkeyRepo.createChallenge('stepup', options.challenge, userId);
+    return reply.send({ options, handle });
+  });
+
+  /**
+   * Confirms that whoever holds this session is the account's owner — by the account password, or by
+   * one of the account's own passkeys. For actions a stolen session alone must not be able to take:
+   * minting a member token, and adding a passkey.
+   *
+   * ★ The two belong together. A passkey can vouch here only because ADDING one is itself confirmed
+   * (see /account/passkeys/register/options). If a session alone could add a passkey, a stolen
+   * session would add its own, sign in with it, and confirm anything — the password would have
+   * stopped protecting whatever accepts a passkey in its place.
+   */
+  async function confirmItIsYou(
+    req: FastifyRequest,
+    userId: string,
+    proof: { currentPassword?: string | undefined; passkey?: z.infer<typeof PasskeyProof> | undefined },
+  ): Promise<'password' | 'passkey'> {
+    if (proof.passkey) {
+      const ch = await passkeyRepo.consumeChallenge(proof.passkey.handle, 'stepup');
+      // The challenge must exist, be unexpired, and have been issued to THIS user.
+      if (!ch || ch.userId !== userId) throw new ForbiddenError('passkey confirmation expired — please try again');
+      const credId = proof.passkey.response.id;
+      const passkey = await passkeyRepo.getById(credId);
+      if (!passkey || passkey.userId !== userId) throw new ForbiddenError('could not verify this passkey');
+      let verification;
+      try {
+        verification = await verifyAuthentication({
+          rp: rpFor(req),
+          response: proof.passkey.response as unknown as AuthenticationResponseJSON,
+          expectedChallenge: ch.challenge,
+          credential: { id: credId, publicKey: passkey.publicKey, counter: passkey.counter, transports: passkey.transports },
+        });
+      } catch {
+        throw new ForbiddenError('could not verify this passkey');
+      }
+      if (!verification.verified) throw new ForbiddenError('could not verify this passkey');
+      await passkeyRepo.recordUse(credId, verification.authenticationInfo.newCounter);
+      return 'passkey';
+    }
+    if (proof.currentPassword === undefined) throw new ForbiddenError('confirm with your password or a passkey');
+    // An account with no password (single sign-on only) cannot confirm anything by password; say so
+    // rather than report a "wrong password" for one that does not exist.
+    if (!(await userHasPassword(db, userId))) {
+      throw new ForbiddenError('this account has no password — confirm with a passkey, or set a password in Account → Password first');
+    }
+    if (!(await verifyUserPassword(db, userId, proof.currentPassword))) {
+      throw new ForbiddenError('current password is incorrect');
+    }
+    return 'password';
+  }
+
   // ---- Passkeys (WebAuthn) management (user menu → Security tab) — session-only ----
 
   // Begin registering a new passkey: returns the creation options + an opaque challenge `handle` the
   // client echoes back at verify. The challenge is bound to this user.
+  //
+  // ★ Confirmed first, with the password or an existing passkey. A passkey is a way to SIGN IN, so
+  // adding one is not "only adding protection": a stolen session that could add its own would turn a
+  // borrowed cookie into a permanent login. Only an account with NO credential at all — single
+  // sign-on only, no passkey anywhere — adds its first one on the session alone, because there is
+  // nothing else it could be asked for.
+  //
+  // "Anywhere", not "on this hostname": a session cookie is not bound to a host on the server, so a
+  // rule that looked only at this hostname's passkeys could be walked around by presenting the
+  // cookie on a hostname where the account happens to have none.
   app.post('/account/passkeys/register/options', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const email = await getUserEmail(db, userId);
     if (!email) throw new UnauthorizedError('authentication required');
-    const existing = await passkeyRepo.credentialsForUser(userId);
+    const proof = PasskeyRegisterOptionsBody.parse(req.body ?? {});
+    const [hasPassword, existing, usableHere] = await Promise.all([
+      userHasPassword(db, userId),
+      passkeyRepo.credentialsForUser(userId),
+      passkeyRepo.credentialsForUser(userId, rpFor(req).rpID),
+    ]);
+    if (hasPassword || existing.length > 0) {
+      // Passkeys, but none this hostname can be asked for, and no password: there is something to
+      // confirm with, just not here. Say what would work rather than "wrong password".
+      if (!hasPassword && usableHere.length === 0) {
+        throw new ConflictError(
+          'none of your passkeys can be used on this hostname, so there is nothing to confirm with here — set a password in Account → Password first',
+        );
+      }
+      await confirmItIsYou(req, userId, proof);
+    }
     // Cap per-user passkeys so a session can't accumulate them without bound.
     if (existing.length >= MAX_PASSKEYS_PER_USER) throw new ConflictError(`you can register at most ${MAX_PASSKEYS_PER_USER} passkeys`);
     const options = await registrationOptions({ rp: rpFor(req), userId, userName: email, existing, rpName: await instanceSettingsRepo.getPlatformName() });
@@ -3586,12 +3713,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (target === actor) throw new ForbiddenError('change your own password in Account settings');
     const role = await getPlatformRole(db, target);
     if (!role) throw new NotFoundError('not a platform staff account');
+    const { revokeMemberTokens } = ResetPasswordBody.parse(req.body ?? {});
     const password = generatePassword();
     await setPasswordAsAdmin(db, target, password);
-    await memberTokensRepo.revokeAllForUser(target); // a reset account's old tokens go with its old password
+    // The account's tokens go with its old password unless the admin chose to keep them (a forgotten
+    // password, not a compromised one).
+    const revokedMemberTokens = revokeMemberTokens === false ? 0 : await memberTokensRepo.revokeAllForUser(target);
     const email = await getUserEmail(db, target);
-    req.log.info({ actor }, 'staff password reset by an admin');
-    return reply.send({ email, password });
+    req.log.info({ actor, revokedMemberTokens }, 'staff password reset by an admin');
+    return reply.send({ email, password, revokedMemberTokens });
   });
 
   app.get('/admin/invites', { config: rl(30) }, async (req, reply) => {
@@ -3697,20 +3827,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Approve a pending invite WITHOUT the link — the admin vouches for the invitee. Creates the account
   // if there is none (returning a one-time password to hand over) and burns the outstanding link, so
   // the same grant cannot also be redeemed from an email later.
+  //
+  // A member token may do this with `members:invite`: it is the second half of the same act, and the
+  // capability already says "gives someone a login". What a token gets beyond a session is nothing —
+  // but note what it gets at all: for an address with no account, the new account's password.
   app.post<{ Params: { projectId: string; inviteId: string } }>(
     '/projects/:projectId/invites/:inviteId/approve',
     { config: rl(20) },
     async (req, reply) => {
-      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      const ctx = await requireProjectAccess(req, req.params.projectId, true, 'members:invite');
       const result = await approveInvite(db, req.params.inviteId, {
         projectId: req.params.projectId,
         actorUserId: ctx.userId,
         generatePassword,
         hashPassword,
       });
+      const viaToken = await memberTokenOf(req);
       req.log.info(
-        { projectId: req.params.projectId, actor: ctx.userId, created: result.created },
-        'invite approved directly by an admin',
+        {
+          projectId: req.params.projectId,
+          actor: ctx.userId,
+          created: result.created,
+          inviteId: req.params.inviteId,
+          ...(viaToken ? { tokenId: viaToken.tokenId } : {}),
+        },
+        viaToken ? 'invite approved directly by a member token' : 'invite approved directly by an admin',
       );
       // The password is in the RESPONSE only — never logged, never stored in the clear, never re-shown.
       return reply.send(result);
@@ -3734,12 +3875,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const members = await listProjectMembers(db, ctx);
         if (!members.some((m) => m.userId === target)) throw new NotFoundError('member not found');
       }
+      const { revokeMemberTokens } = ResetPasswordBody.parse(req.body ?? {});
       const password = generatePassword();
       await setPasswordAsAdmin(db, target, password);
-      await memberTokensRepo.revokeAllForUser(target); // staff reached via a project: same rule as above
+      // Staff reached via a project: same rule as the staff route above.
+      const revokedMemberTokens = revokeMemberTokens === false ? 0 : await memberTokensRepo.revokeAllForUser(target);
       const email = await getUserEmail(db, target);
-      req.log.info({ projectId: req.params.projectId, actor: ctx.userId }, 'member password reset by an admin');
-      return reply.send({ email, password });
+      req.log.info(
+        { projectId: req.params.projectId, actor: ctx.userId, revokedMemberTokens },
+        'member password reset by an admin',
+      );
+      return reply.send({ email, password, revokedMemberTokens });
     },
   );
 
@@ -4539,28 +4685,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // has just lost staff rights can still see — and cut off — whatever they had.
   app.get('/account/member-tokens', { config: rl(30) }, async (req, reply) => {
     const userId = await requireAccountSession(req);
-    return reply.send({ items: await memberTokensRepo.list(userId), dailyProjectCap: memberTokenDailyProjectCap });
+    return reply.send({ items: await memberTokensRepo.list(userId), dailyProjectMax: await memberTokenDailyProjectMax() });
   });
 
   app.post('/account/member-tokens', { config: authRl }, async (req, reply) => {
     const userId = await requirePlatformStaff(req, 'create member tokens');
     const body = CreateMemberTokenBody.parse(req.body);
-    // An account with no password (single sign-on only) cannot confirm anything by password; say so
-    // rather than report a "wrong password" for one that does not exist.
-    if (!(await userHasPassword(db, userId))) {
-      throw new ForbiddenError('set a password in Account → Password first — creating a member token is confirmed with it');
+    // Checked BEFORE the confirmation: a passkey challenge is single-use, and a member should not
+    // have to touch their authenticator twice because a number was too high.
+    const max = await memberTokenDailyProjectMax();
+    if (body.dailyProjectLimit !== undefined && body.dailyProjectLimit > max) {
+      return reply.code(400).send({ error: `the daily project limit cannot exceed ${max}, the maximum set for this instance` });
     }
-    if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
-      throw new ForbiddenError('current password is incorrect');
-    }
+    const confirmedBy = await confirmItIsYou(req, userId, body);
     const expiresAt = new Date(Date.now() + body.expiresInDays * DAY_MS);
     const { token, key } = await memberTokensRepo.create(userId, {
       name: body.name,
       capabilities: body.capabilities,
       expiresAt,
+      ...(body.dailyProjectLimit !== undefined ? { dailyProjectLimit: body.dailyProjectLimit } : {}),
     });
     // Capabilities are logged (they are the token's reach); the secret and its prefix are not.
-    req.log.info({ actor: userId, tokenId: key.id, capabilities: key.capabilities }, 'member token created');
+    req.log.info({ actor: userId, tokenId: key.id, capabilities: key.capabilities, confirmedBy }, 'member token created');
     // `token` is the ONLY time the raw secret is returned — clients store it now.
     return reply.code(201).send({ token, key });
   });
@@ -4568,6 +4714,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.delete<{ Params: { id: string } }>('/account/member-tokens/:id', { config: rl(20) }, async (req, reply) => {
     const userId = await requireAccountSession(req);
     await memberTokensRepo.revoke(userId, req.params.id);
+    return reply.code(204).send();
+  });
+
+  // ---- Every member token on the instance (System settings → Security → Member tokens) ----
+  // A member token reaches everything its owner does, and until this list an admin could only find one
+  // by opening the project it happened to have touched. Instance-admin and session-only, like every
+  // /admin route: no token — member or project — can list or revoke tokens.
+  app.get('/admin/member-tokens', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const [items, dailyProjectMax] = await Promise.all([memberTokensRepo.listAll(), memberTokenDailyProjectMax()]);
+    return reply.send({ items, dailyProjectMax });
+  });
+
+  app.delete<{ Params: { id: string } }>('/admin/member-tokens/:id', { config: rl(20) }, async (req, reply) => {
+    const actor = await requireInstanceAdmin(req);
+    const owner = await memberTokensRepo.ownerOf(req.params.id);
+    if (!owner) throw new NotFoundError('member token not found');
+    await memberTokensRepo.revoke(owner, req.params.id);
+    req.log.info({ actor, tokenId: req.params.id, owner }, 'member token revoked by an admin');
     return reply.code(204).send();
   });
 

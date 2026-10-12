@@ -141,6 +141,11 @@ export class InstanceSettingsRepository {
     return (await this.getStored()).authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
   }
 
+  /** The most new projects one member token may create per 24h — the admin setting, or null if unset. */
+  async getMemberTokenDailyProjectMax(): Promise<number | null> {
+    return (await this.getStored()).memberTokenDailyProjectMax ?? null;
+  }
+
   /** The effective HSTS policy (admin setting or the OFF default) — read by the security-headers hook. */
   async getHstsPolicy(): Promise<Hsts> {
     return (await this.getStored()).hsts ?? { ...DEFAULT_HSTS };
@@ -406,6 +411,9 @@ export class InstanceSettingsRepository {
 
     // Max failed-auth attempts: a number sets it, `null` reverts to the default (10), undefined keeps.
     mergeNullable(input.authMaxFailures, current.authMaxFailures, (v) => { next.authMaxFailures = v; });
+
+    // Per-token daily project maximum: a number sets it, `null` reverts to the default (50), undefined keeps.
+    mergeNullable(input.memberTokenDailyProjectMax, current.memberTokenDailyProjectMax, (v) => { next.memberTokenDailyProjectMax = v; });
 
     // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined keeps.
     if (input.defaultLocale === null) {

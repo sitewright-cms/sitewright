@@ -409,6 +409,23 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ currentPassword: 'Pw-secret-1', newPassword: 'new-pw-9876' });
   });
 
+  it('sends the member’s answer about their member tokens with a password change — both answers, and only when given', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.changePassword('Pw-secret-1', 'new-pw-9876', false);
+    await api.changePassword('Pw-secret-1', 'new-pw-9876', true);
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ currentPassword: 'Pw-secret-1', newPassword: 'new-pw-9876', revokeMemberTokens: false });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).toEqual({ currentPassword: 'Pw-secret-1', newPassword: 'new-pw-9876', revokeMemberTokens: true });
+  });
+
+  it('begins a passkey confirmation on the session-only account route (not the sign-in one)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { options: { challenge: 'c' }, handle: 'h1' }));
+    const res = await api.passkeyConfirmOptions();
+    expect(res.handle).toBe('h1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/account/passkeys/confirm/options');
+    expect(init.method).toBe('POST');
+  });
+
   it('drives the TOTP two-factor endpoints (login step 2 + setup/confirm/disable/regenerate)', async () => {
     // Login step 2.
     fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u' }));
@@ -449,6 +466,12 @@ describe('api client', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { options: { challenge: 'c' }, handle: 'h1' }));
     expect((await api.passkeyRegisterOptions()).handle).toBe('h1');
     expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/passkeys/register/options');
+    // Nothing to confirm with → no body. Otherwise the confirmation rides along: a password, or a passkey.
+    expect(fetchMock.mock.calls.at(-1)![1].body).toBeUndefined();
+    await api.passkeyRegisterOptions({ currentPassword: 'Pw-secret-1' });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ currentPassword: 'Pw-secret-1' });
+    await api.passkeyRegisterOptions({ passkey: { handle: 'h0', response: { id: 'cred-0' } as never } });
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ passkey: { handle: 'h0', response: { id: 'cred-0' } } });
 
     fetchMock.mockResolvedValue(jsonResponse(201, { id: 'cred-1', name: 'Laptop' }));
     await api.passkeyRegisterVerify('h1', { id: 'cred-1' } as never, 'Laptop');
@@ -547,6 +570,11 @@ describe('api client', () => {
     const reset = await api.resetStaffPassword('u/3');
     expect(reset.password).toBe('Pl2^kZw8-Nf5uGe7');
     expect(fetchMock.mock.calls[1]![0]).toBe('/admin/users/u%2F3/password');
+    // Said nothing about member tokens → no body at all, and the server takes the cautious reading.
+    expect(fetchMock.mock.calls[1]![1].body).toBeUndefined();
+
+    await api.resetStaffPassword('u3', false);
+    expect(JSON.parse(fetchMock.mock.calls[2]![1].body)).toEqual({ revokeMemberTokens: false });
   });
 
   it('approves a pending invite and issues a member password', async () => {
@@ -884,9 +912,9 @@ describe('api client', () => {
   });
 
   it('lists, creates (token once) and revokes MEMBER tokens — account routes, no project in the path', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], dailyProjectCap: 50 }));
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], dailyProjectMax: 50 }));
     const list = await api.listMemberTokens();
-    expect(list.dailyProjectCap).toBe(50);
+    expect(list.dailyProjectMax).toBe(50);
     expect(fetchMock.mock.calls[0]![0]).toBe('/account/member-tokens');
 
     fetchMock.mockResolvedValue(jsonResponse(201, { token: 'swm_x', key: { id: 't1', name: 'Fleet' } }));
@@ -903,6 +931,33 @@ describe('api client', () => {
     const [delUrl, delInit] = fetchMock.mock.calls[2]!;
     expect(delUrl).toBe('/account/member-tokens/t%2F1');
     expect(delInit.method).toBe('DELETE');
+  });
+
+  it('mints a member token confirmed by a passkey, with a daily limit of its own', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { token: 'swm_x', key: { id: 't1', name: 'Fleet' } }));
+    const passkey = { handle: 'h1', response: { id: 'cred' } as never };
+    await api.createMemberToken({ passkey, name: 'Fleet', capabilities: ['projects:create'], expiresInDays: 30, dailyProjectLimit: 5 });
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({
+      passkey: { handle: 'h1', response: { id: 'cred' } },
+      name: 'Fleet',
+      capabilities: ['projects:create'],
+      expiresInDays: 30,
+      dailyProjectLimit: 5,
+    });
+  });
+
+  it('lists every member token on the instance and revokes one — the ADMIN routes, not the account ones', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 't1', status: 'active', owner: { email: 'dev@x.test' } }], dailyProjectMax: 50 }));
+    const all = await api.listAllMemberTokens();
+    expect(all.items[0]!.owner.email).toBe('dev@x.test');
+    expect(all.dailyProjectMax).toBe(50);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/admin/member-tokens');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.revokeMemberTokenAsAdmin('t/1');
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/admin/member-tokens/t%2F1');
+    expect(init.method).toBe('DELETE');
   });
 
   it('lists agent connections and disconnects one (URL-encoding the opaque oauth id)', async () => {

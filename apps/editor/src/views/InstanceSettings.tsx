@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { KeyRound, ShieldCheck } from 'lucide-react';
 import {
   DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_AGENT_SESSION_HOURS,
   DEFAULT_REVISION_COALESCE_MS,
   DEFAULT_REVISION_RETENTION_DAYS,
   DEFAULT_AUTH_MAX_FAILURES,
+  DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS,
+  MAX_MEMBER_TOKEN_DAILY_PROJECTS,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -53,6 +55,7 @@ type StockKeyMap<T> = Record<StockKeyedProvider, T>;
 const stockKeyMap = <T,>(value: T): StockKeyMap<T> =>
   Object.fromEntries(STOCK_KEY_FIELDS.map((f) => [f.provider, value])) as StockKeyMap<T>;
 import { DatabaseIntegrityModal } from './settings/DatabaseIntegrityModal';
+import { MemberTokensAdminModal } from './settings/MemberTokensAdminModal';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './ui/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
@@ -101,6 +104,9 @@ const clampSessionHours = (n: number): number => Math.max(1, Math.min(720, Math.
 // Revision coalesce window shown in SECONDS (0 = every save a separate revision); stored in ms.
 const clampCoalesceSeconds = (n: number): number => Math.max(0, Math.min(86_400, Math.round(n)));
 const clampRetentionDays = (n: number): number => Math.max(1, Math.min(3650, Math.round(n)));
+// An unreadable value falls back to the default; a readable one is clamped — 0 becomes 1, never 50.
+const clampTokenProjectMax = (n: number): number =>
+  Number.isFinite(n) ? Math.max(1, Math.min(MAX_MEMBER_TOKEN_DAILY_PROJECTS, Math.round(n))) : DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS;
 const DEFAULT_COALESCE_SECONDS = DEFAULT_REVISION_COALESCE_MS / 1000;
 // HSTS max-age shown/entered in seconds; server caps at 2 years. 0 clears the policy.
 const clampHstsMaxAge = (n: number): number => Math.max(0, Math.min(63_072_000, Math.round(n) || 0));
@@ -331,6 +337,10 @@ export function InstanceSettings() {
   // Max failed login/2FA attempts per IP per minute before throttling (brute-force protection).
   const [authMaxFailures, setAuthMaxFailures] = useState(DEFAULT_AUTH_MAX_FAILURES);
   const initialAuthMaxFailuresRef = useRef(DEFAULT_AUTH_MAX_FAILURES);
+  // The most new projects one member token may create per day (a token may be minted with less).
+  const [tokenProjectMax, setTokenProjectMax] = useState(DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS);
+  const initialTokenProjectMaxRef = useRef(DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS);
+  const [memberTokensOpen, setMemberTokensOpen] = useState(false);
 
   // Session-cookie signing key: whether it's env-pinned (rotation disabled), + the rotate action's state.
   const [cookieSecretPinned, setCookieSecretPinned] = useState(false);
@@ -370,6 +380,9 @@ export function InstanceSettings() {
     const maxFail = s.authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
     setAuthMaxFailures(maxFail);
     initialAuthMaxFailuresRef.current = maxFail;
+    const tokenMax = s.memberTokenDailyProjectMax ?? DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS;
+    setTokenProjectMax(tokenMax);
+    initialTokenProjectMaxRef.current = tokenMax;
     setSmtpEnabled(Boolean(s.smtp));
     setSmtpSaved(Boolean(s.smtp));
     setHost(s.smtp?.host ?? '');
@@ -569,6 +582,11 @@ export function InstanceSettings() {
     if (clampedMaxFail !== initialAuthMaxFailuresRef.current) {
       input.authMaxFailures = clampedMaxFail === DEFAULT_AUTH_MAX_FAILURES ? null : clampedMaxFail;
     }
+    // Member-token daily project maximum: default sends null (revert), else the clamped number.
+    const clampedTokenMax = clampTokenProjectMax(tokenProjectMax);
+    if (clampedTokenMax !== initialTokenProjectMaxRef.current) {
+      input.memberTokenDailyProjectMax = clampedTokenMax === DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS ? null : clampedTokenMax;
+    }
     // Default locale for new projects: only touch it when changed; the built-in default sends
     // null (revert), any other tag sends the value.
     if (newProjectLocale !== initialLocaleRef.current) {
@@ -691,6 +709,7 @@ export function InstanceSettings() {
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-6">
     <Tabs ariaLabel="System settings sections" active={tab} onSelect={setTab} tabs={SETTINGS_TABS} />
     {integrityOpen && <DatabaseIntegrityModal onClose={() => setIntegrityOpen(false)} />}
+    {memberTokensOpen && <MemberTokensAdminModal onClose={() => setMemberTokensOpen(false)} />}
     <form onSubmit={save} className="flex flex-col gap-6">
     <div className={panelCls('general')}>
 
@@ -1235,6 +1254,39 @@ export function InstanceSettings() {
             onBlur={() => setAuthMaxFailures((v) => Math.min(10000, Math.max(1, Math.round(v) || DEFAULT_AUTH_MAX_FAILURES)))}
           />
         </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Member tokens
+          <SectionHelp tip="A member token belongs to a staff member and reaches every project they can open — an admin's reaches every project on this instance. Staff create their own under Account → Access keys; this is where you see all of them and can revoke any." />
+        </legend>
+        <label className="block text-sm">
+          <span className="font-medium">New projects per token per day (maximum)</span>
+          <span className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+            The most projects any one member token may create in 24 hours. A token can be created with a lower limit, never
+            a higher one, and lowering this applies to existing tokens at once. Default {DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS}.
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={MAX_MEMBER_TOKEN_DAILY_PROJECTS}
+            className={`${glassInput} w-28`}
+            aria-label="Maximum new projects per member token per day"
+            value={tokenProjectMax}
+            onChange={(e) => {
+              const n = e.target.valueAsNumber;
+              if (!Number.isNaN(n)) setTokenProjectMax(n);
+            }}
+            onBlur={() => setTokenProjectMax((v) => clampTokenProjectMax(v))}
+          />
+          <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">(saved with “Save settings”)</span>
+        </label>
+        <div className="mt-3">
+          <button type="button" className={primaryButton} onClick={() => setMemberTokensOpen(true)}>
+            <KeyRound className="h-4 w-4" aria-hidden /> View all member tokens
+          </button>
+        </div>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

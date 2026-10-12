@@ -21,6 +21,11 @@ export interface PromptOptions {
   confirmLabel?: string;
   /** Optional helper note shown under the field (e.g. how the value is used). */
   note?: ReactNode;
+  /**
+   * The field holds a password: masked, offered to the password manager as the CURRENT password, and
+   * returned exactly as typed — a leading or trailing space is part of a password, not whitespace.
+   */
+  secret?: boolean;
 }
 
 const dangerButtonSolid =
@@ -106,8 +111,9 @@ function ConfirmBody({ state, onClose }: { state: ConfirmState; onClose: () => v
 
 function PromptBody({ state, onClose }: { state: PromptState; onClose: () => void }) {
   const [value, setValue] = useState(state.initial ?? '');
+  const entered = state.secret ? value : value.trim();
   const submit = () => {
-    state.resolve(value.trim() === '' ? null : value.trim());
+    state.resolve(entered === '' ? null : entered);
     onClose();
   };
   const cancel = () => {
@@ -120,13 +126,14 @@ function PromptBody({ state, onClose }: { state: PromptState; onClose: () => voi
         className="flex flex-col gap-4 p-5"
         onSubmit={(e) => {
           e.preventDefault();
-          if (value.trim() !== '') submit();
+          if (entered !== '') submit();
         }}
       >
         <label className="flex flex-col text-xs font-bold text-slate-700 dark:text-slate-200">
           {state.label}
           <input
             aria-label={state.label}
+            {...(state.secret ? { type: 'password', autoComplete: 'current-password' } : {})}
             className={`mt-1.5 font-normal ${glassInput}`}
             value={value}
             placeholder={state.placeholder}
@@ -141,7 +148,7 @@ function PromptBody({ state, onClose }: { state: PromptState; onClose: () => voi
           <button type="button" className={ghostButton} onClick={cancel}>
             Cancel
           </button>
-          <button type="submit" className={primaryButton} disabled={value.trim() === ''}>
+          <button type="submit" className={primaryButton} disabled={entered === ''}>
             {state.confirmLabel ?? 'Save'}
           </button>
         </div>

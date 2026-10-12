@@ -165,6 +165,38 @@ describe('remote MCP transport (/mcp)', () => {
       expect(await titleOf(copy.id)).toBe('About First');
     });
 
+    it('★ invites a person and approves the invite without its link — the new account can sign in', async () => {
+      const { token } = await memberSetup(['content:read', 'projects:create', 'members:manage', 'members:invite']);
+      const stamp = Date.now();
+      const project = JSON.parse((await call(token, 'create_project', { name: 'People', slug: `mcp-people-${stamp}` })).text) as { id: string };
+      const email = `mcp-invitee-${stamp}@e2e.test`;
+
+      const invited = JSON.parse((await call(token, 'invite_member', { project: project.id, email })).text) as { invite: { id: string }; token: string };
+      expect(typeof invited.token).toBe('string');
+      const pending = JSON.parse((await call(token, 'list_members', { project: project.id })).text) as { invites: Array<{ id: string; email: string }> };
+      expect(pending.invites.map((i) => i.id)).toEqual([invited.invite.id]);
+
+      const approved = JSON.parse((await call(token, 'approve_invite', { project: project.id, inviteId: invited.invite.id })).text) as {
+        created: boolean;
+        password?: string;
+        userId: string;
+      };
+      expect(approved.created).toBe(true);
+      const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: approved.password } });
+      expect(login.statusCode).toBe(200);
+
+      const after = JSON.parse((await call(token, 'list_members', { project: project.id })).text) as {
+        members: Array<{ userId: string; role: string }>;
+        invites: unknown[];
+      };
+      expect(after.invites).toEqual([]);
+      expect(after.members.find((m) => m.userId === approved.userId)?.role).toBe('member');
+      // A second approval is a tool error, not a second account.
+      const again = await call(token, 'approve_invite', { project: project.id, inviteId: invited.invite.id });
+      expect(again.isError).toBe(true);
+      expect(again.text).toMatch(/409/);
+    });
+
     it('cannot reach a project its owner cannot, and is told so as a tool error — not a broken connection', async () => {
       const other = await setup(); // someone else's project
       const { token } = await memberSetup(['content:read', 'content:write']);

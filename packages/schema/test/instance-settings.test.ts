@@ -10,6 +10,8 @@ import {
   OidcProviderInputSchema,
   maskOidcProvider,
   maskInstanceSettings,
+  DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS,
+  MAX_MEMBER_TOKEN_DAILY_PROJECTS,
   type InstanceSettingsStored,
 } from '../src/instance-settings.js';
 
@@ -173,6 +175,24 @@ describe('OIDC provider schema', () => {
     const masked = maskOidcProvider(OidcProviderStoredSchema.parse({ ...base, usePkce: false }));
     expect(masked).toMatchObject({ id: 'acme', hasClientSecret: false, usePkce: false });
     expect('clientSecret' in masked).toBe(false);
+  });
+});
+
+describe('memberTokenDailyProjectMax', () => {
+  it('accepts 1 to the ceiling, null to revert on input, and is passed through the masked view', () => {
+    for (const ok of [1, 50, MAX_MEMBER_TOKEN_DAILY_PROJECTS]) {
+      expect(InstanceSettingsInputSchema.safeParse({ memberTokenDailyProjectMax: ok }).success, String(ok)).toBe(true);
+    }
+    expect(InstanceSettingsInputSchema.safeParse({ memberTokenDailyProjectMax: null }).success).toBe(true);
+    for (const bad of [0, -1, 1.5, MAX_MEMBER_TOKEN_DAILY_PROJECTS + 1, '50']) {
+      expect(InstanceSettingsInputSchema.safeParse({ memberTokenDailyProjectMax: bad }).success, String(bad)).toBe(false);
+    }
+    // Stored: a number or absent — never null (absent IS "use the default").
+    expect(InstanceSettingsStoredSchema.safeParse({ formModes: DEFAULT_FORM_MODES, memberTokenDailyProjectMax: null }).success).toBe(false);
+    const stored = InstanceSettingsStoredSchema.parse({ formModes: DEFAULT_FORM_MODES, memberTokenDailyProjectMax: 7 });
+    expect(maskInstanceSettings(stored).memberTokenDailyProjectMax).toBe(7);
+    expect(maskInstanceSettings(InstanceSettingsStoredSchema.parse({ formModes: DEFAULT_FORM_MODES }))).not.toHaveProperty('memberTokenDailyProjectMax');
+    expect(DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS).toBeLessThanOrEqual(MAX_MEMBER_TOKEN_DAILY_PROJECTS);
   });
 });
 

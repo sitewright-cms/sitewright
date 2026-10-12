@@ -404,6 +404,9 @@ export const OidcProviderStoredSchema = z.object({
 });
 export type OidcProviderStored = z.infer<typeof OidcProviderStoredSchema>;
 
+/** The highest value an admin may set as the per-token daily project-creation maximum. */
+export const MAX_MEMBER_TOKEN_DAILY_PROJECTS = 1000;
+
 /** The persisted instance-settings document (secrets encrypted at rest). */
 export const InstanceSettingsStoredSchema = z.object({
   smtp: SmtpStoredSchema.optional(),
@@ -447,6 +450,12 @@ export const InstanceSettingsStoredSchema = z.object({
   revisionRetentionDays: z.number().int().min(1).max(3650).optional(),
   /** Max FAILED login/2FA attempts per source IP per minute before throttling (429). Unset → default 10. */
   authMaxFailures: z.number().int().min(1).max(10_000).optional(),
+  /**
+   * The most new projects ONE member token may create per 24 hours. A token may be minted with a lower
+   * limit of its own, never a higher one — and lowering this tightens every existing token at once,
+   * because the effective limit is the smaller of the two, read when the token is used. Unset → 50.
+   */
+  memberTokenDailyProjectMax: z.number().int().min(1).max(MAX_MEMBER_TOKEN_DAILY_PROJECTS).optional(),
   /**
    * The locale a NEW project starts in (its `defaultLocale` + sole initial `locales` entry).
    * Unset → English (`en`). Changing it does not touch existing projects.
@@ -505,6 +514,8 @@ export const DEFAULT_REVISION_COALESCE_MS = 0;
 export const DEFAULT_REVISION_RETENTION_DAYS = 90;
 /** Failed login/2FA attempts allowed per source IP per minute before further tries are throttled (429). */
 export const DEFAULT_AUTH_MAX_FAILURES = 10;
+/** New projects one member token may create per 24 hours when the admin hasn't set a maximum. */
+export const DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS = 50;
 
 /** Built-in default locale for new projects when the admin hasn't set one. */
 export const DEFAULT_NEW_PROJECT_LOCALE = 'en';
@@ -597,6 +608,8 @@ export const InstanceSettingsInputSchema = z.object({
   revisionRetentionDays: z.number().int().min(1).max(3650).nullable().optional(),
   // Max failed login/2FA attempts per IP per minute: a number sets it, `null` reverts to the default (10).
   authMaxFailures: z.number().int().min(1).max(10_000).nullable().optional(),
+  // Most new projects one member token may create per day: a number sets it, `null` reverts to 50.
+  memberTokenDailyProjectMax: z.number().int().min(1).max(MAX_MEMBER_TOKEN_DAILY_PROJECTS).nullable().optional(),
   // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined leaves it.
   defaultLocale: LocaleSchema.nullable().optional(),
   // OIDC providers: an array REPLACES the whole set (secrets preserved per-id when omitted), `null`
@@ -701,6 +714,8 @@ export interface InstanceSettingsPublic {
   revisionCoalesceMs?: number;
   revisionRetentionDays?: number;
   authMaxFailures?: number;
+  /** The per-token daily project-creation maximum, or absent when using the default (50). */
+  memberTokenDailyProjectMax?: number;
   /** The default locale for new projects, or absent when using `en`. */
   defaultLocale?: string;
   /** Configured OIDC providers (client secrets masked to `hasClientSecret`). */
@@ -764,6 +779,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.revisionCoalesceMs !== undefined) result.revisionCoalesceMs = stored.revisionCoalesceMs;
   if (stored.revisionRetentionDays !== undefined) result.revisionRetentionDays = stored.revisionRetentionDays;
   if (stored.authMaxFailures !== undefined) result.authMaxFailures = stored.authMaxFailures;
+  if (stored.memberTokenDailyProjectMax !== undefined) result.memberTokenDailyProjectMax = stored.memberTokenDailyProjectMax;
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
   if (stored.platformName !== undefined) result.platformName = stored.platformName;

@@ -62,10 +62,12 @@ describe('member tokens — management', () => {
 
     const list = await dev.get('/account/member-tokens');
     expect(list.statusCode).toBe(200);
-    const body = list.json() as { items: Array<Record<string, unknown>>; dailyProjectCap: number };
+    const body = list.json() as { items: Array<Record<string, unknown>>; dailyProjectMax: number };
     expect(body.items).toHaveLength(1);
     expect(body.items[0]?.name).toBe('fleet');
-    expect(body.dailyProjectCap).toBe(50);
+    expect(body.dailyProjectMax).toBe(50);
+    // No limit of its own was asked for, so it follows the instance maximum.
+    expect(body.items[0]?.dailyProjectLimit).toBeNull();
     // Neither the secret nor its hash ever leaves the server again.
     expect(list.body).not.toContain(made.token);
     expect(list.body).not.toContain('tokenHash');
@@ -130,7 +132,7 @@ describe('member tokens — management', () => {
     await h.db.update(users).set({ passwordHash: null }).where(eq(users.id, otherDev.userId));
     const sso = await otherDev.post('/account/member-tokens', { ...body, currentPassword: 'anything' });
     expect(sso.statusCode).toBe(403);
-    expect((sso.json() as { error: string }).error).toMatch(/set a password in Account → Password first/);
+    expect((sso.json() as { error: string }).error).toMatch(/has no password — confirm with a passkey, or set a password/);
 
     expect(await h.db.select().from(memberTokens)).toHaveLength(0);
     expect((await dev.post('/account/member-tokens', { ...body, currentPassword: PASSWORD })).statusCode).toBe(201);
@@ -299,23 +301,55 @@ describe('member tokens — reaching projects', () => {
     expect(revoked?.revokedAt).toBeInstanceOf(Date);
   });
 
-  it('★ changing the password — or an admin resetting it — revokes the member tokens made with it', async () => {
+  const works = async (token: string): Promise<number> => (await withToken(token, 'GET', '/projects')).statusCode;
+
+  it('★ a password change revokes the member’s tokens when they say so — and when they say nothing', async () => {
     const mine = await mint(dev, CONTENT);
     const theirs = await mint(otherDev, CONTENT);
-    const works = async (token: string): Promise<number> => (await withToken(token, 'GET', '/projects')).statusCode;
     expect(await works(mine.token)).toBe(200);
 
-    // A password changed to shut someone out has to shut their tokens out too.
-    const changed = await dev.put('/account/password', { currentPassword: PASSWORD, newPassword: 'A-brand-new-pw-7' });
+    // "Someone may know my password": the tokens go with it.
+    const changed = await dev.put('/account/password', { currentPassword: PASSWORD, newPassword: 'A-brand-new-pw-7', revokeMemberTokens: true });
     expect(changed.statusCode).toBe(204);
     expect(await works(mine.token)).toBe(401);
     expect(((await dev.get('/account/member-tokens')).json() as { items: unknown[] }).items).toEqual([]);
     // Nobody else's token is touched.
     expect(await works(theirs.token)).toBe(200);
 
-    // An admin reset is the "this account may be compromised" path, and ends them the same way.
-    expect((await admin.post(`/admin/users/${otherDev.userId}/password`)).statusCode).toBe(200);
+    // A caller that does not answer the question gets the cautious reading.
+    expect((await otherDev.put('/account/password', { currentPassword: PASSWORD, newPassword: 'Another-new-pw-8' })).statusCode).toBe(204);
     expect(await works(theirs.token)).toBe(401);
+  });
+
+  it('★ a routine password change keeps the tokens working when the member chooses to keep them', async () => {
+    const mine = await mint(dev, CONTENT);
+    const changed = await dev.put('/account/password', { currentPassword: PASSWORD, newPassword: 'A-brand-new-pw-7', revokeMemberTokens: false });
+    expect(changed.statusCode).toBe(204);
+    expect(await works(mine.token)).toBe(200);
+    expect(((await dev.get('/account/member-tokens')).json() as { items: unknown[] }).items).toHaveLength(1);
+    // The password itself did change: the old one no longer confirms anything.
+    const stale = await dev.post('/account/member-tokens', { name: 'x', expiresInDays: 1, capabilities: ['content:read'], currentPassword: PASSWORD });
+    expect(stale.statusCode).toBe(403);
+    // A wrong current password changes nothing at all — the choice is not a way around it.
+    const wrong = await dev.put('/account/password', { currentPassword: 'not-it', newPassword: 'Yet-another-pw-9', revokeMemberTokens: true });
+    expect(wrong.statusCode).toBe(403);
+    expect(await works(mine.token)).toBe(200);
+  });
+
+  it('an admin resetting a password revokes that account’s tokens unless told to keep them, and says how many', async () => {
+    const first = await mint(otherDev, CONTENT);
+    const second = await mint(otherDev, ['content:read']);
+    const kept = await admin.post(`/admin/users/${otherDev.userId}/password`, { revokeMemberTokens: false });
+    expect(kept.statusCode).toBe(200);
+    expect((kept.json() as { revokedMemberTokens: number }).revokedMemberTokens).toBe(0);
+    expect(await works(first.token)).toBe(200);
+
+    // No body at all — what an older client sends — is the "this account may be compromised" reading.
+    const reset = await admin.post(`/admin/users/${otherDev.userId}/password`);
+    expect(reset.statusCode).toBe(200);
+    expect((reset.json() as { revokedMemberTokens: number }).revokedMemberTokens).toBe(2);
+    expect(await works(first.token)).toBe(401);
+    expect(await works(second.token)).toBe(401);
   });
 
   it('introspects as a member token (no project), while a project key still names its project', async () => {
@@ -440,6 +474,82 @@ describe('member tokens — the daily project cap', () => {
     expect((await dev.post('/projects', { name: 'By hand', slug: 'by-hand' })).statusCode).toBe(201);
     const second = await mint(dev, ['projects:create']);
     expect((await withToken(second.token, 'POST', '/projects', { name: 'Other', slug: 'other' })).statusCode).toBe(201);
+  });
+
+  it('★ a token can be minted with a LOWER limit of its own — never a higher one', async () => {
+    const tooHigh = await dev.post('/account/member-tokens', {
+      name: 'greedy', expiresInDays: 30, currentPassword: PASSWORD, capabilities: ['projects:create'], dailyProjectLimit: 3,
+    });
+    expect(tooHigh.statusCode).toBe(400);
+    expect(tooHigh.json()).toEqual({ error: 'the daily project limit cannot exceed 2, the maximum set for this instance' });
+    for (const bad of [0, -1, 1.5, 100_000]) {
+      const res = await dev.post('/account/member-tokens', {
+        name: 'bad', expiresInDays: 30, currentPassword: PASSWORD, capabilities: ['projects:create'], dailyProjectLimit: bad,
+      });
+      expect(res.statusCode, `limit ${bad}`).toBe(400);
+    }
+    expect(await h.db.select().from(memberTokens)).toHaveLength(0);
+
+    const { token, id } = await mint(dev, ['projects:create'], { dailyProjectLimit: 1 });
+    const listed = ((await dev.get('/account/member-tokens')).json() as { items: Array<{ id: string; dailyProjectLimit: number | null }> }).items;
+    expect(listed.find((t) => t.id === id)?.dailyProjectLimit).toBe(1);
+    expect((await withToken(token, 'POST', '/projects', { name: 'One', slug: 'one' })).statusCode).toBe(201);
+    const second = await withToken(token, 'POST', '/projects', { name: 'Two', slug: 'two' });
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toEqual({ error: 'this member token has reached its limit of 1 new projects per 24 hours' });
+  });
+
+  it('a limit on creating projects is not kept on a token that cannot create them', async () => {
+    const { id } = await mint(dev, CONTENT, { dailyProjectLimit: 1 });
+    const [row] = await h.db.select().from(memberTokens).where(eq(memberTokens.id, id));
+    expect(row?.dailyProjectLimit).toBeNull();
+  });
+});
+
+describe('member tokens — the instance maximum (admin setting)', () => {
+  it('★ an admin sets the maximum, and lowering it tightens tokens that already exist', async () => {
+    const { token, id } = await mint(dev, ['projects:create'], { dailyProjectLimit: 40 });
+    const unlimited = await mint(dev, ['projects:create']);
+
+    // Only an instance admin may change it, and only within range.
+    expect((await dev.put('/admin/settings', { memberTokenDailyProjectMax: 1 })).statusCode).toBe(403);
+    expect((await admin.put('/admin/settings', { memberTokenDailyProjectMax: 0 })).statusCode).toBe(400);
+    expect((await admin.put('/admin/settings', { memberTokenDailyProjectMax: 1001 })).statusCode).toBe(400);
+    const saved = await admin.put('/admin/settings', { memberTokenDailyProjectMax: 1 });
+    expect(saved.statusCode).toBe(200);
+    expect((saved.json() as { settings: { memberTokenDailyProjectMax?: number } }).settings.memberTokenDailyProjectMax).toBe(1);
+
+    // The members' own list reports the new maximum…
+    const listed = (await dev.get('/account/member-tokens')).json() as { dailyProjectMax: number; items: Array<{ id: string; dailyProjectLimit: number | null }> };
+    expect(listed.dailyProjectMax).toBe(1);
+    // …the token keeps what it was minted with (40), but the smaller number is what binds it.
+    expect(listed.items.find((t) => t.id === id)?.dailyProjectLimit).toBe(40);
+    expect((await withToken(token, 'POST', '/projects', { name: 'One', slug: 'one' })).statusCode).toBe(201);
+    const second = await withToken(token, 'POST', '/projects', { name: 'Two', slug: 'two' });
+    expect(second.statusCode).toBe(429);
+    expect(second.json()).toEqual({ error: 'this member token has reached its limit of 1 new projects per 24 hours' });
+    // A token minted without a limit follows the maximum the same way.
+    expect((await withToken(unlimited.token, 'POST', '/projects', { name: 'Three', slug: 'three' })).statusCode).toBe(201);
+    expect((await withToken(unlimited.token, 'POST', '/projects', { name: 'Four', slug: 'four' })).statusCode).toBe(429);
+    // …and a new token cannot be minted above it.
+    const over = await dev.post('/account/member-tokens', {
+      name: 'x', expiresInDays: 30, currentPassword: PASSWORD, capabilities: ['projects:create'], dailyProjectLimit: 2,
+    });
+    expect(over.statusCode).toBe(400);
+
+    // Clearing the setting returns to the default of 50.
+    expect((await admin.put('/admin/settings', { memberTokenDailyProjectMax: null })).statusCode).toBe(200);
+    expect(((await dev.get('/account/member-tokens')).json() as { dailyProjectMax: number }).dailyProjectMax).toBe(50);
+    expect((await withToken(unlimited.token, 'POST', '/projects', { name: 'Four', slug: 'four' })).statusCode).toBe(201);
+  });
+});
+
+describe('member tokens — the daily project cap, under load', () => {
+  beforeEach(async () => {
+    await h.close();
+    h = await makeHarness({ memberTokenDailyProjectCap: 2 });
+    dev = await h.signup({ email: 'dev@agency.test' });
+    await setPlatformRole(h.db, dev.userId, 'developer');
   });
 
   it('★ holds under concurrency: five simultaneous creations, exactly two get through', async () => {
@@ -595,17 +705,65 @@ describe('member tokens — members and invites (opt-in)', () => {
     expect(asMember.json()).toEqual({ error: 'insufficient role for this operation' });
   });
 
-  it('★ never issues a password or touches staff invites — those stay interactive', async () => {
+  it('★ approves an invite without its link, with members:invite — creating the account if there is none', async () => {
+    const projectId = await dev.createProject('Site', 'site', { localHosting: false });
+    const { token } = await mint(dev, ['members:invite']);
+    const invited = (await withToken(token, 'POST', `/projects/${projectId}/invites`, { email: 'new@customer.test' })).json() as { invite: { id: string } };
+
+    const approved = await withToken(token, 'POST', `/projects/${projectId}/invites/${invited.invite.id}/approve`);
+    expect(approved.statusCode).toBe(200);
+    const result = approved.json() as { email: string; userId: string; created: boolean; password?: string };
+    expect(result).toMatchObject({ email: 'new@customer.test', created: true });
+    // A new account: the one-time password comes back to the caller, and it really signs in.
+    expect(typeof result.password).toBe('string');
+    const login = await h.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'new@customer.test', password: result.password } });
+    expect(login.statusCode).toBe(200);
+    // They are a MEMBER of that project — a client, not staff.
+    const [membership] = await h.db.select().from(projectMembers).where(eq(projectMembers.userId, result.userId));
+    expect(membership).toMatchObject({ projectId, role: 'member' });
+    const [account] = await h.db.select().from(users).where(eq(users.id, result.userId));
+    expect(account?.platformRole).toBeNull();
+    // The link is burned with the approval: the same grant cannot be redeemed twice.
+    expect((await withToken(token, 'POST', `/projects/${projectId}/invites/${invited.invite.id}/approve`)).statusCode).toBe(409);
+
+    // An address that ALREADY has an account is simply granted access — no password is issued for it.
+    const existing = (await withToken(token, 'POST', `/projects/${projectId}/invites`, { email: 'client@customer.test' })).json() as { invite: { id: string } };
+    const granted = (await withToken(token, 'POST', `/projects/${projectId}/invites/${existing.invite.id}/approve`)).json() as Record<string, unknown>;
+    expect(granted).toMatchObject({ email: 'client@customer.test', created: false, userId: client.userId });
+    expect(granted).not.toHaveProperty('password');
+  });
+
+  it('approving needs members:invite, on a project the member owns — managing members is not enough', async () => {
+    const projectId = await dev.createProject('Site', 'site', { localHosting: false });
+    const foreign = await otherDev.createProject('Theirs', 'theirs', { localHosting: false });
+    const inviter = await mint(dev, ['members:invite']);
+    const manager = await mint(dev, ['members:manage', ...CONTENT]);
+    const mine = (await withToken(inviter.token, 'POST', `/projects/${projectId}/invites`, { email: 'a@customer.test' })).json() as { invite: { id: string } };
+    const theirs = (await otherDev.post(`/projects/${foreign}/invites`, { email: 'b@customer.test' })).json() as { invite: { id: string } };
+
+    const refused = await withToken(manager.token, 'POST', `/projects/${projectId}/invites/${mine.invite.id}/approve`);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'this member token lacks the "members:invite" capability' });
+    // A project it cannot reach is a 404, and an invite from ANOTHER project is not reachable by
+    // quoting its id under a project the token does own.
+    expect((await withToken(inviter.token, 'POST', `/projects/${foreign}/invites/${theirs.invite.id}/approve`)).statusCode).toBe(404);
+    expect((await withToken(inviter.token, 'POST', `/projects/${projectId}/invites/${theirs.invite.id}/approve`)).statusCode).toBe(404);
+    // A project key still cannot approve at all.
+    const key = (await dev.post(`/projects/${projectId}/api-keys`, { name: 'k', role: 'owner', expiresInDays: 1, capabilities: CONTENT })).json() as { token: string };
+    expect((await withToken(key.token, 'POST', `/projects/${projectId}/invites/${mine.invite.id}/approve`)).statusCode).toBe(403);
+    expect(await h.db.select().from(users).where(eq(users.email, 'a@customer.test'))).toHaveLength(0);
+  });
+
+  it('★ never replaces an existing account’s password or touches staff invites — those stay interactive', async () => {
     const projectId = await dev.createProject('Site', 'site', { localHosting: false });
     await addProjectMember(h.db, client.userId, projectId, 'member');
     // An ADMIN's token with everything ticked: still no.
     const { token } = await mint(admin, [...CONTENT, 'members:manage', 'members:invite', 'projects:create', 'projects:delete', 'projects:rename']);
-    const invite = (await withToken(token, 'POST', `/projects/${projectId}/invites`, { email: 'new@customer.test' })).json() as { invite: { id: string } };
     const staffInvite = (await admin.post('/admin/invites', { email: 'hire@agency.test' })).json() as { invite: { id: string } };
 
     for (const res of [
       await withToken(token, 'POST', `/projects/${projectId}/members/${client.userId}/password`),
-      await withToken(token, 'POST', `/projects/${projectId}/invites/${invite.invite.id}/approve`),
+      await withToken(token, 'POST', `/admin/invites/${staffInvite.invite.id}/approve`),
       await withToken(token, 'POST', '/admin/invites', { email: 'mole@agency.test', role: 'admin' }),
       await withToken(token, 'GET', '/admin/invites'),
       await withToken(token, 'GET', '/admin/users'),
@@ -687,5 +845,94 @@ describe('member tokens — visible on the projects they act on', () => {
     const third = await mint(dev, CONTENT);
     expect((await withToken(third.token, 'DELETE', `/projects/${projectId}/agent-connections/member:${third.id}`)).statusCode).toBe(403);
     expect((await withToken(third.token, 'GET', `/projects/${projectId}/agent-connections`)).statusCode).toBe(403);
+  });
+});
+
+describe('member tokens — the instance-wide list (admin)', () => {
+  type AdminRow = {
+    id: string;
+    name: string;
+    status: string;
+    owner: { userId: string; email: string; role: string | null };
+    capabilities: string[];
+    dailyProjectLimit: number | null;
+    projectsUsed: number;
+    projectsCreatedToday: number;
+    revokedAt: string | null;
+  };
+  const listAll = async (): Promise<{ items: AdminRow[]; dailyProjectMax: number }> => {
+    const res = await admin.get('/admin/member-tokens');
+    expect(res.statusCode).toBe(200);
+    return res.json() as { items: AdminRow[]; dailyProjectMax: number };
+  };
+
+  it('★ shows every member’s tokens with their owner, what they did, and whether they still work', async () => {
+    const devToken = await mint(dev, [...CONTENT, 'projects:create'], { name: 'fleet', dailyProjectLimit: 5 });
+    const adminToken = await mint(admin, ['content:read'], { name: 'reporting' });
+    const stale = await mint(otherDev, ['content:read'], { name: 'old' });
+    await otherDev.del(`/account/member-tokens/${stale.id}`);
+    // The dev's token makes a project and so has used one; the admin's has done nothing yet.
+    expect((await withToken(devToken.token, 'POST', '/projects', { name: 'Made', slug: 'made' })).statusCode).toBe(201);
+
+    const { items, dailyProjectMax } = await listAll();
+    expect(dailyProjectMax).toBe(50);
+    expect(items).toHaveLength(3);
+    const fleet = items.find((t) => t.id === devToken.id);
+    expect(fleet).toMatchObject({
+      name: 'fleet',
+      status: 'active',
+      owner: { userId: dev.userId, email: 'dev@agency.test', role: 'developer' },
+      dailyProjectLimit: 5,
+      projectsUsed: 1,
+      projectsCreatedToday: 1,
+    });
+    expect(items.find((t) => t.id === adminToken.id)).toMatchObject({ status: 'active', owner: { role: 'admin' }, projectsUsed: 0, projectsCreatedToday: 0 });
+    const old = items.find((t) => t.id === stale.id);
+    expect(old?.status).toBe('revoked');
+    expect(old?.revokedAt).not.toBeNull();
+    // Working tokens come first.
+    expect(items.map((t) => t.status)).toEqual(['active', 'active', 'revoked']);
+    // No secret, no hash.
+    const raw = (await admin.get('/admin/member-tokens')).body;
+    expect(raw).not.toContain(devToken.token);
+    expect(raw).not.toContain('tokenHash');
+  });
+
+  it('reports an expired token, and one whose owner is no longer staff, as what they are', async () => {
+    const expired = await mint(dev, ['content:read'], { name: 'lapsed' });
+    const orphan = await mint(otherDev, ['content:read'], { name: 'orphan' });
+    await h.db.update(memberTokens).set({ expiresAt: new Date(Date.now() - 1000) }).where(eq(memberTokens.id, expired.id));
+    // Staff rights removed behind the routes' back (the demote route would also revoke).
+    await setPlatformRole(h.db, otherDev.userId, null);
+
+    const { items } = await listAll();
+    expect(items.find((t) => t.id === expired.id)?.status).toBe('expired');
+    expect(items.find((t) => t.id === orphan.id)).toMatchObject({ status: 'suspended', owner: { role: null } });
+  });
+
+  it('★ an admin revokes anyone’s token; the list and the route are closed to everyone else', async () => {
+    const { token, id } = await mint(dev, CONTENT);
+    const adminBearer = await mint(admin, [...CONTENT, 'members:manage', 'projects:delete']);
+
+    // A developer, a client, an anonymous caller and ANY bearer — an admin's own token included.
+    expect((await dev.get('/admin/member-tokens')).statusCode).toBe(403);
+    expect((await client.get('/admin/member-tokens')).statusCode).toBe(403);
+    expect((await h.app.inject({ method: 'GET', url: '/admin/member-tokens' })).statusCode).toBe(401);
+    expect((await dev.del(`/admin/member-tokens/${id}`)).statusCode).toBe(403);
+    for (const res of [
+      await withToken(adminBearer.token, 'GET', '/admin/member-tokens'),
+      await withToken(adminBearer.token, 'DELETE', `/admin/member-tokens/${id}`),
+    ]) {
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ error: 'this operation requires an interactive session' });
+    }
+    expect((await withToken(token, 'GET', '/projects')).statusCode).toBe(200);
+
+    expect((await admin.del(`/admin/member-tokens/${id}`)).statusCode).toBe(204);
+    expect((await withToken(token, 'GET', '/projects')).statusCode).toBe(401);
+    expect((await listAll()).items.find((t) => t.id === id)?.status).toBe('revoked');
+    // Already revoked, or never existed: the same answer.
+    expect((await admin.del(`/admin/member-tokens/${id}`)).statusCode).toBe(404);
+    expect((await admin.del('/admin/member-tokens/nope')).statusCode).toBe(404);
   });
 });

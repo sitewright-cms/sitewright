@@ -69,6 +69,14 @@ export async function sweepExpiredAuthRows(db: Database, now: Date = new Date())
 export const DEAD_PAT_RETENTION_DAYS = 90;
 
 /**
+ * How long a member token's project-creation ledger row is kept. The daily cap reads back ONE day, so
+ * anything older is provenance only — and a token that lives a year, creating projects every day,
+ * would otherwise keep every row it ever wrote. A month answers "which token made this?" for as long
+ * as anyone asks.
+ */
+export const MEMBER_TOKEN_LEDGER_RETENTION_DAYS = 30;
+
+/**
  * How long a dynamically-registered OAuth client survives with nothing referencing it, measured from
  * its LAST USE (see `oauth_clients.last_used_at`) — not from registration.
  *
@@ -116,6 +124,9 @@ export async function reapDeadPats(db: Database, now: Date = new Date()): Promis
     await tx.delete(memberTokenCreations).where(inArray(memberTokenCreations.tokenId, dead));
     await tx.delete(memberTokens).where(deadMemberTokens);
   });
+  // …and the ledger of a token that is still ALIVE, past the point the cap or anyone else reads it.
+  const ledgerCutoff = new Date(now.getTime() - MEMBER_TOKEN_LEDGER_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  await db.delete(memberTokenCreations).where(lte(memberTokenCreations.createdAt, ledgerCutoff));
 }
 
 /**

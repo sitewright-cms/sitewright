@@ -28,6 +28,8 @@ export interface CreateMemberTokenInput {
   name: string;
   capabilities: MemberTokenCapability[];
   expiresAt: Date;
+  /** New projects per 24 hours; omitted → the instance maximum. Kept only with `projects:create`. */
+  dailyProjectLimit?: number;
 }
 
 /** Redacted view of a member token — never includes the hash or the raw token. */
@@ -36,10 +38,25 @@ export interface MemberTokenView {
   name: string;
   capabilities: MemberTokenCapability[];
   tokenPrefix: string;
+  /** The token's own cap on new projects per 24 hours, or null for "the instance maximum". */
+  dailyProjectLimit: number | null;
   expiresAt: Date;
   revokedAt: Date | null;
   lastUsedAt: Date | null;
   createdAt: Date;
+}
+
+/** Why a token does or does not work right now. `suspended`: its owner is no longer staff. */
+export type MemberTokenStatus = 'active' | 'expired' | 'revoked' | 'suspended';
+
+/** One row of the instance-wide list an admin sees: every member's tokens, with who owns each. */
+export interface MemberTokenAdminView extends MemberTokenView {
+  owner: { userId: string; email: string; role: 'admin' | 'developer' | null };
+  status: MemberTokenStatus;
+  /** Projects this token has acted on (the rows a project's agent-connections list is built from). */
+  projectsUsed: number;
+  /** Projects it created in the last 24 hours — what its daily limit is counted against. */
+  projectsCreatedToday: number;
 }
 
 /** What a successfully-resolved member token grants: an identity and a capability ceiling. The role
@@ -48,6 +65,8 @@ export interface ResolvedMemberToken {
   tokenId: string;
   userId: string;
   capabilities: MemberTokenCapability[];
+  /** The token's own daily cap on new projects, or null — see `memberTokens.dailyProjectLimit`. */
+  dailyProjectLimit: number | null;
 }
 
 /** A member token that has acted on a project, for that project's "connected agents" list. */
@@ -68,6 +87,7 @@ function toView(row: typeof memberTokens.$inferSelect): MemberTokenView {
     name: row.name,
     capabilities: row.capabilities,
     tokenPrefix: row.tokenPrefix,
+    dailyProjectLimit: row.dailyProjectLimit ?? null,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
     lastUsedAt: row.lastUsedAt,
@@ -114,6 +134,9 @@ export class MemberTokenRepository {
     for (const cap of input.capabilities) {
       if (!CAPABILITY_SET.has(cap)) throw new ForbiddenError(`unknown capability: ${cap}`);
     }
+    if (input.dailyProjectLimit !== undefined && !(Number.isInteger(input.dailyProjectLimit) && input.dailyProjectLimit >= 1)) {
+      throw new ForbiddenError('the daily project limit must be a whole number of at least 1');
+    }
     const ttl = input.expiresAt.getTime() - now.getTime();
     if (ttl <= 0) throw new ForbiddenError('expiry must be in the future');
     if (ttl > MAX_API_KEY_TTL_MS) throw new ForbiddenError('expiry exceeds the maximum token lifetime');
@@ -136,13 +159,15 @@ export class MemberTokenRepository {
       capabilities,
       tokenHash,
       tokenPrefix,
+      // A limit on creating projects means nothing on a token that cannot create them.
+      dailyProjectLimit: capabilities.includes('projects:create') ? (input.dailyProjectLimit ?? null) : null,
       expiresAt: input.expiresAt,
       revokedAt: null,
       lastUsedAt: null,
       createdAt: now,
     };
     await this.db.insert(memberTokens).values(row);
-    return { token, key: toView({ ...row, revokedAt: null, lastUsedAt: null }) };
+    return { token, key: toView({ ...row, dailyProjectLimit: row.dailyProjectLimit ?? null, revokedAt: null, lastUsedAt: null }) };
   }
 
   /** The caller's own unrevoked tokens, newest first. An expired one is still listed, so its owner
@@ -176,12 +201,65 @@ export class MemberTokenRepository {
     return row?.userId ?? null;
   }
 
-  /** Revokes every live token an account holds — for a member who is no longer staff. */
-  async revokeAllForUser(userId: string, now: Date = new Date()): Promise<void> {
-    await this.db
+  /** Revokes every live token an account holds, and says how many that was. */
+  async revokeAllForUser(userId: string, now: Date = new Date()): Promise<number> {
+    const revoked = await this.db
       .update(memberTokens)
       .set({ revokedAt: now })
-      .where(and(eq(memberTokens.userId, userId), isNull(memberTokens.revokedAt)));
+      .where(and(eq(memberTokens.userId, userId), isNull(memberTokens.revokedAt)))
+      .returning({ id: memberTokens.id });
+    return revoked.length;
+  }
+
+  /** How many tokens of this account still work (unrevoked and unexpired). */
+  async countLive(userId: string, now: Date = new Date()): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(memberTokens)
+      .where(and(eq(memberTokens.userId, userId), isNull(memberTokens.revokedAt), gt(memberTokens.expiresAt, now)));
+    return row?.n ?? 0;
+  }
+
+  /**
+   * Every member token on the instance that housekeeping has not yet removed, with its owner — the
+   * admin's view. Working tokens first, then the most recently used. Dead ones stay listed for as
+   * long as their rows do (see `reapDeadPats`), because "which token was that, and when did it stop"
+   * is exactly what an admin opens this list to answer.
+   */
+  async listAll(now: Date = new Date()): Promise<MemberTokenAdminView[]> {
+    const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const [rows, used, created] = await Promise.all([
+      this.db
+        .select({ token: memberTokens, ownerEmail: users.email, ownerRole: users.platformRole })
+        .from(memberTokens)
+        .innerJoin(users, eq(users.id, memberTokens.userId)),
+      this.db
+        .select({ tokenId: memberTokenProjects.tokenId, n: count() })
+        .from(memberTokenProjects)
+        .groupBy(memberTokenProjects.tokenId),
+      this.db
+        .select({ tokenId: memberTokenCreations.tokenId, n: count() })
+        .from(memberTokenCreations)
+        .where(gt(memberTokenCreations.createdAt, since))
+        .groupBy(memberTokenCreations.tokenId),
+    ]);
+    const usedBy = new Map(used.map((r) => [r.tokenId, r.n]));
+    const createdBy = new Map(created.map((r) => [r.tokenId, r.n]));
+    const statusOf = (row: (typeof rows)[number]): MemberTokenStatus => {
+      if (row.token.revokedAt !== null) return 'revoked';
+      if (row.token.expiresAt.getTime() <= now.getTime()) return 'expired';
+      return isStaffRole(row.ownerRole) ? 'active' : 'suspended';
+    };
+    const lastActivity = (v: MemberTokenAdminView): number => (v.lastUsedAt ?? v.createdAt).getTime();
+    return rows
+      .map((row): MemberTokenAdminView => ({
+        ...toView(row.token),
+        owner: { userId: row.token.userId, email: row.ownerEmail, role: row.ownerRole },
+        status: statusOf(row),
+        projectsUsed: usedBy.get(row.token.id) ?? 0,
+        projectsCreatedToday: createdBy.get(row.token.id) ?? 0,
+      }))
+      .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || lastActivity(b) - lastActivity(a));
   }
 
   /**
@@ -198,6 +276,7 @@ export class MemberTokenRepository {
         id: memberTokens.id,
         userId: memberTokens.userId,
         capabilities: memberTokens.capabilities,
+        dailyProjectLimit: memberTokens.dailyProjectLimit,
         revokedAt: memberTokens.revokedAt,
         expiresAt: memberTokens.expiresAt,
         ownerRole: users.platformRole,
@@ -220,7 +299,7 @@ export class MemberTokenRepository {
           this.useWrittenAt.delete(row.id);
         });
     }
-    return { tokenId: row.id, userId: row.userId, capabilities: row.capabilities };
+    return { tokenId: row.id, userId: row.userId, capabilities: row.capabilities, dailyProjectLimit: row.dailyProjectLimit ?? null };
   }
 
   /**
@@ -248,9 +327,9 @@ export class MemberTokenRepository {
    * Records that THIS token created a project: provenance, and what the daily cap counts. Awaited,
    * unlike {@link recordUse} — a creation that is not counted would not be capped.
    *
-   * The ledger row is written for good: it is not removed if the project is later rolled back or
-   * reaped (see `memberTokenCreations`). The activity row beside it is the ordinary per-project one,
-   * so the new project lists this token as connected straight away.
+   * The ledger row does not follow its project: it is not removed if the project is later rolled back
+   * or reaped (see `memberTokenCreations`). The activity row beside it is the ordinary per-project
+   * one, so the new project lists this token as connected straight away.
    */
   async recordProjectCreated(tokenId: string, projectId: string, now: Date = new Date()): Promise<void> {
     await this.db.insert(memberTokenCreations).values({ id: newId(), tokenId, projectId, createdAt: now });

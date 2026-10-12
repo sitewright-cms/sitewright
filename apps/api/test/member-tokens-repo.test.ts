@@ -4,7 +4,7 @@ import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { memberTokenCreations, memberTokenProjects, memberTokens, projects as projectsTable } from '../src/db/schema.js';
 import { deleteUserAccount, registerAccount, setPlatformRole } from '../src/repo/accounts.js';
-import { DEAD_PAT_RETENTION_DAYS, reapDeadPats } from '../src/repo/maintenance.js';
+import { DEAD_PAT_RETENTION_DAYS, MEMBER_TOKEN_LEDGER_RETENTION_DAYS, reapDeadPats } from '../src/repo/maintenance.js';
 import { MemberTokenRepository } from '../src/repo/member-tokens.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { generateApiToken, generateMemberToken, isApiTokenFormat, isMemberTokenFormat } from '../src/auth/api-keys.js';
@@ -36,6 +36,11 @@ beforeEach(async () => {
 });
 
 const inAYear = (): Date => new Date(Date.now() + 300 * DAY);
+
+/** A ledger row whose project is gone (rolled back or reaped) — the row outlives it by design. */
+async function ledgerRow(tokenId: string, pid: string, at: Date): Promise<void> {
+  await db.insert(memberTokenCreations).values({ id: `led-${pid}`, tokenId, projectId: pid, createdAt: at });
+}
 
 describe('token shapes', () => {
   it('a member token and a project key never look like one another', () => {
@@ -72,12 +77,81 @@ describe('MemberTokenRepository.create', () => {
     expect(await repo.ownerOf(b.key.id)).toBeNull();
     expect(await repo.ownerOf('nope')).toBeNull();
   });
+
+  it('keeps a daily project limit only on a token that can create projects, and refuses a nonsensical one', async () => {
+    const base = { name: 't', expiresAt: inAYear() };
+    const limited = await repo.create(staff, { ...base, capabilities: ['projects:create'], dailyProjectLimit: 3 });
+    expect(limited.key.dailyProjectLimit).toBe(3);
+    expect((await repo.resolve(limited.token))?.dailyProjectLimit).toBe(3);
+    // Unset → null: "whatever the instance allows", decided when the token is used.
+    expect((await repo.create(staff, { ...base, capabilities: ['projects:create'] })).key.dailyProjectLimit).toBeNull();
+    // Meaningless without the capability, so it is not stored.
+    expect((await repo.create(staff, { ...base, capabilities: ['content:read'], dailyProjectLimit: 3 })).key.dailyProjectLimit).toBeNull();
+    for (const bad of [0, -2, 1.5, Number.NaN]) {
+      await expect(repo.create(staff, { ...base, capabilities: ['projects:create'], dailyProjectLimit: bad })).rejects.toThrow('whole number of at least 1');
+    }
+  });
+
+  it('counts an account’s working tokens, and revoking them all says how many that was', async () => {
+    await repo.create(staff, { name: 'a', capabilities: ['content:read'], expiresAt: inAYear() });
+    const b = await repo.create(staff, { name: 'b', capabilities: ['content:read'], expiresAt: inAYear() });
+    await repo.create(staff, { name: 'expired', capabilities: ['content:read'], expiresAt: new Date(Date.now() + 1000) }, new Date(Date.now() - DAY));
+    expect(await repo.countLive(staff, new Date(Date.now() + 2000))).toBe(2);
+    await repo.revoke(staff, b.key.id);
+    expect(await repo.countLive(staff, new Date(Date.now() + 2000))).toBe(1);
+    // Every UNREVOKED row is revoked, the expired one included — it is dead either way.
+    expect(await repo.revokeAllForUser(staff)).toBe(2);
+    expect(await repo.revokeAllForUser(staff)).toBe(0);
+    expect(await repo.countLive(staff)).toBe(0);
+  });
+});
+
+describe('MemberTokenRepository.listAll — the admin view', () => {
+  it('lists every account’s tokens with owner, status and activity — working ones first, never a secret', async () => {
+    const admin = (await registerAccount(db, 'admin@agency.test', 'Correct-Horse-9!', { platformRole: 'admin' })).userId;
+    const now = new Date();
+    const fleet = await repo.create(staff, { name: 'fleet', capabilities: ['projects:create'], expiresAt: inAYear(), dailyProjectLimit: 4 }, new Date(now.getTime() - 3000));
+    const idle = await repo.create(admin, { name: 'idle', capabilities: ['content:read'], expiresAt: inAYear() }, new Date(now.getTime() - 2000));
+    const lapsed = await repo.create(staff, { name: 'lapsed', capabilities: ['content:read'], expiresAt: new Date(now.getTime() - 1000) }, new Date(now.getTime() - DAY));
+    const cut = await repo.create(admin, { name: 'cut', capabilities: ['content:read'], expiresAt: inAYear() }, new Date(now.getTime() - 1000));
+    await repo.revoke(admin, cut.key.id);
+    // Two creations today and one two days ago: only today's count against the limit.
+    await repo.recordProjectCreated(fleet.key.id, projectId, now);
+    await ledgerRow(fleet.key.id, 'gone-1', now);
+    await ledgerRow(fleet.key.id, 'gone-2', new Date(now.getTime() - 2 * DAY));
+
+    const all = await repo.listAll(now);
+    expect(all.map((t) => [t.name, t.status])).toEqual([
+      // Active first; within a group, the most recently active (never used → when it was made).
+      ['idle', 'active'],
+      ['fleet', 'active'],
+      ['cut', 'revoked'],
+      ['lapsed', 'expired'],
+    ]);
+    const row = all.find((t) => t.id === fleet.key.id);
+    expect(row).toMatchObject({
+      owner: { userId: staff, email: 'dev@agency.test', role: 'developer' },
+      dailyProjectLimit: 4,
+      projectsUsed: 1,
+      projectsCreatedToday: 2,
+    });
+    expect(all.find((t) => t.id === idle.key.id)).toMatchObject({ owner: { role: 'admin' }, projectsUsed: 0, projectsCreatedToday: 0 });
+    expect(all.find((t) => t.id === lapsed.key.id)?.revokedAt).toBeNull();
+    expect(JSON.stringify(all)).not.toContain('tokenHash');
+    expect(JSON.stringify(all)).not.toContain(fleet.token);
+
+    // An owner who is no longer staff: the token cannot authenticate, and the list says why.
+    await setPlatformRole(db, staff, null);
+    const after = await repo.listAll(now);
+    expect(after.find((t) => t.id === fleet.key.id)).toMatchObject({ status: 'suspended', owner: { role: null } });
+    expect(after.find((t) => t.id === lapsed.key.id)?.status).toBe('expired');
+  });
 });
 
 describe('MemberTokenRepository.resolve', () => {
   it('resolves a live token to its owner and stamps its last use', async () => {
     const { token, key } = await repo.create(staff, { name: 't', capabilities: ['content:read'], expiresAt: inAYear() });
-    expect(await repo.resolve(token)).toEqual({ tokenId: key.id, userId: staff, capabilities: ['content:read'] });
+    expect(await repo.resolve(token)).toEqual({ tokenId: key.id, userId: staff, capabilities: ['content:read'], dailyProjectLimit: null });
     for (let i = 0; i < 100; i += 1) {
       const [row] = await db.select().from(memberTokens);
       if (row?.lastUsedAt) break;
@@ -253,5 +327,25 @@ describe('cleanup — nothing a member token leaves behind may block a delete', 
     const kept = [live.key.id, justExpired.key.id, justRevoked.key.id].sort();
     expect((await db.select().from(memberTokenProjects)).map((r) => r.tokenId).sort()).toEqual(kept);
     expect((await db.select().from(memberTokenCreations)).map((r) => r.tokenId).sort()).toEqual(kept);
+  });
+
+  it('★ a LIVING token’s creation ledger is pruned once nothing reads it — the daily count is untouched', async () => {
+    const now = new Date();
+    const { key } = await repo.create(staff, { name: 'busy', capabilities: ['projects:create'], expiresAt: inAYear() }, now);
+    const old = new Date(now.getTime() - (MEMBER_TOKEN_LEDGER_RETENTION_DAYS + 1) * DAY);
+    const recent = new Date(now.getTime() - (MEMBER_TOKEN_LEDGER_RETENTION_DAYS - 1) * DAY);
+    const today = new Date(now.getTime() - 60_000);
+    await ledgerRow(key.id, 'p-old', old);
+    await ledgerRow(key.id, 'p-recent', recent);
+    await repo.recordProjectCreated(key.id, projectId, today);
+
+    await reapDeadPats(db, now);
+
+    expect((await db.select().from(memberTokenCreations)).map((r) => r.projectId).sort()).toEqual([projectId, 'p-recent'].sort());
+    // The cap reads back one day, far inside what is kept.
+    expect(await repo.countProjectsCreatedSince(key.id, new Date(now.getTime() - DAY))).toBe(1);
+    // The token and its per-project activity are not housekeeping's to touch while it lives.
+    expect(await db.select().from(memberTokens)).toHaveLength(1);
+    expect((await db.select().from(memberTokenProjects)).length).toBeGreaterThan(0);
   });
 });

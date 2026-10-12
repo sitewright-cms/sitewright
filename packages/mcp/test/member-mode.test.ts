@@ -59,8 +59,15 @@ describe('member-token mode — the tool surface', () => {
     const required = (name: string): string[] => ((tools.find((t) => t.name === name)?.inputSchema as { required?: string[] }).required ?? []);
     const properties = (name: string): string[] => Object.keys((tools.find((t) => t.name === name)?.inputSchema as { properties?: object }).properties ?? {});
 
-    // Everything a project key offers, plus the three that only make sense across an account.
-    expect(tools.map((t) => t.name).sort()).toEqual([...MCP_TOOL_CATALOG.map((t) => t.name), 'create_project', 'duplicate_project', 'list_projects'].sort());
+    // Everything a project key offers, plus the ones that only make sense across an account: the
+    // three project tools, and the three about who has access.
+    expect(tools.map((t) => t.name).sort()).toEqual(
+      [...MCP_TOOL_CATALOG.map((t) => t.name), 'create_project', 'duplicate_project', 'list_projects', 'list_members', 'invite_member', 'approve_invite'].sort(),
+    );
+    // The people tools are about ONE project, so they name it like every other project tool.
+    expect(required('list_members')).toEqual(['project']);
+    expect(required('invite_member').sort()).toEqual(['email', 'project']);
+    expect(required('approve_invite').sort()).toEqual(['inviteId', 'project']);
 
     // A tool that already took arguments keeps them and gains `project`; one that took none gains it too.
     expect(required('put_page')).toEqual(expect.arrayContaining(['page', 'project']));
@@ -208,7 +215,80 @@ describe('member-token mode — the account tools', () => {
   });
 });
 
+describe('member-token mode — who has access to a project', () => {
+  const PEOPLE = member(['members:manage', 'members:invite']);
+
+  it('lists members and pending invites, invites by email, and approves without the link', async () => {
+    const { mcp, calls } = await connect(PEOPLE, (call) => {
+      if (call.url.endsWith('/members')) return { body: { members: [{ userId: 'u1', email: 'a@x.test', role: 'member' }] } };
+      if (call.method === 'GET') return { body: { invites: [{ id: 'inv1', email: 'b@x.test' }] } };
+      if (call.url.endsWith('/approve')) return { body: { email: 'b@x.test', userId: 'u2', created: true, password: 'one-time-pw' } };
+      return { status: 201, body: { invite: { id: 'inv1', email: 'b@x.test' }, token: 'link-token' } };
+    });
+
+    const listed = JSON.parse(text(await mcp.callTool({ name: 'list_members', arguments: { project: 'alpha' } }))) as Record<string, unknown[]>;
+    expect(listed.members).toHaveLength(1);
+    expect(listed.invites).toEqual([{ id: 'inv1', email: 'b@x.test' }]);
+    expect(calls.map((c) => c.url).sort()).toEqual(['/projects/alpha/invites', '/projects/alpha/members']);
+
+    const invited = JSON.parse(text(await mcp.callTool({ name: 'invite_member', arguments: { project: 'alpha', email: 'b@x.test' } }))) as { invite: { id: string } };
+    expect(invited.invite.id).toBe('inv1');
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', url: '/projects/alpha/invites', body: { email: 'b@x.test' } });
+
+    const approved = JSON.parse(text(await mcp.callTool({ name: 'approve_invite', arguments: { project: 'alpha', inviteId: 'inv1' } }))) as Record<string, unknown>;
+    expect(approved).toMatchObject({ created: true, password: 'one-time-pw' });
+    expect(calls.at(-1)).toMatchObject({ method: 'POST', url: '/projects/alpha/invites/inv1/approve' });
+    // …on the project the call named, not one a previous call happened to use.
+    await mcp.callTool({ name: 'approve_invite', arguments: { project: 'beta', inviteId: 'inv9' } });
+    expect(calls.at(-1)?.url).toBe('/projects/beta/invites/inv9/approve');
+  });
+
+  it('gates each on its own capability — inviting and approving need members:invite, listing needs members:manage', async () => {
+    const manager = await connect(member(['members:manage']));
+    for (const [name, args] of [
+      ['invite_member', { project: 'alpha', email: 'b@x.test' }],
+      ['approve_invite', { project: 'alpha', inviteId: 'inv1' }],
+    ] as const) {
+      const res = await manager.mcp.callTool({ name, arguments: args });
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/^Your member token lacks the “members:invite” capability/);
+    }
+    expect(manager.calls).toHaveLength(0);
+
+    const inviter = await connect(member(['members:invite']));
+    const res = await inviter.mcp.callTool({ name: 'list_members', arguments: { project: 'alpha' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/^Your member token lacks the “members:manage” capability/);
+    expect(inviter.calls).toHaveLength(0);
+  });
+
+  it('★ an invite id that is not an id never reaches a URL, and neither does a malformed address', async () => {
+    const { mcp, calls } = await connect(PEOPLE);
+    for (const inviteId of ['..', '../../admin/users', 'a/b', 'a b', '']) {
+      const res = await mcp.callTool({ name: 'approve_invite', arguments: { project: 'alpha', inviteId } }).catch(() => ({ isError: true }));
+      expect(res.isError, inviteId).toBe(true);
+    }
+    const bad = await mcp.callTool({ name: 'invite_member', arguments: { project: 'alpha', email: 'not-an-address' } }).catch(() => ({ isError: true }));
+    expect(bad.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('a project key has none of these tools', async () => {
+    const { mcp } = await connect(projectScope);
+    const names = (await mcp.listTools()).tools.map((t) => t.name);
+    for (const tool of ['list_members', 'invite_member', 'approve_invite']) expect(names).not.toContain(tool);
+  });
+});
+
 describe('SitewrightClient — member scope', () => {
+  it('approveInvite re-checks the invite id itself, whatever called it', async () => {
+    const fetch = recordingFetch();
+    const client = new SitewrightClient('https://cms.test', async () => 'swm_tok', fetch.impl);
+    client.primeScope(member(['members:invite']));
+    await expect(client.withProject('alpha', () => client.approveInvite('../x'))).rejects.toMatchObject({ status: 400 });
+    expect(fetch.calls).toHaveLength(0);
+  });
+
   it('a project request with no project named is refused locally, with what to do', async () => {
     const fetch = recordingFetch();
     const client = new SitewrightClient('https://cms.test', async () => 'swm_tok', fetch.impl);

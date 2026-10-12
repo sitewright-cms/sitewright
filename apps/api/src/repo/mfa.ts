@@ -175,9 +175,11 @@ export class MfaRepository {
   // ---- login tickets (bridge password/passkey step → TOTP step) ----
 
   /** Issues a single-use login ticket for `userId`; returns the raw token (only its hash is stored). */
-  async createLoginTicket(userId: string, now: Date = new Date()): Promise<string> {
+  async createLoginTicket(userId: string, opts: { viaSso?: boolean } = {}, now: Date = new Date()): Promise<string> {
     const { token, id } = generateTicket();
-    await this.db.insert(mfaLoginTickets).values({ id, userId, expiresAt: new Date(now.getTime() + TICKET_TTL_MS), createdAt: now });
+    await this.db
+      .insert(mfaLoginTickets)
+      .values({ id, userId, expiresAt: new Date(now.getTime() + TICKET_TTL_MS), viaSso: opts.viaSso ?? false, createdAt: now });
     return token;
   }
 
@@ -197,8 +199,15 @@ export class MfaRepository {
     return row.userId;
   }
 
-  /** Consumes (deletes) a ticket once the second factor succeeds — single-use. */
-  async consumeLoginTicket(token: string): Promise<void> {
-    await this.db.delete(mfaLoginTickets).where(eq(mfaLoginTickets.id, ticketId(token)));
+  /**
+   * Consumes (deletes) a ticket once the second factor succeeds — single-use. Reports whether the
+   * sign-in it completes began with single sign-on; false for a ticket that is already gone.
+   */
+  async consumeLoginTicket(token: string): Promise<{ viaSso: boolean }> {
+    const [row] = await this.db
+      .delete(mfaLoginTickets)
+      .where(eq(mfaLoginTickets.id, ticketId(token)))
+      .returning({ viaSso: mfaLoginTickets.viaSso });
+    return { viaSso: row?.viaSso ?? false };
   }
 }

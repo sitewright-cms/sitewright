@@ -804,6 +804,19 @@ export interface CreateMemberTokenBody {
 }
 /** Why a member token does or does not work right now (`suspended`: its owner is no longer staff). */
 export type MemberTokenStatus = 'active' | 'expired' | 'revoked' | 'suspended';
+/**
+ * A password the server generated for somebody else's account, returned exactly once.
+ *
+ * It is TEMPORARY: whoever asked for it has seen it, so its owner has to choose their own the first
+ * time they sign in (they can do nothing else until then), and it stops working at `passwordExpiresAt`
+ * if they have not. Signing in through single sign-on instead discards it.
+ */
+export interface IssuedPassword {
+  password: string;
+  /** ISO timestamp. */
+  passwordExpiresAt: string;
+}
+
 /** One row of the instance-wide member-token list (System settings → Security). */
 export interface MemberTokenAdminView extends MemberTokenView {
   owner: { userId: string; email: string; role: 'admin' | 'developer' | null };
@@ -1241,8 +1254,12 @@ export const api = {
       recoveryCodesRemaining: number;
       /** Whether the account has a password set (false for an OIDC-provisioned user who hasn't set one). */
       hasPassword: boolean;
-      /** When true, the user must set a new password before doing anything (seeded default-password admin). */
+      /** When true, the user must set a new password before doing anything else: the seeded admin still
+       *  on the default password, or an account on a temporary one. `projects` is empty while it is. */
       mustChangePassword: boolean;
+      /** The password is a TEMPORARY one somebody else generated (an approved invite, or one an admin
+       *  issued). It has to be replaced at first sign-in and expires after a week. */
+      temporaryPassword: boolean;
       projects: Project[];
       /** Base domain for subdomain-hosted sites (`SW_SITES_DOMAIN`). Set → a locally-hosted site is
        *  canonically at `<slug>.<sitesDomain>`; unset → subdomain routing is off and `/sites/<slug>/`
@@ -1312,15 +1329,16 @@ export const api = {
     request<{ invite: Invite; token: string }>('POST', `/projects/${projectId}/invites`, { email }),
   /** Platform-staff invites (instance-wide). */
   listInvites: () => request<{ invites: Invite[] }>('GET', '/admin/invites'),
-  /** Approve a pending STAFF invite without the link. `password` only when the account was created. */
+  /** Approve a pending STAFF invite without the link. `password` (temporary — see
+   *  {@link IssuedPassword}) only when the account was created. */
   approveStaffInvite: (inviteId: string) =>
-    request<{ email: string; userId: string; created: boolean; password?: string }>(
+    request<{ email: string; userId: string; created: boolean } & Partial<IssuedPassword>>(
       'POST',
       `/admin/invites/${encodeURIComponent(inviteId)}/approve`,
     ),
-  /** Issue a fresh password for another staff account. Returned once — only the hash is stored. */
+  /** Issue a fresh, temporary password for another staff account. Returned once — only the hash is stored. */
   resetStaffPassword: (userId: string, revokeMemberTokens?: boolean) =>
-    request<{ email: string | null; password: string; revokedMemberTokens: number }>(
+    request<{ email: string | null; revokedMemberTokens: number } & IssuedPassword>(
       'POST',
       `/admin/users/${encodeURIComponent(userId)}/password`,
       revokeMemberTokens !== undefined ? { revokeMemberTokens } : undefined,
@@ -1343,13 +1361,13 @@ export const api = {
   /** Approve a pending invite WITHOUT the link. `password` comes back only when the account was created
    *  by this call — an existing account is granted access and keeps its own credential. Shown once. */
   approveProjectInvite: (projectId: string, inviteId: string) =>
-    request<{ email: string; userId: string; created: boolean; password?: string }>(
+    request<{ email: string; userId: string; created: boolean } & Partial<IssuedPassword>>(
       'POST',
       `/projects/${projectId}/invites/${encodeURIComponent(inviteId)}/approve`,
     ),
-  /** Issue a fresh password for a project member. Returned once — only the hash is stored. */
+  /** Issue a fresh, temporary password for a project member. Returned once — only the hash is stored. */
   resetProjectMemberPassword: (projectId: string, userId: string) =>
-    request<{ email: string | null; password: string }>(
+    request<{ email: string | null } & IssuedPassword>(
       'POST',
       `/projects/${projectId}/members/${encodeURIComponent(userId)}/password`,
     ),

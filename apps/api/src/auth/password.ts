@@ -62,6 +62,13 @@ const GEN_ALL = GEN_LOWER + GEN_UPPER + GEN_DIGIT + GEN_SYMBOL;
 /** Length of a generated password. 20 unambiguous chars ≈ 115 bits — far past anything a policy asks. */
 export const GENERATED_PASSWORD_LENGTH = 20;
 
+/**
+ * How long a TEMPORARY password works before it has to have been replaced — the same week an invite
+ * link gets. A password is temporary when somebody other than its owner generated it (see
+ * `users.passwordExpiresAt`): an invite approved without its link, or a password an admin issued.
+ */
+export const TEMPORARY_PASSWORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** One uniformly-random character, via randomInt (rejection-sampled — `% alphabet.length` is biased). */
 function pick(alphabet: string): string {
   return alphabet[randomInt(alphabet.length)]!;

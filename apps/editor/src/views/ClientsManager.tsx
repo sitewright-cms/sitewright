@@ -4,6 +4,7 @@ import { InvitePanel } from './InvitePanel';
 import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
 import { OneTimeSecret } from './ui/OneTimeSecret';
+import { resetPasswordWarning } from './ui/temporary-password';
 import { glassPanel, dangerButton, ghostButton } from '../theme';
 
 interface ClientsManagerProps {
@@ -20,7 +21,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   const [error, setError] = useState<string | null>(null);
   // A password the server just minted, held until the admin dismisses it. Never refetched — the server
   // keeps only the hash, so leaving this screen loses it for good.
-  const [issued, setIssued] = useState<{ label: string; secret: string } | null>(null);
+  const [issued, setIssued] = useState<{ label: string; secret: string; expiresAt?: string } | null>(null);
   const { confirm, dialog } = useDialogs();
   const toast = useToast();
 
@@ -64,7 +65,8 @@ export function ClientsManager({ project }: ClientsManagerProps) {
       title: 'Approve without the invite link',
       message:
         `Grant ${invite.email} access to ${project.name} now? ` +
-        'If they have no account yet, one is created and a password is shown ONCE. ' +
+        'If they have no account yet, one is created and a temporary password is shown ONCE — ' +
+        'they choose their own the first time they sign in. ' +
         'The outstanding invite link stops working either way.',
       confirmLabel: 'Approve',
       danger: false,
@@ -75,7 +77,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
       const res = await api.approveProjectInvite(project.id, invite.id);
       // An existing account keeps its own password — there is nothing to reveal, and saying so beats a
       // blank panel the admin waits on.
-      if (res.password) setIssued({ label: res.email, secret: res.password });
+      if (res.password) setIssued({ label: res.email, secret: res.password, expiresAt: res.passwordExpiresAt });
       else toast.show(`${res.email} already had an account — access granted, password unchanged.`);
       await load();
     } catch (err) {
@@ -87,14 +89,14 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   async function resetPassword(userId: string, email: string) {
     const ok = await confirm({
       title: 'Issue a new password',
-      message: `Replace ${email}'s password? Their current one stops working immediately, and the new one is shown ONCE.`,
+      message: resetPasswordWarning(email),
       confirmLabel: 'Issue new password',
     });
     if (!ok) return;
     setError(null);
     try {
       const res = await api.resetProjectMemberPassword(project.id, userId);
-      setIssued({ label: res.email ?? email, secret: res.password });
+      setIssued({ label: res.email ?? email, secret: res.password, expiresAt: res.passwordExpiresAt });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to issue a new password');
     }
@@ -112,7 +114,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
         project (they can’t delete it or invite others).
       </p>
 
-      {issued && <OneTimeSecret label={issued.label} secret={issued.secret} onDismiss={() => setIssued(null)} />}
+      {issued && <OneTimeSecret label={issued.label} secret={issued.secret} expiresAt={issued.expiresAt} onDismiss={() => setIssued(null)} />}
 
       <ul className="mb-6 flex flex-col gap-2">
         {clients.map((m) => (

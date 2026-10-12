@@ -128,6 +128,7 @@ function MainApp({
   // Set when the signed-in user still has the seeded default password; gates the whole app behind a
   // forced "set a new password" screen until they change it (the server enforces this independently).
   const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [temporaryPassword, setTemporaryPassword] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   // Phone-sized viewport: the edge rails and other desktop-only chrome are not mounted at all (see
   // the rail block at the end of this component, and lib/use-is-mobile).
@@ -168,14 +169,19 @@ function MainApp({
     setRecoveryCodesRemaining(0);
     setSitesDomain(undefined);
     setMustChangePassword(false);
+    setTemporaryPassword(false);
     setStage({ name: 'auth' });
   }
 
   /** Reload the signed-in user. `authed` is reported separately from `projects` because an empty
    *  project list is NOT the same as a missing session — a signed-in developer with no projects
    *  yet returns exactly the same array as a 401 does. Anything that gates on being signed in has
-   *  to read the flag. */
-  async function refresh(): Promise<{ authed: boolean; projects: Project[] }> {
+   *  to read the flag.
+   *
+   *  `held` is a session that still has to replace its password. It IS signed in, but it is nobody to
+   *  the rest of the server yet — the consent page included — so nothing that needs an identity may
+   *  be resumed until the forced screen is done. */
+  async function refresh(): Promise<{ authed: boolean; held: boolean; projects: Project[] }> {
     try {
       const me = await api.me();
       setProjects(me.projects);
@@ -187,13 +193,29 @@ function MainApp({
       setHasPassword(me.hasPassword);
       setSitesDomain(me.sitesDomain);
       setMustChangePassword(me.mustChangePassword);
+      setTemporaryPassword(me.temporaryPassword);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
-      return { authed: true, projects: me.projects };
+      return { authed: true, held: me.mustChangePassword, projects: me.projects };
     } catch {
       setStage({ name: 'auth' });
-      return { authed: false, projects: [] };
+      return { authed: false, held: false, projects: [] };
     }
+  }
+
+  /**
+   * A pending agent-authorization to hand the browser back to, or null. Only for a session the server
+   * will actually recognize there.
+   *
+   * ★ Both conditions are the same guard. /oauth/authorize bounces anyone it does not recognize here
+   * as `/?next=/oauth/authorize?…`; following that link while it still would not recognize us just
+   * gets bounced straight back, and the two redirects chase each other as fast as the browser can go —
+   * a window reloading in a blur until the rate limiter finally stops it. That is true signed OUT, and
+   * equally true signed in on a password that has to be replaced first. Either way `next` survives in
+   * the URL, and whichever screen clears the condition (login, or the forced change) resumes it.
+   */
+  function resumableReturnTo(session: { authed: boolean; held: boolean }): string | null {
+    return session.authed && !session.held ? safeReturnTo(window.location.search) : null;
   }
 
   // Session expiry: any API 401 means the login token is no longer valid. Drop an AUTHENTICATED user
@@ -230,22 +252,15 @@ function MainApp({
   const branding = useBranding();
 
   useEffect(() => {
-    void refresh().then(({ authed }) => {
+    void refresh().then((session) => {
       // SIGNED IN with a pending agent-authorization to resume? Hand the browser straight back to the
       // consent page rather than dropping the user on the project selector with no idea what happened.
-      // `replace`, not `assign`, so Back does not bounce them through the login again.
-      //
-      // ★ `authed` is the whole point of this guard. /oauth/authorize bounces an unauthenticated agent
-      // here as `/?next=/oauth/authorize?…`; following that link while still signed out just gets
-      // bounced straight back, and the two redirects chase each other as fast as the browser can go —
-      // a login window reloading in a blur until the rate limiter finally stops it. Signed out, the
-      // login screen simply stays up; `next` survives in the URL and the post-login handler resumes it.
-      if (authed) {
-        const next = safeReturnTo(window.location.search);
-        if (next) {
-          window.location.replace(next);
-          return;
-        }
+      // `replace`, not `assign`, so Back does not bounce them through the login again. (See
+      // resumableReturnTo for when this must NOT happen.)
+      const next = resumableReturnTo(session);
+      if (next) {
+        window.location.replace(next);
+        return;
       }
       // Open the selector on first SPA load (unless an invite is mid-flow).
       if (!initialInviteToken) setSelectorOpen(true);
@@ -300,6 +315,31 @@ function MainApp({
     return <SkeletonList rows={4} className="mx-auto max-w-md p-8" label="Loading the editor…" />;
   }
 
+  // A signed-in user on the seeded default password — or on a temporary one somebody else issued —
+  // can't reach the editor until they replace it. The server independently 403s everything else such a
+  // session asks for with a `password-change-required` sentinel, so this is the UX half of a hard gate,
+  // not just a nag. Changing the password re-fetches `/me` (the flag clears, the projects arrive).
+  //
+  // BEFORE the invite screen: accepting an invite is one of the things such a session may not do, so
+  // an invite link opened now would only show the server's refusal. The invite is still there once the
+  // password is replaced — and so is an agent-authorization waiting in `?next=`, which resumes here.
+  if (mustChangePassword && stage.name !== 'auth') {
+    return (
+      <ForcePasswordChange
+        email={email}
+        branding={branding}
+        temporary={temporaryPassword}
+        onDone={() =>
+          void refresh().then((session) => {
+            const next = resumableReturnTo(session);
+            if (next) window.location.replace(next);
+          })
+        }
+        onSignOut={() => void signOut()}
+      />
+    );
+  }
+
   // An invite link short-circuits the normal app until accepted or dismissed.
   if (inviteToken) {
     return (
@@ -323,10 +363,10 @@ function MainApp({
     return (
       <Login
         onAuthed={() =>
-          void refresh().then(({ authed }) => {
+          void refresh().then((session) => {
             // Same guard as the mount effect: only resume the agent-authorization once there is
-            // actually a session to authorize with, or the two redirects chase each other.
-            const next = authed ? safeReturnTo(window.location.search) : null;
+            // a session the consent page will recognize, or the two redirects chase each other.
+            const next = resumableReturnTo(session);
             if (next) window.location.replace(next);
             else setSelectorOpen(true);
           })
@@ -334,20 +374,6 @@ function MainApp({
         initialMfaTicket={mfaTicket}
         initialNotice={notice}
         branding={branding}
-      />
-    );
-  }
-
-  // A signed-in user on the seeded default password can't reach the editor until they change it. The
-  // server independently 403s every write with a `password-change-required` sentinel, so this is the UX
-  // half of a hard gate, not just a nag. Changing the password re-fetches `/me` (the flag clears).
-  if (mustChangePassword) {
-    return (
-      <ForcePasswordChange
-        email={email}
-        branding={branding}
-        onDone={() => void refresh()}
-        onSignOut={() => void signOut()}
       />
     );
   }

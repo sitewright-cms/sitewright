@@ -688,7 +688,8 @@ export class SitewrightClient {
 
   /**
    * Approves a pending invite without its link, making the invitee a member now. Member token with
-   * `members:invite`. For an address with no account the response carries a one-time password.
+   * `members:invite`. For an address with no account the response carries a temporary password
+   * (and `passwordExpiresAt`): its owner replaces it at first sign-in.
    */
   async approveInvite(inviteId: string): Promise<unknown> {
     // Same alphabet as a project id, for the same reason: a `..` must never reach the path.

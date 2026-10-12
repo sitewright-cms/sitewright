@@ -446,7 +446,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       'approve_invite',
       {
         description:
-          'Add an invited person to the project NOW, without them opening the invite link. If the address has no account yet, one is created and its one-time `password` is returned — it is shown this once, so pass it to the user to hand over and do not store or repeat it. If the account already exists, access is simply granted.',
+          'Add an invited person to the project NOW, without them opening the invite link. If the address has no account yet, one is created and a TEMPORARY `password` is returned — it is shown this once, so pass it to the user to hand over and do not store or repeat it. Tell the user it is temporary: the person must choose their own password the first time they sign in, and it stops working at `passwordExpiresAt` (a week) if they have not; signing in through single sign-on instead discards it. If the account already exists, access is simply granted.',
         inputSchema: { inviteId: IdSchema.describe('The `id` of a pending invite, from invite_member or list_members.') },
       },
       gate('members:invite', ({ inviteId }: { inviteId: string }) => client.approveInvite(inviteId)),

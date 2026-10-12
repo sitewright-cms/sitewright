@@ -92,18 +92,21 @@ describe('TeamManager', () => {
 
   it('approves a pending staff invite outright and reveals the password once', async () => {
     listInvites.mockResolvedValue({ invites: [{ ...pendingInvite, role: 'admin' }] });
-    approveStaffInvite.mockResolvedValue({ email: 'new@acme.test', userId: 'u-9', created: true, password: 'Ab3$xYz7-Qm2wKp5' });
+    approveStaffInvite.mockResolvedValue({ email: 'new@acme.test', userId: 'u-9', created: true, password: 'Ab3$xYz7-Qm2wKp5', passwordExpiresAt: '2031-03-09T12:00:00.000Z' });
     render(<TeamManager />);
     fireEvent.click(await screen.findByRole('button', { name: 'Approve new@acme.test now' }));
+    expect(await screen.findByText(/a temporary password is shown ONCE/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(approveStaffInvite).toHaveBeenCalledWith('i-1'));
     expect(await screen.findByText('Ab3$xYz7-Qm2wKp5')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/Temporary password for new@acme.test.*stops working on .*2031/);
   });
 
   it('issues a replacement password for another staff account', async () => {
-    resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1', revokedMemberTokens: 0 });
+    resetStaffPassword.mockResolvedValue({ email: 'dev@acme.test', password: 'Kd8!wRt3-Zn6qVx1', passwordExpiresAt: '2031-03-09T12:00:00.000Z', revokedMemberTokens: 0 });
     render(<TeamManager />);
     fireEvent.click(await screen.findByRole('button', { name: 'Issue a new password for dev@acme.test' }));
+    expect(await screen.findByText(/It is temporary: they cannot use the editor until they have signed in with it and chosen their own \(or signed in through single sign-on, which discards it\), and it stops working after 7 days/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Issue new password' }));
     // They hold no member tokens, so nothing is asked and nothing is said about them: the server's
     // cautious default applies, which revokes nothing when there is nothing.

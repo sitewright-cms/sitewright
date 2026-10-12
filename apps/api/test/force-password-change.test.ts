@@ -11,8 +11,10 @@ import type { Database } from '../src/db/client.js';
 /**
  * PR4 of the env-slimming epic: the first-boot admin left on the well-known DEFAULT password is forced
  * to change it before doing anything. The seed sets `users.must_change_password` ONLY for that case; a
- * server guard 403s every state-changing request with a `password-change-required` sentinel until the
- * password is changed (which clears the flag).
+ * server guard answers everything such a session asks for — reads too — with a
+ * `password-change-required` sentinel until the password is changed (which clears the flag).
+ *
+ * The same gate holds an account on a TEMPORARY password; see temporary-passwords.test.ts.
  */
 
 async function login(app: FastifyInstance, email: string, password: string): Promise<string> {
@@ -65,15 +67,19 @@ describe('GET /me exposes mustChangePassword', () => {
 });
 
 describe('the forced-change guard', () => {
-  it('403s state-changing requests with the sentinel but allows reads', async () => {
+  it('403s everything with the sentinel — reads too — except the one read the forced screen needs', async () => {
     const db = await makeTestDb();
     const app = await createApp({ db });
     await app.ready();
     const { cookie } = await flaggedAdmin(db, app);
 
-    // A read passes through (so the SPA can load and show the forced screen).
+    // `/me` passes (so the SPA can load and show the forced screen)…
     const read = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: cookie } });
     expect(read.statusCode).toBe(200);
+    // …and no other read does: the well-known default password must not be a way to LOOK either.
+    const list = await app.inject({ method: 'GET', url: '/projects', cookies: { sw_session: cookie } });
+    expect(list.statusCode).toBe(403);
+    expect((list.json() as { error: string }).error).toBe('password-change-required');
 
     // A mutating request is blocked with the recognizable sentinel — before the handler runs.
     const write = await app.inject({

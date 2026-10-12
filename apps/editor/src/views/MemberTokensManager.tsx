@@ -35,7 +35,7 @@ const ACCOUNT_CAPABILITIES: Array<{ cap: MemberTokenAdminCapability; label: stri
     // token — an invite becomes a person's own login, and approving one hands the token a password.
     cap: 'members:invite',
     label: 'Invite and add members',
-    hint: 'Invites people to a project you own, or adds them at once without the invite link — for a new address that creates the account and returns its password to the token. Either way they get their own sign-in: full editing and the project’s settings, payments included. They stay a member after this token is revoked.',
+    hint: 'Invites people to a project you own, or adds them at once without the invite link — for a new address that creates the account and returns a temporary password to the token, which the person replaces at first sign-in. Either way they get their own sign-in: full editing and the project’s settings, payments included. They stay a member after this token is revoked.',
   },
 ];
 

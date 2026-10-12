@@ -14,15 +14,18 @@ interface ForcePasswordChangeProps {
   /** Escape hatch — sign out without changing the password. */
   onSignOut: () => void;
   branding?: Branding;
+  /** The password to replace is a temporary one somebody else issued, not the seeded default. */
+  temporary?: boolean;
 }
 
 /**
  * The forced "set a new password" gate. Shown full-screen (before the editor loads) whenever the
- * signed-in user still carries the server's `mustChangePassword` flag — i.e. a first-boot admin left on
- * the well-known default password. The server independently rejects every state-changing request with a
- * `password-change-required` sentinel until this completes, so this screen can't be bypassed by URL.
+ * signed-in user still carries the server's `mustChangePassword` flag — a first-boot admin left on the
+ * well-known default password, or anyone on a TEMPORARY password (an invite approved without its link,
+ * or a password an admin issued). The server independently answers every other request from such a
+ * session with a `password-change-required` sentinel, so this screen can't be bypassed by URL.
  */
-export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAULT_BRANDING }: ForcePasswordChangeProps) {
+export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAULT_BRANDING, temporary = false }: ForcePasswordChangeProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -55,12 +58,21 @@ export function ForcePasswordChange({ email, onDone, onSignOut, branding = DEFAU
         </h1>
         <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">Choose a new password</h2>
         <p className="mt-0.5 mb-5 text-xs text-slate-500 dark:text-slate-400">
-          This account (<span className="font-medium">{email}</span>) is still using the default password.
-          Set a new one to continue — it’s required before you can do anything else.
+          {temporary ? (
+            <>
+              This account (<span className="font-medium">{email}</span>) is on a temporary password that
+              someone else issued. Choose your own to continue — it’s required before you can do anything else.
+            </>
+          ) : (
+            <>
+              This account (<span className="font-medium">{email}</span>) is still using the default password.
+              Set a new one to continue — it’s required before you can do anything else.
+            </>
+          )}
         </p>
 
         <div className="mb-4">
-          <label className={fieldLabel} htmlFor="fpw-current">Current password</label>
+          <label className={fieldLabel} htmlFor="fpw-current">{temporary ? 'Temporary password' : 'Current password'}</label>
           <input
             id="fpw-current"
             type="password"

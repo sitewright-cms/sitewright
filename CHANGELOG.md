@@ -228,9 +228,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   `{{sw-icon "name"}}` falls back to a Lucide outline for every name Phosphor has no glyph for, and
   that set is generated from `lucide-static` — so bumping the package changed nothing until the
   generator ran, and it had not run for several releases while each bump read as done.
-  - **96 icons added** (2,034 → 2,130), among them `rugby-ball`, `cupcake`, `faucet`, `galaxy`,
-    `credit-card-check`/`-plus`/`-minus`/`-x`, `clef-treble`/`-bass`/`-alto`. They are in the icon
-    picker and in icon search.
+  - **96 icon names added** (2,034 → 2,130), among them `rugby-ball`, `cupcake`, `faucet`, `galaxy`,
+    `credit-card-check`/`-plus`/`-minus`/`-x`, `clef-treble`/`-bass`/`-alto`. `{{sw-icon "rugby-ball"}}`
+    used to render nothing and now draws the icon — which matters most for names an agent or an
+    imported page writes from memory. They are usable **by name only**: the icon picker and icon
+    search list Phosphor glyphs, as before, so a Lucide icon with no Phosphor twin is not offered
+    there (true of about 1,590 of them, old and new).
   - **65 existing icons are redrawn** by Lucide (`key`, `leaf`, `cookie`, `ghost`, `credit-card`,
     `door-open`, `badge-check`, …). A page using one of them as a Lucide outline shows the new
     drawing after its next publish. None was removed or renamed, and the Lucide → Phosphor alias map

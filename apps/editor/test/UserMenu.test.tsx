@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Project } from '../src/api';
 
 const { updateEmail, changePassword } = vi.hoisted(() => ({
@@ -16,6 +16,13 @@ vi.mock('../src/api', () => ({
 vi.mock('../src/views/ApiKeysManager', () => ({
   ApiKeysManager: ({ project }: { project: Project }) => <div data-testid="api-keys">keys:{project.id}</div>,
 }));
+vi.mock('../src/views/MemberTokensManager', () => ({
+  MemberTokensManager: ({ isInstanceAdmin, hasPassword }: { isInstanceAdmin: boolean; hasPassword: boolean }) => (
+    <div data-testid="member-tokens">
+      member-tokens:{String(isInstanceAdmin)}:{String(hasPassword)}
+    </div>
+  ),
+}));
 vi.mock('../src/views/SecurityTab', () => ({
   SecurityTab: ({ totpEnabled }: { totpEnabled: boolean }) => <div data-testid="security">security:{String(totpEnabled)}</div>,
 }));
@@ -25,7 +32,7 @@ import { UserMenu } from '../src/views/UserMenu';
 const ownerProject: Project = { id: 'p1', name: 'Acme', slug: 'acme', role: 'owner' };
 const memberProject: Project = { id: 'p2', name: 'Blog', slug: 'blog', role: 'member' };
 
-function renderMenu(project: Project | null = null, totpEnabled = false, hasPassword = true) {
+function renderMenu(project: Project | null = null, totpEnabled = false, hasPassword = true, staff: { isStaff?: boolean; isInstanceAdmin?: boolean } = {}) {
   const onClose = vi.fn();
   const onEmailChanged = vi.fn();
   const onMfaChanged = vi.fn();
@@ -37,6 +44,7 @@ function renderMenu(project: Project | null = null, totpEnabled = false, hasPass
       totpEnabled={totpEnabled}
       recoveryCodesRemaining={0}
       hasPassword={hasPassword}
+      {...staff}
       onClose={onClose}
       onEmailChanged={onEmailChanged}
       onMfaChanged={onMfaChanged}
@@ -132,6 +140,47 @@ describe('UserMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Access keys' }));
     expect(screen.queryByTestId('api-keys')).toBeNull();
     expect(screen.getByText(/Open a project you own/)).toBeInTheDocument();
+  });
+
+  it('★ shows a PROJECT TOKENS and a MEMBER TOKENS section to agency staff', () => {
+    renderMenu(ownerProject, false, true, { isStaff: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Access keys' }));
+    const project = screen.getByRole('region', { name: 'Project tokens' });
+    const member = screen.getByRole('region', { name: 'Member tokens' });
+    expect(within(project).getByTestId('api-keys')).toHaveTextContent('keys:p1');
+    expect(within(member).getByTestId('member-tokens')).toHaveTextContent('member-tokens:false:true');
+    // Project tokens come first: they are the narrower, more common choice.
+    expect(project.compareDocumentPosition(member) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('keeps member tokens available with NO project open — they belong to the member, not a project', () => {
+    // …and a single-sign-on account (no password) is passed through, so the manager can say why it
+    // cannot confirm a new token yet.
+    renderMenu(null, false, false, { isStaff: true, isInstanceAdmin: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Access keys' }));
+    expect(screen.getByTestId('member-tokens')).toHaveTextContent('member-tokens:true:false');
+    expect(within(screen.getByRole('region', { name: 'Project tokens' })).getByText(/Open a project you own/)).toBeInTheDocument();
+  });
+
+  it('hides the member tokens section from an invited client, who cannot hold one', () => {
+    renderMenu(memberProject);
+    fireEvent.click(screen.getByRole('button', { name: 'Access keys' }));
+    expect(screen.getByRole('region', { name: 'Project tokens' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Member tokens' })).toBeNull();
+    expect(screen.queryByTestId('member-tokens')).toBeNull();
+  });
+
+  it('warns staff that a password change also revokes their member tokens — and nobody else', () => {
+    const { unmount } = render(
+      <UserMenu email="me@acme.test" project={null} totpEnabled={false} recoveryCodesRemaining={0} hasPassword isStaff onClose={() => {}} onEmailChanged={() => {}} onMfaChanged={() => {}} onPasswordChanged={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Password' }));
+    expect(screen.getByText('Changing your password signs out every other session and revokes your member tokens.')).toBeInTheDocument();
+    unmount();
+    // A client cannot hold a member token, so the sentence does not mention one.
+    renderMenu(null);
+    fireEvent.click(screen.getByRole('button', { name: 'Password' }));
+    expect(screen.getByText('Changing your password signs out every other session.')).toBeInTheDocument();
   });
 
   it('renders the Security (MFA) tab, passing through the enabled state', () => {

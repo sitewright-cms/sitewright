@@ -971,6 +971,35 @@ describe('preview-site API (signed path)', () => {
     expect(res.json()).toEqual({ connected: 0 });
   });
 
+  it('agent-presence counts a member token once it has acted here — the pill and the connections list agree', async () => {
+    const { t, projectId } = await setup('ap-member@acme.test', 'site-presence');
+    const cookies = { sw_session: t };
+    const minted = await app.inject({
+      method: 'POST',
+      url: '/account/member-tokens',
+      cookies,
+      payload: { name: 'fleet', expiresInDays: 1, currentPassword: 'Pw-secret-1', capabilities: ['content:read'] },
+    });
+    expect(minted.statusCode).toBe(201);
+    const token = (minted.json() as { token: string }).token;
+    const presence = async (): Promise<number> =>
+      ((await app.inject({ method: 'GET', url: `/projects/${projectId}/agent-presence`, cookies })).json() as { connected: number }).connected;
+
+    // Minted but unused: a member token is bound to no project, so it is connected nowhere yet.
+    expect(await presence()).toBe(0);
+    const used = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/page`, headers: { authorization: `Bearer ${token}` } });
+    expect(used.statusCode).toBe(200);
+    // The activity write is fire-and-forget; give it a moment to land.
+    let connected = 0;
+    for (let i = 0; i < 200 && connected === 0; i += 1) {
+      connected = await presence();
+      if (connected === 0) await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(connected).toBe(1);
+    const listed = (await app.inject({ method: 'GET', url: `/projects/${projectId}/agent-connections`, cookies })).json() as { items: unknown[] };
+    expect(listed.items).toHaveLength(1);
+  });
+
   it('minting the signed base requires authentication + tenant membership', async () => {
     const a = await setup('a@acme.test', 'site-a');
     const b = await setup('b@globex.test', 'site-b');

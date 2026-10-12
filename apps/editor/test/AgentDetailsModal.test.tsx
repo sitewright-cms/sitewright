@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 const { listAgentConnections, disconnectAgent } = vi.hoisted(() => ({
   listAgentConnections: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(),
@@ -93,6 +93,30 @@ describe('AgentDetailsModal', () => {
     await waitFor(() => expect(disconnectAgent).toHaveBeenCalledWith('p', 'oauth:u1'));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(await screen.findByText('Connect an agent')).toBeInTheDocument(); // now empty → guide leads
+  });
+
+  it('shows a member token with its owner, and offers to revoke it only to someone who may', async () => {
+    const member = conn({ id: 'member:t1', kind: 'member', name: 'Site fleet', owner: 'dev@agency.test', capabilities: ['content:read', 'projects:create'] });
+    listAgentConnections.mockResolvedValue({ items: [{ ...member, canRevoke: false }] });
+    const { unmount } = render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
+    expect(await screen.findByText('Member token')).toBeInTheDocument();
+    expect(screen.getByText('dev@agency.test')).toBeInTheDocument();
+    expect(screen.getByText('projects:create')).toBeInTheDocument();
+    // Not theirs and not an admin: no button that could only fail.
+    expect(screen.getByText('Managed by its owner')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Revoke' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+    unmount();
+
+    listAgentConnections.mockReset().mockResolvedValueOnce({ items: [{ ...member, canRevoke: true }] }).mockResolvedValueOnce({ items: [] });
+    disconnectAgent.mockResolvedValue(undefined);
+    render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
+    // It is not a per-project disconnect, and the confirm says so.
+    expect(await screen.findByText('Revoke on every project?')).toBeInTheDocument();
+    expect(disconnectAgent).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm' }));
+    await waitFor(() => expect(disconnectAgent).toHaveBeenCalledWith('p', 'member:t1'));
   });
 
   it('surfaces a load error', async () => {

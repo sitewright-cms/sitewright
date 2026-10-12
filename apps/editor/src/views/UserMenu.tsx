@@ -4,6 +4,8 @@ import { isPasswordValid, PASSWORD_MIN_LENGTH } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { Modal } from './ui/Modal';
 import { ApiKeysManager } from './ApiKeysManager';
+import { MemberTokensManager } from './MemberTokensManager';
+import { SectionHelp } from './ui/SectionHelp';
 import { SecurityTab } from './SecurityTab';
 import { PasswordRequirements } from './ui/PasswordRequirements';
 import { useToast } from './ui/Toast';
@@ -22,6 +24,10 @@ interface UserMenuProps {
   recoveryCodesRemaining: number;
   /** Whether the account has a password (false for an OIDC-provisioned user) — drives the Password tab. */
   hasPassword: boolean;
+  /** Agency staff (admin/developer) — the only accounts that may hold member tokens. */
+  isStaff?: boolean;
+  /** Instance admin — changes what a member token of theirs can reach, and the tab says so. */
+  isInstanceAdmin?: boolean;
   onClose: () => void;
   /** Called after a successful email change so the app can refresh its cached identity. */
   onEmailChanged: (email: string) => void;
@@ -33,11 +39,12 @@ interface UserMenuProps {
 
 /**
  * The header user menu: a tabbed modal for self-service account management. Account (change login
- * email) and Password are always available; Access keys relocates the project-scoped PAT manager
- * here (owner-only); Security hosts two-factor (TOTP). Each tab is self-contained — the modal
- * supplies only the chrome (no global Save button).
+ * email) and Password are always available; Access keys holds both kinds of bearer token — PROJECT
+ * tokens for the open project (owner-only) and, for agency staff, MEMBER tokens that follow the person
+ * across every project they can reach; Security hosts two-factor (TOTP). Each tab is self-contained —
+ * the modal supplies only the chrome (no global Save button).
  */
-export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, hasPassword, onClose, onEmailChanged, onMfaChanged, onPasswordChanged }: UserMenuProps) {
+export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, hasPassword, isStaff = false, isInstanceAdmin = false, onClose, onEmailChanged, onMfaChanged, onPasswordChanged }: UserMenuProps) {
   const [tab, setTab] = useState<Tab>('account');
 
   const tabBtn = (id: Tab) =>
@@ -59,8 +66,8 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
     >
       <div className="p-5">
         {tab === 'account' && <AccountTab email={email} onEmailChanged={onEmailChanged} />}
-        {tab === 'password' && <PasswordTab hasPassword={hasPassword} onPasswordChanged={onPasswordChanged} />}
-        {tab === 'access' && <AccessKeysTab project={project} />}
+        {tab === 'password' && <PasswordTab hasPassword={hasPassword} isStaff={isStaff} onPasswordChanged={onPasswordChanged} />}
+        {tab === 'access' && <AccessKeysTab project={project} isStaff={isStaff} isInstanceAdmin={isInstanceAdmin} hasPassword={hasPassword} />}
         {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} recoveryCodesRemaining={recoveryCodesRemaining} onChanged={onMfaChanged} />}
       </div>
     </Modal>
@@ -147,7 +154,7 @@ function AccountTab({ email, onEmailChanged }: { email: string; onEmailChanged: 
   );
 }
 
-function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean; onPasswordChanged: () => void }) {
+function PasswordTab({ hasPassword, isStaff, onPasswordChanged }: { hasPassword: boolean; isStaff: boolean; onPasswordChanged: () => void }) {
   const toast = useToast();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -184,7 +191,9 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
         <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{hasPassword ? 'Change password' : 'Set a password'}</h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
           {hasPassword
-            ? 'Changing your password signs out every other session.'
+            ? // Member tokens are minted with the password, so they end with it — said here because
+              // automation stopping is otherwise a surprise.
+              `Changing your password signs out every other session${isStaff ? ' and revokes your member tokens' : ''}.`
             : 'Your account signs in via single sign-on. Set a password to also sign in with your email.'}
         </p>
       </div>
@@ -214,22 +223,57 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
   );
 }
 
-function AccessKeysTab({ project }: { project: Project | null }) {
-  if (!project || project.role !== 'owner') {
-    return (
-      <div className={`${glassCard} p-5 text-sm text-slate-500 dark:text-slate-400`}>
-        Open a project you own to manage its access keys. Access keys are project-scoped tokens for CI
-        and headless tools.
-      </div>
-    );
-  }
+/** One of the Access keys tab's two sections: a heading with its "?" explanation, then the manager. */
+function TokenSection({ id, title, tip, children }: { id: string; title: string; tip: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        Project-scoped tokens (PATs) for <span className="font-medium text-slate-700 dark:text-slate-200">{project.name}</span> — used by CI and headless tools.
-      </p>
-      {/* Keyed so the one-time-token banner + state reset if the open project changes. */}
-      <ApiKeysManager key={project.id} project={project} />
+    <section aria-labelledby={id} className="flex flex-col gap-3">
+      {/* The "?" sits BESIDE the heading, not inside it — inside, its tip text would become part of
+          the section's accessible name. */}
+      <div className="flex items-center gap-1.5">
+        <h3 id={id} className="text-sm font-bold text-slate-800 dark:text-slate-100">
+          {title}
+        </h3>
+        <SectionHelp tip={tip} />
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function AccessKeysTab({ project, isStaff, isInstanceAdmin, hasPassword }: { project: Project | null; isStaff: boolean; isInstanceAdmin: boolean; hasPassword: boolean }) {
+  const ownsOpenProject = project !== null && project.role === 'owner';
+  return (
+    <div className="flex flex-col gap-8">
+      <TokenSection
+        id="project-tokens-heading"
+        title="Project tokens"
+        tip="Bound to one project and nothing else. For CI, a headless tool, or an agent that should only ever touch this site."
+      >
+        {ownsOpenProject ? (
+          <>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Project-scoped tokens (PATs) for <span className="font-medium text-slate-700 dark:text-slate-200">{project.name}</span> — used by CI and headless tools.
+            </p>
+            {/* Keyed so the one-time-token banner + state reset if the open project changes. */}
+            <ApiKeysManager key={project.id} project={project} />
+          </>
+        ) : (
+          <div className={`${glassCard} p-5 text-sm text-slate-500 dark:text-slate-400`}>
+            Open a project you own to manage its project tokens. A project token is bound to that one
+            project.
+          </div>
+        )}
+      </TokenSection>
+      {/* Staff only: an invited client cannot hold a member token, so the section would be a dead end. */}
+      {isStaff && (
+        <TokenSection
+          id="member-tokens-heading"
+          title="Member tokens"
+          tip="Belongs to you, not to a project. For agents and automation that create and manage several projects with one token."
+        >
+          <MemberTokensManager isInstanceAdmin={isInstanceAdmin} hasPassword={hasPassword} />
+        </TokenSection>
+      )}
     </div>
   );
 }

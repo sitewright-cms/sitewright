@@ -455,6 +455,117 @@ export const apiKeys = sqliteTable(
 export type ApiKeySource = 'pat' | 'oauth';
 
 /**
+ * Capabilities ONLY a member token may carry — they act on the ACCOUNT's reach rather than inside one
+ * project, so they have no meaning on a project key and must never reach one.
+ *
+ * ★ Kept OUT of {@link API_KEY_CAPABILITIES} on purpose. That list also drives the OAuth
+ * `scopes_supported` and the consent page, which pre-checks every non-elevated capability for a client
+ * that asked for no scope — adding these there would hand "delete projects" to any agent a user
+ * approved without reading. Every one of them is opt-in when the token is minted.
+ *
+ * `members:manage` covers what does not create access: listing and removing a project's members,
+ * listing and revoking its invites.
+ *
+ * ★ `members:invite` is separate, and is the one capability here that reaches PAST the token. An
+ * invite is redeemed by a person, who becomes a project member with a login of their own — one that
+ * is not narrowed by this token's capabilities, can open the settings a bearer never can (the
+ * project's payment credentials among them), and stays a member after the token is revoked. Folding
+ * it into `members:manage` would have made "may remove a member" quietly mean "may create a login".
+ *
+ * Issuing a PASSWORD for an account is not a capability at all — that stays an interactive decision
+ * for every kind of bearer.
+ */
+export const MEMBER_TOKEN_ADMIN_CAPABILITIES = [
+  'projects:create',
+  'projects:rename',
+  'projects:delete',
+  'members:manage',
+  'members:invite',
+] as const;
+export type MemberTokenAdminCapability = (typeof MEMBER_TOKEN_ADMIN_CAPABILITIES)[number];
+
+/** Everything a member token may carry: the project capabilities plus the opt-in account ones. */
+export const MEMBER_TOKEN_CAPABILITIES = [...API_KEY_CAPABILITIES, ...MEMBER_TOKEN_ADMIN_CAPABILITIES] as const;
+export type MemberTokenCapability = (typeof MEMBER_TOKEN_CAPABILITIES)[number];
+
+/**
+ * MEMBER tokens: a bearer token that belongs to a staff MEMBER rather than to one project. It reaches
+ * every project its owner can reach, with the owner's CURRENT role there — looked up on each request,
+ * never frozen at mint time — narrowed by `capabilities`. For agents and automation that create and
+ * manage several projects; a project key ({@link apiKeys}) remains the narrow, one-site option.
+ *
+ * Only the SHA-256 of the token is stored; the raw `swm_…` token is shown once at creation. No
+ * `role` column, deliberately: the role is whatever the member holds on the project being addressed.
+ */
+export const memberTokens = sqliteTable(
+  'member_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    name: text('name').notNull(),
+    /** JSON array of {@link MemberTokenCapability}. */
+    capabilities: text('capabilities', { mode: 'json' }).notNull().$type<MemberTokenCapability[]>(),
+    tokenHash: text('token_hash').notNull().unique(),
+    /** Short, non-secret identifying prefix shown in the UI (e.g. `swm_a1b2c3d4`). */
+    tokenPrefix: text('token_prefix').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('member_tokens_user_idx').on(t.userId)],
+);
+
+/**
+ * Which projects a member token has actually touched. A member token is bound to no project, so
+ * without this a project's owner could not see that automation is acting on their project.
+ *
+ * One row per (token, project); removed with either.
+ */
+export const memberTokenProjects = sqliteTable(
+  'member_token_projects',
+  {
+    tokenId: text('token_id')
+      .notNull()
+      .references(() => memberTokens.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    firstUsedAt: integer('first_used_at', { mode: 'timestamp_ms' }).notNull(),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.tokenId, t.projectId] }),
+    index('member_token_projects_project_idx').on(t.projectId),
+  ],
+);
+
+/**
+ * The ledger of projects a member token CREATED: provenance ("which token made this project") and
+ * what the per-token daily creation cap counts.
+ *
+ * ★ `projectId` is deliberately NOT a foreign key. A creation that is rolled back (a failed import, a
+ * failed duplicate) hard-deletes the project, and if these rows went with it, every failed attempt
+ * would be refunded from the cap — leaving the most expensive loop there is (create, import, fail,
+ * remove) bounded by nothing but the request rate. The row therefore outlives its project, which is
+ * also the more useful provenance: it still says who made a project that has since been reaped.
+ */
+export const memberTokenCreations = sqliteTable(
+  'member_token_creations',
+  {
+    id: text('id').primaryKey(),
+    tokenId: text('token_id')
+      .notNull()
+      .references(() => memberTokens.id),
+    projectId: text('project_id').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('member_token_creations_token_idx').on(t.tokenId, t.createdAt)],
+);
+
+/**
  * A user's first-connect CONSENT for the on-page AI assistant on one project: which capabilities they
  * granted it and its autonomy. Written when the user approves the consent panel; read on every
  * subsequent drawer open (so approval is one-time per user+project) and by the chat endpoint to clamp

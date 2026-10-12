@@ -1,4 +1,5 @@
 [
+  "DELETE /account/member-tokens/:id",
   "DELETE /account/mfa/totp",
   "DELETE /account/passkeys/:id",
   "DELETE /admin/deleted-projects",
@@ -28,6 +29,7 @@
   "GET /.well-known/oauth-authorization-server",
   "GET /.well-known/oauth-protected-resource",
   "GET /.well-known/security.txt",
+  "GET /account/member-tokens",
   "GET /account/passkeys",
   "GET /admin/deleted-projects",
   "GET /admin/invites",
@@ -147,6 +149,7 @@
   "PATCH /projects/:id",
   "PATCH /projects/:projectId/media/:id",
   "PATCH /projects/:projectId/transactions/:id/fulfilment",
+  "POST /account/member-tokens",
   "POST /account/mfa/recovery-codes",
   "POST /account/mfa/totp/confirm",
   "POST /account/mfa/totp/setup",

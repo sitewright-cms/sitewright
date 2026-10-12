@@ -223,7 +223,9 @@ describe('project API keys — bearer auth + capabilities', () => {
     const { token, projectId, t } = await keyWith(['content:read', 'publish']);
     const res = await app.inject({ method: 'GET', url: '/api-key/self', headers: bearer(token) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ projectId,
+    expect(res.json()).toEqual({
+      kind: 'project', // a member token answers `member` and names no project
+      projectId,
       role: 'owner',
       capabilities: ['content:read', 'publish'],
       // The effective agent instructions (default here — no admin override) ride along so the bridge

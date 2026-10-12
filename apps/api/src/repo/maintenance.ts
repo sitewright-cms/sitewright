@@ -1,7 +1,10 @@
-import { and, eq, isNotNull, lt, lte, or } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lt, lte, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
+  memberTokenCreations,
+  memberTokenProjects,
+  memberTokens,
   content,
   mfaLoginTickets,
   oauthAuthCodes,
@@ -101,6 +104,18 @@ export async function reapDeadPats(db: Database, now: Date = new Date()): Promis
         or(lte(apiKeys.expiresAt, cutoff), and(isNotNull(apiKeys.revokedAt), lte(apiKeys.revokedAt, cutoff))),
       ),
     );
+  // Member tokens follow the same rule, for the same reason. Their per-project activity rows and
+  // their creation ledger go first: both reference the token, and there is no ON DELETE CASCADE.
+  const deadMemberTokens = or(
+    lte(memberTokens.expiresAt, cutoff),
+    and(isNotNull(memberTokens.revokedAt), lte(memberTokens.revokedAt, cutoff)),
+  );
+  await db.transaction(async (tx) => {
+    const dead = tx.select({ id: memberTokens.id }).from(memberTokens).where(deadMemberTokens);
+    await tx.delete(memberTokenProjects).where(inArray(memberTokenProjects.tokenId, dead));
+    await tx.delete(memberTokenCreations).where(inArray(memberTokenCreations.tokenId, dead));
+    await tx.delete(memberTokens).where(deadMemberTokens);
+  });
 }
 
 /**

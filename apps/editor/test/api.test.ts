@@ -883,6 +883,28 @@ describe('api client', () => {
     expect(delInit.method).toBe('DELETE');
   });
 
+  it('lists, creates (token once) and revokes MEMBER tokens — account routes, no project in the path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], dailyProjectCap: 50 }));
+    const list = await api.listMemberTokens();
+    expect(list.dailyProjectCap).toBe(50);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/account/member-tokens');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { token: 'swm_x', key: { id: 't1', name: 'Fleet' } }));
+    const created = await api.createMemberToken({ currentPassword: 'pw', name: 'Fleet', capabilities: ['content:read', 'projects:create'], expiresInDays: 30 });
+    expect(created.token).toBe('swm_x');
+    const [createUrl, createInit] = fetchMock.mock.calls[1]!;
+    expect(createUrl).toBe('/account/member-tokens');
+    expect(createInit.method).toBe('POST');
+    // No `role`: a member token acts at whatever role its owner holds on the project it addresses.
+    expect(JSON.parse(createInit.body)).toEqual({ currentPassword: 'pw', name: 'Fleet', capabilities: ['content:read', 'projects:create'], expiresInDays: 30 });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteMemberToken('t/1');
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/account/member-tokens/t%2F1');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   it('lists agent connections and disconnects one (URL-encoding the opaque oauth id)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'oauth:u1', kind: 'oauth' }] }));
     const list = await api.listAgentConnections('p');

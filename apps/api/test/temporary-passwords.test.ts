@@ -32,6 +32,7 @@ vi.mock('../src/auth/password.js', async (original) => {
 });
 
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
+import { registrationOf } from './passkey-fixtures.js';
 import { users } from '../src/db/schema.js';
 import { discardTemporaryPassword, registerAccount, setPlatformRole } from '../src/repo/accounts.js';
 import { TEMPORARY_PASSWORD_TTL_MS } from '../src/auth/password.js';
@@ -373,7 +374,7 @@ describe('a password an admin issues for someone else', () => {
       registrationInfo: { credential: { id: 'cred-dev', publicKey: new Uint8Array([1, 2, 3, 4]), counter: 0, transports: ['internal'] }, credentialDeviceType: 'singleDevice', credentialBackedUp: false },
     });
     const begun = await dev.post('/account/passkeys/register/options', { currentPassword: PASSWORD });
-    const added = await dev.post('/account/passkeys/register/verify', { handle: (begun.json() as { handle: string }).handle, response: { id: 'cred-dev' }, name: 'laptop' });
+    const added = await dev.post('/account/passkeys/register/verify', { handle: (begun.json() as { handle: string }).handle, response: registrationOf('cred-dev'), name: 'laptop' });
     expect(added.statusCode).toBe(201);
 
     const { password } = await resetDev();

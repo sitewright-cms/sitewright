@@ -17,6 +17,7 @@ vi.mock('@simplewebauthn/server', () => ({
 }));
 
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
+import { registrationOf } from './passkey-fixtures.js';
 
 const SESSION_COOKIE = 'sw_session';
 const PASSWORD = 'Pw-secret-1';
@@ -50,7 +51,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
     });
     const opts = await client.post('/account/passkeys/register/options', { currentPassword: PASSWORD });
     const { handle } = opts.json() as { handle: string };
-    return client.post('/account/passkeys/register/verify', { handle, response: { id }, name });
+    return client.post('/account/passkeys/register/verify', { handle, response: registrationOf(id), name });
   }
 
   it('registers a passkey and lists it', async () => {
@@ -116,7 +117,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
     const first = await client.post('/account/passkeys/register/options');
     expect(first.statusCode).toBe(200);
     const { handle } = first.json() as { handle: string };
-    expect((await client.post('/account/passkeys/register/verify', { handle, response: { id: 'cred-sso' }, name: 'First' })).statusCode).toBe(201);
+    expect((await client.post('/account/passkeys/register/verify', { handle, response: registrationOf('cred-sso'), name: 'First' })).statusCode).toBe(201);
 
     // From then on it HAS something to confirm with, and is asked for it — a password it does not have is no answer.
     expect((await client.post('/account/passkeys/register/options')).statusCode).toBe(403);
@@ -165,7 +166,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
       method: 'POST',
       url: '/account/passkeys/register/verify',
       headers: { host: 'admin.example.com' },
-      payload: { handle, response: { id: 'cred-second' }, name: 'On second host' },
+      payload: { handle, response: registrationOf('cred-second'), name: 'On second host' },
     });
     expect(res.statusCode).toBe(201);
 
@@ -186,7 +187,7 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
       method: 'POST',
       url: '/account/passkeys/register/verify',
       headers: { 'x-forwarded-host': 'cms.example.com', 'x-forwarded-proto': 'https' },
-      payload: { handle, response: { id: 'cred-default' }, name: 'Behind a proxy' },
+      payload: { handle, response: registrationOf('cred-default'), name: 'Behind a proxy' },
     });
 
     const [item] = (await client.get('/account/passkeys')).json().items as Array<{ rpId: string | null }>;
@@ -210,8 +211,9 @@ describe('passkeys (WebAuthn registration + passwordless login)', () => {
     const client = await harness.signup();
     verifyReg.mockResolvedValue({ verified: false });
     const { handle } = (await client.post('/account/passkeys/register/options', { currentPassword: PASSWORD })).json() as { handle: string };
-    const res = await client.post('/account/passkeys/register/verify', { handle, response: { id: 'x' }, name: 'X' });
+    const res = await client.post('/account/passkeys/register/verify', { handle, response: registrationOf('x'), name: 'X' });
     expect(res.statusCode).toBe(403);
+    expect(verifyReg, 'refused by the verification, not before it').toHaveBeenCalledTimes(1);
     expect((await client.get('/account/passkeys')).json().items).toHaveLength(0);
   });
 

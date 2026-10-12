@@ -4,14 +4,13 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
   type AuthenticationResponseJSON,
-  type AuthenticatorTransportFuture,
   type PublicKeyCredentialCreationOptionsJSON,
   type PublicKeyCredentialRequestOptionsJSON,
   type RegistrationResponseJSON,
   type VerifiedAuthenticationResponse,
   type VerifiedRegistrationResponse,
 } from '@simplewebauthn/server';
-import { isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
+import { cose, decodeAttestationObject, isoBase64URL, isoCBOR, isoUint8Array } from '@simplewebauthn/server/helpers';
 
 /** Fallback Relying Party display name (authenticator/OS passkey UI) when no platform name is set. */
 const DEFAULT_RP_NAME = 'SiteWright';
@@ -81,7 +80,17 @@ function userHandle(userId: string): Uint8Array<ArrayBuffer> {
   return toBufferView(isoUint8Array.fromUTF8String(userId));
 }
 
-const asTransports = (t?: string[]): AuthenticatorTransportFuture[] | undefined => t as AuthenticatorTransportFuture[] | undefined;
+/**
+ * The public-key algorithms a passkey may be registered with — stated, not left to the library.
+ *
+ * From @simplewebauthn/server 14 the default depends on the RUNTIME: where Node can do post-quantum
+ * signatures (24.7+), ML-DSA-44 is offered first. A passkey made that way only verifies on such a
+ * runtime, so one registered on a from-source install running Node 24 would stop signing in the day
+ * that instance moves to the published image (Node 22) — with no password to fall back on for an
+ * account that has none. These three are what every version before 14 offered, on every runtime.
+ * Adding a post-quantum algorithm is a decision to make here, on purpose, once the image can verify it.
+ */
+export const PASSKEY_ALGORITHMS: number[] = [cose.COSEALG.EdDSA, cose.COSEALG.ES256, cose.COSEALG.RS256];
 
 /** Registration options for a new passkey, excluding the user's existing credentials. */
 export function registrationOptions(params: {
@@ -98,8 +107,9 @@ export function registrationOptions(params: {
     userName: params.userName,
     userID: userHandle(params.userId),
     attestationType: 'none', // first-party login — no attestation policy needed
-    excludeCredentials: params.existing.map((c) => ({ id: c.id, transports: asTransports(c.transports) })),
+    excludeCredentials: params.existing.map((c) => ({ id: c.id, transports: c.transports })),
     authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+    supportedAlgorithmIDs: PASSKEY_ALGORITHMS,
   });
 }
 
@@ -108,17 +118,51 @@ export function registrationOptions(params: {
 // an ALTERNATIVE first factor) and, when enabled, the TOTP gate on top.
 const REQUIRE_USER_VERIFICATION = false;
 
-export function verifyRegistration(params: {
+/** Anything the library's CBOR encoder takes (its own type lives in a package we do not depend on). */
+type CborValue = Parameters<typeof isoCBOR.encode>[0];
+
+/**
+ * The registration response with its attestation STATEMENT thrown away — whatever the client sent is
+ * re-encoded as a `none` attestation carrying the same authenticator data.
+ *
+ * We ask every authenticator for no attestation (`attestationType: 'none'`): this is a first-party
+ * login with no policy about which make of authenticator may be used. But the library verifies
+ * whatever statement the CLIENT chooses to send, and a statement is certificates — attacker-supplied
+ * ones, parsed, chained, and (from @simplewebauthn/server 14) checked for revocation by FETCHING the
+ * URL written inside them. For the `android-key` format that fetch happens against a trust anchor
+ * taken from the client's own chain, before the chain is found not to lead to a real root: any
+ * signed-in user could make this server request a URL of their choosing, past every SSRF guard the
+ * rest of the code goes through. Upstream's fix in 14.0.2 does not cover that path.
+ *
+ * Nothing is lost by dropping it. Everything this server relies on — the challenge, the origin, the
+ * relying-party hash, user presence, the credential's public key and its algorithm — is in the
+ * authenticator data and the client data, which are verified exactly as before. Re-encoding ALWAYS
+ * (not only when the format is something other than `none`) keeps this to one code path, the one
+ * every real registration exercises.
+ */
+export function withoutAttestationStatement(response: RegistrationResponseJSON): RegistrationResponseJSON {
+  const decoded = decodeAttestationObject(isoBase64URL.toBuffer(response.response.attestationObject));
+  const bare = new Map<string, CborValue>();
+  bare.set('fmt', 'none');
+  bare.set('attStmt', new Map<string, CborValue>());
+  bare.set('authData', decoded.get('authData'));
+  const attestationObject = isoBase64URL.fromBuffer(toBufferView(isoCBOR.encode(bare)));
+  return { ...response, response: { ...response.response, attestationObject } };
+}
+
+export async function verifyRegistration(params: {
   rp: RpConfig;
   response: RegistrationResponseJSON;
   expectedChallenge: string;
 }): Promise<VerifiedRegistrationResponse> {
   return verifyRegistrationResponse({
-    response: params.response,
+    response: withoutAttestationStatement(params.response),
     expectedChallenge: params.expectedChallenge,
     expectedOrigin: params.rp.origin,
     expectedRPID: params.rp.rpID,
     requireUserVerification: REQUIRE_USER_VERIFICATION,
+    // The same list the options offered: a response in any other algorithm was not asked for.
+    supportedAlgorithmIDs: PASSKEY_ALGORITHMS,
   });
 }
 
@@ -129,7 +173,7 @@ export function authenticationOptions(params: {
 }): Promise<PublicKeyCredentialRequestOptionsJSON> {
   return generateAuthenticationOptions({
     rpID: params.rp.rpID,
-    allowCredentials: params.allow.map((c) => ({ id: c.id, transports: asTransports(c.transports) })),
+    allowCredentials: params.allow.map((c) => ({ id: c.id, transports: c.transports })),
     userVerification: 'preferred',
   });
 }
@@ -149,7 +193,7 @@ export function verifyAuthentication(params: {
       id: params.credential.id,
       publicKey: toBufferView(isoBase64URL.toBuffer(params.credential.publicKey)),
       counter: params.credential.counter,
-      transports: asTransports(params.credential.transports),
+      transports: params.credential.transports,
     },
     requireUserVerification: REQUIRE_USER_VERIFICATION,
   });

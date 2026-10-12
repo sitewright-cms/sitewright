@@ -188,6 +188,42 @@ The running version of an instance is reported at `GET /version` (baked into the
     v4 coverage provider and vice versa, so each bump failed on the other's version. Together they
     pass with no source or config change — the same 8,534 tests, coverage gates intact.
 
+- **Dependency refresh, second batch** — the five open Dependabot PRs (#1088–#1092), again as one
+  branch. Production: **`@simplewebauthn/server` and `@simplewebauthn/browser` 13 → 14**,
+  `@modelcontextprotocol/sdk` 1.31 → 1.32, `sanitize-html` 2.17 → 2.18, `isomorphic-git`, `nodemailer`,
+  `lucide-react`, `daisyui`, `basic-ftp`, `chrome-launcher`. Development: **`globals` 15 → 17**,
+  `vite`, `@vitejs/plugin-react`, `jsdom`, `turbo`, `eslint-plugin-security`, `@types/node`,
+  `lucide-static`, `simple-icons`. Every package resolves to the version Dependabot proposed.
+  - The server half of SimpleWebAuthn was the one red PR: version 14 no longer exports
+    `AuthenticatorTransportFuture` (transports are plain strings now).
+  - **A passkey registration is now verified without whatever attestation statement the client
+    sent.** This instance asks authenticators for no attestation, but the library verifies any
+    statement that arrives — and a statement is certificates the client supplies. From version 14
+    that includes fetching the revocation URL written inside them, and for the `android-key` format
+    it does so against a trust anchor taken from the client's own chain, before finding the chain
+    leads to no real root. Taken as is, the upgrade would have let any signed-in user make the
+    server request a URL of their choosing, past every SSRF guard the rest of the code goes through
+    (found in review; version 13 had no such fetch, and the fix in 14.0.2 does not cover this path).
+    The statement is now dropped and the response re-encoded as a `none` attestation before the
+    library sees it. Nothing relied on is lost: the challenge, origin, relying-party hash, user
+    presence and the credential's key and algorithm are verified as before.
+  - **Passkey algorithms are now stated rather than left to the library** — EdDSA, ES256 and RS256,
+    what every earlier version offered. From 14 the library's default depends on the runtime: where
+    Node can do post-quantum signatures (24.7+) it offers ML-DSA-44 first. A passkey registered that
+    way only verifies on such a runtime, so one made on a from-source install running a newer Node
+    would stop signing in when that instance moved to the published image (Node 22). Nothing changes
+    for anyone today; offering a post-quantum algorithm becomes a decision rather than a side effect
+    of which Node is installed.
+  - `sanitize-html` 2.18 closes three parsing gaps (raw text inside `<noscript>`, the URL of a
+    `<meta http-equiv="refresh">`, and SVG `animate` elements that set a URL attribute). Output for
+    ordinary rich text is unchanged. `daisyui` 5.7.47 makes `.btn-disabled` apply only together with
+    `.btn`, which is how every component here uses it.
+  - The lockfile is the five Dependabot lockfiles merged, with one exception: they would all have
+    moved `legacy-javascript` (Lighthouse's data, pulled in as `latest`) back from 0.0.3 to 0.0.1,
+    and it stays at 0.0.3.
+  - The `lucide-static` bump does not change the icons a site can use: `packages/blocks/src/icons.ts`
+    is generated from it and was last regenerated for Lucide 1.31. Nothing checks that it is current.
+
 ## [0.61.0] — 2026-10-09
 
 ### Added

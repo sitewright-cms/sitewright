@@ -106,3 +106,72 @@ test('unused files: says so plainly when everything is referenced', async ({ pag
   const dialog = page.getByRole('dialog', { name: 'Unused files' });
   await expect(dialog.getByText(/Nothing unused/)).toBeVisible();
 });
+
+/**
+ * ★ Select-all on a LARGE library. The dialog used to send one DELETE per file, and those share the
+ * session's general budget of 200 requests a minute — so past a couple of hundred files it was refused
+ * partway through with a 429 and the rest of the selection stayed put. It now sends batches of 200 to
+ * the bulk endpoint. 450 files is more than two batches and more than the old per-file budget.
+ */
+test('★ unused files: select-all on 450 files moves every one to the Recycle Bin', async ({ page, baseURL }) => {
+  test.setTimeout(120_000);
+  const COUNT = 450;
+  const tag = `unusedbulk${Date.now().toString(36)}`;
+  await signUp(page, `${tag}@e2e.test`);
+  const created = await page.request.post('/projects', { data: { name: `Bulk ${tag}`, slug: tag } });
+  expect(created.status()).toBe(201);
+  const projectId = (await created.json()).project.id as string;
+
+  // The import bundle carries media rows, so the whole library seeds in one call. No bytes on disk —
+  // the scan and the Recycle Bin work on the records, which is all this needs.
+  const media = Array.from({ length: COUNT }, (_, i) => {
+    const n = String(i).padStart(4, '0');
+    return {
+      kind: 'image' as const,
+      id: `u${n}`,
+      filename: `leftover-${n}.png`,
+      folder: '',
+      bytes: 2048,
+      format: 'png',
+      width: 1,
+      height: 1,
+      hasAlpha: false,
+      animated: false,
+      original: `leftover-${n}.png`,
+      url: `/media/${tag}/u${n}-leftover-${n}.png`,
+    };
+  });
+  const imported = await page.request.post(`/projects/${projectId}/import`, {
+    data: { pages: [{ id: 'home', path: '', title: 'Home', source: '<p>home</p>' }], media },
+  });
+  expect(imported.status(), await imported.text()).toBe(200);
+
+  const bulkCalls: string[] = [];
+  const refused: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/media/bulk-delete')) bulkCalls.push(req.url());
+  });
+  page.on('response', (res) => {
+    if (res.status() === 429) refused.push(res.url());
+  });
+
+  await page.goto(baseURL!);
+  await page.getByText(`Bulk ${tag}`, { exact: true }).first().click();
+  await page.getByRole('button', { name: 'Open File Manager' }).click();
+  await page.getByRole('button', { name: 'Search for unused files' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Unused files' });
+  await expect(dialog.getByText(`${COUNT} files that nothing refers to.`)).toBeVisible({ timeout: 30_000 });
+
+  await dialog.getByRole('button', { name: `Move ${COUNT} to Recycle Bin` }).click();
+  await page.getByRole('button', { name: 'Move to Recycle Bin' }).click();
+  // The dialog closes only when every file went; a partial failure keeps it open with a count.
+  await expect(dialog).toHaveCount(0, { timeout: 30_000 });
+
+  expect(refused, 'no request was refused by the rate limiter').toEqual([]);
+  expect(bulkCalls, '450 files go in three batches, not 450 requests').toHaveLength(3);
+
+  const live = (await (await page.request.get(`/projects/${projectId}/media`)).json()) as { items: unknown[] };
+  expect(live.items).toHaveLength(0);
+  const binned = (await (await page.request.get(`/projects/${projectId}/media/deleted`)).json()) as { items: unknown[] };
+  expect(binned.items).toHaveLength(COUNT);
+});

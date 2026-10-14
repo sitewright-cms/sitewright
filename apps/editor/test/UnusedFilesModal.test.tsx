@@ -1,14 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { UnusedFilesModal } from '../src/views/files/UnusedFilesModal';
+import { ApiError } from '../src/api';
 
 const unusedMedia = vi.fn();
 const deleteMedia = vi.fn();
+const deleteMediaBulk = vi.fn();
 const confirmMock = vi.fn();
 
 vi.mock('../src/api', async (orig) => {
   const actual = await orig<typeof import('../src/api')>();
-  return { ...actual, api: { unusedMedia: (...a: unknown[]) => unusedMedia(...a), deleteMedia: (...a: unknown[]) => deleteMedia(...a) } };
+  return {
+    ...actual,
+    api: {
+      unusedMedia: (...a: unknown[]) => unusedMedia(...a),
+      deleteMedia: (...a: unknown[]) => deleteMedia(...a),
+      deleteMediaBulk: (...a: unknown[]) => deleteMediaBulk(...a),
+    },
+  };
 });
 vi.mock('../src/views/ui/Dialogs', () => ({
   useDialogs: () => ({ confirm: (...a: unknown[]) => confirmMock(...a), dialog: null }),
@@ -32,6 +41,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   confirmMock.mockResolvedValue(true);
   deleteMedia.mockResolvedValue(undefined);
+  deleteMediaBulk.mockImplementation(async (_p: string, ids: string[]) => ({ deleted: ids, failed: [], requested: ids.length }));
   unusedMedia.mockResolvedValue({ items: [asset('aaaaaa', 'one.png'), asset('bbbbbb', 'two.png')], scanned });
 });
 
@@ -71,8 +81,44 @@ describe('UnusedFilesModal', () => {
     render(<UnusedFilesModal {...props} />);
     fireEvent.click(await screen.findByLabelText('Select two.png')); // deselect
     fireEvent.click(screen.getByRole('button', { name: /Move 1 to Recycle Bin/ }));
-    await waitFor(() => expect(deleteMedia).toHaveBeenCalledTimes(1));
-    expect(deleteMedia).toHaveBeenCalledWith('p1', 'aaaaaa');
+    await waitFor(() => expect(deleteMediaBulk).toHaveBeenCalledTimes(1));
+    expect(deleteMediaBulk).toHaveBeenCalledWith('p1', ['aaaaaa']);
+    await waitFor(() => expect(props.onClose).toHaveBeenCalled());
+  });
+
+  it('★ sends a large selection in batches of 200, not one request per file', async () => {
+    // One DELETE per file shared the session's general budget of 200 requests a minute, so select-all
+    // on a large library was refused with a 429 partway through.
+    const many = Array.from({ length: 450 }, (_, i) => asset(`id${String(i).padStart(4, '0')}`, `f${String(i).padStart(4, '0')}.png`));
+    unusedMedia.mockResolvedValue({ items: many, scanned });
+    render(<UnusedFilesModal {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Move 450 to Recycle Bin/ }));
+    await waitFor(() => expect(props.onClose).toHaveBeenCalled());
+    expect(deleteMedia).not.toHaveBeenCalled();
+    expect(deleteMediaBulk.mock.calls.map((c) => (c[1] as string[]).length)).toEqual([200, 200, 50]);
+    expect(deleteMediaBulk.mock.calls.flatMap((c) => c[1] as string[])).toEqual(many.map((m) => m.id));
+  });
+
+  it('★ a batch the server refuses outright counts all of its files, and the next batch still goes', async () => {
+    const many = Array.from({ length: 250 }, (_, i) => asset(`id${String(i).padStart(4, '0')}`, `f${String(i).padStart(4, '0')}.png`));
+    unusedMedia.mockResolvedValue({ items: many, scanned });
+    deleteMediaBulk.mockRejectedValueOnce(new Error('429 rate limit exceeded'));
+    render(<UnusedFilesModal {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Move 250 to Recycle Bin/ }));
+    // The reason travels with the count, so the author can tell "wait a minute" from "sign in again".
+    expect(await screen.findByText('200 files could not be deleted — 429 rate limit exceeded.')).toBeInTheDocument();
+    expect(deleteMediaBulk).toHaveBeenCalledTimes(2);
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it('★ stops after a refusal about who is asking — every later batch would get the same answer', async () => {
+    const many = Array.from({ length: 450 }, (_, i) => asset(`id${String(i).padStart(4, '0')}`, `f${String(i).padStart(4, '0')}.png`));
+    unusedMedia.mockResolvedValue({ items: many, scanned });
+    deleteMediaBulk.mockRejectedValueOnce(new ApiError(403, 'you do not have access to this project'));
+    render(<UnusedFilesModal {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Move 450 to Recycle Bin/ }));
+    expect(await screen.findByText('450 files could not be deleted — you do not have access to this project.')).toBeInTheDocument();
+    expect(deleteMediaBulk).toHaveBeenCalledTimes(1);
   });
 
   it('warns in the confirm when the selection includes history-only files', async () => {
@@ -89,11 +135,11 @@ describe('UnusedFilesModal', () => {
     render(<UnusedFilesModal {...props} />);
     fireEvent.click(await screen.findByRole('button', { name: /Move 2 to Recycle Bin/ }));
     await waitFor(() => expect(confirmMock).toHaveBeenCalled());
-    expect(deleteMedia).not.toHaveBeenCalled();
+    expect(deleteMediaBulk).not.toHaveBeenCalled();
   });
 
   it('★ reports a PARTIAL failure instead of claiming a clean sweep', async () => {
-    deleteMedia.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('locked'));
+    deleteMediaBulk.mockResolvedValueOnce({ deleted: ['aaaaaa'], failed: [{ id: 'bbbbbb', error: 'media not found' }], requested: 2 });
     render(<UnusedFilesModal {...props} />);
     fireEvent.click(await screen.findByRole('button', { name: /Move 2 to Recycle Bin/ }));
     expect(await screen.findByText(/1 file could not be deleted/)).toBeInTheDocument();

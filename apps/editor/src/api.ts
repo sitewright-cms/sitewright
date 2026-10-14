@@ -74,6 +74,16 @@ export interface PasskeyView {
   lastUsedAt: string | null;
 }
 
+/** The server's cap on one `deleteMediaBulk` call; a larger selection goes in several. */
+export const MEDIA_BULK_DELETE_MAX = 200;
+
+/** What `deleteMediaBulk` did: each requested id is in exactly one of `deleted` / `failed`. */
+export interface MediaBulkDeleteResult {
+  deleted: string[];
+  failed: Array<{ id: string; error: string }>;
+  requested: number;
+}
+
 /** Admin-panel branding from the public `/auth/config` boot (defaults applied server-side). */
 export interface Branding {
   name: string;
@@ -1837,6 +1847,9 @@ export const api = {
     request<{ item: MediaAsset }>('PUT', `/projects/${projectId}/media/${id}/svg`, { svg }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
+  /** Move up to {@link MEDIA_BULK_DELETE_MAX} assets to the Recycle Bin in one call; what did not go is listed in `failed`. */
+  deleteMediaBulk: (projectId: string, ids: string[]) =>
+    request<MediaBulkDeleteResult>('POST', `/projects/${projectId}/media/bulk-delete`, { ids }),
   /** Clear the project's on-demand thumbnail cache (keeps every original; regenerated on next view). */
   pruneThumbnails: (projectId: string) =>
     request<{ removed: number }>('POST', `/projects/${projectId}/media/prune-thumbnails`, {}),

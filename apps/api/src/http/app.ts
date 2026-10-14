@@ -6902,6 +6902,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
+    // BULK move to the Recycle Bin. The Unused Files dialog used to send one DELETE per asset, and
+    // those share the session's general budget (200 a minute), so "select all" on a large library ran
+    // into a 429 partway through and left the rest of the selection behind. One statement per call; an
+    // id that is unknown, already binned or another project's is reported back, not fatal.
+    const BulkMediaDeleteBody = z.object({ ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX) });
+    // `rl(30)`, not `rlAgent`: 200 rows a call on the one shared SQLite writer, and nothing but the editor
+    // calls it yet — lifting the ceiling for API keys is a decision for whoever gives agents a tool for it.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/bulk-delete', { config: rl(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:delete');
+      const body = BulkMediaDeleteBody.safeParse(req.body);
+      if (!body.success) {
+        return reply
+          .code(400)
+          .send({ error: `invalid request — ids (1-${BULK_DELETE_MAX}) are required`, details: body.error.flatten() });
+      }
+      // Duplicates would count twice in `requested` and report a phantom failure.
+      const ids = [...new Set(body.data.ids)];
+      const binned = new Set(await contentRepo.softDeleteMediaMany(ctx, ids));
+      if (binned.size > 0) mediaRecordCache.clear(); // drop any cached serve record for these assets
+      const deleted = ids.filter((id) => binned.has(id));
+      const failed = ids.filter((id) => !binned.has(id)).map((id) => ({ id, error: 'media not found' }));
+      return reply.send({ deleted, failed, requested: ids.length });
+    });
+
     // --- Recycle Bin: list soft-deleted media, restore one, or purge it permanently -----------
     /**
      * Which of this project's media nothing refers to.

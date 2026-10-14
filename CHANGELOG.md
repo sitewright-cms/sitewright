@@ -84,6 +84,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Deleting many unused files at once was refused partway through.** *Search for unused files* →
+  *Move to Recycle Bin* sent one request per file, and those share the general budget of 200 requests
+  a minute per session — so on a large library select-all was answered with "rate limit exceeded"
+  part of the way through and the rest stayed put. It now goes through a new bulk endpoint,
+  `POST /projects/:id/media/bulk-delete` (`{ ids }`, up to 200 per call, needs `content:delete`),
+  which moves them to the Recycle Bin in one statement and reports any id it could not find; the
+  dialog sends a larger selection in batches of 200. Still the Recycle Bin, still restorable for 90
+  days.
+
 - **The icon picker stopped at 120 icons and scrolling did nothing.** Every tab ended its list in a
   hard `.slice(0, 120)` with no mechanism anywhere to raise it, so the grid rendered the first
   screenful and ran out — hiding 1393 of 1513 Phosphor icons, 155 of 275 brands and 135 of 255 flags.

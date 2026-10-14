@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Trash2, History } from 'lucide-react';
-import { api, type MediaAsset } from '../../api';
+import { api, ApiError, MEDIA_BULK_DELETE_MAX, type MediaAsset } from '../../api';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { FileTypeIcon } from '../media/file-icons';
@@ -83,12 +83,24 @@ export function UnusedFilesModal({ projectId, onClose, onChanged }: { projectId:
     if (!ok) return;
     setBusy(true);
     setError(null);
+    // In batches, not one request per file: per-file DELETEs share the session's general budget of
+    // 200 requests a minute, so select-all on a large library was refused partway through. A batch
+    // refused outright counts all of its files and the next batch still goes — unless the refusal was
+    // about WHO is asking, which every later batch would get too.
     const failed: string[] = [];
-    for (const id of ids) {
+    let reason: string | null = null;
+    for (let i = 0; i < ids.length; i += MEDIA_BULK_DELETE_MAX) {
+      const batch = ids.slice(i, i + MEDIA_BULK_DELETE_MAX);
       try {
-        await api.deleteMedia(projectId, id);
-      } catch {
-        failed.push(id);
+        const res = await api.deleteMediaBulk(projectId, batch);
+        failed.push(...res.failed.map((f) => f.id));
+      } catch (e) {
+        failed.push(...batch);
+        reason ??= e instanceof Error ? e.message : null;
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+          failed.push(...ids.slice(i + MEDIA_BULK_DELETE_MAX));
+          break;
+        }
       }
     }
     setBusy(false);
@@ -98,7 +110,7 @@ export function UnusedFilesModal({ projectId, onClose, onChanged }: { projectId:
       // message before it would wipe the one thing the author needs to see. Say how many did NOT go,
       // rather than reporting a clean sweep and leaving them on screen.
       await load();
-      setError(`${failed.length} file${failed.length === 1 ? '' : 's'} could not be deleted.`);
+      setError(`${failed.length} file${failed.length === 1 ? '' : 's'} could not be deleted${reason ? ` — ${reason}` : ''}.`);
       return;
     }
     onClose();

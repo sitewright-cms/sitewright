@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { newId } from '../id.js';
 import { sanitizeImageMapConfig } from '@sitewright/blocks';
-import { and, count, desc, eq, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   CaptchaStoredSchema,
@@ -806,6 +806,25 @@ export class ContentRepository {
       .returning({ id: content.id });
     if (res.length === 0) throw new NotFoundError('media not found');
     this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
+  }
+
+  /**
+   * SOFT-DELETE several media assets in ONE statement — the bulk form of {@link softDeleteMedia}.
+   * Returns the ids that went to the Recycle Bin. An id that does not exist, is already binned or
+   * belongs to another project is simply absent from the result; reporting it is the caller's job.
+   */
+  async softDeleteMediaMany(ctx: ProjectContext, ids: readonly string[], now: Date = new Date()): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const res = await this.db
+      .update(content)
+      .set({ deletedAt: now })
+      .where(
+        and(eq(content.projectId, ctx.projectId), eq(content.kind, 'media'), inArray(content.entityId, [...ids]), isNull(content.deletedAt)),
+      )
+      .returning({ entityId: content.entityId });
+    const binned = res.map((r) => r.entityId as string);
+    for (const id of binned) this.events?.emit(ctx.projectId, { kind: 'media', entityId: id, op: 'delete', actor: ctx.actor });
+    return binned;
   }
 
   /** Restore a soft-deleted media asset (clears `deletedAt`). Throws NotFound if it isn't in the bin. */

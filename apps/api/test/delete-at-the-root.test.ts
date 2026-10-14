@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
 import { registerAccount, addProjectMember, deleteUserAccount } from '../src/repo/accounts.js';
@@ -6,7 +6,8 @@ import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
 import { RevisionsRepository } from '../src/repo/revisions.js';
 import { AgentGrantsRepository } from '../src/repo/agent-grants.js';
-import { checkDatabaseIntegrity } from '../src/repo/integrity.js';
+import { checkDatabaseIntegrity, runIntegrityAction } from '../src/repo/integrity.js';
+import { content as contentTable } from '../src/db/schema.js';
 import { ensureGlobalProject, globalCtx } from '../src/repo/global-library.js';
 import type { ProjectContext } from '../src/repo/context.js';
 import type { Database } from '../src/db/client.js';
@@ -114,7 +115,63 @@ describe('deleting a page takes what depends on it along', () => {
   });
 });
 
+describe('many pages at once — the bulk route and the integrity repair', () => {
+  it('deletes a parent and its child under ONE plan: the child goes, it is never moved up first', async () => {
+    await content.put(ctx, 'page', 'a', page('a', { parent: 'home' }));
+    await content.put(ctx, 'page', 'b', page('b', { parent: 'a' }));
+    await content.put(ctx, 'page', 'c', page('c', { parent: 'b' }));
+    const res = await content.removePages(ctx, ['b', 'a', 'nope']);
+    expect(res).toEqual({ deleted: ['b', 'a'], failed: [{ id: 'nope', error: 'page not found' }] });
+    expect(await parentOf('c')).toBe('home');
+    // `b` was deleted, not first rewritten under `home` — its only History entries are its own.
+    expect((await revisions.list(ctx, 'page', 'b')).map((r) => r.note)).not.toContain('Moved up: its parent page was deleted');
+  });
+
+  it('refuses a refused page on its own, and a clash for the whole batch — nothing deleted', async () => {
+    await content.put(ctx, 'page', 'team', page('team', { parent: 'home' }));
+    await content.put(ctx, 'page', 'about', page('about', { parent: 'home' }));
+    await content.put(ctx, 'page', 'about-team', page('about-team', { path: 'team', parent: 'about' }));
+    await content.put(ctx, 'page', 'leaf', page('leaf', { parent: 'home' }));
+    const res = await content.removePages(ctx, ['home', 'about', 'leaf']);
+    expect(res.deleted).toEqual([]);
+    expect(res.failed.map((f) => f.id)).toEqual(['home', 'about', 'leaf']);
+    expect(res.failed[1]!.error).toMatch(/another page already has/);
+    expect(await content.get(ctx, 'page', 'leaf')).toBeDefined();
+  });
+
+  it('refuses rather than overwrite a page edited after the delete read it', async () => {
+    await content.put(ctx, 'page', 'a', page('a', { parent: 'home' }));
+    await content.put(ctx, 'page', 'b', page('b', { parent: 'a', title: 'Before' }));
+    // The delete plans from a read that is STALE for `b`: an edit landed after it.
+    const realList = content.list.bind(content);
+    const spy = vi.spyOn(content, 'list').mockImplementationOnce(async (c, kind) => {
+      const pages = (await realList(c, kind)) as Array<Record<string, unknown>>;
+      await content.put(ctx, 'page', 'b', page('b', { parent: 'a', title: 'Edited meanwhile' }));
+      return pages;
+    });
+    await expect(content.remove(ctx, 'page', 'a')).rejects.toThrow(/page "b" changed while it was being moved/);
+    spy.mockRestore();
+    expect(await content.get(ctx, 'page', 'b')).toMatchObject({ title: 'Edited meanwhile', parent: 'a' });
+    expect(await content.get(ctx, 'page', 'a')).toBeDefined();
+  });
+});
+
 describe('writes that would point at nothing are refused', () => {
+  it('…but a legacy row that already does stays editable — and movable by the integrity repair', async () => {
+    const now = new Date();
+    const legacy = { id: 'old', path: 'old', title: 'Old', parent: 'ghost', template: 'ghost_tpl' };
+    await db.insert(contentTable).values({ id: 'legacy-old', projectId: ctx.projectId, kind: 'page', entityId: 'old', scope: '', data: legacy, createdAt: now, updatedAt: now });
+    // An ordinary edit keeps the (broken) template it already had…
+    await content.put(ctx, 'page', 'old', { ...legacy, title: 'Renamed' });
+    // …and the parent repair, which rewrites the whole page, is not refused for the OTHER defect.
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' });
+    expect(res.changed).toBe(1);
+    expect(await content.get(ctx, 'page', 'old')).toMatchObject({ parent: 'home', template: 'ghost_tpl', title: 'Renamed' });
+    // Pointing it at a DIFFERENT missing template is still refused.
+    await expect(content.put(ctx, 'page', 'old', { ...legacy, template: 'other_ghost' })).rejects.toThrow(/unknown template "other_ghost"/);
+  });
+
+
   it('a translated title for a page that does not exist', async () => {
     await expect(
       content.put(ctx, 'translation', 'ghost__de', { id: 'ghost__de', pageId: 'ghost', locale: 'de', title: 'X' }),

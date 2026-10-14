@@ -87,7 +87,13 @@ export function planPageRemoval(
   for (const page of survivors) {
     if (!page.parent || !removedIds.has(page.parent)) continue;
     let up: Page | undefined = byId.get(page.parent);
-    while (up && removedIds.has(up.id)) up = up.parent ? byId.get(up.parent) : undefined;
+    // Cycle-safe: a broken chain of removed pages pointing at each other ends the walk (→ default parent).
+    const seen = new Set<string>();
+    while (up && removedIds.has(up.id) && !seen.has(up.id)) {
+      seen.add(up.id);
+      up = up.parent ? byId.get(up.parent) : undefined;
+    }
+    if (up && removedIds.has(up.id)) up = undefined;
     let moved: Page;
     if (up) {
       moved = { ...page, parent: up.id };

@@ -13,7 +13,7 @@
 
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { GLOBAL_TEMPLATE_PREFIX, hasOwnCode, localeOf, pagePath, withResolvedParent } from '@sitewright/core';
-import type { Page } from '@sitewright/schema';
+import { isLinkPage, type Page } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content, contentRevisions, projects, type ContentKind } from '../db/schema.js';
 import { contentVersion, schemaFor, type ContentRepository } from './content.js';
@@ -293,7 +293,12 @@ function defaultLocaleOfRows(rows: Row[]): string {
 function orphanedVariants(pages: readonly Page[], defaultLocale: string): Page[] {
   const mainGroups = new Set(pages.filter((p) => localeOf(p, defaultLocale) === defaultLocale).map((p) => p.translationGroup ?? p.id));
   return pages.filter(
-    (p) => p.translationGroup !== undefined && localeOf(p, defaultLocale) !== defaultLocale && !hasOwnCode(p) && !mainGroups.has(p.translationGroup),
+    (p) =>
+      p.translationGroup !== undefined &&
+      !isLinkPage(p) && // a nav placeholder renders nothing either way
+      localeOf(p, defaultLocale) !== defaultLocale &&
+      !hasOwnCode(p) &&
+      !mainGroups.has(p.translationGroup),
   );
 }
 
@@ -953,12 +958,16 @@ export async function runIntegrityAction(
       const pages = rows.filter((r) => r.kind === 'page').map((r) => r.data as Page);
       const orphans = orphanedVariants(pages, defaultLocaleOfRows(rows)).filter((v) => v.translationGroup === input.subject);
       if (orphans.length === 0) throw new ConflictError('no variant of that page is orphaned any more — re-run the check');
-      // Through the repository, so each is tombstoned and its own children move up like any page delete.
-      for (const v of orphans) await contentRepo.remove(ctx, 'page', v.id);
+      // Through the repository, under ONE plan: each is tombstoned, children move up as for any page delete,
+      // and a refusal (a clash, a language home with pages under it) leaves the whole group as it was.
+      const { deleted, failed } = await contentRepo.removePages(ctx, orphans.map((v) => v.id));
+      if (deleted.length === 0) throw new ConflictError(failed[0]?.error ?? 'the variants could not be deleted');
       return {
         action: input.action,
-        changed: orphans.length,
-        message: `Deleted ${plural(orphans.length, 'language variant', 'language variants')} (restorable from History).`,
+        changed: deleted.length,
+        message:
+          `Deleted ${plural(deleted.length, 'language variant', 'language variants')} (restorable from History).` +
+          (failed.length ? ` ${plural(failed.length, 'was', 'were')} left: ${failed.map((f) => `${f.id}: ${f.error}`).join('; ')}.` : ''),
       };
     }
 

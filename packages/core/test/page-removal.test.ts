@@ -29,6 +29,20 @@ describe('planPageRemoval', () => {
     expect(plan.reparented.map((p) => [p.id, p.parent])).toEqual([['c', 'home']]);
   });
 
+  it('terminates on a parent CYCLE among removed pages, falling back to the home', () => {
+    const a = page({ id: 'a', path: 'a', parent: 'b' });
+    const b = page({ id: 'b', path: 'b', parent: 'a' });
+    const c = page({ id: 'c', path: 'c', parent: 'a' });
+    const plan = planPageRemoval([home, a, b, c], ['a', 'b'], 'en');
+    expect(plan.reparented.map((p) => [p.id, p.parent])).toEqual([['c', 'home']]);
+  });
+
+  it('terminates on a SELF-parented removed page too', () => {
+    const a = page({ id: 'a', path: 'a', parent: 'a' });
+    const c = page({ id: 'c', path: 'c', parent: 'a' });
+    expect(planPageRemoval([home, a, c], ['a'], 'en').reparented.map((p) => [p.id, p.parent])).toEqual([['c', 'home']]);
+  });
+
   it('falls back to the language home when the whole chain above goes', () => {
     // A German page under a German parent with no parent of its own: both removed → its language home.
     const orphanParent = page({ id: 'x', path: 'x', locale: 'de' });

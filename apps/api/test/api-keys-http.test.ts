@@ -178,6 +178,11 @@ describe('project API keys — bearer auth + capabilities', () => {
       const res = await app.inject({ method: 'DELETE', url, headers: bearer(writeTok) });
       expect(res.statusCode, `${url} should be 403 for a content:write-only token`).toBe(403);
     }
+    // POST deletes too: deleting a page across languages removes pages (and their translated titles).
+    for (const url of [`${base}/pages/whatever/delete-group`, `${base}/content/page/bulk-delete`]) {
+      const res = await app.inject({ method: 'POST', url, headers: bearer(writeTok), payload: { ids: ['x'] } });
+      expect(res.statusCode, `${url} should be 403 for a content:write-only token`).toBe(403);
+    }
   });
 
   it('confines a token to its own project (cross-project → 404)', async () => {

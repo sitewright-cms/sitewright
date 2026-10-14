@@ -33,7 +33,8 @@ async function openSystemSettings(page: Page) {
 async function landInProject(page: Page, name: string) {
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill(name);
-  await page.getByLabel('Project slug').fill(`${name.toLowerCase()}-${stamp}`);
+  // `-ui-` keeps it apart from the project each test creates over the API with the same stamp.
+  await page.getByLabel('Project slug').fill(`${name.toLowerCase()}-ui-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
 }

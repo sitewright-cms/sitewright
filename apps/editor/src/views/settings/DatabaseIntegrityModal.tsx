@@ -182,8 +182,22 @@ function planLines(fixes: PlannedFix[]): string[] {
         ? `${group[0]!.issue.projectSlug} (${n(rows, 'row')})`
         : `${n(group.length, 'issue')}, ${n(rows, 'row')} across ${n(new Set(group.map((f) => f.issue.projectId)).size, 'project')}`;
     const undo = action.destructive ? (action.reversible ? ' · restorable from History' : ' · cannot be undone') : '';
-    return `· ${action.label} — ${where}${undo}`;
+    return `${action.label} — ${where}${undo}`;
   });
+}
+
+/** One titled list in the Fix all confirmation. */
+function PlanSection({ title, lines }: { title: string; lines: string[] }) {
+  return (
+    <section>
+      <p className="font-semibold text-slate-700 dark:text-slate-200">{title}</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        {lines.map((line) => (
+          <li key={line}>{line}</li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
@@ -240,7 +254,14 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
     if (action.destructive) {
       const ok = await confirm({
         title: action.label,
-        message: `${action.detail}\n\nThis affects ${issue.count} row(s) in “${issue.projectSlug}”.`,
+        message: (
+          <div className="flex flex-col gap-2">
+            <p>{action.detail}</p>
+            <p>
+              This affects {issue.count} row(s) in “{issue.projectSlug}”.
+            </p>
+          </div>
+        ),
         confirmLabel: action.label,
       });
       if (!ok) return;
@@ -268,16 +289,20 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
     const removals = auto.filter((f) => f.action.destructive);
     const ok = await confirm({
       title: `Fix ${n(auto.length, 'issue')}?`,
-      message: [
-        repairs.length > 0 ? `Repairs — nothing is removed:\n${planLines(repairs).join('\n')}` : '',
-        removals.length > 0 ? `Removals:\n${planLines(removals).join('\n')}` : '',
-        decide.length > 0
-          ? `${n(decide.length, 'issue')} need${decide.length === 1 ? 's' : ''} a decision and will be LEFT ALONE — the repair on offer needs a dataset you choose, deletes something a gentler one could keep, or gives up what a restore would bring back. Run those individually.`
-          : '',
-        unfixable.length > 0 ? `${n(unfixable.length, 'issue')} cannot be fixed from here — each one says what to do instead.` : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
+      message: (
+        <div className="flex flex-col gap-3">
+          {repairs.length > 0 && <PlanSection title="Repairs — nothing is removed" lines={planLines(repairs)} />}
+          {removals.length > 0 && <PlanSection title="Removals" lines={planLines(removals)} />}
+          {decide.length > 0 && (
+            <p>
+              {n(decide.length, 'issue')} need{decide.length === 1 ? 's' : ''} a decision and will be LEFT ALONE — the repair on offer
+              needs a dataset you choose, deletes something a gentler one could keep, or gives up what a restore would bring back. Run
+              those individually.
+            </p>
+          )}
+          {unfixable.length > 0 && <p>{n(unfixable.length, 'issue')} cannot be fixed from here — each one says what to do instead.</p>}
+        </div>
+      ),
       confirmLabel: 'Fix them',
     });
     if (!ok) return;
@@ -395,7 +420,9 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
               ) : (
                 <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" aria-hidden />
               )}
-              <div className="min-w-0 flex-1">
+              {/* A floor on the verdict's width: on a phone the buttons wrap BELOW it instead of squeezing
+                  it to one word per line. */}
+              <div className="min-w-[11rem] flex-1">
                 <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
                   {problems.length === 0 ? 'No integrity problems found' : `${n(problems.length, 'issue')} found`}
                   {notes > 0 && <span className="font-normal text-slate-500 dark:text-slate-400"> · {n(notes, 'note')}</span>}

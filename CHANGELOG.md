@@ -158,6 +158,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Deploying to Local Hosting now ends on the address the site is live at.** It ended in a toast that
+  counted the published pages and said nothing about where they went. It now opens the same kind of
+  dialog a remote deploy does: the build while it runs, then **Open live site** with the address
+  written beside it, or the server's reason when it fails. The link carries the target's preview token
+  when it has one, as View live does. The production URL is linked too when it names a different host;
+  without one, the dialog says what that costs. Closing the dialog mid-build brings back the old toast
+  when the build finishes.
+  - The no-production-URL warning, in both dialogs, used to say `robots.txt` would not be generated.
+    It is: only `sitemap.xml` is missing, along with robots' pointer to it.
+
 - **A password somebody else generated is now temporary.** Approving an invite without its link, and
   issuing a new password for a member or a staff account, hand the caller a password to pass on — so
   the caller has seen it, and when the caller is a member token, so has whatever logs the token's

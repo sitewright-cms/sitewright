@@ -5,6 +5,8 @@ import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
 import { useLongPress } from '../lib/use-long-press';
 import { DeployModal } from './publish/DeployModal';
+import { LocalDeployModal, type LocalDeployState } from './publish/LocalDeployModal';
+import { withPreviewToken } from './publish/DeployLinks';
 import { Modal } from './ui/Modal';
 import { PreviewShareLinks } from './settings/PreviewShareLinks';
 import { buildPreviewUrl } from '../lib/preview-target';
@@ -87,6 +89,11 @@ export function PublishBar({
   const [localHosting, setLocalHosting] = useState(false); // a `local` target exists → served at /sites/
   const [targets, setTargets] = useState<DeployTargetView[]>([]);
   const [deploying, setDeploying] = useState<DeployTargetView | null>(null); // → the streaming DeployModal (remote)
+  /** A Local Hosting deploy's dialog — the target it went to and how far it got. Null when closed. */
+  const [localDeploy, setLocalDeploy] = useState<{ target: DeployTargetView; state: LocalDeployState } | null>(null);
+  // Read when the publish settles: closed mid-build means nobody is looking at the dialog, so the
+  // outcome falls back to a toast instead.
+  const localDeployOpen = useRef(false);
   const [agentActive, setAgentActive] = useState(false);
   const [connectionCount, setConnectionCount] = useState(0);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
@@ -261,9 +268,12 @@ export function PublishBar({
     return () => document.removeEventListener('mousedown', onDown);
   }, [previewMenuOpen]);
 
-  // Deploy to Local Hosting (build the site + serve it at /sites/) via the publish action.
-  async function publishLocal() {
+  // Deploy to Local Hosting (build the site + serve it here) via the publish action. The dialog shows it
+  // the way a remote deploy is shown, ending on the address it is live at.
+  async function publishLocal(target: DeployTargetView) {
     setBusy(true);
+    localDeployOpen.current = true;
+    setLocalDeploy({ target, state: { kind: 'running' } });
     try {
       const res = await api.publish(project.id);
       setRelease(res.release);
@@ -273,9 +283,15 @@ export function PublishBar({
       // The deploy just moved this target's `lastDeployedAt`; re-read both so the dot clears here
       // rather than on the next full page load.
       refreshDeployState();
-      toast.show(`Published to Local Hosting · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
+      if (localDeployOpen.current) {
+        setLocalDeploy({ target, state: { kind: 'done', release: res.release, url: res.url } });
+      } else {
+        toast.show(`Published to Local Hosting · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
+      }
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'publish failed', 'error');
+      const message = err instanceof Error ? err.message : 'publish failed';
+      if (localDeployOpen.current) setLocalDeploy({ target, state: { kind: 'error', message } });
+      else toast.show(message, 'error');
     } finally {
       setBusy(false);
     }
@@ -286,7 +302,7 @@ export function PublishBar({
     setMenuOpen(false);
     rememberTarget(target.id);
     if (target.protocol === 'local') {
-      void publishLocal();
+      void publishLocal(target);
     } else {
       setDeploying(target);
     }
@@ -320,7 +336,7 @@ export function PublishBar({
   const published = release !== null;
   // "View live" opens the served site; shown only when local hosting is configured + published + clean.
   const showView = published && !dirty && localHosting && !!url;
-  const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
+  const viewUrl = url ? withPreviewToken(url, previewToken) : url;
   // `whitespace-nowrap`: same reason as the agent pill above it — these live in a shrinking header
   // row, and a two-word label ("View live") that wraps turns a button into a two-line box.
   /**
@@ -541,6 +557,18 @@ export function PublishBar({
           onClose={() => {
             setAgentModalOpen(false);
             loadConnections();
+          }}
+        />
+      )}
+      {localDeploy && (
+        <LocalDeployModal
+          project={project}
+          target={localDeploy.target}
+          state={localDeploy.state}
+          previewToken={previewToken}
+          onClose={() => {
+            localDeployOpen.current = false;
+            setLocalDeploy(null);
           }}
         />
       )}

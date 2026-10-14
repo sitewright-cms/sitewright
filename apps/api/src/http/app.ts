@@ -6907,8 +6907,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // into a 429 partway through and left the rest of the selection behind. One statement per call; an
     // id that is unknown, already binned or another project's is reported back, not fatal.
     const BulkMediaDeleteBody = z.object({ ids: z.array(z.string().min(1).max(200)).min(1).max(BULK_DELETE_MAX) });
-    // `rl(30)`, not `rlAgent`: 200 rows a call on the one shared SQLite writer, and nothing but the editor
-    // calls it yet — lifting the ceiling for API keys is a decision for whoever gives agents a tool for it.
+    // `rl(30)`, not `rlAgent`, although agents call it too (delete_media_bulk): each call writes up to 200
+    // rows on the one shared SQLite writer, and 30 calls is 6,000 assets a minute — more than any clean-up
+    // needs. The agent lane would lift a key to 600 calls, which only a runaway loop would use.
     app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/bulk-delete', { config: rl(30) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:delete');
       const body = BulkMediaDeleteBody.safeParse(req.body);

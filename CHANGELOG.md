@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **MCP: `delete_media_bulk` bins many media files in one call.** An agent pruning orphaned imported
+  files looped `delete_media`, one request per file. The new tool takes up to 200 asset ids and moves
+  them to the Recycle Bin (restorable for 90 days) through `POST /projects/:id/media/bulk-delete`. Its
+  result is `{ deleted, failed, requested }`, so an id that is unknown or already in the bin is reported
+  without stopping the rest. Like `delete_media` it needs the opt-in `content:delete` capability. The
+  route keeps its flat limit of 30 calls a minute for API keys too, which is 6,000 files.
+  - **The in-editor assistant is not given it** (it keeps `delete_media`). The assistant reads page and
+    imported content, so text planted there can steer it, and it is not rate-limited: one file per step
+    bounds a turn to about 60 files, 200 per call would put a whole library within one turn's reach.
+
 - **Member tokens: one token for an agent that works across several projects.** A project key is
   bound to one project, so automation that creates and manages many sites needed a key per site —
   and could not create a site at all, because project creation only worked from a logged-in session.

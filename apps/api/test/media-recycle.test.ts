@@ -274,6 +274,36 @@ describe('media bulk delete', () => {
     expect((ok.json() as BulkResult).deleted).toEqual([a]);
   });
 
+  it('★ an agent bins many files through the delete_media_bulk MCP tool, end to end', async () => {
+    // The real path: /mcp → the MCP server → its REST client → this route, in-process, on the key.
+    const { c, base } = await setup();
+    const cookies = { sw_session: c };
+    const a = await upload(base, c);
+    const b = await upload(base, c);
+    const kept = await upload(base, c);
+    const minted = await app.inject({
+      method: 'POST',
+      url: `${base}/api-keys`,
+      cookies,
+      payload: { name: 'agent', role: 'owner', expiresInDays: 30, capabilities: ['content:read', 'content:delete'] },
+    });
+    const token = (minted.json() as { token: string }).token;
+    const headers = { accept: 'application/json, text/event-stream', 'content-type': 'application/json', authorization: `Bearer ${token}` };
+    const rpc = (body: Record<string, unknown>) => app.inject({ method: 'POST', url: '/mcp', headers, payload: body });
+    await rpc({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } } });
+
+    const res = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'delete_media_bulk', arguments: { ids: [a, b, 'nosuchid'] } } });
+    expect(res.statusCode).toBe(200);
+    const out = (res.json() as { result: { isError?: boolean; content: Array<{ text: string }> } }).result;
+    expect(out.isError).toBeFalsy();
+    expect(JSON.parse(out.content[0]!.text)).toEqual({ deleted: [a, b], failed: [{ id: 'nosuchid', error: 'media not found' }], requested: 3 });
+
+    const live = ((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: Array<{ id: string }> };
+    expect(live.items.map((m) => m.id)).toEqual([kept]);
+    const binned = ((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: Array<{ id: string }> };
+    expect(binned.items.map((m) => m.id).sort()).toEqual([a, b].sort());
+  });
+
   it('a key bound to another project is refused, and deletes nothing here', async () => {
     const { c, base } = await setup();
     const a = await upload(base, c);

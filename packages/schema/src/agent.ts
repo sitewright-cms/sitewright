@@ -1389,7 +1389,8 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    (\`ronald-kubas.jpg\`). PRUNE files no page references. Tools: list_media_folders (look first),
    create_media_folder, move_media (re-file + rename one asset), rename_media_folder, and delete_media
    (bin an orphaned file — RECOVERABLE for 90 days in the File Manager Recycle Bin; needs the
-   content:delete capability; if you lack it, move the file to an \`Unused\` folder instead). Moving/renaming
+   content:delete capability; if you lack it, move the file to an \`Unused\` folder instead). For MANY files
+   use move_media_bulk / delete_media_bulk — one call per 200 ids, not one per file. Moving/renaming
    is SAFE — it only changes the folder TAG, and the \`/media/...\` URL is content-addressed + stable, so page
    references never break (only delete_media removes an asset — and only from the NEXT publish). End state:
    a tree a human dev reads at a glance, with no \`imported/\` left.
@@ -2014,6 +2015,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'transform_image', description: "Rotate (90/180/270) and/or crop an image. IN PLACE by default — the id and URL are unchanged, so every reference keeps working; use it to CORRECT a photograph. Pass saveAs to write a new asset instead. Rotation applies before the crop.", capability: 'content:write' },
   { name: 'move_media_bulk', description: "Re-file MANY assets into one folder in a single call (partial success reported per id). Use instead of looping move_media.", capability: 'content:write' },
   { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
+  { name: 'delete_media_bulk', description: "Bin MANY media assets in one call (up to 200; partial success reported per id) — RECOVERABLE 90 days. Use instead of looping delete_media to prune orphaned files.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
@@ -2044,6 +2046,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },
   { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values). On a CLONE these are yours to author: import_website infers none.' },
   { need: 'clear out many entities at once (junk datasets/entries, scaffolded pages)', where: 'delete_content_bulk({ kind, ids }) — one call, up to 200 ids, per-id result; needs content:delete' },
+  { need: 'prune many orphaned media files at once', where: 'delete_media_bulk({ ids }) — one call, up to 200 ids, to the Recycle Bin (recoverable 90 days), per-id result; needs content:delete' },
   { need: 'multiple languages / translations', where: 'get_guide("i18n") + the add_language tool' },
   { need: 'shopping cart / products / add-to-cart', where: 'get_guide("shop")' },
   { need: 'cookie / consent banner + gated 3rd-party embeds', where: 'get_guide("consent")' },

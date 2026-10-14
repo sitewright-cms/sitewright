@@ -1739,6 +1739,26 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'delete_media_bulk',
+    {
+      description:
+        'Delete MANY media assets in ONE call — each moves to the File Manager Recycle Bin (RECOVERABLE for 90 days, ' +
+        'then auto-purged; restoring is done by a person in the File Manager — there is no restore tool). Use this ' +
+        'instead of looping delete_media when pruning orphaned imported files: up to 200 ids per call, at most 30 ' +
+        'calls a minute. The same caution as delete_media applies to every one: it is EXCLUDED from the next ' +
+        'publish, so make sure no page/dataset still references it. PARTIAL SUCCESS is normal — the result is ' +
+        '{ deleted:[…], failed:[{id,error}], requested }, so an id that is unknown or already in the bin does not ' +
+        'abort the rest. Needs the `content:delete` capability (opt-in) — without it, ask the user, or re-file the ' +
+        'files into an "Unused" folder with move_media_bulk.',
+      inputSchema: {
+        // Per-id bounds match the route's, so one malformed id is refused here rather than failing the whole batch.
+        ids: z.array(z.string().min(1).max(200)).min(1).max(200).describe('Asset ids to bin (max 200; duplicates are collapsed).'),
+      },
+    },
+    gate('content:delete', ({ ids }: { ids: string[] }) => client.deleteMediaBulk(ids)),
+  );
+
+  server.registerTool(
     'rename_dataset',
     {
       description:

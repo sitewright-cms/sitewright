@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ExternalLink } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { api, type DeployFailure, type DeploySecurity, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
+import { ProductionSiteLink, useProductionUrl } from './DeployLinks';
 import { CertificateCard } from './ConnectionTestPanel';
 import { Tooltip } from '../ui/Tooltip';
 
@@ -114,27 +115,13 @@ function diagnosticsLine(
  */
 export function DeployModal({ project, target, onClose }: { project: Project; target: DeployTargetView; onClose: () => void }) {
   const [status, setStatus] = useState<Status>({ kind: 'running', phase: target.protocol === 'git' ? 'preparing' : 'connecting', index: 0, total: 0 });
-  const [siteUrl, setSiteUrl] = useState<string | undefined>(undefined);
+  const production = useProductionUrl(project.id);
   // A rotated FTPS certificate fails the pin CLOSED, which is the point — but the fix then has to be
   // reachable from where the operator actually is, which on a scheduled-looking failure is this modal
   // and not the target's edit form.
   const [pinState, setPinState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const abortRef = useRef<AbortController | null>(null);
   const isGit = target.protocol === 'git';
-
-  // Resolve the production URL (for the success link / no-URL warning).
-  useEffect(() => {
-    let alive = true;
-    api
-      .getSettings(project.id)
-      .then((r) => alive && setSiteUrl(r.item.website?.siteUrl))
-      .catch(() => {
-        /* settings unreadable → treat as no production URL */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [project.id]);
 
   // Start the streaming deploy on open; abort it if the modal is closed mid-flight.
   useEffect(() => {
@@ -228,21 +215,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
             {showDoneDiag && (
               <p className="text-xs text-slate-500 dark:text-slate-400">{diagnosticsLine(status.protocol, status.strategy, status.bytes ?? 0, status.elapsedMs, true)}</p>
             )}
-            {siteUrl ? (
-              <a
-                href={siteUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 transition hover:border-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-400"
-              >
-                Open production site <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            ) : (
-              <p className="rounded-lg border border-amber-300 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
-                Website Production URL is not configured: sitemap.xml and robots.txt will not be generated. Configure a
-                production URL in website settings.
-              </p>
-            )}
+            {production.loaded && <ProductionSiteLink siteUrl={production.siteUrl} />}
           </div>
         )}
 

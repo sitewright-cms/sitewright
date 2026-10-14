@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
 
 const { publishStatus, publish, archiveUrl, listDeployTargets, listAgentConnections } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
@@ -20,6 +20,8 @@ vi.mock('../src/api', () => ({
     // inside an effect, and the failure would point at the menu rather than at this mock.
     listPreviewShares: vi.fn(() => Promise.resolve({ defaultExpiryDays: 30, items: [] })),
     disconnectAgent: vi.fn(() => Promise.resolve()),
+    // The Local Hosting deploy dialog reads the production URL to decide what else to link.
+    getSettings: vi.fn(() => Promise.resolve({ item: { website: {} } })),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
@@ -74,6 +76,47 @@ describe('PublishBar — deploy split button', () => {
     expect(primary.textContent).not.toContain('Local Hosting');
     primary.click();
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
+  });
+
+  it('★ a Local Hosting deploy ends on its live address, as a remote deploy ends on its production URL', async () => {
+    // It used to end in a toast that counted pages and said nothing about WHERE.
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    publishStatus.mockResolvedValue({ release: null, url: null, dirty: true, localHosting: true, previewToken: 'tok' });
+    publish.mockResolvedValue({ release, url: 'https://acme.sites.example/', dirty: false });
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Deploy to Local Hosting' })).click();
+
+    const dialog = await screen.findByRole('dialog', { name: 'Deploy to Local Hosting' });
+    expect(await within(dialog).findByText('Published to Local Hosting · 3 pages')).toBeInTheDocument();
+    // The target's preview-token gate travels with the link, exactly as View live carries it.
+    expect(within(dialog).getByRole('link', { name: /Open live site/ })).toHaveAttribute('href', 'https://acme.sites.example/?token=tok');
+  });
+
+  it('a failed Local Hosting deploy says why in the dialog', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    publish.mockRejectedValue(new Error('a build is already in progress for this project'));
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Deploy to Local Hosting' })).click();
+    const dialog = await screen.findByRole('dialog', { name: 'Deploy to Local Hosting' });
+    expect(await within(dialog).findByText('a build is already in progress for this project')).toBeInTheDocument();
+  });
+
+  it('closing the dialog mid-build does not bring it back when the build finishes', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    let finish: (v: unknown) => void = () => {};
+    publish.mockReturnValue(new Promise((r) => (finish = r)));
+    render(<PublishBar project={project} />);
+    (await screen.findByRole('button', { name: 'Deploy to Local Hosting' })).click();
+    const dialog = await screen.findByRole('dialog', { name: 'Deploy to Local Hosting' });
+    expect(within(dialog).getByText('Building and publishing…')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getAllByRole('button', { name: 'Close' })[0]!);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Deploy to Local Hosting' })).toBeNull());
+
+    await act(async () => finish({ release, url: '/sites/acme/', dirty: false }));
+    // Presence guard: the publish really settled — the button is no longer busy…
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Deploy to Local Hosting' })).toBeEnabled());
+    // …and nobody is shown a dialog they already dismissed.
+    expect(screen.queryByRole('dialog', { name: 'Deploy to Local Hosting' })).toBeNull();
   });
 
   it('CLEARS the deploy dot once that target has received the content — the reported bug', async () => {

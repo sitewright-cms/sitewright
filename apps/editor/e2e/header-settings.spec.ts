@@ -42,9 +42,8 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: 'Project Members' })).toBeHidden();
 
-  // Deploying surfaces a transient TOAST naming the target it went to.
+  // Deploying shows a dialog naming the target and ending on the live address (deployLocally asserts both).
   await deployLocally(page);
-  await expect(page.getByText(/Published to Local Hosting · \d+ page/)).toBeVisible();
 
   // The agent indicator opens AI agent details, whose Connect-an-agent guide has 4 tabs
   // (ChatGPT / Claude.ai / Le Chat hosted + local CLI).

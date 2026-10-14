@@ -7,6 +7,7 @@ import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
 import { RevisionsRepository } from '../src/repo/revisions.js';
 import { ProjectDomainRepository } from '../src/repo/project-domains.js';
+import { ensureGlobalProject, globalCtx } from '../src/repo/global-library.js';
 import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction, INTEGRITY_CHECK_COUNT } from '../src/repo/integrity.js';
 import { content as contentTable, contentRevisions } from '../src/db/schema.js';
 import type { ProjectContext } from '../src/repo/context.js';
@@ -33,6 +34,12 @@ async function plantRow(projectId: string, entityId: string, scope: string, decl
     createdAt: now,
     updatedAt: now,
   });
+}
+
+/** Plant any content row directly — the shapes the product now refuses to write, as legacy data. */
+async function plant(kind: 'page' | 'translation', entityId: string, data: Record<string, unknown>) {
+  const now = new Date();
+  await db.insert(contentTable).values({ id: `planted-${kind}-${entityId}`, projectId: ctx.projectId, kind, entityId, scope: '', data, createdAt: now, updatedAt: now });
 }
 
 beforeEach(async () => {
@@ -181,8 +188,8 @@ describe('checkProjectIntegrity', () => {
   it('detects broken page/template/translation references', async () => {
     await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
     await content.put(ctx, 'page', 'child', { id: 'child', path: 'c', title: 'C', parent: 'ghost_parent' });
-    await content.put(ctx, 'page', 'tpl', { id: 'tpl', path: 't', title: 'T', template: 'ghost_template' });
-    await content.put(ctx, 'translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
+    await plant('page', 'tpl', { id: 'tpl', path: 't', title: 'T', parent: 'home', template: 'ghost_template' });
+    await plant('translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
 
     const codes = (await checkDatabaseIntegrity(db)).issues.map((i) => i.code);
     expect(codes).toContain('missing_page_parent');
@@ -190,10 +197,39 @@ describe('checkProjectIntegrity', () => {
     expect(codes).toContain('orphan_translation');
   });
 
-  it('does not flag a `global:` template as missing', async () => {
+  it('checks a `global:` template against the global LIBRARY, which is what render resolves it from', async () => {
+    await ensureGlobalProject(db);
+    await content.put(globalCtx(ctx.userId), 'template', 'blog', { id: 'blog', name: 'Blog', source: '<article></article>' });
     await content.put(ctx, 'page', 'g', { id: 'g', path: 'g', title: 'G', template: 'global:blog' });
-    const codes = (await checkDatabaseIntegrity(db)).issues.map((i) => i.code);
-    expect(codes).not.toContain('missing_page_template');
+    expect((await checkDatabaseIntegrity(db)).issues.map((i) => i.code)).not.toContain('missing_page_template');
+
+    // One the library no longer has (deleted before deletes of a used template were refused).
+    await plant('page', 'h', { id: 'h', path: 'h', title: 'H', template: 'global:gone' });
+    const issue = (await checkDatabaseIntegrity(db)).issues.find((i) => i.code === 'missing_page_template');
+    expect(issue).toMatchObject({ subject: 'global:gone', actions: [] });
+    expect(issue!.detail).toMatch(/global library template/);
+  });
+
+  it('finds language variants whose main page is gone — they render an empty page — and Fix all can delete them', async () => {
+    await content.put(ctx, 'settings', 'settings', { identity: { name: 'P' }, settings: { defaultLocale: 'en', locales: ['en', 'de'] } });
+    await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
+    await content.put(ctx, 'page', 'about', { id: 'about', path: 'about', title: 'About', parent: 'home', translationGroup: 'about' });
+    // Left behind the way an API delete of `about` used to leave them (now refused/cascaded at the root).
+    await plant('page', 'about-de', { id: 'about-de', path: 'about', title: 'Über', locale: 'de', parent: 'home', translationGroup: 'ghost' });
+    await plant('page', 'fork-de', { id: 'fork-de', path: 'fork', title: 'F', locale: 'de', parent: 'home', translationGroup: 'ghost', source: '<p>own</p>' });
+
+    const issue = (await checkDatabaseIntegrity(db)).issues.find((i) => i.code === 'orphan_locale_variant');
+    // Only the one that FOLLOWS — a variant with its own code renders fine on its own.
+    expect(issue).toMatchObject({ subject: 'ghost', count: 1, sample: ['about-de'] });
+    expect(issue!.actions.map((a) => [a.id, a.unattended, a.reversible])).toEqual([['delete_orphan_variants', true, true]]);
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_variants', projectId: ctx.projectId, subject: 'ghost' });
+    expect(res.changed).toBe(1);
+    expect((await revisions.list(ctx, 'page', 'about-de')).map((r) => r.op)).toContain('delete');
+    expect((await checkDatabaseIntegrity(db)).issues.map((i) => i.code)).not.toContain('orphan_locale_variant');
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_variants', projectId: ctx.projectId, subject: 'ghost' }),
+    ).rejects.toThrow(/no variant of that page is orphaned/);
   });
 
   it('reports a soft-deleted project as INFO — it is by design, but it holds the slug', async () => {
@@ -358,8 +394,8 @@ describe('a report Fix all can act on', () => {
   it('offers a repair for broken page, template and translation references', async () => {
     await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
     await content.put(ctx, 'page', 'child', { id: 'child', path: 'c', title: 'C', parent: 'ghost_parent' });
-    await content.put(ctx, 'page', 'tpl', { id: 'tpl', path: 't', title: 'T', template: 'ghost_template' });
-    await content.put(ctx, 'translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
+    await plant('page', 'tpl', { id: 'tpl', path: 't', title: 'T', parent: 'home', template: 'ghost_template' });
+    await plant('translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
 
     const byCode = new Map((await checkDatabaseIntegrity(db)).issues.map((i) => [i.code, i]));
     expect(byCode.get('missing_page_parent')?.actions.map((a) => a.id)).toEqual(['reparent_pages']);
@@ -416,9 +452,11 @@ describe('runIntegrityAction — the repairs Fix all applies', () => {
   });
 
   it('restore_template brings a deleted template back from History, and is offered only when it can', async () => {
+    // The legacy state: a template deleted while a page still used it (now refused — see the root-cause
+    // tests). Its History copy is what makes it restorable.
     await content.put(ctx, 'template', 'card', { id: 'card', name: 'Card', source: '<article>{{page.title}}</article>' });
-    await content.put(ctx, 'page', 'p', { id: 'p', path: 'p', title: 'P', template: 'card' });
     await content.remove(ctx, 'template', 'card');
+    await plant('page', 'p', { id: 'p', path: 'p', title: 'P', template: 'card' });
 
     const issue = (await checkDatabaseIntegrity(db)).issues.find((i) => i.code === 'missing_page_template');
     expect(issue?.actions.map((a) => [a.id, a.unattended])).toEqual([['restore_template', true]]);
@@ -439,8 +477,8 @@ describe('runIntegrityAction — the repairs Fix all applies', () => {
   });
 
   it('delete_orphan_translations tombstones them, and refuses while the page exists', async () => {
-    await content.put(ctx, 'translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
-    await content.put(ctx, 'translation', 'gone__fr', { id: 'gone__fr', pageId: 'gone', locale: 'fr', title: 'Parti' });
+    await plant('translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
+    await plant('translation', 'gone__fr', { id: 'gone__fr', pageId: 'gone', locale: 'fr', title: 'Parti' });
 
     const res = await runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_translations', projectId: ctx.projectId, subject: 'gone' });
     expect(res.changed).toBe(2);
@@ -550,7 +588,7 @@ describe('POST /admin/integrity/repair-batch', () => {
     try {
       await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
       await content.put(ctx, 'page', 'a', { id: 'a', path: 'a', title: 'A', parent: 'ghost' });
-      await content.put(ctx, 'translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
+      await plant('translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
       const res = await app.inject({
         method: 'POST',
         url: '/admin/integrity/repair-batch',

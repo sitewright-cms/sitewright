@@ -116,7 +116,8 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
         else delete w.translations;
         nextSettings.website = w;
       }
-      await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings });
+      // `removedLocale` also takes that language's per-page titles, keyed by the main page that stays.
+      await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings, removedLocale: locale });
       return reply.send({ locale, removed: removePageIds.length });
     },
   );
@@ -222,7 +223,9 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
     '/projects/:projectId/pages/:pageId/delete-group',
     { config: rl(30) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:write');
+      // content:DELETE, like every other delete (it removes pages, and with them their translated titles).
+      // A session is gated by role, so the editor is unaffected; a key holding only content:write is not.
+      const { ctx } = await resolveProject(req, 'content:delete');
       const pageId = IdSchema.parse(req.params.pageId);
       const { settings, pages } = await loadContext(contentRepo, ctx);
       const defaultLocale = settings.settings.defaultLocale;

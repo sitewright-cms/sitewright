@@ -2,6 +2,7 @@ import { newId } from '../id.js';
 import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
+  agentGrants,
   aiUsage,
   apiKeys,
   memberTokenCreations,
@@ -519,6 +520,9 @@ export async function deleteUserAccount(db: Database, userId: string): Promise<v
     await tx.delete(userPasskeys).where(eq(userPasskeys.userId, userId));
     await tx.delete(webauthnChallenges).where(eq(webauthnChallenges.userId, userId));
     await tx.delete(oidcIdentities).where(eq(oidcIdentities.userId, userId));
+    // An agent's consent to act for this user. Missed here, it made the final delete fail on the FK and
+    // left the account permanently un-reapable — `test/user-reap.test.ts` now guards the whole list.
+    await tx.delete(agentGrants).where(eq(agentGrants.userId, userId));
     await tx.delete(apiKeys).where(eq(apiKeys.createdBy, userId));
     // Member tokens: only staff can mint one, but a member demoted to a client keeps the (revoked) rows,
     // and they still carry an FK to this user.

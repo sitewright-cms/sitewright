@@ -334,12 +334,18 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
 
+  // Every live event starts a fresh read, and reads can ANSWER OUT OF ORDER: an agent writing two pages
+  // back to back fires two reads, and when the first (taken before the second page existed) answers last
+  // it overwrote the newer list — the second page vanished until something else reloaded. Only the
+  // newest read may set the list.
+  const loadSeq = useRef(0);
   async function load() {
+    const seq = ++loadSeq.current;
     try {
       const res = await api.listPages(project.id);
-      setPages(res.items);
+      if (seq === loadSeq.current) setPages(res.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load pages');
+      if (seq === loadSeq.current) setError(err instanceof Error ? err.message : 'failed to load pages');
     }
   }
 
@@ -892,6 +898,12 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
       return;
     }
     setError(null);
+    // The server moves the page's children up to its own parent (they used to be left pointing at a page
+    // that was gone) — say so, because their addresses change with it.
+    const children = pages.filter((x) => x.parent === p.id).length;
+    const childNote = children
+      ? ` ${children === 1 ? 'Its sub-page moves' : `Its ${children} sub-pages move`} up one level, to where it was.`
+      : '';
     const group = p.translationGroup;
     const inGroup = group ? pages.filter((x) => x.translationGroup === group) : [];
     const isOwner = localeOf(p, defaultLocale) === defaultLocale && inGroup.length > 1;
@@ -909,6 +921,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
           : 'It has no translations that follow its layout.',
       );
       if (kept.length) parts.push(`Translations with their own code are kept (${labels(kept)}).`);
+      if (childNote) parts.push(childNote.trim());
       if (!(await confirm({ title: 'Delete across languages', message: parts.join(' '), confirmLabel: 'Delete' }))) return;
       try {
         await api.deletePageGroup(project.id, p.id);
@@ -921,7 +934,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
     if (
       !(await confirm({
         title: 'Delete page',
-        message: `Delete page "${p.title}" (${fullPath(p)})? This cannot be undone.`,
+        message: `Delete page "${p.title}" (${fullPath(p)})?${childNote} You can restore it from History.`,
         confirmLabel: 'Delete',
       }))
     )

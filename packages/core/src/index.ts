@@ -13,5 +13,6 @@ export * from './website-data.js';
 export * from './validate.js';
 export * from './routes.js';
 export * from './page-parent.js';
+export * from './page-removal.js';
 export * from './page-refs.js';
 export * from './ordering.js';

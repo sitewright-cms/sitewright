@@ -4731,6 +4731,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (scope === undefined) return reply; // 400 already sent (entry requires a dataset)
       // Duplicates would double-count `deleted` and report a phantom not-found on the second pass.
       const ids = [...new Set(body.ids)];
+      // Pages go under ONE plan: one read of the project, not one per id, and a parent deleted together
+      // with its child never moves that child up first. Same { deleted, failed } contract.
+      if (kind === 'page') return reply.send({ ...(await contentRepo.removePages(ctx, ids)), requested: ids.length });
       const deleted: string[] = [];
       const failed: Array<{ id: string; error: string }> = [];
       for (const id of ids) {

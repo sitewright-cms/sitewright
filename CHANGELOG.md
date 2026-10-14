@@ -124,6 +124,37 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Deleting a page no longer leaves rows pointing at it.** Children kept pointing at the deleted page
+  and its translated titles stayed behind — the integrity check's two most common findings. Every delete
+  path (the pages list, delete across languages, removing a language, the API and MCP) now applies one rule:
+  - its sub-pages move up one level, to where it was; the editor's confirmation says so;
+  - deleting a main-language page through the API or MCP now also removes the language variants that follow
+    its code (they rendered empty without it) and detaches the ones with their own code, as the editor did;
+  - its translated titles are deleted, and removing a language removes that language's titles;
+  - everything removed is restorable from History — including pages removed with a language or across
+    languages, which had no History copy before;
+  - it is refused for the home page (or a language's home) while pages hang under it, and when moving the
+    sub-pages up would put two pages on one address;
+  - a bulk delete of pages is planned once for the whole selection, so a parent deleted with its child
+    deletes the child instead of first moving it up;
+  - a sub-page edited while it is being moved makes the delete refuse instead of overwriting the edit.
+  - *Delete across languages* now needs the `content:delete` capability like every other delete. The editor
+    is unaffected; an API key holding only `content:write` can no longer use it.
+- **A page an agent created could vanish from the open pages list.** Each live update re-reads the list, and
+  when two writes came close together the older read could answer last and overwrite the newer list, until
+  something else reloaded it. Only the newest read updates the list now.
+- **Other references that could point at nothing are now refused when they are written,** instead of being
+  reported by the integrity check afterwards:
+  - deleting a template that pages still use, including a global library template used by any project — the
+    pages would fail to render, and the whole publish with them. The editor now shows which pages use it;
+  - saving a page that uses a project template that does not exist;
+  - saving a translated title for a page that does not exist.
+- **Removing a client account that had connected an agent failed** on a database constraint (its agent grants
+  were not deleted), leaving the account behind. A test now checks that every table referencing users is
+  cleared, as one already did for projects.
+- **The integrity check finds two more leftovers:** language variants whose main page is gone (Fix all can
+  delete them, restorable from History), and pages using a `global:` template the global library no longer has.
+
 - **Deleting many unused files at once was refused partway through.** *Search for unused files* →
   *Move to Recycle Bin* sent one request per file, and those share the general budget of 200 requests
   a minute per session — so on a large library select-all was answered with "rate limit exceeded"

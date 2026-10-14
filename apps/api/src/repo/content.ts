@@ -43,12 +43,22 @@ import {
   PaymentGatewayStoredSchema,
   PaymentBindingStoredSchema,
 } from '@sitewright/schema';
-import { validateProject, withResolvedParent, type ProjectBundle } from '@sitewright/core';
+import {
+  GLOBAL_TEMPLATE_PREFIX,
+  isGlobalTemplate,
+  pageRemovalRefusal,
+  planPageRemoval,
+  validateProject,
+  withResolvedParent,
+  type PageRemovalPlan,
+  type ProjectBundle,
+} from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { content, projects, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
+import { GLOBAL_SCOPE_ID } from './global-library.js';
 
 /**
  * The optimistic-concurrency token for one stored entity: a short hash of its persisted JSON.
@@ -60,6 +70,15 @@ import type { RevisionsRepository, RevisionOp } from './revisions.js';
  */
 export function contentVersion(data: unknown): string {
   return createHash('sha256').update(JSON.stringify(data ?? null)).digest('hex').slice(0, 32);
+}
+
+/** The refusal for a page removal whose moves would put two pages on one address (publish refuses that). */
+function clashMessage(clashes: PageRemovalPlan['clashes']): string {
+  const describe = clashes
+    .slice(0, 3)
+    .map((c) => `${c.route} (${c.pageIds.join(', ')})`)
+    .join('; ');
+  return `deleting would move pages onto an address another page already has: ${describe} — rename or move one of them first`;
 }
 
 /** Thrown when an `If-Match` write loses a race. Carries both versions so a client can explain itself. */
@@ -610,6 +629,31 @@ export class ContentRepository {
       const known = slug ? ((await this.list(ctx, 'dataset')) as Array<{ slug?: string }>).some((d) => d.slug === slug) : false;
       if (!known) throw new ConflictError(`entry "${key}" references unknown dataset "${slug ?? ''}" — create the dataset first (after rename_dataset, entries must carry the NEW slug)`);
     }
+    // A TRANSLATION (a page's per-locale title) must target an EXISTING page, and a page must use an
+    // EXISTING project template — the same rule as an entry and its dataset. Either written against a
+    // missing target is a row the integrity check can only report afterwards (`orphan_translation`,
+    // `missing_page_template`, which fails the whole publish). A `global:` template resolves against the
+    // instance library, which a project write does not own, so it is not checked here.
+    //
+    // Only a write that INTRODUCES the reference (a new row, or a changed target) is refused. A row that
+    // already points at nothing — legacy data the integrity check reports — must stay editable and
+    // movable, or the very repairs that fix its other problems (re-parenting) would be refused too.
+    if (kind === 'translation') {
+      const pageId = (parsed as { pageId?: string }).pageId;
+      const stored = (await this.row(this.db, ctx, 'translation', key))?.data as { pageId?: string } | undefined;
+      if (stored?.pageId !== pageId && (!pageId || !(await this.row(this.db, ctx, 'page', pageId)))) {
+        throw new ConflictError(`translation "${key}" targets unknown page "${pageId ?? ''}" — create the page first`);
+      }
+    }
+    if (kind === 'page') {
+      const template = (parsed as Page).template;
+      if (template && !isGlobalTemplate(template)) {
+        const stored = (await this.row(this.db, ctx, 'page', key))?.data as { template?: string } | undefined;
+        if (stored?.template !== template && !(await this.row(this.db, ctx, 'template', template))) {
+          throw new ConflictError(`page "${key}" references unknown template "${template}" — create the template first`);
+        }
+      }
+    }
     // THE PAGE-TREE INVARIANT (see `withResolvedParent`): a page always hangs off a home. Applied here
     // rather than at the route because the MCP tools, the editor and a bundle import do not share one.
     const value = kind === 'page' ? await this.withPageParent(ctx, parsed as Page, opts?.merged === true) : parsed;
@@ -749,8 +793,11 @@ export class ContentRepository {
     if (kind === 'settings') {
       throw new ForbiddenError('the settings singleton cannot be deleted');
     }
+    // A page takes what depends on it along (or refuses) — see removePage.
+    if (kind === 'page') return this.removePage(ctx, entityId);
     const row = await this.row(this.db, ctx, kind, entityId, scope);
     if (!row) throw new NotFoundError(`${kind} not found`);
+    if (kind === 'template') await this.assertTemplateUnused(ctx, entityId);
     // Deleting a DATASET removes its entries with it — an entry is unreachable without its dataset
     // (no loop resolves it, no editor lists it), and leaving it behind creates ORPHANS that used to
     // make the project un-importable (export shipped them; import's validateProject rejected the
@@ -791,6 +838,170 @@ export class ContentRepository {
       await this.markContentDeleted(tx as unknown as Executor, ctx, [kind]);
     });
     this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor, scope });
+  }
+
+  /**
+   * Delete ONE page together with what cannot outlive it, or refuse:
+   *  - REFUSED for the root home (every page hangs under it) and a language's home (removed with its
+   *    language), and when moving the children up would put two pages on one address — publish
+   *    refuses a duplicate route, so the delete would only trade one broken state for another;
+   *  - its CHILDREN move up to the nearest ancestor that stays (they used to keep pointing at the
+   *    deleted page: `missing_page_parent`);
+   *  - its language VARIANTS that follow its code go with it, and the ones with their own code are
+   *    detached — what the editor's "delete across languages" did, now true of every delete path (an
+   *    API or MCP delete used to leave the followers rendering empty);
+   *  - its per-locale TITLES (`translation` rows) are deleted (they used to stay: `orphan_translation`).
+   * Everything removed is tombstoned first, so it is restorable from History.
+   */
+  private async removePage(ctx: ProjectContext, entityId: string): Promise<void> {
+    const pages = (await this.list(ctx, 'page')) as Page[];
+    const page = pages.find((p) => p.id === entityId);
+    if (!page) throw new NotFoundError('page not found');
+    const defaultLocale = await this.defaultLocaleOf(ctx);
+    const refusal = pageRemovalRefusal(page, pages, defaultLocale);
+    if (refusal) throw new ConflictError(refusal);
+    await this.commitPageRemoval(ctx, planPageRemoval(pages, [entityId], defaultLocale, { cascadeVariants: true }), {}, pages);
+  }
+
+  /**
+   * Delete MANY pages under ONE plan — the bulk route and the integrity repair. One read of the project
+   * instead of one per page, and the right result when a parent and its child go in the same call (the
+   * child is deleted, never first moved up). Each id is judged on its own — unknown → not found, the
+   * home or a language home with pages under it → refused — and the rest go together. A move that would
+   * put two pages on one address refuses all of them: nothing is deleted.
+   */
+  async removePages(ctx: ProjectContext, ids: readonly string[]): Promise<{ deleted: string[]; failed: Array<{ id: string; error: string }> }> {
+    const pages = (await this.list(ctx, 'page')) as Page[];
+    const byId = new Map(pages.map((p) => [p.id, p]));
+    const defaultLocale = await this.defaultLocaleOf(ctx);
+    const failed: Array<{ id: string; error: string }> = [];
+    const go: string[] = [];
+    for (const id of new Set(ids)) {
+      const page = byId.get(id);
+      const refusal = page ? pageRemovalRefusal(page, pages, defaultLocale) : 'page not found';
+      if (refusal) failed.push({ id, error: refusal });
+      else go.push(id);
+    }
+    if (go.length === 0) return { deleted: [], failed };
+    const plan = planPageRemoval(pages, go, defaultLocale, { cascadeVariants: true });
+    if (plan.clashes.length > 0) {
+      const error = clashMessage(plan.clashes);
+      return { deleted: [], failed: [...failed, ...go.map((id) => ({ id, error }))] };
+    }
+    await this.commitPageRemoval(ctx, plan, {}, pages);
+    return { deleted: go, failed };
+  }
+
+  /**
+   * Apply a {@link planPageRemoval} plan (plus any other page/settings writes the caller batches with
+   * it) in ONE transaction. Shared by {@link removePage} and {@link applyLocaleChange}, so deleting a
+   * page, deleting it across languages and removing a whole language all leave the same tree behind.
+   * `removedLocale` also deletes that language's per-locale titles — they are keyed by the MAIN page,
+   * which stays, so the page rule alone would never reach them.
+   */
+  private async commitPageRemoval(
+    ctx: ProjectContext,
+    plan: PageRemovalPlan,
+    extra: { putPages?: readonly Page[]; settings?: unknown; removedLocale?: string },
+    /** The pages the plan was computed from — what a moved page must still be when it is rewritten. */
+    planned: readonly Page[],
+  ): Promise<void> {
+    if (plan.clashes.length > 0) throw new ConflictError(clashMessage(plan.clashes));
+    // The moved and detached pages are rewritten WHOLE from the snapshot the plan was built on. Without a
+    // check, an edit saved to one of them in the meantime would be silently overwritten (and a page deleted
+    // meanwhile brought back). Compared before anything is written, and again inside the transaction.
+    const callerWrites = new Set((extra.putPages ?? []).map((p) => p.id));
+    const plannedById = new Map(planned.map((p) => [p.id, p]));
+    const rewritten = [...plan.detached, ...plan.reparented].filter((p) => !callerWrites.has(p.id)).map((p) => p.id);
+    const assertUnchanged = async (exec: Executor) => {
+      for (const id of new Set(rewritten)) {
+        const row = await this.row(exec, ctx, 'page', id);
+        const before = plannedById.get(id);
+        if (!row || !before || contentVersion(row.data) !== contentVersion(before)) {
+          throw new ConflictError(`page "${id}" changed while it was being moved — try the delete again`);
+        }
+      }
+    };
+    await assertUnchanged(this.db as unknown as Executor);
+    const removedIds = new Set(plan.removed.map((p) => p.id));
+    const titles =
+      removedIds.size > 0 || extra.removedLocale !== undefined
+        ? ((await this.list(ctx, 'translation')) as PageTranslation[]).filter(
+            (t) => removedIds.has(t.pageId) || (extra.removedLocale !== undefined && t.locale === extra.removedLocale),
+          )
+        : [];
+    // Tombstone BEFORE the delete, and NOT best-effort — the same rule as `remove`: a lost tombstone
+    // makes a deleted page unrecoverable, so a history failure aborts the delete.
+    for (const p of plan.removed) await this.revisions?.record(ctx, 'page', p.id, '', p, 'delete');
+    for (const t of titles) await this.revisions?.record(ctx, 'translation', t.id, '', t, 'delete');
+
+    // One write per page, the most complete version winning: the caller's, then detached, then moved.
+    const writes = new Map<string, Page>();
+    for (const p of [...(extra.putPages ?? []), ...plan.detached, ...plan.reparented]) writes.set(p.id, p);
+    const deleted: string[] = [];
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      await assertUnchanged(exec);
+      if (extra.settings !== undefined) await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, extra.settings);
+      for (const page of writes.values()) await this.writeRow(exec, ctx, 'page', page.id, page);
+      for (const id of removedIds) {
+        const gone = await exec
+          .delete(content)
+          .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'page'), eq(content.entityId, id), eq(content.scope, '')))
+          .returning({ id: content.id });
+        if (gone.length > 0) deleted.push(id);
+      }
+      for (const t of titles) {
+        await exec
+          .delete(content)
+          .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, 'translation'), eq(content.entityId, t.id), eq(content.scope, '')));
+      }
+      const kinds: ContentKind[] = [...(deleted.length > 0 ? (['page'] as const) : []), ...(titles.length > 0 ? (['translation'] as const) : [])];
+      if (kinds.length > 0) await this.markContentDeleted(exec, ctx, kinds);
+    });
+    // History for the pages that MOVED, so the History rail explains why their parent changed. Best-effort,
+    // like every put revision: the move itself is already committed.
+    const reparentedIds = new Set(plan.reparented.map((p) => p.id));
+    for (const p of plan.reparented) {
+      await this.revisions?.record(ctx, 'page', p.id, '', p, 'put', 'Moved up: its parent page was deleted').catch(() => undefined);
+    }
+    for (const p of plan.detached.filter((d) => !reparentedIds.has(d.id))) {
+      await this.revisions?.record(ctx, 'page', p.id, '', p, 'put', 'Detached: its main-language page was deleted').catch(() => undefined);
+    }
+
+    if (extra.settings !== undefined) {
+      this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor });
+    }
+    for (const id of writes.keys()) this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'put', actor: ctx.actor });
+    for (const id of deleted) this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'delete', actor: ctx.actor, scope: '' });
+    for (const t of titles) this.events?.emit(ctx.projectId, { kind: 'translation', entityId: t.id, op: 'delete', actor: ctx.actor, scope: '' });
+  }
+
+  /**
+   * Refuse to delete a template a page still uses — the page would fail to render, and so would the
+   * whole publish (`missing_page_template`). A GLOBAL-library template is referenced as `global:<id>`
+   * from pages in ANY project (deleted ones included: a restore would bring them back broken).
+   */
+  private async assertTemplateUnused(ctx: ProjectContext, id: string): Promise<void> {
+    const global = ctx.projectId === GLOBAL_SCOPE_ID;
+    const ref = global ? `${GLOBAL_TEMPLATE_PREFIX}${id}` : id;
+    const users = await this.db
+      .select({ pageId: content.entityId, slug: projects.slug })
+      .from(content)
+      .innerJoin(projects, eq(projects.id, content.projectId))
+      .where(
+        and(
+          global ? undefined : eq(content.projectId, ctx.projectId),
+          eq(content.kind, 'page'),
+          sql`json_extract(${content.data}, '$.template') = ${ref}`,
+        ),
+      )
+      .limit(6);
+    if (users.length === 0) return;
+    const names = users.slice(0, 5).map((u) => (global ? `${u.slug}/${u.pageId}` : u.pageId));
+    throw new ConflictError(
+      `template "${id}" is used by ${users.length > 5 ? 'more than 5 pages' : `${users.length} page${users.length === 1 ? '' : 's'}`} (${names.join(', ')}${users.length > 5 ? ', …' : ''}) — point them at another template first`,
+    );
   }
 
   /**
@@ -1114,7 +1325,7 @@ export class ContentRepository {
 
   async applyLocaleChange(
     ctx: ProjectContext,
-    change: { putPages?: unknown[]; removePageIds?: string[]; settings?: unknown },
+    change: { putPages?: unknown[]; removePageIds?: string[]; settings?: unknown; removedLocale?: string },
   ): Promise<{ pages: Page[] }> {
     const parsedPages = (change.putPages ?? []).map((raw) => PageSchema.parse(raw) as Page);
     // ★ The locale routes pre-compute each variant's parent (buildLocaleVariant / scaffoldLocale /
@@ -1134,32 +1345,20 @@ export class ContentRepository {
       throw new ConflictError(`locale change is too large (max ${MAX_LOCALE_BATCH} pages)`);
     }
 
-    // Only pages that actually existed are deleted — so we emit delete events only for those
-    // (an id that wasn't present must not produce a spurious delete to live-preview clients).
-    const deleted: string[] = [];
-    await this.db.transaction(async (tx) => {
-      const exec = tx as unknown as Executor;
-      if (settings !== undefined) await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, settings);
-      for (const page of putPages) await this.writeRow(exec, ctx, 'page', page.id, page);
-      for (const id of removeIds) {
-        const row = await this.row(exec, ctx, 'page', id);
-        if (row) {
-          await exec.delete(content).where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
-          deleted.push(id);
-        }
-      }
-      if (deleted.length > 0) await this.markContentDeleted(exec, ctx, ['page']);
-    });
-
-    if (settings !== undefined) {
-      this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor });
-    }
-    for (const page of putPages) {
-      this.events?.emit(ctx.projectId, { kind: 'page', entityId: page.id, op: 'put', actor: ctx.actor });
-    }
-    for (const id of deleted) {
-      this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'delete', actor: ctx.actor });
-    }
+    // The caller decided exactly which pages go (a whole language, or a page with its followers), so no
+    // variant cascade here — but their CHILDREN and per-locale titles are handled the same way as for a
+    // single delete, against the tree as it will be after `putPages`.
+    const stored = removeIds.length > 0 ? ((await this.list(ctx, 'page')) as Page[]) : [];
+    const overlay = new Map(stored.map((p) => [p.id, p]));
+    for (const p of putPages) overlay.set(p.id, p);
+    const defaultLocale = (settings as Settings | undefined)?.settings.defaultLocale ?? (await this.defaultLocaleOf(ctx));
+    const tree = [...overlay.values()];
+    const plan = planPageRemoval(tree, removeIds, defaultLocale);
+    await this.commitPageRemoval(ctx, plan, {
+      putPages,
+      ...(settings !== undefined ? { settings } : {}),
+      ...(change.removedLocale !== undefined ? { removedLocale: change.removedLocale } : {}),
+    }, tree);
     return { pages: putPages };
   }
 

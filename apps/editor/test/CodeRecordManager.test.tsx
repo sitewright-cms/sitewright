@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeRecordManager, type CodeRecord, type MakeId } from '../src/views/code/CodeRecordManager';
 import { SidePanelOpen } from '../src/views/ui/SidePanel';
+import { ApiError } from '../src/api';
 
 // Mock the CodeMirror-backed editor modal (CodeMirror doesn't render in jsdom). It exposes the
 // title as a dialog, an optional NAME field (uncontrolled — closure-tracked, no re-render), and a
@@ -122,6 +123,17 @@ describe('CodeRecordManager', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith('p1', 'hero'));
     await waitFor(() => expect(screen.queryByText('hero')).toBeNull());
+  });
+
+  it('shows the server’s reason when a delete is refused — a template still in use names its pages', async () => {
+    const { remove } = setup();
+    remove.mockRejectedValueOnce(new ApiError(409, 'template "hero" is used by 2 pages (a, b) — point them at another template first'));
+    await screen.findByText('hero');
+    fireEvent.click(screen.getByRole('button', { name: 'Delete hero' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText(/Couldn’t delete “hero”: template "hero" is used by 2 pages \(a, b\)/)).toBeInTheDocument();
+    // Still listed: nothing was removed.
+    expect(screen.getByText('hero')).toBeInTheDocument();
   });
 
   it('shows an eye preview button per snippet when previewUrl is provided', async () => {

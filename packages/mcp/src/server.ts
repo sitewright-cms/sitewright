@@ -1391,7 +1391,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'delete_page',
-    { description: 'Delete a page by id. Needs the content:delete capability.', inputSchema: { id: z.string() } },
+    {
+      description:
+        'Delete a page by id. What depends on it goes with it, so nothing is left pointing at a page that is gone: its CHILD pages move up one level (to its parent), its language variants that follow its code are deleted with it (variants with their own code stay, detached), and its per-language titles are deleted. REFUSED for the home page while pages hang under it, and when moving the children up would put two pages on one address (rename or move one first). Restorable from version history. Needs the content:delete capability.',
+      inputSchema: { id: z.string() },
+    },
     gate('content:delete', ({ id }) => client.deleteContent('page', id).then(() => ({ deleted: id }))),
   );
 
@@ -1453,7 +1457,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'delete_content',
     {
       description:
-        'Delete a content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug). Needs the content:delete capability.',
+        'Delete a content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug). A PAGE takes its dependants along exactly as delete_page does; a TEMPLATE that pages still use is refused (point them elsewhere first); a DATASET deletes its entries. Needs the content:delete capability.',
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
     gate('content:delete', ({ kind, id, dataset }) => client.deleteContent(kind, id, dataset).then(() => ({ deleted: `${kind}/${id}` }))),

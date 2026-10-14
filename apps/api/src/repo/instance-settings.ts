@@ -463,6 +463,7 @@ export class InstanceSettingsRepository {
     // Default image delivery format: a value sets it, `null` reverts to 'webp', undefined keeps.
     mergeNullable(input.defaultImageFormat, current.defaultImageFormat, (v) => { next.defaultImageFormat = v; });
     mergeNullable(input.backupRetention, current.backupRetention, (v) => { next.backupRetention = v; });
+    mergeNullable(input.defaultImageUploadCap, current.defaultImageUploadCap, (v) => { next.defaultImageUploadCap = v; });
     mergeNullable(input.logLevel, current.logLevel, (v) => { next.logLevel = v; });
 
     // Validate the merged document before persisting (defense in depth).

@@ -1114,6 +1114,17 @@ const issueSchema = (issueOf: (v: string) => string | null) =>
     if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue });
   });
 
+
+/** An image-upload cap: the px width originals are scaled down to on upload (see `imageUploadCap`). */
+export const ImageUploadCapSchema = z.number().int().min(200).max(10000);
+
+/**
+ * The upload cap a new project starts with when the instance admin has not chosen one: the `xl`
+ * delivery rung (THUMB_SIZES.xl in @sitewright/image-pipeline). Capping at exactly the widest variant
+ * the site can deliver costs no delivered pixel, and bounds a phone photo's 4000px+ original. A test in
+ * the API pins the two equal, so raising `xl` cannot silently leave this behind.
+ */
+export const DEFAULT_NEW_PROJECT_IMAGE_CAP = 2400;
 /**
  * Opt-in RFC 9116 `security.txt`, published at `/.well-known/security.txt`.
  *
@@ -1475,7 +1486,7 @@ const WebsiteSettingsObject = z.object({
    * the importer). Unset → uncapped: the retained original keeps full resolution. Either way, delivery
    * thumbnails top out at `xl` (2400px), so this only bounds the on-disk retained-original footprint.
    */
-  imageUploadCap: z.number().int().min(200).max(10000).optional(),
+  imageUploadCap: ImageUploadCapSchema.optional(),
   /**
    * Opt-in RFC 9116 security.txt, emitted to `.well-known/security.txt` on publish.
    * See {@link WebsiteSecuritySchema}.

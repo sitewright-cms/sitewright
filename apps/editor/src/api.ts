@@ -535,13 +535,21 @@ export type IntegrityActionId =
   | 'reassign_entries'
   | 'fix_entry_scope'
   | 'delete_orphan_entries'
-  | 'delete_orphan_history';
+  | 'delete_orphan_history'
+  | 'reparent_pages'
+  | 'restore_template'
+  | 'delete_orphan_translations'
+  | 'release_domains';
 
 export interface IntegrityAction {
   id: IntegrityActionId;
   label: string;
   /** Removes rows — the UI must confirm before running it. */
   destructive: boolean;
+  /** "Fix all issues" may apply it without the operator choosing it (see the server's ACTIONS). */
+  unattended: boolean;
+  /** For a destructive action: whether what it removes can be restored from History. */
+  reversible: boolean;
   detail: string;
 }
 
@@ -583,7 +591,8 @@ export interface IntegrityProgress {
 
 export interface IntegrityActionInput {
   action: IntegrityActionId;
-  projectId: string;
+  /** Absent for the instance-wide repairs (e.g. releasing hostnames of deleted projects). */
+  projectId?: string;
   subject: string;
   targetDataset?: string;
 }
@@ -593,6 +602,14 @@ export interface IntegrityActionResult {
   changed: number;
   message: string;
 }
+
+/** Most repairs one "Fix all" request may carry — mirrors the server's INTEGRITY_REPAIR_BATCH_MAX. */
+export const INTEGRITY_REPAIR_BATCH_MAX = 200;
+
+export type IntegrityBatchResult = { action: IntegrityActionId; projectId: string | null; subject: string } & (
+  | { ok: true; changed: number; message: string }
+  | { ok: false; error: string }
+);
 
 /** The result of an AI provider connectivity check (verify credentials + model). */
 export interface AiTestResult {
@@ -2087,6 +2104,9 @@ export const api = {
   /** Apply ONE repair from an integrity report. The server re-derives the target set before acting. */
   repairIntegrity: (input: IntegrityActionInput) =>
     request<IntegrityActionResult>('POST', '/admin/integrity/repair', input),
+  /** Apply many repairs in one request ("Fix all issues"); each succeeds or fails on its own. */
+  repairIntegrityBatch: (repairs: IntegrityActionInput[]) =>
+    request<{ results: IntegrityBatchResult[] }>('POST', '/admin/integrity/repair-batch', { repairs }),
 
   // --- web forms (definitions live as `form` content) ---
   listForms: (projectId: string) =>

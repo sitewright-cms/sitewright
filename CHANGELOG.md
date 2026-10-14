@@ -11,6 +11,35 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **System settings → New projects: a default image size cap.** New projects have always started
+  with their upload cap at 2400px, the widest size a site serves, but that value was fixed in code. An
+  instance admin can now choose it (200–10,000px), or tick **No cap** to have new projects keep
+  full-resolution originals. It applies to projects created after the change; existing projects keep
+  their own value under Settings → Website → Images.
+
+- **Database integrity: Fix all issues now has something to fix.** The button only appeared when an
+  issue had a repair it could run unattended, and most real reports had none, so it seldom showed:
+  - **History of a deleted dataset is no longer reported.** Deleting a dataset keeps its entries'
+    history so a restore brings them back, and the check reported that undo as damage, with deleting
+    it as the only fix. Every dataset ever deleted showed up as a warning.
+  - **New repairs**, all of which Fix all can run:
+    - *Move under the home page* for pages whose parent is gone (deleting a page leaves its children
+      pointing at it). A main-language page keeps its address.
+    - *Restore the template from History* for pages whose template was deleted, when History still has it.
+    - *Delete the translations* of a page that is gone (restorable from History).
+    - *Release the hostnames* held by deleted projects.
+    - Fix all can now also delete stranded entry history, which only happens when no deleted dataset
+      can bring it back.
+  - **The button always shows when there are problems.** When nothing can be fixed automatically it
+    is disabled, with the reason.
+  - **The confirmation separates repairs from removals** and says which removals can be undone. It
+    also counts what is left alone, either because it needs a decision or because it cannot be fixed
+    from here.
+  - **One request per 200 repairs** (`POST /admin/integrity/repair-batch`) instead of one per issue,
+    which ran into the 20-a-minute repair limit on a long report.
+  - **Findings that are by design** (a deleted project keeping its slug) are shown as notes and no
+    longer count as problems.
+
 - **MCP: `delete_media_bulk` bins many media files in one call.** An agent pruning orphaned imported
   files looped `delete_media`, one request per file. The new tool takes up to 200 asset ids and moves
   them to the Recycle Bin (restorable for 90 days) through `POST /projects/:id/media/bulk-delete`. Its

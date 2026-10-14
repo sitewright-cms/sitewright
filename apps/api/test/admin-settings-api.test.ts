@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { DEFAULT_FORM_MODES } from '@sitewright/schema';
+import { DEFAULT_FORM_MODES, DEFAULT_NEW_PROJECT_IMAGE_CAP } from '@sitewright/schema';
+import { THUMB_SIZES, DEFAULT_SIZE } from '@sitewright/image-pipeline';
 
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, writeFile, mkdir, rm } from 'node:fs/promises';
@@ -146,6 +147,46 @@ describe('admin settings API', () => {
       const id2 = (proj2.json() as { project: { id: string } }).project.id;
       const s2 = await app.inject({ method: 'GET', url: `/projects/${id2}/content/settings/settings`, cookies });
       expect((s2.json() as { item: { settings: { defaultLocale: string } } }).item.settings.defaultLocale).toBe('en');
+    });
+
+    it('applies the admin "default image size cap" to projects created AFTER it is set — 0 = uncapped', async () => {
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      const capOf = async (slug: string): Promise<number | undefined> => {
+        const proj = await app.inject({ method: 'POST', url: '/projects', cookies, payload: { name: slug, slug } });
+        expect(proj.statusCode).toBe(201);
+        const id = (proj.json() as { project: { id: string } }).project.id;
+        const s = await app.inject({ method: 'GET', url: `/projects/${id}/content/settings/settings`, cookies });
+        return (s.json() as { item: { website?: { imageUploadCap?: number } } }).item.website?.imageUploadCap;
+      };
+
+      // Unset → the built-in default, which is exactly the `xl` delivery rung.
+      expect(await capOf('before')).toBe(DEFAULT_NEW_PROJECT_IMAGE_CAP);
+      expect(DEFAULT_NEW_PROJECT_IMAGE_CAP).toBe(THUMB_SIZES[DEFAULT_SIZE]);
+
+      const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultImageUploadCap: 1600 } });
+      expect(put.statusCode).toBe(200);
+      expect((put.json() as { settings: { defaultImageUploadCap?: number } }).settings.defaultImageUploadCap).toBe(1600);
+      expect(await capOf('after')).toBe(1600);
+
+      // 0 seeds NO cap at all (full-resolution originals), rather than a cap of 0.
+      await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultImageUploadCap: 0 } });
+      expect(await capOf('uncapped')).toBeUndefined();
+
+      // null reverts to the built-in default; the project made before any of this kept its own value.
+      await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultImageUploadCap: null } });
+      const got = await app.inject({ method: 'GET', url: '/admin/settings', cookies });
+      expect((got.json() as { settings: { defaultImageUploadCap?: number } }).settings.defaultImageUploadCap).toBeUndefined();
+      expect(await capOf('reverted')).toBe(DEFAULT_NEW_PROJECT_IMAGE_CAP);
+    });
+
+    it('refuses an image size cap the project setting could not hold (below 200px, above 10000px)', async () => {
+      const admin = await registerAdmin(app);
+      const cookies = { sw_session: admin.t };
+      for (const bad of [1, 199, 10001, 1.5, -1]) {
+        const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultImageUploadCap: bad } });
+        expect(put.statusCode, `cap ${bad}`).toBe(400);
+      }
     });
 
     it('round-trips the HSTS policy (schema defaults applied; null clears)', async () => {

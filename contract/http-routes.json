@@ -162,6 +162,7 @@
   "POST /admin/cookie-secret/rotate",
   "POST /admin/deleted-projects/:id/restore",
   "POST /admin/integrity/repair",
+  "POST /admin/integrity/repair-batch",
   "POST /admin/integrity/stream",
   "POST /admin/invites",
   "POST /admin/invites/:inviteId/approve",

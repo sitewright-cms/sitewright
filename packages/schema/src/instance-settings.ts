@@ -4,6 +4,7 @@ import { AiProviderKindSchema, AiBaseUrlSchema, MaxOutputTokensSchema, rejectOpe
 import { AgentInstructionsSchema } from './agent.js';
 import { LocaleSchema } from './project.js';
 import { CssColorSchema } from './primitives.js';
+import { ImageUploadCapSchema } from './website.js';
 
 // ---- Admin-panel BRANDING (white-label) ----
 // Non-secret instance fields that re-skin the admin CHROME (not per-project/site brand): the platform
@@ -494,6 +495,12 @@ export const InstanceSettingsStoredSchema = z.object({
   additionalOrigins: z.array(PlatformOriginSchema).max(10).optional(),
   /** How many pre-migration DB snapshots to keep (oldest pruned). Unset → DEFAULT_BACKUP_RETENTION (2). */
   backupRetention: z.number().int().min(1).max(100).optional(),
+  /**
+   * The `website.imageUploadCap` a NEW project starts with (px width; originals wider than this are
+   * scaled down on upload). Unset → DEFAULT_NEW_PROJECT_IMAGE_CAP. **0 means uncapped** — new projects
+   * keep full-resolution originals. Seeded at creation only: existing projects keep their own value.
+   */
+  defaultImageUploadCap: z.union([z.literal(0), ImageUploadCapSchema]).optional(),
   /** Server log verbosity (pino level). Unset → the LOG_LEVEL env, else 'info'. Applied live on save. */
   logLevel: LogLevelSchema.optional(),
   /**
@@ -644,6 +651,8 @@ export const InstanceSettingsInputSchema = z.object({
   additionalOrigins: z.array(PlatformOriginSchema).max(10).nullable().optional(),
   // Pre-migration DB snapshot retention: a number sets it, `null` reverts to the default (2), undefined leaves it.
   backupRetention: z.number().int().min(1).max(100).nullable().optional(),
+  // New projects' image upload cap: a number sets it (0 = uncapped), `null` reverts to the default, undefined keeps.
+  defaultImageUploadCap: z.union([z.literal(0), ImageUploadCapSchema]).nullable().optional(),
   // Log verbosity: a level sets it, `null` reverts to the env/'info' default, undefined leaves it.
   logLevel: LogLevelSchema.nullable().optional(),
 });
@@ -740,6 +749,8 @@ export interface InstanceSettingsPublic {
   shareExpiryDays?: number;
   /** Pre-migration DB snapshot retention, or absent when using the default (2). */
   backupRetention?: number;
+  /** New projects' image upload cap in px (0 = uncapped), or absent when using DEFAULT_NEW_PROJECT_IMAGE_CAP. */
+  defaultImageUploadCap?: number;
   /** Server log verbosity (pino level), or absent when using the env/'info' default. */
   logLevel?: LogLevel;
 }
@@ -793,6 +804,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.shareExpiryDays !== undefined) result.shareExpiryDays = stored.shareExpiryDays; // non-secret
   if (stored.embedding !== undefined) result.embedding = stored.embedding; // non-secret — surfaced as-is
   if (stored.backupRetention !== undefined) result.backupRetention = stored.backupRetention;
+  if (stored.defaultImageUploadCap !== undefined) result.defaultImageUploadCap = stored.defaultImageUploadCap;
   if (stored.logLevel !== undefined) result.logLevel = stored.logLevel;
   return result;
 }

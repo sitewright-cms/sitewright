@@ -319,6 +319,64 @@ describe('InstanceSettings', () => {
     expect(screen.queryByRole('dialog', { name: 'Member tokens' })).toBeNull();
   });
 
+  it('new projects: the image size cap defaults to 2400, is not sent untouched, and saves a width, "No cap" or a revert', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    // The form re-hydrates from what the server says it stored, so echo the cap the way it merges it.
+    let stored: number | undefined;
+    putInstanceSettings.mockImplementation(async (body: InstanceSettingsInput) => {
+      if (body.defaultImageUploadCap !== undefined) stored = body.defaultImageUploadCap ?? undefined;
+      return { settings: { ...DEFAULTS, ...(stored !== undefined ? { defaultImageUploadCap: stored } : {}) } };
+    });
+    render(<InstanceSettings />);
+    const field = await screen.findByLabelText('Default image size cap in pixels');
+    const uncapped = screen.getByRole('checkbox', { name: 'No cap' });
+    expect(field).toHaveValue(2400);
+    expect(uncapped).not.toBeChecked();
+    const save = async (n: number) => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+      await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(n));
+      return putInstanceSettings.mock.calls[n - 1]![0] as InstanceSettingsInput;
+    };
+    // Untouched → not sent, so an unrelated save never writes the default as an override.
+    expect(await save(1)).not.toHaveProperty('defaultImageUploadCap');
+
+    fireEvent.change(field, { target: { value: '1600' } });
+    expect((await save(2)).defaultImageUploadCap).toBe(1600);
+
+    // Out of range is clamped to what a project's own cap accepts, rather than sent and refused.
+    fireEvent.change(field, { target: { value: '50' } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue(200);
+
+    // "No cap" is stored as 0 and disables the width, which it overrides.
+    fireEvent.click(uncapped);
+    expect(field).toBeDisabled();
+    expect((await save(3)).defaultImageUploadCap).toBe(0);
+
+    // Back to the default width → null, so the instance follows the built-in default.
+    fireEvent.click(uncapped);
+    fireEvent.change(field, { target: { value: '2400' } });
+    expect((await save(4)).defaultImageUploadCap).toBeNull();
+  });
+
+  it('new projects: hydrates a stored image cap, and a stored 0 as "No cap"', async () => {
+    getInstanceSettings.mockResolvedValueOnce({ settings: { ...DEFAULTS, defaultImageUploadCap: 1200 } });
+    const { unmount } = render(<InstanceSettings />);
+    expect(await screen.findByLabelText('Default image size cap in pixels')).toHaveValue(1200);
+    expect(screen.getByRole('checkbox', { name: 'No cap' })).not.toBeChecked();
+    unmount();
+
+    getInstanceSettings.mockResolvedValueOnce({ settings: { ...DEFAULTS, defaultImageUploadCap: 0 } });
+    render(<InstanceSettings />);
+    const field = await screen.findByLabelText('Default image size cap in pixels');
+    expect(screen.getByRole('checkbox', { name: 'No cap' })).toBeChecked();
+    expect(field).toBeDisabled();
+    // Unchanged → not sent: re-saving must not turn "No cap" into the default.
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect(putInstanceSettings.mock.calls[0]![0]).not.toHaveProperty('defaultImageUploadCap');
+  });
+
   it('does not touch agentSessionHours when the admin never edits it', async () => {
     getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, agentSessionHours: 24 } });
     render(<InstanceSettings />);

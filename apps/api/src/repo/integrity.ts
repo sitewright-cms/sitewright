@@ -11,7 +11,9 @@
 // only ever run when an operator explicitly asks for one, because "unreachable" is not always
 // "unwanted" — rows are often recoverable data somebody wants back, not garbage.
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { withResolvedParent } from '@sitewright/core';
+import type { Page } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content, contentRevisions, projects, type ContentKind } from '../db/schema.js';
 import { schemaFor, type ContentRepository } from './content.js';
@@ -43,13 +45,42 @@ export type IntegrityActionId =
   | 'reassign_entries'
   | 'fix_entry_scope'
   | 'delete_orphan_entries'
-  | 'delete_orphan_history';
+  | 'delete_orphan_history'
+  | 'reparent_pages'
+  | 'restore_template'
+  | 'delete_orphan_translations'
+  | 'release_domains';
+
+/** Every action id, for request validation. */
+export const INTEGRITY_ACTION_IDS = [
+  'recreate_dataset',
+  'reassign_entries',
+  'fix_entry_scope',
+  'delete_orphan_entries',
+  'delete_orphan_history',
+  'reparent_pages',
+  'restore_template',
+  'delete_orphan_translations',
+  'release_domains',
+] as const satisfies readonly IntegrityActionId[];
+
+/** Actions about the INSTANCE rather than one project — they take no `projectId`. */
+const INSTANCE_ACTIONS: ReadonlySet<IntegrityActionId> = new Set(['release_domains']);
 
 export interface IntegrityAction {
   id: IntegrityActionId;
   label: string;
   /** `destructive` actions remove rows — the UI must confirm. Non-destructive ones only add/repair. */
   destructive: boolean;
+  /**
+   * Whether "Fix all issues" may apply this without the operator choosing it. An issue's actions are
+   * ALTERNATIVES listed conservative-first, and Fix all takes the first unattended one. False when the
+   * action needs an input nobody can default (which dataset to move to), or when a gentler alternative
+   * exists for the same issue (deleting entries that "Recreate the dataset" could bring back).
+   */
+  unattended: boolean;
+  /** For a destructive action: whether what it removes can be brought back (from History). */
+  reversible: boolean;
   /** What it will do, in the operator's terms. */
   detail: string;
 }
@@ -117,6 +148,8 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     id: 'recreate_dataset',
     label: 'Recreate the dataset',
     destructive: false,
+    unattended: true,
+    reversible: true,
     detail:
       'Creates a dataset with the missing slug, its fields inferred from the orphaned entries. They become visible in the editor again — and any version history stranded under that slug becomes reachable too, because both are keyed by it. Nothing is guessed: it restores the name the rows already point at. Review and edit the dataset afterwards.',
   },
@@ -124,12 +157,17 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     id: 'reassign_entries',
     label: 'Move to an existing dataset',
     destructive: false,
+    // Needs a target only the operator can name.
+    unattended: false,
+    reversible: true,
     detail: 'Re-points the orphaned entries at a dataset you choose, moving their rows and history to it.',
   },
   fix_entry_scope: {
     id: 'fix_entry_scope',
     label: 'Repair storage scope',
     destructive: false,
+    unattended: true,
+    reversible: true,
     detail:
       "Re-derives each row's storage scope from its own `dataset` field — the authored intent — so it is reachable by the dataset it claims to belong to. Rows that would collide with an existing entry are reported instead of overwritten.",
   },
@@ -137,6 +175,9 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     id: 'delete_orphan_entries',
     label: 'Delete the entries',
     destructive: true,
+    // "Recreate the dataset" brings the same rows back instead; deleting is a choice, never a default.
+    unattended: false,
+    reversible: true,
     detail:
       'Permanently removes the unreachable entry rows. Each one is tombstoned first, so it stays restorable from the History rail. Prefer recreating or reassigning the dataset if the content might still be wanted.',
   },
@@ -144,8 +185,49 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     id: 'delete_orphan_history',
     label: 'Delete the stranded history',
     destructive: true,
+    // Only ever offered for history no deleted dataset can bring back (see check 6), so nothing that
+    // could be restored is lost — and it expires at the retention limit anyway.
+    unattended: true,
+    reversible: false,
     detail:
       'Removes version snapshots scoped to a dataset that no longer exists. They cannot be listed or restored in this state, and they expire on their own at the retention limit — deleting only reclaims the space sooner.',
+  },
+  reparent_pages: {
+    id: 'reparent_pages',
+    label: 'Move under the home page',
+    destructive: false,
+    unattended: true,
+    reversible: true,
+    detail:
+      "Hangs each page under its language's home page — the main language's pages under the site's home — the same place a new page goes. A main-language page keeps its address: a missing parent already rendered it at the top level.",
+  },
+  restore_template: {
+    id: 'restore_template',
+    label: 'Restore the template from History',
+    destructive: false,
+    unattended: true,
+    reversible: true,
+    detail: 'Brings the deleted template back from its last saved version in History, so the pages that use it render again.',
+  },
+  delete_orphan_translations: {
+    id: 'delete_orphan_translations',
+    label: 'Delete the translations',
+    destructive: true,
+    // Title overrides for a page that is gone. Each is tombstoned first, so a restored page can get
+    // its translated titles back from History too.
+    unattended: true,
+    reversible: true,
+    detail:
+      'Removes the translated titles of a page that no longer exists. Each one is tombstoned first, so it stays restorable from the History rail if the page comes back.',
+  },
+  release_domains: {
+    id: 'release_domains',
+    label: 'Release the hostnames',
+    destructive: true,
+    unattended: true,
+    reversible: false,
+    detail:
+      'Removes the hostname claims of deleted projects, so another project can use them. Restoring such a project later brings it back without its custom domains — add and verify them again in its settings.',
   },
 };
 
@@ -183,6 +265,15 @@ async function projectRows(db: Database, projectId: string) {
 type Row = Awaited<ReturnType<typeof projectRows>>[number];
 const dataOf = <T,>(r: Row) => r.data as T;
 
+/** `<projectId>:<key>` for every DELETE tombstone of `kind` in History, keyed by the given column. */
+async function tombstoneKeys(db: Database, kind: ContentKind, key: ReturnType<typeof sql>): Promise<Set<string>> {
+  const rows = await db
+    .select({ projectId: contentRevisions.projectId, key: sql<string | null>`${key}` })
+    .from(contentRevisions)
+    .where(and(eq(contentRevisions.kind, kind), eq(contentRevisions.op, 'delete')));
+  return new Set(rows.filter((r) => typeof r.key === 'string' && r.key !== '').map((r) => `${r.projectId}:${r.key}`));
+}
+
 /**
  * Sweep the whole database. Pure read — it never writes, and it is safe to run on a live instance.
  * `onProgress` fires once per check so a UI can show real progress rather than a spinner.
@@ -210,6 +301,11 @@ export async function checkDatabaseIntegrity(
   // Load every project's rows once; each per-project check reads from this.
   const rowsByProject = new Map<string, Row[]>();
   for (const p of allProjects) rowsByProject.set(p.id, await projectRows(db, p.id));
+  // What History can still bring back, as `<projectId>:<key>`: the slugs of deleted datasets and the ids
+  // of deleted templates. A delete leaves its last state behind as a tombstone, and that decides both
+  // whether stranded entry history is really stranded and whether a missing template can be restored.
+  const deletedDatasetSlugs = await tombstoneKeys(db, 'dataset', sql`json_extract(${contentRevisions.data}, '$.slug')`);
+  const deletedTemplateIds = await tombstoneKeys(db, 'template', sql`${contentRevisions.entityId}`);
 
   const record = (id: string, label: string, scanned: number, found: IntegrityIssue[]) => {
     issues.push(...found);
@@ -346,6 +442,12 @@ export async function checkDatabaseIntegrity(
   );
 
   // ---- 6. History stranded under a dead dataset slug.
+  //
+  // NOT stranded: the history of a dataset somebody DELETED. Deleting a dataset tombstones its entries
+  // under its slug, and the dataset's own tombstone sits in History beside them — restore the dataset
+  // and every one of those entries is restorable again. That is the undo buffer working, and it expires
+  // at the retention limit with everything else. Reporting it made every deleted dataset an "issue"
+  // whose only offered fix was to destroy the undo.
   begin(CHECKS[5]!.label);
   {
     let scanned = 0;
@@ -359,7 +461,9 @@ export async function checkDatabaseIntegrity(
       scanned += revs.length;
       found.push(
         ...group(
-          revs.filter((r) => !slugs.has(r.scope)).map((r) => ({ subject: r.scope, id: r.entityId })),
+          revs
+            .filter((r) => !slugs.has(r.scope) && !deletedDatasetSlugs.has(`${p.id}:${r.scope}`))
+            .map((r) => ({ subject: r.scope, id: r.entityId })),
           { code: 'orphan_entry_history', severity: 'warning', projectId: p.id, projectSlug: p.label },
           (ds, n) =>
             `${plural(n, 'version snapshot', 'version snapshots')} are scoped to dataset "${ds}", which does not exist — that history cannot be listed or restored. It expires on its own at the retention limit.`,
@@ -404,6 +508,7 @@ export async function checkDatabaseIntegrity(
           .map((r) => ({ subject: String(dataOf<{ parent?: string }>(r).parent), id: r.entityId })),
         { code: 'missing_page_parent', severity: 'warning', projectId: p.id, projectSlug: p.slug },
         (parent, n) => `${plural(n, 'page', 'pages')} nest under "${parent}", which does not exist — their route cannot be computed correctly.`,
+        ['reparent_pages'],
       );
     },
     (rows) => pagesOf(rows).length,
@@ -423,8 +528,16 @@ export async function checkDatabaseIntegrity(
           })
           .map((r) => ({ subject: String(dataOf<{ template?: string }>(r).template), id: r.entityId })),
         { code: 'missing_page_template', severity: 'warning', projectId: p.id, projectSlug: p.slug },
-        (t, n) => `${plural(n, 'page references', 'pages reference')} template "${t}", which does not exist — those pages fail to render.`,
-      );
+        (t, n) =>
+          `${plural(n, 'page references', 'pages reference')} template "${t}", which does not exist — those pages fail to render.` +
+          (deletedTemplateIds.has(`${p.id}:${t}`)
+            ? ''
+            : ' History holds no copy of it, so point the pages at another template (or recreate it) in the editor.'),
+      ).map((issue) => ({
+        ...issue,
+        // Only restorable while History still holds the template's last state.
+        actions: deletedTemplateIds.has(`${p.id}:${issue.subject}`) ? [ACTIONS.restore_template] : [],
+      }));
     },
     (rows) => pagesOf(rows).length,
   );
@@ -444,6 +557,7 @@ export async function checkDatabaseIntegrity(
           .map((r) => ({ subject: String(dataOf<{ pageId?: string }>(r).pageId), id: r.entityId })),
         { code: 'orphan_translation', severity: 'warning', projectId: p.id, projectSlug: p.slug },
         (pid, n) => `${plural(n, 'translation', 'translations')} target page "${pid}", which does not exist.`,
+        ['delete_orphan_translations'],
       );
     },
     (rows) => rows.filter((r) => r.kind === 'translation').length,
@@ -504,7 +618,7 @@ export async function checkDatabaseIntegrity(
               sample: stranded.slice(0, SAMPLE_LIMIT).map((r) => `${r.host} → ${r.slug}`),
               detail:
                 'These hostnames are claimed by projects that are deleted. They are NOT being served (a deleted project 404s), but the claim still reserves the hostname, so no other project can use it until the project is restored or permanently removed.',
-              actions: [],
+              actions: [ACTIONS.release_domains],
             },
           ]
         : [],
@@ -512,7 +626,8 @@ export async function checkDatabaseIntegrity(
   }
 
   return {
-    ok: issues.length === 0,
+    // INFO findings are by design (a deleted project keeping its slug) — nothing to fix, so not "not ok".
+    ok: issues.every((i) => i.severity === 'info'),
     durationMs: Date.now() - startedAt,
     projectsScanned: live.filter((p) => p.id !== GLOBAL_SCOPE_ID).length,
     checks,
@@ -549,8 +664,9 @@ function datasetSlugCount(rows: Row[]): number {
 
 export interface IntegrityActionInput {
   action: IntegrityActionId;
-  projectId: string;
-  /** The issue's `subject` — the dataset slug the rows point at. */
+  /** The project the issue is in. Required for every action except the instance-wide ones. */
+  projectId?: string;
+  /** The issue's `subject` — what the rows point at (a dataset slug, a page or template id). */
   subject: string;
   /** Target dataset slug, for `reassign_entries`. */
   targetDataset?: string;
@@ -574,6 +690,8 @@ export async function runIntegrityAction(
   userId: string,
   input: IntegrityActionInput,
 ): Promise<IntegrityActionResult> {
+  if (INSTANCE_ACTIONS.has(input.action)) return runInstanceAction(db, input.action);
+  if (!input.projectId) throw new NotFoundError('project not found');
   const [project] = await db.select({ id: projects.id, deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, input.projectId));
   if (!project || project.deletedAt) throw new NotFoundError('project not found');
   const ctx: ProjectContext = { userId, projectId: project.id, role: 'owner', actor: 'user' };
@@ -676,5 +794,90 @@ export async function runIntegrityAction(
       const changed = Number((res as { rowsAffected?: number }).rowsAffected ?? 0);
       return { action: input.action, changed, message: `Deleted ${plural(changed, 'stranded snapshot', 'stranded snapshots')}.` };
     }
+
+    case 'reparent_pages': {
+      const pages = rows.filter((r) => r.kind === 'page').map((r) => r.data as Page);
+      if (pages.some((p) => p.id === input.subject)) throw new ConflictError(`page "${input.subject}" exists — re-run the check`);
+      const dangling = pages.filter((p) => p.parent === input.subject);
+      if (dangling.length === 0) throw new ConflictError('no pages point at that parent any more — re-run the check');
+      const settings = rows.find((r) => r.kind === 'settings')?.data as { settings?: { defaultLocale?: string } } | undefined;
+      const defaultLocale = settings?.settings?.defaultLocale ?? 'en';
+      let changed = 0;
+      const stuck: string[] = [];
+      for (const page of dangling) {
+        // The same rule a whole-project import applies: an unresolvable parent is replaced by the page's
+        // language home, else the root home. Unchanged (by identity) when there is no home to hang it on.
+        const fixed = withResolvedParent(page, pages, defaultLocale, { repairDangling: true });
+        if (fixed === page) {
+          stuck.push(page.id);
+          continue;
+        }
+        await contentRepo.put(ctx, 'page', page.id, fixed);
+        changed += 1;
+      }
+      return {
+        action: input.action,
+        changed,
+        message: stuck.length
+          ? `Moved ${plural(changed, 'page', 'pages')} under a home page; ${plural(stuck.length, 'page', 'pages')} left as they were because the project has no home page to hang them on (${stuck.slice(0, 5).join(', ')}).`
+          : `Moved ${plural(changed, 'page', 'pages')} under a home page.`,
+      };
+    }
+
+    case 'restore_template': {
+      if (rows.some((r) => r.kind === 'template' && r.entityId === input.subject)) {
+        throw new ConflictError(`template "${input.subject}" exists — re-run the check`);
+      }
+      const [last] = await db
+        .select({ data: contentRevisions.data })
+        .from(contentRevisions)
+        .where(and(eq(contentRevisions.projectId, project.id), eq(contentRevisions.kind, 'template'), eq(contentRevisions.entityId, input.subject)))
+        .orderBy(desc(contentRevisions.revisionAt))
+        .limit(1);
+      if (!last) throw new ConflictError(`History holds no copy of template "${input.subject}"`);
+      await contentRepo.put(ctx, 'template', input.subject, last.data, { op: 'restore', note: 'Restored by a database integrity repair' });
+      const users = rows.filter((r) => r.kind === 'page' && (r.data as { template?: string }).template === input.subject).length;
+      return {
+        action: input.action,
+        changed: 1,
+        message: `Restored template "${input.subject}"; ${plural(users, 'page renders', 'pages render')} with it again.`,
+      };
+    }
+
+    case 'delete_orphan_translations': {
+      if (rows.some((r) => r.kind === 'page' && r.entityId === input.subject)) {
+        throw new ConflictError(`page "${input.subject}" exists — its translations are not orphaned`);
+      }
+      const orphans = rows.filter((r) => r.kind === 'translation' && (r.data as { pageId?: string }).pageId === input.subject);
+      if (orphans.length === 0) throw new ConflictError('no translations target that page any more — re-run the check');
+      for (const o of orphans) await contentRepo.remove(ctx, 'translation', o.entityId);
+      return {
+        action: input.action,
+        changed: orphans.length,
+        message: `Deleted ${plural(orphans.length, 'translation', 'translations')} (restorable from History).`,
+      };
+    }
+
+    case 'release_domains':
+      // Instance-wide; dispatched before the project lookup. Unreachable, but keeps the switch total.
+      return runInstanceAction(db, input.action);
+  }
+}
+
+/** The repairs that act on the instance as a whole rather than inside one project. */
+async function runInstanceAction(db: Database, action: IntegrityActionId): Promise<IntegrityActionResult> {
+  switch (action) {
+    case 'release_domains': {
+      // Re-derived here like every repair: only the claims of projects that are deleted RIGHT NOW. The
+      // routing map already excludes them (a deleted project 404s), so nothing that serves changes.
+      const res = await db.run(
+        sql`delete from project_domains where project_id in (select id from projects where deleted_at is not null)`,
+      );
+      const changed = Number((res as { rowsAffected?: number }).rowsAffected ?? 0);
+      if (changed === 0) throw new ConflictError('no deleted project holds a hostname any more — re-run the check');
+      return { action, changed, message: `Released ${plural(changed, 'hostname', 'hostnames')} held by deleted projects.` };
+    }
+    default:
+      throw new ConflictError(`"${action}" is not an instance-wide repair`);
   }
 }

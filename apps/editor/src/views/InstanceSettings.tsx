@@ -9,6 +9,7 @@ import {
   DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS,
   MAX_MEMBER_TOKEN_DAILY_PROJECTS,
   DEFAULT_NEW_PROJECT_LOCALE,
+  DEFAULT_NEW_PROJECT_IMAGE_CAP,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
@@ -108,6 +109,11 @@ const clampRetentionDays = (n: number): number => Math.max(1, Math.min(3650, Mat
 const clampTokenProjectMax = (n: number): number =>
   Number.isFinite(n) ? Math.max(1, Math.min(MAX_MEMBER_TOKEN_DAILY_PROJECTS, Math.round(n))) : DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS;
 const DEFAULT_COALESCE_SECONDS = DEFAULT_REVISION_COALESCE_MS / 1000;
+// New projects' image cap: the same px range a project's own `imageUploadCap` accepts.
+const IMAGE_CAP_MIN = 200;
+const IMAGE_CAP_MAX = 10_000;
+const clampImageCap = (n: number): number =>
+  Number.isFinite(n) ? Math.max(IMAGE_CAP_MIN, Math.min(IMAGE_CAP_MAX, Math.round(n))) : DEFAULT_NEW_PROJECT_IMAGE_CAP;
 // HSTS max-age shown/entered in seconds; server caps at 2 years. 0 clears the policy.
 const clampHstsMaxAge = (n: number): number => Math.max(0, Math.min(63_072_000, Math.round(n) || 0));
 /** Human-readable byte size (e.g. "1.4 MB"). */
@@ -153,6 +159,11 @@ export function InstanceSettings() {
   const initialLocaleRef = useRef(DEFAULT_NEW_PROJECT_LOCALE);
   // Site-wide default image delivery format for {{sw-image}} (projects can override).
   const [defaultImageFormat, setDefaultImageFormat] = useState<'webp' | 'avif'>('webp');
+  // The image upload cap new projects start with (px width), or none at all. Stored as one number
+  // (0 = uncapped); shown as a width plus a checkbox so "no cap" is a visible choice, not a magic 0.
+  const [newProjectImageCap, setNewProjectImageCap] = useState(DEFAULT_NEW_PROJECT_IMAGE_CAP);
+  const [newProjectUncapped, setNewProjectUncapped] = useState(false);
+  const initialImageCapRef = useRef(DEFAULT_NEW_PROJECT_IMAGE_CAP);
   const [localePickerOpen, setLocalePickerOpen] = useState(false);
 
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
@@ -440,6 +451,10 @@ export function InstanceSettings() {
     setNewProjectLocale(locale);
     initialLocaleRef.current = locale;
     setDefaultImageFormat(s.defaultImageFormat ?? 'webp');
+    const imageCap = s.defaultImageUploadCap ?? DEFAULT_NEW_PROJECT_IMAGE_CAP;
+    setNewProjectUncapped(imageCap === 0);
+    setNewProjectImageCap(imageCap === 0 ? DEFAULT_NEW_PROJECT_IMAGE_CAP : imageCap);
+    initialImageCapRef.current = imageCap;
     setHstsEnabled(s.hsts?.enabled ?? false);
     setHstsMaxAge(s.hsts?.maxAgeSeconds ?? DEFAULT_HSTS.maxAgeSeconds);
     setHstsIncludeSub(s.hsts?.includeSubDomains ?? false);
@@ -594,6 +609,12 @@ export function InstanceSettings() {
     }
     // Default image delivery format: 'webp' (the built-in default) sends null; 'avif' sets it.
     input.defaultImageFormat = defaultImageFormat === 'webp' ? null : 'avif';
+    // New projects' image cap: only touch it when changed; the built-in default sends null (revert),
+    // "no cap" sends 0, anything else the clamped width.
+    const imageCap = newProjectUncapped ? 0 : clampImageCap(newProjectImageCap);
+    if (imageCap !== initialImageCapRef.current) {
+      input.defaultImageUploadCap = imageCap === DEFAULT_NEW_PROJECT_IMAGE_CAP ? null : imageCap;
+    }
     // OIDC providers (replace-semantics; the server preserves each secret by id when omitted). Drop
     // fully-blank "Add" rows; a secret is sent only when freshly typed.
     input.oidcProviders = oidcProviders
@@ -803,7 +824,7 @@ export function InstanceSettings() {
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           New projects
-          <SectionHelp tip="The language a newly created project starts in. Existing projects are unaffected." />
+          <SectionHelp tip="What a newly created project starts with. Existing projects are unaffected." />
         </legend>
         <label className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
           Default locale for new projects
@@ -834,6 +855,40 @@ export function InstanceSettings() {
             AVIF is smaller on supporting browsers, at ~2× the generated files. Projects can override this in Website settings.
           </span>
         </label>
+        <div className="mt-3 flex flex-col text-xs text-slate-500 dark:text-slate-400">
+          <label htmlFor="new-project-image-cap">Default image size cap (px width)</label>
+          <div className="mt-1 flex flex-wrap items-center gap-3">
+            <input
+              id="new-project-image-cap"
+              type="number"
+              min={IMAGE_CAP_MIN}
+              max={IMAGE_CAP_MAX}
+              step={100}
+              aria-label="Default image size cap in pixels"
+              className={`${glassInput} w-28`}
+              disabled={newProjectUncapped}
+              value={newProjectImageCap}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isNaN(n)) setNewProjectImageCap(n);
+              }}
+              onBlur={() => setNewProjectImageCap((v) => clampImageCap(v))}
+            />
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+              <input
+                type="checkbox"
+                className={toggleInput}
+                checked={newProjectUncapped}
+                onChange={(e) => setNewProjectUncapped(e.target.checked)}
+              />
+              No cap
+            </label>
+          </div>
+          <span className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+            Uploaded images wider than this are scaled down when they are stored. {DEFAULT_NEW_PROJECT_IMAGE_CAP}px (the default) is
+            the widest size a site ever serves, so it costs no visible quality. Projects can change it in Website settings.
+          </span>
+        </div>
       </fieldset>
 
       </div>

@@ -340,7 +340,7 @@ import {
 import { generatePassword, hashPassword } from '../auth/password.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
-import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction } from '../repo/integrity.js';
+import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction, INTEGRITY_ACTION_IDS } from '../repo/integrity.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { AgentGrantsRepository } from '../repo/agent-grants.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
@@ -3523,8 +3523,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   const IntegrityActionBody = z.object({
-    action: z.enum(['recreate_dataset', 'reassign_entries', 'fix_entry_scope', 'delete_orphan_entries', 'delete_orphan_history']),
-    projectId: z.string().min(1).max(64),
+    action: z.enum(INTEGRITY_ACTION_IDS),
+    // Absent only for the instance-wide repairs (runIntegrityAction refuses a project repair without it).
+    projectId: z.string().min(1).max(64).optional(),
     subject: z.string().max(200),
     targetDataset: z.string().max(200).optional(),
   });
@@ -3537,6 +3538,44 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const result = await runIntegrityAction(db, contentRepo, userId, body);
     app.log.warn({ userId, ...body, changed: result.changed }, 'database integrity repair applied');
     return reply.send(result);
+  });
+
+  // Apply MANY repairs in one request — the modal's "Fix all issues". It was one /repair call per issue,
+  // and that route's 20/min limit is the right size for a person clicking but not for a report with
+  // dozens of findings: Fix all 429'd partway and left the rest undone. The client sends exactly the
+  // repairs the operator confirmed; each is re-verified like a single one, runs in order (the modal
+  // puts repairs that add or re-point before ones that remove), and fails on its own — an issue an
+  // earlier repair already resolved refuses harmlessly and must not stop the rest.
+  const INTEGRITY_REPAIR_BATCH_MAX = 200;
+  const IntegrityBatchBody = z.object({ repairs: z.array(IntegrityActionBody).min(1).max(INTEGRITY_REPAIR_BATCH_MAX) });
+  app.post('/admin/integrity/repair-batch', { config: rl(10) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    const parsed = IntegrityBatchBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: `invalid request — repairs (1-${INTEGRITY_REPAIR_BATCH_MAX}) are required` });
+    }
+    const results: Array<
+      { action: string; projectId: string | null; subject: string } & ({ ok: true; changed: number; message: string } | { ok: false; error: string })
+    > = [];
+    for (const repair of parsed.data.repairs) {
+      const at = { action: repair.action, projectId: repair.projectId ?? null, subject: repair.subject };
+      try {
+        const result = await runIntegrityAction(db, contentRepo, userId, repair);
+        results.push({ ...at, ok: true, changed: result.changed, message: result.message });
+      } catch (err) {
+        // A refusal (gone, already resolved, nothing left) carries a message meant for the operator; any
+        // other failure is logged here and reported generically, never as a raw internal error.
+        const known = err instanceof ConflictError || err instanceof NotFoundError;
+        if (!known) app.log.error({ userId, ...at, errMsg: err instanceof Error ? err.message : String(err) }, 'database integrity repair failed');
+        results.push({ ...at, ok: false, error: known ? (err as Error).message : 'the repair could not be applied' });
+      }
+    }
+    const applied = results.filter((r) => r.ok);
+    app.log.warn(
+      { userId, requested: results.length, applied: applied.length, changed: applied.reduce((n, r) => n + (r.ok ? r.changed : 0), 0) },
+      'database integrity repairs applied',
+    );
+    return reply.send({ results });
   });
 
   // Verify the platform AI provider — connectivity + model. Tests the just-typed key if present, else
@@ -3998,7 +4037,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
       // The instance-admin's "default locale for new projects" (unset → English) seeds this
       // project's defaultLocale + sole initial locale. See docs/i18n-content-model.md.
-      const newProjectLocale = (await instanceSettingsRepo.getStored()).defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
+      const instance = await instanceSettingsRepo.getStored();
+      const newProjectLocale = instance.defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
+      // The admin's "default image size cap" (System Settings → New projects); unset → the `xl` rung,
+      // 0 → uncapped (no imageUploadCap written, so originals keep full resolution).
+      const newProjectImageCap = instance.defaultImageUploadCap ?? THUMB_SIZES[DEFAULT_SIZE];
       // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
       // components are themed out of the box and the preview looks intentional immediately.
       await contentRepo.put(ownerCtx, 'settings', 'settings', {
@@ -4011,8 +4054,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // file that nothing ever serves: delivery tops out at the `xl` thumbnail, so every pixel past
         // that width is disk footprint and publish-time decode cost with no visible benefit. Capping at
         // exactly `xl` is the widest value that costs nothing — the largest variant the site can deliver
-        // is still generated from a same-size original, so no delivered image loses a pixel. Derived from
-        // THUMB_SIZES rather than written as 2400, so raising `xl` cannot silently leave the cap behind.
+        // is still generated from a same-size original, so no delivered image loses a pixel. The
+        // instance admin can choose another value (or 0, uncapped) for every project created after.
         //
         // NEW projects only: this is seeded state, not a schema default, so every EXISTING project stays
         // exactly as it was (unset ⇒ uncapped). An owner can raise, lower or clear it in Settings →
@@ -4020,7 +4063,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         website: {
           mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '',
           footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '',
-          imageUploadCap: THUMB_SIZES[DEFAULT_SIZE],
+          ...(newProjectImageCap > 0 ? { imageUploadCap: newProjectImageCap } : {}),
         },
       });
       // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),

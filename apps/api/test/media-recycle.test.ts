@@ -179,3 +179,119 @@ describe('media recycle bin', () => {
     expect(hasBinary(mediaRoot, slug, id2)).toBe(true);
   });
 });
+
+describe('media bulk delete', () => {
+  type BulkResult = { deleted: string[]; failed: Array<{ id: string; error: string }>; requested: number };
+  const bulkDelete = (base: string, c: string, ids: unknown) =>
+    app.inject({ method: 'POST', url: `${base}/media/bulk-delete`, cookies: { sw_session: c }, payload: { ids } });
+
+  it('moves every listed asset to the Recycle Bin in one call, and they can be restored', async () => {
+    const { c, base, slug } = await setup();
+    const cookies = { sw_session: c };
+    const a = await upload(base, c);
+    const b = await upload(base, c);
+    const kept = await upload(base, c);
+
+    const res = await bulkDelete(base, c, [a, b]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ deleted: [a, b], failed: [], requested: 2 });
+
+    const live = ((await app.inject({ method: 'GET', url: `${base}/media`, cookies })).json()) as { items: Array<{ id: string }> };
+    expect(live.items.map((m) => m.id)).toEqual([kept]);
+    const binned = ((await app.inject({ method: 'GET', url: `${base}/media/deleted`, cookies })).json()) as { items: Array<{ id: string }> };
+    expect(binned.items.map((m) => m.id).sort()).toEqual([a, b].sort());
+    // The Recycle Bin, not a purge: the binaries stay, and a binned asset restores like any other.
+    expect(hasBinary(mediaRoot, slug, a)).toBe(true);
+    expect((await app.inject({ method: 'POST', url: `${base}/media/${a}/restore`, cookies })).statusCode).toBe(204);
+  });
+
+  it('reports an id that is unknown, already binned or another project’s, and still deletes the rest', async () => {
+    const { c, base } = await setup();
+    const cookies = { sw_session: c };
+    const a = await upload(base, c);
+    const binnedAlready = await upload(base, c);
+    await app.inject({ method: 'DELETE', url: `${base}/media/${binnedAlready}`, cookies });
+    const other = await setup();
+    const theirs = await upload(other.base, other.c);
+
+    // Duplicates collapse: `requested` counts distinct ids, and `a` is not reported twice.
+    const res = await bulkDelete(base, c, [a, binnedAlready, 'nosuchid', theirs, a]);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as BulkResult;
+    expect(body.deleted).toEqual([a]);
+    expect(body.failed).toEqual([
+      { id: binnedAlready, error: 'media not found' },
+      { id: 'nosuchid', error: 'media not found' },
+      { id: theirs, error: 'media not found' },
+    ]);
+    expect(body.requested).toBe(4);
+
+    // ★ The other project's asset is untouched — an id is only ever looked up inside the caller's project.
+    const theirLive = ((await app.inject({ method: 'GET', url: `${other.base}/media`, cookies: { sw_session: other.c } })).json()) as {
+      items: Array<{ id: string }>;
+    };
+    expect(theirLive.items.map((m) => m.id)).toEqual([theirs]);
+  });
+
+  it('takes a full batch of 200 ids and refuses an empty list or a larger one', async () => {
+    const { c, base } = await setup();
+    const ids = Array.from({ length: 200 }, (_, i) => `id${i}`);
+    const full = await bulkDelete(base, c, ids);
+    expect(full.statusCode).toBe(200);
+    expect((full.json() as BulkResult).requested).toBe(200);
+
+    expect((await bulkDelete(base, c, [])).statusCode).toBe(400);
+    expect((await bulkDelete(base, c, [...ids, 'id200'])).statusCode).toBe(400);
+    expect((await bulkDelete(base, c, 'not-a-list')).statusCode).toBe(400);
+  });
+
+  it('a different user cannot reach the project', async () => {
+    const { c, base } = await setup();
+    const a = await upload(base, c);
+    const stranger = await setup();
+    expect((await bulkDelete(base, stranger.c, [a])).statusCode).toBe(403);
+    expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies: { sw_session: c } })).json()) as { items: unknown[] }).items).toHaveLength(1);
+  });
+
+  it('an API key needs the content:delete capability, as the single delete does', async () => {
+    const { c, base } = await setup();
+    const a = await upload(base, c);
+    const mint = async (capabilities: string[]) =>
+      (
+        (await app.inject({
+          method: 'POST',
+          url: `${base}/api-keys`,
+          cookies: { sw_session: c },
+          payload: { name: 'k', role: 'owner', expiresInDays: 30, capabilities },
+        })).json() as { token: string }
+      ).token;
+    const post = (token: string) =>
+      app.inject({ method: 'POST', url: `${base}/media/bulk-delete`, headers: { authorization: `Bearer ${token}` }, payload: { ids: [a] } });
+
+    expect((await post(await mint(['content:read', 'content:write']))).statusCode).toBe(403);
+    const ok = await post(await mint(['content:read', 'content:delete']));
+    expect(ok.statusCode).toBe(200);
+    expect((ok.json() as BulkResult).deleted).toEqual([a]);
+  });
+
+  it('a key bound to another project is refused, and deletes nothing here', async () => {
+    const { c, base } = await setup();
+    const a = await upload(base, c);
+    const other = await setup();
+    const minted = await app.inject({
+      method: 'POST',
+      url: `${other.base}/api-keys`,
+      cookies: { sw_session: other.c },
+      payload: { name: 'k', role: 'owner', expiresInDays: 30, capabilities: ['content:read', 'content:delete'] },
+    });
+    const token = (minted.json() as { token: string }).token;
+    const res = await app.inject({
+      method: 'POST',
+      url: `${base}/media/bulk-delete`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ids: [a] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect((((await app.inject({ method: 'GET', url: `${base}/media`, cookies: { sw_session: c } })).json()) as { items: unknown[] }).items).toHaveLength(1);
+  });
+});

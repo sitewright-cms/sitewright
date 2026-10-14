@@ -892,6 +892,12 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
       return;
     }
     setError(null);
+    // The server moves the page's children up to its own parent (they used to be left pointing at a page
+    // that was gone) — say so, because their addresses change with it.
+    const children = pages.filter((x) => x.parent === p.id).length;
+    const childNote = children
+      ? ` ${children === 1 ? 'Its sub-page moves' : `Its ${children} sub-pages move`} up one level, to where it was.`
+      : '';
     const group = p.translationGroup;
     const inGroup = group ? pages.filter((x) => x.translationGroup === group) : [];
     const isOwner = localeOf(p, defaultLocale) === defaultLocale && inGroup.length > 1;
@@ -909,6 +915,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
           : 'It has no translations that follow its layout.',
       );
       if (kept.length) parts.push(`Translations with their own code are kept (${labels(kept)}).`);
+      if (childNote) parts.push(childNote.trim());
       if (!(await confirm({ title: 'Delete across languages', message: parts.join(' '), confirmLabel: 'Delete' }))) return;
       try {
         await api.deletePageGroup(project.id, p.id);
@@ -921,7 +928,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
     if (
       !(await confirm({
         title: 'Delete page',
-        message: `Delete page "${p.title}" (${fullPath(p)})? This cannot be undone.`,
+        message: `Delete page "${p.title}" (${fullPath(p)})?${childNote} You can restore it from History.`,
         confirmLabel: 'Delete',
       }))
     )

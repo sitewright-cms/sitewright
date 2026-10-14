@@ -8,7 +8,7 @@ import { primaryButton, ghostButton, glassPanel } from '../../theme';
 import { SnippetPreviewButton } from './SnippetPreviewButton';
 import { HoverTip } from '../ui/HoverTip';
 import { useProjectEvents } from '../../lib/use-project-events';
-import { isOwnContentChange } from '../../api';
+import { isOwnContentChange, ApiError } from '../../api';
 import { Tooltip } from '../ui/Tooltip';
 import { SidePanelOpen } from '../ui/SidePanel';
 
@@ -240,8 +240,9 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       await adaptersFor(scope).remove(projectId, rec.id);
       const setList = scope === 'global' ? setGlobals : setRecords;
       setList((rs) => rs.filter((r) => r.id !== rec.id));
-    } catch {
-      setError(`Couldn’t delete the ${noun}.`);
+    } catch (err) {
+      // The server's refusal says WHY (a template still used by pages names them) — show it, not a shrug.
+      setError(err instanceof ApiError ? `Couldn’t delete “${rec.name}”: ${err.message}` : `Couldn’t delete the ${noun}.`);
     }
   };
 

@@ -116,7 +116,8 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
         else delete w.translations;
         nextSettings.website = w;
       }
-      await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings });
+      // `removedLocale` also takes that language's per-page titles, keyed by the main page that stays.
+      await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings, removedLocale: locale });
       return reply.send({ locale, removed: removePageIds.length });
     },
   );

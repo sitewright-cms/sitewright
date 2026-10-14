@@ -20,11 +20,22 @@ its **code** in one of three modes:
 Operations are atomic + server-side (`apps/api/src/http/locales.ts`, `ContentRepository.applyLocaleChange`):
 - `POST /projects/:id/locales {locale}` — add a translation target + scaffold an inherit variant of every
   default-language page (`scaffoldLocale`), mirroring the tree under `/<locale>/…`.
-- `DELETE /projects/:id/locales/:locale` — remove a target + cascade-delete its pages (never the default).
+- `DELETE /projects/:id/locales/:locale` — remove a target + cascade-delete its pages (never the default),
+  and that language's per-page titles (`translation` rows, keyed by the main page that stays).
 - `POST /projects/:id/pages/:id/translate` — make a default-language page available in all languages
   (`propagatePageToLocales`).
 - `POST /projects/:id/pages/:id/delete-group` — delete a page across the languages that INHERIT its code;
   forked/template variants are kept (detached).
+
+Deleting a page — by any route, including a plain `DELETE …/content/page/:id` from the API or MCP — goes
+through one rule (`planPageRemoval` in `@sitewright/core`, applied by `ContentRepository`):
+- its child pages move up to the nearest ancestor that stays;
+- deleting a main-language page also deletes the variants that inherit its code and detaches the rest
+  (the delete-group behaviour), since an inherit variant with no main page renders empty;
+- its per-locale titles are deleted;
+- everything removed is tombstoned (restorable from History);
+- it is REFUSED for the root home or a language home while pages hang under it, and when moving the
+  children up would give two pages the same address.
 
 Editor: the pages list is locale-first (a language switcher filters to one language; "Add translation"
 adds a target via a searchable locale picker). Page settings expose the inherit/fork/template choice for a

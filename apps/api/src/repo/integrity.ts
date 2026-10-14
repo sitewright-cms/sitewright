@@ -12,7 +12,7 @@
 // "unwanted" — rows are often recoverable data somebody wants back, not garbage.
 
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { pagePath, withResolvedParent } from '@sitewright/core';
+import { GLOBAL_TEMPLATE_PREFIX, hasOwnCode, localeOf, pagePath, withResolvedParent } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content, contentRevisions, projects, type ContentKind } from '../db/schema.js';
@@ -36,6 +36,7 @@ export type IntegrityIssueCode =
   | 'missing_page_parent'
   | 'missing_page_template'
   | 'orphan_translation'
+  | 'orphan_locale_variant'
   | 'deleted_project_holding_slug'
   | 'domain_on_deleted_project';
 
@@ -49,6 +50,7 @@ export type IntegrityActionId =
   | 'reparent_pages'
   | 'restore_template'
   | 'delete_orphan_translations'
+  | 'delete_orphan_variants'
   | 'release_domains';
 
 /** Every action id, for request validation. */
@@ -61,6 +63,7 @@ export const INTEGRITY_ACTION_IDS = [
   'reparent_pages',
   'restore_template',
   'delete_orphan_translations',
+  'delete_orphan_variants',
   'release_domains',
 ] as const satisfies readonly IntegrityActionId[];
 
@@ -136,6 +139,7 @@ const CHECKS: Array<{ id: string; label: string }> = [
   { id: 'translations', label: 'Translations reach their page' },
   { id: 'deleted_projects', label: 'Deleted projects holding slugs' },
   { id: 'custom_domains', label: 'Custom domains resolve to a live project' },
+  { id: 'locale_variants', label: 'Language variants reach their main page' },
 ];
 
 export const INTEGRITY_CHECK_COUNT = CHECKS.length;
@@ -217,6 +221,17 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     detail:
       'Removes the translated titles of a page that no longer exists. Each one is tombstoned first, so it stays restorable from the History rail if the page comes back.',
   },
+  delete_orphan_variants: {
+    id: 'delete_orphan_variants',
+    label: 'Delete the variants',
+    destructive: true,
+    // With no main page they render nothing; deleting the main page now takes them along anyway. Each is
+    // tombstoned, so a restored main page can have its variants back from History too.
+    unattended: true,
+    reversible: true,
+    detail:
+      'Removes language variants whose main page is gone — with nothing to follow, each renders an empty page. Each is tombstoned first, so it stays restorable from the History rail; pages under a variant move up a level.',
+  },
   release_domains: {
     id: 'release_domains',
     label: 'Release the hostnames',
@@ -264,6 +279,24 @@ async function projectRows(db: Database, projectId: string) {
 type Row = Awaited<ReturnType<typeof projectRows>>[number];
 const dataOf = <T,>(r: Row) => r.data as T;
 
+/** The project's main language, from its stored settings row (`en` when unreadable). */
+function defaultLocaleOfRows(rows: Row[]): string {
+  const settings = rows.find((r) => r.kind === 'settings')?.data as { settings?: { defaultLocale?: string } } | undefined;
+  return settings?.settings?.defaultLocale ?? 'en';
+}
+
+/**
+ * Language variants that follow a main page's code (no code of their own) when their group has no
+ * main-language page left. The group key is resolved the way the locale tools do (`translationGroup ?? id`),
+ * so a main page that never carried the field explicitly still counts as present.
+ */
+function orphanedVariants(pages: readonly Page[], defaultLocale: string): Page[] {
+  const mainGroups = new Set(pages.filter((p) => localeOf(p, defaultLocale) === defaultLocale).map((p) => p.translationGroup ?? p.id));
+  return pages.filter(
+    (p) => p.translationGroup !== undefined && localeOf(p, defaultLocale) !== defaultLocale && !hasOwnCode(p) && !mainGroups.has(p.translationGroup),
+  );
+}
+
 /** `<projectId>:<key>` for every DELETE tombstone of `kind` in History, keyed by the given column. */
 async function tombstoneKeys(db: Database, kind: ContentKind, key: ReturnType<typeof sql>): Promise<Set<string>> {
   const rows = await db
@@ -305,6 +338,10 @@ export async function checkDatabaseIntegrity(
   // of deleted templates. A delete leaves its last state behind as a tombstone, and that decides both
   // whether stranded entry history is really stranded and whether a missing template can be restored.
   const deletedDatasetSlugs = await tombstoneKeys(db, 'dataset', sql`json_extract(${contentRevisions.data}, '$.slug')`);
+  // The instance's global library templates (stored without their `global:` prefix).
+  const globalTemplateIds = new Set(
+    (rowsByProject.get(GLOBAL_SCOPE_ID) ?? []).filter((r) => r.kind === 'template').map((r) => r.entityId),
+  );
   const deletedTemplateIds = await tombstoneKeys(db, 'template', sql`${contentRevisions.entityId}`);
 
   const record = (id: string, label: string, scanned: number, found: IntegrityIssue[]) => {
@@ -523,16 +560,20 @@ export async function checkDatabaseIntegrity(
         pagesOf(rows)
           .filter((r) => {
             const t = dataOf<{ template?: string }>(r).template;
-            // `global:<key>` templates resolve against the built-in list, not project rows.
-            return typeof t === 'string' && t !== '' && !t.startsWith('global:') && !templates.has(t);
+            if (typeof t !== 'string' || t === '') return false;
+            // A `global:<id>` reference resolves against the instance's global library — its rows, not the
+            // built-in constants, which only seed it — so a template deleted there breaks these pages too.
+            return t.startsWith(GLOBAL_TEMPLATE_PREFIX) ? !globalTemplateIds.has(t.slice(GLOBAL_TEMPLATE_PREFIX.length)) : !templates.has(t);
           })
           .map((r) => ({ subject: String(dataOf<{ template?: string }>(r).template), id: r.entityId })),
         { code: 'missing_page_template', severity: 'warning', projectId: p.id, projectSlug: p.slug },
         (t, n) =>
           `${plural(n, 'page references', 'pages reference')} template "${t}", which does not exist — those pages fail to render.` +
-          (deletedTemplateIds.has(`${p.id}:${t}`)
-            ? ''
-            : ' History holds no copy of it, so point the pages at another template (or recreate it) in the editor.'),
+          (t.startsWith(GLOBAL_TEMPLATE_PREFIX)
+            ? ' It is a global library template: recreate it in the global library, or point the pages at another template.'
+            : deletedTemplateIds.has(`${p.id}:${t}`)
+              ? ''
+              : ' History holds no copy of it, so point the pages at another template (or recreate it) in the editor.'),
       ).map((issue) => ({
         ...issue,
         // Only restorable while History still holds the template's last state.
@@ -624,6 +665,25 @@ export async function checkDatabaseIntegrity(
       }),
     );
   }
+
+  // ---- 13. Language variants whose main page is gone. A variant that follows its main page's code renders
+  // that code; with no main page it renders an EMPTY page. Deleting a main page now takes these along —
+  // this finds the ones an earlier API or MCP delete left behind.
+  perProject(
+    12,
+    'locale_variants',
+    (rows, p) => {
+      const pages = pagesOf(rows).map((r) => r.data as Page);
+      return group(
+        orphanedVariants(pages, defaultLocaleOfRows(rows)).map((v) => ({ subject: v.translationGroup!, id: v.id })),
+        { code: 'orphan_locale_variant', severity: 'warning', projectId: p.id, projectSlug: p.slug },
+        (g, n) =>
+          `${plural(n, 'language variant follows', 'language variants follow')} the code of main page "${g}", which does not exist — ${n === 1 ? 'it renders' : 'they render'} an empty page.`,
+        ['delete_orphan_variants'],
+      );
+    },
+    (rows) => pagesOf(rows).filter((r) => typeof (r.data as Page).locale === 'string').length,
+  );
 
   return {
     // INFO findings are by design (a deleted project keeping its slug) — nothing to fix, so not "not ok".
@@ -886,6 +946,19 @@ export async function runIntegrityAction(
         action: input.action,
         changed: 1,
         message: `Restored template "${input.subject}"; ${plural(users, 'page renders', 'pages render')} with it again.`,
+      };
+    }
+
+    case 'delete_orphan_variants': {
+      const pages = rows.filter((r) => r.kind === 'page').map((r) => r.data as Page);
+      const orphans = orphanedVariants(pages, defaultLocaleOfRows(rows)).filter((v) => v.translationGroup === input.subject);
+      if (orphans.length === 0) throw new ConflictError('no variant of that page is orphaned any more — re-run the check');
+      // Through the repository, so each is tombstoned and its own children move up like any page delete.
+      for (const v of orphans) await contentRepo.remove(ctx, 'page', v.id);
+      return {
+        action: input.action,
+        changed: orphans.length,
+        message: `Deleted ${plural(orphans.length, 'language variant', 'language variants')} (restorable from History).`,
       };
     }
 

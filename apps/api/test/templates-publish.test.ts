@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
+import { content as contentTable } from '../src/db/schema.js';
 
 // Integration: CODE-FIRST page templates. A page referencing a template renders the
 // TEMPLATE's Handlebars source — the page contributes only its {{edit}} content +
@@ -107,9 +108,20 @@ describe('templates → publish (code-first sources)', () => {
     expect(css.body).toContain('.badge'); // template classes reach the shared sheet
   });
 
-  it('fails the publish with a clear error for an unknown template reference', async () => {
+  it('refuses a page that references an unknown template — and still fails a publish that meets one', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'tpl-page', templatePage('missing'))).statusCode).toBe(200);
+    // At the write: a page cannot be saved against a template that does not exist (it would fail the
+    // whole publish, and the integrity check could only report it afterwards).
+    const put = await proj.putContent('page', 'tpl-page', templatePage('missing'));
+    expect(put.statusCode).toBe(409);
+    expect((put.json() as { error: string }).error).toMatch(/unknown template "missing" — create the template first/);
+
+    // A row written before that guard (or by hand) still meets the publish's own author-correctable error.
+    const now = new Date();
+    await harness.db.insert(contentTable).values({
+      id: 'legacy-tpl-page', projectId, kind: 'page', entityId: 'tpl-page', scope: '',
+      data: { ...templatePage('missing'), parent: 'home' }, createdAt: now, updatedAt: now,
+    });
     const pub = await client.post(`${proj.base}/publish`);
     expect(pub.statusCode).toBe(409); // PublishError → author-correctable
     expect((pub.json() as { error: string }).error).toContain('unknown template');

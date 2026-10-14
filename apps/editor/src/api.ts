@@ -539,6 +539,7 @@ export type IntegrityActionId =
   | 'reparent_pages'
   | 'restore_template'
   | 'delete_orphan_translations'
+  | 'delete_orphan_variants'
   | 'release_domains';
 
 export interface IntegrityAction {

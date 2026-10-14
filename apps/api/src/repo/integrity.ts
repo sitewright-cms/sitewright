@@ -507,7 +507,7 @@ export async function checkDatabaseIntegrity(
           })
           .map((r) => ({ subject: String(dataOf<{ parent?: string }>(r).parent), id: r.entityId })),
         { code: 'missing_page_parent', severity: 'warning', projectId: p.id, projectSlug: p.slug },
-        (parent, n) => `${plural(n, 'page', 'pages')} nest under "${parent}", which does not exist — their route cannot be computed correctly.`,
+        (parent, n) => `${plural(n, 'page nests', 'pages nest')} under "${parent}", which does not exist — their route cannot be computed correctly.`,
         ['reparent_pages'],
       );
     },
@@ -556,7 +556,7 @@ export async function checkDatabaseIntegrity(
           })
           .map((r) => ({ subject: String(dataOf<{ pageId?: string }>(r).pageId), id: r.entityId })),
         { code: 'orphan_translation', severity: 'warning', projectId: p.id, projectSlug: p.slug },
-        (pid, n) => `${plural(n, 'translation', 'translations')} target page "${pid}", which does not exist.`,
+        (pid, n) => `${plural(n, 'translation targets', 'translations target')} page "${pid}", which does not exist.`,
         ['delete_orphan_translations'],
       );
     },

@@ -58,6 +58,9 @@ test('deleting a page with a sub-page moves the sub-page up and leaves nothing f
   await put(api, projectId, 'page', 'web', { id: 'web', path: 'web', title: 'Web', parent: 'services' });
   await put(api, projectId, 'translation', 'services__de', { id: 'services__de', pageId: 'services', locale: 'de', title: 'Leistungen' });
 
+  // The pages list learns of API writes over the live event stream — wait until it shows the sub-page,
+  // or the confirmation is computed from a list that does not have it yet.
+  await expect(page.getByRole('button', { name: /^Web \/services\/web\// })).toBeVisible();
   // The editor says what happens to the sub-page before it happens.
   await page.getByRole('button', { name: 'Delete Services' }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete page' });

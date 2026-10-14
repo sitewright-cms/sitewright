@@ -334,12 +334,18 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
 
+  // Every live event starts a fresh read, and reads can ANSWER OUT OF ORDER: an agent writing two pages
+  // back to back fires two reads, and when the first (taken before the second page existed) answers last
+  // it overwrote the newer list — the second page vanished until something else reloaded. Only the
+  // newest read may set the list.
+  const loadSeq = useRef(0);
   async function load() {
+    const seq = ++loadSeq.current;
     try {
       const res = await api.listPages(project.id);
-      setPages(res.items);
+      if (seq === loadSeq.current) setPages(res.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load pages');
+      if (seq === loadSeq.current) setError(err instanceof Error ? err.message : 'failed to load pages');
     }
   }
 

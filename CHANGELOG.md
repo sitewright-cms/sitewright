@@ -134,7 +134,15 @@ The running version of an instance is reported at `GET /version` (baked into the
   - everything removed is restorable from History — including pages removed with a language or across
     languages, which had no History copy before;
   - it is refused for the home page (or a language's home) while pages hang under it, and when moving the
-    sub-pages up would put two pages on one address.
+    sub-pages up would put two pages on one address;
+  - a bulk delete of pages is planned once for the whole selection, so a parent deleted with its child
+    deletes the child instead of first moving it up;
+  - a sub-page edited while it is being moved makes the delete refuse instead of overwriting the edit.
+  - *Delete across languages* now needs the `content:delete` capability like every other delete. The editor
+    is unaffected; an API key holding only `content:write` can no longer use it.
+- **A page an agent created could vanish from the open pages list.** Each live update re-reads the list, and
+  when two writes came close together the older read could answer last and overwrite the newer list, until
+  something else reloaded it. Only the newest read updates the list now.
 - **Other references that could point at nothing are now refused when they are written,** instead of being
   reported by the integrity check afterwards:
   - deleting a template that pages still use, including a global library template used by any project — the

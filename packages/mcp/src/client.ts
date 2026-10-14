@@ -297,8 +297,9 @@ export interface WriteReceipt {
 }
 
 /**
- * Outcome of a BULK delete (POST /projects/:id/content/:kind/bulk-delete). Partial success is normal:
- * `deleted` + `failed` together account for every requested id (after de-duplication).
+ * Outcome of a BULK delete (POST /projects/:id/content/:kind/bulk-delete, or …/media/bulk-delete).
+ * Partial success is normal: `deleted` + `failed` together account for every requested id (after
+ * de-duplication).
  */
 export interface BulkDeleteResult {
   deleted: string[];
@@ -1108,10 +1109,15 @@ export class SitewrightClient {
     return res.item;
   }
 
-  /** Permanently delete a media asset (DB row + binary). Needs the content:delete capability. */
+  /** Move a media asset to the Recycle Bin (recoverable for 90 days). Needs the content:delete capability. */
   async deleteMedia(id: string): Promise<{ ok: true }> {
     await this.request('DELETE', this.projectPath(`/media/${encodeURIComponent(id)}`));
     return { ok: true };
+  }
+
+  /** Move up to 200 media assets to the Recycle Bin in one call; `failed` names the ids that did not go. */
+  async deleteMediaBulk(ids: readonly string[]): Promise<BulkDeleteResult> {
+    return this.request<BulkDeleteResult>('POST', this.projectPath('/media/bulk-delete'), { ids });
   }
 
   /** Rename a dataset's slug, cascading the change to entries + page/template sources (default on). */

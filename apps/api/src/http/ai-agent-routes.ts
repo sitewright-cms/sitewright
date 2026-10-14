@@ -24,9 +24,11 @@ const AGENT_MAX_CAPS: readonly ApiKeyCapability[] = ['content:read', 'content:wr
  *  behind `content:delete` now that deletes are recoverable (soft-delete → 90-day Recycle Bin). But
  *  `ai_clone` is withheld here: it triggers THIS same server-side clone orchestrator, so handing it to an
  *  authoring/assistant loop (which holds `publish`) would let a run recursively kick off another whole
- *  clone. External MCP clients (the `packages/mcp` bridge) connect straight to `/mcp` and are unaffected —
- *  the `ai_clone` tool stays available to them (its intended primary caller). */
-const WITHHELD_TOOLS = new Set<string>(['ai_clone']);
+ *  clone. `delete_media_bulk` is withheld too: the loop reads page and imported content (text planted there
+ *  can steer it) and its token is exempt from rate limiting, so 200 files a call would put a whole library
+ *  in one turn's reach, where `delete_media` bounds it to one file per iteration. External MCP clients (the
+ *  `packages/mcp` bridge) connect straight to `/mcp` and are unaffected — both tools stay available to them. */
+const WITHHELD_TOOLS = new Set<string>(['ai_clone', 'delete_media_bulk']);
 /** Scoped token lifetime — comfortably longer than any single loop, revoked at the end. */
 const AGENT_TOKEN_TTL_MS = 15 * 60_000;
 // A full landing page built incrementally (get_page + put_page per section, plus previews) can take

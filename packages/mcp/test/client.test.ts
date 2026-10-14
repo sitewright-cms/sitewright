@@ -489,6 +489,17 @@ describe('SitewrightClient — optional-argument branches', () => {
     expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ ids: ['row_1'], dataset: 'team' });
   });
 
+  it('POSTs a media bulk delete as a whole list and returns the per-id result verbatim', async () => {
+    const result = { deleted: ['m1'], failed: [{ id: 'm2', error: 'media not found' }], requested: 2 };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(result) },
+    );
+    await expect(client.deleteMediaBulk(['m1', 'm2'])).resolves.toEqual(result);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/media/bulk-delete');
+    expect(calls[1]!.init!.method).toBe('POST');
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ ids: ['m1', 'm2'] });
+  });
+
   it('folds non-empty zod formErrors into the thrown error, and stays clean when there are none', async () => {
     // formErrors present → appended to the message.
     const withForm = await introspected((input) =>

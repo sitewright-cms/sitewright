@@ -482,6 +482,54 @@ describe('POST /projects/:id/agent/messages (end-to-end)', () => {
   });
 });
 
+describe('the in-editor assistant is offered delete_media but not delete_media_bulk', () => {
+  // The assistant reads page and imported content, so text planted there can steer it, and its token is
+  // exempt from rate limiting. One file per call bounds a 60-iteration turn to ~60 binned files; 200 per
+  // call would put a whole library in reach. Pruning in bulk is for an external agent cleaning up an import.
+  class CapturingProvider implements AgentProvider {
+    readonly model = 'test-model';
+    offered: string[] = [];
+    async *runTurn(req: AgentTurnRequest): AsyncIterable<AgentStreamEvent> {
+      this.offered = req.tools.map((t) => t.name);
+      yield { type: 'text_delta', text: 'ok' };
+      yield { type: 'usage', usage: { inputTokens: 1, outputTokens: 1 } };
+      yield { type: 'stop', reason: 'end_turn' };
+    }
+  }
+
+  it('withholds the bulk delete even with content:delete granted', async () => {
+    const publishRoot = await mkdtemp(join(tmpdir(), 'sw-agent-tools-'));
+    const db = await makeTestDb();
+    const provider = new CapturingProvider();
+    const app = await createApp({ db, publishRoot, encryptionKey: randomBytes(32), agentProvider: provider });
+    await app.ready();
+    try {
+      const email = `agent-tools-${Date.now()}@e2e.test`;
+      await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+      const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+      const cookie = login.cookies.find((c) => c.name === 'sw_session')!.value;
+      const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: cookie }, payload: { name: 'Site', slug: `agenttools${Date.now()}` } });
+      const projectId = (proj.json() as { project: { id: string } }).project.id;
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/projects/${projectId}/agent/messages`,
+        cookies: { sw_session: cookie },
+        payload: { message: 'tidy the media library', capabilities: ['content:read', 'content:write', 'content:delete'], context: { path: '/' } },
+      });
+      expect(res.statusCode).toBe(200);
+      // Presence guard: with content:delete granted the single delete IS offered, so the absence below
+      // means the tool was withheld, not that no delete tool could have been.
+      expect(provider.offered).toContain('delete_media');
+      expect(provider.offered).not.toContain('delete_media_bulk');
+      expect(provider.offered).not.toContain('ai_clone');
+    } finally {
+      await app.close();
+      await rm(publishRoot, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('adapter translation + error branches', () => {
   it('Anthropic: translates assistant tool_use + tool-result-with-image; throws on non-ok', async () => {
     let body: { system?: unknown; tools?: Array<Record<string, unknown>>; messages?: Array<Record<string, unknown>> } = {};

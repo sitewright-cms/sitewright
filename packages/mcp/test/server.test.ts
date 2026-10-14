@@ -152,6 +152,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     renameMediaFolder: vi.fn(async () => ({ ok: true })),
     updateMedia: vi.fn(async (_id: string, changes: unknown) => ({ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', ...(changes as object) })),
     deleteMedia: vi.fn(async () => ({ ok: true })),
+    deleteMediaBulk: vi.fn(async (ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
     renameDataset: vi.fn(async () => ({ oldSlug: 'items', newSlug: 'features', cascaded: true, entriesUpdated: 2, pagesUpdated: 1, templatesUpdated: 0, referencesUpdated: 0 })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
@@ -821,6 +822,37 @@ describe('createSitewrightMcpServer — media tools', () => {
     const ok = await d.callTool({ name: 'delete_media', arguments: { id: 'm1' } });
     expect(ok.isError).toBeFalsy();
     expect(callsOf(deleter).deleteMedia).toHaveBeenCalledWith('m1');
+  });
+
+  it('delete_media_bulk needs content:delete and forwards the whole id list, returning the per-id result', async () => {
+    const writer = fakeClient();
+    const refused = await (await connect(writer, writeScope)).callTool({ name: 'delete_media_bulk', arguments: { ids: ['m1', 'm2'] } });
+    expect(refused.isError).toBe(true);
+    expect(text(refused)).toMatch(/content:delete/);
+    expect(callsOf(writer).deleteMediaBulk).not.toHaveBeenCalled();
+
+    const deleter = fakeClient({
+      deleteMediaBulk: vi.fn(async () => ({ deleted: ['m1'], failed: [{ id: 'm2', error: 'media not found' }], requested: 2 })),
+    });
+    const res = await (await connect(deleter, deleteScope)).callTool({ name: 'delete_media_bulk', arguments: { ids: ['m1', 'm2'] } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(deleter).deleteMediaBulk).toHaveBeenCalledWith(['m1', 'm2']);
+    // The id that did NOT go reaches the agent — a partial result is never reported as a clean sweep.
+    expect(text(res)).toContain('"requested": 2');
+    expect(text(res)).toContain('media not found');
+  });
+
+  it('delete_media_bulk takes at most 200 non-empty ids, the server cap, and refuses more before any request', async () => {
+    const deleter = fakeClient();
+    const d = await connect(deleter, deleteScope);
+    const ids = Array.from({ length: 201 }, (_, i) => `m${i}`);
+    const res = await d.callTool({ name: 'delete_media_bulk', arguments: { ids } });
+    expect(res.isError).toBe(true);
+    expect(callsOf(deleter).deleteMediaBulk).not.toHaveBeenCalled();
+    // An empty id is refused here too, rather than reaching the route and failing the whole batch.
+    expect((await d.callTool({ name: 'delete_media_bulk', arguments: { ids: ['m1', ''] } })).isError).toBe(true);
+    expect(callsOf(deleter).deleteMediaBulk).not.toHaveBeenCalled();
+    expect((await d.callTool({ name: 'delete_media_bulk', arguments: { ids: ids.slice(0, 200) } })).isError).toBeFalsy();
   });
 
   it('rename_dataset forwards (id, slug, name, cascade=true) with a write token', async () => {
@@ -1575,6 +1607,8 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
       { name: 'delete_page', arguments: { id: 'home' } },
       { name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } },
       { name: 'delete_content_bulk', arguments: { kind: 'dataset', ids: ['x'] } },
+      { name: 'delete_media', arguments: { id: 'm1' } },
+      { name: 'delete_media_bulk', arguments: { ids: ['m1'] } },
     ]) {
       const client = fakeClient();
       const res = await (await connect(client, writeScope)).callTool(tool);
@@ -1582,6 +1616,8 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
       expect(text(res)).toMatch(/content:delete/);
       expect(calls(client).deleteContent).not.toHaveBeenCalled();
       expect(calls(client).deleteContentBulk).not.toHaveBeenCalled();
+      expect(calls(client).deleteMedia).not.toHaveBeenCalled();
+      expect(calls(client).deleteMediaBulk).not.toHaveBeenCalled();
     }
   });
 

@@ -43,7 +43,7 @@ export class McpToolBridge {
   /**
    * The tool definitions offered to the model — the live registry (JSON-Schema typed),
    * minus orientation tools, minus any whose capability isn't in `allowed`, minus
-   * `withhold` (e.g. `delete_media`, which is not yet recoverable).
+   * `withhold` (e.g. `ai_clone`, which would start another server-side run).
    */
   async listTools(allowed: ReadonlySet<Capability>, withhold: ReadonlySet<string> = new Set()): Promise<AgentToolDef[]> {
     const res = await this.rpc('tools/list', {});

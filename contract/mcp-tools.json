@@ -70,6 +70,12 @@
     ]
   },
   {
+    "name": "delete_media_bulk",
+    "required": [
+      "ids"
+    ]
+  },
+  {
     "name": "delete_page",
     "required": [
       "id"

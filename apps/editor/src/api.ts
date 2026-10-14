@@ -591,8 +591,7 @@ export interface IntegrityProgress {
 
 export interface IntegrityActionInput {
   action: IntegrityActionId;
-  /** Absent for the instance-wide repairs (e.g. releasing hostnames of deleted projects). */
-  projectId?: string;
+  projectId: string;
   subject: string;
   targetDataset?: string;
 }
@@ -606,7 +605,7 @@ export interface IntegrityActionResult {
 /** Most repairs one "Fix all" request may carry — mirrors the server's INTEGRITY_REPAIR_BATCH_MAX. */
 export const INTEGRITY_REPAIR_BATCH_MAX = 200;
 
-export type IntegrityBatchResult = { action: IntegrityActionId; projectId: string | null; subject: string } & (
+export type IntegrityBatchResult = { action: IntegrityActionId; projectId: string; subject: string } & (
   | { ok: true; changed: number; message: string }
   | { ok: false; error: string }
 );

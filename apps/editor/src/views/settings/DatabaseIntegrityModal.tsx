@@ -127,7 +127,7 @@ function IssueCard({
   );
 }
 
-type PlannedFix = { issue: IntegrityIssue; action: IntegrityAction };
+type PlannedFix = { issue: IntegrityIssue; action: IntegrityAction; projectId: string };
 
 /**
  * What "Fix all issues" will do, and what it will leave alone.
@@ -153,8 +153,10 @@ export function fixPlan(issues: IntegrityIssue[]): { auto: PlannedFix[]; decide:
   for (const issue of issues) {
     if (issue.severity === 'info') continue;
     const action = issue.actions.find((a) => a.unattended);
-    if (action) auto.push({ issue, action });
-    else if (issue.actions.length > 0) decide.push(issue);
+    // Every repair acts inside one project; an instance-wide finding (file damage, a dangling foreign
+    // key) has none to offer.
+    if (action && issue.projectId) auto.push({ issue, action, projectId: issue.projectId });
+    else if (issue.actions.length > 0 && issue.projectId) decide.push(issue);
     else unfixable.push(issue);
   }
   // Recreating a dataset in this same run makes the history stranded under its slug reachable again,
@@ -177,7 +179,7 @@ function planLines(fixes: PlannedFix[]): string[] {
     const rows = group.reduce((sum, f) => sum + f.issue.count, 0);
     const where =
       group.length === 1
-        ? `${group[0]!.issue.projectSlug ?? 'instance'} (${n(rows, 'row')})`
+        ? `${group[0]!.issue.projectSlug} (${n(rows, 'row')})`
         : `${n(group.length, 'issue')}, ${n(rows, 'row')} across ${n(new Set(group.map((f) => f.issue.projectId)).size, 'project')}`;
     const undo = action.destructive ? (action.reversible ? ' · restorable from History' : ' · cannot be undone') : '';
     return `· ${action.label} — ${where}${undo}`;
@@ -234,10 +236,11 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
   }, [report, datasets]);
 
   async function onRun(issue: IntegrityIssue, action: IntegrityAction, targetDataset?: string) {
+    if (!issue.projectId) return;
     if (action.destructive) {
       const ok = await confirm({
         title: action.label,
-        message: `${action.detail}\n\nThis affects ${issue.count} row(s) ${issue.projectSlug ? `in “${issue.projectSlug}”` : 'across the instance'}.`,
+        message: `${action.detail}\n\nThis affects ${issue.count} row(s) in “${issue.projectSlug}”.`,
         confirmLabel: action.label,
       });
       if (!ok) return;
@@ -245,7 +248,7 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setNote(null);
     try {
-      const res = await api.repairIntegrity({ action: action.id, projectId: issue.projectId ?? undefined, subject: issue.subject, targetDataset });
+      const res = await api.repairIntegrity({ action: action.id, projectId: issue.projectId, subject: issue.subject, targetDataset });
       setNote({ tone: 'ok', text: res.message });
       // Re-scan rather than patching local state: the repair may have resolved OTHER issues too
       // (recreating a dataset also un-strands its history), and a stale list invites acting on it.
@@ -269,7 +272,7 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
         repairs.length > 0 ? `Repairs — nothing is removed:\n${planLines(repairs).join('\n')}` : '',
         removals.length > 0 ? `Removals:\n${planLines(removals).join('\n')}` : '',
         decide.length > 0
-          ? `${n(decide.length, 'issue')} need${decide.length === 1 ? 's' : ''} a decision and will be LEFT ALONE — the only repair on offer deletes something a gentler one could keep, or needs a dataset you choose. Run those individually.`
+          ? `${n(decide.length, 'issue')} need${decide.length === 1 ? 's' : ''} a decision and will be LEFT ALONE — the repair on offer needs a dataset you choose, deletes something a gentler one could keep, or gives up what a restore would bring back. Run those individually.`
           : '',
         unfixable.length > 0 ? `${n(unfixable.length, 'issue')} cannot be fixed from here — each one says what to do instead.` : '',
       ]
@@ -286,14 +289,15 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
       const chunk = auto.slice(i, i + INTEGRITY_REPAIR_BATCH_MAX);
       try {
         const res = await api.repairIntegrityBatch(
-          chunk.map(({ issue, action }) => ({ action: action.id, projectId: issue.projectId ?? undefined, subject: issue.subject })),
+          chunk.map(({ issue, action, projectId }) => ({ action: action.id, projectId, subject: issue.subject })),
         );
         results.push(...res.results);
       } catch (err) {
-        // The REQUEST failed (signed out, rate-limited, offline), so neither this chunk nor any later one
-        // ran: report every one of them with the reason rather than a count that hides it.
-        const error = err instanceof ApiError ? err.message : 'could not be applied';
-        for (const { issue, action } of auto.slice(i)) results.push({ action: action.id, projectId: issue.projectId, subject: issue.subject, ok: false, error });
+        // The REQUEST failed, so no later chunk is sent. A refusal from the server (signed out,
+        // rate-limited, already running) means this chunk did not run either; with NO answer it may have
+        // — say so, and let the re-scan below show what actually happened.
+        const error = err instanceof ApiError ? err.message : 'no answer from the server — the re-check shows what was applied';
+        for (const { issue, action, projectId } of auto.slice(i)) results.push({ action: action.id, projectId, subject: issue.subject, ok: false, error });
         break;
       }
     }

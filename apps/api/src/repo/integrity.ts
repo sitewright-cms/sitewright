@@ -12,11 +12,11 @@
 // "unwanted" — rows are often recoverable data somebody wants back, not garbage.
 
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { withResolvedParent } from '@sitewright/core';
+import { pagePath, withResolvedParent } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content, contentRevisions, projects, type ContentKind } from '../db/schema.js';
-import { schemaFor, type ContentRepository } from './content.js';
+import { contentVersion, schemaFor, type ContentRepository } from './content.js';
 import { GLOBAL_SCOPE_ID } from './global-library.js';
 import { ConflictError, NotFoundError, type ProjectContext } from './context.js';
 
@@ -63,9 +63,6 @@ export const INTEGRITY_ACTION_IDS = [
   'delete_orphan_translations',
   'release_domains',
 ] as const satisfies readonly IntegrityActionId[];
-
-/** Actions about the INSTANCE rather than one project — they take no `projectId`. */
-const INSTANCE_ACTIONS: ReadonlySet<IntegrityActionId> = new Set(['release_domains']);
 
 export interface IntegrityAction {
   id: IntegrityActionId;
@@ -224,7 +221,9 @@ const ACTIONS: Record<IntegrityActionId, IntegrityAction> = {
     id: 'release_domains',
     label: 'Release the hostnames',
     destructive: true,
-    unattended: true,
+    // A deleted project keeps its claims ON PURPOSE — restoring it puts its domains back. Whether it
+    // will ever be restored is the operator's call, not a default.
+    unattended: false,
     reversible: false,
     detail:
       'Removes the hostname claims of deleted projects, so another project can use them. Restoring such a project later brings it back without its custom domains — add and verify them again in its settings.',
@@ -270,7 +269,8 @@ async function tombstoneKeys(db: Database, kind: ContentKind, key: ReturnType<ty
   const rows = await db
     .select({ projectId: contentRevisions.projectId, key: sql<string | null>`${key}` })
     .from(contentRevisions)
-    .where(and(eq(contentRevisions.kind, kind), eq(contentRevisions.op, 'delete')));
+    // json_valid first: one malformed blob must not fail the whole (read-only) sweep.
+    .where(and(eq(contentRevisions.kind, kind), eq(contentRevisions.op, 'delete'), sql`json_valid(${contentRevisions.data})`));
   return new Set(rows.filter((r) => typeof r.key === 'string' && r.key !== '').map((r) => `${r.projectId}:${r.key}`));
 }
 
@@ -602,26 +602,26 @@ export async function checkDatabaseIntegrity(
           from project_domains d join projects p on p.id = d.project_id`,
     )) as Array<{ host: string; projectId: string; verifiedAt: number | null; slug: string; deletedAt: number | null }>;
     const stranded = domainRows.filter((r) => r.deletedAt !== null);
+    // One issue per deleted project, so a release acts on exactly the project the operator saw.
     record(
       'custom_domains',
       CHECKS[11]!.label,
       domainRows.length,
-      stranded.length
-        ? [
-            {
-              code: 'domain_on_deleted_project',
-              severity: 'warning',
-              projectId: null,
-              projectSlug: null,
-              subject: 'custom domains',
-              count: stranded.length,
-              sample: stranded.slice(0, SAMPLE_LIMIT).map((r) => `${r.host} → ${r.slug}`),
-              detail:
-                'These hostnames are claimed by projects that are deleted. They are NOT being served (a deleted project 404s), but the claim still reserves the hostname, so no other project can use it until the project is restored or permanently removed.',
-              actions: [ACTIONS.release_domains],
-            },
-          ]
-        : [],
+      [...new Set(stranded.map((r) => r.projectId))].map((projectId) => {
+        const held = stranded.filter((r) => r.projectId === projectId);
+        return {
+          code: 'domain_on_deleted_project',
+          severity: 'warning',
+          projectId,
+          projectSlug: held[0]!.slug,
+          subject: 'custom domains',
+          count: held.length,
+          sample: held.slice(0, SAMPLE_LIMIT).map((r) => r.host),
+          detail:
+            'These hostnames are claimed by a project that is deleted. They are NOT being served (a deleted project 404s), but the claim still reserves each hostname, so no other project can use it until the project is restored or permanently removed. Restoring it brings the domains back with it.',
+          actions: [ACTIONS.release_domains],
+        } satisfies IntegrityIssue;
+      }),
     );
   }
 
@@ -664,8 +664,7 @@ function datasetSlugCount(rows: Row[]): number {
 
 export interface IntegrityActionInput {
   action: IntegrityActionId;
-  /** The project the issue is in. Required for every action except the instance-wide ones. */
-  projectId?: string;
+  projectId: string;
   /** The issue's `subject` — what the rows point at (a dataset slug, a page or template id). */
   subject: string;
   /** Target dataset slug, for `reassign_entries`. */
@@ -690,8 +689,8 @@ export async function runIntegrityAction(
   userId: string,
   input: IntegrityActionInput,
 ): Promise<IntegrityActionResult> {
-  if (INSTANCE_ACTIONS.has(input.action)) return runInstanceAction(db, input.action);
-  if (!input.projectId) throw new NotFoundError('project not found');
+  // The one repair that acts on a DELETED project — every other one refuses those below.
+  if (input.action === 'release_domains') return releaseDomains(db, input.projectId);
   const [project] = await db.select({ id: projects.id, deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, input.projectId));
   if (!project || project.deletedAt) throw new NotFoundError('project not found');
   const ctx: ProjectContext = { userId, projectId: project.id, role: 'owner', actor: 'user' };
@@ -787,7 +786,30 @@ export async function runIntegrityAction(
     }
 
     case 'delete_orphan_history': {
+      // IRREVERSIBLE, and Fix all may run it — so it re-derives everything the check used to offer it,
+      // not just "no live dataset": a stale report, a direct call, or an earlier repair in the same
+      // batch that FAILED (a recreate that did not happen) must never get it past these.
       if (slugs.has(input.subject)) throw new ConflictError(`dataset "${input.subject}" exists — its history is not stranded`);
+      if (rows.some((r) => r.kind === 'entry' && (r.scope === input.subject || (r.data as { dataset?: string }).dataset === input.subject))) {
+        throw new ConflictError(
+          `entries are still stored under "${input.subject}" — recreate or reassign them first; their history goes with them`,
+        );
+      }
+      const [deletedDataset] = await db
+        .select({ id: contentRevisions.id })
+        .from(contentRevisions)
+        .where(
+          and(
+            eq(contentRevisions.projectId, project.id),
+            eq(contentRevisions.kind, 'dataset'),
+            eq(contentRevisions.op, 'delete'),
+            sql`json_extract(${contentRevisions.data}, '$.slug') = ${input.subject}`,
+          ),
+        )
+        .limit(1);
+      if (deletedDataset) {
+        throw new ConflictError(`dataset "${input.subject}" was deleted and can be restored from History — this history is its undo`);
+      }
       const res = await db.run(
         sql`delete from content_revisions where project_id = ${project.id} and kind = 'entry' and scope = ${input.subject}`,
       );
@@ -803,24 +825,47 @@ export async function runIntegrityAction(
       const settings = rows.find((r) => r.kind === 'settings')?.data as { settings?: { defaultLocale?: string } } | undefined;
       const defaultLocale = settings?.settings?.defaultLocale ?? 'en';
       let changed = 0;
-      const stuck: string[] = [];
+      const homeless: string[] = [];
+      const clashing: string[] = [];
+      // Routes are computed against the tree AS IT IS BEING REPAIRED, so two pages moved in this run
+      // cannot both claim the same address either.
+      const byId = new Map(pages.map((p) => [p.id, p]));
       for (const page of dangling) {
         // The same rule a whole-project import applies: an unresolvable parent is replaced by the page's
         // language home, else the root home. Unchanged (by identity) when there is no home to hang it on.
         const fixed = withResolvedParent(page, pages, defaultLocale, { repairDangling: true });
         if (fixed === page) {
-          stuck.push(page.id);
+          homeless.push(page.id);
           continue;
         }
-        await contentRepo.put(ctx, 'page', page.id, fixed);
+        // A main-language page keeps its address (a missing parent already rendered it at the top
+        // level). A page of another language moves under its language home, so its address CHANGES —
+        // and must not land on one another page already has: publish refuses two pages on one route.
+        const before = pagePath(page, byId);
+        const after = pagePath(fixed, new Map(byId).set(fixed.id, fixed));
+        if (after !== before && [...byId.values()].some((o) => o.id !== page.id && pagePath(o, byId) === after)) {
+          clashing.push(page.id);
+          continue;
+        }
+        // Refuse rather than overwrite an edit saved since `rows` was read (a VersionConflictError).
+        await contentRepo.put(ctx, 'page', page.id, fixed, { expectedVersion: contentVersion(page) });
+        byId.set(fixed.id, fixed);
         changed += 1;
       }
       return {
         action: input.action,
         changed,
-        message: stuck.length
-          ? `Moved ${plural(changed, 'page', 'pages')} under a home page; ${plural(stuck.length, 'page', 'pages')} left as they were because the project has no home page to hang them on (${stuck.slice(0, 5).join(', ')}).`
-          : `Moved ${plural(changed, 'page', 'pages')} under a home page.`,
+        message: [
+          `Moved ${plural(changed, 'page', 'pages')} under a home page.`,
+          homeless.length
+            ? `${plural(homeless.length, 'page was', 'pages were')} left as they were because the project has no home page to hang them on (${homeless.slice(0, 5).join(', ')}).`
+            : '',
+          clashing.length
+            ? `${plural(clashing.length, 'page was', 'pages were')} left as they were because the address they would move to is another page's (${clashing.slice(0, 5).join(', ')}).`
+            : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
       };
     }
 
@@ -858,26 +903,24 @@ export async function runIntegrityAction(
       };
     }
 
-    case 'release_domains':
-      // Instance-wide; dispatched before the project lookup. Unreachable, but keeps the switch total.
-      return runInstanceAction(db, input.action);
   }
 }
 
-/** The repairs that act on the instance as a whole rather than inside one project. */
-async function runInstanceAction(db: Database, action: IntegrityActionId): Promise<IntegrityActionResult> {
-  switch (action) {
-    case 'release_domains': {
-      // Re-derived here like every repair: only the claims of projects that are deleted RIGHT NOW. The
-      // routing map already excludes them (a deleted project 404s), so nothing that serves changes.
-      const res = await db.run(
-        sql`delete from project_domains where project_id in (select id from projects where deleted_at is not null)`,
-      );
-      const changed = Number((res as { rowsAffected?: number }).rowsAffected ?? 0);
-      if (changed === 0) throw new ConflictError('no deleted project holds a hostname any more — re-run the check');
-      return { action, changed, message: `Released ${plural(changed, 'hostname', 'hostnames')} held by deleted projects.` };
-    }
-    default:
-      throw new ConflictError(`"${action}" is not an instance-wide repair`);
-  }
+/**
+ * Release the hostname claims of ONE deleted project. Re-derived like every repair: the project must
+ * still be deleted right now (a restored project's domains are in use again). The routing map already
+ * excludes a deleted project, so nothing that is being served changes.
+ */
+async function releaseDomains(db: Database, projectId: string): Promise<IntegrityActionResult> {
+  const [project] = await db.select({ id: projects.id, deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, projectId));
+  if (!project) throw new NotFoundError('project not found');
+  if (!project.deletedAt) throw new ConflictError('that project is not deleted — its hostnames are in use');
+  const hosts = (await db.all(sql`select host from project_domains where project_id = ${project.id}`)) as Array<{ host: string }>;
+  if (hosts.length === 0) throw new ConflictError('that project holds no hostname any more — re-run the check');
+  await db.run(sql`delete from project_domains where project_id = ${project.id}`);
+  return {
+    action: 'release_domains',
+    changed: hosts.length,
+    message: `Released ${plural(hosts.length, 'hostname', 'hostnames')}: ${hosts.map((h) => h.host).join(', ')}.`,
+  };
 }

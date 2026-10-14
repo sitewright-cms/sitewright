@@ -32,7 +32,7 @@ const A = {
   history: { id: 'delete_orphan_history', label: 'Delete the stranded history', destructive: true, unattended: true, reversible: false, detail: 'Removes snapshots.' },
   reparent: { id: 'reparent_pages', label: 'Move under the home page', destructive: false, unattended: true, reversible: true, detail: 'Hangs pages under home.' },
   translations: { id: 'delete_orphan_translations', label: 'Delete the translations', destructive: true, unattended: true, reversible: true, detail: 'Removes titles.' },
-  release: { id: 'release_domains', label: 'Release the hostnames', destructive: true, unattended: true, reversible: false, detail: 'Frees hostnames.' },
+  release: { id: 'release_domains', label: 'Release the hostnames', destructive: true, unattended: false, reversible: false, detail: 'Frees hostnames.' },
 } satisfies Record<string, IntegrityAction>;
 
 const orphanIssue: IntegrityIssue = {
@@ -52,7 +52,7 @@ const issueOf = (over: Partial<IntegrityIssue>): IntegrityIssue => ({ ...orphanI
 
 /** The batch endpoint's answer when every repair it was sent succeeded. */
 const allApplied = async (repairs: IntegrityActionInput[]) => ({
-  results: repairs.map((r) => ({ action: r.action, projectId: r.projectId ?? null, subject: r.subject, ok: true, changed: 1, message: 'ok' })),
+  results: repairs.map((r) => ({ action: r.action, projectId: r.projectId, subject: r.subject, ok: true, changed: 1, message: 'ok' })),
 });
 
 const report = (over: Partial<DatabaseIntegrityReport> = {}): DatabaseIntegrityReport => ({
@@ -157,24 +157,24 @@ describe('DatabaseIntegrityModal', () => {
 
   it('FIX ALL includes the removals the server marks safe, says which can be undone, and runs them LAST', async () => {
     const translations = issueOf({ code: 'orphan_translation', severity: 'warning', subject: 'gone-page', count: 3, actions: [A.translations] });
-    const domains = issueOf({ code: 'domain_on_deleted_project', severity: 'warning', projectId: null, projectSlug: null, subject: 'custom domains', count: 2, actions: [A.release] });
+    const history = issueOf({ code: 'orphan_entry_history', severity: 'warning', projectId: 'p2', projectSlug: 'beta', subject: 'old', count: 2, actions: [A.history] });
     const pages = issueOf({ code: 'missing_page_parent', severity: 'warning', subject: 'ghost', count: 5, actions: [A.reparent] });
-    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [translations, domains, pages] })));
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [translations, history, pages] })));
     render(<DatabaseIntegrityModal onClose={() => {}} />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(3\)/ }));
     const dialog = await screen.findByRole('dialog', { name: /Fix 3 issues\?/ });
     expect(within(dialog).getByText(/Move under the home page — acme \(5 rows\)/)).toBeInTheDocument();
     expect(within(dialog).getByText(/Delete the translations — acme \(3 rows\) · restorable from History/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Release the hostnames — instance \(2 rows\) · cannot be undone/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Delete the stranded history — beta \(2 rows\) · cannot be undone/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fix them' }));
 
     await waitFor(() => expect(repairIntegrityBatch).toHaveBeenCalledTimes(1));
-    // Re-pointing first, removing after; the instance-wide repair carries no project.
+    // Re-pointing first, removing after.
     expect(repairIntegrityBatch.mock.calls[0]![0]).toEqual([
       { action: 'reparent_pages', projectId: 'p1', subject: 'ghost' },
       { action: 'delete_orphan_translations', projectId: 'p1', subject: 'gone-page' },
-      { action: 'release_domains', projectId: undefined, subject: 'custom domains' },
+      { action: 'delete_orphan_history', projectId: 'p2', subject: 'old' },
     ]);
   });
 
@@ -183,23 +183,25 @@ describe('DatabaseIntegrityModal', () => {
     // default, so bulk-fixing must not guess — and must not quietly do less than it says either.
     const deleteOnly = issueOf({ subject: 'delete-only', actions: [A.deleteEntries] });
     const chooseOne = issueOf({ subject: 'needs-target', actions: [A.reassign] });
+    // A deleted project keeps its hostnames so a restore brings them back — releasing them is a choice.
+    const domains = issueOf({ code: 'domain_on_deleted_project', severity: 'warning', projectId: 'gone', projectSlug: 'gone', subject: 'custom domains', actions: [A.release] });
     const noRepair = issueOf({ code: 'unparseable_content', subject: 'page', actions: [] });
     const byDesign = issueOf({ code: 'deleted_project_holding_slug', severity: 'info', projectId: null, projectSlug: null, subject: 'deleted projects', actions: [] });
-    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [orphanIssue, deleteOnly, chooseOne, noRepair, byDesign] })));
+    checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [orphanIssue, deleteOnly, chooseOne, domains, noRepair, byDesign] })));
     render(<DatabaseIntegrityModal onClose={() => {}} />);
 
-    // Four problems and a note; only ONE problem is safely automatic.
-    expect(await screen.findByText('4 issues found')).toBeInTheDocument();
+    // Five problems and a note; only ONE problem is safely automatic.
+    expect(await screen.findByText('5 issues found')).toBeInTheDocument();
     expect(screen.getByText(/· 1 note/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Fix all issues \(1\)/ }));
     const dialog = await screen.findByRole('dialog', { name: /Fix 1 issue\?/ });
-    expect(within(dialog).getByText(/2 issues need a decision and will be LEFT ALONE/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/3 issues need a decision and will be LEFT ALONE/)).toBeInTheDocument();
     expect(within(dialog).getByText(/1 issue cannot be fixed from here/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fix them' }));
 
     await waitFor(() => expect(repairIntegrityBatch).toHaveBeenCalledTimes(1));
     expect(repairIntegrityBatch.mock.calls[0]![0]).toHaveLength(1);
-    expect(await screen.findByText(/2 left for you to decide on\. 1 cannot be fixed from here\./)).toBeInTheDocument();
+    expect(await screen.findByText(/3 left for you to decide on\. 1 cannot be fixed from here\./)).toBeInTheDocument();
   });
 
   it('does not delete history that recreating its dataset in the same run brings back', () => {
@@ -262,20 +264,22 @@ describe('DatabaseIntegrityModal', () => {
     expect(screen.queryByRole('button', { name: /Fix all issues/ })).toBeNull();
   });
 
-  it('runs an instance-wide repair from its own button, with no project', async () => {
-    const domains = issueOf({ code: 'domain_on_deleted_project', severity: 'warning', projectId: null, projectSlug: null, subject: 'custom domains', count: 2, actions: [A.release] });
+  it('releases a deleted project’s hostnames only from that issue’s own button, after confirming', async () => {
+    const domains = issueOf({ code: 'domain_on_deleted_project', severity: 'warning', projectId: 'gone', projectSlug: 'gone', subject: 'custom domains', count: 2, actions: [A.release] });
     checkDatabaseIntegrity.mockImplementation(stream(report({ issues: [domains] })));
-    repairIntegrity.mockResolvedValueOnce({ action: 'release_domains', changed: 2, message: 'Released 2 hostnames held by deleted projects.' });
+    repairIntegrity.mockResolvedValueOnce({ action: 'release_domains', changed: 2, message: 'Released 2 hostnames: a.example, b.example.' });
     render(<DatabaseIntegrityModal onClose={() => {}} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Release the hostnames' }));
+    // Not something Fix all may do on its own.
+    expect(await screen.findByRole('button', { name: 'Fix all issues' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Release the hostnames' }));
     const dialog = await screen.findByRole('dialog', { name: /Release the hostnames/ });
-    expect(within(dialog).getByText(/across the instance/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/2 row\(s\) in “gone”/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Release the hostnames' }));
     await waitFor(() =>
-      expect(repairIntegrity).toHaveBeenCalledWith({ action: 'release_domains', projectId: undefined, subject: 'custom domains', targetDataset: undefined }),
+      expect(repairIntegrity).toHaveBeenCalledWith({ action: 'release_domains', projectId: 'gone', subject: 'custom domains', targetDataset: undefined }),
     );
-    expect(await screen.findByText('Released 2 hostnames held by deleted projects.')).toBeInTheDocument();
+    expect(await screen.findByText('Released 2 hostnames: a.example, b.example.')).toBeInTheDocument();
   });
 
   it('surfaces a stream error instead of pretending the database is clean', async () => {

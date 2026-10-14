@@ -3524,8 +3524,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   const IntegrityActionBody = z.object({
     action: z.enum(INTEGRITY_ACTION_IDS),
-    // Absent only for the instance-wide repairs (runIntegrityAction refuses a project repair without it).
-    projectId: z.string().min(1).max(64).optional(),
+    projectId: z.string().min(1).max(64),
     subject: z.string().max(200),
     targetDataset: z.string().max(200).optional(),
   });
@@ -3548,34 +3547,50 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // earlier repair already resolved refuses harmlessly and must not stop the rest.
   const INTEGRITY_REPAIR_BATCH_MAX = 200;
   const IntegrityBatchBody = z.object({ repairs: z.array(IntegrityActionBody).min(1).max(INTEGRITY_REPAIR_BATCH_MAX) });
+  // One batch at a time per instance. Repairs re-verify, so an overlap would mostly refuse harmlessly,
+  // but two read-then-write repairs of the same issue racing is not worth allowing for a button that
+  // an operator presses once — and a second batch would only queue more whole-project reads behind it.
+  let integrityBatchRunning = false;
   app.post('/admin/integrity/repair-batch', { config: rl(10) }, async (req, reply) => {
     const userId = await requireInstanceAdmin(req);
     const parsed = IntegrityBatchBody.safeParse(req.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: `invalid request — repairs (1-${INTEGRITY_REPAIR_BATCH_MAX}) are required` });
     }
-    const results: Array<
-      { action: string; projectId: string | null; subject: string } & ({ ok: true; changed: number; message: string } | { ok: false; error: string })
-    > = [];
-    for (const repair of parsed.data.repairs) {
-      const at = { action: repair.action, projectId: repair.projectId ?? null, subject: repair.subject };
-      try {
-        const result = await runIntegrityAction(db, contentRepo, userId, repair);
-        results.push({ ...at, ok: true, changed: result.changed, message: result.message });
-      } catch (err) {
-        // A refusal (gone, already resolved, nothing left) carries a message meant for the operator; any
-        // other failure is logged here and reported generically, never as a raw internal error.
-        const known = err instanceof ConflictError || err instanceof NotFoundError;
-        if (!known) app.log.error({ userId, ...at, errMsg: err instanceof Error ? err.message : String(err) }, 'database integrity repair failed');
-        results.push({ ...at, ok: false, error: known ? (err as Error).message : 'the repair could not be applied' });
+    if (integrityBatchRunning) return reply.code(409).send({ error: 'repairs are already being applied — wait for them to finish' });
+    integrityBatchRunning = true;
+    try {
+      const results: Array<
+        { action: string; projectId: string; subject: string } & ({ ok: true; changed: number; message: string } | { ok: false; error: string })
+      > = [];
+      for (const repair of parsed.data.repairs) {
+        const at = { action: repair.action, projectId: repair.projectId, subject: repair.subject };
+        try {
+          const result = await runIntegrityAction(db, contentRepo, userId, repair);
+          // The same audit line per repair as the single route — a batch must not hide what it touched.
+          app.log.warn({ userId, ...at, changed: result.changed }, 'database integrity repair applied');
+          results.push({ ...at, ok: true, changed: result.changed, message: result.message });
+        } catch (err) {
+          // A refusal (gone, already resolved, nothing left) carries a message meant for the operator, and
+          // so does stored data that no longer validates; anything else is logged here and reported
+          // generically, never as a raw internal error.
+          const known = err instanceof ConflictError || err instanceof NotFoundError;
+          const invalid = err instanceof z.ZodError ? err.issues[0] : undefined;
+          if (!known && !invalid) {
+            app.log.error({ userId, ...at, errMsg: err instanceof Error ? err.message : String(err) }, 'database integrity repair failed');
+          }
+          const error = known
+            ? (err as Error).message
+            : invalid
+              ? `the stored data does not pass validation (${invalid.path.join('.') || 'value'}: ${invalid.message})`
+              : 'the repair could not be applied';
+          results.push({ ...at, ok: false, error });
+        }
       }
+      return reply.send({ results });
+    } finally {
+      integrityBatchRunning = false;
     }
-    const applied = results.filter((r) => r.ok);
-    app.log.warn(
-      { userId, requested: results.length, applied: applied.length, changed: applied.reduce((n, r) => n + (r.ok ? r.changed : 0), 0) },
-      'database integrity repairs applied',
-    );
-    return reply.send({ results });
   });
 
   // Verify the platform AI provider — connectivity + model. Tests the just-typed key if present, else

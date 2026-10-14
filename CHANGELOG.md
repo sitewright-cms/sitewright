@@ -27,9 +27,10 @@ The running version of an instance is reported at `GET /version` (baked into the
       pointing at it). A main-language page keeps its address.
     - *Restore the template from History* for pages whose template was deleted, when History still has it.
     - *Delete the translations* of a page that is gone (restorable from History).
-    - *Release the hostnames* held by deleted projects.
     - Fix all can now also delete stranded entry history, which only happens when no deleted dataset
-      can bring it back.
+      can bring it back, and no entries are still stored under its slug.
+    - *Release the hostnames* held by a deleted project. This one stays a per-issue button, not part
+      of Fix all: a deleted project keeps its domains on purpose, so restoring it brings them back.
   - **The button always shows when there are problems.** When nothing can be fixed automatically it
     is disabled, with the reason.
   - **The confirmation separates repairs from removals** and says which removals can be undone. It

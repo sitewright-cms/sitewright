@@ -6,6 +6,7 @@ import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
 import { RevisionsRepository } from '../src/repo/revisions.js';
+import { ProjectDomainRepository } from '../src/repo/project-domains.js';
 import { checkProjectIntegrity, checkDatabaseIntegrity, runIntegrityAction, INTEGRITY_CHECK_COUNT } from '../src/repo/integrity.js';
 import { content as contentTable, contentRevisions } from '../src/db/schema.js';
 import type { ProjectContext } from '../src/repo/context.js';
@@ -318,5 +319,284 @@ describe('runIntegrityAction (opt-in repairs)', () => {
     await expect(
       runIntegrityAction(db, content, ctx.userId, { action: 'recreate_dataset', projectId: 'nope', subject: 'items' }),
     ).rejects.toThrow(/not found/);
+  });
+});
+
+describe('a report Fix all can act on', () => {
+  it('★ does NOT report the history of a dataset deleted through the product — it is the undo, not damage', async () => {
+    await content.put(ctx, 'dataset', 'items', dataset('items'));
+    await content.put(ctx, 'entry', 'e1', entry('e1', 'items'));
+    // The product's own delete: the dataset AND its entries are tombstoned under the slug.
+    await content.remove(ctx, 'dataset', 'items');
+
+    const report = await checkDatabaseIntegrity(db);
+    expect(report.issues.map((i) => i.code)).not.toContain('orphan_entry_history');
+    expect(report.ok).toBe(true);
+    // …because restoring the dataset makes that history reachable again — which is the whole point of it.
+    const tomb = (await revisions.list(ctx, 'dataset', 'items')).find((r) => r.op === 'delete');
+    expect(tomb).toBeDefined();
+    expect(await revisions.list(ctx, 'entry', 'e1', 'items')).not.toHaveLength(0);
+  });
+
+  it('still reports history nothing can bring back, and lets Fix all delete it', async () => {
+    await content.put(ctx, 'dataset', 'items', dataset('items'));
+    await content.put(ctx, 'entry', 'e1', entry('e1', 'items'));
+    await db.update(contentRevisions).set({ scope: 'vanished' }); // no dataset was ever called that
+    const issue = (await checkDatabaseIntegrity(db)).issues.find((i) => i.code === 'orphan_entry_history');
+    expect(issue?.actions.map((a) => [a.id, a.unattended, a.reversible])).toEqual([['delete_orphan_history', true, false]]);
+  });
+
+  it('a soft-deleted project is INFO and leaves the report ok — there is nothing to fix', async () => {
+    const projects = new ProjectRepository(db);
+    const gone = await projects.create({ name: 'Gone', slug: 'gone' });
+    await projects.softDelete(gone.id, ctx.userId);
+    const report = await checkDatabaseIntegrity(db);
+    expect(report.issues.map((i) => i.severity)).toEqual(['info']);
+    expect(report.ok).toBe(true);
+  });
+
+  it('offers a repair for broken page, template and translation references', async () => {
+    await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
+    await content.put(ctx, 'page', 'child', { id: 'child', path: 'c', title: 'C', parent: 'ghost_parent' });
+    await content.put(ctx, 'page', 'tpl', { id: 'tpl', path: 't', title: 'T', template: 'ghost_template' });
+    await content.put(ctx, 'translation', 'home__de', { id: 'home__de', pageId: 'ghost_page', locale: 'de', title: 'S' });
+
+    const byCode = new Map((await checkDatabaseIntegrity(db)).issues.map((i) => [i.code, i]));
+    expect(byCode.get('missing_page_parent')?.actions.map((a) => a.id)).toEqual(['reparent_pages']);
+    expect(byCode.get('orphan_translation')?.actions.map((a) => a.id)).toEqual(['delete_orphan_translations']);
+    // A template that was never in History cannot be restored — so nothing is offered, and the detail
+    // says what to do instead rather than leaving the operator with a dead end.
+    expect(byCode.get('missing_page_template')?.actions).toEqual([]);
+    expect(byCode.get('missing_page_template')?.detail).toMatch(/History holds no copy/);
+  });
+});
+
+describe('runIntegrityAction — the repairs Fix all applies', () => {
+  /** Entries left behind by a dataset row that vanished WITHOUT a tombstone (the legacy state). */
+  async function makeOrphansFor(slug: string) {
+    await content.put(ctx, 'dataset', slug, dataset(slug));
+    await content.put(ctx, 'entry', `${slug}_1`, entry(`${slug}_1`, slug));
+    await db
+      .delete(contentTable)
+      .where(and(eq(contentTable.projectId, ctx.projectId), eq(contentTable.kind, 'dataset'), eq(contentTable.entityId, slug)));
+  }
+
+  it('reparent_pages hangs pages with a missing parent under the home page, keeping their address', async () => {
+    await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
+    await content.put(ctx, 'page', 'a', { id: 'a', path: 'a', title: 'A', parent: 'ghost' });
+    await content.put(ctx, 'page', 'b', { id: 'b', path: 'b', title: 'B', parent: 'ghost' });
+    await content.put(ctx, 'page', 'other', { id: 'other', path: 'o', title: 'O', parent: 'elsewhere' });
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' });
+    expect(res.changed).toBe(2);
+    expect(await content.get(ctx, 'page', 'a')).toMatchObject({ parent: 'home' });
+    expect(await content.get(ctx, 'page', 'b')).toMatchObject({ parent: 'home' });
+    // Only the pages under THAT missing parent move — the issue is per subject.
+    expect(await content.get(ctx, 'page', 'other')).toMatchObject({ parent: 'elsewhere' });
+    const codes = (await checkDatabaseIntegrity(db)).issues.filter((i) => i.subject === 'ghost').map((i) => i.code);
+    expect(codes).toEqual([]);
+    // Re-derived: nothing points at it any more, so a second run refuses rather than doing anything.
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' }),
+    ).rejects.toThrow(/no pages point at that parent/);
+  });
+
+  it('reparent_pages refuses when the parent exists, and leaves a page alone when there is no home', async () => {
+    await content.put(ctx, 'page', 'p', { id: 'p', path: 'p', title: 'P', parent: 'ghost' });
+    // No home page in this project: there is nothing to hang it on, so it is reported, not invented.
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' });
+    expect(res.changed).toBe(0);
+    expect(res.message).toMatch(/no home page/);
+    expect(await content.get(ctx, 'page', 'p')).toMatchObject({ parent: 'ghost' });
+
+    await content.put(ctx, 'page', 'ghost', { id: 'ghost', path: 'g', title: 'G' });
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' }),
+    ).rejects.toThrow(/exists/);
+  });
+
+  it('restore_template brings a deleted template back from History, and is offered only when it can', async () => {
+    await content.put(ctx, 'template', 'card', { id: 'card', name: 'Card', source: '<article>{{page.title}}</article>' });
+    await content.put(ctx, 'page', 'p', { id: 'p', path: 'p', title: 'P', template: 'card' });
+    await content.remove(ctx, 'template', 'card');
+
+    const issue = (await checkDatabaseIntegrity(db)).issues.find((i) => i.code === 'missing_page_template');
+    expect(issue?.actions.map((a) => [a.id, a.unattended])).toEqual([['restore_template', true]]);
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'restore_template', projectId: ctx.projectId, subject: 'card' });
+    expect(res.message).toMatch(/1 page renders/);
+    expect(await content.get(ctx, 'template', 'card')).toMatchObject({ source: '<article>{{page.title}}</article>' });
+    expect((await checkDatabaseIntegrity(db)).ok).toBe(true);
+    // It is a restore, recorded as one, so History reads the way the operator would expect.
+    expect((await revisions.list(ctx, 'template', 'card'))[0]).toMatchObject({ op: 'restore' });
+
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'restore_template', projectId: ctx.projectId, subject: 'card' }),
+    ).rejects.toThrow(/exists/);
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'restore_template', projectId: ctx.projectId, subject: 'never' }),
+    ).rejects.toThrow(/no copy/);
+  });
+
+  it('delete_orphan_translations tombstones them, and refuses while the page exists', async () => {
+    await content.put(ctx, 'translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
+    await content.put(ctx, 'translation', 'gone__fr', { id: 'gone__fr', pageId: 'gone', locale: 'fr', title: 'Parti' });
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_translations', projectId: ctx.projectId, subject: 'gone' });
+    expect(res.changed).toBe(2);
+    expect((await content.list(ctx, 'translation')) as unknown[]).toHaveLength(0);
+    expect((await revisions.list(ctx, 'translation', 'gone__de')).map((r) => r.op)).toContain('delete');
+
+    await content.put(ctx, 'page', 'here', { id: 'here', path: 'h', title: 'H' });
+    await content.put(ctx, 'translation', 'here__de', { id: 'here__de', pageId: 'here', locale: 'de', title: 'Hier' });
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_translations', projectId: ctx.projectId, subject: 'here' }),
+    ).rejects.toThrow(/not orphaned/);
+  });
+
+  it('release_domains frees the hostnames of ONE deleted project, and is left to the operator', async () => {
+    const projects = new ProjectRepository(db);
+    const domains = new ProjectDomainRepository(db);
+    const gone = await projects.create({ name: 'Gone', slug: 'gone' });
+    const alsoGone = await projects.create({ name: 'Also gone', slug: 'also-gone' });
+    await domains.claim({ projectId: gone.id, host: 'gone.example.com', createdBy: ctx.userId });
+    await domains.claim({ projectId: alsoGone.id, host: 'also.example.com', createdBy: ctx.userId });
+    await domains.claim({ projectId: ctx.projectId, host: 'live.example.com', createdBy: ctx.userId });
+    await projects.softDelete(gone.id, ctx.userId);
+    await projects.softDelete(alsoGone.id, ctx.userId);
+
+    // One issue per deleted project, so a release acts on exactly what the operator saw. Not unattended:
+    // a restore would bring the domains back, and whether it will happen is the operator's call.
+    const issues = (await checkDatabaseIntegrity(db)).issues.filter((i) => i.code === 'domain_on_deleted_project');
+    expect(issues.map((i) => [i.projectSlug, i.sample])).toEqual(
+      expect.arrayContaining([
+        ['gone', ['gone.example.com']],
+        ['also-gone', ['also.example.com']],
+      ]),
+    );
+    expect(issues[0]!.actions.map((a) => [a.id, a.unattended, a.reversible])).toEqual([['release_domains', false, false]]);
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'release_domains', projectId: gone.id, subject: 'custom domains' });
+    expect(res).toMatchObject({ changed: 1, message: 'Released 1 hostname: gone.example.com.' });
+    expect(await domains.findByHost('gone.example.com')).toBeNull();
+    // Only THAT project: another deleted project's claim and a live one are untouched.
+    expect(await domains.findByHost('also.example.com')).not.toBeNull();
+    expect(await domains.findByHost('live.example.com')).not.toBeNull();
+
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'release_domains', projectId: gone.id, subject: 'custom domains' }),
+    ).rejects.toThrow(/holds no hostname any more/);
+    // A live (or restored) project's domains are in use — never released.
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'release_domains', projectId: ctx.projectId, subject: 'custom domains' }),
+    ).rejects.toThrow(/not deleted/);
+  });
+
+  it('delete_orphan_history refuses while entries still live under the slug, or a deleted dataset can bring it back', async () => {
+    // The batch runs repairs in order and each fails on its own: if "Recreate the dataset" failed, the
+    // history deletion queued after it must still refuse — it is the orphans' only past.
+    await makeOrphansFor('blog');
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_history', projectId: ctx.projectId, subject: 'blog' }),
+    ).rejects.toThrow(/entries are still stored under "blog"/);
+
+    // A dataset deleted through the product: its tombstone makes the history restorable, so it is kept.
+    await content.put(ctx, 'dataset', 'news', dataset('news'));
+    await content.put(ctx, 'entry', 'n1', entry('n1', 'news'));
+    await content.remove(ctx, 'dataset', 'news');
+    await expect(
+      runIntegrityAction(db, content, ctx.userId, { action: 'delete_orphan_history', projectId: ctx.projectId, subject: 'news' }),
+    ).rejects.toThrow(/can be restored from History/);
+  });
+
+  it('reparent_pages will not move a page onto an address another page has', async () => {
+    await content.put(ctx, 'settings', 'settings', {
+      identity: { name: 'P' },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
+    // The German home: the root home's translation, which is what makes it that language's home.
+    await content.put(ctx, 'page', 'de', { id: 'de', path: 'de', title: 'DE', locale: 'de', parent: 'home', translationGroup: 'home' });
+    await content.put(ctx, 'page', 'de-about', { id: 'de-about', path: 'about', title: 'Über', locale: 'de', parent: 'de' });
+    // A German page whose parent vanished renders at /about/ today; its language home would put it at
+    // /de/about/ — which another page already is.
+    await content.put(ctx, 'page', 'stray', { id: 'stray', path: 'about', title: 'Stray', locale: 'de', parent: 'ghost' });
+
+    const res = await runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' });
+    expect(res.changed).toBe(0);
+    expect(res.message).toMatch(/address they would move to is another page's \(stray\)/);
+    expect(await content.get(ctx, 'page', 'stray')).toMatchObject({ parent: 'ghost' });
+  });
+
+  it('a project repair for an unknown project is refused', async () => {
+    await expect(runIntegrityAction(db, content, ctx.userId, { action: 'reparent_pages', projectId: 'nope', subject: 'x' })).rejects.toThrow(/not found/);
+  });
+});
+
+describe('POST /admin/integrity/repair-batch', () => {
+  async function boot() {
+    await registerAccount(db, 'admin@acme.test', 'Pw-secret-1', { platformRole: 'admin' });
+    const app = await createApp({ db });
+    await app.ready();
+    const login = async (email: string) =>
+      (await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } })).cookies.find(
+        (c) => c.name === 'sw_session',
+      )!.value;
+    return { app, admin: await login('admin@acme.test'), owner: await login('owner@acme.test') };
+  }
+
+  it('applies every repair it is sent, reports each one, and one refusal does not stop the rest', async () => {
+    const { app, admin } = await boot();
+    try {
+      await content.put(ctx, 'page', 'home', { id: 'home', path: '', title: 'Home' });
+      await content.put(ctx, 'page', 'a', { id: 'a', path: 'a', title: 'A', parent: 'ghost' });
+      await content.put(ctx, 'translation', 'gone__de', { id: 'gone__de', pageId: 'gone', locale: 'de', title: 'Weg' });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/admin/integrity/repair-batch',
+        cookies: { sw_session: admin },
+        payload: {
+          repairs: [
+            { action: 'reparent_pages', projectId: ctx.projectId, subject: 'ghost' },
+            { action: 'recreate_dataset', projectId: ctx.projectId, subject: 'nothing-orphaned' }, // refuses
+            { action: 'delete_orphan_translations', projectId: ctx.projectId, subject: 'gone' },
+          ],
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const { results } = res.json() as { results: Array<{ action: string; ok: boolean; changed?: number; error?: string }> };
+      expect(results.map((r) => [r.action, r.ok])).toEqual([
+        ['reparent_pages', true],
+        ['recreate_dataset', false],
+        ['delete_orphan_translations', true],
+      ]);
+      // The refusal carries the operator-facing reason, not a generic failure.
+      expect(results[1]!.error).toMatch(/no orphaned entries remain/);
+      expect((await checkDatabaseIntegrity(db)).ok).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('is admin-only, and refuses an empty or oversized batch', async () => {
+    const { app, admin, owner } = await boot();
+    try {
+      const repairs = [{ action: 'release_domains', projectId: ctx.projectId, subject: 'custom domains' }];
+      const asOwner = await app.inject({ method: 'POST', url: '/admin/integrity/repair-batch', cookies: { sw_session: owner }, payload: { repairs } });
+      expect(asOwner.statusCode).toBe(403);
+      for (const bad of [[], Array.from({ length: 201 }, () => repairs[0])]) {
+        const res = await app.inject({ method: 'POST', url: '/admin/integrity/repair-batch', cookies: { sw_session: admin }, payload: { repairs: bad } });
+        expect(res.statusCode).toBe(400);
+      }
+      const unknown = await app.inject({
+        method: 'POST',
+        url: '/admin/integrity/repair-batch',
+        cookies: { sw_session: admin },
+        payload: { repairs: [{ action: 'drop_everything', subject: 'x' }] },
+      });
+      expect(unknown.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
   });
 });

@@ -9,6 +9,45 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Dataset entries in the site's other languages.** On a multilingual site a dataset needed a full
+  copy per language (`services` + `services_de`), so every price, photo and link was entered and kept
+  up to date twice. An entry now carries its other languages itself, as `translations`, holding only
+  the fields that differ there. Any field can differ — text, a photo, a price, a list. A field left
+  alone follows the main language, so a price changed once changes on every language page that did
+  not set its own.
+  - **On the site:**
+    - A page in German shows each entry in its German version, falling back to the main language
+      where there is none.
+    - This covers `{{#each}}` loops, `{{item.…}}` access and `{{#sw-pick-entry}}`. A **reference**
+      field, which is read with `{{#sw-pick-entry}}`, therefore also gets the referenced entry in the
+      reader's language.
+    - It applies to published pages, the editor preview, `preview_page` and the code editor's render.
+      Site search follows, since it indexes the rendered pages.
+    - A data file takes `locale` to emit one language.
+  - **Editor:** the entry dialog has a language switch. **Translate to German** starts the German
+    version with every field showing the main content to edit, and only what you change is stored.
+    Each field reads *same as English* or *changed*, with a reset button. **Remove German version**
+    undoes it. The entries list shows which languages each entry has.
+  - **Agents** write `translations: { de: { … } }`. A merge write (`merge: true`) changes one
+    language, and `null` either makes a field follow the main language again or removes a language.
+    Only a language the site has is accepted, never its main one.
+  - Removing a language from the site removes it from every entry. History keeps the old version.
+  - **Existing `<dataset>_<locale>` copies keep working** and still take precedence for their
+    dataset. The `localized` field flag, which never did anything, is no longer documented: every
+    field is translatable.
+
+### Fixed
+
+- **Text typed into the preview could be lost when the preview reloaded.** In the header/footer
+  editor, picking an image, editing a link or saving HTML source reloads the preview once the save
+  lands, and the reload shows the saved copy. Text typed after that change and not yet saved vanished
+  from the screen. The next edit to that text, read back from the screen, then saved over it. Every
+  reload of a preview you type into now waits until you have paused (2 s) and every pending save has
+  landed. A render you typed through is thrown away and redone. The page editor works the same way,
+  and a reload that typing on the page cancelled is no longer dropped.
+
 ## [0.62.0] — 2026-10-16
 
 ### Added

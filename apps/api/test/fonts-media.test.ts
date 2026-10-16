@@ -185,6 +185,22 @@ describe('correcting a font asset after upload (PATCH /media/:id)', () => {
     expect((await app.inject({ method: 'GET', url: `/media/${slug}/${font.id}-${font.files[0]!.file}` })).statusCode).toBe(200);
   });
 
+  it('checks a rename against the rest of the library — the bold half of a family joins it, a twin face does not', async () => {
+    const { t, projectId, font } = await guessedFont();
+    const { payload, headers } = multipart(woff2Bytes('r'), 'Inter-Regular.woff2');
+    const regular = await app.inject({ method: 'POST', url: `/projects/${projectId}/media?family=Inter&weight=400`, cookies: { sw_session: t }, headers, payload });
+    expect(regular.statusCode).toBe(201);
+
+    // Inter-Bold is still recorded at 400 — as "Inter" it would be a second Inter 400 normal.
+    const twin = await patch(t, projectId, font.id, { family: 'Inter' });
+    expect(twin.statusCode).toBe(400);
+    expect(twin.json().error).toMatch(/400 normal/);
+    // With its real weight it is simply the 700 of the same family.
+    expect((await patch(t, projectId, font.id, { family: 'Inter', weight: 700 })).statusCode).toBe(200);
+    // `face` alone changes nothing, so it is refused rather than silently ignored.
+    expect((await patch(t, projectId, font.id, { face: font.files[0]!.file })).statusCode).toBe(400);
+  });
+
   it('answers a bad correction with the reason, and stores nothing', async () => {
     const { t, projectId, font } = await guessedFont();
     expect((await patch(t, projectId, font.id, { weight: 450 })).statusCode).toBe(400);

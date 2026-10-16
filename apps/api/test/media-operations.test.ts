@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { sql } from 'drizzle-orm';
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
@@ -225,12 +226,27 @@ describe('bulk media alt text', () => {
     expect(res.statusCode).toBe(200);
     const out = res.json() as { updated: string[]; failed: Array<{ id: string; error: string }>; requested: number };
     expect(out.updated).toEqual([a.id, b.id]);
-    expect(out.failed).toEqual([{ id: 'no-such-asset', error: 'media not found' }]);
+    expect(out.failed).toEqual([{ id: 'no-such-asset', error: 'not found' }]);
     expect(out.requested).toBe(3);
 
     const byId = new Map((await listMedia(t, projectId)).map((m) => [m.id, m]));
     expect(byId.get(a.id)?.alt).toBe('second thought');
     expect(byId.get(b.id)).not.toHaveProperty('alt');
+  });
+
+  it('reports a failed write in a fixed vocabulary, never the raw error', async () => {
+    const { t, projectId } = await setup('bulkalt-raw@e2e.test');
+    const good = await uploadImage(t, projectId);
+    const broken = await uploadImage(t, projectId);
+    // A legacy record the current schema no longer accepts: the write re-validates it and throws a
+    // ZodError whose message (field paths and all) must not reach the caller.
+    await db.run(sql`update content set data = json_set(data, '$.url', 'not a media url') where kind = 'media' and entity_id = ${broken.id}`);
+    const res = await bulkAlt(t, projectId, [
+      { id: good.id, alt: 'Fine' },
+      { id: broken.id, alt: 'Doomed' },
+    ]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ updated: [good.id], failed: [{ id: broken.id, error: 'could not update' }], requested: 2 });
   });
 
   it('is bounded (1-200 items, alt ≤ 500 chars) and needs write access to the project', async () => {

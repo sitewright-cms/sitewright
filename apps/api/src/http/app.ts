@@ -6399,6 +6399,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     type UploadMeta = { filename: string; mimetype: string; folder: string; alt?: string };
     /** A font's metadata — query strings on the multipart route, numbers on a ticket; FontUploadMeta coerces both. */
     type UploadFontMeta = { family?: string; weight?: string | number; style?: string; fallback?: string };
+    /** The kinds an upload READS INTO MEMORY, each held to its own cap before a byte is read. */
+    const IN_MEMORY_CAPS = {
+      svg: { bytes: MAX_SVG_BYTES, error: 'SVG exceeds the 4MB limit' },
+      image: { bytes: MAX_IMAGE_UPLOAD_BYTES, error: 'image exceeds the 15MB limit' },
+      font: { bytes: MAX_FONT_BYTES, error: 'file exceeds size limit' },
+    } as const;
     /**
      * Write an incoming upload straight to a temp file next to the media root.
      *
@@ -6458,7 +6464,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
         if (looksLikeImage || looksLikeFont) {
-          // Bounded by their own caps, so reading these in is cheap and keeps ONE dispatcher.
+          // Bounded by their own caps, so reading these in is cheap and keeps ONE dispatcher — but only
+          // once the cap is checked against the size ON DISK. The kind is client-chosen (a ".png" name,
+          // four "wOF2" bytes), so checking after readFile let either pull up to the 200MB ticket
+          // ceiling into the heap, and an image into sharp.
+          const cap = isSvg ? IN_MEMORY_CAPS.svg : looksLikeImage ? IN_MEMORY_CAPS.image : IN_MEMORY_CAPS.font;
+          if ((await stat(tmpPath)).size > cap.bytes) return { ok: false, status: 413, error: cap.error };
           const buffer = await readFile(tmpPath);
           return await storeUploadBuffer(ctx, projectSlug, buffer, meta, font);
         }
@@ -7602,8 +7613,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           await contentRepo.put(ctx, 'media', asset.id, withAlt(asset, alt));
           updated.push(id);
         } catch (err) {
-          // One bad id must not abandon the rest half-described.
-          failed.push({ id, error: err instanceof Error ? err.message : 'update failed' });
+          // One bad id must not abandon the rest half-described. A fixed vocabulary, never the raw
+          // message — a storage error has no business reaching the caller verbatim.
+          failed.push({ id, error: err instanceof NotFoundError ? 'not found' : 'could not update' });
         }
       }
       return reply.send({ updated, failed, requested: wanted.size });
@@ -7622,7 +7634,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (asset.kind !== 'font') {
           return reply.code(400).send({ error: `family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"` });
         }
-        const corrected = correctFontMetadata(asset, fontChanges);
+        const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
+          (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
+        );
+        const corrected = correctFontMetadata(asset, fontChanges, { others });
         if (!corrected.ok) return reply.code(400).send({ error: corrected.error });
         next = corrected.asset;
       }

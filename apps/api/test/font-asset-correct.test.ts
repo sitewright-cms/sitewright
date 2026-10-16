@@ -101,6 +101,48 @@ describe('correctFontMetadata', () => {
     expect(res.ok && res.asset.fallback).toBe('serif');
   });
 
+  it('refuses `face` on its own — it only says WHICH file a weight/style change is for', () => {
+    const res = correctFontMetadata(family(), { face: 'inter-700.woff2' });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/weight.*style/);
+  });
+
+  it('refuses to rename a GOOGLE font — select_google_font would re-import it as a duplicate', () => {
+    const google = single({ source: 'google', family: 'Inter', filename: 'Inter' });
+    const res = correctFontMetadata(google, { family: 'Brand Sans' });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/Google/);
+    // Everything else about it stays correctable.
+    expect(correctFontMetadata(google, { fallback: 'serif' }).ok).toBe(true);
+    expect(correctFontMetadata(google, { family: 'Inter' }).ok).toBe(true);
+  });
+
+  it('refuses a rename onto a Google font\'s family — two "Inter"s, one of them the one select merges into', () => {
+    const theirs = single({ id: 'g1', source: 'google', family: 'Inter', filename: 'Inter', files: [{ weight: 400, style: 'normal', format: 'woff2', file: 'inter-400.woff2' }] });
+    const res = correctFontMetadata(single({ files: [{ weight: 900, style: 'normal', format: 'woff2', file: 'x-900.woff2' }] }), { family: 'inter' }, { others: [theirs] });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toMatch(/Google/);
+  });
+
+  it('refuses a change that makes two fonts of one family declare the SAME face', () => {
+    const regular = single({ id: 'r1', family: 'Inter', filename: 'Inter', files: [{ weight: 400, style: 'normal', format: 'woff2', file: 'inter-400.woff2' }] });
+    // Inter-Bold.woff2 recorded at 400 → renaming it to "Inter" without fixing the weight clashes.
+    const clash = correctFontMetadata(single(), { family: 'Inter' }, { others: [regular] });
+    expect(clash.ok).toBe(false);
+    if (clash.ok) return;
+    expect(clash.error).toMatch(/400 normal/);
+    // …with the weight corrected in the same call it is simply the bold half of the family.
+    expect(correctFontMetadata(single(), { family: 'Inter', weight: 700 }, { others: [regular] }).ok).toBe(true);
+  });
+
+  it('only checks collisions when the family or a face changes — a fallback fix on legacy data still works', () => {
+    const twin = single({ id: 'twin' });
+    expect(correctFontMetadata(single(), { fallback: 'serif' }, { others: [twin] }).ok).toBe(true);
+  });
+
   it('★ the typography the site renders picks the correction up — nothing else to re-point', () => {
     // A slot references the asset by id; family, fallback and each face's weight come off the asset at
     // render time. So the corrected record is the whole fix: no slot or stylesheet has to change.

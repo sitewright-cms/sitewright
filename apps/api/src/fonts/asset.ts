@@ -120,6 +120,26 @@ export async function mergeFontFaces(
   return (await contentRepo.put(ctx, 'media', existing.id, asset)) as FontAsset;
 }
 
+/**
+ * Why `family`/`files` would collide with another font in the library, or `undefined`. Sharing a family
+ * with another LOCAL font is normal — a family uploaded one file per weight is several assets — so that
+ * only clashes when both would declare the same weight × style (two @font-face rules for one face, and
+ * the browser silently keeps whichever came last). A GOOGLE font's family always clashes: select merges
+ * new weights into it by name, and a second asset answering to that name is the one it would miss.
+ */
+function familyClash(family: string, files: FontAsset['files'], others: readonly FontAsset[]): string | undefined {
+  const name = family.toLowerCase();
+  for (const other of others) {
+    if (other.family.toLowerCase() !== name) continue;
+    if (other.source === 'google') {
+      return `"${other.family}" is already a Google font in the library — add weights to it with select_google_font, or pick another family`;
+    }
+    const same = files.find((f) => other.files.some((o) => o.weight === f.weight && o.style === f.style));
+    if (same) return `another "${other.family}" font already holds the ${same.weight} ${same.style} face — two would fight over it; correct the weight or the other font first`;
+  }
+  return undefined;
+}
+
 /** What may be corrected on a font asset (each optional; already boundary-validated by the caller). */
 export interface FontMetadataChanges {
   family?: string;
@@ -143,11 +163,28 @@ export type FontCorrection = { ok: true; asset: FontAsset } | { ok: false; error
  * criticalCss pointing at it must not break because the metadata was corrected. Typography needs
  * nothing else — the renderer reads family, fallback and each face's weight off the asset.
  *
+ * A Google font's family is not renameable, and a rename or face change is checked against `others`
+ * (the library's OTHER font assets) for a clash — see familyClash.
+ *
  * Pure: returns the corrected record (schema-checked) or the reason it cannot be, never writes.
  */
-export function correctFontMetadata(existing: FontAsset, changes: FontMetadataChanges): FontCorrection {
+export function correctFontMetadata(
+  existing: FontAsset,
+  changes: FontMetadataChanges,
+  opts: { others?: readonly FontAsset[] } = {},
+): FontCorrection {
+  const touchesFace = changes.weight !== undefined || changes.style !== undefined;
+  if (changes.face !== undefined && !touchesFace) {
+    return { ok: false, error: '`face` only names which file a weight/style change is for — pass weight and/or style with it' };
+  }
+  const renames = changes.family !== undefined && changes.family !== existing.family;
+  // fonts/select finds a Google family's asset BY NAME to merge new weights into; renamed, it is
+  // invisible to that lookup and the next select downloads the whole family again as a duplicate.
+  if (renames && existing.source === 'google') {
+    return { ok: false, error: `a Google font keeps its catalog family ("${existing.family}") — select_google_font finds it by that name; rename its display name with filename instead` };
+  }
   let files = existing.files;
-  if (changes.weight !== undefined || changes.style !== undefined) {
+  if (touchesFace) {
     const names = existing.files.map((f) => f.file).join(', ');
     const target =
       changes.face !== undefined
@@ -179,6 +216,10 @@ export function correctFontMetadata(existing: FontAsset, changes: FontMetadataCh
     files = existing.files.map((f) => (f === target ? { ...f, weight, style } : f));
   }
   const family = changes.family ?? existing.family;
+  if (renames || touchesFace) {
+    const clash = familyClash(family, files, opts.others ?? []);
+    if (clash) return { ok: false, error: clash };
+  }
   const asset = FontAssetSchema.parse({
     ...existing,
     family,

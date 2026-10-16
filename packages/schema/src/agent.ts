@@ -493,7 +493,8 @@ media url in \`source\`:
   Each ticket is single-use and expires in 10 minutes. MANY FILES → ONE call: count:N (up to 50)
   returns tickets:[{ uploadUrl, alt? }] — send file i to tickets[i]; add alts:[…] (one per ticket, in
   order) and every asset is born with its alt. Redeeming is capped at 60 PUTs a minute per IP (a 429
-  leaves the ticket unspent — wait and retry it), and a project holds at most 200 unused tickets.
+  leaves the ticket unspent — wait and retry it). A project holds at most 200 unused tickets and one
+  cannot be handed back — it holds its slot for its 10 minutes — so mint only what you will upload.
 - EXISTING: list_media to find assets already in the project and reuse their url.
 
 ALT TEXT LIVES ON THE ASSET. {{sw-image}} falls back to it (then to the bare filename) and a

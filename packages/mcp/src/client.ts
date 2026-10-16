@@ -333,7 +333,7 @@ export interface UploadTicketOptions extends UploadDescription {
  * no top-level url on purpose, so there is no "the" ticket to send every file to.
  */
 export type UploadTicketGrant =
-  | { uploadUrl: string; expiresInSeconds: number; maxBytes: number }
+  | { uploadUrl: string; alt?: string; expiresInSeconds: number; maxBytes: number }
   | { tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number };
 
 /** A PATCH to one media asset: move, rename, describe, or correct a font's metadata. */
@@ -1148,7 +1148,8 @@ export class SitewrightClient {
   async createMediaUpload(folder?: string, opts: UploadTicketOptions = {}): Promise<UploadTicketGrant> {
     const minted = await this.mintUploadTickets({ ...(folder ? { folder } : {}), ...opts });
     const { tickets, expiresInSeconds, maxBytes } = minted;
-    return tickets.length === 1 ? { uploadUrl: tickets[0]!.uploadUrl, expiresInSeconds, maxBytes } : minted;
+    // A single ticket echoes its alt exactly as a batch ticket does, so the agent sees what it will stamp.
+    return tickets.length === 1 ? { ...tickets[0]!, expiresInSeconds, maxBytes } : minted;
   }
 
   /**

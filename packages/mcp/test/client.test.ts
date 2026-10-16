@@ -653,15 +653,22 @@ describe('SitewrightClient — inline base64 upload', () => {
     });
   });
 
-  it('createMediaUpload keeps the single-ticket shape — also against a server that predates batches', async () => {
-    for (const body of [
-      { uploadPath: '/media-upload/one', tickets: [{ uploadPath: '/media-upload/one', alt: 'Hi' }], expiresInSeconds: 600, maxBytes: 9 },
-      { uploadPath: '/media-upload/one', expiresInSeconds: 600, maxBytes: 9 }, // no `tickets` at all
-    ]) {
+  it('createMediaUpload keeps the single-ticket shape, echoing its alt like a batch ticket does', async () => {
+    for (const [body, expected] of [
+      [
+        { uploadPath: '/media-upload/one', tickets: [{ uploadPath: '/media-upload/one', alt: 'Hi' }], expiresInSeconds: 600, maxBytes: 9 },
+        { uploadUrl: 'https://cms.test/media-upload/one', alt: 'Hi', expiresInSeconds: 600, maxBytes: 9 },
+      ],
+      [
+        // A server that predates batches: no `tickets` at all.
+        { uploadPath: '/media-upload/one', expiresInSeconds: 600, maxBytes: 9 },
+        { uploadUrl: 'https://cms.test/media-upload/one', expiresInSeconds: 600, maxBytes: 9 },
+      ],
+    ] as const) {
       const { client } = await introspected((input: string) =>
         input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 201, body: JSON.stringify(body) },
       );
-      expect(await client.createMediaUpload()).toMatchObject({ uploadUrl: 'https://cms.test/media-upload/one', expiresInSeconds: 600, maxBytes: 9 });
+      expect(await client.createMediaUpload()).toEqual(expected);
     }
   });
 

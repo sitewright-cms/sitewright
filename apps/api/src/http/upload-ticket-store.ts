@@ -54,7 +54,8 @@ const DEFAULT_TTL_MS = 10 * 60_000;
  * Hard cap on live tickets across EVERY project. 1024 rather than the original 256 because tickets now
  * mint in batches of up to 50: at 256, five batches from one project evicted every other tenant's
  * freshly minted ticket. The mint route budgets each project separately (see `liveFor`), so reaching
- * this takes several projects saturating at once. A ticket is a few hundred bytes; 1024 is nothing.
+ * this takes several projects saturating at once — and even then the eviction falls on the biggest
+ * holder (see `evictionCandidate`). A ticket is a few hundred bytes; 1024 is nothing.
  */
 const DEFAULT_MAX_ENTRIES = 1024;
 
@@ -112,13 +113,31 @@ export class UploadTicketStore {
     this.sweep();
     const token = randomUUID();
     this.tickets.set(token, { ...scope, expiresAt: this.now() + this.ttlMs });
-    // Map preserves insertion order, so the first key is the oldest.
     while (this.tickets.size > this.maxEntries) {
-      const oldest = this.tickets.keys().next().value;
-      if (oldest === undefined) break;
-      this.tickets.delete(oldest);
+      const victim = this.evictionCandidate();
+      if (victim === undefined) break;
+      this.tickets.delete(victim);
     }
     return token;
+  }
+
+  /**
+   * Which ticket a full store gives up: the OLDEST ticket of the project holding the MOST. Evicting the
+   * globally oldest let one owner's batches void another tenant's fresh ticket — the per-project budget
+   * times a handful of busy projects exceeds the store — and the victim only found out when its curl
+   * 404'd. This way a project that fills the store only ever loses its own. Between equal holders the
+   * one whose ticket is older gives it up (Map order is insertion order, so first-seen is oldest).
+   */
+  private evictionCandidate(): string | undefined {
+    const held = new Map<string, { count: number; oldest: string }>();
+    for (const [token, ticket] of this.tickets) {
+      const entry = held.get(ticket.projectId);
+      if (entry) entry.count += 1;
+      else held.set(ticket.projectId, { count: 1, oldest: token });
+    }
+    let victim: { count: number; oldest: string } | undefined;
+    for (const entry of held.values()) if (!victim || entry.count > victim.count) victim = entry;
+    return victim?.oldest;
   }
 
   /**

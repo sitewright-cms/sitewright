@@ -65,12 +65,50 @@ describe('UploadTicketStore', () => {
     expect(store.take(theirs)).toBeDefined();
   });
 
-  it('still evicts the OLDEST when the hard cap is reached', () => {
+  it('within one project, evicts that project\'s OLDEST when the hard cap is reached', () => {
     const store = new UploadTicketStore({ maxEntries: 2 });
     const first = store.put(scope());
-    store.put(scope());
-    store.put(scope());
+    const second = store.put(scope());
+    const third = store.put(scope());
     expect(store.size).toBe(2);
     expect(store.take(first)).toBeUndefined();
+    expect(store.take(second)).toBeDefined();
+    expect(store.take(third)).toBeDefined();
+  });
+
+  it('★ a full store evicts from the project holding the MOST tickets — a hog only ever loses its own', () => {
+    // The per-project budget (200) times six projects exceeds the global cap, so "evict the globally
+    // oldest" let one owner's batches silently void ANOTHER tenant's fresh ticket (its curl then 404s).
+    const store = new UploadTicketStore({ maxEntries: 4 });
+    const theirs = store.put(scope({ projectId: 'quiet' }));
+    const hog = [store.put(scope({ projectId: 'hog' })), store.put(scope({ projectId: 'hog' })), store.put(scope({ projectId: 'hog' }))];
+    // Full (1 + 3). The hog's next ticket must cost the HOG its oldest, not the quiet project its only one.
+    const latest = store.put(scope({ projectId: 'hog' }));
+    expect(store.size).toBe(4);
+    expect(store.take(theirs)).toBeDefined();
+    expect(store.take(hog[0]!)).toBeUndefined();
+    expect(store.take(hog[1]!)).toBeDefined();
+    expect(store.take(latest)).toBeDefined();
+  });
+
+  it('a quiet project minting into a full store takes from the hog, not from itself', () => {
+    const store = new UploadTicketStore({ maxEntries: 3 });
+    const hogOldest = store.put(scope({ projectId: 'hog' }));
+    store.put(scope({ projectId: 'hog' }));
+    store.put(scope({ projectId: 'hog' }));
+    const mine = store.put(scope({ projectId: 'quiet' }));
+    expect(store.take(hogOldest)).toBeUndefined();
+    expect(store.take(mine)).toBeDefined();
+  });
+
+  it('between equal holders, the one with the OLDEST ticket gives it up', () => {
+    const store = new UploadTicketStore({ maxEntries: 3 });
+    const aOldest = store.put(scope({ projectId: 'a' }));
+    store.put(scope({ projectId: 'a' }));
+    const b1 = store.put(scope({ projectId: 'b' }));
+    const b2 = store.put(scope({ projectId: 'b' })); // 2 vs 2 → a's ticket is the older
+    expect(store.take(aOldest)).toBeUndefined();
+    expect(store.take(b1)).toBeDefined();
+    expect(store.take(b2)).toBeDefined();
   });
 });

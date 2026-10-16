@@ -46,6 +46,9 @@ async function stagedTempFiles(): Promise<string[]> {
   return readdir(join(mediaRoot, '.uploads-tmp')).catch(() => []);
 }
 
+/** Reads of a STAGED upload back into the heap since the test began (the spy is cleared per test). */
+const stagedReads = (): unknown[] => vi.mocked(readFile).mock.calls.filter(([p]) => String(p).includes('.uploads-tmp'));
+
 async function setup(email = 'up@e2e.test') {
   await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
   const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
@@ -104,8 +107,47 @@ describe('large uploads stream to disk', () => {
       });
       expect(res.statusCode).toBe(201);
     }
-    const stagedReads = vi.mocked(readFile).mock.calls.filter(([p]) => String(p).includes('.uploads-tmp'));
-    expect(stagedReads, 'a large upload goes from the temp file straight into place').toEqual([]);
+    expect(stagedReads(), 'a large upload goes from the temp file straight into place').toEqual([]);
+  });
+
+  it('★ refuses an oversized IMAGE/SVG/FONT by its size on disk — before reading a byte of it', async () => {
+    // The kinds that are read in (and handed to sharp / the sanitizer) are chosen by the CLIENT: the
+    // name says ".png", or the first four bytes say "wOF2". Checked only after readFile, either one put
+    // up to the 200MB ticket ceiling into the heap first.
+    const { t, projectId } = await setup();
+    for (const [filename, bytes, message] of [
+      ['huge.png', 15 * 1024 * 1024 + 1, /15MB/],
+      ['huge.svg', 4 * 1024 * 1024 + 1, /4MB/],
+      ['huge.woff2', 5 * 1024 * 1024 + 1, /size limit/],
+    ] as const) {
+      const uploadPath = await mintTicket(t, projectId);
+      const payload = Buffer.alloc(bytes, 0x20);
+      if (filename.endsWith('.woff2')) payload.write('wOF2');
+      const res = await app.inject({
+        method: 'PUT',
+        url: `${uploadPath}?filename=${filename}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        payload,
+      });
+      expect(res.statusCode, filename).toBe(413);
+      expect((res.json() as { error: string }).error, filename).toMatch(message);
+    }
+    expect(stagedReads(), 'refused on its size alone').toEqual([]);
+    expect(await stagedTempFiles(), 'and the refused bytes are gone').toEqual([]);
+  });
+
+  it('a real font under its cap is still read in, detected and stored', async () => {
+    const { t, projectId } = await setup();
+    const uploadPath = await mintTicket(t, projectId);
+    const res = await app.inject({
+      method: 'PUT',
+      url: `${uploadPath}?filename=Brand.woff2`,
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(1024, 1)]),
+    });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { item: { kind: string } }).item.kind).toBe('font');
+    expect(stagedReads()).toHaveLength(1);
   });
 
   it('leaves no temp file behind after a successful upload', async () => {

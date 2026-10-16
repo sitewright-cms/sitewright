@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readdir, stat } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm, readdir, stat, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -19,11 +19,18 @@ import { registerAccount } from '../src/repo/accounts.js';
  * Streaming introduces a NEW failure mode these tests exist to guard: a temp file that outlives the
  * request. Every exit path has to remove it, including the ones that reject before storing.
  */
+// A pass-through spy, so a test can ask whether the app ever read a STAGED upload back into the heap.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, readFile: vi.fn(actual.readFile) };
+});
+
 let app: FastifyInstance;
 let db: Database;
 let mediaRoot: string;
 
 beforeEach(async () => {
+  vi.mocked(readFile).mockClear();
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-upload-'));
   db = await makeTestDb();
   app = await createApp({ db, mediaRoot });
@@ -80,6 +87,25 @@ describe('large uploads stream to disk', () => {
     const item = (res.json() as { item: { kind: string; bytes: number; url: string } }).item;
     expect(item.kind, 'a playable extension is stored as video, not a download').toBe('video');
     expect(item.bytes, 'size comes from the file on disk, not a buffer length').toBe(bytes.length);
+  });
+
+  it('★ never reads a staged video or download back into the heap', async () => {
+    // The font sniff compared the detector's answer to `undefined` while it says `null` for "not a
+    // font", so every non-image upload counted as a possible font and was read WHOLE into memory —
+    // the stored asset looked identical, and the heap paid the full size anyway.
+    const { t, projectId } = await setup();
+    for (const filename of ['clip.mp4', 'report.pdf']) {
+      const uploadPath = await mintTicket(t, projectId);
+      const res = await app.inject({
+        method: 'PUT',
+        url: `${uploadPath}?filename=${filename}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        payload: Buffer.alloc(1024 * 1024, 5),
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    const stagedReads = vi.mocked(readFile).mock.calls.filter(([p]) => String(p).includes('.uploads-tmp'));
+    expect(stagedReads, 'a large upload goes from the temp file straight into place').toEqual([]);
   });
 
   it('leaves no temp file behind after a successful upload', async () => {

@@ -6441,7 +6441,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           try {
             const head = Buffer.alloc(8);
             await fh.read(head, 0, 8, 0);
-            looksLikeFont = detectFontFormat(head) !== undefined;
+            // `null` is the detector's "not a font". This compared against `undefined`, so EVERY
+            // non-image upload looked like a font and was read whole into the heap — the large path
+            // below, which exists so a 200MB video never is, was unreachable.
+            looksLikeFont = detectFontFormat(head) !== null;
           } finally {
             await fh.close();
           }

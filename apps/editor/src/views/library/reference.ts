@@ -365,7 +365,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'sizes=', desc: 'The CSS `sizes` attribute — how wide it renders per breakpoint. Default 100vw.' },
           { name: 'class=', desc: 'Classes for the <img>/<picture> <img>.' },
           { name: 'format=', desc: 'avif to emit a <picture> with an AVIF tier (otherwise a single WebP <img>).' },
-          { name: 'editable=', desc: 'A key that makes the image REPLACEABLE in the editor (emits data-sw-src) — click it in the preview to pick a different file. A replacement from the project library stays responsive: its srcset, width/height and LQIP are rebuilt for the NEW file (your sizes, alt and class are kept). A pasted external URL or an SVG has no sizes to rebuild, so it ships as a plain <img src>.' },
+          { name: 'editable=', desc: 'A key that makes the image REPLACEABLE in the editor (emits data-sw-src) — click it in the preview to pick a different file. A replacement from the project library stays responsive: its srcset, width/height and LQIP are rebuilt for the NEW file (your sizes, alt and class are kept). A pasted external URL or an SVG has no sizes to rebuild, so it ships as a plain <img src> — and so does any replacement of an image that rendered without a srcset to begin with (its url was an SVG, external or unknown file): the new photo then ships as the single full-size (2400px) file.' },
         ],
         example: '{{sw-image company.image alt=company.name class="w-full rounded-xl"}}\n{{! GALLERY: thumbnails in the grid, full image in the lightbox }}\n{{#sw-folder "gallery"}}{{sw-image url alt=alt lightbox=true sizes="(min-width:640px) 33vw, 100vw"}}{{/sw-folder}}',
       },

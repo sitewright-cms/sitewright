@@ -8,6 +8,8 @@ import {
   sizedRaster,
   lqipPlaceholder,
   lqipStyle,
+  mediaIndex,
+  isStrictMediaUrl,
 } from '../src/image-helper.js';
 import { renderTemplate } from '../src/template.js';
 import type { RenderMedia } from '../src/folder.js';
@@ -177,12 +179,54 @@ describe('buildSwImage', () => {
     expect(html).not.toContain('<picture');
   });
 
-  it('gives an SVG ASSET no rungs even when the url naming it does not end in .svg', () => {
-    // Resolved by id: the record, not the url's spelling, says it is a vector (no `?size=` thumbnails).
+  it('treats an SVG ASSET as a vector even when the url naming it does not end in .svg — dims kept', () => {
+    // Resolved by id: the record, not the url's spelling, says it is a vector (no `?size=` thumbnails),
+    // and it takes the vector branch WITH its intrinsic dims, so it reserves its box (no layout shift).
     const svg: RenderMedia = { id: 's1', folder: '', kind: 'image', filename: 'logo.svg', url: '/media/acme/s1-logo.svg', width: 300, height: 120 };
-    const html = buildSwImage('/media/acme/s1-logo', [svg]);
-    expect(html).not.toContain('srcset');
-    expect(html).not.toContain('?size=');
+    expect(buildSwImage('/media/acme/s1-logo', [svg])).toBe(
+      '<img src="/media/acme/s1-logo" alt="logo" width="300" height="120" loading="lazy" decoding="async">',
+    );
+  });
+
+  it('never concatenates a url carrying a srcset delimiter into rungs (dataset/page.data urls are not trusted)', () => {
+    // `/media/acme/a1/…` resolves to the real asset by its id segment; building rungs from the raw string
+    // would put `https://evil.example/p.png` into the srcset as a candidate of its own.
+    for (const url of ['/media/acme/a1/photo.jpg 1w, https://evil.example/p.png', '/media/acme/a1/photo.jpg,https://evil.example/p.png']) {
+      const html = buildSwImage(url, [img]);
+      expect(html).not.toContain('srcset');
+      expect(html).not.toContain('?size=');
+    }
+  });
+});
+
+describe('mediaIndex / resolveRenderImage', () => {
+  it('builds the index ONCE per media list and keeps find()’s first-match-wins semantics', () => {
+    const dupe: RenderMedia = { ...img, alt: 'second' };
+    const media = [img, dupe];
+    expect(mediaIndex(media)).toBe(mediaIndex(media)); // memoised on the array
+    expect(mediaIndex([img])).not.toBe(mediaIndex(media)); // …and per array
+    expect(resolveRenderImage(img.url, media)).toBe(img); // duplicate url → the first record
+    expect(resolveRenderImage('/media/acme/a1/other-name.jpg', media)).toBe(img); // duplicate id → the first
+    expect(resolveRenderImage('/media/acme/zz/none.jpg', media)).toBeUndefined();
+    expect(mediaIndex([{ ...img, id: undefined }]).byId.size).toBe(0); // an id-less record is url-only
+  });
+
+  it('isStrictMediaUrl: exactly a stored media url shape, flat or legacy, and nothing else', () => {
+    expect(isStrictMediaUrl('/media/acme/b2-new.jpg')).toBe(true);
+    expect(isStrictMediaUrl('/media/acme/b2/new.jpg')).toBe(true);
+    for (const bad of [
+      '/media/acme/b2-new.jpg?size=md',
+      '/media/acme/b2-new.jpg#x',
+      '/media/acme/b2-new.jpg 2x',
+      '/media/acme/b2/x.png,https://evil.example/p.png',
+      '/media/acme/b2//new.jpg',
+      '/media/acme/b2/sub/new.jpg',
+      '//evil.example/media/acme/b2-new.jpg',
+      'https://cdn.example/media/acme/b2-new.jpg',
+      '/media/acme/',
+    ]) {
+      expect(isStrictMediaUrl(bad), bad).toBe(false);
+    }
   });
 });
 
@@ -211,6 +255,8 @@ describe('the responsive pieces {{sw-image}} shares with the data-sw-src directi
     expect(sizedRaster(img.url, { ...img, height: 0 })).toBeUndefined();
     expect(sizedRaster('/media/acme/a1/photo.svg', img)).toBeUndefined(); // the url says vector
     expect(sizedRaster(img.url, { ...img, filename: 'Photo.SVG' })).toBeUndefined(); // the record says vector
+    expect(sizedRaster(`${img.url} 2x`, img)).toBeUndefined(); // a srcset delimiter in the url
+    expect(sizedRaster(`${img.url},x`, img)).toBeUndefined();
   });
 
   it('lqipPlaceholder: the recorded webp data URI, unless the art is transparent or the value is foreign', () => {

@@ -17,6 +17,51 @@ const SIZE_ORDER: readonly SizeToken[] = ['sm', 'md', 'lg', 'xl'];
 const DEFAULT_SIZES_ATTR = '100vw';
 const PLACEHOLDER_RE = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/;
 const SVG_RE = /\.svg(?:$|\?)/i;
+/** The characters that DELIMIT srcset candidates — a url carrying one could smuggle in a second candidate. */
+const SRCSET_DELIMITER_RE = /[\s,]/;
+const MEDIA_DIR_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
+const MEDIA_FILE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Whether `url` has exactly the shape of a stored project media DELIVERY url — flat
+ * `/media/<slug>/<id>-<name>` or legacy `/media/<slug>/<id>/<name>` (the media schema's url pattern,
+ * minus its extension list) — and nothing else: no query, fragment, whitespace, comma, empty or extra
+ * segment. Checked segment by segment, so no pattern ever backtracks over the (untrusted) input.
+ */
+export function isStrictMediaUrl(url: string): boolean {
+  const parts = url.split('/'); // ['', 'media', slug, (id,)? file]
+  if (parts.length < 4 || parts.length > 5 || parts[0] !== '' || parts[1] !== 'media') return false;
+  const dirs = parts.slice(2, -1);
+  return dirs.every((s) => MEDIA_DIR_SEGMENT_RE.test(s)) && MEDIA_FILE_SEGMENT_RE.test(parts[parts.length - 1]!);
+}
+
+/** Url → record and id → record lookups over one media list. */
+export interface MediaIndex {
+  byUrl: ReadonlyMap<string, RenderMedia>;
+  byId: ReadonlyMap<string, RenderMedia>;
+}
+
+const mediaIndexCache = new WeakMap<readonly RenderMedia[], MediaIndex>();
+
+/**
+ * The lookup index of a media list, built ONCE per list and memoised on the array itself. Resolving by
+ * `find` cost two full scans per miss, per image — and a page renders many images against a media list
+ * that can run to tens of thousands of records. The first record wins a duplicate url/id, exactly as
+ * `find` did. A render context's media list is never mutated, so the memo cannot go stale.
+ */
+export function mediaIndex(media: readonly RenderMedia[]): MediaIndex {
+  const hit = mediaIndexCache.get(media);
+  if (hit) return hit;
+  const byUrl = new Map<string, RenderMedia>();
+  const byId = new Map<string, RenderMedia>();
+  for (const m of media) {
+    if (!byUrl.has(m.url)) byUrl.set(m.url, m);
+    if (m.id !== undefined && !byId.has(m.id)) byId.set(m.id, m);
+  }
+  const index: MediaIndex = { byUrl, byId };
+  mediaIndexCache.set(media, index);
+  return index;
+}
 
 /** A RASTER project image whose intrinsic size is recorded — the only kind served as `?size=` rungs. */
 export type SizedRenderImage = RenderMedia & { width: number; height: number };
@@ -26,10 +71,14 @@ export type SizedRenderImage = RenderMedia & { width: number; height: number };
  * non-image, one with no recorded dimensions, or a VECTOR — an SVG scales natively and has no `?size=`
  * thumbnails. Vector-ness is read from BOTH the url being rendered and the record's filename, so an
  * SVG addressed by id through a url that doesn't end in `.svg` is still recognised.
+ *
+ * A `src` containing whitespace or a comma never qualifies: the rungs are built by concatenating it, so
+ * `/media/s/<id>/x.png 1w, https://elsewhere/p.png` (which still resolves, by its id segment) would
+ * otherwise add a candidate of its own choosing to the srcset every visitor's browser picks from.
  */
 export function sizedRaster(src: string, asset: RenderMedia | undefined): SizedRenderImage | undefined {
   if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) return undefined;
-  if (SVG_RE.test(src) || SVG_RE.test(asset.filename)) return undefined;
+  if (SVG_RE.test(src) || SVG_RE.test(asset.filename) || SRCSET_DELIMITER_RE.test(src)) return undefined;
   return asset as SizedRenderImage;
 }
 
@@ -119,6 +168,8 @@ export interface SwImageOptions {
    * is a project raster image the render context knows, REBUILDS the art for it with the same rungs
    * this helper uses (srcset, `<picture>` sources, width/height, LQIP). An external url, an SVG or an
    * unknown asset has no rungs, so there the old art is dropped and the image ships as a plain `src`.
+   * So does ANY replacement of an image this helper rendered plain (its own url was an SVG, external or
+   * unknown): there was no srcset to keep, and the new file ships as its bare url (the `xl` default).
    */
   editable?: string;
   /**
@@ -162,10 +213,11 @@ export function filenameAlt(filename: string): string {
 
 /** Resolve a delivery url (or the id inside it) to its project RenderMedia record, if any. */
 export function resolveRenderImage(ref: string, media: readonly RenderMedia[]): RenderMedia | undefined {
-  const byUrl = media.find((m) => m.url === ref);
+  const index = mediaIndex(media);
+  const byUrl = index.byUrl.get(ref);
   if (byUrl) return byUrl;
   const id = mediaAssetId(ref);
-  return id ? media.find((a) => a.id === id) : undefined;
+  return id ? index.byId.get(id) : undefined;
 }
 
 /**
@@ -193,13 +245,15 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
 
   // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
   // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).
-  if (SVG_RE.test(src)) {
+  // Recognised by the url OR the resolved record's filename — an SVG addressed by id through a url that
+  // doesn't end in `.svg` keeps its dims too.
+  if (SVG_RE.test(src) || (asset !== undefined && SVG_RE.test(asset.filename))) {
     const svgDims = asset && asset.kind === 'image' && asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : '';
     return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${fp}${edit}${cls}>`;
   }
 
-  // Unresolved / external / dimensionless (or a vector record behind a non-.svg url) → a plain lazy
-  // <img> (no srcset/dims/LQIP available).
+  // Unresolved / external / dimensionless (or a url carrying a srcset delimiter) → a plain lazy <img>
+  // (no srcset/dims/LQIP available).
   const sized = sizedRaster(src, asset);
   if (!sized) {
     return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${fp}${edit}${cls}>`;

@@ -49,6 +49,7 @@ import render from 'dom-serializer';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { safeUrl, cssUrlEscape } from './url.js';
 import {
+  isStrictMediaUrl,
   resolveRenderImage,
   sizedRaster,
   responsiveRungs,
@@ -275,15 +276,21 @@ function dropStaleResponsiveArt(el: Element): void {
  * override takes the plain swap ({@link dropStaleResponsiveArt}). All of:
  *  - the element is an `<img>` that WAS responsive: a srcset / data-srcset of its own, or `<source>`s
  *    in its `<picture>`. A plain hand-written `<img data-sw-src>` never opted into rungs (it may carry
- *    a DISPLAY width/height, not the asset's), so it keeps exactly the markup its author wrote;
- *  - the url is a bare delivery url — the rungs append `?size=`, so a url already carrying a query (or
- *    a fragment) is the author's deliberate choice, not something to rebuild around;
- *  - it resolves to a RASTER project image with recorded dimensions (not external, SVG or unknown).
+ *    a DISPLAY width/height, not the asset's), so it keeps exactly the markup its author wrote. So does
+ *    an {{sw-image}} that rendered PLAIN — its default was an SVG, an external url or an unknown asset:
+ *    a raster replacement there ships as the one bare url (the `xl` default), as it always has;
+ *  - the url has EXACTLY the shape of a stored media url (`isStrictMediaUrl`). The override is
+ *    editor-controlled page.data that has only passed `safeUrl`, and the id resolver is lenient — it
+ *    reads the id segment of `/media/s/<id>/x.png 1w, https://elsewhere/p.png` too. Anything with a
+ *    query, fragment, whitespace, comma, empty or extra segment never reaches the rebuild;
+ *  - it resolves to a RASTER project image with recorded dimensions (not external, SVG or unknown) whose
+ *    OWN url has that shape too — the rungs are built from the record's url, never the override string.
  */
 function rebuildTarget(el: Element, url: string, media: readonly RenderMedia[] | undefined): SizedRenderImage | undefined {
-  if (!media || el.name !== 'img' || url === '' || url.includes('?') || url.includes('#')) return undefined;
+  if (!media || el.name !== 'img' || !isStrictMediaUrl(url)) return undefined;
   if (!hasAttr(el, 'srcset') && !hasAttr(el, 'data-srcset') && pictureSources(el).length === 0) return undefined;
-  return sizedRaster(url, resolveRenderImage(url, media));
+  const asset = sizedRaster(url, resolveRenderImage(url, media));
+  return asset && isStrictMediaUrl(asset.url) ? asset : undefined;
 }
 
 /**
@@ -299,8 +306,9 @@ function rebuildTarget(el: Element, url: string, media: readonly RenderMedia[] |
  * copies into `src`/`srcset` on intersect — and never as an eager `srcset`, which would fetch at load. A
  * lazy `<picture>` still loses its sources: the runtime cannot defer a `<source>`.
  */
-function rebuildResponsiveArt(el: Element, url: string, asset: SizedRenderImage, lazy: boolean): void {
-  const rungs = responsiveRungs(url, asset.width);
+function rebuildResponsiveArt(el: Element, asset: SizedRenderImage, lazy: boolean): void {
+  // From the RECORD's canonical url (vetted by rebuildTarget), never the editor-supplied override.
+  const rungs = responsiveRungs(asset.url, asset.width);
   const ownSrcset = hasAttr(el, 'srcset');
   const ownDataSrcset = hasAttr(el, 'data-srcset');
   let previous: string | undefined;
@@ -426,7 +434,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
         const lazy = hasAttr(el, 'data-src');
         const url = safeUrl(value, '');
         const asset = rebuildTarget(el, url, ctx.media);
-        if (asset) rebuildResponsiveArt(el, url, asset, lazy);
+        if (asset) rebuildResponsiveArt(el, asset, lazy);
         else {
           el.attribs[lazy ? 'data-src' : 'src'] = url;
           dropStaleResponsiveArt(el);

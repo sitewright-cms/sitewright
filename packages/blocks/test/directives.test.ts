@@ -451,6 +451,41 @@ describe('resolveDirectives — a replaced PROJECT image stays responsive (data-
     expect(out).toContain('width="1200" height="800"'); // today's behaviour, exactly
   });
 
+  it.each([
+    // The id resolver reads `b2` out of every one of these, so each reaches a REAL raster record.
+    ['a space + extra candidate', '/media/acme/b2/x.png 1w, https://evil.example/p.png'],
+    ['a bare comma + extra candidate', '/media/acme/b2/x.png,https://evil.example/p.png'],
+    ['a trailing descriptor', '/media/acme/b2-new.jpg 2x'],
+    ['an empty segment (//)', '/media/acme/b2//new.jpg'],
+    ['extra segments', '/media/acme/b2/sub/dir/new.jpg'],
+  ])('never rebuilds rungs around an editor-supplied url with %s — no smuggled srcset candidate', (_label, value) => {
+    const out = replaced(value);
+    // The plain swap: the whole value is ONE src (as before this feature), never concatenated into rungs.
+    expect(out).not.toContain('srcset');
+    expect(out).not.toContain('?size=');
+    expect(out).toContain('width="1200" height="800"');
+  });
+
+  it('builds the rungs from the RECORD’s url, not the override string', () => {
+    // Same asset (id b2) spelled two other valid ways: the legacy folder shape, and a stale file name.
+    for (const value of ['/media/acme/b2/new.jpg', '/media/acme/b2-renamed.jpg']) {
+      const out = replaced(value);
+      expect(out).toBe(fresh(newImg.url));
+      expect(out).not.toContain(value);
+    }
+  });
+
+  it('a raster replacement of an image that rendered PLAIN (an SVG default) stays a bare src', () => {
+    // {{sw-image}} of an SVG emits no srcset, so there is nothing "responsive" to keep: the replacement
+    // ships as the one bare url — the delivery default `xl` — exactly as before. Documented, not rebuilt.
+    const authored = buildSwImage(svgImg.url, media, opts);
+    const out = resolveDirectives(authored, { data: { hero: newImg.url }, media, preview: true });
+    expect(out).toContain('src="/media/acme/b2-new.jpg"');
+    expect(out).not.toContain('srcset');
+    expect(out).not.toContain('?size=');
+    expect(out).toContain('width="64" height="64"'); // the element's own dims, untouched (today's swap)
+  });
+
   it('falls back to the plain swap when the render context carries no media list', () => {
     const out = resolveDirectives(buildSwImage(oldImg.url, media, opts), { data: { hero: newImg.url }, preview: true });
     expect(out).toContain('src="/media/acme/b2-new.jpg"');

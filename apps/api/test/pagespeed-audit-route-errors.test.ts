@@ -128,10 +128,12 @@ describe('pagespeed-audit route — failure answers', () => {
     const res = await audit();
     expect(res.statusCode).toBe(503);
     expect(res.headers['retry-after']).toBe('15');
-    const body = res.json() as { code: string; transient: boolean; error: string };
+    const body = res.json() as { code: string; transient: boolean; error: string; reason?: string };
     expect(body.code).toBe('capacity');
     expect(body.transient).toBe(true);
     expect(body.error).toMatch(/render queue is busy/);
+    // Machine-readable, so a client need not parse the sentence to tell this from a memory refusal.
+    expect(body.reason).toBe('busy');
   });
 
   it('a Lighthouse failure → 502 with its code and a message scrubbed of the loopback origin', async () => {

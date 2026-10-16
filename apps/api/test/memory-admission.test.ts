@@ -94,6 +94,9 @@ describe('memory admission over HTTP', () => {
     expect(res.statusCode).not.toBe(500);
     // The wording carries the retry signal an agent needs to not give up.
     expect(String(res.json().error)).toMatch(/transient|retry/i);
+    // …and WHICH resource is short, machine-readably: a busy render queue is the same 503 + `capacity`,
+    // and the editor tells the author something different for each.
+    expect(res.json()).toMatchObject({ code: 'capacity', reason: 'memory' });
   });
 
   it('does not leak the reservation: capacity returns once the budget does', async () => {

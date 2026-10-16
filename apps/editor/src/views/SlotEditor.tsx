@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUnsavedWork } from '../lib/unsaved-work';
+import { useWebsiteDataQueue } from '../lib/website-data-queue';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
@@ -125,16 +126,35 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     );
   }, [slot]);
 
+  // A failed write to a SHARED store (translations, website.data). These auto-save, separately from the
+  // slot's own Save, so without this alert a failure would just look like the edit stuck.
+  const [storeError, setStoreError] = useState<string | null>(null);
+  // The site-wide website.data store: ONE ordered write queue, shared with the page editor (see
+  // lib/website-data-queue). Typing is already on screen in its contenteditable, so it does not
+  // re-render; a write the live DOM does NOT show (a picked image, a popover, an HTML-source save) is
+  // committed and re-renders the preview once the queue has drained — the reload used to beat the
+  // debounced save (400 ms vs 600 ms) and render the OLD image.
+  const wd = useWebsiteDataQueue({
+    projectId: project.id,
+    onError: setStoreError,
+    onDrained: () => setPreviewNonce((n) => n + 1),
+  });
+  /** The landed-writes mark of the render whose document loads next; it is applied on that doc's `ready`. */
+  const docMarkRef = useRef<number | null>(null);
+
   // Re-render the preview as the slot is typed (debounced). The page is the empty canvas; the slot
   // rides as an OVERRIDE so what renders is the draft, not what was last saved.
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {
       setPreviewLoading(true);
+      // Every website.data write that has landed by now is in this render.
+      const mark = wd.landedMark();
       void api
         .preview(project.id, { id: 'slot-canvas', path: '', title: slotLabel(slot), source: EMPTY_CANVAS_SOURCE }, { [slot]: source })
         .then(({ token }) => {
           if (cancelled) return;
+          docMarkRef.current = mark;
           // `#sw-y=` restores the scroll the bridge last reported (see the 'scroll' branch): this
           // preview re-POSTs on every keystroke, and a footer that jumps back to the top on each one
           // is unusable to edit.
@@ -157,7 +177,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       clearTimeout(handle);
       setPreviewLoading(false);
     };
-  }, [project.id, project.slug, slot, source, previewNonce]);
+  }, [project.id, project.slug, slot, source, previewNonce, wd]);
 
   // Push mode changes to a preview that is already loaded.
   useEffect(() => {
@@ -175,9 +195,6 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   // as a page-local change while quietly rewriting every page.
   const pendingTrRef = useRef(new Map<string, { key: string; value: string }>());
   const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingWdRef = useRef(new Map<string, { key: string; value: string }>());
-  const wdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [storeError, setStoreError] = useState<string | null>(null);
   // A form embedded IN a slot (a footer newsletter sign-up, say) — its definition is a project
   // entity, not slot markup, so it opens the same modal the page editor and Forms tab use.
   const [formEdit, setFormEdit] = useState<Form | null>(null);
@@ -249,45 +266,14 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     }
   }, [project.id, locale]);
 
-  const flushWebsiteData = useCallback(async () => {
-    wdTimerRef.current = null;
-    const cells = [...pendingWdRef.current.values()];
-    pendingWdRef.current.clear();
-    for (const c of cells) {
-      try {
-        await api.setWebsiteData(project.id, c.key, c.value);
-      } catch (err) {
-        if (mounted.current) setStoreError(err instanceof Error ? `Website data not saved: ${err.message}` : 'Website data not saved');
-      }
-    }
-  }, [project.id]);
-
-  /**
-   * Queue one `website.data.<path>` write on the shared debounced flush. Keyed by PATH (not by the
-   * raw `website.data.…` directive key), so the same leaf written from two different affordances — an
-   * inline edit and the link popover, say — coalesces to ONE pending cell instead of racing itself.
-   * Every caller has already resolved + validated the path via `websiteDataPathOf`.
-   */
-  const queueWebsiteData = useCallback(
-    (path: string, value: string) => {
-      pendingWdRef.current.set(path, { key: path, value });
-      if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
-      wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
-    },
-    [flushWebsiteData],
-  );
-
   // Flush anything still inside the debounce window if the editor closes — otherwise the last
-  // keystrokes of an edit are lost precisely when the user thinks they are done.
+  // keystrokes of an edit are lost precisely when the user thinks they are done. (The website.data
+  // queue does the same for its own writes.)
   useEffect(
     () => () => {
       if (trTimerRef.current) {
         clearTimeout(trTimerRef.current);
         for (const c of pendingTrRef.current.values()) void api.setTranslation(project.id, c.key, locale, c.value).catch(() => {});
-      }
-      if (wdTimerRef.current) {
-        clearTimeout(wdTimerRef.current);
-        for (const c of pendingWdRef.current.values()) void api.setWebsiteData(project.id, c.key, c.value).catch(() => {});
       }
     },
     [project.id, locale],
@@ -306,7 +292,10 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'ready') {
         // A fresh doc: drop the stale region manifest (the new one re-posts on entering content mode)
-        // and re-apply mode + slot focus + the CI palette the on-page rich toolbar reads.
+        // and re-apply mode + slot focus + the CI palette the on-page rich toolbar reads. It shows every
+        // website.data write that had landed when it was rendered, so the queue may forget those.
+        if (docMarkRef.current !== null) wd.rendered(docMarkRef.current);
+        docMarkRef.current = null;
         setRegions([]);
         syncPreview();
       } else if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -328,7 +317,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         // data-sw-text / data-sw-html with a `website.data.<path>` key → the site-wide store. A BARE
         // key never reaches here: the bridge does not wire one inside a slot, because a slot has no
         // page.data for it to land in and the edit would silently evaporate.
-        queueWebsiteData(websiteDataPathOf(d.key) as string, (d.type === 'edit' ? d.value : d.html) as string);
+        wd.queue(websiteDataPathOf(d.key) as string, (d.type === 'edit' ? d.value : d.html) as string);
       } else if (d.type === 'edit-slot' && typeof d.slot === 'string') {
         // The preview offers "Edit <slot>" on every landmark that is NOT the one being edited. Clicking
         // it switches THIS editor rather than opening a second one — see onSwitchSlot.
@@ -360,25 +349,29 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         typeof d.href === 'string'
       ) {
         // The link popover (URL + optional text) → the site-wide store. Scheme-sanitized here as well
-        // as at render, so what is STORED is already canonical-clean.
-        queueWebsiteData(websiteDataPathOf(d.hrefKey) as string, safeUrl(d.href, ''));
+        // as at render, so what is STORED is already canonical-clean. The popover does not touch the
+        // live DOM, so the preview re-renders — once both leaves have landed.
+        const cells: Array<readonly [string, string]> = [[websiteDataPathOf(d.hrefKey) as string, safeUrl(d.href, '')]];
         if (typeof d.textKey === 'string' && websiteDataPathOf(d.textKey) !== null && typeof d.text === 'string') {
-          queueWebsiteData(websiteDataPathOf(d.textKey) as string, d.text);
+          cells.push([websiteDataPathOf(d.textKey) as string, d.text]);
         }
+        wd.commit(cells);
       } else if (d.type === 'edit-html-source' && typeof d.key === 'string' && websiteDataPathOf(d.key) !== null) {
-        // The rich-text toolbar's `</>` → the HTML source editor for that region. Seeded with the stored
-        // override when there is one, else the live authored default the bridge sent as innerHTML.
+        // The rich-text toolbar's `</>` → the HTML source editor for that region. Seeded with the newest
+        // value this editor holds — still queued, else sent (the preview may not have re-rendered it
+        // yet) — else the live value the bridge sent as innerHTML.
         const path = websiteDataPathOf(d.key) as string;
-        const stored = pendingWdRef.current.get(path)?.value;
+        const stored = wd.latest(path);
         setHtmlSource({ key: path, html: typeof stored === 'string' ? stored : typeof d.html === 'string' ? d.html : '' });
       } else if (d.type === 'control-edit' && typeof d.target === 'string' && typeof d.value === 'string') {
         // {{sw-control}} set a value. A slot can only persist a `website.data` target — a `page.*` field
         // or a bare page.data key belongs to whatever page happens to render this chrome, so writing it
         // from here would silently attribute a site-wide edit to one page. Those are ignored, not guessed.
+        // Like the link popover, the control popover leaves the live DOM alone: re-render once saved.
         const t = classifyControlTarget(d.target);
         if (t?.kind === 'website') {
           const as = normalizeControlAs(d.as);
-          queueWebsiteData(t.key, as === 'image' || as === 'file' || as === 'url' ? safeUrl(d.value, '') : d.value);
+          wd.commit([[t.key, as === 'image' || as === 'file' || as === 'url' ? safeUrl(d.value, '') : d.value]]);
         }
       } else if (d.type === 'control-pick-image' && typeof d.target === 'string') {
         const t = classifyControlTarget(d.target);
@@ -439,7 +432,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [syncPreview, flushTranslations, flushWebsiteData]);
+  }, [syncPreview, flushTranslations, wd]);
 
   /**
    * Move this editor to another slot. Guarded on `dirty` because the switch REPLACES the draft — the
@@ -582,16 +575,16 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
               />
             )}
             {/* Replace an image/background in the chrome. Writes the site-wide store, so the preview
-                must re-POST to show it (there is no page draft here to carry the new value). */}
+                must re-POST to show it — AFTER the write lands (there is no page draft here to carry
+                the new value; see lib/website-data-queue). */}
             {pickerKey && (
               <FilePicker
                 projectId={project.id}
                 accept={ACCEPT.image}
                 title="Replace image"
                 onPick={(url) => {
-                  queueWebsiteData(pickerKey, safeUrl(url, ''));
+                  wd.commit([[pickerKey, safeUrl(url, '')]]);
                   setPickerKey(null);
-                  setPreviewNonce((n) => n + 1);
                 }}
                 onClose={() => setPickerKey(null)}
               />
@@ -603,9 +596,8 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
                 accept={controlPick.as === 'file' ? ACCEPT.file : ACCEPT.image}
                 title={controlPick.as === 'file' ? 'Choose file' : 'Choose image'}
                 onPick={(url) => {
-                  queueWebsiteData(controlPick.target, safeUrl(url, ''));
+                  wd.commit([[controlPick.target, safeUrl(url, '')]]);
                   setControlPick(null);
-                  setPreviewNonce((n) => n + 1);
                 }}
                 onClose={() => setControlPick(null)}
               />
@@ -646,9 +638,8 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
                 swKey={htmlSource.key}
                 value={htmlSource.html}
                 onSave={(html) => {
-                  queueWebsiteData(htmlSource.key, html);
+                  wd.commit([[htmlSource.key, html]]);
                   setHtmlSource(null);
-                  setPreviewNonce((n) => n + 1);
                 }}
                 onClose={() => setHtmlSource(null)}
               />

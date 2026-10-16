@@ -726,6 +726,8 @@ async function admitMemory(bytes: number, label: string): Promise<Reservation> {
       statusCode: 503,
       retryable: !sustained,
       retryAfterSeconds: sustained ? ADMISSION_RETRY_AFTER_SUSTAINED_S : ADMISSION_RETRY_AFTER_S,
+      // WHICH resource refused — the global error handler sends it as `reason` (see there).
+      capacityReason: 'memory',
     },
   );
 }
@@ -2261,12 +2263,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const after = (err as { retryAfterSeconds?: number }).retryAfterSeconds;
       if (typeof after === 'number' && after > 0) reply.header('retry-after', String(Math.ceil(after)));
       const transient = (err as { retryable?: boolean }).retryable !== false;
+      // WHICH resource is full, machine-readably, when the source says: `busy` = every headless-render
+      // slot is held by other audits/screenshots, `memory` = the memory ledger. Both are the same
+      // `capacity` 503, and only the sentence below told them apart — so a client had to parse prose to
+      // avoid telling an author "not enough memory" while the renderer was merely busy. Absent for any
+      // other shed (a concurrency gate), which a client must not guess at.
+      const reason =
+        err instanceof RenderQueueBusyError ? 'busy' : (err as { capacityReason?: unknown }).capacityReason === 'memory' ? 'memory' : undefined;
       // A machine-readable discriminator, because 503 alone is ambiguous: the SAME status is returned
       // when a feature is genuinely unavailable (no headless browser for an audit), which is not
       // transient and must not be presented to the author as "busy, try again".
       return reply.code(503).send({
         code: 'capacity',
         transient,
+        ...(reason ? { reason } : {}),
         // The render queue's message is OUR fixed text (no plugin detail in it) and says which
         // resource is full — every slot held by other audits/screenshots — so it is passed through.
         error:

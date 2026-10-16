@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const {
   preview, selectRange, setTranslation, setWebsiteData, listForms, listDatasets, getEntry,
@@ -562,6 +562,204 @@ describe('SlotEditor — the rest of the preview bridge', () => {
     send({ type: 'link-click', href: '/about' });
     await waitFor(() => expect(preview).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).toBeNull(); // no error surfaced, nothing thrown
+  });
+});
+
+// ★ The slot preview renders the SAVED website.data store — a slot has no draft for it to ride in, and
+// /preview takes no override for it. So a write the live DOM does not already show (a replaced image, a
+// link or control popover, an HTML-source edit) is only visible after a re-render that starts AFTER the
+// write has landed. It used to re-render on a timer: the reload (400 ms) beat the debounced save
+// (600 ms) and showed the OLD image until something else refreshed.
+describe('SlotEditor — a store write re-renders the preview only once it has LANDED', () => {
+  /** The server's website.data store, and a snapshot of it taken by every preview render. */
+  let stored: Record<string, string>;
+  let rendered: Array<Record<string, string>>;
+  /** Writes the test has not let land yet, oldest first — the save takes as long as the test says. */
+  let inFlight: Array<{ key: string; land: () => void }>;
+
+  beforeEach(() => {
+    stored = { logo: '/media/old-logo.webp' };
+    rendered = [];
+    inFlight = [];
+    setWebsiteData.mockImplementation(
+      (_project: string, key: string, value: string) =>
+        new Promise<void>((resolve) => {
+          inFlight.push({ key, land: () => { stored = { ...stored, [key]: value }; resolve(); } });
+        }),
+    );
+    preview.mockImplementation(async () => {
+      rendered.push({ ...stored });
+      return { html: '<!doctype html>', token: `tok-${rendered.length}` };
+    });
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+  const land = (key: string) =>
+    act(async () => {
+      const i = inFlight.findIndex((w) => w.key === key);
+      if (i < 0) throw new Error(`no write of "${key}" in flight (in flight: ${inFlight.map((w) => w.key).join(', ') || 'none'})`);
+      inFlight.splice(i, 1)[0]!.land();
+    });
+  const send = (data: Record<string, unknown>) => {
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    fireEvent(window, new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }));
+  };
+  /** Open the footer editor and let its first render happen. */
+  const openFooter = async () => {
+    const view = render(<SlotEditor project={project} slot="footer" value={SLOT_SOURCE} onSave={vi.fn()} onClose={vi.fn()} />);
+    const iframe = document.querySelector('iframe') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: () => {} }, configurable: true });
+    await tick(400);
+    expect(rendered).toEqual([{ logo: '/media/old-logo.webp' }]);
+    return view;
+  };
+  /** Pick `url` in the open file picker (its URL tab — the library needs a media API this file does not stub). */
+  const pickUrl = (url: string) => {
+    fireEvent.click(screen.getByRole('button', { name: 'URL' }));
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: url } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use URL as-is' }));
+  };
+
+  it('★ a replaced image: no re-render while the save is in flight, however long it takes — then one that shows the NEW image', async () => {
+    await openFooter();
+    send({ type: 'pick-image', key: 'website.data.logo' });
+    pickUrl('/media/new-logo.webp');
+
+    await tick(5000); // far past both the save debounce and the preview's
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'logo', '/media/new-logo.webp');
+    expect(preview).toHaveBeenCalledTimes(1); // nothing re-rendered from the OLD store
+
+    await land('logo');
+    await tick(400);
+    expect(rendered).toEqual([{ logo: '/media/old-logo.webp' }, { logo: '/media/new-logo.webp' }]);
+    expect(screen.getByTitle('Slot preview')).toHaveAttribute('src', '/preview/acme/tok-2');
+  });
+
+  it('★ waits behind a TYPED edit still being saved, so the re-render shows both', async () => {
+    await openFooter();
+    send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' });
+    await tick(600); // the typing debounce fires: that write is now in flight
+    expect(inFlight.map((w) => w.key)).toEqual(['footer_note']);
+
+    send({ type: 'pick-image', key: 'website.data.logo' });
+    pickUrl('/media/new-logo.webp');
+    await tick(5000);
+    // One write at a time, in order: the logo is not even sent until the typed edit lands, so it can
+    // never overtake it, and the re-render cannot start between the two.
+    expect(inFlight.map((w) => w.key)).toEqual(['footer_note']);
+    await land('footer_note');
+    await tick(5000);
+    expect(preview).toHaveBeenCalledTimes(1);
+
+    await land('logo');
+    await tick(400);
+    expect(rendered.at(-1)).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
+  });
+
+  it('typing re-renders NOTHING — the contenteditable already shows it, and a reload would kill the caret', async () => {
+    await openFooter();
+    send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' });
+    await tick(600);
+    await land('footer_note');
+    await tick(5000);
+    expect(preview).toHaveBeenCalledTimes(1);
+    expect(stored.footer_note).toBe('Hello');
+  });
+
+  it.each([
+    ['the link popover', { type: 'link-edit', hrefKey: 'website.data.cta_href', href: '/contact', textKey: 'website.data.cta_text', text: 'Talk to us' }, ['cta_href', 'cta_text']],
+    ['a {{sw-control}}', { type: 'control-edit', target: 'website.data.tagline', value: 'Built in Namibia' }, ['tagline']],
+  ])('%s — which does not touch the live DOM — re-renders once its writes land', async (_name, message, keys) => {
+    await openFooter();
+    send(message);
+    await tick(5000);
+    expect(preview).toHaveBeenCalledTimes(1);
+    for (const key of keys) await land(key);
+    await tick(400);
+    expect(preview).toHaveBeenCalledTimes(2);
+    for (const key of keys) expect(rendered[1]).toHaveProperty(key);
+  });
+
+  it('an edit still pending on CLOSE is written behind the one in flight, so the last value lands last', async () => {
+    const { unmount } = await openFooter();
+    send({ type: 'edit', key: 'website.data.footer_note', value: 'Draft' });
+    await tick(600); // "Draft" is in flight…
+    send({ type: 'edit', key: 'website.data.footer_note', value: 'Final' }); // …"Final" is still debounced
+    unmount();
+
+    await tick(0);
+    expect(inFlight.map((w) => w.key)).toEqual(['footer_note']); // not sent alongside, where it could land first
+    await land('footer_note');
+    expect(setWebsiteData).toHaveBeenLastCalledWith('p', 'footer_note', 'Final');
+    await land('footer_note');
+    expect(stored.footer_note).toBe('Final');
+  });
+
+  describe('the `</>` view reopened before the re-render shows what was SAVED, not the stale render', () => {
+    const htmlDialog = () => screen.getByRole('dialog', { name: /Edit HTML/ });
+    /** Open the `</>` view as the preview would: with the region's CURRENT rendered HTML. */
+    const openSource = (rendered: string) => send({ type: 'edit-html-source', key: 'website.data.about', html: rendered });
+    const saveSource = (html: string) => {
+      fireEvent.change(within(htmlDialog()).getByLabelText('HTML source'), { target: { value: html } });
+      fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+    };
+
+    it('while the save is still in flight', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      expect(inFlight.map((w) => w.key)).toEqual(['about']);
+
+      openSource('<p>Old</p>'); // the preview has not re-rendered, so it still holds the old HTML
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
+    });
+
+    it('after the save landed, before the re-render', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      await land('about');
+      openSource('<p>Old</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
+    });
+
+    it('until the re-render that follows the save is ON SCREEN — then the render is the truth again', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      await land('about');
+      await tick(400);
+      expect(preview).toHaveBeenCalledTimes(2); // (before its document is up: the case above)
+      send({ type: 'ready' }); // the re-rendered document is up
+      // Someone else rewrote it since; the memory of our own save must not mask that.
+      openSource('<p>Changed elsewhere</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Changed elsewhere</p>');
+    });
+
+    it('but NOT a save that failed — the store still holds the rendered HTML', async () => {
+      await openFooter();
+      setWebsiteData.mockRejectedValueOnce(new Error('offline'));
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      openSource('<p>Old</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Old</p>');
+    });
+  });
+
+  it('does not re-render when the write FAILED — the alert says so, and the old render is the truth', async () => {
+    await openFooter();
+    setWebsiteData.mockRejectedValueOnce(new Error('offline'));
+    send({ type: 'pick-image', key: 'website.data.logo' });
+    pickUrl('/media/new-logo.webp');
+    await tick(5000);
+    expect(screen.getByRole('alert').textContent).toContain('offline');
+    expect(preview).toHaveBeenCalledTimes(1);
   });
 });
 

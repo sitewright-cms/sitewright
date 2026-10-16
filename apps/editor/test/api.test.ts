@@ -112,6 +112,16 @@ describe('api client', () => {
     await expect(api.listMedia('p')).rejects.toMatchObject({ status: 429, retryAfterSeconds: 17 });
   });
 
+  it('★ reads WHICH resource refused a capacity 503 — a busy renderer is not a memory shortage', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(503, { code: 'capacity', transient: true, reason: 'busy', error: 'the headless-render queue is busy' }, { 'retry-after': '15' }),
+    );
+    await expect(api.listMedia('p')).rejects.toMatchObject({ status: 503, isCapacity: true, reason: 'busy', retryAfterSeconds: 15, transient: true });
+
+    fetchMock.mockResolvedValue(jsonResponse(503, { code: 'capacity', transient: true, error: 'too many large imports in progress' }));
+    await expect(api.listMedia('p')).rejects.toMatchObject({ isCapacity: true, reason: undefined }); // not said → not guessed
+  });
+
   it('leaves retryAfterSeconds undefined when the server sent none', async () => {
     fetchMock.mockResolvedValue(jsonResponse(500, { error: 'internal error' }));
     await expect(api.listMedia('p')).rejects.toMatchObject({ status: 500, retryAfterSeconds: undefined });

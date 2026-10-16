@@ -710,7 +710,8 @@ bottom-right Banner rises with it on its own). Or park it bottom-LEFT:
 \`:root{--sw-back-to-top-left:1.5rem;--sw-back-to-top-right:auto}\`. Do not restyle \`[data-sw-back-to-top]\`
 itself. THE Z-INDEX SCALE: fixed header 30; back-to-top + consent 9996; banner + cart tab 9997; header with
 the drawer OPEN 99980; preloader 99990; lightbox 999999; modals above that. Keep your own floats BELOW 99980
-so an open mobile menu covers them. The stock drawer (the \`#sw-nav-drawer\` checkbox) lives INSIDE
+so an open mobile menu covers them — and do not give #main-nav itself a z-index above 99980 either: while
+the drawer is open the platform SETS it to 99980, which would lower a higher one. The stock drawer (the \`#sw-nav-drawer\` checkbox) lives INSIDE
 \`#main-nav\`, where its z-40/z-50 only rank it among the header's own children — so while it is open the
 platform raises the whole header to 99980. A CUSTOM drawer (any other toggle or open class) must raise its
 own stacking context the same way, or every float paints over the open menu:

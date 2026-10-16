@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ScreenshotModule from '../src/render/screenshot.js';
 import type * as PagespeedModule from '../src/render/pagespeed-audit.js';
@@ -10,7 +11,7 @@ import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { RenderQueueBusyError } from '../src/render/render-slots.js';
-import { PagespeedRunError, type PagespeedAuditResult } from '../src/render/pagespeed-audit.js';
+import { GENERIC_RUN_FAILURE, toPagespeedRunError, type PagespeedAuditResult } from '../src/render/pagespeed-audit.js';
 import { makeTestDb } from './helpers.js';
 
 /**
@@ -80,6 +81,8 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  // fetch() keeps a finished request's socket alive in its pool; drop it so close() need not wait on it.
+  app?.server.closeAllConnections();
   await app?.close();
   await rm(base, { recursive: true, force: true });
 });
@@ -132,15 +135,29 @@ describe('pagespeed-audit route — failure answers', () => {
   });
 
   it('a Lighthouse failure → 502 with its code and a message scrubbed of the loopback origin', async () => {
+    // Exactly what runPagespeedAudit throws for a LighthouseError (code + friendlyMessage).
     seams.audit = async (url) => {
-      throw new PagespeedRunError('NO_FCP', `The page ${url} did not paint any content.`);
+      const lhError = Object.assign(new Error('NO_FCP'), { code: 'NO_FCP', friendlyMessage: `The page ${url} did not paint any content.` });
+      throw toPagespeedRunError(lhError, new URL(url).origin);
     };
     const res = await audit();
     expect(res.statusCode).toBe(502);
     const body = res.json() as { code: string; error: string };
     expect(body.code).toBe('NO_FCP');
-    expect(body.error).toMatch(/did not paint any content/);
+    expect(body.error).toMatch(/The page \/ did not paint any content/);
     expect(body.error).not.toMatch(/127\.0\.0\.1/);
+  });
+
+  it('a browser crash → 502 with a FIXED sentence: its own text (debug port, temp path) stays in the log', async () => {
+    seams.audit = async () => {
+      throw toPagespeedRunError(Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:41873 (/tmp/lighthouse.Xa9)'), { code: 'ECONNREFUSED' }));
+    };
+    const res = await audit(await freshSession());
+    expect(res.statusCode).toBe(502);
+    const body = res.json() as { code: string; error: string };
+    expect(body.code).toBe('LIGHTHOUSE_FAILED');
+    expect(body.error).toContain(GENERIC_RUN_FAILURE);
+    for (const leak of ['127.0.0.1', '41873', 'ECONNREFUSED', '/tmp']) expect(res.body, leak).not.toContain(leak);
   });
 
   it('an audit that succeeds carries its main-thread section, rebased off the loopback origin', async () => {
@@ -178,6 +195,25 @@ describe('pagespeed-audit route — failure answers', () => {
     expect(Date.now() - t0).toBeLessThan(10_000);
   });
 
+  it('a client that STAYS is never mistaken for one that left — a slow audit over a real socket completes', { timeout: 30_000 }, async () => {
+    // The disconnect signal is the request's `close`. On a POST that event fires as soon as the body is
+    // read; this route is a GET, where it fires only when the client really goes — pinned here, since a
+    // premature abort would kill every audit and answer nothing.
+    // Read when the audit finishes: the event DOES fire once the response has ended, as it should.
+    let abortedWhileRunning: boolean | undefined;
+    seams.audit = async (url, opts) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      abortedWhileRunning = opts.signal!.aborted;
+      return fakeResult(url, opts.formFactor);
+    };
+    const res = await fetch(`${address}/projects/${projectId}/pagespeed-audit/${homeId}?formFactor=mobile`, {
+      headers: { cookie: `sw_session=${await freshSession()}` },
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as PagespeedAuditResult).formFactor).toBe('mobile');
+    expect(abortedWhileRunning).toBe(false);
+  });
+
   it('a REMOTE MCP host that hangs up mid pagespeed_audit stops the audit behind it', { timeout: 30_000 }, async () => {
     // The agent path: host → POST /mcp → tool → in-process request to the audit route. The host's
     // tool-call timeout closes ITS socket; nothing else tells the server — so that close must reach
@@ -190,6 +226,7 @@ describe('pagespeed-audit route — failure answers', () => {
     });
     const token = (key.json() as { token: string }).token;
     const seen = hangingAudit();
+    const closes = vi.spyOn(McpServer.prototype, 'close');
     const ac = new AbortController();
     const pending = settle(
       fetch(`${address}/mcp`, {
@@ -203,6 +240,10 @@ describe('pagespeed-audit route — failure answers', () => {
     ac.abort();
     expect(await pending).toMatchObject({ name: 'AbortError' });
     await vi.waitFor(() => expect(seen[0]!.aborted, 'the audit behind the tool call was aborted').toBe(true));
+    // The hang-up closed the per-request server; the handler's own `finally` must not close it again.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(closes).toHaveBeenCalledTimes(1);
+    closes.mockRestore();
   });
 });
 

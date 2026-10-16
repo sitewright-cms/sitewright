@@ -8,7 +8,9 @@ import {
   abortable,
   lighthouseRuntimeError,
   toPagespeedRunError,
+  scrubRunMessage,
   PagespeedRunError,
+  GENERIC_RUN_FAILURE,
   type PagespeedFinding,
 } from '../src/render/pagespeed-audit.js';
 
@@ -270,6 +272,13 @@ describe('rebaseFindingUrls', () => {
     ];
     const out = rebaseFindingUrls(withLabel, 'http://127.0.0.1:54321');
     expect(out[0]?.items?.[0]?.label).toBe('allows /x and /y'); // every occurrence removed
+  });
+
+  it('scrubs the origin from a url that CONTAINS it without starting with it', () => {
+    const inner: PagespeedFinding[] = [
+      { id: 'r', title: 'R', category: 'performance', score: 0, items: [{ url: 'blob:http://127.0.0.1:54321/9f2c' }] },
+    ];
+    expect(rebaseFindingUrls(inner, 'http://127.0.0.1:54321')[0]?.items?.[0]?.url).toBe('blob:/9f2c');
   });
 });
 
@@ -537,6 +546,9 @@ describe('rebaseMainThread', () => {
           { url: 'http://127.0.0.1:54321', durationMs: 90 },
           { url: 'https://cdn.example/b.js', durationMs: 80 },
           { label: 'see http://127.0.0.1:54321/x', durationMs: 70 },
+          // The origin INSIDE a url (a blob: or a redirect parameter) is scrubbed too, not only a prefix.
+          { url: 'blob:http://127.0.0.1:54321/9f2c', durationMs: 60 },
+          { url: 'https://cdn.example/r?to=http://127.0.0.1:54321/a', durationMs: 50 },
         ],
         nonCompositedAnimations: [
           { label: '<div style="background:url(http://127.0.0.1:54321/i.png)">', reasons: ['r http://127.0.0.1:54321/z'], properties: ['filter'] },
@@ -552,6 +564,8 @@ describe('rebaseMainThread', () => {
       { url: '/', durationMs: 90 },
       { url: 'https://cdn.example/b.js', durationMs: 80 },
       { label: 'see /x', durationMs: 70 },
+      { url: 'blob:/9f2c', durationMs: 60 },
+      { url: 'https://cdn.example/r?to=/a', durationMs: 50 },
     ]);
     expect(out!.nonCompositedAnimations[0]).toEqual({ label: '<div style="background:url(/i.png)">', reasons: ['r /z'], properties: ['filter'] });
     expect(out!.nonCompositedAnimations[1]).toEqual({ label: 'clean', reasons: ['clean'] });
@@ -651,18 +665,92 @@ describe('Lighthouse failures → PagespeedRunError', () => {
     expect(icu.message).toMatch(/stopped responding/);
   });
 
-  it('a generic thrown error gets a generic code; a non-error still yields a message; an existing one is kept', () => {
-    const generic = toPagespeedRunError(new Error('Protocol error (Page.navigate): Target closed'));
-    expect(generic.code).toBe('LIGHTHOUSE_FAILED');
-    expect(generic.message).toContain('Target closed');
-    expect(toPagespeedRunError('weird').message).toMatch(/Lighthouse/);
+  it('ANY other thrown error gets a FIXED sentence — its own text names internals and never reaches the client', () => {
+    // A Chrome crash and a Node fs error, verbatim: a debug port, a temp path, a Node error code.
+    const crashes = [
+      Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:41873'), { code: 'ECONNREFUSED' }),
+      Object.assign(new Error("ENOENT: no such file or directory, open '/tmp/lighthouse.Xa9/trace.json'"), { code: 'ENOENT' }),
+      new Error('Protocol error (Page.navigate): Target closed'),
+      'weird',
+    ];
+    for (const crash of crashes) {
+      const err = toPagespeedRunError(crash, 'http://127.0.0.1:54321');
+      expect(err.code).toBe('LIGHTHOUSE_FAILED');
+      expect(err.message).toBe(GENERIC_RUN_FAILURE);
+      for (const leak of ['127.0.0.1', '/tmp', 'ECONNREFUSED', 'ENOENT', 'Target closed']) {
+        expect(err.message, leak).not.toContain(leak);
+      }
+      // The detail is kept for the SERVER log, not the response.
+      expect(err.cause).toBe(crash);
+    }
+  });
+
+  it('an existing PagespeedRunError is passed through untouched', () => {
     const existing = new PagespeedRunError('NO_FCP', 'x');
     expect(toPagespeedRunError(existing)).toBe(existing);
   });
 
   it('bounds the code and the message (both reach the client)', () => {
-    const err = toPagespeedRunError(Object.assign(new Error('x'.repeat(5000)), { code: 'lower-case and spaces!'.repeat(10) }));
+    const err = toPagespeedRunError(
+      Object.assign(new Error('x'), { code: 'lower-case and spaces!'.repeat(10), friendlyMessage: 'y'.repeat(5000) }),
+    );
     expect(err.code).toMatch(/^[A-Z0-9_]{1,64}$/);
     expect(err.message.length).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('what IS passed through is scrubbed of internals', () => {
+  const origin = 'http://127.0.0.1:54321';
+
+  it('the served origin leaves a site path; any other loopback host:port is removed', () => {
+    const err = toPagespeedRunError(
+      Object.assign(new Error('PAGE_HUNG'), {
+        code: 'PAGE_HUNG',
+        friendlyMessage:
+          'Navigating http://127.0.0.1:54321/about/ hung; DevTools at 127.0.0.1:9222, ws://localhost:41000/devtools and [::1]:8080 stopped answering.',
+      }),
+      origin,
+    );
+    expect(err.message).toContain('/about/'); // the page the author asked about stays readable
+    for (const leak of ['127.0.0.1', '9222', 'localhost', '41000', '[::1]', '8080']) {
+      expect(err.message, leak).not.toContain(leak);
+    }
+  });
+
+  it('absolute filesystem paths (and file: URLs) are removed; a site path inside a URL is not', () => {
+    const err = lighthouseRuntimeError(
+      {
+        lhr: {
+          runtimeError: {
+            code: 'ERRORED_DOCUMENT_REQUEST',
+            message:
+              "Could not read /tmp/sw-pagespeed-Ab12/index.html (see file:///home/app/dist/x.js or C:\\Users\\app\\x.js) for http://127.0.0.1:54321/shop/cart/.",
+          },
+        },
+      } as unknown as RunnerResult,
+      origin,
+    )!;
+    expect(err.message).toContain('/shop/cart/');
+    for (const leak of ['/tmp', 'sw-pagespeed', 'file:', '/home/app', 'C:\\', 'Users']) {
+      expect(err.message, leak).not.toContain(leak);
+    }
+  });
+
+  it('scrubs BEFORE the length cap, so an origin straddling the cut leaves no fragment', () => {
+    // 395 characters, then the loopback origin: a cap first would keep "http://127.0" and the scrub
+    // after it would no longer recognise the cut-off origin.
+    const filler = 'x'.repeat(395);
+    for (const o of [origin, '']) {
+      const err = lighthouseRuntimeError(
+        { lhr: { runtimeError: { code: 'NO_FCP', message: `${filler} http://127.0.0.1:54321/deep/page/` } } } as unknown as RunnerResult,
+        o,
+      )!;
+      expect(err.message.length).toBeLessThanOrEqual(400);
+      expect(err.message).not.toMatch(/127\.0|127\.|:5432/);
+    }
+  });
+
+  it('scrubRunMessage leaves an ordinary sentence alone', () => {
+    expect(scrubRunMessage('The page did not paint any content.', origin)).toBe('The page did not paint any content.');
   });
 });

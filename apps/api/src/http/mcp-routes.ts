@@ -193,10 +193,14 @@ export function registerMcpRoutes(
     const gone = new Promise<undefined>((resolve) => {
       hungUp = () => resolve(undefined);
     });
+    // ONE close, whichever path gets there first (the hang-up below or the `finally`): the second caller
+    // awaits the same promise instead of closing again, and a failed close is not a failed request.
+    let closing: Promise<void> | undefined;
+    const closeServer = (): Promise<void> => (closing ??= server.close().catch(() => {}));
     reply.raw.on('close', () => {
       if (reply.raw.writableFinished) return;
       hungUp();
-      void server.close().catch(() => {});
+      void closeServer();
     });
     try {
       await server.connect(transport);
@@ -213,7 +217,7 @@ export function registerMcpRoutes(
       return reply.send(await webRes.text());
     } finally {
       // McpServer.close() closes the transport it owns — one close, correct order.
-      await server.close();
+      await closeServer();
     }
   };
 

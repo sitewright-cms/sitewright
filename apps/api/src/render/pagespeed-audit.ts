@@ -408,7 +408,7 @@ function findingDetail(details: unknown): FindingDetail {
 export function rebaseFindingUrls(findings: readonly PagespeedFinding[], origin: string): PagespeedFinding[] {
   if (!origin) return findings.slice();
   const carriesOrigin = (it: PagespeedResourceItem): boolean =>
-    (it.url?.startsWith(origin) ?? false) || (it.label?.includes(origin) ?? false);
+    (it.url?.includes(origin) ?? false) || (it.label?.includes(origin) ?? false);
   return findings.map((f) => {
     if (!f.items?.some(carriesOrigin)) return f;
     return {
@@ -417,12 +417,20 @@ export function rebaseFindingUrls(findings: readonly PagespeedFinding[], origin:
         if (!carriesOrigin(it)) return it;
         return {
           ...it,
-          ...(it.url?.startsWith(origin) ? { url: it.url.slice(origin.length) || '/' } : {}),
+          ...(it.url?.includes(origin) ? { url: rebaseUrl(it.url, origin) } : {}),
           ...(it.label?.includes(origin) ? { label: it.label.split(origin).join('') } : {}),
         };
       }),
     };
   });
+}
+
+/**
+ * A same-site URL made origin-relative; an origin anywhere else in it (a `blob:` URL, a redirect
+ * parameter) is removed too — a URL only STARTING with the origin is not the only shape that carries it.
+ */
+function rebaseUrl(url: string, origin: string): string {
+  return url.startsWith(origin) ? url.slice(origin.length) || '/' : url.split(origin).join('');
 }
 
 /**
@@ -452,7 +460,7 @@ export function rebaseMainThread(mt: PagespeedMainThread | undefined, origin: st
     ...mt,
     longTasks: mt.longTasks.map((t) => ({
       ...t,
-      ...(t.url !== undefined ? { url: t.url.startsWith(origin) ? t.url.slice(origin.length) || '/' : t.url } : {}),
+      ...(t.url !== undefined ? { url: rebaseUrl(t.url, origin) } : {}),
       ...(t.label !== undefined ? { label: scrub(t.label) } : {}),
     })),
     nonCompositedAnimations: mt.nonCompositedAnimations.map((a) => ({
@@ -588,43 +596,84 @@ export class PagespeedUnavailableError extends Error {
 }
 
 /**
+ * What the client is told when the failure is NOT a Lighthouse verdict — a Chrome crash, a refused
+ * DevTools connection, a filesystem error. Their own text names a debug port, a temp path or a Node
+ * error code, so it stays in the server log (the error's `cause`) and this fixed sentence goes out.
+ */
+export const GENERIC_RUN_FAILURE =
+  'Lighthouse stopped before it could audit the page: the headless browser or its DevTools connection failed. ' +
+  'Retry; if it keeps failing, look for scripts or animated backgrounds heavy enough to stall a browser.';
+
+const FILE_URL = /\bfile:\/\/[^\s'"()<>]*/gi;
+/** An absolute POSIX path standing on its own — NOT the path part of a URL (those follow a host or port).
+ *  One character class, no nested quantifier: linear on any input. */
+const POSIX_PATH = /(?<![\w.:/~%-])\/[^\s'"()<>,;]+/g;
+const WINDOWS_PATH = /\b[A-Za-z]:\\[^\s'"()<>]*/g;
+/** Any loopback endpoint other than the served origin: the Chrome debug port, a dev server. No nested
+ *  quantifier (the linter's ReDoS rule); the scheme in front of one is dropped by a second pass. */
+const LOOPBACK = /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}:?\d*|\blocalhost:\d+|\[::1\]:?\d*/gi;
+const LOCAL_PLACEHOLDER = '[local]';
+const SCHEME_BEFORE_LOCAL = /\b[a-z][\w+.-]*:\/\/(?=\[local\])/gi;
+
+/**
+ * Make a Lighthouse sentence safe to send: filesystem paths and `file:` URLs removed, the served
+ * origin removed (its URLs become the site paths the author knows), any other loopback endpoint
+ * replaced. Paths go FIRST, while a site path is still visibly part of its loopback URL and so is not
+ * mistaken for a file. Applied BEFORE the length cap — a cap first could cut an origin in half, and a
+ * half-origin no longer matches anything. Pure — unit-tested.
+ */
+export function scrubRunMessage(text: string, origin = ''): string {
+  const noPaths = text.replace(FILE_URL, '').replace(WINDOWS_PATH, '').replace(POSIX_PATH, '');
+  const noOrigin = origin ? noPaths.split(origin).join('') : noPaths;
+  return noOrigin.replace(LOOPBACK, LOCAL_PLACEHOLDER).replace(SCHEME_BEFORE_LOCAL, '');
+}
+
+/**
  * Lighthouse ran but could not audit the page — a fatal `runtimeError` on the result (NO_FCP, PAGE_HUNG,
- * …) or a thrown Lighthouse/DevTools-protocol error. The route answers 502 with `code` + `message`
- * (loopback origin redacted) instead of the opaque global 500, so the author learns WHAT failed — "the
- * page never painted" is actionable; "internal error" is not. Both fields are bounded: they reach the
- * client verbatim.
+ * …) or a thrown error. The route answers 502 with `code` + `message` instead of the opaque global 500,
+ * so the author learns WHAT failed — "the page never painted" is actionable; "internal error" is not.
+ * Only a Lighthouse verdict's own sentence is ever passed on, scrubbed ({@link scrubRunMessage}) and
+ * then bounded: both fields reach the client verbatim. `cause` keeps the original for the server log.
  */
 export class PagespeedRunError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
-    super(cap(message, MAX_RUN_ERROR_LEN));
+  constructor(code: string, message: string, opts: { origin?: string; cause?: unknown } = {}) {
+    super(cap(scrubRunMessage(message, opts.origin), MAX_RUN_ERROR_LEN), { cause: opts.cause });
     this.name = 'PagespeedRunError';
     // A machine-readable token, so normalised to Lighthouse's own SHOUTED_SNAKE shape and hard-capped.
     this.code = code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, MAX_RUN_ERROR_CODE_LEN);
   }
 }
 
-/** A fatal Lighthouse `runtimeError` (or no result at all) as a typed error; null when the run is usable. Pure. */
-export function lighthouseRuntimeError(result: RunnerResult | undefined): PagespeedRunError | null {
+/**
+ * A fatal Lighthouse `runtimeError` (or no result at all) as a typed error; null when the run is usable.
+ * `origin` is the served loopback origin, removed from the message so its URLs read as site paths. Pure.
+ */
+export function lighthouseRuntimeError(result: RunnerResult | undefined, origin = ''): PagespeedRunError | null {
   if (!result) return new PagespeedRunError('NO_RESULT', 'Lighthouse returned no result');
   const rt = result.lhr.runtimeError as { code?: unknown; message?: unknown } | undefined;
   if (!rt) return null;
   const code = nonEmptyStr(rt.code) ?? 'LIGHTHOUSE_FAILED';
   // `errorStack` is deliberately NOT carried — it names server paths.
-  return new PagespeedRunError(code, nonEmptyStr(rt.message) ?? `Lighthouse failed with ${code}`);
+  return new PagespeedRunError(code, nonEmptyStr(rt.message) ?? `Lighthouse failed with ${code}`, { origin });
 }
 
-/** A thrown Lighthouse / protocol error as a typed {@link PagespeedRunError} (kept as-is if it already is one). Pure. */
-export function toPagespeedRunError(err: unknown): PagespeedRunError {
+/**
+ * A thrown error as a typed {@link PagespeedRunError} (kept as-is if it already is one). Only a real
+ * LighthouseError — a `code` plus its `friendlyMessage` sentence — passes its text on; anything else (a
+ * Chrome crash, a refused DevTools socket, a Node fs error) gets {@link GENERIC_RUN_FAILURE}. Pure.
+ */
+export function toPagespeedRunError(err: unknown, origin = ''): PagespeedRunError {
   if (err instanceof PagespeedRunError) return err;
-  if (!(err instanceof Error)) return new PagespeedRunError('LIGHTHOUSE_FAILED', 'Lighthouse failed');
-  const e = err as Error & { code?: unknown; friendlyMessage?: unknown };
-  // LighthouseError: `message` is just the code; `friendlyMessage` is the sentence (a plain string, or
-  // an un-formatted ICU message object carrying its English text in `formattedDefault`).
+  const lh = err instanceof Error ? (err as Error & { code?: unknown; friendlyMessage?: unknown }) : undefined;
+  // `message` of a LighthouseError is just its code; `friendlyMessage` is the sentence — a plain string,
+  // or an un-formatted ICU message object carrying its English text in `formattedDefault`.
   const friendly =
-    nonEmptyStr(e.friendlyMessage) ??
-    nonEmptyStr((e.friendlyMessage as { formattedDefault?: unknown } | undefined)?.formattedDefault);
-  return new PagespeedRunError(nonEmptyStr(e.code) ?? 'LIGHTHOUSE_FAILED', friendly ?? e.message);
+    nonEmptyStr(lh?.friendlyMessage) ??
+    nonEmptyStr((lh?.friendlyMessage as { formattedDefault?: unknown } | undefined)?.formattedDefault);
+  const code = nonEmptyStr(lh?.code);
+  if (friendly && code) return new PagespeedRunError(code, friendly, { origin, cause: err });
+  return new PagespeedRunError('LIGHTHOUSE_FAILED', GENERIC_RUN_FAILURE, { cause: err });
 }
 
 /**
@@ -798,16 +847,18 @@ export async function runPagespeedAudit(
     };
     // Kill Chrome the moment the caller leaves: Lighthouse otherwise runs its full ~30-90 s pass (and
     // the route holds its render slot) for a response nobody will read.
+    // The served origin: removed from any Lighthouse sentence passed on, so its URLs read as site paths.
+    const origin = new URL(url).origin;
     let result: RunnerResult | undefined;
     try {
       result = await abortable(lighthouse(url, flags), signal, killChrome);
     } catch (err) {
       if (signal?.aborted) throw err;
-      throw toPagespeedRunError(err);
+      throw toPagespeedRunError(err, origin);
     }
     // A fatal page-load error (NO_FCP, PAGE_HUNG, …) comes back as a RESULT with every score null, not
     // a throw — report it as the failure it is rather than as a page that scored nothing.
-    const failed = lighthouseRuntimeError(result);
+    const failed = lighthouseRuntimeError(result, origin);
     if (failed) throw failed;
     return summarize(url, formFactor, result as RunnerResult);
   } finally {

@@ -137,13 +137,18 @@ The running version of an instance is reported at `GET /version` (baked into the
     timing out was a plain error, so the audit, `inspect_source` and anything else that let it through
     answered 500. A preview screenshot skipped for the same reason is now reported as retryable.
   - **Lighthouse could not audit the page** (the page never painted, hung, a protocol timeout): `502`
-    with Lighthouse's code and sentence, the internal loopback address removed.
+    with Lighthouse's code and sentence, with loopback addresses and file paths removed. Any other
+    failure (a browser crash, a refused DevTools connection) gets a fixed sentence; its own text, which
+    names ports and temp paths, goes to the server log only.
   - **A caller that goes away stops the audit.** Closing the request used to only skip the reply: the
     build and Lighthouse ran on inside their render slot, so a few timed-out calls held both slots and
     the next call queued into the 500 above. The disconnect now cancels the queue wait, stops the build
-    at its next step (the isolated build worker is killed) and kills the audit's Chrome. Over remote MCP
-    the host hanging up reaches the audit too, and `pagespeed_audit` gives up on its own after 4 minutes
-    (7 for both devices), which stops the run the same way.
+    at its next step and kills the audit's Chrome. Over remote MCP the host hanging up reaches the audit
+    too, and `pagespeed_audit` gives up on its own after 4 minutes (7 for both devices), which stops the
+    run the same way.
+  - **The opt-in isolated build worker (`SW_BUILD_WORKER`) now stops its container** when a build is
+    abandoned or times out. Killing the `docker run` client left the container running with its
+    memory and CPU until the build finished; each worker container is now named and `docker kill`ed.
 
 - **Deleting a page no longer leaves rows pointing at it.** Children kept pointing at the deleted page
   and its translated titles stayed behind — the integrity check's two most common findings. Every delete

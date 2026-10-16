@@ -9622,8 +9622,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const local = await findLocalTarget(ctx);
         const dir = await mkdtemp(join(tmpdir(), 'sw-pagespeed-'));
         let served: Awaited<ReturnType<typeof serveBuiltSite>> | undefined;
-        // The ephemeral loopback origin, once served — what every outgoing string is scrubbed of.
-        let servedOrigin = '';
         // The client going away (panel closed, an agent's tool call timed out) ABORTS the work: the
         // queued slot wait, the build, and Lighthouse — whose Chrome is killed. It used to only skip the
         // reply, so an abandoned audit kept building and auditing inside its render slot; two of those
@@ -9652,7 +9650,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             }
             // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
             const origin = new URL(served.url).origin;
-            servedOrigin = origin;
             // Heading-structure outline (SEO): best-effort — parse the served static HTML. Hoisted OUT
             // of the device loop: the heading structure is a property of the markup, identical on both
             // passes, so fetching it per device would just be a second request for the same answer.
@@ -9716,13 +9713,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             req.log.warn({ err }, 'pagespeed audit: no headless browser available');
             return reply.code(503).send({ error: 'page-speed audit is unavailable: no headless browser could be launched' });
           }
-          // Lighthouse ran but could not audit the page (NO_FCP, PAGE_HUNG, a protocol timeout…) → 502 with
-          // Lighthouse's code + sentence, so the author learns WHAT failed. The sentence can interpolate the
-          // navigated URL, i.e. the internal loopback origin — scrubbed like every other string here.
+          // Lighthouse could not audit the page (NO_FCP, PAGE_HUNG, a browser crash…) → 502 with a code and a
+          // sentence, so the author learns WHAT failed. The message is already safe to send: only a
+          // Lighthouse verdict's own sentence is passed on, scrubbed of the loopback origin, ports and paths
+          // before it was capped; anything else is a fixed sentence. The original goes to the log.
           if (err instanceof PagespeedRunError) {
-            req.log.warn({ code: err.code }, 'pagespeed audit: Lighthouse could not audit the page');
-            const [message] = redactOrigin([err.message], servedOrigin) as string[];
-            return reply.code(502).send({ code: err.code, error: `Lighthouse could not audit this page: ${message}` });
+            req.log.warn({ code: err.code, err: err.cause ?? err }, 'pagespeed audit: Lighthouse could not audit the page');
+            return reply.code(502).send({ code: err.code, error: `Lighthouse could not audit this page: ${err.message}` });
           }
           // A busy render queue (RenderQueueBusyError) carries its own 503 + retry-after, which the global
           // handler sends; anything else is a genuine fault.

@@ -78,16 +78,15 @@ export function ImageAltField({
         <button type="submit" disabled={!changed || saving} className={`${ghostButton} shrink-0 px-3 py-1`}>
           {saving ? 'Saving…' : 'Save alt text'}
         </button>
+        {/* ALWAYS mounted, filled on save: a live region inserted after load is often not announced. */}
+        <span role="status" className="shrink-0 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+          {saved ? 'Saved' : ''}
+        </span>
       </div>
       <p id={`${id}-hint`} className="text-[11px] text-slate-500 dark:text-slate-400">
         Describes the image for screen readers and search engines; galleries use it. Leave it empty to fall back to the file
         name.
       </p>
-      {saved && (
-        <p role="status" className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-          Saved
-        </p>
-      )}
       {error && (
         <p role="alert" className="text-[11px] text-rose-600 dark:text-rose-400">
           {error}

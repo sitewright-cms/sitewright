@@ -1138,8 +1138,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
             onEdit={() => setEditing(preview)}
             onReplace={() => replaceAsset(preview)}
             onAltSaved={(item) => {
+              // Against the CURRENT preview, not the one this render saw: a save still in flight when the
+              // author stepped to the next image would otherwise snap the modal back to the saved one.
+              setPreview((p) => (p && p.id === item.id && item.kind === 'image' ? item : p));
               // Re-read the library too: the rows, the search and the next/previous steps are built from it.
-              if (item.kind === 'image' && item.id === preview.id) setPreview(item);
               void load();
             }}
             nonce={previewNonce}

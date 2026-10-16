@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { StockProviderName, MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 
 const listMedia = vi.fn();
@@ -766,5 +766,30 @@ describe('FileBrowser — alt text for an image', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
     expect(altField(await screen.findByRole('dialog', { name: 'z.png' }))).toHaveValue('A blue door');
+  });
+
+  it('★ a save still in flight when you step to the next image does not snap the preview BACK', async () => {
+    const other = { ...described, id: 'img2', filename: 'z.png', original: 'z.png', url: '/media/p/img2/z.png', alt: 'A blue door' } as MediaAsset;
+    let answer!: (v: { item: MediaAsset }) => void;
+    patchMedia.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    const dialog = await openPreview([described, other]);
+    fireEvent.change(altField(dialog), { target: { value: 'A red bicycle' } });
+    fireEvent.click(saveButton(dialog));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
+    expect(await screen.findByRole('dialog', { name: 'z.png' })).toBeInTheDocument();
+
+    await act(async () => answer({ item: { ...described, alt: 'A red bicycle' } }));
+    expect(screen.getByRole('dialog', { name: 'z.png' })).toBeInTheDocument(); // still where the author went
+    expect(screen.queryByRole('dialog', { name: 'hero.png' })).toBeNull();
+  });
+
+  it('announces "Saved" through a live region that is there BEFORE the save (one inserted later is often not read out)', async () => {
+    const dialog = await openPreview();
+    const live = within(dialog).getAllByRole('status').find((el) => el.closest('form'));
+    expect(live).toBeDefined();
+    expect(live).toHaveTextContent('');
+    fireEvent.change(altField(dialog), { target: { value: 'A red bicycle' } });
+    fireEvent.click(saveButton(dialog));
+    await waitFor(() => expect(live).toHaveTextContent('Saved'));
   });
 });

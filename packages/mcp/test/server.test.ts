@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createSitewrightMcpServer, normalizePutData } from '../src/server.js';
+import { createSitewrightMcpServer, normalizePutData, parseJsonText, absolutizeInstanceUrls } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 import type { BridgeAuth } from '../src/auth.js';
 import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS, GUIDE_TOPICS, AGENT_GUIDES } from '@sitewright/schema';
@@ -1290,6 +1290,127 @@ describe('normalizePutData — forgiving put_content normalization', () => {
     const out = normalizePutData('entry', 'row1', 'venues', JSON.stringify({ title: 'Barn' })) as Record<string, unknown>;
     expect(out.status).toBe('published');
     expect(out.title).toBe('Barn');
+  });
+});
+
+describe('put_content: a stringified `data` that does not parse is REFUSED with the reason', () => {
+  it('repairs raw line breaks inside string literals (the usual cause) and parses', () => {
+    const raw = '{"website":{"mainNav":"<div>\n  <a href=\\"/\\">Home</a>\n</div>"}}';
+    expect(() => JSON.parse(raw)).toThrow(); // the literal newline makes it invalid JSON…
+    const out = normalizePutData('settings', 'settings', undefined, raw) as { website: { mainNav: string } };
+    expect(out.website.mainNav).toBe('<div>\n  <a href="/">Home</a>\n</div>'); // …and it is repaired, not mangled
+  });
+
+  it('throws a clear error naming the parse failure instead of forwarding the string', () => {
+    expect(() => normalizePutData('settings', 'settings', undefined, '{"website": {"footer": "x",}')).toThrow(/arrived as a STRING that is not valid JSON .*nothing was written/);
+  });
+
+  it('parses a stringified object field one level down (website as a string), and only named fields', () => {
+    const out = normalizePutData('settings', 'settings', undefined, { website: JSON.stringify({ footer: '<p>f</p>' }) }) as { website: unknown };
+    expect(out.website).toEqual({ footer: '<p>f</p>' });
+    // A page `source` that starts with "{" is template text — never parsed.
+    const page = normalizePutData('page', 'home', undefined, { path: '', title: 'H', source: '{{> header}}' }) as { source: unknown };
+    expect(page.source).toBe('{{> header}}');
+    expect(() => normalizePutData('page', 'home', undefined, { data: '{"a":' })).toThrow(/data\.data. arrived as a STRING/);
+  });
+
+  it('a put_content call with an unparseable string reports the reason and never reaches the API', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, writeScope)).callTool({ name: 'put_content', arguments: { kind: 'settings', id: 'settings', data: '{"website":', merge: true } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/not valid JSON/);
+    expect(callsOf(client).putContent).not.toHaveBeenCalled();
+  });
+
+  it('repairs ANY raw control character inside a string, and a stray backslash before a line break', () => {
+    expect(parseJsonText('{"a":"x\fy\u0001z"}')).toEqual({ ok: true, value: { a: 'x\fy\u0001z' } });
+    expect(parseJsonText('{"a":"one\\\ntwo"}')).toEqual({ ok: true, value: { a: 'one\ntwo' } });
+  });
+
+  it('an unparseable stringified payload names the expected shape for its kind', async () => {
+    const res = await (await connect(fakeClient(), writeScope)).callTool({ name: 'put_content', arguments: { kind: 'page', id: 'home', data: '{"path":' } });
+    expect(text(res)).toMatch(/not valid JSON[\s\S]*Expected `data` shape for kind "page"/);
+  });
+
+  it('parseJsonText keeps escaped quotes and existing escapes intact', () => {
+    expect(parseJsonText('{"a":"x\\"y\\n"}')).toEqual({ ok: true, value: { a: 'x"y\n' } });
+    expect(parseJsonText('nope')).toMatchObject({ ok: false });
+  });
+});
+
+describe('instance addresses come back ABSOLUTE', () => {
+  it('rewrites previewUrl / share / upload addresses against the origin — and NEVER site data', () => {
+    const out = absolutizeInstanceUrls(
+      {
+        items: [{ id: 'home', previewUrl: '/preview-site/p1/sig/' }],
+        uploadUrl: '/media-upload/tok',
+        url: '/media/site/a1/x.jpg',
+        // Site data an agent will write back: a nav/link target, a page path, a dataset value that
+        // happen to look like instance paths must survive a read-then-write untouched.
+        link: { target: '/preview/pricing' },
+        target: '/preview-site/p1/sig/',
+        values: { cta: '/preview-site/p1/sig/' },
+      },
+      'https://cms.example',
+    );
+    expect(out).toEqual({
+      items: [{ id: 'home', previewUrl: 'https://cms.example/preview-site/p1/sig/' }],
+      uploadUrl: 'https://cms.example/media-upload/tok',
+      url: '/media/site/a1/x.jpg', // goes INTO page sources — root-relative is what publish rewrites
+      link: { target: '/preview/pricing' },
+      target: '/preview-site/p1/sig/',
+      values: { cta: '/preview-site/p1/sig/' },
+    });
+    expect(absolutizeInstanceUrls({ previewUrl: '/preview-site/x' }, '')).toEqual({ previewUrl: '/preview-site/x' }); // origin unknown
+  });
+
+  it('tool results and get_scope carry the origin the client was given', async () => {
+    const client = fakeClient({ listContent: vi.fn(async () => [{ id: 'home', previewUrl: '/preview-site/p/s/' }]) });
+    (client as unknown as { publicOrigin: string }).publicOrigin = 'https://cms.example';
+    const mcp = await connect(client, writeScope);
+    expect(text(await mcp.callTool({ name: 'list_pages', arguments: {} }))).toContain('https://cms.example/preview-site/p/s/');
+    expect(JSON.parse(text(await mcp.callTool({ name: 'get_scope', arguments: {} })))).toMatchObject({ origin: 'https://cms.example' });
+  });
+});
+
+describe('preview_page — reading the rendered HTML', () => {
+  const textOf = (res: unknown): string =>
+    ((res as { content: Array<{ type: string; text?: string }> }).content ?? [])
+      .filter((c) => c.type === 'text')
+      .map((c) => c.text)
+      .join('\n');
+  const doc = '<html><head><style>' + '.x{}'.repeat(2000) + '</style></head><body><main><h1>Hi</h1></main><footer>f</footer></body></html>';
+  const htmlClient = () => fakeClient({ preview: vi.fn(async () => ({ html: doc, token: 'tok', screenshots: {} })) });
+
+  it('includeHtml elides the inline stylesheet; fullHtml keeps it', async () => {
+    const mcp = await connect(htmlClient(), writeScope);
+    const lean = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } }));
+    expect(lean).toContain('KB of inline CSS omitted');
+    expect(lean).not.toContain('.x{}.x{}');
+    const full = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page, fullHtml: true } }));
+    expect(full).toContain('.x{}.x{}');
+  });
+
+  it('selector narrows the HTML; screenshot:false skips the capture entirely', async () => {
+    const client = htmlClient();
+    const mcp = await connect(client, writeScope);
+    const res = textOf(await mcp.callTool({ name: 'preview_page', arguments: { page, selector: 'main', screenshot: false } }));
+    expect(callsOf(client).preview).toHaveBeenLastCalledWith(page, { screenshot: false });
+    expect(res).toContain('HTML for selector "main" — 1 match:');
+    expect(res).toContain('<main><h1>Hi</h1></main>');
+    expect(res).not.toContain('<footer>');
+  });
+
+  it('an unsupported selector is refused BEFORE rendering', async () => {
+    const client = htmlClient();
+    const res = await (await connect(client, writeScope)).callTool({ name: 'preview_page', arguments: { page, selector: 'a:hover' } });
+    expect(res.isError).toBe(true);
+    expect(callsOf(client).preview).not.toHaveBeenCalled();
+  });
+
+  it('the description tells the agent drafts render here', async () => {
+    const tools = (await (await connect(fakeClient(), writeScope)).listTools()).tools;
+    expect(tools.find((t) => t.name === 'preview_page')?.description).toMatch(/DRAFT pages too/);
   });
 });
 

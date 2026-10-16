@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { createSitewrightMcpServer, staticAuth, SitewrightClient, SitewrightApiError, type FetchLike } from '@sitewright/mcp';
 import { hashApiToken } from '../auth/api-keys.js';
 import { issuerOf } from './oauth-routes.js';
+import { resolvePlatformOrigin } from './platform-origins.js';
 
 /**
  * Per-minute ceiling on `/mcp` calls. The rate-limit bucket is keyed by the BEARER TOKEN (see the
@@ -66,7 +67,7 @@ export function registerMcpRoutes(
   },
 ): void {
   // A SitewrightClient whose every request is an in-process app.inject carrying the bearer token.
-  const injectClient = (token: string): SitewrightClient => {
+  const injectClient = (token: string, publicOrigin: string): SitewrightClient => {
     const fetchImpl: FetchLike = async (input, init) => {
       // SitewrightClient only ever issues GET/POST/PUT/DELETE.
       const res = (await app.inject({
@@ -82,7 +83,10 @@ export function registerMcpRoutes(
         text: async () => res.payload,
       };
     };
-    return new SitewrightClient('', async () => token, fetchImpl);
+    const client = new SitewrightClient('', async () => token, fetchImpl);
+    // In-process requests need no base, but the agent opens previewUrl / upload tickets from OUTSIDE.
+    client.publicOrigin = publicOrigin;
+    return client;
   };
 
   // The JSON-RPC id of the posted request (best-effort — null when the body never parsed, e.g. a 429
@@ -141,7 +145,10 @@ export function registerMcpRoutes(
     // Resolve the token's project scope (validates it); a bad/expired token → the OAuth challenge,
     // any other API error (e.g. a 429 from the introspect rate-limit) → its real status as a JSON-RPC
     // error envelope, not a 500. Fresh scopes are cached briefly (see SCOPE_TTL_MS above).
-    const client = injectClient(token);
+    // Only an operator-CONFIGURED origin (SW_PUBLIC_URL / approved origins) — never one guessed from the
+    // Host header: behind a default proxy that is the upstream's internal name, and handing an agent a
+    // bearer upload ticket on `http://api:3000` is worse than a relative address. Unconfigured → relative.
+    const client = injectClient(token, resolvePlatformOrigin(req, opts.origins())?.replace(/\/$/, '') ?? '');
     // Cache key = the token's sha256 (the codebase-wide rule: raw tokens are never persisted or held
     // beyond the request), so a heap inspection of the cache yields no usable bearer material.
     const cacheKey = hashApiToken(token);

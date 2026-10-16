@@ -30,7 +30,7 @@ import {
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
-import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
+import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
 import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type TextEdit } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
@@ -147,27 +147,88 @@ function isPlainRecord(v: unknown): v is Record<string, unknown> {
 const ID_LESS_PUT_KINDS = new Set<string>(['settings']);
 
 /**
+ * Parse a JSON text an agent sent where an object/array belonged. Strict first; then once more with raw
+ * control characters INSIDE string literals escaped — a model serialising a 6 KB header of HTML tends to
+ * leave its line breaks literal, which JSON forbids, and the identical object then failed with
+ * "expected object, received string" while a byte-identical retry (serialised properly) went through.
+ * Returns the parsed value, or the parser's reason.
+ */
+export function parseJsonText(text: string): { ok: true; value: unknown } | { ok: false; reason: string } {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch (first) {
+    let fixed = '';
+    let inString = false;
+    let escaped = false;
+    for (const ch of text) {
+      // Any raw control character inside a string literal (JSON allows none) — a line break most often.
+      if (inString && ch < ' ') {
+        const named = ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : ch === '\t' ? '\\t' : undefined;
+        // After a stray backslash the escape is already open: emit just the letter/code it needs.
+        const esc = named ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+        fixed += escaped ? esc.slice(1) : esc;
+        escaped = false;
+        continue;
+      }
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = inString;
+      else if (ch === '"') inString = !inString;
+      fixed += ch;
+    }
+    try {
+      return { ok: true, value: JSON.parse(fixed) };
+    } catch {
+      return { ok: false, reason: first instanceof Error ? first.message : 'invalid JSON' };
+    }
+  }
+}
+
+/** Object-valued fields an agent sometimes sends as a JSON STRING one level down, per kind. Named, not
+ *  guessed: a `source` that happens to start with `{` is template text and must stay a string. */
+const NESTED_OBJECT_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  settings: ['identity', 'website', 'settings'],
+  page: ['data', 'nav', 'link'],
+  entry: ['values'],
+};
+
+/**
  * Make put_content forgiving for weaker models. Two mistakes recur badly enough to stall a whole run:
  *   1. `data` sent as a JSON *string* instead of an object → "Expected object, received string".
  *   2. The schema requires `data.id` (and, for an entry, `data.dataset`) to be present AND to equal
  *      the `id`/`dataset` args — models omit the "redundant" duplicate → endless "id: Required".
- * So we parse a stringified object and copy `id`/`dataset` into `data` when the model left them out.
- * Anything that isn't a JSON object (or a string that isn't parseable JSON) is returned untouched, so
- * the normal validation error — with its teach-on-error shape hint — still surfaces.
+ * So we parse a stringified object (and a stringified object field one level down) and copy
+ * `id`/`dataset` into `data` when the model left them out. A string that LOOKS like JSON but doesn't
+ * parse is refused here with the parser's reason — forwarded, it reached the API as a bare string and
+ * came back as "expected object, received string", which sent the caller hunting through JSON that was
+ * fine. Anything else that isn't an object is returned untouched for the normal validation error.
  */
 export function normalizePutData(kind: string, id: string, dataset: string | undefined, data: unknown): unknown {
   let obj: unknown = data;
   if (typeof obj === 'string') {
     const trimmed = obj.trim();
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return data; // not JSON — let validation speak
-    try {
-      obj = JSON.parse(trimmed);
-    } catch {
-      return data;
+    const parsed = parseJsonText(trimmed);
+    if (!parsed.ok) {
+      throw new Error(
+        `\`data\` arrived as a STRING that is not valid JSON (${parsed.reason}) — send \`data\` as an object, not serialised text; nothing was written`,
+      );
     }
+    obj = parsed.value;
   }
   if (!isPlainRecord(obj)) return obj;
   const patch: Record<string, unknown> = {};
+  // eslint-disable-next-line security/detect-object-injection -- `kind` is the GENERIC_KIND enum; a fixed literal map
+  for (const field of Object.prototype.hasOwnProperty.call(NESTED_OBJECT_FIELDS, kind) ? NESTED_OBJECT_FIELDS[kind]! : []) {
+    // eslint-disable-next-line security/detect-object-injection -- `field` comes from the fixed list above
+    const value = obj[field];
+    if (typeof value !== 'string' || !value.trim().startsWith('{')) continue;
+    const parsed = parseJsonText(value.trim());
+    if (!parsed.ok) {
+      throw new Error(`\`data.${field}\` arrived as a STRING that is not valid JSON (${parsed.reason}) — send it as an object; nothing was written`);
+    }
+    // eslint-disable-next-line security/detect-object-injection -- as above; `patch` is a fresh object
+    if (isPlainRecord(parsed.value)) patch[field] = parsed.value;
+  }
   if (!ID_LESS_PUT_KINDS.has(kind) && (obj.id === undefined || obj.id === '') && id) patch.id = id;
   if (kind === 'entry' && (obj.dataset === undefined || obj.dataset === '') && dataset) patch.dataset = dataset;
   // A dataset ENTRY's status defaults to 'draft' (EntrySchema) — but a draft entry is INVISIBLE in the
@@ -181,6 +242,37 @@ export function normalizePutData(kind: string, id: string, dataset: string | und
 
 type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
 type ToolResult = { content: ContentBlock[]; isError?: boolean };
+
+// The instance's OWN addresses an agent is handed and must open from outside: a page's draft
+// `previewUrl`, a share link, an upload ticket. The API returns them root-relative and no tool returned
+// the host, so an agent had to know the origin from earlier notes.
+//
+// Rewritten ONLY under these keys AND with these exact path shapes. Site DATA passes through the same
+// results — a nav target, a dataset value, a page body — and an agent writes what it read back, so a
+// blanket prefix rewrite would turn a site's own `/preview/pricing` link into an absolute editor URL on
+// the next put. Media URLs (`/media/…`) are never touched: those go INTO page sources, where the
+// root-relative form is what the publish rewrite recognises.
+const INSTANCE_URL_KEYS = new Set(['previewUrl', 'uploadUrl', 'shareUrl', 'url']);
+const INSTANCE_URL_SHAPES = [/^\/preview-site\/[A-Za-z0-9_-]+\//, /^\/media-upload\/[A-Za-z0-9_-]+$/];
+
+/** `value` with every instance address made absolute against `origin` (deep; a fresh copy). */
+export function absolutizeInstanceUrls(value: unknown, origin: string, depth = 0): unknown {
+  if (!origin || depth > 12) return value;
+  if (Array.isArray(value)) return value.map((v) => absolutizeInstanceUrls(v, origin, depth + 1));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [
+        k,
+        typeof v === 'string'
+          ? INSTANCE_URL_KEYS.has(k) && INSTANCE_URL_SHAPES.some((re) => re.test(v))
+            ? `${origin}${v}`
+            : v
+          : absolutizeInstanceUrls(v, origin, depth + 1),
+      ]),
+    );
+  }
+  return value;
+}
 
 function ok(value: unknown): ToolResult {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -381,7 +473,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             : `Your connection to project ${scope.projectId} (role ${scope.role}) lacks the “${cap}” capability — re-connect with the right scope via the \`login\` tool.`,
         );
       }
-      return run(() => fn(args));
+      return run(async () => absolutizeInstanceUrls(await fn(args), client.publicOrigin));
     };
 
   // ---------------------------------------------------------------- auth + orientation (always on)
@@ -464,6 +556,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return ok({
           authenticated: true,
           ...rest,
+          // Where this instance is reached — the base of every previewUrl / upload address it hands out.
+          ...(client.publicOrigin ? { origin: client.publicOrigin } : {}),
           ...(isMemberScope(holder.scope)
             ? { hint: 'Member token: call list_projects, then pass a project id as `project` to every project tool.' }
             : {}),
@@ -793,7 +887,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Pass includeHtml:true to also get the rendered HTML source (heavy — it includes the whole compiled stylesheet). Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source. Works for DRAFT pages too (any status) — the way to inspect a draft, which has no previewUrl; never publish a throwaway page just to look at it. RENDERED HTML: includeHtml:true adds the markup with inline <style>/<script> bodies elided (the compiled stylesheet alone is 25k+ tokens); selector:"main" (or "#id", ".class", "section.hero", "header nav > a", "a, b" — tag/#id/.class/[attr]/[attr="v"]/[class~="md:flex"] with descendant and ">" combinators; escape a Tailwind ":" or "/" in a class, ".md\\:flex") returns only the matching elements; screenshot:false skips the images when you only need the HTML; fullHtml:true returns the untouched document. The <head> SEO tags (canonical, hreflang) are NOT rendered here — check those on the page's previewUrl.`,
       inputSchema: {
         // A SAVED page may be named by id alone — the route loads the stored page and renders it. The
         // description has promised that since the stored-page fallback landed; the schema still demanded
@@ -801,19 +895,52 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         // keeps the stub unambiguous: exactly `{id}` is a reference, anything richer is a full page and
         // is validated as one.
         page: z.union([z.object({ id: IdSchema }).strict(), PageSchema]),
-        includeHtml: z.boolean().optional(),
+        includeHtml: z.boolean().optional().describe('Also return the rendered markup (inline <style>/<script> bodies elided).'),
+        selector: z.string().max(200).optional().describe('Return only the elements matching this CSS selector (implies includeHtml).'),
+        screenshot: z.boolean().optional().describe('false = no screenshots, HTML only (implies includeHtml). Default true.'),
+        fullHtml: z.boolean().optional().describe('Return the untouched document, stylesheet and scripts included (heavy).'),
         viewports: z.array(LenientScreenshotViewportNameSchema).optional(),
       },
     },
-    async ({ page, includeHtml, viewports }: { page: unknown; includeHtml?: boolean; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
+    async ({
+      page,
+      includeHtml: wantHtml,
+      selector,
+      screenshot,
+      fullHtml,
+      viewports,
+    }: { page: unknown; includeHtml?: boolean; selector?: string; screenshot?: boolean; fullHtml?: boolean; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
       if (!holder.scope) {
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
+      const capture = screenshot !== false;
+      const includeHtml = wantHtml === true || selector !== undefined || fullHtml === true || !capture;
+      // Validate the selector BEFORE rendering, so a typo costs nothing.
+      if (selector !== undefined) {
+        try {
+          parseSelector(selector);
+        } catch (err) {
+          return toolError(`Error: ${err instanceof Error ? err.message : 'invalid selector'}`);
+        }
+      }
+      /** The markup this call asked for: untouched, or assets elided and optionally narrowed. */
+      const htmlFor = (html: string): string => {
+        if (fullHtml) return html;
+        const scoped = scopeHtml(html, selector !== undefined ? { selector } : {});
+        const head =
+          selector !== undefined
+            ? `HTML for selector "${selector}" — ${scoped.matches ?? 0} match${scoped.matches === 1 ? '' : 'es'}${scoped.truncated ? ' (cut to the first results)' : ''}:\n`
+            : scoped.truncated
+              ? 'HTML (cut at the size cap — pass a selector to read a specific part):\n'
+              : '';
+        return head + scoped.html;
+      };
       try {
         const res = await client.preview(page, {
-          screenshot: true,
-          ...(viewports?.length ? { viewports: viewports.join(',') } : {}),
+          screenshot: capture,
+          ...(capture && viewports?.length ? { viewports: viewports.join(',') } : {}),
         });
+        if (!capture) return { content: [{ type: 'text', text: htmlFor(res.html) }] };
         const shots = Object.entries(res.screenshots ?? {}).filter(([, s]) => s) as Array<
           [string, NonNullable<PreviewResult['screenshots']>[ScreenshotViewportName]]
         >;
@@ -863,7 +990,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         // Only when asked for — or when there is genuinely nothing else to offer (no browser, and no
         // reason given). A transient refusal must NOT drag 300 KB of markup along with it.
         if (includeHtml || (shots.length === 0 && !res.screenshotsUnavailable)) {
-          content.push({ type: 'text', text: res.html });
+          content.push({ type: 'text', text: htmlFor(res.html) });
         }
         return { content };
       } catch (err) {
@@ -1371,11 +1498,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         if (typeof v !== 'string') return v;
         const s = v.trim();
         if (!s.startsWith('{') || !s.endsWith('}')) return v;
-        try {
-          return JSON.parse(s);
-        } catch {
-          return v; // not JSON after all — let the schema report the real problem
-        }
+        const parsed = parseJsonText(s);
+        return parsed.ok ? parsed.value : v; // not JSON after all — let the schema report the real problem
       }, schema)
       .nonoptional();
 
@@ -1442,11 +1566,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         if (typeof v !== 'string') return v;
         const s = v.trim();
         if (!s.startsWith('[') || !s.endsWith(']')) return v;
-        try {
-          return JSON.parse(s);
-        } catch {
-          return v;
-        }
+        const parsed = parseJsonText(s);
+        return parsed.ok ? parsed.value : v;
       }, schema)
       .nonoptional();
 
@@ -1506,8 +1627,15 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:write', async ({ kind, id, dataset, data, merge }) => {
       // Weak-model forgiveness: parse a stringified `data` and backfill the id/dataset the schema
       // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
-      const normalized = normalizePutData(kind, id, dataset, data);
       try {
+        let normalized: unknown;
+        try {
+          normalized = normalizePutData(kind, id, dataset, data);
+        } catch (err) {
+          // An unparseable stringified payload: a 400 like the API's own, so the catch below appends the
+          // expected shape for this kind.
+          throw new SitewrightApiError(400, err instanceof Error ? err.message : 'invalid data');
+        }
         return await client.putContent(kind, id, normalized, { merge, receipt: true });
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed

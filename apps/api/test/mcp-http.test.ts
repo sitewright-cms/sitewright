@@ -105,6 +105,9 @@ describe('remote MCP transport (/mcp)', () => {
     expect(text).toContain('"authenticated": true');
     expect(text).toContain(projectId);
     expect(text).toContain('content:write');
+    // The origin this instance is reached at — the base of every address it hands out (the same
+    // `publicOrigin` the result rewrite uses; that rewrite is unit-tested in packages/mcp).
+    expect(text).toMatch(/"origin": "https?:\/\/[^"]+"/);
   });
 
   // ---- MEMBER tokens: one connection, several projects ----

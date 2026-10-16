@@ -58,3 +58,4 @@ export * from './render.js';
 export * from './nav-runtime.js';
 export * from './search-tokenize.js';
 export * from './search-index-format.js';
+export * from './html-scope.js';

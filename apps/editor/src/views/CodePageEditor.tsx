@@ -518,14 +518,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   /** The landed-writes mark of the render whose document loads next; it is applied on that doc's `ready`. */
   const docMarkRef = useRef<number | null>(null);
   useEffect(() => {
-    /** Message types that mean the author is EDITING in the preview right now. */
-    const EDIT_TYPES = new Set(['edit', 'rich-edit', 'translate-edit', 'link-edit', 'src-edit', 'bg-edit', 'control-edit']);
+    /**
+     * Message types that mean the author is TYPING into the preview right now. A popover (link, image,
+     * background, control) is a single deliberate change the author waits to see, so it holds no reload.
+     */
+    const TYPING_TYPES = new Set(['edit', 'rich-edit', 'translate-edit']);
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
       if (e.source !== iframeRef.current?.contentWindow) return;
       // Note when an edit came in, so a reload can wait for a pause rather than replacing the document
       // out from under the keystrokes (see the reload gate).
-      if (typeof (e.data as { type?: string })?.type === 'string' && EDIT_TYPES.has((e.data as { type: string }).type)) {
+      if (typeof (e.data as { type?: string })?.type === 'string' && TYPING_TYPES.has((e.data as { type: string }).type)) {
         gateRef.current.noteEdit();
       }
       const d = e.data as {

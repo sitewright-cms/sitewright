@@ -758,6 +758,25 @@ describe('SlotEditor — a store write re-renders the preview only once it has L
       expect(rendered[2]).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
     });
 
+    it('typed after the re-render was let go but before it started: it is not swapped in until that typing is saved', async () => {
+      await openFooter();
+      send({ type: 'pick-image', key: 'website.data.logo' });
+      pickUrl('/media/new-logo.webp');
+      await tick(0);
+      await land('logo'); // nobody typing: the gate lets the re-render go at once…
+      await tick(100);
+      send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' }); // …inside the preview's own debounce
+      await tick(300);
+      expect(iframeSrc()).toBe('/preview/acme/tok-1'); // that render started with "Hello" unsaved
+
+      await tick(300); // "Hello"'s own debounce: its save goes out
+      await land('footer_note');
+      await tick(INLINE_EDIT_QUIET_MS);
+      await tick(400);
+      expect(rendered.at(-1)).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
+      expect(iframeSrc()).toBe(`/preview/acme/tok-${rendered.length}`);
+    });
+
     it('a translation typed in the slot holds the re-render too, until its own save lands', async () => {
       let translated: () => void = () => {};
       setTranslation.mockImplementation(() => new Promise<void>((resolve) => { translated = resolve; }));

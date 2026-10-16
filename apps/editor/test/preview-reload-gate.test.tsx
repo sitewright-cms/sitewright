@@ -90,14 +90,35 @@ describe('usePreviewReloadGate', () => {
     expect(onReload).toHaveBeenCalledTimes(1);
   });
 
-  it('a document that loaded undisturbed asks for nothing — nor does one the gate never admitted', async () => {
+  it('a document that loaded undisturbed asks for nothing — nor does a `ready` before any render was admitted', async () => {
+    const first = mount();
+    first.current.noteEdit();
+    first.current.loaded(); // the editor's first document: no admitted render behind it
     const gate = mount();
     expect(gate.current.admit(gate.current.begin())).toBe(true);
     gate.current.loaded();
-    gate.current.noteEdit();
-    gate.current.loaded(); // a `ready` with no admitted render behind it (the first document, a re-post)
     await tick(INLINE_EDIT_QUIET_MS * 2);
     expect(onReload).not.toHaveBeenCalled();
+  });
+
+  it('★ refuses a render that BEGAN while typing was still unsaved — whatever started it', async () => {
+    const gate = mount();
+    idle = false; // typed, and the save has not landed: the render will show the server's older copy
+    const ticket = gate.current.begin();
+    idle = true;
+    expect(gate.current.admit(ticket)).toBe(false);
+    await tick(INLINE_EDIT_QUIET_MS);
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it('every `ready` is checked against the last render admitted, so a late one cannot use the check up', async () => {
+    const gate = mount();
+    expect(gate.current.admit(gate.current.begin())).toBe(true);
+    gate.current.loaded(); // e.g. the previous document's `ready`, delivered late
+    gate.current.noteEdit(); // typed into the old document while the admitted one loads
+    gate.current.loaded(); // the admitted document's own `ready`
+    await tick(INLINE_EDIT_QUIET_MS);
+    expect(onReload).toHaveBeenCalledTimes(1);
   });
 
   it('unmounting drops a pending reload', async () => {

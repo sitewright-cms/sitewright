@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 export const INLINE_EDIT_QUIET_MS = 2000;
 /** How often a quiet-but-busy gate looks again for its stores to have finished saving. */
 const IDLE_RECHECK_MS = 150;
+/** The ticket of a render that started while typing was still unsaved — `admit` never takes it. */
+const UNSAVED = -1;
 
 export interface PreviewReloadGate {
   /** The author just typed into the preview (an inline edit reached the editor). */
@@ -13,12 +15,12 @@ export interface PreviewReloadGate {
   /** A render is starting: the ticket `admit` checks it against. */
   begin: () => number;
   /**
-   * The render that started at `ticket` is about to replace the live document. False when the author has
-   * typed since — the render cannot show those keystrokes, and swapping it in would wipe them off the
-   * screen — in which case a fresh render has been requested instead.
+   * The render that started at `ticket` is about to replace the live document. False when it cannot show
+   * every keystroke the live document does — typing was still unsaved when it started, or the author has
+   * typed since — and swapping it in would wipe them off the screen. A fresh render is requested instead.
    */
   admit: (ticket: number) => boolean;
-  /** The admitted document is up. Typing that landed in the old one while it loaded asks for another. */
+  /** A document is up. Typing that reached the old one after the last render was admitted asks for another. */
   loaded: () => void;
 }
 
@@ -76,11 +78,13 @@ export function usePreviewReloadGate({
     lastEditAt.current = Date.now();
   }, []);
 
-  const begin = useCallback(() => editSeq.current, []);
+  // A render shows the SAVED stores, so it reflects the typing only if all of it had landed when it began —
+  // whatever started it (this gate, a draft edit, a mode switch).
+  const begin = useCallback(() => (callbacks.current.isIdle() ? editSeq.current : UNSAVED), []);
 
   const admit = useCallback(
     (ticket: number) => {
-      if (editSeq.current !== ticket) {
+      if (ticket === UNSAVED || editSeq.current !== ticket) {
         request();
         return false;
       }
@@ -90,9 +94,10 @@ export function usePreviewReloadGate({
     [request],
   );
 
+  // Kept, not consumed: `ready` cannot say WHICH document sent it, so each one is checked against the last
+  // render admitted. A document whose load a newer one superseded never sends one at all.
   const loaded = useCallback(() => {
     const at = admittedAt.current;
-    admittedAt.current = null;
     if (at !== null && at !== editSeq.current) request();
   }, [request]);
 

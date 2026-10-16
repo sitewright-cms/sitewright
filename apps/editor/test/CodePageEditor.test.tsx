@@ -468,6 +468,14 @@ describe('CodePageEditor — a picked image, link or HTML source lands in the st
   // The same misroute, on the link popover and the `</>` HTML-source view: a `website.data.*` key
   // became a junk flat page.data key, so the site-wide value never changed and the page got dirty with
   // something the render never reads.
+  it('a link popover is a change the author waits to SEE — it does not hold the re-render for a typing pause', async () => {
+    await openPage();
+    send({ type: 'link-edit', hrefKey: 'website.data.cta_href', href: '/contact', textKey: 'website.data.cta_text', text: 'Talk to us' });
+    await tick(1000); // the save (debounced) lands, and the re-render is let go at once…
+    await tick(1000); // …so its own debounce is all that stands between the author and the result
+    expect(preview).toHaveBeenCalledTimes(2);
+  });
+
   it('★ a website.data LINK writes the site-wide store — href sanitized — and re-renders once it has landed', async () => {
     await openPage();
     send({ type: 'link-edit', hrefKey: 'website.data.cta_href', href: 'javascript:alert(1)', textKey: 'website.data.cta_text', text: 'Talk to us' });

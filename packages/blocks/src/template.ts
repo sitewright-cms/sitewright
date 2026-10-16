@@ -34,6 +34,13 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
  */
 export const MAX_JSON_DATA_BYTES = 256 * 1024;
 
+/** A dataset entry as stored — `{ id, dataset, values: {…}, … }` — rather than a row of fields. */
+function isStoredEntry(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const v = value as { id?: unknown; dataset?: unknown; values?: unknown };
+  return typeof v.id === 'string' && typeof v.dataset === 'string' && typeof v.values === 'object' && v.values !== null && !Array.isArray(v.values);
+}
+
 /**
  * Unwraps dataset ENTRY ENVELOPES to the flat rows a template actually sees.
  *
@@ -48,6 +55,9 @@ export const MAX_JSON_DATA_BYTES = 256 * 1024;
  * ordinary list that happens to have a `values` field is left alone.
  */
 function flattenEntryEnvelopes(value: unknown): unknown {
+  // ONE stored entry (`dataset.x.[0]`) keeps the record shape it always had — but never carries its other
+  // languages: the page renders one, and the island must not ship every language's copy beside it.
+  if (isStoredEntry(value)) return Object.fromEntries(Object.entries(value).filter(([k]) => k !== 'translations'));
   if (!Array.isArray(value) || value.length === 0) return value;
   const isEnvelope = (row: unknown): row is { values: Record<string, unknown> } =>
     typeof row === 'object' &&

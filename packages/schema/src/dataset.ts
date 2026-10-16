@@ -131,6 +131,9 @@ export const DatasetSchema = z
   });
 export type Dataset = z.infer<typeof DatasetSchema>;
 
+/** A translation key is a locale code — the same shape as `LocaleSchema` (en, de, pt-BR). */
+const ENTRY_LOCALE_KEY = /^[A-Za-z0-9-]+$/;
+
 /** A single entry (row) in a dataset. `values` is a permissive record so NESTED values (a `list`
  *  field's array of objects, an `object` field's sub-record) store as-is — the field tree drives the
  *  editor, not entry-storage validation. */
@@ -146,5 +149,14 @@ export const EntrySchema = z.object({
    */
   order: OrderSchema.optional(),
   values: safeRecord(z.unknown()).default({}),
+  /**
+   * This entry in the site's OTHER languages: locale → the fields whose value differs there. ANY field can
+   * differ (a photo, a price, a list — a list/object field is one unit, replaced whole). A field left out
+   * FOLLOWS the main language, so changing it in `values` changes it everywhere it was not translated; a
+   * locale present with no fields is a version that was reviewed and needs nothing changed. On a page in
+   * that language the entry renders as `values` overlaid with these. A `<slug>_<locale>` dataset, where
+   * one exists, still replaces the whole dataset for that language. One status covers every language.
+   */
+  translations: safeRecord(safeRecord(z.unknown()), z.string().min(1).max(35).regex(ENTRY_LOCALE_KEY)).optional(),
 });
 export type Entry = z.infer<typeof EntrySchema>;

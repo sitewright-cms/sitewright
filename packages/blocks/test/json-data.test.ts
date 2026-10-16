@@ -116,6 +116,16 @@ describe('{{sw-json-data}}', () => {
     expect(out).toContain('"Cap"');
   });
 
+  it('one stored entry keeps its record shape but never ships its other languages', () => {
+    const out = render('{{sw-json-data dataset.products.[0] id="p"}}', {
+      dataset: {
+        products: [{ id: 'cap', dataset: 'products', status: 'published', values: { name: 'Cap' }, translations: { de: { name: 'Mütze' } } }],
+      },
+    });
+    const json = JSON.parse(out.slice(out.indexOf('>') + 1, out.lastIndexOf('</script>'))) as Record<string, unknown>;
+    expect(json).toEqual({ id: 'cap', dataset: 'products', status: 'published', values: { name: 'Cap' } });
+  });
+
   it('refuses a value carrying a credential-shaped key, at any depth', () => {
     for (const key of ['password', 'apiKey', 'api_key', 'accessToken', 'clientSecret', 'privateKey']) {
       const out = render('{{sw-json-data page.data.cfg id="cfg"}}', {

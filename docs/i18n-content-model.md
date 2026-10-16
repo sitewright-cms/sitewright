@@ -147,11 +147,23 @@ translationGroup?: IdSchema              // shared id linking all locale variant
 - `path`, `title`, `description`, `image` (all exist, per-page) → the per-locale
   page settings, no new fields needed (requirement #3).
 
-### Dataset (no schema change)
+### Dataset entries — per-entry translations (2026-10)
 
-Localization is by **convention**, not by the `localized` field flag (which we leave as a
-no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`. The
-`localized` flag may later drive the "duplicate for locale" UI default.
+An entry can carry its other languages: `translations: { "<locale>": { <fields that differ> } }`. Any
+field can differ (text, a photo, a price, a list — a list/object field is one unit). A field left out
+FOLLOWS the main language, so a shared fact (a price, an image) is entered once and stays in step;
+every write keeps only the fields that differ (`normalizeEntryTranslations`), and an empty
+`{ de: {} }` means "reviewed, nothing differs". One `status` and one `order` cover every language.
+
+At render a page in locale `de` sees each entry as `values` overlaid with `translations.de`
+(`resolveLocaleEntries` in `packages/core/src/entry-translations.ts`) — loops, keyed `{{item.…}}`
+access and `{{#sw-pick-entry}}` (how a `reference` field is read) alike. A data file takes
+`locale` to emit one language. Translations are accepted only for a configured, non-main locale;
+removing a language strips it from every entry (restorable from History).
+
+The earlier convention still works and takes precedence for its dataset: a whole copy per locale,
+`"<slug>_<locale>"`, which a page in that locale reads in place of `<slug>`. The `localized` field flag
+remains in the schema for compatibility but means nothing — every field is translatable.
 
 ---
 

@@ -1,3 +1,5 @@
+import { EntrySchema } from '@sitewright/schema';
+
 /**
  * Accept a dataset entry whose field values were written FLAT.
  *
@@ -12,8 +14,12 @@
  * top-level key can only be a field value — folding it in is strictly better than discarding it.
  */
 
-/** The envelope of an entry. Everything else at the top level is a field value. */
-const ENTRY_KEYS = new Set(['id', 'dataset', 'locale', 'status', 'order', 'values']);
+/**
+ * The envelope of an entry. Everything else at the top level is a field value. Read off the schema: a
+ * hand-kept list missed `translations` when it was added, and folded every entry's languages into a
+ * field called "translations".
+ */
+const ENTRY_KEYS: ReadonlySet<string> = new Set(Object.keys(EntrySchema.shape));
 
 /**
  * Fold flat field values into `values`. An explicit `values` wins on key collision (the caller said

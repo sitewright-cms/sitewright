@@ -149,7 +149,7 @@ import {
   publishedPages,
   resolveTemplateSource,
   resolveCodeRef,
-  resolveLocaleDatasets,
+  resolveLocaleEntries,
   resolveDatasetPageRefs,
   compareEntryOrder,
   keyedDatasets,
@@ -5675,7 +5675,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // to a draft page (or a draft translation of it) therefore reads as it will live: empty, or the
       // main-language page. Draft ENTRIES still show here (work in progress) — only pages are filtered.
       const localeData = resolveDatasetPageRefs(
-        resolveLocaleDatasets(sourceData, page.locale),
+        resolveLocaleEntries(sourceData, page.locale),
         (await contentRepo.list(ctx, 'dataset')) as Dataset[],
         savedPages,
         defaultLocale,
@@ -11415,7 +11415,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // without it this render fed the raw id, and a loop checked here rendered blank links. Draft entries
       // still show (work in progress), as in /preview.
       const data = resolveDatasetPageRefs(
-        resolveLocaleDatasets(Object.fromEntries(byDataset), storedPage?.locale),
+        resolveLocaleEntries(Object.fromEntries(byDataset), storedPage?.locale),
         (await contentRepo.list(ctx, 'dataset')) as Dataset[],
         renderPages,
         projectDefaultLocale,

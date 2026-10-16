@@ -4,7 +4,7 @@ import { useExternalEdit } from '../../lib/use-external-edit';
 import { ExternalChangeBanner } from '../ui/ExternalChangeBanner';
 import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical, History } from 'lucide-react';
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
-import { compareEntryOrder, hasPageField } from '@sitewright/core';
+import { compareEntryOrder, hasPageField, jsonEqual } from '@sitewright/core';
 import {
   coerceFieldValue,
   defaultFieldValues,
@@ -30,6 +30,9 @@ import { CodeEditor } from '../../lib/code-editor';
 import { IconField } from '../ui/IconPicker';
 import { SearchSelect, type SearchOption } from '../ui/SearchSelect';
 import { Tooltip } from '../ui/Tooltip';
+import { useSiteLocales } from '../../lib/site-locales';
+import { changedFields, EntryLanguageTabs, FieldLanguageBadge, TranslationNotice, UntranslatedNotice } from './EntryLanguages';
+import { localeLabel } from '../i18n/locale-catalog';
 
 // Monotonic key source for list items (stable React keys that travel with an item across reorder,
 // without polluting the saved data shape). See ListField.
@@ -532,6 +535,17 @@ function FieldInput({
   }
 }
 
+/** Each language's OWN fields — only what differs from `values`; the rest follows the main language. */
+type Translations = Record<string, Record<string, unknown>>;
+function ownTranslations(values: Record<string, unknown>, translations: Translations): Translations {
+  return Object.fromEntries(
+    Object.entries(translations).map(([locale, own]) => {
+      const changed = changedFields(values, own);
+      return [locale, Object.fromEntries(Object.entries(own).filter(([name]) => changed.has(name)))];
+    }),
+  );
+}
+
 interface EntryEditorModalProps {
   projectId: string;
   dataset: Dataset;
@@ -568,12 +582,23 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const [historyOpen, setHistoryOpen] = useState(false);
   const [values, setValues] = useState<Record<string, unknown>>(entry.values);
   const [status, setStatus] = useState<'draft' | 'published'>(entry.status);
+  // The entry in the site's other languages (only what differs), and the language tab in view.
+  const [translations, setTranslations] = useState<Translations>(entry.translations ?? {});
+  const [lang, setLang] = useState<string | null>(null);
+  const locales = useSiteLocales(projectId);
+  // A tab for a language the site no longer has falls back to the main one.
+  const activeLang = lang !== null && locales.others.includes(lang) ? lang : null;
   const [keyInput, setKeyInput] = useState('');
   const [editKey, setEditKey] = useState(false);
   const [saving, setSaving] = useState(false);
   // The last SAVED snapshot — the dirty baseline. Starts from `entry`; updates on each save so the
   // modal can stay open and recompute "dirty" from the freshly-persisted state.
-  const [base, setBase] = useState<{ id: string; status: 'draft' | 'published'; values: Record<string, unknown> }>({ id: entry.id, status: entry.status, values: entry.values });
+  const [base, setBase] = useState<{ id: string; status: 'draft' | 'published'; values: Record<string, unknown>; translations: Translations }>({
+    id: entry.id,
+    status: entry.status,
+    values: entry.values,
+    translations: entry.translations ?? {},
+  });
   // Has this entry been written to the server yet? A brand-new entry hasn't — so Save is enabled even
   // with no edits (you're creating it). After the first save it has, so Save then requires a change.
   const [existsServer, setExistsServer] = useState(!keyEditable);
@@ -625,7 +650,12 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const keyTaken = idChanged && !!existingIds?.has(computedId);
   const keyInvalid = typedKey && computedId === '';
   const hasInvalidJson = invalidPaths.size > 0;
-  const dirty = status !== base.status || JSON.stringify(values) !== JSON.stringify(base.values) || idChanged;
+  const ownNow = useMemo(() => ownTranslations(values, translations), [values, translations]);
+  const dirty =
+    status !== base.status ||
+    JSON.stringify(values) !== JSON.stringify(base.values) ||
+    !jsonEqual(ownNow, ownTranslations(base.values, base.translations)) ||
+    idChanged;
   // Guard LEAVING the page too, not just closing this surface — see lib/unsaved-work.
   useUnsavedWork(dirty, 'Dataset entry');
 
@@ -650,7 +680,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       const fresh = reloaded.item;
       setValues(fresh.values);
       setStatus(fresh.status);
-      setBase({ id: fresh.id, status: fresh.status, values: fresh.values }); // baseline = reloaded → clean
+      setTranslations(fresh.translations ?? {});
+      setBase({ id: fresh.id, status: fresh.status, values: fresh.values, translations: fresh.translations ?? {} }); // baseline = reloaded → clean
       setBaseVersion(reloaded.version);
       setExistsServer(true);
     } catch {
@@ -675,6 +706,22 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   function setField(field: Field, raw: unknown) {
     setValues((prev) => ({ ...prev, [field.name]: coerceFieldValue(field.type, raw) }));
   }
+  /** Give `field` its own value in `locale` (the language tab in view). */
+  function setOwnField(locale: string, field: Field, raw: unknown) {
+    setTranslations((prev) => ({ ...prev, [locale]: { ...prev[locale], [field.name]: coerceFieldValue(field.type, raw) } }));
+  }
+  /** `field` follows the main language again in `locale`. */
+  function resetOwnField(locale: string, name: string) {
+    setTranslations((prev) => ({ ...prev, [locale]: Object.fromEntries(Object.entries(prev[locale] ?? {}).filter(([n]) => n !== name)) }));
+  }
+  async function removeLanguage(locale: string) {
+    const ok = await confirm({
+      title: `Remove ${localeLabel(locale)} version`,
+      message: `On ${localeLabel(locale)} pages this entry will show its ${localeLabel(locales.main)} content. Saving makes it final; History keeps the old version.`,
+      confirmLabel: 'Remove',
+    });
+    if (ok) setTranslations((prev) => Object.fromEntries(Object.entries(prev).filter(([l]) => l !== locale)));
+  }
 
   async function submit() {
     if (keyInvalid) {
@@ -689,12 +736,16 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     try {
       // Undefined until this row is reloaded (it opens from the parent's list) — which falls back to
       // the shared store; every save re-arms it precisely.
-      const saved = await api.putEntry(projectId, { ...entry, id: computedId, status, values }, baseVersion);
+      // Only what differs per language is sent (the server keeps only that too): a field left alone
+      // keeps following the main language. No languages at all → no `translations` key.
+      const payload: Entry = { ...entry, id: computedId, status, values, translations: ownNow };
+      if (Object.keys(ownNow).length === 0) delete payload.translations;
+      const saved = await api.putEntry(projectId, payload, baseVersion);
       setBaseVersion(saved?.version); // absent version just means "unguarded next time", never a failed save
       // An EXISTING entry whose key changed is recreated under the new id; drop the old row.
       // (PUT-then-DELETE: a failure leaves the new copy rather than losing the entry.)
       if (existsServer && idChanged) await api.deleteEntry(projectId, base.id, dataset.slug);
-      setBase({ id: computedId, status, values });
+      setBase({ id: computedId, status, values, translations: ownNow });
       setExistsServer(true);
       setKeyInput('');
       setEditKey(false);
@@ -773,68 +824,128 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       )}
       <EntryFormContext.Provider value={ctx}>
         <div className="flex flex-col gap-3 p-5">
-          {keyFieldOpen ? (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                Key <span className="text-slate-500 dark:text-slate-400">— the id used in <code>{`{{item.${dataset.slug}.<key>}}`}</code> (letters, digits, _)</span>
-              </span>
-              <input
-                aria-label="Entry key"
-                className={glassInput}
-                placeholder={`${base.id}${keyEditable ? ' (auto)' : ''}`}
-                value={keyInput}
-                autoFocus={editKey}
-                onChange={(e) => setKeyInput(e.target.value)}
-              />
-              <span className={`text-[11px] ${keyTaken || keyInvalid ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
-                {keyInvalid ? 'enter letters, digits, or underscores' : <>→ <code>{computedId}</code>{keyTaken ? ' · already used in this dataset' : ''}</>}
-              </span>
-              {existsServer && idChanged ? (
-                <span className="rounded-lg bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
-                  Renaming the key recreates this entry as <code>{computedId}</code> and deletes the old <code>{base.id}</code> — update any{' '}
-                  <code>{`{{item.${dataset.slug}.${base.id}}}`}</code> references in your pages.
-                </span>
-              ) : null}
-            </label>
-          ) : (
-            <div className="flex items-center gap-2">
-              {/* The BINDING, not a description of it. The old wording spent its width on "Key: x — read
-                  it directly with" and then showed the path with a "…" where the part you actually have
-                  to fill in goes. What an author needs to copy is the whole expression with the field
-                  name marked, so that is all this is. */}
-              <p className="flex-1 text-[11px] text-slate-500 dark:text-slate-400">
-                <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">
-                  {`{{item.${dataset.slug}.${base.id}.<attribute>}}`}
-                </code>
-              </p>
-              <button
-                type="button"
-                className="waves-effect shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 shadow-sm transition hover:bg-white dark:hover:bg-white/10"
-                onClick={() => setEditKey(true)}
-              >
-                Edit key
-              </button>
-            </div>
+          {locales.others.length > 0 && (
+            <EntryLanguageTabs
+              main={locales.main}
+              others={locales.others}
+              active={activeLang}
+              translated={new Set(Object.keys(translations))}
+              onSelect={setLang}
+            />
           )}
-          {dataset.fields.length === 0 && <p className="text-xs text-slate-500 dark:text-slate-400">This dataset has no fields yet — add some first.</p>}
-          {dataset.fields.map((field) => {
-            const group = isGroupFieldType(field.type);
-            return (
-              // Every field is boxed (10px radius/padding + a one-step-off background) so a long form reads
-              // as rows rather than a stack of loose controls. The KEY field above is deliberately NOT
-              // boxed: it is the entry's identity, not one of its fields.
-              <div key={field.name} className={`flex flex-col gap-1 ${fieldShell}`}>
-                {group ? null : (
-                  <label htmlFor={`entry-${field.name}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    {field.name}
-                    <span className="ml-1 text-slate-500 dark:text-slate-400">({field.type})</span>
-                    {field.required && <span className="ml-1 text-red-400">*</span>}
-                  </label>
-                )}
-                <FieldInput field={field} value={readValue(values, field.name)} projectId={projectId} path={field.name} ariaLabel={field.name} onRaw={(raw) => setField(field, raw)} />
+          {/* Every language's panel stays MOUNTED, only hidden: a rich-text or JSON input keeps its own
+              in-progress state (half-typed JSON among it), which unmounting on a tab switch threw away. */}
+          <div className={activeLang === null ? 'flex flex-col gap-3' : 'hidden'}>
+              {keyFieldOpen ? (
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Key <span className="text-slate-500 dark:text-slate-400">— the id used in <code>{`{{item.${dataset.slug}.<key>}}`}</code> (letters, digits, _)</span>
+                  </span>
+                  <input
+                    aria-label="Entry key"
+                    className={glassInput}
+                    placeholder={`${base.id}${keyEditable ? ' (auto)' : ''}`}
+                    value={keyInput}
+                    autoFocus={editKey}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                  />
+                  <span className={`text-[11px] ${keyTaken || keyInvalid ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {keyInvalid ? 'enter letters, digits, or underscores' : <>→ <code>{computedId}</code>{keyTaken ? ' · already used in this dataset' : ''}</>}
+                  </span>
+                  {existsServer && idChanged ? (
+                    <span className="rounded-lg bg-amber-50 dark:bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
+                      Renaming the key recreates this entry as <code>{computedId}</code> and deletes the old <code>{base.id}</code> — update any{' '}
+                      <code>{`{{item.${dataset.slug}.${base.id}}}`}</code> references in your pages.
+                    </span>
+                  ) : null}
+                </label>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {/* The BINDING, not a description of it. The old wording spent its width on "Key: x — read
+                      it directly with" and then showed the path with a "…" where the part you actually have
+                      to fill in goes. What an author needs to copy is the whole expression with the field
+                      name marked, so that is all this is. */}
+                  <p className="flex-1 text-[11px] text-slate-500 dark:text-slate-400">
+                    <code className="rounded bg-slate-100 dark:bg-white/10 px-1 py-0.5">
+                      {`{{item.${dataset.slug}.${base.id}.<attribute>}}`}
+                    </code>
+                  </p>
+                  <button
+                    type="button"
+                    className="waves-effect shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/50 dark:bg-white/5 px-2 py-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 shadow-sm transition hover:bg-white dark:hover:bg-white/10"
+                    onClick={() => setEditKey(true)}
+                  >
+                    Edit key
+                  </button>
+                </div>
+              )}
+              {dataset.fields.length === 0 && <p className="text-xs text-slate-500 dark:text-slate-400">This dataset has no fields yet — add some first.</p>}
+              {dataset.fields.map((field) => {
+                const group = isGroupFieldType(field.type);
+                return (
+                  // Every field is boxed (10px radius/padding + a one-step-off background) so a long form reads
+                  // as rows rather than a stack of loose controls. The KEY field above is deliberately NOT
+                  // boxed: it is the entry's identity, not one of its fields.
+                  <div key={field.name} className={`flex flex-col gap-1 ${fieldShell}`}>
+                    {group ? null : (
+                      <label htmlFor={`entry-${field.name}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        {field.name}
+                        <span className="ml-1 text-slate-500 dark:text-slate-400">({field.type})</span>
+                        {field.required && <span className="ml-1 text-red-400">*</span>}
+                      </label>
+                    )}
+                    <FieldInput field={field} value={readValue(values, field.name)} projectId={projectId} path={field.name} ariaLabel={field.name} onRaw={(raw) => setField(field, raw)} />
+                  </div>
+                );
+              })}
+          </div>
+          {locales.others.map((locale) =>
+            translations[locale] === undefined ? (
+              activeLang === locale && (
+                <UntranslatedNotice
+                  key={locale}
+                  locale={locale}
+                  main={locales.main}
+                  // Starts the version with nothing of its own: every field shows the main language's content
+                  // to edit, and only what is then changed is stored — the rest keeps following it.
+                  onTranslate={() => setTranslations((prev) => ({ ...prev, [locale]: {} }))}
+                />
+              )
+            ) : (
+              <div key={locale} className={activeLang === locale ? 'flex flex-col gap-3' : 'hidden'}>
+                <TranslationNotice locale={locale} main={locales.main} onRemove={() => void removeLanguage(locale)} />
+                {dataset.fields.map((field) => {
+                  const own = translations[locale] ?? {};
+                  const changed = ownNow[locale] !== undefined && Object.hasOwn(ownNow[locale], field.name);
+                  const value = Object.hasOwn(own, field.name) ? readValue(own, field.name) : readValue(values, field.name);
+                  // `:` cannot occur in a field name, so a language's paths never collide with the main
+                  // form's (an object field named `de` with a `title` inside would, joined with a dot).
+                  const path = `${locale}:${field.name}`;
+                  return (
+                    <div key={path} className={`flex flex-col gap-1 ${fieldShell}`}>
+                      <div className="flex items-center gap-2">
+                        {isGroupFieldType(field.type) ? null : (
+                          <label htmlFor={`entry-${path}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                            {field.name}
+                            <span className="ml-1 text-slate-500 dark:text-slate-400">({field.type})</span>
+                          </label>
+                        )}
+                        <FieldLanguageBadge changed={changed} main={locales.main} field={field.name} onReset={() => resetOwnField(locale, field.name)} />
+                      </div>
+                      <FieldInput
+                        field={field}
+                        value={value}
+                        projectId={projectId}
+                        path={path}
+                        ariaLabel={`${field.name} (${localeLabel(locale)})`}
+                        onRaw={(raw) => setOwnField(locale, field, raw)}
+                      />
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            ),
+          )}
         </div>
       </EntryFormContext.Provider>
       {dialog}
@@ -853,7 +964,8 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
           const e = res.item;
           setValues(e.values);
           setStatus(e.status);
-          setBase({ id: e.id, status: e.status, values: e.values });
+          setTranslations(e.translations ?? {});
+          setBase({ id: e.id, status: e.status, values: e.values, translations: e.translations ?? {} });
         }}
       />
     )}

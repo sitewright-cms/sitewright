@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.62.0] — 2026-10-16
+
 ### Added
 
 - **Page-speed audit: what blocked the main thread.** Lighthouse files long tasks and non-composited
@@ -130,6 +132,64 @@ The running version of an instance is reported at `GET /version` (baked into the
     `PUT /account/password` and the two admin password-reset routes take an optional
     `revokeMemberTokens`.
 
+- **Links to another page follow the reader's language: `{{sw-page-url "<page id>"}}`.** Translated
+  pages inherit the main page's source, so a link written there runs in every language — and none of
+  the existing spellings knew about languages. `{{sw-url '/contact'}}` adds no locale prefix, so a
+  German reader landed on the English page, and `pages.contact` stopped resolving once the German page
+  was renamed `kontakt`. The new helper gives the address of that page's translation in the reader's
+  language (else the page itself; a menu placeholder gives its link target; an unknown id gives `#`)
+  on published pages and chrome slots, in the editor preview, `preview_page` and `render-template`.
+  - Dataset `page` fields now resolve to the reader's language too.
+  - `pages.<slug>` on a translated page also matches the main-language slug; the page's own slug
+    still wins.
+  - The i18n guide says hreflang, canonical and `og:url` need `website.siteUrl`, which can be set
+    before the site goes live.
+
+- **`patch_text`: find-and-replace inside one long text field.** An agent fixing small things on a page
+  re-sent its 12–26 KB source every time, and one long call arrived truncated.
+  `POST /projects/:id/content/:kind/:id/text-patch` and the MCP tool `patch_text` take
+  `{ field, edits: [{ old, new, all? }] }` for page, template and snippet `source`, the chrome slots
+  (`website.mainNav`, `footer`, `sidebarLeft`, `sidebarRight`, `bottom`) and `website.criticalCss`.
+  Each `old` must match exactly once (or set `all`); edits apply in order and all or nothing, and a
+  422 names the edit and how often it matched. The result is validated like a full save and may not
+  grow past the 256 KB field ceiling; an edit that changes nothing writes nothing.
+
+- **MCP: `measure_header` — a fixed header's real height at every breakpoint.** `--sw-header-h` is a
+  hand-written constant, so a taller custom header hid the top of every page until the agent measured
+  it with its own browser. `GET /projects/:id/header-measure/:pageId` and `measure_header` (default page
+  `home`) load the draft site once, measure the header at 390, 640, 768, 1024, 1280 and 1536px the way
+  the clone audit does, and return a verdict per width plus the exact CSS to apply with
+  `patch_critical_css`. A draft page, or one that did not render, is refused with the reason instead
+  of being reported as having no header.
+
+- **Media in bulk, alt text and fonts over MCP.**
+  - `create_media_upload` takes `count` (1–50) and returns that many single-use tickets, so 78 photos
+    take two calls instead of 78. A project holds at most 200 unused tickets; when the shared store is
+    full, the project holding the most gives one up, so one project's batches cannot push out
+    another's.
+  - **Alt text** can be given on upload (tickets carry `alt`, or `alts` per ticket; `?alt=` on the
+    multipart upload; `alt` on `import_image` and `POST /media/import-url`), on `PATCH` media and
+    `move_media`, and in bulk through `POST /media/bulk-alt` and `set_media_alt` (200 per call, a
+    result per item). Folder galleries (`{{#sw-folder}}`) now read each asset's alt instead of
+    shipping an empty one.
+  - **The File Manager has an Alt text field** in the image preview. Until now only an agent could set
+    it.
+  - **Fonts:** tickets and `upload_media` accept `family`, `weight`, `style` and `fallback`;
+    `set_font_metadata` corrects an uploaded font (renaming a Google font, or colliding with another
+    face of the same family, weight and style, is refused); `select_google_font` adds a Google font as
+    the editor does, and `search_google_fonts` searches the bundled catalog without going online.
+
+- **MCP: `preview_page` returns HTML an agent can read.** With `includeHtml`, the bodies of inline
+  `<style>` and `<script>` elements are left out — the stylesheet alone was over 25,000 tokens — while
+  small JSON data islands are kept. `selector` returns only the matching elements (tag, `#id`,
+  `.class`, attribute selectors including `~=`, `^=`, `$=` and `*=`, descendant and `>` combinators),
+  `screenshot: false` skips the capture and `fullHtml: true` keeps everything. Its description now says
+  it renders drafts, so nothing has to be published just to look at one.
+
+- **The back-to-top button's position is author-tunable** with `--sw-back-to-top-right`,
+  `--sw-back-to-top-bottom` and `--sw-back-to-top-left`. The defaults are the old fixed values, so
+  nothing moves unless a site sets them; the guide shows lifting it above a WhatsApp button.
+
 ### Fixed
 
 - **A page-speed audit that cannot run now says why instead of `500 internal error`.**
@@ -242,6 +302,77 @@ The running version of an instance is reported at `GET /version` (baked into the
     same commit measured 90.10% on one run and 89.95% on the next. Eleven routes each carried their own
     untestable copy of "abort when the client disconnects"; they now share the one tested helper, which
     leaves 13.8 functions of headroom.
+
+- **Stopping work when the caller disconnects never worked on POST routes.** That shared helper
+  listened for the *request* closing, and on current Node a request closes as soon as its body has
+  been read: attached at the start of a handler it cancelled live work at once, and attached after an
+  `await` — every real route — it never fired. It now listens for the response closing before it was
+  sent. An import whose caller hangs up stops fetching and crawling but always finishes writing what it
+  has, so it never leaves half an import. The agent import route also had the condition inverted: it
+  cancelled the background job when its request ended and let a blocking one run on.
+
+- **A write that merges into an entity no longer reverts another writer's change.** `?merge=1` writes
+  and `patch_critical_css` read the entity, changed it and wrote it back, so a write landing in between
+  was silently undone while both calls answered 200. They, and `patch_text`, now write against the
+  version they read and re-apply on a conflict, up to 8 times; past that the answer is a 409 saying to
+  retry the same call. A caller that pins `If-Match` still gets its 409.
+
+- **Concurrent edits to one media file no longer overwrite each other.** Alt text, renames, moves,
+  replacing the file, SVG edits, transforms and folder renames each read the asset and wrote the whole
+  record back. They now write only the fields they own, against the version they read, and retry on a
+  conflict without redoing the file work. A folder rename or move reports which files `moved` and
+  which `failed`, instead of reporting success when some did not.
+
+- **A replaced editable image stays responsive.** When an owner replaced a
+  `{{sw-image … editable="key"}}` photo, the page dropped its srcset and kept the old image's width and
+  height, so every replaced photo shipped the 2400px file at the wrong aspect ratio. The replacement now
+  gets what a fresh `{{sw-image}}` of it would — srcset (never upscaled), its own dimensions,
+  placeholder, AVIF sources and lightbox link — and keeps the author's `sizes`, alt, class and loading.
+  An alt that was derived from the old file follows the new one; an alt the author wrote is kept.
+  External URLs and SVGs are swapped as before.
+  - Responsive candidates are built only from a stored media record's URL, so a value with spaces or
+    commas can no longer add srcset candidates — in a replaced image or in a plain `{{sw-image}}` fed
+    from page data.
+  - On AVIF sites the publish rewrite stopped at the `;` of `&amp;` and wrote broken files such as
+    `x-sm.webp;format=avif` for every page with an editable image.
+
+- **An open mobile menu covers every float.** The stock drawer lives inside the fixed header, whose
+  stacking context left back-to-top, the banner, the cart tab, the consent button and author floats
+  painting over the open menu. While the drawer is open the header is raised above them, still below
+  the preloader, the lightbox and dialogs. In hide-on-scroll mode, scrolling with the drawer open no
+  longer drags it off-screen. The guide now writes down the z-index scale.
+
+- **Editor: site-wide saves happen in order, and a replaced header or footer image shows.** Picking an
+  image in a slot reloaded the preview about 400 ms later while the save waited 600 ms, so the preview
+  showed the old image. The slot and page editors now send site-wide data through one queue and reload
+  the preview once it has drained. The page editor also stored site-wide `website.data.*` values (a
+  picked image, an edited link, HTML source) under a stray key in the page's own data, so the real
+  value never changed.
+
+- **The editor preview and `render-template` resolve dataset page fields as publish does** — against
+  published pages, in the page's language. `render-template` resolved none, and its
+  `{{sw-translate}}` now follows the page's language too.
+
+- **MCP: a stringified `data` field gets a clear answer.** An agent that sent `data` (or a nested
+  object such as `data.website` or an entry's `values`) as a JSON string was told "expected object,
+  received string" and went hunting through JSON that was fine. It is now parsed leniently — raw line
+  breaks inside strings, usually from a pasted HTML header, are escaped — and one that still does not
+  parse is refused with the parser's reason and the shape that kind expects.
+
+- **MCP: preview and upload addresses are absolute.** `previewUrl`, share URLs and upload tickets came
+  back as paths an agent could not open. They are now full URLs built only from an operator-configured
+  origin (`SW_PUBLIC_URL` or an approved origin, never the request's `Host`), and only under those keys
+  and for those exact shapes, so site data and `/media/…` URLs written into sources are never touched.
+  `get_scope` names the origin.
+
+- **Uploads and publish.** Every non-image upload was read whole into memory, so the streaming path for
+  large files never ran; the size caps are now checked on disk before anything is read. Publish turned
+  an absolute `https://host/media/…` into a broken `_assets` path; only root-relative
+  `/media/<project>/…` URLs are rewritten now.
+
+- **The "renderer busy" notice says what is busy.** A capacity `503` now carries `reason: "busy"` or
+  `"memory"`, and the editor says the renderer is busy and when to retry instead of always blaming
+  memory.
 
 ### Changed
 
@@ -4842,7 +4973,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.61.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.62.0...HEAD
+[0.62.0]: https://github.com/sitewright-cms/sitewright/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/sitewright-cms/sitewright/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/sitewright-cms/sitewright/compare/v0.59.0...v0.60.0
 [0.59.0]: https://github.com/sitewright-cms/sitewright/compare/v0.58.0...v0.59.0

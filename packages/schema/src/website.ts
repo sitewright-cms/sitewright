@@ -911,7 +911,10 @@ export const WebsiteEffectsSchema = z.object({
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
     .optional(),
-  /** Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll). */
+  /**
+   * Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll).
+   * Its corner is author CSS, not a setting: `--sw-back-to-top-right` / `-bottom` / `-left` on `:root`.
+   */
   backToTop: z.boolean().optional(),
   /**
    * STICKY top-header mode — POSITIONING only; fixes the `#main-nav` landmark to the top ('none' = a

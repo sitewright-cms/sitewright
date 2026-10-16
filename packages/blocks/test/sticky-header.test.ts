@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { stickyHeaderCss, STICKY_HEADER_JS } from '../src/sticky-header.js';
+import { BACK_TO_TOP_CSS } from '../src/back-to-top.js';
+import { BANNER_CSS } from '../src/banner.js';
+import { CART_CSS } from '../src/cart.js';
+import { CONSENT_CSS } from '../src/consent.js';
+import { PRELOADER_CSS } from '../src/preloader.js';
 
 describe('stickyHeaderCss', () => {
   it('a static header gets the offset TOKEN but none of the fixed-header rules', () => {
@@ -123,6 +128,81 @@ describe('stickyHeaderCss', () => {
     expect(css).toContain('html.sw-nav-hidden #main-nav:focus-within{translate:0 0}');
     expect(css).toContain('@media (prefers-reduced-motion:no-preference)');
     expect(css).not.toContain('sw-scrolled #main-nav .navbar'); // not the shrink rule
+  });
+
+  it('hide-on-scroll keeps the bar home while the stock drawer is open, so it cannot drag the drawer away', () => {
+    // A transformed #main-nav is the containing block of its position:fixed children. Scrolling with the
+    // menu open slid the header up and took the drawer with it — measured 71px: logo and close button
+    // off-screen, a strip of page under the panel. Chromium hid it (the clicked checkbox has focus, so the
+    // :focus-within reveal fired); Safari does not focus a checkbox on a label tap, so nothing held it.
+    const css = stickyHeaderCss('hide-on-scroll');
+    expect(css).toContain('html.sw-nav-hidden #main-nav:has(#sw-nav-drawer:checked){translate:0 0}');
+    // Only the mode that slides needs it.
+    expect(stickyHeaderCss('pinned')).not.toContain('sw-nav-hidden');
+  });
+
+  describe('an OPEN stock drawer lifts the whole header above every float', () => {
+    // The stock drawer (backdrop z-40, panel z-50) lives INSIDE #main-nav. A fixed header is a stacking
+    // context at z-index 30, so those numbers only rank the drawer among the header's own children —
+    // on the page it was effectively z-30, and the back-to-top, consent box, banner, cart tab and any
+    // author float painted over the open menu. A static header lost too: z-50 is below all of them.
+    const RAISE = '#main-nav:has(#sw-nav-drawer:checked){z-index:99980}';
+    const POSITION = ':where(#main-nav:has(#sw-nav-drawer:checked)){position:relative}';
+    const zOf = (css: string, selector: string): number => {
+      const at = css.indexOf(selector);
+      expect(at, `no rule for ${selector}`).toBeGreaterThanOrEqual(0);
+      const m = /z-index:(\d+)/.exec(css.slice(at, css.indexOf('}', at)));
+      expect(m, `no z-index on ${selector}`).toBeTruthy();
+      return Number(m![1]);
+    };
+
+    it('ships for EVERY mode, static header included', () => {
+      for (const mode of ['none', undefined, null, 'pinned', 'hide-on-scroll', 'shrink'] as const) {
+        const css = stickyHeaderCss(mode);
+        expect(css, String(mode)).toContain(RAISE);
+        expect(css, String(mode)).toContain(POSITION);
+      }
+    });
+
+    it('the static fallback position has ZERO specificity, so it can never un-fix or re-flow a header', () => {
+      // z-index needs a positioned box, and a static #main-nav is not one. `relative` without offsets
+      // does not move it — but at full specificity it would beat `#main-nav{position:fixed}` (un-pinning
+      // the bar the moment the menu opens) and an author's `#main-nav{position:absolute}` over a hero
+      // (dropping the header into the flow and shoving the page down). Inside :where() it only fills
+      // the gap when NOTHING else positioned the landmark.
+      const css = stickyHeaderCss('pinned');
+      expect(css).toContain(POSITION);
+      expect(css).not.toMatch(/#main-nav:has\(#sw-nav-drawer:checked\)\{[^}]*position/);
+      expect(css).toContain('#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}');
+    });
+
+    it('the raise is keyed ONLY on the checked state, so closing the menu restores the resting stack', () => {
+      for (const mode of ['pinned', 'hide-on-scroll'] as const) {
+        const css = stickyHeaderCss(mode);
+        // The only unconditional z-index on the landmark is still the resting 30.
+        const unconditional = css.match(/#main-nav\{[^}]*z-index:\d+[^}]*\}/g) ?? [];
+        expect(unconditional).toEqual(['#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}']);
+        // …and the raise touches nothing but z-index: no translate, so hide-on-scroll keeps sliding.
+        expect(css).toContain(RAISE);
+      }
+      expect(stickyHeaderCss('hide-on-scroll')).toContain('html.sw-nav-hidden #main-nav{translate:0 -100%}');
+    });
+
+    it('the value sits ABOVE every platform float and BELOW the preloader and the modal layer', () => {
+      const raised = zOf(stickyHeaderCss('pinned'), '#main-nav:has(#sw-nav-drawer:checked){');
+      const floats = [
+        zOf(BACK_TO_TOP_CSS, '[data-sw-back-to-top].btn{position:fixed'),
+        zOf(CONSENT_CSS, '[data-sw-consent][data-sw-enhanced="true"]{display:block;position:fixed'),
+        zOf(BANNER_CSS, '[data-sw-component="banner"]{position:fixed'),
+        zOf(CART_CSS, '[data-sw-cart] [data-sw-part="toggle"]{position:fixed'),
+      ];
+      for (const z of floats) expect(raised).toBeGreaterThan(z);
+      // The usual hand-written float (WhatsApp/chat widgets ship 9999) must lose as well.
+      expect(raised).toBeGreaterThan(9999);
+      // A drawer link starts a page change: the preloader overlay has to cover the open menu.
+      expect(raised).toBeLessThan(zOf(PRELOADER_CSS, '[data-sw-preloader]{position:fixed'));
+      expect(raised).toBeLessThan(2147483646); // the modal scrim
+    });
   });
 
   it('the retired shrink mode is normalized to pinned — no built-in condense survives anywhere', () => {

@@ -668,8 +668,8 @@ changes height at — a single unconditional value beats the platform's own pair
 widths. Set the EXACT measured height, fractions included: too small hides text behind the bar, too large
 paints a strip of background just below it (a coloured edge under the nav), so there is no safe rounding
 direction. Use \`patch_critical_css\` to change ONE rule
-rather than resending the whole sheet; it writes a named block in place). The header sits at z-index 30 (below the mobile drawer
-+ back-to-top/consent floats). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
+rather than resending the whole sheet; it writes a named block in place). A fixed header sits at z-index 30 —
+above page content, below the platform floats (see FLOATS + STACKING below). State hooks for your own scroll CSS: \`html.sw-scrolled\` (set once the page
 is scrolled — on EVERY site, in every mode, including a static header) and \`html.sw-nav-hidden\`
 (hide-on-scroll only — header translated off-screen).
 
@@ -700,6 +700,25 @@ GOTCHA: a transform/translate on #main-nav (an entrance like the above) makes it
 its \`position:fixed\` children — the default mobile-drawer recipe pins itself with \`h-dvh\` so it's unaffected,
 but a CUSTOM full-height nav drawer/overlay MUST set its own viewport height (\`h-dvh\`) or it gets clamped to
 the header's height.
+
+FLOATS + STACKING — the back-to-top button, your own floats, and the open mobile drawer. BACK-TO-TOP is ON by
+default (\`website.effects.backToTop:false\` removes it): bottom-right, 1.5rem from both edges, hidden below
+640px. Move it with tokens on \`:root\` in website.criticalCss — \`--sw-back-to-top-right\` and
+\`--sw-back-to-top-bottom\` (both default 1.5rem), \`--sw-back-to-top-left\` (default auto). A WhatsApp/chat
+float in that corner COVERS it (such widgets usually sit at z-index 9999, the button at 9996) — lift the
+button above the float: \`:root{--sw-back-to-top-bottom:6rem}\` (the float's bottom + its height + a gap; a
+bottom-right Banner rises with it on its own). Or park it bottom-LEFT:
+\`:root{--sw-back-to-top-left:1.5rem;--sw-back-to-top-right:auto}\`. Do not restyle \`[data-sw-back-to-top]\`
+itself. THE Z-INDEX SCALE: fixed header 30; back-to-top + consent 9996; banner + cart tab 9997; header with
+the drawer OPEN 99980; preloader 99990; lightbox 999999; modals above that. Keep your own floats BELOW 99980
+so an open mobile menu covers them — and do not give #main-nav itself a z-index above 99980 either: while
+the drawer is open the platform SETS it to 99980, which would lower a higher one. The stock drawer (the \`#sw-nav-drawer\` checkbox) lives INSIDE
+\`#main-nav\`, where its z-40/z-50 only rank it among the header's own children — so while it is open the
+platform raises the whole header to 99980. A CUSTOM drawer (any other toggle or open class) must raise its
+own stacking context the same way, or every float paints over the open menu:
+\`#main-nav:has(.my-drawer.is-open){z-index:99980}\` plus \`:where(#main-nav:has(.my-drawer.is-open)){position:relative}\`
+(that lets a STATIC header take the z-index; the :where() keeps it from un-pinning a fixed one). A drawer
+that lives OUTSIDE the header sets z-index 99980 on itself.
 
 SCROLLSPY (highlight the section in view): on a one-page / landing layout, highlight the nav link whose
 in-page section is currently scrolled into view. It toggles the SAME active state the nav uses (\`.active\`
@@ -1215,7 +1234,9 @@ The hidden <input type="checkbox" id="sw-nav-drawer" class="peer sr-only"> MUST 
 peer-checked:translate-x-0. The hamburger and the drawer MUST be in the SAME slot (no cross-slot toggle).
 Use <details>/<summary> accordions for child pages INSIDE the drawer; include the logo + a CLOSE <label
 for>. Loop {{#each nav.mobile}} (the "Mobile menu" pages), with an {{else}} fallback to {{#each nav.header}}
-until one is curated.
+until one is curated. Keep that id: while \`#sw-nav-drawer\` is checked the platform lifts the header above every
+float (back-to-top, cart, consent, a WhatsApp bubble); a drawer on any other toggle must do that itself — see
+FLOATS + STACKING in get_guide("effects").
 
 AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}} (loop page.translations;
 {{sw-flag (lookup @root.website.data.locale_flags locale)}} — set website.data.locale_flags = {"en":"gb",…});
@@ -2056,6 +2077,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'animated WebGL / shader background', where: 'get_components (data-sw-component="shader-bg")' },
   { need: 'scroll / entrance / parallax animation, reveal', where: 'get_guide("effects") — data-sw-animation, parallax, reveal' },
   { need: 'sticky / hide-on-scroll header, scrollspy, preloader', where: 'get_guide("effects")' },
+  { need: 'move the back-to-top button / a floating button (WhatsApp, chat) covers it or the open mobile menu', where: 'get_guide("effects") — FLOATS + STACKING: --sw-back-to-top-right/-bottom/-left + the z-index scale' },
   { need: 'rotating / animated / glowing border on a caption, card or image', where: 'the sw-border-beam class — get_guide("effects")' },
   { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, {{sw-flag}}; search_icons finds names' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },

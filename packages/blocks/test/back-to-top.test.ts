@@ -16,16 +16,34 @@ describe('back-to-top', () => {
     expect(BACK_TO_TOP_CSS).toContain('[data-sw-back-to-top] svg{width:1.4rem;height:1.4rem}');
     // fixed BOTTOM-RIGHT corner (not centred), above content but below the consent/preloader floats;
     // hidden on mobile
-    expect(BACK_TO_TOP_CSS).toContain('position:fixed;right:1.5rem;bottom:1.5rem');
+    expect(BACK_TO_TOP_CSS).toContain('position:fixed;right:var(--sw-back-to-top-right,1.5rem);bottom:var(--sw-back-to-top-bottom,1.5rem)');
     expect(BACK_TO_TOP_CSS).not.toContain('left:50%');
     expect(BACK_TO_TOP_CSS).toContain('z-index:9996');
     expect(BACK_TO_TOP_CSS).toContain('@media (max-width:639.98px)');
   });
 
+  it('the corner is a set of custom properties whose FALLBACKS are the old hard-coded values', () => {
+    // A real site's WhatsApp float sat on top of the FAB (same corner, higher z-index) and the only way
+    // out was an undocumented override of a platform rule. The position is now three tokens an author
+    // sets on :root; unset, each falls back to exactly what was hard-coded, so no existing site moves.
+    expect(BACK_TO_TOP_CSS).toContain('right:var(--sw-back-to-top-right,1.5rem)');
+    expect(BACK_TO_TOP_CSS).toContain('bottom:var(--sw-back-to-top-bottom,1.5rem)');
+    // `left` defaults to `auto` — what an unset `left` already computed to — so it is inert until set.
+    expect(BACK_TO_TOP_CSS).toContain('left:var(--sw-back-to-top-left,auto)');
+    // No literal corner survives anywhere in the FAB rule.
+    const fab = BACK_TO_TOP_CSS.match(/\[data-sw-back-to-top\]\.btn\{position:fixed[^}]*\}/)?.[0] ?? '';
+    expect(fab).not.toBe('');
+    expect(fab).not.toMatch(/(?:right|bottom):1\.5rem/);
+  });
+
   it('lifts a bottom-right/bottom banner above the FAB slot (the Banner DEFAULT is the same corner, z-index 9997)', () => {
+    // FAB bottom + its 2.5rem height + a 1rem gap. It COMPOSES with the FAB token, so raising the FAB
+    // raises the banner with it instead of parking the banner on top of the moved button. At the
+    // default (1.5rem) this is the 5rem it used to be.
     expect(BACK_TO_TOP_CSS).toContain(
-      'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:5rem}',
+      'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:calc(var(--sw-back-to-top-bottom,1.5rem) + 3.5rem)}',
     );
+    expect(BACK_TO_TOP_CSS).not.toContain('bottom:5rem');
   });
 
   it('the slide transition is scoped to `.btn` so it outranks the utility-sheet `.btn` transition (no pop)', () => {

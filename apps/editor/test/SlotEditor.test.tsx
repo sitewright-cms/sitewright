@@ -727,6 +727,20 @@ describe('SlotEditor — a store write re-renders the preview only once it has L
       expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
     });
 
+    it('until the re-render that follows the save is ON SCREEN — then the render is the truth again', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      await land('about');
+      await tick(400);
+      expect(preview).toHaveBeenCalledTimes(2); // (before its document is up: the case above)
+      send({ type: 'ready' }); // the re-rendered document is up
+      // Someone else rewrote it since; the memory of our own save must not mask that.
+      openSource('<p>Changed elsewhere</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Changed elsewhere</p>');
+    });
+
     it('but NOT a save that failed — the store still holds the rendered HTML', async () => {
       await openFooter();
       setWebsiteData.mockRejectedValueOnce(new Error('offline'));

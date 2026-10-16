@@ -496,6 +496,64 @@ describe('CodePageEditor — a picked image, link or HTML source lands in the st
     expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Typed a moment ago</p>');
   });
 
+  describe('site-wide writes are ORDERED, and re-render the preview once the queue has drained', () => {
+    /** Writes the test has not let land yet, oldest first. */
+    let inFlight: Array<{ key: string; value: string; land: () => void }>;
+    beforeEach(() => {
+      inFlight = [];
+      setWebsiteData.mockImplementation(
+        (_p: string, key: string, value: string) => new Promise<void>((resolve) => inFlight.push({ key, value, land: resolve })),
+      );
+    });
+    const landNext = () => act(async () => inFlight.shift()!.land());
+
+    it('★ a second write to the same leaf waits for the first, so the newer value lands LAST — and one reload follows', async () => {
+      await openPage();
+      send({ type: 'rich-edit', key: 'website.data.about', html: '<p>First</p>' });
+      await tick(600); // the first flush is in flight…
+      send({ type: 'rich-edit', key: 'website.data.about', html: '<p>Second</p>' });
+      await tick(600); // …and the second must not race it
+      expect(inFlight.map((w) => w.value)).toEqual(['<p>First</p>']);
+
+      await landNext();
+      expect(inFlight.map((w) => w.value)).toEqual(['<p>Second</p>']);
+      await tick(5000);
+      expect(preview).toHaveBeenCalledTimes(1); // nothing re-renders while the queue still holds a write
+
+      await landNext();
+      await tick(1000);
+      expect(preview).toHaveBeenCalledTimes(2); // ONE re-render, after the newest value landed
+    });
+
+    it('★ the `</>` view reopened after its save left the queue shows the SAVED html, not the stale render', async () => {
+      await openPage();
+      send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Old</p>' });
+      fireEvent.change(within(htmlDialog()).getByLabelText('HTML source'), { target: { value: '<p>New</p>' } });
+      fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+      await tick(600);
+      expect(inFlight.map((w) => w.value)).toEqual(['<p>New</p>']); // out of the queue, in flight
+
+      send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Old</p>' }); // not re-rendered yet
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
+    });
+
+    it('…and once the re-render that follows the save is on screen, the render is the truth again', async () => {
+      await openPage();
+      send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Old</p>' });
+      fireEvent.change(within(htmlDialog()).getByLabelText('HTML source'), { target: { value: '<p>New</p>' } });
+      fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+      await tick(600);
+      await landNext();
+      await tick(1000);
+      expect(preview).toHaveBeenCalledTimes(2);
+      send({ type: 'ready' }); // the re-rendered document is up
+
+      // Someone else rewrote it since; the memory of our own save must not mask that.
+      send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Changed elsewhere</p>' });
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Changed elsewhere</p>');
+    });
+  });
+
   it('a page HTML-source edit still rides in the draft', async () => {
     await openPage();
     send({ type: 'edit-html-source', key: 'about', html: '<p>Rendered now</p>' });

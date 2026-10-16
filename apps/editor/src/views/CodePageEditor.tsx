@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useUnsavedWork } from '../lib/unsaved-work';
+import { useWebsiteDataQueue } from '../lib/website-data-queue';
 import { Settings, RotateCcw, History, ExternalLink, MoreVertical } from 'lucide-react';
 import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
@@ -487,42 +488,25 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     },
     [],
   );
-  // --- Inline {{sw-control target="website.data.<path>"}} edits → the GLOBAL website.data store. Like
-  //     translations these auto-save (debounced) to the settings entity via their own endpoint, NOT the
-  //     page Save. website.data isn't part of the editor's draft state, so after a save we bump
-  //     previewNonce to re-POST /preview (the slot/page reading {{website.data.*}} shows the new value). ---
-  const pendingWdRef = useRef(new Map<string, { key: string; value: string }>());
-  const wdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  async function flushWebsiteData(): Promise<void> {
-    wdTimerRef.current = null;
-    const cells = [...pendingWdRef.current.values()];
-    pendingWdRef.current.clear();
-    let saved = false;
-    for (const c of cells) {
-      try {
-        await api.setWebsiteData(project.id, c.key, c.value);
-        saved = true;
-      } catch (err) {
-        if (mounted.current) setSaveError(err instanceof Error ? `Website data not saved: ${err.message}` : 'Website data not saved');
-      }
-    }
-    if (saved && mounted.current) setPreviewNonce((n) => n + 1);
-  }
-  function queueWebsiteData(key: string, value: string): void {
-    pendingWdRef.current.set(key, { key, value });
-    if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
-    wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
-  }
-  queueWebsiteDataRef.current = queueWebsiteData;
-  useEffect(
-    () => () => {
-      if (!wdTimerRef.current) return;
-      clearTimeout(wdTimerRef.current);
-      for (const c of pendingWdRef.current.values()) void api.setWebsiteData(project.id, c.key, c.value).catch(() => {});
-      pendingWdRef.current.clear();
-    },
-    [],
-  );
+  // --- Site-wide website.data writes ({{sw-control target="website.data.…"}}, a `website.data.…`
+  //     directive key: typing, a picked image, a link, an HTML-source save) → the GLOBAL store. Like
+  //     translations they auto-save on their own endpoint, NOT the page Save. website.data is not part of
+  //     the draft, so the preview re-POSTs once the writes have LANDED. ONE ordered queue, shared with the
+  //     slot editor (lib/website-data-queue): two writes to a leaf cannot land out of order, and the
+  //     preview reloads once when the queue drains rather than once per flush. ---
+  const wd = useWebsiteDataQueue({
+    projectId: project.id,
+    onError: setSaveError,
+    onDrained: () => setPreviewNonce((n) => n + 1),
+  });
+  // The mount-scoped message handler reads the queue through this.
+  const wdRef = useRef(wd);
+  wdRef.current = wd;
+  // Every page-side site-wide write re-renders once it lands: unlike a slot, the page reloads for these
+  // even after typing (no inline token can suppress a reload for a store outside the draft).
+  queueWebsiteDataRef.current = (path, value) => wd.queue(path, value, { rerender: true });
+  /** The landed-writes mark of the render whose document loads next; it is applied on that doc's `ready`. */
+  const docMarkRef = useRef<number | null>(null);
   useEffect(() => {
     /** Message types that mean the author is EDITING in the preview right now. */
     const EDIT_TYPES = new Set(['edit', 'rich-edit', 'translate-edit', 'link-edit', 'src-edit', 'bg-edit', 'control-edit']);
@@ -614,9 +598,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       } else if (d.type === 'edit-html-source' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked the rich-text toolbar's </> button → open the HTML source editor for that region. Seed
         // with the newest value WE hold for its store — the page.data override, or a website.data edit
-        // still waiting in the queue — else the live authored default (bridge innerHTML).
+        // still queued or saved but not yet re-rendered — else the live authored default (bridge innerHTML).
         const wdPath = websiteDataPathOf(d.key);
-        const stored = wdPath !== null ? pendingWdRef.current.get(wdPath)?.value : pageDataGet(pageDataRef.current, d.key);
+        const stored = wdPath !== null ? wdRef.current.latest(wdPath) : pageDataGet(pageDataRef.current, d.key);
         setHtmlSource({ key: d.key, html: typeof stored === 'string' ? stored : typeof d.html === 'string' ? d.html : '' });
       } else if (d.type === 'control-edit' && typeof d.target === 'string' && classifyControlTarget(d.target) && typeof d.value === 'string') {
         // {{sw-control}} set a value → write the target (page setting / page.data); the preview reloads.
@@ -713,7 +697,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         void onLinkClickRef.current(d.href);
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → clear the stale manifest (the new doc re-posts it on entering
-        // content mode below) and (re)apply the current edit mode so its regions stay editable.
+        // content mode below) and (re)apply the current edit mode so its regions stay editable. It shows
+        // every website.data write that had landed when it was rendered, so the queue may forget those.
+        if (docMarkRef.current !== null) wdRef.current.rendered(docMarkRef.current);
+        docMarkRef.current = null;
         setRegions([]);
         const win = iframeRef.current?.contentWindow;
         win?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
@@ -950,10 +937,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       // Set loading INSIDE the timeout (not synchronously) so it tracks the actual
       // in-flight request and is reset by the cleanup below.
       setPreviewLoading(true);
+      // Every website.data write that has landed by now is in this render.
+      const mark = wd.landedMark();
       void api
         .preview(project.id, draft)
         .then(({ token }) => {
           if (cancelled) return;
+          docMarkRef.current = mark;
           // The endpoint always returns a token; the `|| ''` guards an API regression
           // (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP, carrying
           // the last scroll position in a `#sw-y=` fragment (fragments aren't sent to the server)
@@ -979,7 +969,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     };
     // stateKey covers source/content/settings — everything `draft` renders from; previewNonce forces
     // a re-POST after a dataset entry save (entries are fetched server-side, so the draft is unchanged).
-  }, [stateKey, project.id, previewNonce]);
+  }, [stateKey, project.id, previewNonce, wd]);
 
   /** Saves WITHOUT closing — the authoring loop continues (header ✓ and ⌘/Ctrl+S). */
   async function save() {

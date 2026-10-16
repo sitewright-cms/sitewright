@@ -28,6 +28,8 @@ export interface WebsiteDataQueue {
   landedMark: () => number;
   /** The render started at `mark` is on screen: forget the sent values it reflects (see `latest`). */
   rendered: (mark: number) => void;
+  /** Nothing is waiting for the debounce and nothing is on its way — a render now reflects every write. */
+  idle: () => boolean;
 }
 
 /**
@@ -135,6 +137,7 @@ export function useWebsiteDataQueue({
   const rendered = useCallback((mark: number) => {
     for (const [path, s] of [...sent.current]) if (s.landed !== undefined && s.landed <= mark) sent.current.delete(path);
   }, []);
+  const idle = useCallback(() => pending.current.size === 0 && runs.current === 0, []);
 
   // Closing inside the debounce window must not lose the last edit: write it, behind the chain, quietly.
   useEffect(() => {
@@ -150,5 +153,8 @@ export function useWebsiteDataQueue({
     };
   }, [write]);
 
-  return useMemo(() => ({ queue, commit, latest, landedMark, rendered }), [queue, commit, latest, landedMark, rendered]);
+  return useMemo(
+    () => ({ queue, commit, latest, landedMark, rendered, idle }),
+    [queue, commit, latest, landedMark, rendered, idle],
+  );
 }

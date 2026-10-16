@@ -33,6 +33,7 @@ vi.mock('../src/lib/code-editor', () => ({
 }));
 
 import { CodePageEditor } from '../src/views/CodePageEditor';
+import { INLINE_EDIT_QUIET_MS } from '../src/lib/preview-reload-gate';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const page: Page = {
@@ -429,6 +430,29 @@ describe('CodePageEditor — a picked image, link or HTML source lands in the st
     await tick(1000);
     expect(preview).toHaveBeenCalledTimes(2);
     expect(lastDraftData()).not.toHaveProperty(['website.data.hero']);
+  });
+
+  it('★ a re-render a site-wide save asked for is not lost when typing on the page cancels it mid-flight', async () => {
+    await openPage();
+    let finish!: () => void;
+    preview.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = () => resolve({ html: '<!doctype html>', token: 'tok-stale' }))),
+    );
+    send({ type: 'pick-image', key: 'website.data.hero', kind: 'image' });
+    pickUrl('/media/new-hero.webp');
+    await tick(1000); // the hero's save (debounced) lands, and the gate lets the re-render go…
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(2); // …which is on its way…
+
+    send({ type: 'edit', key: 'tagline', value: 'Typed' }); // …when the author types into the page
+    await tick(1000);
+    await act(async () => finish());
+    expect(preview).toHaveBeenCalledTimes(2); // the keystroke is on screen: nothing replaces it yet
+
+    await tick(INLINE_EDIT_QUIET_MS);
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(3); // the owed re-render, once typing paused
+    expect(lastDraftData()).toEqual({ tagline: 'Typed' });
   });
 
   it('a page image still rides in the DRAFT — written to page.data, no site-wide write', async () => {

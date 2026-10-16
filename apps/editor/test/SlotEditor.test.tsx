@@ -37,6 +37,7 @@ vi.mock('../src/lib/code-editor', () => ({
 }));
 
 import { SlotEditor } from '../src/views/SlotEditor';
+import { INLINE_EDIT_QUIET_MS } from '../src/lib/preview-reload-gate';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const SLOT_SOURCE = '<div class="navbar">{{#each nav.header}}<a class="nav-item" href="{{sw-url path}}">{{sw-label}}</a>{{/each}}</div>';
@@ -680,6 +681,101 @@ describe('SlotEditor — a store write re-renders the preview only once it has L
     await tick(400);
     expect(preview).toHaveBeenCalledTimes(2);
     for (const key of keys) expect(rendered[1]).toHaveProperty(key);
+  });
+
+  // ★ The re-render that shows a picked image REPLACES the document the author may be typing into. It
+  // renders the server's copy, so text typed after the pick that is not saved yet came back missing —
+  // and the next edit to that text, read back off the screen, then saved over it for good.
+  describe('★ never reloads over typing that is not saved yet', () => {
+    const iframeSrc = () => screen.getByTitle('Slot preview').getAttribute('src');
+
+    it('typed between the pick and its re-render: the re-render waits for that save, and shows it', async () => {
+      await openFooter();
+      send({ type: 'pick-image', key: 'website.data.logo' });
+      pickUrl('/media/new-logo.webp');
+      await tick(0);
+      send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' }); // logo still saving
+      await land('logo');
+      await tick(400);
+      expect(preview).toHaveBeenCalledTimes(1); // NOT now: "Hello" is not on the server yet
+
+      await tick(200); // the typing debounce: its save goes out
+      await land('footer_note');
+      await tick(INLINE_EDIT_QUIET_MS);
+      await tick(400); // the preview's own debounce, from when the gate let it go
+      expect(preview).toHaveBeenCalledTimes(2);
+      expect(rendered[1]).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
+      expect(iframeSrc()).toBe('/preview/acme/tok-2');
+    });
+
+    it('typed while the re-render was on its way: that render is thrown away, and a later one shows the typing', async () => {
+      await openFooter();
+      let finish: () => void = () => {};
+      preview.mockImplementationOnce(() => {
+        const snapshot = { ...stored };
+        return new Promise((resolve) => {
+          finish = () => {
+            rendered.push(snapshot);
+            resolve({ html: '<!doctype html>', token: `tok-${rendered.length}` });
+          };
+        });
+      });
+      send({ type: 'pick-image', key: 'website.data.logo' });
+      pickUrl('/media/new-logo.webp');
+      await tick(0);
+      await land('logo');
+      await tick(400);
+      expect(preview).toHaveBeenCalledTimes(2); // the re-render is under way…
+
+      send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' }); // …and the author types
+      await act(async () => finish());
+      expect(iframeSrc()).toBe('/preview/acme/tok-1'); // not swapped in: it cannot show "Hello"
+
+      await tick(600);
+      await land('footer_note');
+      await tick(INLINE_EDIT_QUIET_MS);
+      await tick(400); // the preview's own debounce, from when the gate let it go
+      expect(rendered.at(-1)).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
+      expect(iframeSrc()).toBe(`/preview/acme/tok-${rendered.length}`);
+    });
+
+    it('typed into the OLD document while the new one loaded: the new one is rendered again', async () => {
+      await openFooter();
+      send({ type: 'pick-image', key: 'website.data.logo' });
+      pickUrl('/media/new-logo.webp');
+      await tick(0);
+      await land('logo');
+      await tick(400);
+      expect(iframeSrc()).toBe('/preview/acme/tok-2'); // swapped in; the browser is loading it
+
+      send({ type: 'edit', key: 'website.data.footer_note', value: 'Hello' }); // into the old one
+      send({ type: 'ready' }); // the new one is up — without "Hello"
+      await tick(600);
+      await land('footer_note');
+      await tick(INLINE_EDIT_QUIET_MS);
+      await tick(400); // the preview's own debounce, from when the gate let it go
+      expect(preview).toHaveBeenCalledTimes(3);
+      expect(rendered[2]).toEqual({ logo: '/media/new-logo.webp', footer_note: 'Hello' });
+    });
+
+    it('a translation typed in the slot holds the re-render too, until its own save lands', async () => {
+      let translated: () => void = () => {};
+      setTranslation.mockImplementation(() => new Promise<void>((resolve) => { translated = resolve; }));
+      await openFooter();
+      send({ type: 'pick-image', key: 'website.data.logo' });
+      pickUrl('/media/new-logo.webp');
+      await tick(0);
+      send({ type: 'translate-edit', key: 'footer.tagline', value: 'Made with care' });
+      await land('logo');
+      await tick(INLINE_EDIT_QUIET_MS + 600); // paused, and the translation's save is on its way
+      expect(setTranslation.mock.calls.map((c) => c[3])).toEqual(['Made with care']);
+      expect(preview).toHaveBeenCalledTimes(1);
+
+      await act(async () => translated());
+      await tick(200);
+      await tick(400);
+      expect(preview).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('an edit still pending on CLOSE is written behind the one in flight, so the last value lands last', async () => {

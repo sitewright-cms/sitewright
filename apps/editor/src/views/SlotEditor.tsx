@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useUnsavedWork } from '../lib/unsaved-work';
 import { useWebsiteDataQueue } from '../lib/website-data-queue';
+import { usePreviewReloadGate } from '../lib/preview-reload-gate';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { findEachBlock, findElementRange, narrowToText } from '../lib/source-locate';
@@ -126,6 +127,19 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     );
   }, [slot]);
 
+  // --- The two stores a SLOT can actually write to ------------------------------------------------
+  // A slot is not a page, so it has no page.data: its editable leaves are the SHARED project
+  // translation catalog (data-sw-translate) and the site-wide website.data store (an explicit
+  // `website.data.<path>` key). Both auto-save on their own endpoints, debounced, exactly as the page
+  // editor does — the slot's own Save button owns the SOURCE, never these values.
+  //
+  // These edits are only reachable HERE: the preview bridge wires a chrome-slot leaf only while that
+  // slot is focused, so the same shared string can't also be edited from a page, where it would read
+  // as a page-local change while quietly rewriting every page.
+  const pendingTrRef = useRef(new Map<string, { key: string; value: string }>());
+  const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Translation writes on their way — the preview must not reload over them (see the reload gate). */
+  const trInFlightRef = useRef(0);
   // A failed write to a SHARED store (translations, website.data). These auto-save, separately from the
   // slot's own Save, so without this alert a failure would just look like the edit stuck.
   const [storeError, setStoreError] = useState<string | null>(null);
@@ -137,7 +151,14 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   const wd = useWebsiteDataQueue({
     projectId: project.id,
     onError: setStoreError,
-    onDrained: () => setPreviewNonce((n) => n + 1),
+    onDrained: () => gate.request(),
+  });
+  // …and that re-render waits for the author to stop typing and for both stores to finish saving: typed
+  // into while it loaded, the preview would come back without the last keystrokes, and the next edit to
+  // that text — read back off the screen — would save over them (lib/preview-reload-gate).
+  const gate = usePreviewReloadGate({
+    isIdle: () => wd.idle() && pendingTrRef.current.size === 0 && trInFlightRef.current === 0,
+    onReload: () => setPreviewNonce((n) => n + 1),
   });
   /** The landed-writes mark of the render whose document loads next; it is applied on that doc's `ready`. */
   const docMarkRef = useRef<number | null>(null);
@@ -150,10 +171,17 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       setPreviewLoading(true);
       // Every website.data write that has landed by now is in this render.
       const mark = wd.landedMark();
+      const ticket = gate.begin();
       void api
         .preview(project.id, { id: 'slot-canvas', path: '', title: slotLabel(slot), source: EMPTY_CANVAS_SOURCE }, { [slot]: source })
         .then(({ token }) => {
           if (cancelled) return;
+          // Typed into while this rendered: it cannot show those keystrokes, so it must not replace the
+          // document that does. The gate renders again once they are saved.
+          if (!gate.admit(ticket)) {
+            setPreviewLoading(false);
+            return;
+          }
           docMarkRef.current = mark;
           // `#sw-y=` restores the scroll the bridge last reported (see the 'scroll' branch): this
           // preview re-POSTs on every keystroke, and a footer that jumps back to the top on each one
@@ -177,24 +205,13 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       clearTimeout(handle);
       setPreviewLoading(false);
     };
-  }, [project.id, project.slug, slot, source, previewNonce, wd]);
+  }, [project.id, project.slug, slot, source, previewNonce, wd, gate]);
 
   // Push mode changes to a preview that is already loaded.
   useEffect(() => {
     syncPreview();
   }, [mode, syncPreview]);
 
-  // --- The two stores a SLOT can actually write to ------------------------------------------------
-  // A slot is not a page, so it has no page.data: its editable leaves are the SHARED project
-  // translation catalog (data-sw-translate) and the site-wide website.data store (an explicit
-  // `website.data.<path>` key). Both auto-save on their own endpoints, debounced, exactly as the page
-  // editor does — the slot's own Save button owns the SOURCE, never these values.
-  //
-  // These edits are only reachable HERE: the preview bridge wires a chrome-slot leaf only while that
-  // slot is focused, so the same shared string can't also be edited from a page, where it would read
-  // as a page-local change while quietly rewriting every page.
-  const pendingTrRef = useRef(new Map<string, { key: string; value: string }>());
-  const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A form embedded IN a slot (a footer newsletter sign-up, say) — its definition is a project
   // entity, not slot markup, so it opens the same modal the page editor and Forms tab use.
   const [formEdit, setFormEdit] = useState<Form | null>(null);
@@ -257,12 +274,17 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     trTimerRef.current = null;
     const cells = [...pendingTrRef.current.values()];
     pendingTrRef.current.clear();
-    for (const c of cells) {
-      try {
-        await api.setTranslation(project.id, c.key, locale, c.value);
-      } catch (err) {
-        if (mounted.current) setStoreError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+    trInFlightRef.current += 1;
+    try {
+      for (const c of cells) {
+        try {
+          await api.setTranslation(project.id, c.key, locale, c.value);
+        } catch (err) {
+          if (mounted.current) setStoreError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+        }
       }
+    } finally {
+      trInFlightRef.current -= 1;
     }
   }, [project.id, locale]);
 
@@ -296,6 +318,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         // website.data write that had landed when it was rendered, so the queue may forget those.
         if (docMarkRef.current !== null) wd.rendered(docMarkRef.current);
         docMarkRef.current = null;
+        gate.loaded();
         setRegions([]);
         syncPreview();
       } else if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -305,6 +328,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       } else if (d.type === 'translate-edit' && typeof d.key === 'string' && typeof d.value === 'string' && isTranslationKey(d.key)) {
         // data-sw-translate in this slot → the SHARED catalog. The contenteditable already shows the
         // new text, so nothing re-renders; only the write is queued.
+        gate.noteEdit();
         pendingTrRef.current.set(d.key, { key: d.key, value: d.value });
         if (trTimerRef.current) clearTimeout(trTimerRef.current);
         trTimerRef.current = setTimeout(() => void flushTranslations(), 600);
@@ -317,6 +341,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         // data-sw-text / data-sw-html with a `website.data.<path>` key → the site-wide store. A BARE
         // key never reaches here: the bridge does not wire one inside a slot, because a slot has no
         // page.data for it to land in and the edit would silently evaporate.
+        gate.noteEdit();
         wd.queue(websiteDataPathOf(d.key) as string, (d.type === 'edit' ? d.value : d.html) as string);
       } else if (d.type === 'edit-slot' && typeof d.slot === 'string') {
         // The preview offers "Edit <slot>" on every landmark that is NOT the one being edited. Clicking
@@ -432,7 +457,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [syncPreview, flushTranslations, wd]);
+  }, [syncPreview, flushTranslations, wd, gate]);
 
   /**
    * Move this editor to another slot. Guarded on `dirty` because the switch REPLACES the draft — the

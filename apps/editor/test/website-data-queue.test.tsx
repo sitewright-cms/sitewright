@@ -50,6 +50,17 @@ describe('useWebsiteDataQueue', () => {
     expect(onDrained).not.toHaveBeenCalled(); // typing is already on screen
   });
 
+  it('idle(): not while typing waits for its save, nor while that save is on its way', async () => {
+    const { result } = mount();
+    expect(result.current.idle()).toBe(true);
+    act(() => result.current.queue('note', 'Hello'));
+    expect(result.current.idle()).toBe(false); // inside the debounce
+    await tick(600);
+    expect(result.current.idle()).toBe(false); // in flight
+    await landNext();
+    expect(result.current.idle()).toBe(true);
+  });
+
   it('★ one write at a time, in order: a later flush waits for the one in flight', async () => {
     const { result } = mount();
     act(() => result.current.queue('about', 'First'));

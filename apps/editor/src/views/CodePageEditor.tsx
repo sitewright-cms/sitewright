@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useUnsavedWork } from '../lib/unsaved-work';
 import { useWebsiteDataQueue } from '../lib/website-data-queue';
+import { usePreviewReloadGate } from '../lib/preview-reload-gate';
 import { Settings, RotateCcw, History, ExternalLink, MoreVertical } from 'lucide-react';
 import type { Form, JsonValue, Page, Template } from '@sitewright/schema';
 import {
@@ -133,13 +134,6 @@ const PREVIEW_DEBOUNCE_MS = 800;
  */
 const PREVIEW_AFFECTING_KINDS = new Set(['settings', 'template', 'snippet', 'translation', 'dataset', 'entry']);
 
-/**
- * How long after an inline edit the preview is left alone before a shared-code refresh is applied.
- * Long enough to cover the bridge's own debounce back to the editor, so a refresh cannot land between
- * a keystroke and the edit reaching the draft.
- */
-const INLINE_EDIT_QUIET_MS = 2000;
-
 export function CodePageEditor({ project, page, pages = [], locales = [], onClose, onNavigate, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
   // MOBILE IS CONTENT-EDITOR-ONLY. A phone cannot usefully drive CodeMirror or read an audit report,
@@ -190,8 +184,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Bumped to force a preview reload after a dataset entry is saved (the preview renders from saved
   // entries server-side, so the draft is unchanged — only a re-POST picks up the new values).
   const [previewNonce, setPreviewNonce] = useState(0);
-  /** When the author last typed into the preview — the guard against reloading over live keystrokes. */
-  const lastInlineEditRef = useRef(0);
   // ALL page settings (title/path/status/nav/parent/template/seo) — edited via the
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
@@ -457,16 +449,23 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const writeLocale = page.locale ?? defaultLocale;
   const pendingTrRef = useRef(new Map<string, { key: string; locale: string; value: string }>());
   const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Translation writes on their way — the preview must not reload over them (see the reload gate). */
+  const trInFlightRef = useRef(0);
   async function flushTranslations(): Promise<void> {
     trTimerRef.current = null;
     const cells = [...pendingTrRef.current.values()];
     pendingTrRef.current.clear();
-    for (const c of cells) {
-      try {
-        await api.setTranslation(project.id, c.key, c.locale, c.value);
-      } catch (err) {
-        if (mounted.current) setSaveError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+    trInFlightRef.current += 1;
+    try {
+      for (const c of cells) {
+        try {
+          await api.setTranslation(project.id, c.key, c.locale, c.value);
+        } catch (err) {
+          if (mounted.current) setSaveError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+        }
       }
+    } finally {
+      trInFlightRef.current -= 1;
     }
   }
   function queueTranslation(key: string, value: string): void {
@@ -497,26 +496,40 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const wd = useWebsiteDataQueue({
     projectId: project.id,
     onError: setSaveError,
-    onDrained: () => setPreviewNonce((n) => n + 1),
+    onDrained: () => gate.request(),
   });
   // The mount-scoped message handler reads the queue through this.
   const wdRef = useRef(wd);
   wdRef.current = wd;
+  // Every reload of a preview the author may be typing into goes through this: it waits for typing to
+  // pause and for both auto-saving stores to land, and drops a render that was typed through (see
+  // lib/preview-reload-gate, and the shared-code refresh below).
+  const gate = usePreviewReloadGate({
+    isIdle: () => wd.idle() && pendingTrRef.current.size === 0 && trInFlightRef.current === 0,
+    onReload: () => setPreviewNonce((n) => n + 1),
+  });
+  const gateRef = useRef(gate);
+  gateRef.current = gate;
+  /** The `previewNonce` of the render on screen — a reload asked for since is still owed. */
+  const shownNonceRef = useRef(previewNonce);
   // Every page-side site-wide write re-renders once it lands: unlike a slot, the page reloads for these
   // even after typing (no inline token can suppress a reload for a store outside the draft).
   queueWebsiteDataRef.current = (path, value) => wd.queue(path, value, { rerender: true });
   /** The landed-writes mark of the render whose document loads next; it is applied on that doc's `ready`. */
   const docMarkRef = useRef<number | null>(null);
   useEffect(() => {
-    /** Message types that mean the author is EDITING in the preview right now. */
-    const EDIT_TYPES = new Set(['edit', 'rich-edit', 'translate-edit', 'link-edit', 'src-edit', 'bg-edit', 'control-edit']);
+    /**
+     * Message types that mean the author is TYPING into the preview right now. A popover (link, image,
+     * background, control) is a single deliberate change the author waits to see, so it holds no reload.
+     */
+    const TYPING_TYPES = new Set(['edit', 'rich-edit', 'translate-edit']);
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
       if (e.source !== iframeRef.current?.contentWindow) return;
-      // Note when an edit came in, so a shared-code refresh can wait for a pause rather than reloading
-      // the document out from under the keystrokes (see armPreviewRefresh).
-      if (typeof (e.data as { type?: string })?.type === 'string' && EDIT_TYPES.has((e.data as { type: string }).type)) {
-        lastInlineEditRef.current = Date.now();
+      // Note when an edit came in, so a reload can wait for a pause rather than replacing the document
+      // out from under the keystrokes (see the reload gate).
+      if (typeof (e.data as { type?: string })?.type === 'string' && TYPING_TYPES.has((e.data as { type: string }).type)) {
+        gateRef.current.noteEdit();
       }
       const d = e.data as {
         source?: string;
@@ -701,6 +714,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // every website.data write that had landed when it was rendered, so the queue may forget those.
         if (docMarkRef.current !== null) wdRef.current.rendered(docMarkRef.current);
         docMarkRef.current = null;
+        gateRef.current.loaded();
         setRegions([]);
         const win = iframeRef.current?.contentWindow;
         win?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
@@ -837,29 +851,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // on screen to say why.
   //
   // So a refresh is DEFERRED while editing is recent, and re-armed until it is safe. It is never
-  // dropped: the change still lands, just at a moment that costs nothing.
-  const refreshPendingRef = useRef(false);
-  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const armPreviewRefresh = useCallback(() => {
-    refreshPendingRef.current = true;
-    if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current);
-    refreshTimerRef.current = setTimeout(function settle() {
-      const sinceEdit = Date.now() - lastInlineEditRef.current;
-      if (sinceEdit < INLINE_EDIT_QUIET_MS) {
-        refreshTimerRef.current = setTimeout(settle, INLINE_EDIT_QUIET_MS - sinceEdit);
-        return;
-      }
-      refreshTimerRef.current = null;
-      refreshPendingRef.current = false;
-      setPreviewNonce((n) => n + 1);
-    }, INLINE_EDIT_QUIET_MS);
-  }, []);
-  useEffect(
-    () => () => {
-      if (refreshTimerRef.current !== null) clearTimeout(refreshTimerRef.current);
-    },
-    [],
-  );
+  // dropped: the change still lands, just at a moment that costs nothing. The reload gate does that for
+  // every reload of this preview, the website.data queue's included.
+  const armPreviewRefresh = gate.request;
 
   useProjectEvents(project.id, (c) => {
     // THIS page is handled by useExternalEdit below; another page never affects this view.
@@ -932,6 +926,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       if (stateKey === inlineKeyRef.current) {
         inlineKeyRef.current = null;
         setPreviewLoading(false);
+        // …but a reload that was ASKED for (a site-wide save landing, a shared-code change) and that this
+        // keystroke cancelled in flight is still owed: the gate brings it back once typing pauses.
+        if (previewNonce !== shownNonceRef.current) gate.request();
         return;
       }
       // Set loading INSIDE the timeout (not synchronously) so it tracks the actual
@@ -939,10 +936,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       setPreviewLoading(true);
       // Every website.data write that has landed by now is in this render.
       const mark = wd.landedMark();
+      const ticket = gate.begin();
       void api
         .preview(project.id, draft)
         .then(({ token }) => {
           if (cancelled) return;
+          // Typed into while this rendered: it cannot show those keystrokes, so it must not replace the
+          // document that does. The gate renders again once they are saved.
+          if (!gate.admit(ticket)) {
+            setPreviewLoading(false);
+            return;
+          }
+          shownNonceRef.current = previewNonce;
           docMarkRef.current = mark;
           // The endpoint always returns a token; the `|| ''` guards an API regression
           // (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP, carrying
@@ -969,7 +974,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     };
     // stateKey covers source/content/settings — everything `draft` renders from; previewNonce forces
     // a re-POST after a dataset entry save (entries are fetched server-side, so the draft is unchanged).
-  }, [stateKey, project.id, previewNonce, wd]);
+  }, [stateKey, project.id, previewNonce, wd, gate]);
 
   /** Saves WITHOUT closing — the authoring loop continues (header ✓ and ⌘/Ctrl+S). */
   async function save() {

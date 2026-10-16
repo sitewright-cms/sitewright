@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 const {
   preview, selectRange, setTranslation, setWebsiteData, listForms, listDatasets, getEntry,
@@ -695,6 +695,47 @@ describe('SlotEditor — a store write re-renders the preview only once it has L
     expect(setWebsiteData).toHaveBeenLastCalledWith('p', 'footer_note', 'Final');
     await land('footer_note');
     expect(stored.footer_note).toBe('Final');
+  });
+
+  describe('the `</>` view reopened before the re-render shows what was SAVED, not the stale render', () => {
+    const htmlDialog = () => screen.getByRole('dialog', { name: /Edit HTML/ });
+    /** Open the `</>` view as the preview would: with the region's CURRENT rendered HTML. */
+    const openSource = (rendered: string) => send({ type: 'edit-html-source', key: 'website.data.about', html: rendered });
+    const saveSource = (html: string) => {
+      fireEvent.change(within(htmlDialog()).getByLabelText('HTML source'), { target: { value: html } });
+      fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+    };
+
+    it('while the save is still in flight', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      expect(inFlight.map((w) => w.key)).toEqual(['about']);
+
+      openSource('<p>Old</p>'); // the preview has not re-rendered, so it still holds the old HTML
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
+    });
+
+    it('after the save landed, before the re-render', async () => {
+      await openFooter();
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      await land('about');
+      openSource('<p>Old</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>New</p>');
+    });
+
+    it('but NOT a save that failed — the store still holds the rendered HTML', async () => {
+      await openFooter();
+      setWebsiteData.mockRejectedValueOnce(new Error('offline'));
+      openSource('<p>Old</p>');
+      saveSource('<p>New</p>');
+      await tick(0);
+      openSource('<p>Old</p>');
+      expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Old</p>');
+    });
   });
 
   it('does not re-render when the write FAILED — the alert says so, and the old render is the truth', async () => {

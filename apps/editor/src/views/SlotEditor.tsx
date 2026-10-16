@@ -254,6 +254,13 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
   // land out of order, and (b) when a flush resolves, everything queued BEFORE it has landed too — which
   // is what lets a re-render wait on it (commitWebsiteData).
   const wdChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  /**
+   * Each website.data leaf as THIS editor last sent it (in flight or landed). The `</>` view seeds from
+   * it: once a write leaves the queue, the preview's innerHTML still shows the OLD value until the
+   * re-render lands, so reopening the view in that window offered the HTML the author had just replaced.
+   * A failed write is dropped again — the store, and so the render, still hold the old value.
+   */
+  const sentWdRef = useRef(new Map<string, string>());
 
   /** Write every pending website.data cell, behind any flush still in flight. Resolves `true` when at
    *  least one write landed; never rejects (a failure is surfaced as `storeError`). */
@@ -261,6 +268,7 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
     wdTimerRef.current = null;
     const cells = [...pendingWdRef.current.values()];
     pendingWdRef.current.clear();
+    for (const c of cells) sentWdRef.current.set(c.key, c.value);
     const run = wdChainRef.current.then(async () => {
       let saved = false;
       for (const c of cells) {
@@ -268,6 +276,8 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
           await api.setWebsiteData(project.id, c.key, c.value);
           saved = true;
         } catch (err) {
+          // Only if nothing newer was sent for this leaf meanwhile — that one still stands.
+          if (sentWdRef.current.get(c.key) === c.value) sentWdRef.current.delete(c.key);
           if (mounted.current) setStoreError(err instanceof Error ? `Website data not saved: ${err.message}` : 'Website data not saved');
         }
       }
@@ -414,10 +424,11 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
         }
         commitWebsiteData(cells);
       } else if (d.type === 'edit-html-source' && typeof d.key === 'string' && websiteDataPathOf(d.key) !== null) {
-        // The rich-text toolbar's `</>` → the HTML source editor for that region. Seeded with the stored
-        // override when there is one, else the live authored default the bridge sent as innerHTML.
+        // The rich-text toolbar's `</>` → the HTML source editor for that region. Seeded with the newest
+        // value this editor holds — still queued, else sent (the preview may not have re-rendered it
+        // yet) — else the live value the bridge sent as innerHTML.
         const path = websiteDataPathOf(d.key) as string;
-        const stored = pendingWdRef.current.get(path)?.value;
+        const stored = pendingWdRef.current.get(path)?.value ?? sentWdRef.current.get(path);
         setHtmlSource({ key: path, html: typeof stored === 'string' ? stored : typeof d.html === 'string' ? d.html : '' });
       } else if (d.type === 'control-edit' && typeof d.target === 'string' && typeof d.value === 'string') {
         // {{sw-control}} set a value. A slot can only persist a `website.data` target — a `page.*` field

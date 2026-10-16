@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { forwardRef, useImperativeHandle } from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 import { PREVIEW_SANDBOX_ATTR } from '@sitewright/schema';
 
-const { preview, putPage, listTemplates, getPage } = vi.hoisted(() => ({
+const { preview, putPage, listTemplates, getPage, setWebsiteData } = vi.hoisted(() => ({
   preview: vi.fn(),
   putPage: vi.fn(),
   listTemplates: vi.fn(),
   getPage: vi.fn(),
+  setWebsiteData: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -16,6 +17,7 @@ vi.mock('../src/api', () => ({
     putPage: (...args: unknown[]) => putPage(...args),
     listTemplates: (...args: unknown[]) => listTemplates(...args),
     getPage: (...args: unknown[]) => getPage(...args),
+    setWebsiteData: (...args: unknown[]) => setWebsiteData(...args),
   },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
@@ -50,6 +52,8 @@ beforeEach(() => {
   putPage.mockReset();
   listTemplates.mockReset();
   getPage.mockReset();
+  setWebsiteData.mockReset();
+  setWebsiteData.mockResolvedValue(undefined);
   preview.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>', token: 'tok-123' });
   putPage.mockResolvedValue({ item: page });
   listTemplates.mockResolvedValue({ items: [] });
@@ -376,6 +380,65 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     expect(onNavigate).not.toHaveBeenCalled();
     fireEvent.click(within(warn).getByRole('button', { name: 'Discard & open' }));
     await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('about'));
+  });
+});
+
+/**
+ * Replacing an image from the preview writes the store its directive key NAMES. A bare / `page.data.`
+ * key is page content and rides in the draft, so the next preview already carries it. A
+ * `website.data.<path>` key is the SITE-WIDE store, which the render reads from the saved settings —
+ * written into page.data it became a junk flat key `"website.data.hero"` and the preview kept showing
+ * the old image.
+ */
+describe('CodePageEditor — a picked image lands in the store its key names', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+  const send = (data: Record<string, unknown>) => {
+    const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
+    fireEvent(window, new MessageEvent('message', { data: { source: 'sitewright-preview', ...data }, source: iframe.contentWindow }));
+  };
+  /** The picker's URL tab — the library needs a media API this file does not stub. */
+  const pickUrl = (url: string) => {
+    fireEvent.click(screen.getByRole('button', { name: 'URL' }));
+    fireEvent.change(screen.getByLabelText('URL'), { target: { value: url } });
+    fireEvent.click(screen.getByRole('button', { name: 'Use URL as-is' }));
+  };
+  const lastDraftData = () => (preview.mock.calls.at(-1)![1] as Page).data ?? {};
+  /** Open the editor and let its first preview render. */
+  const openPage = async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(1);
+  };
+
+  it('★ a website.data image writes the SITE-WIDE store, and re-renders once that write has landed', async () => {
+    await openPage();
+    let land!: () => void;
+    setWebsiteData.mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
+
+    send({ type: 'pick-image', key: 'website.data.hero', kind: 'image' });
+    pickUrl('/media/new-hero.webp');
+    await tick(5000);
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'hero', '/media/new-hero.webp');
+    // The page draft is untouched — nothing to save on this page, and no reload from the OLD store.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(preview).toHaveBeenCalledTimes(1);
+
+    await act(async () => land());
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(lastDraftData()).not.toHaveProperty(['website.data.hero']);
+  });
+
+  it('a page image still rides in the DRAFT — written to page.data, no site-wide write', async () => {
+    await openPage();
+    send({ type: 'pick-image', key: 'hero_img', kind: 'image' });
+    pickUrl('/media/new-hero.webp');
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(lastDraftData()).toEqual({ hero_img: '/media/new-hero.webp' });
+    expect(setWebsiteData).not.toHaveBeenCalled();
   });
 });
 

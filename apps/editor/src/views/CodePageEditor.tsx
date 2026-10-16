@@ -1377,7 +1377,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           title="Replace image"
           onPick={(url) => {
             // Scheme-sanitize at store time too (the render also safeUrl's) — canonical-clean content.
-            changeRegion(pickerKey, safeUrl(url, ''));
+            const clean = safeUrl(url, '');
+            // A `website.data.<path>` key names the SITE-WIDE store, exactly as for inline text edits
+            // (see the message handler): through the website.data queue, which re-renders the preview
+            // once the write has landed. page.data would take it as a junk flat key the render never
+            // reads, and the preview would go on showing the old image.
+            const wdPath = websiteDataPathOf(pickerKey);
+            if (wdPath !== null) queueWebsiteData(wdPath, clean);
+            else changeRegion(pickerKey, clean);
             setPickerKey(null);
           }}
           onClose={() => setPickerKey(null)}

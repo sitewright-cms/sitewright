@@ -661,6 +661,7 @@ one class in the platform base sheet and Tailwind's utilities load after it, so 
 custom class setting padding, or an inline \`style="padding…"\` wins on source order and the spacer does
 NOTHING (measured: \`class="wash sw-top-padding p-4"\` computed 16px against a 102.8px token). Use
 side-specific utilities there (\`p-4\` → \`px-4 pb-4\`), or drop the class and set \`--sw-header-offset\`.
+MEASURE THE BAR WITH measure_header: it reads the real height at every breakpoint and returns the exact css.
 \`sw-top-padding\` reads the \`--sw-header-h\` token (the platform sets it 4.5rem mobile / 4.75rem
 desktop = the default header height; a custom header of a non-standard height overrides it with
 \`:root{--sw-header-h:5rem}\` in website.criticalCss, plus a media query for EVERY breakpoint the bar
@@ -1546,7 +1547,8 @@ use --sw-header-offset, NEVER --sw-header-h: anchors (scroll-padding-top) and Sc
 height token, so re-purposing it as padding silently breaks where jump-links land.
 ⚠ --sw-header-h is a HARDCODED constant sized for the stock recipe (4.5rem mobile / 4.75rem desktop), NOT
 a measurement of YOUR header — so declare your real bar height in website.criticalCss (patch_critical_css
-changes ONE rule in place rather than resending the sheet), and MEASURE IT AT EVERY BREAKPOINT. A single
+changes ONE rule in place rather than resending the sheet), and MEASURE IT AT EVERY BREAKPOINT —
+measure_header does exactly that and returns the css (any published page, no import source). A single
 unconditional :root value is the standard mistake: it beats the platform's own media-query pair on source
 order, so it then applies at ALL widths. Measured on a real import, a 3-tier header was 66.8 / 81.6 /
 102.8px behind one declared 76px, clipping headings on every desktop inner page. Set the EXACT measured
@@ -1730,7 +1732,7 @@ against this list BEFORE you publish it:
   author the condense against html.sw-scrolled). The content offset is AUTOMATIC — you do not add
   \`.sw-top-padding\` to every first section; use it only to make a full-bleed hero bleed UNDER the bar (on an
   INNER element), and \`--sw-header-offset\` when you want a different AMOUNT. What you DO have to set is
-  \`--sw-header-h\` = the real bar height at EVERY breakpoint, exactly (the token is a hardcoded default for
+  \`--sw-header-h\` = the real bar height at EVERY breakpoint, exactly — measure_header returns it (the token is a hardcoded default for
   the stock navbar, NOT a measurement). And note \`.sw-top-padding\` loses to any \`p-*\`/\`pt-*\`/custom/inline
   padding on the same element, silently — clone_audit's header-height-token + header-spacer-applies checks
   catch both mistakes. Don't just leave the sticky mode off because it overlapped.
@@ -2013,6 +2015,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'compare_to_source', description: "SPECIALISED (step 2 = visual_audit covers the normal case). Screenshot an imported page's BUILD and its ORIGINAL side-by-side. Reach for it only when you want ONE quick paired look without the full rubric; visual_audit gives you the same pair PLUS the judging rubric, so prefer that.", capability: 'content:read' },
   { name: 'fidelity_check', description: "SPECIALISED + ADVISORY (NOT a done-gate; the gate is clone_audit, the visual verdict is visual_audit). Computed-style probe: measures styles of BUILD vs ORIGINAL (body + chrome: skew/weight/letter-spacing/radius/shadow/gradient/fixed/ripple/modals) as a coverage number. Use it to SEE fine treatments while fixing — but do NOT chase the number: coverage is BLIND to casing/dividers/icon-style/sub-band-colour/section-height/repeated-item-count, so a green number routinely coexists with a visibly-wrong page. Decide 'done' from visual_audit + clone_audit, never this.", capability: 'content:read' },
+  { name: 'measure_header', description: "Measure the fixed header against the --sw-header-h token at every Tailwind breakpoint in a real browser; returns per-width verdicts and the EXACT css to paste via patch_critical_css (null when nothing to fix). Any published page; no import source needed.", capability: 'content:read' },
   { name: 'clone_audit', description: "The OBJECTIVE acceptance prerequisite (structure/behaviour a screenshot can't show and coverage can't game): STEP 1 of acceptance, before visual_audit. STRUCTURE (datasets deduped+named, media out of imported/, content editable) + BEHAVIOUR (live render: sliders enhance, modals present, fonts LOAD, mobile menu reachable, and nothing is visually CUT OFF that the ORIGINAL does not also cut off — a clipped logo/heading measures full-size in a rect, so this is the one way to catch it; the original is probed too, so a deliberate bleed the source itself makes is subtracted rather than reported, and you should NEVER strip alt text or swap an <img> for a background div to satisfy it). Its computed-style VISUAL leg (body + chrome) is ADVISORY — reported to steer, never gated. Must pass:true — but that is NOT sufficient: a page is DONE only when clone_audit passes AND your visual_audit region-by-region list is at zero blocker+major.", capability: 'content:read' },
   { name: 'visual_audit', description: "STEP 2 and THE visual acceptance TERMINATOR for a cloned page (run clone_audit first): renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "SPECIALISED zoom for CHROME only — use after visual_audit has flagged a header/footer difference you cannot resolve at 1x. Crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },

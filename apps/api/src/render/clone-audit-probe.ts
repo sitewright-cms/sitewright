@@ -170,6 +170,12 @@ export function NAV_TOGGLE() {
  * utilities load after it: any `p-*`/`pt-*`/`py-*`, custom class or inline padding on the same element
  * wins on source order and the class contributes NOTHING, with nothing on screen to say so.
  */
+/** The computed `position` of the site header (#main-nav), or null when the page has none. */
+export function HEADER_POSITION() {
+  const nav = document.getElementById('main-nav');
+  return nav ? getComputedStyle(nav).position : null;
+}
+
 export async function HEADER_PROBE() {
   const nav = document.getElementById('main-nav');
   const pc = document.getElementById('page-content');

@@ -19,6 +19,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     patchText: vi.fn(async (kind: string, id: string, field: string, edits: unknown[]) => ({ kind, id, field, edits: edits.length, replacements: edits.length, bytes: 1, bytesBefore: 1, changed: true, version: 'v' })),
+    measureHeader: vi.fn(async (pageId: string) => ({ page: pageId, route: '/', widths: [390], rows: [], css: ':root{--sw-header-h:96px}', advice: [] })),
     deleteContent: vi.fn(async () => undefined),
     deleteContentBulk: vi.fn(async (_k: string, ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
     addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
@@ -247,6 +248,14 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const res = await (await connect(client, readScope)).callTool({ name: 'patch_text', arguments: { kind: 'page', id: 'home', field: 'source', edits: [{ old: 'a', new: 'b' }] } });
     expect(res.isError).toBe(true);
     expect(callsOf(client).patchText).not.toHaveBeenCalled();
+  it('measure_header defaults to the home page and needs only content:read', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'measure_header', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(client).measureHeader).toHaveBeenCalledWith('home');
+    expect(text(res)).toContain('--sw-header-h:96px');
+    await (await connect(client, readScope)).callTool({ name: 'measure_header', arguments: { pageId: 'about' } });
+    expect(callsOf(client).measureHeader).toHaveBeenLastCalledWith('about');
   });
 
   it('a string that is not JSON is still rejected by the same schema', async () => {

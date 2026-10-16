@@ -30,6 +30,29 @@ describe('pages binding (cross-page access — whitelisted into the render conte
   });
 });
 
+describe('{{sw-page-url}} — a link to another page in the reader’s language', () => {
+  const link = (src: string, ctx: TemplateContext = {}) => renderTemplate(src, ctx);
+
+  it('emits the route precomputed for the id (the current locale’s variant)', () => {
+    expect(link('<a href="{{sw-page-url "contact"}}">x</a>', { pageUrls: { contact: '/de/kontakt/' } })).toBe('<a href="/de/kontakt/">x</a>');
+  });
+
+  it('renders "#" for an id the surface did not resolve — never the raw id', () => {
+    expect(link('<a href="{{sw-page-url "gone"}}">x</a>', { pageUrls: {} })).toBe('<a href="#">x</a>');
+    // A surface that resolves no pages at all (a snippet preview) gets the same honest dead end.
+    expect(link('<a href="{{sw-page-url "contact"}}">x</a>')).toBe('<a href="#">x</a>');
+  });
+
+  it('accepts a resolved dataset page-field view (already locale-aware)', () => {
+    const ctx: TemplateContext = { dataset: { promos: [{ target: { id: 'contact-de', path: '/de/kontakt/' } }] } };
+    expect(link('{{#each dataset.promos}}<a href="{{sw-page-url target}}">x</a>{{/each}}', ctx)).toContain('href="/de/kontakt/"');
+  });
+
+  it('never reads an inherited key off the lookup', () => {
+    expect(link('<a href="{{sw-page-url "constructor"}}">x</a>', { pageUrls: {} })).toBe('<a href="#">x</a>');
+  });
+});
+
 describe('dataset-aware {{#each}} — flattened fields + preview markers', () => {
   const items = [
     { id: 'e1', dataset: 'posts', values: { t: 'A' } },
@@ -955,6 +978,7 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
   it('requires {{sw-url …}} (not a bare value) inside URL attributes', () => {
     rejects('<a href="{{ page.link }}">x</a>');
     allows('<a href="{{sw-url page.link}}">x</a>');
+    allows('<a href="{{sw-page-url "contact"}}">x</a>'); // its output is a sanitized route too
     allows('<a href="/p/{{ page.slug }}">x</a>'); // literal prefix fixes the scheme → allowed
   });
 

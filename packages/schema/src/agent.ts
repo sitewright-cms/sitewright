@@ -777,6 +777,21 @@ translated page almost never has its own code; giving it a \`source\` (a fork) d
 main page so future layout edits stop reaching it. Fork (own \`source\`) or set a \`template\` ONLY for a
 deliberate per-language LAYOUT difference (rare) — NOT to hold translated text.
 
+LINKS BETWEEN PAGES — use {{sw-page-url "<page id>"}}: a translation inherits the main page's source,
+so a link written there runs on every language. {{sw-page-url "contact"}} emits the route of that page
+IN THE READER'S LANGUAGE (/contact/ on English, /de/kontakt/ on German — the group sibling, whatever its
+slug), and survives renames and moves; a page with no variant in that language links to the page itself.
+A literal {{sw-url "/contact"}} is NOT language-aware: it sends EVERY language to the main-language page.
+Ids come from list_pages. Two other spellings also follow the reader's language: a dataset \`page\`
+field (store the main-language page id; {{sw-url target.path}} is the reader's variant), and a
+pages.<slug> chain written with the MAIN language's slugs (pages.contact finds the German /de/kontakt/).
+
+SEO TAGS NEED website.siteUrl: hreflang alternates, <link rel="canonical"> and og:url are emitted only
+when website.siteUrl is set (they are absolute URLs). It is a plain setting — set it to the intended
+production origin (e.g. "https://example.com", no trailing slash) BEFORE launch; the domain need not be
+live. The draft site (a page's previewUrl) then carries the tags; preview_page does NOT emit these head
+tags, so check them on the previewUrl.
+
 PREREQUISITE — the main page must be BOUND: inheritance can only translate text that carries a
 data-sw-text directive (or {{sw-translate}} for a shared string). Any HARDCODED inline copy on the
 main page shows through every variant UNtranslated and can't be fixed without forking. So author the

@@ -160,6 +160,7 @@ import {
   childrenView,
   parentPageView,
   pagesContext,
+  pageUrlsContext,
   referencesChildren,
   referencesParentPage,
   widgetDatasetsForSources,
@@ -5470,6 +5471,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         (await contentRepo.list(ctx, 'dataset')) as Dataset[],
         allSavedPages,
         defaultLocale,
+        // …in the READER's language, exactly as publish resolves them.
+        localeOf(page, defaultLocale),
       );
       // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
       // addresses by key, so a looping-only page pays nothing.
@@ -5605,14 +5608,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
         // same-locale, shared by the page render AND the slots (a footer/nav may reference another page too).
-        const previewPages = pagesContext(
-          savedPages,
-          page,
-          defaultLocale,
-          [pageSource, website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
-            .filter(Boolean)
-            .join('\n'),
-        );
+        const crossPageScan = [pageSource, website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
+          .filter(Boolean)
+          .join('\n');
+        const previewPages = pagesContext(savedPages, page, defaultLocale, crossPageScan);
+        // `{{sw-page-url "<id>"}}` — publish parity: same scan, same published subset, the page's locale.
+        const previewPageUrls = pageUrlsContext(savedPages, previewLocale, defaultLocale, crossPageScan);
         // Bound the cross-page tree against the same IPC ceiling — it carries other pages' `data`
         // (referenced-only + node-capped, but a source naming many data-heavy pages could still be large).
         if (previewPages && JSON.stringify(previewPages).length > 4 * 1024 * 1024) {
@@ -5624,6 +5625,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
+          pageUrls: previewPageUrls,
           dataset: localeData,
           // ★ The auto-nav belongs to the PAGE context too, not only to the slots.
           //
@@ -5661,6 +5663,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
+          pageUrls: previewPageUrls,
           dataset: localeData,
           nav: slotNav as unknown as Record<string, unknown>,
           // PREVIEW-only: keep ALL data-sw-* markers so the bridge can make a slot's directives
@@ -10908,6 +10911,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
       // keys the DEFAULT-locale entries — the member /preview + publish paths locale-resolve both.
       const item = keyedDatasets(templateSource, data as Record<string, readonly Entry[]>);
+      // `{{sw-page-url "<id>"}}` resolves here too (the stored page's locale; an ad-hoc body is the
+      // default locale), so a link checked in the code editor matches the preview and the live site.
+      const renderPageUrls = templateSource.includes('sw-page-url')
+        ? pageUrlsContext(
+            publishedPages((await contentRepo.list(ctx, 'page')) as Page[]),
+            storedPage ? localeOf(storedPage, projectDefaultLocale) : projectDefaultLocale,
+            projectDefaultLocale,
+            templateSource,
+          )
+        : undefined;
       // Public form definitions + same-origin endpoints so the code editor's live render shows
       // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).
       const renderForms = resolveFormEndpoints(
@@ -10929,6 +10942,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           company,
           website,
           page: pageCtx,
+          ...(renderPageUrls ? { pageUrls: renderPageUrls } : {}),
           dataset: data,
           item,
           partials,

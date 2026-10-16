@@ -113,7 +113,9 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
     | 'siteRoot'
     // A TRANSPORT input merged into the page object as the `page.parent` binding (documented under the
     // `page` namespace), NOT an author-facing top-level namespace itself.
-    | 'parentPage';
+    | 'parentPage'
+    // {{sw-page-url}}'s precomputed id → route lookup; not a readable `{{pageUrls.*}}` namespace.
+    | 'pageUrls';
   type AuthorFacingContextKey = Exclude<keyof TemplateContext, InfraContextKey>;
   type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 

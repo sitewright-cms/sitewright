@@ -15,6 +15,7 @@
 // them renders correctly in the editor and empty on the published site.
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
+import { localeVariantOf } from './i18n.js';
 
 /** What a `page` field reads as in a template — the lean always-present attributes of a page.
  *  Deliberately the SAME field names `pages.<slug>._attributes` uses, so one spelling is learned once. */
@@ -40,11 +41,22 @@ export function hasPageField(fields: readonly Field[] | undefined, depth = 0): b
   return fields.some((f) => f.type === 'page' || hasPageField(f.fields, depth + 1));
 }
 
-/** The attributes view of a page, or undefined when the id resolves to nothing (a deleted page). */
-function viewOf(id: unknown, byId: Map<string, Page>, defaultLocale: string): PageRefView | undefined {
+/** Where a stored id is read: the page index, plus the reader's locale when the surface has one. */
+interface RefScope {
+  byId: Map<string, Page>;
+  pages: readonly Page[];
+  defaultLocale: string;
+  locale?: string;
+}
+
+/** The attributes view of a page, or undefined when the id resolves to nothing (a deleted page). With a
+ *  locale, the page's member of its translation group in that locale (else the stored page itself). */
+function viewOf(id: unknown, scope: RefScope): PageRefView | undefined {
   if (typeof id !== 'string' || id === '') return undefined;
-  const page = byId.get(id);
-  if (!page) return undefined;
+  const { byId, pages, defaultLocale, locale } = scope;
+  const stored = byId.get(id);
+  if (!stored) return undefined;
+  const page = locale === undefined ? stored : (localeVariantOf(stored, pages, locale, defaultLocale) ?? stored);
   return {
     id: page.id,
     title: page.title,
@@ -60,8 +72,7 @@ function viewOf(id: unknown, byId: Map<string, Page>, defaultLocale: string): Pa
 function resolveValues(
   values: Record<string, unknown>,
   fields: readonly Field[],
-  byId: Map<string, Page>,
-  defaultLocale: string,
+  scope: RefScope,
   depth: number,
 ): Record<string, unknown> {
   if (depth >= MAX_DEPTH) return values;
@@ -73,16 +84,16 @@ function resolveValues(
     if (field.type === 'page') {
       // An unresolvable id reads as EMPTY rather than as the raw id: a dangling reference should leave
       // a blank in the page, never a link to a 404 or a stray `pg_7f3a` in the copy.
-      out[field.name] = viewOf(value, byId, defaultLocale);
+      out[field.name] = viewOf(value, scope);
       continue;
     }
     if (!field.fields) continue;
     if (field.type === 'object' && value && typeof value === 'object' && !Array.isArray(value)) {
-      out[field.name] = resolveValues(value as Record<string, unknown>, field.fields, byId, defaultLocale, depth + 1);
+      out[field.name] = resolveValues(value as Record<string, unknown>, field.fields, scope, depth + 1);
     } else if (field.type === 'list' && Array.isArray(value)) {
       out[field.name] = value.map((item) =>
         item && typeof item === 'object' && !Array.isArray(item)
-          ? resolveValues(item as Record<string, unknown>, field.fields!, byId, defaultLocale, depth + 1)
+          ? resolveValues(item as Record<string, unknown>, field.fields!, scope, depth + 1)
           : item,
       );
     }
@@ -97,12 +108,17 @@ function resolveValues(
  * costs one schema scan and copies nothing. `pages` should be the same list the surface renders from
  * (the published subset on publish, everything in the preview) — a reference to a page that isn't in
  * it resolves to empty, which is the honest answer: on the live site that page is not there.
+ *
+ * `locale` is the READER's — the page being rendered. A field stores one id (usually the main-language
+ * page, because that is what the editor's picker offers), and a German reader must land on the German
+ * page, exactly as the per-locale nav does; a page with no variant in that locale resolves as itself.
  */
 export function resolveDatasetPageRefs<E extends Entry>(
   datasets: Record<string, readonly E[]>,
   schemas: readonly Dataset[],
   pages: readonly Page[],
   defaultLocale: string,
+  locale?: string,
 ): Record<string, readonly E[]> {
   // A dataset's LOCALE variants (`services_de`) are separate entities with their own schema rows, but a
   // project may also carry only the base schema; match on the exact slug and fall back to the base name.
@@ -110,7 +126,7 @@ export function resolveDatasetPageRefs<E extends Entry>(
   for (const ds of schemas) if (hasPageField(ds.fields)) withPageFields.set(ds.slug, ds.fields);
   if (withPageFields.size === 0) return datasets;
 
-  const byId = pagesById(pages);
+  const scope: RefScope = { byId: pagesById(pages), pages, defaultLocale, locale };
   const out: Record<string, readonly E[]> = {};
   for (const [slug, entries] of Object.entries(datasets)) {
     const fields = withPageFields.get(slug) ?? withPageFields.get(slug.replace(/_[a-z0-9_]+$/, ''));
@@ -122,7 +138,7 @@ export function resolveDatasetPageRefs<E extends Entry>(
     // eslint-disable-next-line security/detect-object-injection -- as above; `out` is a fresh object
     out[slug] = entries.map((e) => ({
       ...e,
-      values: resolveValues((e.values ?? {}) as Record<string, unknown>, fields, byId, defaultLocale, 0),
+      values: resolveValues((e.values ?? {}) as Record<string, unknown>, fields, scope, 0),
     }));
   }
   return out;

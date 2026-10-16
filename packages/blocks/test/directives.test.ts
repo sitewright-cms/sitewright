@@ -588,8 +588,10 @@ describe('resolveDirectives — a replaced editable image’s DERIVED alt follow
     resolveDirectives(buildSwImage(url, media, o), { media, preview });
   /** The `<img>`'s alt VALUE — the serializer writes an empty one as a bare `alt` (same as `alt=""`). */
   const altOf = (html: string): string | undefined => {
-    const m = /<img\b[^>]*?\salt(?:="([^"]*)")?(?=[\s>])/.exec(html);
-    return m ? (m[1] ?? '') : undefined;
+    const tag = /<img\b[^>]*>/.exec(html)?.[0] ?? '';
+    const valued = /\salt="([^"]*)"/.exec(tag);
+    if (valued) return valued[1];
+    return /\salt[\s>]/.test(tag) ? '' : undefined;
   };
 
   it.each([

@@ -193,15 +193,10 @@ server-side (schema + no-JS template safety); you cannot exceed the token's role
 BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
 single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
 max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
-(chrome + 2-3 sections), then APPEND the next sections with patch_text (anchor \`old\` on the unique
-closing lines of what is already there, and repeat them in \`new\` followed by the new sections),
-REPEATing until complete. Do NOT stop to ask "shall I continue" — keep calling
+(chrome + 2-3 sections), then patch_text to append the next sections, REPEATing until
+complete. Do NOT stop to ask "shall I continue" — keep calling
 tools until the page is DONE or you are genuinely blocked.
-EDIT EXISTING TEXT WITH patch_text, NEVER BY RE-SENDING IT: any change to a page source, a chrome slot
-(website.mainNav/footer/…) or the stylesheet is a find-and-replace — patch_text({ kind, id, field,
-edits:[{ old, new }] }), \`old\` copied exactly and matching once (all:true for every occurrence). A
-put_page / full settings write re-sends the whole 10-30 KB field for a two-line fix, and a long write
-can be cut off mid-way.
+EDIT EXISTING PAGES/SLOTS WITH patch_text (find-and-replace), never by re-sending the whole source.
 PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
 preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
 — after building a meaningful chunk of a new page, and once before publishing — not after every tool

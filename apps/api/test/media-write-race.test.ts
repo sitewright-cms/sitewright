@@ -234,3 +234,87 @@ describe('byte writes — a write landing during the file work is not reverted',
     expect(moves.mock.calls.filter(([, id]) => id === asset.id)).toHaveLength(1);
   });
 });
+
+// Renaming or moving a FOLDER re-files every asset under it. It read the whole library once and wrote
+// each asset back from that list — so an alt, a rename or a move of one of those assets made in between
+// was reverted, a move OUT of the folder included (the asset was dragged back under the new name).
+describe('folder rename / move — each asset re-filed through the guard', () => {
+  /** On the route's LIST of the library (the read a re-file starts from), run `write` before it returns. */
+  function afterMediaList(write: (repo: ContentRepository, ctx: ProjectContext, listed: MediaAsset[]) => Promise<void>): void {
+    const original = ContentRepository.prototype.list;
+    let fired = false;
+    vi.spyOn(ContentRepository.prototype, 'list').mockImplementation(async function (this: ContentRepository, ...args) {
+      const rows = await original.apply(this, args);
+      if (!fired && args[1] === 'media') {
+        fired = true;
+        await write(this, args[0], rows as MediaAsset[]);
+      }
+      return rows; // the STALE list the route re-files from
+    });
+  }
+  const renameFolder = (from: string, to: string) => inject('POST', '/media/folders/rename', { from, to });
+
+  async function uploadInto(folder: string, name: string): Promise<MediaAsset> {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/media?folder=${encodeURIComponent(folder)}`,
+      cookies: { sw_session: t },
+      ...filePart(name, 'image/png', PNG_1X1),
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    return (res.json() as { item: MediaAsset }).item;
+  }
+
+  it('an alt and a rename made meanwhile survive the re-file', async () => {
+    const a = await uploadInto('trips', 'a.png');
+    const b = await uploadInto('trips/2024', 'b.png');
+    afterMediaList(async (repo, ctx, listed) => {
+      const byId = new Map(listed.map((m) => [m.id, m]));
+      await repo.put(ctx, 'media', a.id, { ...byId.get(a.id)!, alt: 'Written meanwhile' });
+      await repo.put(ctx, 'media', b.id, { ...byId.get(b.id)!, filename: 'Renamed meanwhile.png' });
+    });
+    const res = await renameFolder('trips', 'travel');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(await stored(a.id)).toMatchObject({ folder: 'travel', alt: 'Written meanwhile' });
+    expect(await stored(b.id)).toMatchObject({ folder: 'travel/2024', filename: 'Renamed meanwhile.png' });
+    // …and the per-asset report, like bulk-move's.
+    const body = res.json() as { ok: boolean; moved?: string[]; failed?: unknown[] };
+    expect(body.ok).toBe(true);
+    expect([...(body.moved ?? [])].sort()).toEqual([a.id, b.id].sort());
+    expect(body.failed).toEqual([]);
+  });
+
+  it('an asset moved OUT of the folder meanwhile stays where it was put — and is not reported as moved', async () => {
+    const a = await uploadInto('trips', 'a.png');
+    const b = await uploadInto('trips', 'b.png');
+    afterMediaList(async (repo, ctx, listed) => {
+      await repo.put(ctx, 'media', b.id, { ...listed.find((m) => m.id === b.id)!, folder: 'elsewhere' });
+    });
+    const res = await renameFolder('trips', 'travel');
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await stored(a.id)).folder).toBe('travel');
+    expect((await stored(b.id)).folder).toBe('elsewhere');
+    expect(res.json()).toMatchObject({ moved: [a.id], failed: [] });
+  });
+
+  it('a write landing between the guarded read and its write is re-applied on top', async () => {
+    const a = await uploadInto('trips', 'a.png');
+    interleave((m) => ({ ...m, alt: 'Written meanwhile' })); // on the re-file's own versioned read
+    const res = await renameFolder('trips', 'travel');
+    expect(res.statusCode, res.body).toBe(200);
+    expect(await stored(a.id)).toMatchObject({ folder: 'travel', alt: 'Written meanwhile' });
+  });
+
+  it('an asset it can never get ahead of is reported in `failed`, and the rest are still re-filed', async () => {
+    const a = await uploadInto('trips', 'a.png');
+    const b = await uploadInto('trips', 'b.png');
+    interleave((m, n) => (m.id === a.id ? { ...m, alt: `meanwhile ${n}` } : m), 'every');
+    const res = await renameFolder('trips', 'travel');
+    expect(res.statusCode, res.body).toBe(200);
+    const body = res.json() as { moved: string[]; failed: Array<{ id: string; error: string }> };
+    expect(body.moved).toEqual([b.id]);
+    expect(body.failed).toEqual([{ id: a.id, error: expect.stringMatching(/retry the same call/) }]);
+    expect((await stored(a.id)).folder).toBe('trips'); // left in place, never written from a stale read
+    expect((await stored(b.id)).folder).toBe('travel');
+  });
+});

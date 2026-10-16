@@ -7496,14 +7496,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           await contentRepo.put(ctx, 'mediafolder', f.id, { id: f.id, path: reparentPath(f.path, from, to) });
         }
       }
-      // Re-file every asset under `from`.
+      // Re-file every asset under `from`. The list only says WHICH assets to visit: each is re-filed through
+      // writeMediaGuarded — a fresh versioned read, only `folder` changed, re-applied if another write lands
+      // — because writing back the listed copy reverted any alt, rename or move made in between. The new
+      // folder is derived from the FRESH record, so an asset moved out of `from` meanwhile stays put.
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      const moved: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
       for (const a of assets) {
-        if (isUnderFolder(a.folder, from)) {
-          await contentRepo.put(ctx, 'media', a.id, { ...a, folder: reparentPath(a.folder, from, to) });
+        if (!isUnderFolder(a.folder, from)) continue;
+        let refiled = false;
+        try {
+          await writeMediaGuarded(ctx, a.id, (fresh) => {
+            refiled = isUnderFolder(fresh.folder, from);
+            return refiled ? { ...fresh, folder: reparentPath(fresh.folder, from, to) } : fresh;
+          });
+          if (refiled) moved.push(a.id);
+        } catch (err) {
+          // One asset that can't be re-filed must not abandon the rest — reported per id, like bulk-move.
+          failed.push({ id: a.id, error: err instanceof Error ? err.message : 'move failed' });
         }
       }
-      return reply.send({ ok: true });
+      return reply.send({ ok: true, moved, failed });
     });
 
     // Copy a folder subtree (records + duplicated assets) to a new path.

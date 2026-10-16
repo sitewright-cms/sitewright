@@ -170,6 +170,10 @@ export interface SwImageOptions {
    * unknown asset has no rungs, so there the old art is dropped and the image ships as a plain `src`.
    * So does ANY replacement of an image this helper rendered plain (its own url was an SVG, external or
    * unknown): there was no srcset to keep, and the new file ships as its bare url (the `xl` default).
+   *
+   * ALT on replacement: an `alt` passed here is the author's and is kept. Without one, the alt was
+   * DERIVED from the old file ({@link derivedAlt}) and describes it, so the `<img>` also carries
+   * {@link DERIVED_ALT_ATTR} and the directive re-derives the alt from the NEW file — on every path.
    */
   editable?: string;
   /**
@@ -211,6 +215,25 @@ export function filenameAlt(filename: string): string {
   return dot > 0 ? filename.slice(0, dot) : filename;
 }
 
+/**
+ * The alt {{sw-image}} gives `asset` when the author passed no `alt=`: its stored alt (an intentional
+ * empty one included), else its display FILENAME with the extension stripped — so a descriptively-named
+ * file gets meaningful alt text for free — else '' for an unresolved (external/unknown) url. The ONE
+ * rule, shared with the `data-sw-src` directive, which re-derives it when an editable image is replaced.
+ */
+export function derivedAlt(asset: RenderMedia | undefined): string {
+  return asset ? (asset.alt ?? filenameAlt(asset.filename)) : '';
+}
+
+/**
+ * Marks an editable {{sw-image}}'s `<img>` whose alt was DERIVED ({@link derivedAlt}) rather than
+ * written — the one thing the directive pass cannot tell from the markup, and needs to: a derived alt
+ * describes the file it came from, so when that file is replaced the alt must follow the new one, while
+ * an alt the author wrote is theirs. An internal helper→directive-pass signal, never an authoring
+ * directive: the pass consumes it and removes it on BOTH surfaces (directives.ts).
+ */
+export const DERIVED_ALT_ATTR = 'data-sw-auto-alt';
+
 /** Resolve a delivery url (or the id inside it) to its project RenderMedia record, if any. */
 export function resolveRenderImage(ref: string, media: readonly RenderMedia[]): RenderMedia | undefined {
   const index = mediaIndex(media);
@@ -229,10 +252,9 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   if (!src) return '';
   const base = escapeAttr(src);
   const asset = resolveRenderImage(url, media);
-  // Alt precedence: an explicit `alt` (incl. an intentional empty string) wins, then the asset's
-  // stored alt, then its display FILENAME (extension stripped) — so a descriptively-named file gets
-  // meaningful alt text for free (accessibility & SEO). Only a RESOLVED asset contributes the fallback.
-  const alt = escapeAttr(opts.alt ?? asset?.alt ?? (asset ? filenameAlt(asset.filename) : ''));
+  // Alt precedence: an explicit `alt` (incl. an intentional empty string) wins, else it is DERIVED from
+  // the asset (stored alt, then filename — see derivedAlt). Only a RESOLVED asset contributes.
+  const alt = escapeAttr(opts.alt ?? derivedAlt(asset));
   const cls = opts.className ? ` class="${escapeAttr(opts.className)}"` : '';
   const loading = opts.loading === 'eager' ? 'eager' : 'lazy';
   // An eager image is the author's above-the-fold hero → hint the browser it's the LCP candidate (fetch
@@ -240,8 +262,11 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
   const priority = opts.fetchpriority ?? (loading === 'eager' ? 'high' : undefined);
   const fp = priority && priority !== 'auto' ? ` fetchpriority="${priority}"` : '';
   // The editable-leaf marker. Emitted on EVERY <img> branch below (svg, unresolved, responsive) so
-  // "is this image replaceable" never depends on which branch the asset happens to take.
-  const edit = opts.editable ? ` data-sw-src="${escapeAttr(opts.editable)}"` : '';
+  // "is this image replaceable" never depends on which branch the asset happens to take. A DERIVED alt
+  // is flagged alongside it, so a replacement re-derives the alt instead of keeping the old file's.
+  const edit = opts.editable
+    ? ` data-sw-src="${escapeAttr(opts.editable)}"${opts.alt === undefined ? ` ${DERIVED_ALT_ATTR}` : ''}`
+    : '';
 
   // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
   // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).

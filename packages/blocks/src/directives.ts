@@ -8,7 +8,7 @@
 //   data-sw-text="key"      → element textContent          (from page.data[key]; serializer escapes)
 //   data-sw-html="key"      → element innerHTML             (from page.data[key]; sanitizeRichHtml)
 //   data-sw-href="key"      → anchor href                   (from page.data[key]; safeUrl)
-//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}}; safeUrl); a responsive image replaced by a project image gets its rungs rebuilt (ctx.media)
+//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}}; safeUrl); a responsive image replaced by a project image gets its rungs rebuilt (ctx.media), and a {{sw-image}} alt DERIVED from the old file (`data-sw-auto-alt`) is re-derived from the new one
 //   data-sw-bg="key"        → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}})
 //   data-sw-translate="key" → element textContent          (from the project TRANSLATION catalog — the pre-resolved per-locale `t` map; serializer escapes)
 //
@@ -55,6 +55,8 @@ import {
   responsiveRungs,
   lqipPlaceholder,
   lqipStyle,
+  derivedAlt,
+  DERIVED_ALT_ATTR,
   type SizedRenderImage,
 } from './image-helper.js';
 import type { RenderMedia } from './folder.js';
@@ -396,8 +398,10 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
   const previewLazy = ctx.preview === true && html.includes('<img') && html.includes('loading="lazy"');
   if (!hasDirective && !previewLazy) return html;
   const doc = parseDocument(html, { decodeEntities: true });
+  // …plus any element carrying the derived-alt marker, so a stray one is stripped even where no
+  // directive sits beside it (it is always removed below, on both surfaces).
   const targets = findAll(
-    (el) => DIRECTIVE_ATTRS.some((attr) => Object.prototype.hasOwnProperty.call(el.attribs, attr)),
+    (el) => DIRECTIVE_ATTRS.some((attr) => Object.prototype.hasOwnProperty.call(el.attribs, attr)) || hasAttr(el, DERIVED_ALT_ATTR),
     doc.children,
   );
   for (const el of targets) {
@@ -439,6 +443,11 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
           el.attribs[lazy ? 'data-src' : 'src'] = url;
           dropStaleResponsiveArt(el);
         }
+        // A DERIVED alt (marked by {{sw-image}}) described the OLD file — re-derive it from the new one,
+        // exactly as a fresh {{sw-image}} of it would, whichever path the art took. The lenient resolver
+        // is fine here: the result is project text set as a DOM attribute, which the serializer escapes.
+        // An alt the author wrote carries no marker and stays.
+        if (hasAttr(el, DERIVED_ALT_ATTR)) el.attribs.alt = derivedAlt(ctx.media ? resolveRenderImage(url, ctx.media) : undefined);
       }
     }
     const bgKey = el.attribs[BG_ATTR];
@@ -481,6 +490,10 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
         if (Object.prototype.hasOwnProperty.call(el.attribs, attr)) delete el.attribs[attr];
       }
     }
+    // The derived-alt marker is consumed above and is no editor affordance (the bridge never reads it,
+    // and a replacement reaches the iframe through a fresh server render): removed on BOTH surfaces, so
+    // the preview DOM stays the published DOM plus its data-sw-* directives.
+    delete el.attribs[DERIVED_ALT_ATTR];
     /* eslint-enable security/detect-object-injection */
   }
   // Editor-only CONTROL chips ({{sw-control}}): KEPT in preview (the bridge turns each into an inline

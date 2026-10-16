@@ -113,6 +113,7 @@ describe('publish — a replaced editable {{sw-image}}', () => {
     expect(home).toContain(`src="_assets/${newAlias}-new-lg.webp"`);
     expect(home).toContain('width="1200" height="600"'); // the replacement's aspect, not the 800×400 original
     expect(home).toContain('sizes="50vw"');
+    expect(home).toContain('alt="Hero"'); // an alt the author WROTE is theirs, whatever the file
     expect(home).toContain("background-image:url('data:image/webp;base64,UklGRg==')");
     expect(home).not.toContain('data-sw-src'); // the marker never ships
 
@@ -149,6 +150,25 @@ describe('publish — a replaced editable {{sw-image}}', () => {
     expect(home).toContain(`<source type="image/avif" srcset="_assets/${oldAlias}-old-sm.avif 500w, _assets/${oldAlias}-old-md.avif 800w"`);
     for (const ref of mediaRefs(home)) expect(existsSync(join(outDir, '_assets', ref)), ref).toBe(true);
     expect(home).not.toContain('format=avif');
+  });
+
+  // No alt= → the helper DERIVES it from the file (stored alt, else file name), so it describes THAT file.
+  const DERIVED = '<section>{{sw-image "/media/acme/a1-old.png" editable="hero" sizes="50vw"}}</section>';
+
+  it('an alt DERIVED from the replaced file follows the new one — and the derived-alt marker never ships', async () => {
+    const home = await publish(DERIVED, { hero: NEW.url });
+    expect(home).toContain(`src="_assets/${newAlias}-new-lg.webp"`);
+    expect(home).toContain('alt="new"'); // the NEW file's name — what a fresh {{sw-image}} of it says
+    expect(home).not.toContain('alt="old"');
+    expect(home).not.toContain('data-sw-auto-alt');
+    expect(home).not.toContain('data-sw-src');
+  });
+
+  it('an UNEDITED image keeps its derived alt, marker-free', async () => {
+    const home = await publish(DERIVED, {});
+    expect(home).toContain(`src="_assets/${oldAlias}-old-md.webp"`);
+    expect(home).toContain('alt="old"');
+    expect(home).not.toContain('data-sw-auto-alt');
   });
 });
 
@@ -215,5 +235,9 @@ describe('preview — a replaced editable {{sw-image}}', () => {
     expect(html).toContain('width="1200" height="600"');
     expect(html).toContain('data-sw-src="hero"'); // still click-to-replace in the editor
     expect(html).not.toContain(oldImg.url);
+    // The source wrote no alt=, so it was derived from the old file — and now describes the new one.
+    expect(html).toContain('alt="new"');
+    expect(html).not.toContain('alt="old"');
+    expect(html).not.toContain('data-sw-auto-alt'); // consumed by the render, not an editor affordance
   });
 });

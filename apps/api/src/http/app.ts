@@ -7602,6 +7602,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
      * `change` may therefore run more than once and must be a function of the asset it is handed; a
      * {@link MediaWriteRefusal} it throws ends the write with nothing stored. A binned asset is refused
      * (NotFound) — you restore it, you don't edit it in place.
+     *
+     * Every media RECORD write that starts from a stored asset goes through here: the metadata edits
+     * (PATCH, bulk-alt, bulk-move) and the record half of the BYTE writes (SVG overwrite, replace,
+     * in-place transform). Those do their slow file work FIRST and hand `change` only the fields that
+     * work determined — so a retry re-applies a few fields to a fresh read and never redoes the files.
      */
     const writeMediaGuarded = (
       ctx: ProjectContext,
@@ -7613,6 +7618,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const next = await change(asset);
         return (await contentRepo.put(ctx, 'media', asset.id, next, { expectedVersion: version })) as MediaAsset;
       });
+    /**
+     * The record fields an SVG byte write owns: its size, and its intrinsic dimensions — or, when the
+     * markup declares none, the dimensions the (fresh) record already has. Shared by the Studio overwrite
+     * and the SVG branch of a byte replace.
+     */
+    const withSvgBytes = (asset: MediaAsset, bytes: number, dims: ReturnType<typeof svgIntrinsicSize>): MediaAsset => {
+      const image = asset as ImageAsset;
+      const size = dims ?? { width: image.width, height: image.height };
+      return { ...image, bytes, width: Math.max(1, size.width), height: Math.max(1, size.height) };
+    };
     // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
     // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
     // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
@@ -7733,9 +7748,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const img = asset as ImageAsset;
       const storedName = img.original || `${MediaStorage.safeStoredName(img.filename).replace(/\.[^.]+$/, '')}.svg`;
       await storage.storeFile(project.slug, asset.id, storedName, buffer);
-      const dims = svgIntrinsicSize(clean) ?? { width: img.width, height: img.height };
-      const next = { ...img, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+      // The file is written; the RECORD takes only what this changed, onto a fresh read (see withSvgBytes).
+      const dims = svgIntrinsicSize(clean);
+      return reply.send({ item: await writeMediaGuarded(ctx, asset.id, (fresh) => withSvgBytes(fresh, buffer.length, dims)) });
     });
 
     // --- REPLACE an asset's BYTES in place ---------------------------------------------------------
@@ -7882,16 +7897,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Every cached variant came from the OLD pixels; dropping them is what makes the replacement
           // visible everywhere at once. They regenerate on the next request.
           await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
-          const next = {
-            ...image,
+          // The bytes are in place; the RECORD takes only what they determine, onto a FRESH read — an alt,
+          // rename or move made during the encode survives (see writeMediaGuarded).
+          const item = await writeMediaGuarded(ctx, image.id, (fresh) => ({
+            ...(fresh as ImageAsset),
             bytes: out.bytes,
             width: out.width,
             height: out.height,
             placeholder: out.placeholder,
             hasAlpha: out.hasAlpha,
             animated: out.animated,
-          };
-          return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+          }));
+          return { ok: true, item, previous, snapshotId };
         } finally {
           await rm(workDir, { recursive: true, force: true }).catch(() => {});
         }
@@ -7912,9 +7929,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // An SVG is never thumbnailed, but a replaced asset may have been a raster before the migration
         // — sweeping is cheap and leaves nothing stale behind either way.
         await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
-        const dims = svgIntrinsicSize(clean) ?? { width: image.width, height: image.height };
-        const next = { ...image, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
-        return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+        const dims = svgIntrinsicSize(clean);
+        const item = await writeMediaGuarded(ctx, image.id, (fresh) => withSvgBytes(fresh, buffer.length, dims));
+        return { ok: true, item, previous, snapshotId };
       }
 
       // Everything else (file, video, stylesheet, script) is stored VERBATIM, so the replacement is a
@@ -7925,8 +7942,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // clearing them would throw away a good value whenever the replacement is the same size.
       const snapshotId = await snapshotOutgoing();
       const bytes = await storage.storeFileFromPath(projectSlug, current.id, stored, tmpPath);
-      const next = { ...current, bytes };
-      return { ok: true, item: (await contentRepo.put(ctx, 'media', current.id, next)) as MediaAsset, previous, snapshotId };
+      const item = await writeMediaGuarded(ctx, current.id, (fresh) => ({ ...fresh, bytes }));
+      return { ok: true, item, previous, snapshotId };
     }
 
     app.put<{ Params: { projectId: string; id: string } }>(
@@ -8082,14 +8099,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Every cached variant came from the OLD pixels. Dropping them is what makes the edit visible
       // everywhere at once; they regenerate on the next request.
       await storage.pruneAssetThumbnails(projectSlug, asset.id, image.original);
-      const next = {
-        ...image,
+      // Derived from the new pixels ONCE, here — a re-applied record write must not re-encode.
+      const placeholder = await renderPlaceholder(edited.buffer);
+      // The RECORD takes only what the edit determined, onto a FRESH read: an alt or rename made during
+      // the transform survives (see writeMediaGuarded).
+      const item = await writeMediaGuarded(ctx, asset.id, (fresh) => ({
+        ...(fresh as ImageAsset),
         bytes: edited.buffer.length,
         width: edited.width,
         height: edited.height,
-        placeholder: await renderPlaceholder(edited.buffer),
-      };
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+        placeholder,
+      }));
+      return reply.send({ item });
     }
 
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {

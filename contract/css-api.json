@@ -1,5 +1,8 @@
 {
   "properties": [
+    "--sw-back-to-top-bottom",
+    "--sw-back-to-top-left",
+    "--sw-back-to-top-right",
     "--sw-beam-angle",
     "--sw-beam-arc",
     "--sw-beam-arc-max",

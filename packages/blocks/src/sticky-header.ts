@@ -12,6 +12,7 @@
 //
 // WHAT SHIPS WHERE:
 //   • `--sw-header-h` (the published bar height) — EVERY site, fixed or static. Inert on its own.
+//   • DRAWER_OPEN_STACKING (raise the landmark while the stock drawer is open) — EVERY site.
 //   • STICKY_HEADER_JS — EVERY site. It only toggles state classes on <html> (`sw-scrolled` always;
 //     `sw-nav-hidden` for the hide-on-scroll direction) and never touches the initial layout, so
 //     `sw-scrolled` is a universal authoring hook rather than a private detail of one mode.
@@ -42,11 +43,39 @@ const HEADER_HEIGHT_MOBILE = '4.5rem'; // 72px ≥ measured 70.59px
 const HEADER_HEIGHT_DESKTOP = '4.75rem'; // 76px ≥ measured 74.59px
 const HEADER_LG_BREAKPOINT = '1024px'; // Tailwind `lg` — where the recipe swaps mobile→desktop bar
 
+// AN OPEN MOBILE DRAWER COVERS EVERY FLOAT. The stock drawer (the `#sw-nav-drawer` peer-checkbox recipe:
+// backdrop z-40, panel z-50) lives INSIDE `#main-nav`. A fixed header is a stacking context at z-30, so
+// on the page the open drawer was z-30 and every body-level float painted over the menu; a static header
+// lost as well, its z-50 being below all of them. So while the box is checked the WHOLE LANDMARK rises.
+// Ships for EVERY site (static or fixed). The platform's z-index scale, bottom to top:
+//   30          #main-nav when fixed (at rest)
+//   40 / 50     stock drawer backdrop / panel — ranks only INSIDE #main-nav's own stacking context
+//   9996        back-to-top, consent box
+//   9997        banner, cart tab
+//   ~9999       where hand-written floats (WhatsApp / chat widgets) usually sit
+//   99980       #main-nav while the stock drawer is OPEN  ← this rule
+//   99990       preloader overlay (a drawer link starts a page change; the overlay must cover the menu)
+//   999999      lightbox
+//   2147483646  modal scrim, SVG ripple
+//   top layer   native modal <dialog> (the cart drawer) — above any z-index
+// A CUSTOM drawer (any other toggle) has to raise its own stacking context the same way; the effects
+// guide says so. Closing the menu un-matches `:has()`, which restores the resting 30 — the raise touches
+// only z-index, so the hide-on-scroll slide (`translate`) and `html.sw-scrolled` CSS are unaffected.
+// `position:relative` is what lets a STATIC landmark take a z-index at all. It has no offsets, so it does
+// not move the box, and it sits inside :where() — ZERO specificity — so a fixed bar (ours, or an author's
+// `#main-nav{position:fixed|absolute|sticky}`) keeps its own position: at full specificity it would
+// un-pin a fixed bar, or drop an absolutely-positioned over-hero header into the flow, the moment the
+// menu opened. An engine without :has() (pre-Dec-2023) simply keeps today's stacking.
+const DRAWER_OPEN_STACKING = [
+  ':where(#main-nav:has(#sw-nav-drawer:checked)){position:relative}',
+  '#main-nav:has(#sw-nav-drawer:checked){z-index:99980}',
+];
+
 /**
- * The sticky-header CSS for a mode (empty string when off). Emitted by renderDocument into the inline
- * base `<style>`, so it's present at first paint. Covers ALL modes: the fixed `#main-nav` landmark,
- * the `--sw-header-h` offset token + the `.sw-top-padding` spacer + `scroll-padding-top` for anchors,
- * plus the per-mode scroll-state rules (driven by STICKY_HEADER_JS).
+ * The sticky-header CSS for a mode (when off, only the `--sw-header-h` token + the drawer-open stacking).
+ * Emitted by renderDocument into the inline base `<style>`, so it's present at first paint. Covers ALL
+ * modes: the fixed `#main-nav` landmark, the `--sw-header-h` offset token + the `.sw-top-padding` spacer
+ * + `scroll-padding-top` for anchors, plus the per-mode scroll-state rules (driven by STICKY_HEADER_JS).
  */
 export function stickyHeaderCss(
   rawMode: StickyHeaderSetting | null | undefined,
@@ -65,9 +94,10 @@ export function stickyHeaderCss(
     `:root{--sw-header-h:${HEADER_HEIGHT_MOBILE}}`,
     `@media (min-width:${HEADER_LG_BREAKPOINT}){:root{--sw-header-h:${HEADER_HEIGHT_DESKTOP}}}`,
   ];
-  if (!fixed) return token.join('');
+  if (!fixed) return [...token, ...DRAWER_OPEN_STACKING].join('');
   const base = [
     ...token,
+    ...DRAWER_OPEN_STACKING,
     // The opt-in spacer utility + the in-page-anchor scroll offset, so a jump-link lands BELOW the fixed
     // header rather than behind it. Both read the one `:root` token above (the spacer inherits down;
     // html's scroll-padding sits on the same element), and both are FIXED-ONLY — see the note above.
@@ -111,10 +141,12 @@ export function stickyHeaderCss(
     // off-top design is the one that adjusts, and only once.
     'html:not(.sw-header-offtop) #page-content:has(.sw-top-padding){--sw-header-legacy-offset:0px}',
     'html:not(.sw-header-offtop) #page-content{padding-top:var(--sw-header-offset,var(--sw-header-legacy-offset,var(--sw-header-h)))}',
-    // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content but BELOW the mobile
-    // drawer (its backdrop/panel are z-40/z-50, so an open drawer correctly covers the header) and the
-    // consent banner / back-to-top floats (9996+). The landmark itself stays transparent — the recipe's
-    // own `.navbar` paints the background, leaving a transparent-over-hero design possible.
+    // Pin the landmark to the top, full width. z-index 30 sits ABOVE page content and BELOW the platform
+    // floats (see the scale on DRAWER_OPEN_STACKING). Being fixed AND z-indexed makes the landmark a
+    // stacking context, so the stock drawer's own z-40/z-50 only order it among the header's children —
+    // on the page an open drawer is exactly as high as this rule, which is why opening it raises the
+    // whole landmark (DRAWER_OPEN_STACKING) instead. The landmark itself stays transparent — the
+    // recipe's own `.navbar` paints the background, leaving a transparent-over-hero design possible.
     '#main-nav{position:fixed;top:0;left:0;right:0;z-index:30}',
     // Measurement guard for the runtime's anchor-rest sync: it force-toggles `sw-scrolled` to measure
     // the bar at its SCROLLED height, and this suppresses transitions during that forced toggle so the
@@ -129,6 +161,11 @@ export function stickyHeaderCss(
     // a11y: if a keyboard user tabs INTO the (hidden) header, reveal it so focus isn't off-screen — the
     // higher-specificity :focus-within rule beats the hide rule above; it slides back out on blur.
     base.push('html.sw-nav-hidden #main-nav:focus-within{translate:0 0}');
+    // …and while the stock drawer is OPEN. The translate makes #main-nav the containing block of its fixed
+    // children, so scrolling with the menu open slid the drawer up with the bar (logo + close button off
+    // the top). :focus-within only covered it where tapping the label focuses the checkbox — Safari does
+    // not. Closing the menu un-matches this, and a bar that should be hidden then slides away as usual.
+    base.push('html.sw-nav-hidden #main-nav:has(#sw-nav-drawer:checked){translate:0 0}');
     base.push(
       '@media (prefers-reduced-motion:no-preference){#main-nav{transition:translate .3s cubic-bezier(.16,1,.3,1)}}',
     );

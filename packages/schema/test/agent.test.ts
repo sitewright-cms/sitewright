@@ -128,6 +128,28 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(hit!.need).toMatch(/border/i);
   });
 
+  // A real site's WhatsApp float sat on top of the back-to-top button, and the author needed a CSS
+  // override of a platform rule that no guide mentioned. Separately, the open mobile drawer painted
+  // UNDER every float, and the guide said the header sat "below the drawer" — true only inside the
+  // header's own stacking context, which is the one place it does not matter.
+  it('the effects guide teaches the back-to-top position tokens and the drawer stacking rule', () => {
+    const body = AGENT_GUIDES.effects.body;
+    for (const token of ['--sw-back-to-top-right', '--sw-back-to-top-bottom', '--sw-back-to-top-left']) {
+      expect(body, token).toContain(token);
+    }
+    expect(body).toMatch(/WhatsApp/); // the worked example: lift it above an author float
+    expect(body).toContain('website.effects.backToTop');
+    // The stock drawer is raised for you; a CUSTOM one is told to do the same, with the selector shape.
+    expect(body).toContain('#main-nav:has(');
+    expect(body).toMatch(/CUSTOM drawer/);
+    expect(body).toContain('99980');
+    // The misleading claim is gone.
+    expect(body).not.toMatch(/below the mobile drawer/);
+    const hit = CAPABILITY_MAP.find((c) => /back-to-top/i.test(c.need));
+    expect(hit, 'no CAPABILITY_MAP entry for moving the back-to-top button').toBeTruthy();
+    expect(hit!.where).toMatch(/effects/);
+  });
+
   it('every guide has a title, summary, and non-trivial body', () => {
     expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
     for (const t of GUIDE_TOPICS) {

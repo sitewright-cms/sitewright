@@ -1,8 +1,13 @@
 // BACK-TO-TOP — a platform-injected button that appears after the first viewport of scroll and
 // scrolls the page back to the top. ON BY DEFAULT; ships (markup + CSS + JS) unless the site sets
 // `website.effects.backToTop` to false. The button is a LARGE vendored `.btn.btn-primary` (solid CI
-// face) carrying the `sw-btn-shape-square` icon shape; it sits fixed BOTTOM-RIGHT (hidden on mobile)
-// and SLIDES up (show) / down (hide) — a pure transform slide, NO opacity fade.
+// face) carrying the `sw-btn-shape-square` icon shape; it sits fixed BOTTOM-RIGHT by default (hidden on
+// mobile) and SLIDES up (show) / down (hide) — a pure transform slide, NO opacity fade. The corner is
+// three author tokens whose fallbacks are the values that used to be hard-coded — so a site that never
+// sets them renders exactly as before. Set them on `:root` (website.criticalCss):
+//   :root{--sw-back-to-top-bottom:6rem}                              → lift it above a float in the corner
+//   :root{--sw-back-to-top-right:5.5rem}                             → shift it left of one instead
+//   :root{--sw-back-to-top-left:1.5rem;--sw-back-to-top-right:auto}  → park it bottom-LEFT
 
 // chevron-up (Lucide). aria-hidden — the button itself carries the accessible label.
 const CHEVRON_UP =
@@ -26,16 +31,24 @@ export const BACK_TO_TOP_CSS = [
   // opacity), .sw-visible = slid home. `visibility:hidden` (delayed to the end of the slide-out) keeps
   // the hidden button out of the TAB ORDER + a11y tree; on show the delay is 0 so it becomes focusable
   // at once. `[data-…].btn` beats the base `.btn` sizing.
-  '[data-sw-back-to-top].btn{position:fixed;right:1.5rem;bottom:1.5rem;z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:0 calc(100% + 2rem);pointer-events:none}',
+  // WHERE it sits is the author's call, not ours: a site's own float (a WhatsApp/chat bubble) wants the
+  // same corner, and with a higher z-index it simply covered the button. Each side reads a token whose
+  // fallback is the old literal, so nothing moves until one is set (on :root — the banner lift below
+  // reads the same token). `left` falls back to `auto`, which is what the unset property computed to;
+  // setting it parks the button on the left (with `--sw-back-to-top-right:auto`, so a right-to-left
+  // page, where an over-constrained box keeps `right` instead, follows too).
+  '[data-sw-back-to-top].btn{position:fixed;right:var(--sw-back-to-top-right,1.5rem);bottom:var(--sw-back-to-top-bottom,1.5rem);left:var(--sw-back-to-top-left,auto);z-index:9996;width:4.5rem;height:2.5rem;padding:0;visibility:hidden;translate:0 calc(100% + 2rem);pointer-events:none}',
   '[data-sw-back-to-top].sw-visible{visibility:visible;translate:0 0;pointer-events:auto}',
   '@media (max-width:639.98px){[data-sw-back-to-top].btn{display:none}}',
   // CORNER AVOIDANCE: the Banner component's DEFAULT placement is the same bottom-right corner
   // (right:1rem;bottom:1rem, z-index 9997 — ABOVE the FAB), so an un-positioned banner would cover the
   // button. When THIS page carries the FAB, lift bottom-right-ish banners above its slot (FAB top edge
-  // = 1.5rem + 2.5rem; +1rem gap → 5rem). Ships only with the FAB (this sheet); the higher specificity
-  // beats the banner's own positional rules; engines without :has() keep today's overlap (they degrade,
-  // never break). bottom-left/top-*/center/inline banners are untouched.
-  'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:5rem}',
+  // = its bottom + 2.5rem; +1rem gap → bottom + 3.5rem, i.e. 5rem at the default). It is computed from
+  // the SAME token, so an author who raises the FAB raises the banner with it rather than parking the
+  // banner on the moved button. Ships only with the FAB (this sheet); the higher specificity beats the
+  // banner's own positional rules; engines without :has() keep today's overlap (they degrade, never
+  // break). bottom-left/top-*/center/inline banners are untouched.
+  'body:has([data-sw-back-to-top]) [data-sw-component="banner"]:is(:not([data-position]),[data-position="bottom-right"],[data-position="bottom"]){bottom:calc(var(--sw-back-to-top-bottom,1.5rem) + 3.5rem)}',
   // The slide transition is !important so it OWNS the `translate` easing: any competing `.btn{transition}`
   // rule (the base-css baseline, or a compiled utility) could otherwise clobber `translate` (transition is
   // a single shorthand — last declaration wins) → the button POPS instead of slides. !important on this

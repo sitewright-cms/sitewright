@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { request, type ClientRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import JSZip from 'jszip';
@@ -489,5 +491,103 @@ describe('POST /projects/:id/import/website/stream', () => {
     expect(r3.statusCode).toBe(429);
     release();
     await Promise.all([p1, p2]);
+  });
+});
+
+// A crawl runs for minutes; when the client that asked for it hangs up, it must stop — over a REAL socket,
+// because app.inject() never closes one. These routes used to listen for the REQUEST's 'close', which on a
+// POST has already fired (the body was consumed) by the time the handler wires it after `await
+// resolveProject`, so a hang-up cancelled nothing; and the agent route wired it only in ASYNC mode, the
+// one mode where the work must OUTLIVE the request (see abort-on-close.test.ts for the helper itself).
+describe('import routes — a client that hangs up (real socket)', () => {
+  /** A crawl that blocks until its signal aborts or the test releases it, exposing the signal it got. */
+  function blockingCrawl(): { crawl: () => Promise<CrawlResult>; started: Promise<AbortSignal>; release: () => void } {
+    let onStart!: (s: AbortSignal) => void;
+    const started = new Promise<AbortSignal>((r) => (onStart = r));
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    const crawl = async (_url: string, _opts: unknown, deps: { signal: AbortSignal }): Promise<CrawlResult> => {
+      onStart(deps.signal);
+      await Promise.race([released, new Promise((_r, reject) => deps.signal.addEventListener('abort', () => reject(new Error('aborted'))))]);
+      return onePageCrawl();
+    };
+    return { crawl: crawl as unknown as () => Promise<CrawlResult>, started, release };
+  }
+
+  async function listen(b: Built): Promise<number> {
+    await b.app.listen({ port: 0, host: '127.0.0.1' });
+    return (b.app.server.address() as AddressInfo).port;
+  }
+
+  /** POST JSON on its own connection; resolves with the status + body once (if) the response arrives. */
+  function post(port: number, path: string, body: unknown): { req: ClientRequest; res: Promise<{ status: number; body: string }> } {
+    let req!: ClientRequest;
+    const res = new Promise<{ status: number; body: string }>((resolve, reject) => {
+      req = request({ host: '127.0.0.1', port, path, method: 'POST', agent: false, headers: { 'content-type': 'application/json' } }, (r) => {
+        let text = '';
+        r.setEncoding('utf8');
+        r.on('data', (c: string) => (text += c));
+        r.on('end', () => resolve({ status: r.statusCode ?? 0, body: text }));
+      });
+      req.on('error', reject);
+    });
+    res.catch(() => {}); // a hung-up request rejects with "socket hang up" — expected
+    req.end(JSON.stringify(body));
+    return { req, res };
+  }
+
+  const abortedWithin = (signal: AbortSignal, ms: number): Promise<boolean> =>
+    signal.aborted
+      ? Promise.resolve(true)
+      : new Promise((resolve) => {
+          const t = setTimeout(() => resolve(false), ms);
+          signal.addEventListener('abort', () => {
+            clearTimeout(t);
+            resolve(true);
+          });
+        });
+
+  it('the SSE crawl import stops when the client disconnects mid-crawl', async () => {
+    const blocking = blockingCrawl();
+    const port = await listen(track(makeApp({ crawl: blocking.crawl })));
+    const { req } = post(port, '/projects/hang-sse/import/website/stream', { url: 'https://ex.com/' });
+    try {
+      const signal = await blocking.started;
+      expect(signal.aborted).toBe(false); // the client is still connected, reading the progress stream
+      req.destroy();
+      expect(await abortedWithin(signal, 2000)).toBe(true);
+    } finally {
+      blocking.release();
+    }
+  });
+
+  it('the agent import in SYNC mode (wait:true) stops when the caller hangs up', async () => {
+    const blocking = blockingCrawl();
+    const port = await listen(track(makeApp({ crawl: blocking.crawl })));
+    const { req } = post(port, '/projects/hang-sync/agent/import-website', { url: 'https://ex.com/', wait: true });
+    try {
+      const signal = await blocking.started;
+      expect(signal.aborted).toBe(false);
+      req.destroy();
+      expect(await abortedWithin(signal, 2000)).toBe(true);
+    } finally {
+      blocking.release();
+    }
+  });
+
+  it('the agent import in ASYNC mode keeps running after the caller has its 202 and goes away', async () => {
+    const blocking = blockingCrawl();
+    const b = track(makeApp({ crawl: blocking.crawl }));
+    const port = await listen(b);
+    const { res } = post(port, '/projects/hang-async/agent/import-website', { url: 'https://ex.com/' });
+    const signal = await blocking.started;
+    const answered = await res; // the connection is closed after this response (no keep-alive)
+    expect(answered.status).toBe(202);
+    const { jobId } = JSON.parse(answered.body) as { jobId: string };
+    expect(await abortedWithin(signal, 150)).toBe(false); // detached: the hang-up is not a cancel
+    blocking.release();
+    await ticks(20);
+    const job = await b.app.inject({ method: 'GET', url: `/projects/hang-async/agent/import-website/${jobId}` });
+    expect((JSON.parse(job.payload) as { status: string }).status).toBe('done');
   });
 });

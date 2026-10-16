@@ -849,9 +849,6 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
   return kind;
 }
 
-// Re-exported: the helper lived here before it moved to its own module (see the note there).
-export { abortOnClose };
-
 /** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
 const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
 
@@ -9479,7 +9476,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const refreshQ = ((req.query as { refresh?: string } | undefined)?.refresh ?? '').toLowerCase();
         const wantRefresh = refreshQ === '1' || refreshQ === 'true';
         const wantNames = (target.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS) as ViewportName[];
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
 
         // The BUILD always renders live (it's the agent's current work). Kick it off concurrently.
         const buildP = captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>);
@@ -9539,7 +9536,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // Render both sides concurrently (build = the agent's current work, source = the real site) and diff.
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -9581,7 +9578,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // targetPage is non-null (thrown above), so the only reachable error is a missing import source.
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // VISUAL leg first: render BUILD + SOURCE and diff (also tells us whether the ORIGINAL has modals).
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -9670,7 +9667,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const url = `http://127.0.0.1:${port}/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/${route}${route && !route.endsWith('/') ? '/' : ''}`;
         let samples: HeaderSample[];
         try {
-          samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(req).signal);
+          samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(reply).signal);
         } catch (err) {
           if (err instanceof HeaderPageNotRendered) {
             return reply.code(409).send({
@@ -9713,7 +9710,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           originHostPort: `127.0.0.1:${port}`,
         });
         if ('error' in target) return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
         // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
         const [build, liveSource] = await Promise.all([
@@ -9800,7 +9797,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // queued slot wait, the build, and Lighthouse — whose Chrome is killed. It used to only skip the
         // reply, so an abandoned audit kept building and auditing inside its render slot; two of those
         // held BOTH slots and the caller's retry waited out the queue into a 500.
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const { signal } = abort;
         try {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
@@ -9933,7 +9930,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Which default regions to capture (unknown names dropped; empty/absent → all defaults).
         const wanted = (req.query.regions ?? '').split(',').map((s) => s.trim()).filter((s) => Object.hasOwn(DEFAULT_COMPARE_REGIONS, s));
         const regions = wanted.length ? Object.fromEntries(wanted.map((n) => [n, DEFAULT_COMPARE_REGIONS[n]!])) : DEFAULT_COMPARE_REGIONS;
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const [build, source] = await Promise.all([
           captureUrlRegions(target.buildUrl, { mode: 'loopback', regions, signal: abort.signal }),
           captureUrlRegions(target.sourceUrl, { mode: 'pinned', regions, signal: abort.signal }),
@@ -9993,7 +9990,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to inspect' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // Unlike the capture tools this does NOT swallow render failures: an empty result would read as
         // "the original has no such element", which is precisely the wrong thing to tell a measuring agent.
         const measured = await captureUrlInspect(side === 'build' ? target.buildUrl : target.sourceUrl, {

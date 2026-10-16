@@ -508,7 +508,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const renderMode = renderModeOf(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
-    const abort = abortOnClose(req);
+    const abort = abortOnClose(reply);
 
     try {
       await streamImport(
@@ -562,9 +562,10 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
     // ASYNC mode detaches the work from the request, so the caller's socket closing is NOT a cancellation
-    // — only an explicit abort is. In sync mode a dropped connection still cancels, as before.
+    // — only an explicit abort is. In sync mode a dropped connection cancels. (This was wired the other
+    // way round — `!wait` — which only went unnoticed because the request-side listener never fired.)
     const wait = parsed.data.wait ?? false;
-    if (!wait) abortOnClose(req, abort);
+    if (wait) abortOnClose(reply, abort);
 
     const runImport = async (onProgress: (e: unknown) => void): Promise<Record<string, unknown>> => {
       const fetcher = makeFetcher(abort.signal);
@@ -685,7 +686,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
     const inferDatasets = wantsInferDatasets(req);
-    const abort = abortOnClose(req);
+    const abort = abortOnClose(reply);
 
     try {
       await streamImport(

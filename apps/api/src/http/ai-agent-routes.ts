@@ -336,7 +336,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
       else abort.abort();
     }, 15_000);
-    abortOnClose(req, abort);
+    abortOnClose(reply, abort);
 
     send('start', { conversationId, model: provider.model });
 
@@ -445,7 +445,7 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
         if (raw.writable && !raw.destroyed) raw.write(': ping\n\n');
         else abort.abort();
       }, 15_000);
-      abortOnClose(req, abort);
+      abortOnClose(reply, abort);
       send('start', { model: resolved.provider.model, pages: pages.length });
 
       const meter = async (usage: { inputTokens: number; outputTokens: number }): Promise<void> => {
@@ -537,12 +537,10 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
       const cloneToken = minted.token;
       const cloneKeyId = minted.keyId;
 
-      // Cancel the run if the client disconnects before we've replied (guarded so the normal
-      // post-response socket close never aborts a completed run).
-      let settled = false;
-      req.raw.on('close', () => {
-        if (!settled) abort.abort();
-      });
+      // Cancel the run if the client disconnects before we've replied. The response side, not
+      // `req.raw`: a POST's request stream has already closed by now (see abortOnClose), so a
+      // request-side listener never fired; the helper also ignores the close after a sent reply.
+      abortOnClose(reply, abort);
 
       const meter = async (usage: { inputTokens: number; outputTokens: number }): Promise<void> => {
         await deps.aiUsageRepo.record(ctx.userId, ctx.projectId, resolved.provider.model, usage);
@@ -579,10 +577,8 @@ export function registerAiAgentRoutes(app: FastifyInstance, deps: AiAgentRoutesD
           }
           next = await gen.next();
         }
-        settled = true;
         return reply.send({ ok: passedCount === total, model: resolved.provider.model, pages: results, total, passed: passedCount });
       } catch (err) {
-        settled = true;
         return reply.code(500).send({ error: err instanceof Error ? err.message : 'clone error' });
       } finally {
         clearAgentTokenActive(cloneToken);

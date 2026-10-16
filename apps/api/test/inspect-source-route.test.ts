@@ -14,7 +14,6 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { INSPECT_DEFAULT_STYLES, INSPECT_LIMITS } from '../src/render/inspect-probe.js';
-import { abortOnClose } from '../src/http/app.js';
 
 // vi.mock is hoisted above module-scope consts, so the spy has to be created inside vi.hoisted. Typed via
 // the generic (not via named-but-unused params) so `.mock.calls` stays type-safe.
@@ -192,29 +191,5 @@ describe('inspect probe contract', () => {
     for (const prop of ['font-family', 'font-size', 'font-weight', 'line-height', 'color', 'background-image', 'padding', 'border-radius', 'box-shadow', 'transform']) {
       expect(INSPECT_DEFAULT_STYLES as readonly string[]).toContain(prop);
     }
-  });
-});
-
-describe('abortOnClose', () => {
-  it('aborts the render when the client disconnects', () => {
-    // A browser render is expensive; if the requester has gone away the slot must be released rather than
-    // held for a response nobody will read.
-    let onClose: (() => void) | undefined;
-    const controller = abortOnClose({ raw: { on: (_e, cb) => (onClose = cb) } });
-    expect(controller.signal.aborted).toBe(false);
-    onClose?.();
-    expect(controller.signal.aborted).toBe(true);
-  });
-
-  // Some routes already own a controller — it has other reasons to fire (a deadline, an explicit cancel)
-  // — and only need the disconnect wired onto it.
-  it('wires the disconnect onto a controller the route already owns, and hands that one back', () => {
-    let onClose: (() => void) | undefined;
-    const own = new AbortController();
-    const returned = abortOnClose({ raw: { on: (_e, cb) => (onClose = cb) } }, own);
-    expect(returned).toBe(own);
-    expect(own.signal.aborted).toBe(false);
-    onClose?.();
-    expect(own.signal.aborted).toBe(true);
   });
 });

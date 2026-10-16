@@ -21,7 +21,7 @@ vi.mock('../src/api', async () => {
   };
 });
 
-import { DatabaseIntegrityModal, fixPlan } from '../src/views/settings/DatabaseIntegrityModal';
+import { DatabaseIntegrityModal, fixPlan, repairSummary, runRepairBatches } from '../src/views/settings/DatabaseIntegrityModal';
 
 /** The server's action catalogue, with the flags that decide what Fix all may run (integrity.ts ACTIONS). */
 const A = {
@@ -52,7 +52,7 @@ const issueOf = (over: Partial<IntegrityIssue>): IntegrityIssue => ({ ...orphanI
 
 /** The batch endpoint's answer when every repair it was sent succeeded. */
 const allApplied = async (repairs: IntegrityActionInput[]) => ({
-  results: repairs.map((r) => ({ action: r.action, projectId: r.projectId, subject: r.subject, ok: true, changed: 1, message: 'ok' })),
+  results: repairs.map((r) => ({ action: r.action, projectId: r.projectId, subject: r.subject, ok: true as const, changed: 1, message: 'ok' })),
 });
 
 const report = (over: Partial<DatabaseIntegrityReport> = {}): DatabaseIntegrityReport => ({
@@ -232,18 +232,27 @@ describe('DatabaseIntegrityModal', () => {
   });
 
   it('sends a long report in batches, and reports the rest with the reason when a request is refused', async () => {
-    const many = Array.from({ length: 450 }, (_, i) => issueOf({ subject: `ds${i}` }));
+    // The WIRING only: batch sizes, stop-at-refusal and the summary wording are proven on the pure
+    // functions below at the real 200-per-request size. Rendering hundreds of findings in jsdom to
+    // prove them here timed out on a 2-core CI runner, so the batch size is injected instead.
+    const many = Array.from({ length: 5 }, (_, i) => issueOf({ subject: `ds${i}` }));
     checkDatabaseIntegrity.mockImplementation(stream(report({ issues: many })));
     repairIntegrityBatch.mockImplementationOnce(allApplied).mockRejectedValueOnce(new ApiError(429, 'too many requests'));
-    render(<DatabaseIntegrityModal onClose={() => {}} />);
+    render(<DatabaseIntegrityModal onClose={() => {}} batchSize={2} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(450\)/ }));
-    fireEvent.click(within(await screen.findByRole('dialog', { name: /Fix 450 issues\?/ })).getByRole('button', { name: 'Fix them' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Fix all issues \(5\)/ }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: /Fix 5 issues\?/ })).getByRole('button', { name: 'Fix them' }));
 
-    // 200 + 200 (+ 50): the second request is refused, so it and the third never ran — and say so.
+    // 2 + 2 (+ 1): the second request is refused, so it and the third never ran — and say so.
     await waitFor(() => expect(repairIntegrityBatch).toHaveBeenCalledTimes(2));
-    expect(repairIntegrityBatch.mock.calls[0]![0]).toHaveLength(200);
-    expect(await screen.findByText(/Repaired 200 issues\. 250 could not be applied — ds200: too many requests/)).toBeInTheDocument();
+    expect(repairIntegrityBatch.mock.calls.map((c) => (c[0] as IntegrityActionInput[]).map((r) => r.subject))).toEqual([
+      ['ds0', 'ds1'],
+      ['ds2', 'ds3'],
+    ]);
+    expect(
+      await screen.findByText('Repaired 2 issues. 3 could not be applied — ds2: too many requests; ds3: too many requests; ds4: too many requests'),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(checkDatabaseIntegrity).toHaveBeenCalledTimes(2)); // re-scanned once, after
   });
 
   it('shows Fix all DISABLED, with the reason, when nothing can be fixed unattended', async () => {
@@ -307,5 +316,90 @@ describe('DatabaseIntegrityModal', () => {
     await waitFor(() =>
       expect(repairIntegrity).toHaveBeenCalledWith({ action: 'reassign_entries', projectId: 'p1', subject: 'items', targetDataset: 'live_two' }),
     );
+  });
+});
+
+/** A Fix all plan of `count` safe repairs, subjects ds0…ds{count-1}, in the order Fix all sends them. */
+const planOf = (count: number) => fixPlan(Array.from({ length: count }, (_, i) => issueOf({ subject: `ds${i}` }))).auto;
+const subjects = (repairs: IntegrityActionInput[]) => repairs.map((r) => r.subject);
+
+describe('runRepairBatches — Fix all, one request per 200 repairs', () => {
+  it('sends 200 + 200 + 50, in plan order, and returns one result per repair', async () => {
+    const send = vi.fn(allApplied);
+    const results = await runRepairBatches(planOf(450), send);
+
+    expect(send.mock.calls.map(([repairs]) => repairs.length)).toEqual([200, 200, 50]);
+    expect(subjects(send.mock.calls[1]![0]).slice(0, 2)).toEqual(['ds200', 'ds201']);
+    expect(send.mock.calls[0]![0][0]).toEqual({ action: 'recreate_dataset', projectId: 'p1', subject: 'ds0' });
+    expect(results).toHaveLength(450);
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+
+  it('STOPS at a refused request: that chunk and every later one are never sent, and carry the reason', async () => {
+    const send = vi.fn(allApplied).mockImplementationOnce(allApplied).mockRejectedValueOnce(new ApiError(429, 'too many requests'));
+    const results = await runRepairBatches(planOf(450), send);
+
+    expect(send).toHaveBeenCalledTimes(2); // the third (ds400…ds449) was never sent
+    expect(results).toHaveLength(450);
+    expect(results.slice(0, 200).every((r) => r.ok)).toBe(true);
+    const failed = results.slice(200);
+    expect(failed.every((r) => !r.ok && r.error === 'too many requests')).toBe(true);
+    expect([failed[0]!.subject, failed[249]!.subject]).toEqual(['ds200', 'ds449']);
+  });
+
+  it('says a request with NO answer may have run, rather than claiming it did not', async () => {
+    const results = await runRepairBatches(planOf(3), vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    expect(results.map((r) => (r.ok ? 'ok' : r.error))).toEqual(
+      Array(3).fill('no answer from the server — the re-check shows what was applied'),
+    );
+  });
+
+  it('keeps going past ONE failed repair inside a request that succeeded', async () => {
+    const send = vi.fn(async (repairs: IntegrityActionInput[]) => ({
+      results: repairs.map((r) =>
+        r.subject === 'ds1'
+          ? { action: r.action, projectId: r.projectId, subject: r.subject, ok: false as const, error: 'dataset slug is taken' }
+          : { action: r.action, projectId: r.projectId, subject: r.subject, ok: true as const, changed: 1, message: 'ok' },
+      ),
+    }));
+    const results = await runRepairBatches(planOf(5), send, 2);
+
+    expect(send.mock.calls.map(([repairs]) => subjects(repairs))).toEqual([['ds0', 'ds1'], ['ds2', 'ds3'], ['ds4']]);
+    expect(results.filter((r) => !r.ok).map((r) => r.subject)).toEqual(['ds1']);
+  });
+
+  it('treats a batch size below one as one, instead of looping forever', async () => {
+    const send = vi.fn(allApplied);
+    await runRepairBatches(planOf(2), send, 0);
+    expect(send.mock.calls.map(([repairs]) => subjects(repairs))).toEqual([['ds0'], ['ds1']]);
+  });
+});
+
+describe('repairSummary — what Fix all says it did', () => {
+  const ok = (subject: string) => ({ action: 'recreate_dataset' as const, projectId: 'p1', subject, ok: true as const, changed: 1, message: 'ok' });
+  const no = (subject: string, error = 'too many requests') => ({ action: 'recreate_dataset' as const, projectId: 'p1', subject, ok: false as const, error });
+
+  it('names the first five failures with their reason, and counts the rest', () => {
+    const results = [...Array.from({ length: 200 }, (_, i) => ok(`ds${i}`)), ...Array.from({ length: 250 }, (_, i) => no(`ds${200 + i}`))];
+    expect(repairSummary(results, { decide: 0, unfixable: 0 })).toEqual({
+      tone: 'warn',
+      text:
+        'Repaired 200 issues. 250 could not be applied — ds200: too many requests; ds201: too many requests; ' +
+        'ds202: too many requests; ds203: too many requests; ds204: too many requests … and 245 more',
+    });
+  });
+
+  it('is a success note when everything applied, and still counts what the plan left alone', () => {
+    expect(repairSummary([ok('items')], { decide: 3, unfixable: 1 })).toEqual({
+      tone: 'ok',
+      text: 'Repaired 1 issue. 3 left for you to decide on. 1 cannot be fixed from here.',
+    });
+  });
+
+  it('says plainly when nothing was repaired', () => {
+    expect(repairSummary([no('items', 'dataset slug is taken')], { decide: 0, unfixable: 0 })).toEqual({
+      tone: 'warn',
+      text: 'Nothing was repaired. 1 could not be applied — items: dataset slug is taken',
+    });
   });
 });

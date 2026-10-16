@@ -6,6 +6,7 @@ import {
   INTEGRITY_REPAIR_BATCH_MAX,
   type DatabaseIntegrityReport,
   type IntegrityAction,
+  type IntegrityActionInput,
   type IntegrityBatchResult,
   type IntegrityIssue,
   type IntegrityProgress,
@@ -170,6 +171,65 @@ export function fixPlan(issues: IntegrityIssue[]): { auto: PlannedFix[]; decide:
 
 const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
+/**
+ * Send `fixes` to the batch endpoint `size` at a time, in order, and return one result per fix.
+ *
+ * A request that FAILS stops the run: no later chunk is sent, and that chunk plus every one after it is
+ * reported as not applied, with the reason. A refusal from the server (signed out, rate-limited, already
+ * running) means the chunk did not run either; with NO answer it may have — say so, and let the re-scan
+ * that follows show what actually happened. A failure of ONE repair inside a request that succeeded is
+ * the server's per-item result and does not stop the run.
+ */
+export async function runRepairBatches(
+  fixes: PlannedFix[],
+  send: (repairs: IntegrityActionInput[]) => Promise<{ results: IntegrityBatchResult[] }>,
+  size: number = INTEGRITY_REPAIR_BATCH_MAX,
+): Promise<IntegrityBatchResult[]> {
+  const step = Math.max(1, Math.trunc(size)); // a zero/fractional size must not loop forever
+  const results: IntegrityBatchResult[] = [];
+  for (let i = 0; i < fixes.length; i += step) {
+    const chunk = fixes.slice(i, i + step);
+    try {
+      const res = await send(chunk.map(({ issue, action, projectId }) => ({ action: action.id, projectId, subject: issue.subject })));
+      results.push(...res.results);
+    } catch (err) {
+      const error = err instanceof ApiError ? err.message : 'no answer from the server — the re-check shows what was applied';
+      for (const { issue, action, projectId } of fixes.slice(i)) results.push({ action: action.id, projectId, subject: issue.subject, ok: false, error });
+      break;
+    }
+  }
+  return results;
+}
+
+/**
+ * The note shown after Fix all: what was repaired, what was not and why (the first five, by subject),
+ * and how many issues the plan deliberately left alone — so the operator never has to infer any of it
+ * from the re-scan alone.
+ */
+export function repairSummary(
+  results: IntegrityBatchResult[],
+  leftAlone: { decide: number; unfixable: number },
+): { tone: 'ok' | 'warn'; text: string } {
+  const done = results.filter((r) => r.ok);
+  const failed = results.filter((r): r is Extract<IntegrityBatchResult, { ok: false }> => !r.ok);
+  return {
+    tone: failed.length > 0 ? 'warn' : 'ok',
+    text: [
+      done.length > 0 ? `Repaired ${n(done.length, 'issue')}.` : 'Nothing was repaired.',
+      failed.length > 0
+        ? `${failed.length} could not be applied — ${failed
+            .slice(0, 5)
+            .map((f) => `${f.subject}: ${f.error}`)
+            .join('; ')}${failed.length > 5 ? ` … and ${failed.length - 5} more` : ''}`
+        : '',
+      leftAlone.decide > 0 ? `${leftAlone.decide} left for you to decide on.` : '',
+      leftAlone.unfixable > 0 ? `${leftAlone.unfixable} cannot be fixed from here.` : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  };
+}
+
 /** One confirmation line per KIND of repair, so a report with fifty findings stays readable. */
 function planLines(fixes: PlannedFix[]): string[] {
   const groups = new Map<string, PlannedFix[]>();
@@ -200,7 +260,15 @@ function PlanSection({ title, lines }: { title: string; lines: string[] }) {
   );
 }
 
-export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
+export function DatabaseIntegrityModal({
+  onClose,
+  batchSize = INTEGRITY_REPAIR_BATCH_MAX,
+}: {
+  onClose: () => void;
+  /** Most repairs per Fix all request. The server's cap; injectable so batching can be exercised
+   *  without rendering hundreds of findings. */
+  batchSize?: number;
+}) {
   const { confirm, dialog } = useDialogs();
   const [progress, setProgress] = useState<IntegrityProgress | null>(null);
   const [report, setReport] = useState<DatabaseIntegrityReport | null>(null);
@@ -309,42 +377,9 @@ export function DatabaseIntegrityModal({ onClose }: { onClose: () => void }) {
 
     setBusy(true);
     setNote(null);
-    const results: IntegrityBatchResult[] = [];
-    for (let i = 0; i < auto.length; i += INTEGRITY_REPAIR_BATCH_MAX) {
-      const chunk = auto.slice(i, i + INTEGRITY_REPAIR_BATCH_MAX);
-      try {
-        const res = await api.repairIntegrityBatch(
-          chunk.map(({ issue, action, projectId }) => ({ action: action.id, projectId, subject: issue.subject })),
-        );
-        results.push(...res.results);
-      } catch (err) {
-        // The REQUEST failed, so no later chunk is sent. A refusal from the server (signed out,
-        // rate-limited, already running) means this chunk did not run either; with NO answer it may have
-        // — say so, and let the re-scan below show what actually happened.
-        const error = err instanceof ApiError ? err.message : 'no answer from the server — the re-check shows what was applied';
-        for (const { issue, action, projectId } of auto.slice(i)) results.push({ action: action.id, projectId, subject: issue.subject, ok: false, error });
-        break;
-      }
-    }
+    const results = await runRepairBatches(auto, (repairs) => api.repairIntegrityBatch(repairs), batchSize);
     setBusy(false);
-    const done = results.filter((r) => r.ok);
-    const failed = results.filter((r): r is Extract<IntegrityBatchResult, { ok: false }> => !r.ok);
-    setNote({
-      tone: failed.length > 0 ? 'warn' : 'ok',
-      text: [
-        done.length > 0 ? `Repaired ${n(done.length, 'issue')}.` : 'Nothing was repaired.',
-        failed.length > 0
-          ? `${failed.length} could not be applied — ${failed
-              .slice(0, 5)
-              .map((f) => `${f.subject}: ${f.error}`)
-              .join('; ')}${failed.length > 5 ? ` … and ${failed.length - 5} more` : ''}`
-          : '',
-        decide.length > 0 ? `${decide.length} left for you to decide on.` : '',
-        unfixable.length > 0 ? `${unfixable.length} cannot be fixed from here.` : '',
-      ]
-        .filter(Boolean)
-        .join(' '),
-    });
+    setNote(repairSummary(results, { decide: decide.length, unfixable: unfixable.length }));
     await run();
   }
 

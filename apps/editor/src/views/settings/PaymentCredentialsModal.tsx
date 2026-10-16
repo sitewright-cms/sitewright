@@ -77,9 +77,10 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     setSaved(false);
     try {
       await api.putProjectPayment(projectId, { gatewayId, mode, values: edits });
-      await reload();
+      // Saved — so the typed values go and "Saved" shows even if re-reading the masks then fails.
       setEdits({});
       setSaved(true);
+      await reload().catch(() => undefined);
     } catch (e) {
       const details = (e as { details?: unknown }).details;
       setError(Array.isArray(details) ? (details as string[]) : [(e as Error).message]);
@@ -103,8 +104,11 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     setError([]);
     try {
       await api.deleteProjectPayment(projectId, gatewayId);
-      await reload();
       setEdits({});
+      setMode('test');
+      setProof(null);
+      setSaved(false);
+      await reload().catch(() => undefined);
     } catch (e) {
       setError([(e as Error).message]);
     } finally {

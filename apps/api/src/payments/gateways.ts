@@ -143,13 +143,15 @@ export class GatewayRepository {
    */
   async bindings(ctx: ProjectContext): Promise<PaymentBindingStored[]> {
     const byGateway = new Map<string, PaymentBindingStored>();
-    for (const row of (await this.contentRepo.list(ctx, 'project_payment')) as unknown[]) {
-      const parsed = PaymentBindingStoredSchema.safeParse(row);
-      if (!parsed.success) continue;
-      const prior = byGateway.get(parsed.data.gatewayId);
-      // Two rows for one gateway survive only a save interrupted between writing the new row and
-      // retiring the legacy one — the later write is the one the operator made.
-      if (!prior || (parsed.data.updatedAt ?? '') > (prior.updatedAt ?? '')) byGateway.set(parsed.data.gatewayId, parsed.data);
+    // The legacy single row LAST: a gateway that also has its own row keeps that one. Both exist only
+    // after a save interrupted between writing the new row and retiring the old, and the new row is the
+    // operator's later write. (No gateway may be named "settings", so the ids cannot collide.)
+    const rows = (await this.contentRepo.listWithIds(ctx, 'project_payment')).sort(
+      (a, b) => Number(a.id === LEGACY_BINDING_ID) - Number(b.id === LEGACY_BINDING_ID),
+    );
+    for (const row of rows) {
+      const parsed = PaymentBindingStoredSchema.safeParse(row.data);
+      if (parsed.success && !byGateway.has(parsed.data.gatewayId)) byGateway.set(parsed.data.gatewayId, parsed.data);
     }
     return [...byGateway.values()].sort((a, b) => a.gatewayId.localeCompare(b.gatewayId));
   }
@@ -172,7 +174,6 @@ export class GatewayRepository {
   /** Writes a binding under its gateway id, retiring the legacy single row if it held this gateway. */
   private async writeBinding(ctx: ProjectContext, next: PaymentBindingStored): Promise<void> {
     await this.contentRepo.put(ctx, 'project_payment', next.gatewayId, next);
-    if (next.gatewayId === LEGACY_BINDING_ID) return; // a gateway literally named "settings" IS that row
     await this.removeLegacyRow(ctx, next.gatewayId);
   }
 

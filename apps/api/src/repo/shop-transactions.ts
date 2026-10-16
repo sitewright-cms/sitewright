@@ -586,11 +586,17 @@ export class ShopTransactionRepository {
   }
 
   /** How many `created` rows a project holds — the storage-exhaustion bound for abandoned sessions. */
-  async countOpen(projectId: string): Promise<number> {
+  async countOpen(projectId: string, gatewayId?: string): Promise<number> {
     const [{ n } = { n: 0 }] = await this.db
       .select({ n: sql<number>`count(*)` })
       .from(shopTransactions)
-      .where(and(eq(shopTransactions.projectId, projectId), inArray(shopTransactions.status, ['created', 'pending'])));
+      .where(
+        and(
+          eq(shopTransactions.projectId, projectId),
+          inArray(shopTransactions.status, ['created', 'pending']),
+          gatewayId !== undefined ? eq(shopTransactions.gatewayId, gatewayId) : undefined,
+        ),
+      );
     return Number(n);
   }
 }

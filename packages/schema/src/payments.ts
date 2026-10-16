@@ -126,7 +126,10 @@ export const GatewayIdSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-z][a-z0-9_-]*$/, 'must be lowercase letters, digits, _ or -')
-  .refine((k) => k !== '__proto__' && k !== 'constructor' && k !== 'prototype', 'disallowed id');
+  .refine((k) => k !== '__proto__' && k !== 'constructor' && k !== 'prototype', 'disallowed id')
+  // ★ RESERVED: a project's credentials are stored one row per gateway id, and `settings` is the row id
+  // the single binding of older projects still lives under. A gateway of that name would overwrite it.
+  .refine((k) => k !== 'settings', '"settings" is reserved');
 
 /** Mode of a payment: a provider sandbox, or real money. Stamped on every transaction. */
 export const PAYMENT_MODES = ['test', 'live'] as const;

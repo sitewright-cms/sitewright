@@ -282,6 +282,22 @@ describe('level 2 — a project’s own credentials', () => {
       expect(modes.map((b) => [b.gatewayId, b.mode])).toEqual([['acme', 'test'], ['beta', 'live']]);
     });
 
+    it('★ refuses to remove a provider while an order through it is still open', async () => {
+      await h.db.insert(shopTransactions).values({
+        id: 'txn_open', projectId, channelKey: 'pay', gatewayId: 'acme', mode: 'test', status: 'pending', currency: 'EUR',
+        subtotalMinor: 100, totalMinor: 100, lines: [], buyer: {}, catalogDigest: 'd', publicToken: 'tok_open', createdAt: new Date(), updatedAt: new Date(),
+      } as never);
+      const res = await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toContain('still open');
+      await h.db.update(shopTransactions).set({ status: 'expired' }).where(eq(shopTransactions.id, 'txn_open'));
+      expect((await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } })).statusCode).toBe(204);
+    });
+
+    it('"settings" is not a gateway id — it is where older projects kept their one binding', async () => {
+      expect((await admin.put('/admin/payment-gateways/settings', { ...GATEWAY, name: 'Clash' })).statusCode).toBe(400);
+    });
+
     it('removes one provider — refused while a checkout channel still charges through it', async () => {
       await admin.project(projectId).putContent('settings', 'settings', {
         identity: { name: 'Shop', colors: { primary: '#0a7' } },

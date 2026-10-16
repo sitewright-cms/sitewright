@@ -11771,6 +11771,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // The order's OWN gateway — a project may hold several providers.
         const resolved = await gatewayRepo.resolveCredentials({ userId: 'system', projectId: txn.projectId, role: 'owner' }, txn.gatewayId);
         if (!resolved.ok || resolved.gateway.id !== txn.gatewayId || !resolved.gateway.status) continue;
+        // ★ In the mode the ORDER was taken in — the refund's rule. Asking about a live order with test
+        // keys (the provider was switched back to test meanwhile) reaches an account that never saw it.
+        if (resolved.mode !== txn.mode) continue;
         const status = await fetchProviderStatus(resolved.gateway, txn.mode, {
           cred: resolved.cred,
           amount: { minor: txn.amounts.totalMinor, decimal: fromMinorUnits(txn.amounts.totalMinor, txn.currency), currency: txn.currency },

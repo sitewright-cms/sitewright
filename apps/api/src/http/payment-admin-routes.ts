@@ -299,13 +299,21 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
   app.delete<{ Params: { projectId: string; gatewayId: string } }>('/projects/:projectId/payment/:gatewayId', { config: rl(30) }, async (req, reply) => {
     const { ctx } = await resolveProject(req, 'session-only');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const { gatewayId } = req.params;
+    const parsedId = GatewayIdSchema.safeParse(req.params.gatewayId);
+    if (!parsedId.success) return reply.code(404).send({ error: 'no credentials for that gateway' });
+    const gatewayId = parsedId.data;
     // A checkout channel still charging through it would turn every order there into an error, so the
-    // channel goes first. Open orders keep their own gateway id; their webhook then finds nothing to
-    // verify with, and the order waits for the operator.
+    // channel goes first.
     const users = ((await deps.getShop(ctx.projectId))?.channels ?? []).filter((c) => c.kind === 'checkout' && c.gatewayId === gatewayId);
     if (users.length > 0) {
       return reply.code(409).send({ error: `checkout channel${users.length > 1 ? 's' : ''} ${users.map((c) => `"${c.key}"`).join(', ')} still charge through "${gatewayId}" — remove or switch ${users.length > 1 ? 'them' : 'it'} first` });
+    }
+    // ★ And not while an order through it is still open. A buyer may be paying at the provider right
+    // now: without the keys their webhook cannot be verified and the reconciler cannot ask, so a PAID
+    // order would never be confirmed, its stock never committed and nobody mailed.
+    const open = await transactions.countOpen(ctx.projectId, gatewayId);
+    if (open > 0) {
+      return reply.code(409).send({ error: `${open} order${open > 1 ? 's' : ''} through "${gatewayId}" ${open > 1 ? 'are' : 'is'} still open — keep the keys until ${open > 1 ? 'they are' : 'it is'} paid, expired or cancelled` });
     }
     if (!(await gateways.removeBinding(ctx, gatewayId))) return reply.code(404).send({ error: 'no credentials for that gateway' });
     return reply.code(204).send();

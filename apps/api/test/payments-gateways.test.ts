@@ -205,6 +205,13 @@ describe('project bindings (level 2)', () => {
     expect((await repo.bindings(ctx)).length).toBe(1);
   });
 
+  it('★ an own row ALWAYS wins over the legacy row for the same gateway, whatever the timestamps say', async () => {
+    await contentRepo.put(ctx, 'project_payment', 'acme', { gatewayId: 'acme', mode: 'live', values: {}, updatedAt: '2020-01-01T00:00:00.000Z' });
+    await contentRepo.put(ctx, 'project_payment', 'settings', { gatewayId: 'acme', mode: 'test', values: {}, updatedAt: '2030-01-01T00:00:00.000Z' });
+    expect((await repo.binding(ctx, 'acme'))?.mode).toBe('live');
+    expect((await repo.bindings(ctx)).length).toBe(1);
+  });
+
   it('a gateway the project has no credentials for resolves as not-configured, and removal takes one provider only', async () => {
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_old12345' } });
     await repo.put(custom({ id: 'other', name: 'Other' }), 'admin1');

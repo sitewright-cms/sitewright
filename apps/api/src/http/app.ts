@@ -370,7 +370,7 @@ import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
 import { applyTextEdits, readTextField, writeTextField, TEXT_PATCH_FIELDS } from '../repo/text-patch.js';
-import { headerReport, HEADER_MEASURE_WIDTHS, type HeaderSample } from '../render/header-measure.js';
+import { headerReport, HEADER_MEASURE_WIDTHS, HeaderPageNotRendered, HeaderMeasureAborted, type HeaderSample } from '../render/header-measure.js';
 import { normalizeEntryValues } from '../repo/entry-values.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
@@ -9455,7 +9455,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // same on every page). content:read. See render/header-measure.ts.
     app.get<{ Params: { projectId: string; pageId: string } }>(
       '/projects/:projectId/header-measure/:pageId',
-      { config: rl(6) },
+      { config: rl(3) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:read');
         const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
@@ -9476,11 +9476,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         try {
           samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(req).signal);
         } catch (err) {
+          if (err instanceof HeaderPageNotRendered) {
+            return reply.code(409).send({
+              error: `page "${page.id}" did not render on the draft site (is a parent page a draft?) — measure a page that is live there, e.g. "home"`,
+            });
+          }
+          // The caller is gone; nothing is listening for a body.
+          if (err instanceof HeaderMeasureAborted) return reply.code(499).send();
           // Logged in full; the reply never echoes it — a navigation error names the loopback origin.
-          app.log.warn({ err, project: project.id }, 'header measurement failed');
+          app.log.error({ err, project: project.id }, 'header measurement failed');
           return reply.code(503).send({ error: 'the header could not be measured right now (the renderer is busy or unavailable) — retry shortly' });
         }
-        return reply.send({ page: page.id, route: pagePath(page, byId), widths: HEADER_MEASURE_WIDTHS, ...headerReport(samples) });
+        return reply.send({ page: page.id, route: pagePath(page, byId), widths: samples.map((s) => s.width), ...headerReport(samples) });
       },
     );
 

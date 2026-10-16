@@ -22,6 +22,22 @@
  */
 export const HEADER_MEASURE_WIDTHS = [390, 640, 768, 1024, 1280, 1536] as const;
 
+/** The page never rendered on the draft site (an error / 404 document) — not "the site has no header". */
+export class HeaderPageNotRendered extends Error {
+  constructor() {
+    super('the page did not render on the draft site');
+    this.name = 'HeaderPageNotRendered';
+  }
+}
+
+/** The caller went away mid-measurement; the render slot was released early. */
+export class HeaderMeasureAborted extends Error {
+  constructor() {
+    super('measurement aborted');
+    this.name = 'HeaderMeasureAborted';
+  }
+}
+
 /** What the in-browser probe reports at one width (null fields = could not be measured there). */
 export interface HeaderSample {
   width: number;
@@ -98,8 +114,11 @@ export function headerReport(samples: readonly HeaderSample[]): HeaderReport {
   }
   const wrong = rows.filter((r) => r.verdict === 'too-small' || r.verdict === 'too-large');
   const css = wrong.length > 0 ? headerTokenCss(rows) : null;
+  // A fixed header whose height could not be read at some width: never call that "nothing to change".
+  const gaps = rows.filter((r) => r.position === 'fixed' && r.verdict === 'unmeasured').map((r) => `${r.width}px`);
+  if (gaps.length > 0) advice.push(`The bar could not be measured at ${gaps.join(', ')} — re-run measure_header before trusting those widths.`);
   if (wrong.length === 0) {
-    advice.push('--sw-header-h matches the bar at every measured width — nothing to change.');
+    if (gaps.length === 0) advice.push('--sw-header-h matches the bar at every measured width — nothing to change.');
   } else {
     const small = wrong.filter((r) => r.verdict === 'too-small').map((r) => `${r.width}px`);
     const large = wrong.filter((r) => r.verdict === 'too-large').map((r) => `${r.width}px`);
@@ -110,7 +129,7 @@ export function headerReport(samples: readonly HeaderSample[]): HeaderReport {
     );
   }
   if (fixedRows.length < rows.filter((r) => r.position !== null).length) {
-    advice.push('The header is fixed at some widths only; the css covers the fixed widths, from the first one up.');
+    advice.push('The header is fixed at some widths only; where it is not fixed the token has no visible effect, so the css can apply everywhere.');
   }
   // `.sw-top-padding` that silently computes something other than the token: a p-*/pt-* utility or
   // inline padding on the same element wins on source order (a 0 is a deliberate opt-out — not flagged).

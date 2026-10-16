@@ -17,12 +17,12 @@ import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, typ
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
-import { BEHAVIOUR_PROBE, CLIP_PROBE, HEADER_POSITION, HEADER_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { BEHAVIOUR_PROBE, CLIP_PROBE, HEADER_POSITION, HEADER_PROBE, NAV_COUNT, NAV_TOGGLE, PAGE_RENDERED } from './clone-audit-probe.js';
 import { clampShotForModel } from './mcp-image.js';
 import { clampImageForModel } from '@sitewright/image-pipeline';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts, HeaderFacts } from './clone-audit.js';
-import type { HeaderSample } from './header-measure.js';
+import { HeaderMeasureAborted, HeaderPageNotRendered, type HeaderSample } from './header-measure.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
 type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
@@ -237,13 +237,26 @@ export async function measureHeaderAt(url: string, widths: readonly number[], si
   const browser = await getBrowser();
   return withRenderSlot(async () => {
     const vp = SCREENSHOT_VIEWPORTS.laptop;
+    if (signal?.aborted) throw new HeaderMeasureAborted();
     const { context, page } = await prepPage(browser, url, 'loopback', { ...vp, width: widths[0] ?? vp.width, isMobile: false }, signal);
+    // A caller that goes away must free the render slot NOW, not after the load + settle + six probes:
+    // closing the context rejects whatever is pending (prepPage only honours the signal on the pinned path).
+    const onAbort = (): void => void context.close().catch(() => {});
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       await settlePage(page, { freeze: false });
+      if (signal?.aborted) throw new HeaderMeasureAborted();
+      // prepPage swallows a failed navigation, and a 404 / error page has no #page-content — without this a
+      // page that never rendered would read as "the site has no header".
+      const rendered = ((await page.evaluate(PAGE_RENDERED as () => unknown).catch(() => false)) as boolean) === true;
+      if (!rendered) throw new HeaderPageNotRendered();
       const out: HeaderSample[] = [];
       for (const width of widths) {
-        if (signal?.aborted) break;
+        if (signal?.aborted) throw new HeaderMeasureAborted();
         await page.setViewportSize({ width, height: vp.height });
+        // Media queries apply on the next layout, but a debounced resize handler (the sticky runtime
+        // re-measures on resize) needs a beat; HEADER_PROBE then settles on the height itself.
+        await page.waitForTimeout(200);
         const position = ((await page.evaluate(HEADER_POSITION as () => unknown).catch(() => null)) as string | null) ?? null;
         const facts = position === 'fixed'
           ? ((await page.evaluate(HEADER_PROBE as () => Promise<unknown>).catch(() => null)) as HeaderFacts | null)
@@ -252,6 +265,7 @@ export async function measureHeaderAt(url: string, widths: readonly number[], si
       }
       return out;
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       await context.close().catch(() => {});
     }
   });

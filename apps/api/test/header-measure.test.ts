@@ -54,6 +54,20 @@ describe('headerReport', () => {
     expect(report.advice[0]).toMatch(/not fixed/);
   });
 
+  it('never says "nothing to change" while a fixed width could not be read', () => {
+    const report = headerReport([sample(390, 72, 72), sample(1536, null, null)]);
+    expect(report.rows.map((r) => r.verdict)).toEqual(['ok', 'unmeasured']);
+    expect(report.css).toBeNull();
+    expect(report.advice.join(' ')).toMatch(/could not be measured at 1536px/);
+    expect(report.advice.join(' ')).not.toMatch(/nothing to change/);
+  });
+
+  it('a height that goes up and back down gets a query per change (the later one wins)', () => {
+    expect(headerTokenCss([sample(390, 96, 72), sample(768, 150, 72), sample(1280, 96, 76)])).toBe(
+      ':root{--sw-header-h:96px}\n@media (min-width:768px){:root{--sw-header-h:150px}}\n@media (min-width:1280px){:root{--sw-header-h:96px}}',
+    );
+  });
+
   it('says so when nothing could be measured', () => {
     expect(headerReport([]).advice[0]).toMatch(/could not be measured/);
     expect(headerReport([sample(390, null, null, { position: null })]).rows[0]!.verdict).toBe('unmeasured');

@@ -7,6 +7,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { measureHeaderAt } from '../src/render/compare.js';
+import { HeaderPageNotRendered } from '../src/render/header-measure.js';
 
 // Mock ONLY the browser-driving measurement; the route's page resolution, refusals and the pure report
 // stay real (the report is covered directly in header-measure.test.ts).
@@ -82,6 +83,22 @@ describe('GET /projects/:id/header-measure/:pageId', () => {
     expect((await measure(pid, t, 'shop')).statusCode).toBe(400);
     expect((await measure(pid, t, 'nope')).statusCode).toBe(404);
     expect(measureHeaderAt).not.toHaveBeenCalled();
+  });
+
+  it('a page that did not render on the draft site is a 409 that says why — not "no header"', async () => {
+    const { t, pid } = await setup();
+    await putPage(pid, t, { id: 'home', path: '', title: 'Home', status: 'published', source: '<h1>Hi</h1>' });
+    vi.mocked(measureHeaderAt).mockRejectedValueOnce(new HeaderPageNotRendered());
+    const r = await measure(pid, t, 'home');
+    expect(r.statusCode).toBe(409);
+    expect((r.json() as { error: string }).error).toMatch(/did not render on the draft site/);
+  });
+
+  it('reports the widths it actually measured', async () => {
+    const { t, pid } = await setup();
+    await putPage(pid, t, { id: 'home', path: '', title: 'Home', status: 'published', source: '<h1>Hi</h1>' });
+    vi.mocked(measureHeaderAt).mockResolvedValueOnce([{ width: 390, position: 'fixed', bar: 72, token: 72, spacerPad: null }]);
+    expect((await measure(pid, t, 'home')).json()).toMatchObject({ widths: [390] });
   });
 
   it('a renderer failure is a 503 that never echoes the internal address', async () => {

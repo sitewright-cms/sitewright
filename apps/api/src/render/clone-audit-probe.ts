@@ -170,6 +170,11 @@ export function NAV_TOGGLE() {
  * utilities load after it: any `p-*`/`pt-*`/`py-*`, custom class or inline padding on the same element
  * wins on source order and the class contributes NOTHING, with nothing on screen to say so.
  */
+/** Whether the platform page shell rendered at all (an error / 404 document has no #page-content). */
+export function PAGE_RENDERED() {
+  return !!document.getElementById('page-content');
+}
+
 /** The computed `position` of the site header (#main-nav), or null when the page has none. */
 export function HEADER_POSITION() {
   const nav = document.getElementById('main-nav');

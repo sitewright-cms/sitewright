@@ -17,11 +17,12 @@ import { matchAndDiff, scorePage, matchChrome, scoreChrome, scoreChromeMeta, typ
 import { pngToLosslessWebp } from '@sitewright/image-pipeline';
 import { getBrowser, withRenderSlot, settlePage, type Shot, type ViewportName } from './screenshot.js';
 import { FIDELITY_EXTRACT, FIDELITY_META, FIDELITY_FONTS, REGION_BOX } from './fidelity-extract.js';
-import { BEHAVIOUR_PROBE, CLIP_PROBE, HEADER_PROBE, NAV_COUNT, NAV_TOGGLE } from './clone-audit-probe.js';
+import { BEHAVIOUR_PROBE, CLIP_PROBE, HEADER_POSITION, HEADER_PROBE, NAV_COUNT, NAV_TOGGLE, PAGE_RENDERED } from './clone-audit-probe.js';
 import { clampShotForModel } from './mcp-image.js';
 import { clampImageForModel } from '@sitewright/image-pipeline';
 import { INSPECT_EXTRACT, INSPECT_DEFAULT_STYLES, INSPECT_LIMITS, type InspectResult } from './inspect-probe.js';
 import type { BehaviourFacts, HeaderFacts } from './clone-audit.js';
+import { HeaderMeasureAborted, HeaderPageNotRendered, type HeaderSample } from './header-measure.js';
 
 type Browser = Awaited<ReturnType<typeof getBrowser>>;
 type BrowserContext = Awaited<ReturnType<Browser['newContext']>>;
@@ -225,6 +226,51 @@ export function captureIssue(side: { items: ChromeEl[]; failed?: string }): stri
  * drawer is caught. Reuses the SSRF-pinned scroll-and-settle render (prepPage); degrades to a safe-empty
  * result on any failure (the caller surfaces that as the relevant check failing).
  */
+/**
+ * The fixed header's at-rest height and the `--sw-header-h` it is laid out against, at each width — for
+ * `measure_header` on ANY page (clone_audit's probe needs an import source). ONE page load, then the
+ * viewport is RESIZED through the widths: media queries re-evaluate on resize exactly as on load, the
+ * sticky runtime re-measures on resize, and HEADER_PROBE itself resets every scroller and waits for the
+ * bar's height to settle — so a resize is as good as a reload here at a fraction of the cost.
+ */
+export async function measureHeaderAt(url: string, widths: readonly number[], signal?: AbortSignal): Promise<HeaderSample[]> {
+  const browser = await getBrowser();
+  return withRenderSlot(async () => {
+    const vp = SCREENSHOT_VIEWPORTS.laptop;
+    if (signal?.aborted) throw new HeaderMeasureAborted();
+    const { context, page } = await prepPage(browser, url, 'loopback', { ...vp, width: widths[0] ?? vp.width, isMobile: false }, signal);
+    // A caller that goes away must free the render slot NOW, not after the load + settle + six probes:
+    // closing the context rejects whatever is pending (prepPage only honours the signal on the pinned path).
+    const onAbort = (): void => void context.close().catch(() => {});
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      await settlePage(page, { freeze: false });
+      if (signal?.aborted) throw new HeaderMeasureAborted();
+      // prepPage swallows a failed navigation, and a 404 / error page has no #page-content — without this a
+      // page that never rendered would read as "the site has no header".
+      const rendered = ((await page.evaluate(PAGE_RENDERED as () => unknown).catch(() => false)) as boolean) === true;
+      if (!rendered) throw new HeaderPageNotRendered();
+      const out: HeaderSample[] = [];
+      for (const width of widths) {
+        if (signal?.aborted) throw new HeaderMeasureAborted();
+        await page.setViewportSize({ width, height: vp.height });
+        // Media queries apply on the next layout, but a debounced resize handler (the sticky runtime
+        // re-measures on resize) needs a beat; HEADER_PROBE then settles on the height itself.
+        await page.waitForTimeout(200);
+        const position = ((await page.evaluate(HEADER_POSITION as () => unknown).catch(() => null)) as string | null) ?? null;
+        const facts = position === 'fixed'
+          ? ((await page.evaluate(HEADER_PROBE as () => Promise<unknown>).catch(() => null)) as HeaderFacts | null)
+          : null;
+        out.push({ width, position, bar: facts?.bar ?? null, token: facts?.token ?? null, spacerPad: facts?.spacerPad ?? null });
+      }
+      return out;
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+      await context.close().catch(() => {});
+    }
+  });
+}
+
 export async function captureBehaviour(
   url: string,
   opts: {

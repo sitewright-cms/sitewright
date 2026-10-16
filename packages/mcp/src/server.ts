@@ -954,6 +954,19 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'measure_header',
+    {
+      description:
+        'Measure the FIXED site header against the `--sw-header-h` token at every Tailwind breakpoint (390, 640, 768, 1024, 1280, 1536px) and get the EXACT CSS that makes them agree. ' +
+        'The token is a hand-written constant (4.5rem phone / 4.75rem desktop by default) that the page content offset and anchor jumps are laid out from, so a custom or two-row header leaves content hidden behind the bar (token too short) or a strip of background under it (too tall). ' +
+        'Measured in a real browser on the draft site at rest (scrolled state reset, settled height), fractions included. Returns per-width rows { width, bar, token, verdict, delta }, `css` (null when nothing needs changing) and advice; apply `css` with patch_critical_css({ block: "header-height", css }). ' +
+        'Any published page works (the header is the same on every page; drafts are not on the draft site). Run it after building or changing the header.',
+      inputSchema: { pageId: z.string().optional().describe('A published page to measure on (default "home").') },
+    },
+    gate('content:read', ({ pageId }: { pageId?: string }) => client.measureHeader(pageId ?? 'home')),
+  );
+
+  server.registerTool(
     'clone_audit',
     {
       description:

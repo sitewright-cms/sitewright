@@ -370,6 +370,7 @@ import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
 import { applyTextEdits, readTextField, writeTextField, TEXT_PATCH_FIELDS } from '../repo/text-patch.js';
+import { headerReport, HEADER_MEASURE_WIDTHS, HeaderPageNotRendered, HeaderMeasureAborted, type HeaderSample } from '../render/header-measure.js';
 import { normalizeEntryValues } from '../repo/entry-values.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
@@ -384,7 +385,7 @@ import {
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
 import { clampShots } from '../render/mcp-image.js';
-import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot, captureIssue
+import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, measureHeaderAt, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot, captureIssue
 } from '../render/compare.js';
 import { INSPECT_LIMITS } from '../render/inspect-probe.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
@@ -9445,6 +9446,48 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           visualChecks(fidelity),
         ]);
         return reply.send({ sourceUrl: target.sourceUrl, route: target.route, ...audit, fidelity });
+      },
+    );
+
+    // measure_header: the fixed header's real at-rest height at every Tailwind breakpoint against the
+    // `--sw-header-h` token, plus the exact CSS that makes them agree — for ANY page; clone_audit's header
+    // checks need an import source. Measures the DRAFT SITE (a draft page is not on it; the header is the
+    // same on every page). content:read. See render/header-measure.ts.
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/header-measure/:pageId',
+      { config: rl(3) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const allPages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(allPages);
+        const page = byId.get(req.params.pageId);
+        if (!page) throw new NotFoundError('page not found');
+        if (isLinkPage(page)) {
+          return reply.code(400).send({ error: 'a menu placeholder has no page of its own — pass a real page id (the header is the same on every page)' });
+        }
+        if (publishedPages([page]).length === 0) {
+          return reply.code(409).send({ error: `page "${page.id}" is a draft, and drafts are not on the draft site — measure any published page instead (the header is the same on every page)` });
+        }
+        // `pathToSlug` is undefined for the site root (the home page) — that is the empty route, not a segment.
+        const route = (pathToSlug(pagePath(page, byId)) ?? '').replace(/^\/+/, '');
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const url = `http://127.0.0.1:${port}/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/${route}${route && !route.endsWith('/') ? '/' : ''}`;
+        let samples: HeaderSample[];
+        try {
+          samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(req).signal);
+        } catch (err) {
+          if (err instanceof HeaderPageNotRendered) {
+            return reply.code(409).send({
+              error: `page "${page.id}" did not render on the draft site (is a parent page a draft?) — measure a page that is live there, e.g. "home"`,
+            });
+          }
+          // The caller is gone; nothing is listening for a body.
+          if (err instanceof HeaderMeasureAborted) return reply.code(499).send();
+          // Logged in full; the reply never echoes it — a navigation error names the loopback origin.
+          app.log.error({ err, project: project.id }, 'header measurement failed');
+          return reply.code(503).send({ error: 'the header could not be measured right now (the renderer is busy or unavailable) — retry shortly' });
+        }
+        return reply.send({ page: page.id, route: pagePath(page, byId), widths: samples.map((s) => s.width), ...headerReport(samples) });
       },
     );
 

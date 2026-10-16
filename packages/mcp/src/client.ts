@@ -277,6 +277,24 @@ export interface BulkMoveResult {
   folder: string;
 }
 
+/** What `measure_header` reports: per width, the bar vs the token, plus the fixing CSS (null = nothing to fix). */
+export interface HeaderMeasureResult {
+  page: string;
+  route: string;
+  widths: number[];
+  rows: Array<{
+    width: number;
+    position: string | null;
+    bar: number | null;
+    token: number | null;
+    spacerPad: number | null;
+    verdict: 'ok' | 'too-small' | 'too-large' | 'not-fixed' | 'unmeasured';
+    delta: number | null;
+  }>;
+  css: string | null;
+  advice: string[];
+}
+
 /** What a `criticalCss` partial write reports back. */
 export interface CriticalCssReceipt {
   block: string | null;
@@ -875,6 +893,11 @@ export class SitewrightClient {
   /** The measured clone-fidelity gate: render BUILD vs imported SOURCE, diff computed styles, return numbers. */
   async fidelityCheck(pageId: string): Promise<FidelityCheckResult> {
     return this.request('GET', this.projectPath(`/fidelity/${encodeURIComponent(pageId)}`));
+  }
+
+  /** The fixed header's real height at each Tailwind breakpoint vs `--sw-header-h`, with the exact fixing CSS. */
+  async measureHeader(pageId: string): Promise<HeaderMeasureResult> {
+    return this.request('GET', this.projectPath(`/header-measure/${encodeURIComponent(pageId)}`));
   }
 
   /** The COMPREHENSIVE clone-acceptance gate: structure + behaviour + visual legs, one PASS/FAIL to terminate on. */

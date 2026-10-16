@@ -198,6 +198,10 @@
     "required": []
   },
   {
+    "name": "measure_header",
+    "required": []
+  },
+  {
     "name": "move_media",
     "required": [
       "id"

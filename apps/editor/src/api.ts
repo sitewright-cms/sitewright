@@ -205,6 +205,12 @@ export class ApiError extends Error {
     public readonly code?: string,
     /** For a `capacity` refusal: whether retrying soon is actually worth it. */
     public readonly transient?: boolean,
+    /**
+     * For a `capacity` refusal: WHICH resource is full, when the server said — `busy` (every
+     * headless-render slot is held by other audits/screenshots) or `memory` (the memory ledger).
+     * Absent means it did not say, and a caller must not guess.
+     */
+    public readonly reason?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -260,11 +266,19 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   let details: ApiErrorDetails | undefined;
   let code: string | undefined;
   let transient: boolean | undefined;
+  let reason: string | undefined;
   try {
-    const json = (await res.json()) as { error?: string; details?: ApiErrorDetails; code?: string; transient?: boolean };
+    const json = (await res.json()) as {
+      error?: string;
+      details?: ApiErrorDetails;
+      code?: string;
+      transient?: boolean;
+      reason?: unknown;
+    };
     if (json.error) message = json.error;
     if (json.code) code = json.code;
     if (typeof json.transient === 'boolean') transient = json.transient;
+    if (typeof json.reason === 'string') reason = json.reason;
     if (json.details) {
       details = json.details;
       // The server's generic "invalid request" (a Zod failure) is opaque on its own — surface the
@@ -286,6 +300,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
     Number.isFinite(after) && after > 0 ? after : undefined,
     code,
     transient,
+    reason,
   );
 }
 

@@ -974,6 +974,12 @@ function patchContended(): ConflictError {
   );
 }
 
+/**
+ * A media edit refused on the asset as READ (a font field on an image, an impossible font correction):
+ * thrown out of a guarded write so nothing is stored and the retry loop does not re-run it — answered 400.
+ */
+class MediaWriteRefusal extends Error {}
+
 /** Run `attempt` until it doesn't lose a version race (at most {@link PATCH_ATTEMPTS} times). */
 async function retryOnVersionConflict<T>(attempt: () => Promise<T>): Promise<T> {
   for (let n = 1; ; n += 1) {
@@ -7565,6 +7571,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       delete cleared.alt;
       return cleared;
     };
+    /**
+     * Read a LIVE asset, `change` it, and write the WHOLE asset back — carrying the version that was read.
+     * Unguarded, a write landing in between (another PATCH, a bulk call, a transform or a byte replace of
+     * the same asset) was silently reverted while every call answered 200. Now this one loses, re-reads
+     * and re-applies on top (see PATCH_ATTEMPTS — the content pattern from #1102), so both survive.
+     * `change` may therefore run more than once and must be a function of the asset it is handed; a
+     * {@link MediaWriteRefusal} it throws ends the write with nothing stored. A binned asset is refused
+     * (NotFound) — you restore it, you don't edit it in place.
+     */
+    const writeMediaGuarded = (
+      ctx: ProjectContext,
+      id: string,
+      change: (asset: MediaAsset) => MediaAsset | Promise<MediaAsset>,
+    ): Promise<MediaAsset> =>
+      retryOnVersionConflict(async () => {
+        const { asset, version } = await contentRepo.getLiveMediaWithVersion(ctx, id);
+        const next = await change(asset);
+        return (await contentRepo.put(ctx, 'media', asset.id, next, { expectedVersion: version })) as MediaAsset;
+      });
     // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
     // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
     // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
@@ -7587,8 +7612,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const failed: Array<{ id: string; error: string }> = [];
       for (const id of ids) {
         try {
-          const asset = await contentRepo.getLiveMedia(ctx, id);
-          await contentRepo.put(ctx, 'media', asset.id, { ...asset, folder });
+          // Read → change → write the whole asset, guarded by the version read (see writeMediaGuarded).
+          await writeMediaGuarded(ctx, id, (asset) => ({ ...asset, folder }));
           moved.push(id);
         } catch (err) {
           // One bad id must not abandon the rest half-filed — that is the failure mode this replaces.
@@ -7621,8 +7646,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const failed: Array<{ id: string; error: string }> = [];
       for (const [id, alt] of wanted) {
         try {
-          const asset = await contentRepo.getLiveMedia(ctx, id);
-          await contentRepo.put(ctx, 'media', asset.id, withAlt(asset, alt));
+          await writeMediaGuarded(ctx, id, (asset) => withAlt(asset, alt));
           updated.push(id);
         } catch (err) {
           // One bad id must not abandon the rest half-described. A fixed vocabulary, never the raw
@@ -7638,28 +7662,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = PatchAssetBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid update' });
-      // `getLiveMedia` rejects a soft-deleted (binned) asset — you restore it, you don't rename it in place.
-      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const { folder, filename, alt, ...fontChanges } = body.data;
-      let next: MediaAsset = asset;
-      if (Object.values(fontChanges).some((v) => v !== undefined)) {
-        if (asset.kind !== 'font') {
-          return reply.code(400).send({ error: `family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"` });
-        }
-        const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
-          (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
-        );
-        const corrected = correctFontMetadata(asset, fontChanges, { others });
-        if (!corrected.ok) return reply.code(400).send({ error: corrected.error });
-        next = corrected.asset;
+      const fontChanged = Object.values(fontChanges).some((v) => v !== undefined);
+      try {
+        const item = await writeMediaGuarded(ctx, req.params.id, async (asset) => {
+          let next: MediaAsset = asset;
+          if (fontChanged) {
+            if (asset.kind !== 'font') {
+              throw new MediaWriteRefusal(`family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"`);
+            }
+            const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
+              (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
+            );
+            const corrected = correctFontMetadata(asset, fontChanges, { others });
+            if (!corrected.ok) throw new MediaWriteRefusal(corrected.error);
+            next = corrected.asset;
+          }
+          next = {
+            ...next,
+            ...(folder !== undefined ? { folder } : {}),
+            ...(filename !== undefined ? { filename } : {}),
+          };
+          return alt !== undefined ? withAlt(next, alt) : next;
+        });
+        return reply.send({ item });
+      } catch (err) {
+        if (err instanceof MediaWriteRefusal) return reply.code(400).send({ error: err.message });
+        throw err;
       }
-      next = {
-        ...next,
-        ...(folder !== undefined ? { folder } : {}),
-        ...(filename !== undefined ? { filename } : {}),
-      };
-      if (alt !== undefined) next = withAlt(next, alt);
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 
     // Overwrite an existing SVG asset's CONTENT in place (the Studio's "save to the same file"). Re-sanitizes

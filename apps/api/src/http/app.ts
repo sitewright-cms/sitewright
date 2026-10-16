@@ -7517,7 +7517,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           failed.push({ id: a.id, error: err instanceof Error ? err.message : 'move failed' });
         }
       }
-      return reply.send({ ok: true, moved, failed });
+      // `ok` is the whole outcome: a caller that reads only it (the editor did) must not see a partial
+      // re-file — some assets still under the old name — as a success.
+      return reply.send({ ok: failed.length === 0, moved, failed });
     });
 
     // Copy a folder subtree (records + duplicated assets) to a new path.

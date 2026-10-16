@@ -311,7 +311,8 @@ describe('folder rename / move — each asset re-filed through the guard', () =>
     interleave((m, n) => (m.id === a.id ? { ...m, alt: `meanwhile ${n}` } : m), 'every');
     const res = await renameFolder('trips', 'travel');
     expect(res.statusCode, res.body).toBe(200);
-    const body = res.json() as { moved: string[]; failed: Array<{ id: string; error: string }> };
+    const body = res.json() as { ok: boolean; moved: string[]; failed: Array<{ id: string; error: string }> };
+    expect(body.ok).toBe(false); // a PARTIAL re-file must not read as success to a caller that checks `ok`
     expect(body.moved).toEqual([b.id]);
     expect(body.failed).toEqual([{ id: a.id, error: expect.stringMatching(/retry the same call/) }]);
     expect((await stored(a.id)).folder).toBe('trips'); // left in place, never written from a stale read

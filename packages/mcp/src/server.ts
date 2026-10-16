@@ -1977,7 +1977,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'rename_media_folder',
     {
       description:
-        'Rename OR move a media folder: re-roots the folder subtree AND re-files every asset under it. `from`/`to` are full folder paths. Fails if `to` already exists. The result lists the asset ids it re-filed (`moved`) and any it could not (`failed`, with a reason) — re-file those with move_media.',
+        'Rename OR move a media folder: re-roots the folder subtree AND re-files every asset under it. `from`/`to` are full folder paths. Fails if `to` already exists. The result lists the asset ids it re-filed (`moved`) and any it could not (`failed`, with a reason); `ok` is false when any failed — those stay under the old folder name, so re-file them with move_media.',
       inputSchema: { from: MediaFolderSchema, to: MediaFolderSchema },
     },
     gate('content:write', ({ from, to }) => client.renameMediaFolder(from, to)),

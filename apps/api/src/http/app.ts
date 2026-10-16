@@ -5653,13 +5653,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...WIDGET_PARTIALS,
       };
       const sourceData = Object.fromEntries(byDataset);
+      // The pages the live site ships — drafts excluded, as publish does. Everything below that
+      // resolves ANOTHER page (dataset page refs, nav, children, parent, pages.*, sw-page-url) reads
+      // this subset, so the editor never shows a link the published site renders empty.
+      const savedPages = publishedPages(allSavedPages);
       // A `page` field stores an id; a template needs the page's attributes ({{link.path}} /
-      // {{link.title}}). Resolved HERE and in the publish build — both surfaces, one resolver, or the
-      // loop renders correctly in the editor and blank on the published site.
+      // {{link.title}}). Resolved HERE and in the publish build — both surfaces, one resolver, one page
+      // set — or the loop renders correctly in the editor and blank on the published site. A reference
+      // to a draft page (or a draft translation of it) therefore reads as it will live: empty, or the
+      // main-language page. Draft ENTRIES still show here (work in progress) — only pages are filtered.
       const localeData = resolveDatasetPageRefs(
         resolveLocaleDatasets(sourceData, page.locale),
         (await contentRepo.list(ctx, 'dataset')) as Dataset[],
-        allSavedPages,
+        savedPages,
         defaultLocale,
         // …in the READER's language, exactly as publish resolves them.
         localeOf(page, defaultLocale),
@@ -5727,7 +5733,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // the data is here for a source that has ever been read (settings save warms it) and the
         // editor never waits on somebody else's server. Publish still fetches fresh.
         const jsonSnapshot = jsonDataCache.snapshot(project.id, website?.jsonDataUrl);
-        const savedPages = publishedPages(allSavedPages);
         const previewLocale = localeOf(page, defaultLocale);
         const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
         const slotNav = decorateNav({

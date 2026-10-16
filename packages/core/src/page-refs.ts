@@ -11,8 +11,9 @@
 //   {{/each}}
 //
 // This is the ONE place that mapping happens, and both render surfaces (the editor preview and the
-// publish build) call it right after `resolveLocaleDatasets` — a resolution wired into only one of
-// them renders correctly in the editor and empty on the published site.
+// publish build) call it right after `resolveLocaleDatasets`, with the same published page set — a
+// resolution wired into only one of them, or fed different pages, renders correctly in the editor and
+// empty on the published site.
 import type { Dataset, Entry, Field, Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
 import { localeVariantOf } from './i18n.js';
@@ -105,9 +106,12 @@ function resolveValues(
  * Swap every `page` field's stored id for its {@link PageRefView}, across a whole dataset map.
  *
  * Returns the SAME object when no dataset in the project declares a `page` field, so the common case
- * costs one schema scan and copies nothing. `pages` should be the same list the surface renders from
- * (the published subset on publish, everything in the preview) — a reference to a page that isn't in
- * it resolves to empty, which is the honest answer: on the live site that page is not there.
+ * costs one schema scan and copies nothing. `pages` must be the PUBLISHED subset (`publishedPages`) on
+ * EVERY surface — the publish build and the editor preview alike — because a reference to a page that
+ * isn't in it resolves to empty, and that is the honest answer: on the live site a draft page is not
+ * there. A preview resolving against drafts too shows a working link the published site renders empty
+ * (and, for a draft translation, the wrong locale's page). Draft ENTRIES are a separate rule: the
+ * preview keeps showing them; only the pages a reference can land on are filtered.
  *
  * `locale` is the READER's — the page being rendered. A field stores one id (usually the main-language
  * page, because that is what the editor's picker offers), and a German reader must land on the German

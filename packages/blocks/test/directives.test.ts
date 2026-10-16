@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { GLOBAL_TEMPLATES } from '@sitewright/core';
 import { resolveDirectives } from '../src/directives.js';
 import { renderTemplate, validateTemplate } from '../src/template.js';
+import { buildSwImage, type SwImageOptions } from '../src/image-helper.js';
+import type { RenderMedia } from '../src/folder.js';
 
 describe('resolveDirectives — data-sw-text', () => {
   it('is a no-op when no directive is present (byte-identical)', () => {
@@ -209,10 +211,11 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     expect(published).not.toContain('javascript'); // neutralized to an empty src
   });
 
-  it('an override DROPS the old image’s srcset/sizes, LQIP and <picture> sources', () => {
+  it('an override with no rungs to rebuild DROPS the old image’s srcset/sizes, LQIP and <picture> sources', () => {
     // The bug this pins: {{sw-image editable="photo1"}} emits src + srcset + sizes + a blur-up LQIP.
     // The browser picks its candidate from srcset in PREFERENCE to src, so replacing only `src` left
     // the OLD photo on screen — clicking the image in the editor and choosing a new one did nothing.
+    // (No media list here, so the new file's rungs are unknowable — the rebuild path is pinned below.)
     const emitted =
       '<img src="/media/p/a/old.jpg?size=lg" srcset="/media/p/a/old.jpg?size=sm 480w, /media/p/a/old.jpg?size=lg 1200w" ' +
       'sizes="100vw" alt="" width="1200" height="800" loading="lazy" decoding="async" data-sw-src="photo1" ' +
@@ -316,6 +319,210 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     // A valueless / empty data-src|data-bg is the lazy opt-in marker (no interpolation → safe).
     expect(() => validateTemplate('<img data-sw-src="hero" data-src src="/placeholder.jpg" alt="">')).not.toThrow();
     expect(() => validateTemplate('<section data-sw-bg="bg" data-bg>x</section>')).not.toThrow();
+  });
+});
+
+describe('resolveDirectives — a replaced PROJECT image stays responsive (data-sw-src + media)', () => {
+  // The bug this pins: replacing an editable {{sw-image}} in the editor stored the bare asset url, and
+  // the directive could only DROP the old art — so the new photo shipped as one `size=xl` (2400px) file
+  // to every device, still carrying the OLD photo's width/height (wrong aspect → layout shift). The
+  // render context knows every project image's intrinsic size, so the art is rebuilt for the new file.
+  const oldImg: RenderMedia = {
+    id: 'a1', folder: '', kind: 'image', filename: 'old.jpg', url: '/media/acme/a1-old.jpg',
+    width: 1200, height: 800, placeholder: 'data:image/webp;base64,OLD',
+  };
+  const newImg: RenderMedia = {
+    id: 'b2', folder: '', kind: 'image', filename: 'new.jpg', url: '/media/acme/b2-new.jpg',
+    width: 3000, height: 1000, placeholder: 'data:image/webp;base64,NEW',
+  };
+  const smallImg: RenderMedia = {
+    id: 'c3', folder: '', kind: 'image', filename: 'small.png', url: '/media/acme/c3-small.png', width: 700, height: 700,
+  };
+  const alphaImg: RenderMedia = { ...newImg, id: 'd4', filename: 'cutout.png', url: '/media/acme/d4-cutout.png', hasAlpha: true };
+  const svgImg: RenderMedia = { id: 'e5', folder: '', kind: 'image', filename: 'mark.svg', url: '/media/acme/e5-mark.svg', width: 64, height: 64 };
+  const dimless: RenderMedia = { id: 'f6', folder: '', kind: 'image', filename: 'odd.jpg', url: '/media/acme/f6-odd.jpg' };
+  const media = [oldImg, newImg, smallImg, alphaImg, svgImg, dimless];
+  const opts: SwImageOptions = { editable: 'hero', alt: 'Our team', sizes: '(min-width:768px) 50vw, 100vw', className: 'rounded-xl', loading: 'eager' };
+
+  /** {{sw-image}} of `url` as the author wrote it, through the directive pass with the hero override `value`. */
+  const replaced = (value: string, o: SwImageOptions = opts, preview = true): string =>
+    resolveDirectives(buildSwImage(oldImg.url, media, o), { data: { hero: value }, media, preview });
+  /** A FRESH {{sw-image}} of `url` through the same pass with no override — the reference shape. */
+  const fresh = (url: string, o: SwImageOptions = opts, preview = true): string =>
+    resolveDirectives(buildSwImage(url, media, o), { media, preview });
+
+  it('rebuilds the srcset, dimensions and LQIP for the NEW asset — byte-identical to a fresh {{sw-image}} of it', () => {
+    const out = replaced(newImg.url);
+    expect(out).toBe(fresh(newImg.url));
+    // …spelled out: every rung of the 3000px replacement, capped at xl (2400 — the delivery cap).
+    expect(out).toContain(
+      'srcset="/media/acme/b2-new.jpg?size=sm 500w, /media/acme/b2-new.jpg?size=md 1000w, ' +
+        '/media/acme/b2-new.jpg?size=lg 1600w, /media/acme/b2-new.jpg?size=xl 2400w"',
+    );
+    expect(out).toContain('src="/media/acme/b2-new.jpg?size=xl"');
+    expect(out).toContain('width="3000" height="1000"'); // the NEW aspect, not the old 1200×800
+    expect(out).toContain("background-image:url('data:image/webp;base64,NEW')");
+    // The author's own attributes survive: sizes, alt, class, loading, fetchpriority.
+    expect(out).toContain('sizes="(min-width:768px) 50vw, 100vw"');
+    expect(out).toContain('alt="Our team"');
+    expect(out).toContain('class="rounded-xl"');
+    expect(out).toContain('loading="eager"');
+    expect(out).toContain('fetchpriority="high"');
+    // Nothing describing the old file is left behind.
+    expect(out).not.toContain('a1-old');
+    expect(out).not.toContain('OLD');
+  });
+
+  it('never upscales: a small replacement gets only the rungs it can fill, the top one clamped', () => {
+    const out = replaced(smallImg.url);
+    expect(out).toBe(fresh(smallImg.url));
+    expect(out).toContain('srcset="/media/acme/c3-small.png?size=sm 500w, /media/acme/c3-small.png?size=md 700w"');
+    expect(out).toContain('src="/media/acme/c3-small.png?size=md"');
+    expect(out).not.toContain('size=lg');
+    expect(out).toContain('width="700" height="700"');
+    // No placeholder recorded for the replacement → the OLD one must not linger behind it.
+    expect(out).not.toContain('background-image');
+  });
+
+  it('drops the blur-up for transparent art but keeps the author’s other style declarations', () => {
+    const handWritten =
+      '<img data-sw-src="hero" src="/media/acme/a1-old.jpg?size=lg" srcset="/media/acme/a1-old.jpg?size=sm 500w" sizes="50vw" ' +
+      'width="1200" height="800" alt="" style="border-radius:8px;background-image:url(\'data:image/webp;base64,OLD\');background-size:cover">';
+    const out = resolveDirectives(handWritten, { data: { hero: alphaImg.url }, media });
+    expect(out).toContain('style="border-radius:8px"');
+    expect(out).not.toContain('base64');
+    expect(out).toContain('srcset="/media/acme/d4-cutout.png?size=sm 500w,');
+    expect(out).toContain('width="3000" height="1000"');
+  });
+
+  it('rebuilds a <picture>’s AVIF + WebP sources for the new asset (format=avif)', () => {
+    const avif: SwImageOptions = { ...opts, format: 'avif' };
+    const out = replaced(newImg.url, avif);
+    expect(out).toBe(fresh(newImg.url, avif));
+    expect(out).toContain('<source type="image/avif" srcset="/media/acme/b2-new.jpg?size=sm&amp;format=avif 500w,');
+    expect(out).toContain('<source type="image/webp" srcset="/media/acme/b2-new.jpg?size=sm 500w,');
+    expect(out).toContain('sizes="(min-width:768px) 50vw, 100vw"'); // each source keeps its sizes
+    expect(out).not.toContain('a1-old');
+  });
+
+  it('removes a <source> it cannot rebuild (no known type, or art-directed by media=)', () => {
+    const pic =
+      '<picture><source type="image/avif" srcset="/media/acme/a1-old.jpg?size=sm&format=avif 500w">' +
+      '<source media="(max-width:600px)" type="image/webp" srcset="/media/acme/a1-old.jpg?size=sm 500w">' +
+      '<source type="image/jpeg" srcset="/media/acme/a1-old.jpg 1200w">' +
+      '<img src="/media/acme/a1-old.jpg?size=lg" alt="" width="1200" height="800" data-sw-src="hero"></picture>';
+    const out = resolveDirectives(pic, { data: { hero: newImg.url }, media });
+    expect(out.match(/<source/g)).toHaveLength(1);
+    expect(out).toContain('<source type="image/avif" srcset="/media/acme/b2-new.jpg?size=sm&amp;format=avif 500w,');
+    expect(out).not.toContain('a1-old');
+  });
+
+  it('points a lightbox item’s full-size link at the NEW asset too', () => {
+    const lb: SwImageOptions = { ...opts, lightbox: true };
+    const out = replaced(newImg.url, lb);
+    expect(out).toBe(fresh(newImg.url, lb));
+    expect(out).toContain('<a href="/media/acme/b2-new.jpg?size=xl" data-full="/media/acme/b2-new.jpg?size=xl"');
+    // …but an anchor the author pointed somewhere else is theirs, not the image's.
+    const own = resolveDirectives(
+      '<a href="/about/"><img data-sw-src="hero" src="/media/acme/a1-old.jpg?size=lg" srcset="/media/acme/a1-old.jpg?size=sm 500w" alt=""></a>',
+      { data: { hero: newImg.url }, media },
+    );
+    expect(own).toContain('<a href="/about/">');
+  });
+
+  it('PUBLISH: the rebuilt art ships with the directive marker stripped', () => {
+    const out = replaced(newImg.url, opts, false);
+    expect(out).toBe(fresh(newImg.url, opts, false));
+    expect(out).not.toContain('data-sw-src');
+    expect(out).toContain('/media/acme/b2-new.jpg?size=xl 2400w');
+  });
+
+  it.each([
+    ['an external url', 'https://cdn.example/photo.jpg'],
+    ['an SVG project image (a vector has no ?size= rungs)', svgImg.url],
+    ['a project image with no recorded dimensions', dimless.url],
+    ['an unknown asset id', '/media/acme/zz-gone.jpg'],
+    ['a url that already carries a query', `${newImg.url}?size=md`],
+  ])('falls back to the plain swap for %s: old art dropped, element dims untouched', (_label, value) => {
+    const out = replaced(value);
+    expect(out).toContain(`src="${value.replace(/&/g, '&amp;')}"`);
+    expect(out).not.toContain('srcset');
+    expect(out).not.toContain('base64');
+    expect(out).toContain('width="1200" height="800"'); // today's behaviour, exactly
+  });
+
+  it('falls back to the plain swap when the render context carries no media list', () => {
+    const out = resolveDirectives(buildSwImage(oldImg.url, media, opts), { data: { hero: newImg.url }, preview: true });
+    expect(out).toContain('src="/media/acme/b2-new.jpg"');
+    expect(out).not.toContain('srcset');
+  });
+
+  it('leaves a PLAIN <img data-sw-src> plain — it never opted into rungs', () => {
+    const out = resolveDirectives('<img data-sw-src="hero" src="/media/acme/a1-old.jpg" width="300" height="200" alt="Team">', {
+      data: { hero: newImg.url },
+      media,
+    });
+    expect(out).toBe('<img src="/media/acme/b2-new.jpg" width="300" height="200" alt="Team">');
+  });
+
+  it('an EMPTY override keeps the authored default — old srcset and all', () => {
+    const authored = buildSwImage(oldImg.url, media, opts);
+    const out = resolveDirectives(authored, { data: { hero: '' }, media, preview: true });
+    expect(out).toBe(fresh(oldImg.url));
+    expect(out).toContain('/media/acme/a1-old.jpg?size=sm 500w');
+  });
+
+  describe('LAZY (data-src) — rebuilt in the vocabulary the lazyload runtime swaps in, nothing eager', () => {
+    const lazy =
+      '<img data-sw-src="hero" data-src="/media/acme/a1-old.jpg?size=xl" data-srcset="/media/acme/a1-old.jpg?size=sm 500w, /media/acme/a1-old.jpg?size=lg 1200w" ' +
+      'sizes="50vw" width="1200" height="800" alt="Team">';
+
+    it('fills data-src + data-srcset for the new asset and never adds an eager src/srcset', () => {
+      const out = resolveDirectives(lazy, { data: { hero: newImg.url }, media });
+      expect(out).toContain('data-src="/media/acme/b2-new.jpg?size=xl"');
+      expect(out).toContain('data-srcset="/media/acme/b2-new.jpg?size=sm 500w, /media/acme/b2-new.jpg?size=md 1000w,');
+      expect(out).not.toMatch(/\ssrc="/);
+      expect(out).not.toMatch(/\ssrcset="/);
+      expect(out).toContain('sizes="50vw"');
+      expect(out).toContain('width="3000" height="1000"');
+      expect(out).not.toContain('a1-old');
+    });
+
+    it('moves an eager srcset on a lazy image into data-srcset (an eager one would fetch at load)', () => {
+      const out = resolveDirectives(
+        '<img data-sw-src="hero" data-src srcset="/media/acme/a1-old.jpg?size=sm 500w" alt="">',
+        { data: { hero: newImg.url }, media },
+      );
+      expect(out).toContain('data-srcset="/media/acme/b2-new.jpg?size=sm 500w,');
+      expect(out).not.toMatch(/\ssrcset="/);
+    });
+
+    it('drops a lazy <picture>’s sources — the runtime cannot defer a <source>, and an eager one loads at once', () => {
+      const out = resolveDirectives(
+        '<picture><source type="image/avif" srcset="/media/acme/a1-old.jpg?size=sm&format=avif 500w">' +
+          '<img data-sw-src="hero" data-src data-srcset="/media/acme/a1-old.jpg?size=sm 500w" alt=""></picture>',
+        { data: { hero: newImg.url }, media },
+      );
+      expect(out).not.toContain('<source');
+      expect(out).toContain('data-srcset="/media/acme/b2-new.jpg?size=sm 500w,');
+    });
+
+    it('an UNKNOWN replacement drops the old data-srcset too (the runtime would swap the OLD set in)', () => {
+      const out = resolveDirectives(lazy, { data: { hero: 'https://cdn.example/x.jpg' }, media });
+      expect(out).toContain('data-src="https://cdn.example/x.jpg"');
+      expect(out).not.toContain('srcset');
+      expect(out).not.toContain('a1-old');
+    });
+  });
+
+  it('is wired through renderTemplate: the page render hands the project media to the directive pass', () => {
+    const out = renderTemplate('{{sw-image "/media/acme/a1-old.jpg" editable="hero" sizes="50vw"}}', {
+      page: { data: { hero: newImg.url } },
+      media,
+    });
+    expect(out).toContain('/media/acme/b2-new.jpg?size=xl 2400w');
+    expect(out).toContain('width="3000" height="1000"');
+    expect(out).not.toContain('a1-old');
   });
 });
 

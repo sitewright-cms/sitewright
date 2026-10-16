@@ -8,7 +8,7 @@
 //   data-sw-text="key"      → element textContent          (from page.data[key]; serializer escapes)
 //   data-sw-html="key"      → element innerHTML             (from page.data[key]; sanitizeRichHtml)
 //   data-sw-href="key"      → anchor href                   (from page.data[key]; safeUrl)
-//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}}; safeUrl)
+//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}}; safeUrl); a responsive image replaced by a project image gets its rungs rebuilt (ctx.media)
 //   data-sw-bg="key"        → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}})
 //   data-sw-translate="key" → element textContent          (from the project TRANSLATION catalog — the pre-resolved per-locale `t` map; serializer escapes)
 //
@@ -43,11 +43,20 @@
 // render) the `data-sw-*` marker attributes are KEPT so the preview bridge can make them
 // click-to-edit; on PUBLISH they are STRIPPED, leaving clean static HTML.
 import { parseDocument } from 'htmlparser2';
-import { Text, type Element } from 'domhandler';
+import { Text, isTag, type Element } from 'domhandler';
 import { findAll, removeElement } from 'domutils';
 import render from 'dom-serializer';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { safeUrl, cssUrlEscape } from './url.js';
+import {
+  resolveRenderImage,
+  sizedRaster,
+  responsiveRungs,
+  lqipPlaceholder,
+  lqipStyle,
+  type SizedRenderImage,
+} from './image-helper.js';
+import type { RenderMedia } from './folder.js';
 
 /** Region keys that must never index a content map (prototype-pollution guard). */
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -103,6 +112,12 @@ export interface DirectiveContext {
    * `data-sw-translate` reads (NOT page.data). Absent → every translate directive keeps its authored text.
    */
   t?: Record<string, unknown>;
+  /**
+   * The project's media (the slim render projection {{sw-image}} reads). Lets a `data-sw-src` override
+   * that names a project RASTER image rebuild the responsive art for it — rungs, dimensions, LQIP —
+   * instead of only dropping the old file's. Absent → every override takes the plain `src` swap.
+   */
+  media?: readonly RenderMedia[];
   /**
    * PREVIEW render: keep the `data-sw-*` marker attributes so the editor can make them
    * click-to-edit. Absent/false (PUBLISH) → strip every directive attribute from the output.
@@ -195,37 +210,130 @@ function dropDeclarations(style: string, drop: RegExp): string {
   return out.join('; ');
 }
 
+/** The declarations of the blur-up LQIP {{sw-image}} paints behind an image (see `lqipStyle`). */
+const LQIP_DECLS = /^background-(image|size|repeat)$/i;
+
+function hasAttr(el: Element, name: string): boolean {
+  return Object.prototype.hasOwnProperty.call(el.attribs, name);
+}
+
+/** The `<picture>` an `<img>` is the fallback of, if any. */
+function pictureOf(el: Element): Element | undefined {
+  const parent = el.parent;
+  return parent && isTag(parent) && parent.name === 'picture' ? parent : undefined;
+}
+
+/** The `<source>`s competing with `el` inside its `<picture>` (none outside one). */
+function pictureSources(el: Element): Element[] {
+  return (pictureOf(el)?.children ?? []).filter((c): c is Element => isTag(c) && c.name === 'source');
+}
+
 /**
- * After a `data-sw-src` override replaces an image's `src`, remove the OLD image's competing art.
+ * Point `el`'s LQIP at `placeholder` — or just remove it (undefined) — keeping every other declaration.
+ * An element with no LQIP and nothing to add is left byte-identical.
+ */
+function setLqip(el: Element, placeholder: string | undefined): void {
+  const style = el.attribs.style ?? '';
+  if (!placeholder && !/background-image\s*:/i.test(style)) return;
+  const next = [dropDeclarations(style, LQIP_DECLS), placeholder ? lqipStyle(placeholder) : '']
+    .filter(Boolean)
+    .join('; ');
+  if (next) el.attribs.style = next;
+  else delete el.attribs.style;
+}
+
+/**
+ * After a `data-sw-src` override replaces an image's `src` with a url there are NO rungs for, remove the
+ * OLD image's competing art.
  *
  * `{{sw-image}}` (and any hand-written responsive image) emits `srcset` + `sizes` alongside `src`, and a
  * blur-up LQIP as an inline `background-image`; `format=avif` wraps the whole thing in a `<picture>` with
  * its own `<source srcset>`. A browser picks a candidate from `srcset` — or from a matching `<source>` —
  * in PREFERENCE to `src`. So swapping only `src` left every one of those pointing at the previous file
  * and the picture never changed: clicking an editable {{sw-image}} in the editor, choosing a new photo,
- * and watching nothing happen. The override is authoritative, so everything describing the old file goes.
+ * and watching nothing happen. The override is authoritative, so everything describing the old file goes
+ * — `data-srcset` too, which the lazyload runtime would otherwise swap in OVER the new `data-src`.
  *
- * Dropping the srcset costs the overridden image its responsive rungs (the browser fetches the one URL
- * that was chosen). That is the right trade: a correctly-sized picture of the WRONG image is not an
- * optimization. Rebuilding the rungs is not possible here — the `w` descriptors come from the original
- * asset's intrinsic width, which is not knowable for the replacement at this layer.
+ * This is the path for a replacement that is not a sized project raster image — an external url, an
+ * SVG, an unknown asset, or a render with no media list. A project image is rebuilt instead
+ * ({@link rebuildResponsiveArt}). Dropping costs this image its rungs (the browser fetches the one url
+ * chosen), which is the right trade: a correctly-sized picture of the WRONG image is not an
+ * optimization. The element's own width/height stay, since the replacement's are not known here.
  */
 function dropStaleResponsiveArt(el: Element): void {
   delete el.attribs.srcset;
+  delete el.attribs['data-srcset'];
   delete el.attribs.sizes;
   // The LQIP is painted BEHIND the image; left alone it flashes the old photo under the new one.
-  const style = el.attribs.style;
-  if (typeof style === 'string' && /background-image\s*:/i.test(style)) {
-    const rest = dropDeclarations(style, /^background-(image|size|repeat)$/i);
-    if (rest) el.attribs.style = rest;
-    else delete el.attribs.style;
-  }
+  setLqip(el, undefined);
   // <picture><source srcset>…<img data-sw-src> — a matching <source> outranks the <img> entirely.
-  const parent = el.parent;
-  if (parent && 'name' in parent && (parent as Element).name === 'picture') {
-    for (const child of [...(parent as Element).children]) {
-      if ('name' in child && (child as Element).name === 'source') removeElement(child);
-    }
+  for (const source of pictureSources(el)) removeElement(source);
+}
+
+/**
+ * The project image a `data-sw-src` override can REBUILD responsive art for — or undefined, and the
+ * override takes the plain swap ({@link dropStaleResponsiveArt}). All of:
+ *  - the element is an `<img>` that WAS responsive: a srcset / data-srcset of its own, or `<source>`s
+ *    in its `<picture>`. A plain hand-written `<img data-sw-src>` never opted into rungs (it may carry
+ *    a DISPLAY width/height, not the asset's), so it keeps exactly the markup its author wrote;
+ *  - the url is a bare delivery url — the rungs append `?size=`, so a url already carrying a query (or
+ *    a fragment) is the author's deliberate choice, not something to rebuild around;
+ *  - it resolves to a RASTER project image with recorded dimensions (not external, SVG or unknown).
+ */
+function rebuildTarget(el: Element, url: string, media: readonly RenderMedia[] | undefined): SizedRenderImage | undefined {
+  if (!media || el.name !== 'img' || url === '' || url.includes('?') || url.includes('#')) return undefined;
+  if (!hasAttr(el, 'srcset') && !hasAttr(el, 'data-srcset') && pictureSources(el).length === 0) return undefined;
+  return sizedRaster(url, resolveRenderImage(url, media));
+}
+
+/**
+ * Rebuild a replaced image's art for the NEW project image — with {{sw-image}}'s own rung rule
+ * (`responsiveRungs`), so a swapped photo is exactly as responsive as one written with the helper:
+ * the `src` fallback (the top rung — a bare url would serve the 2400px default to every device), the
+ * srcset, the `<picture>` sources, the new intrinsic width/height (the old ones size the box to the
+ * previous photo's aspect — a layout shift) and the new LQIP (or none, as the helper decides). The
+ * author's own attributes — `sizes`, `alt`, `class`, `loading`, `fetchpriority` — are not the art's,
+ * and stay as written.
+ *
+ * LAZY (`data-src`): written in the lazyload runtime's vocabulary — `data-src` + `data-srcset`, which it
+ * copies into `src`/`srcset` on intersect — and never as an eager `srcset`, which would fetch at load. A
+ * lazy `<picture>` still loses its sources: the runtime cannot defer a `<source>`.
+ */
+function rebuildResponsiveArt(el: Element, url: string, asset: SizedRenderImage, lazy: boolean): void {
+  const rungs = responsiveRungs(url, asset.width);
+  const ownSrcset = hasAttr(el, 'srcset');
+  const ownDataSrcset = hasAttr(el, 'data-srcset');
+  let previous: string | undefined;
+  if (lazy) {
+    previous = el.attribs['data-src'];
+    el.attribs['data-src'] = rungs.src;
+    delete el.attribs.srcset;
+    if (ownSrcset || ownDataSrcset) el.attribs['data-srcset'] = rungs.webp;
+  } else {
+    previous = el.attribs.src;
+    el.attribs.src = rungs.src;
+    if (ownSrcset) el.attribs.srcset = rungs.webp;
+    if (ownDataSrcset) el.attribs['data-srcset'] = rungs.webp;
+  }
+  el.attribs.width = String(asset.width);
+  el.attribs.height = String(asset.height);
+  setLqip(el, lqipPlaceholder(asset));
+  for (const source of pictureSources(el)) {
+    const type = source.attribs.type;
+    // An art-directed source (`media=`) is a different CROP of the old photo, and a type we don't
+    // serve has no rung — both would outrank the <img> with the old file, so they go.
+    const set =
+      lazy || hasAttr(source, 'media') ? undefined : type === 'image/avif' ? rungs.avif : type === 'image/webp' ? rungs.webp : undefined;
+    if (set) source.attribs.srcset = set;
+    else removeElement(source);
+  }
+  // {{sw-image lightbox=true}}: `<a href data-full>` around the image, linking its own top rung. That
+  // link must follow the image, or the viewer opens the PREVIOUS photo. Only a value that IS the old
+  // src moves — an anchor the author pointed anywhere else is theirs, not the image's.
+  const host = (pictureOf(el) ?? el).parent;
+  if (previous && host && isTag(host) && host.name === 'a') {
+    if (host.attribs.href === previous) host.attribs.href = rungs.src;
+    if (host.attribs['data-full'] === previous) host.attribs['data-full'] = rungs.src;
   }
 }
 
@@ -310,12 +418,19 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       // Editable image: a non-empty override → <img src> (scheme-sanitized); empty → keep the
       // authored default (so clearing reverts, rather than producing a broken src=""). When the
       // element opts into LAZY-loading (it carries a `data-src` attr the lazyload runtime swaps into
-      // `src` on intersect), fill THAT instead so data-sw-src works with deferred images.
+      // `src` on intersect), fill THAT instead so data-sw-src works with deferred images. A responsive
+      // image replaced by a known project raster image has its art REBUILT for the new file; any other
+      // replacement drops the old file's art (see rebuildTarget).
       const value = resolveUrlOverride(ctx, srcKey);
       if (value !== undefined && value !== '') {
-        const target = Object.prototype.hasOwnProperty.call(el.attribs, 'data-src') ? 'data-src' : 'src';
-        el.attribs[target] = safeUrl(value, '');
-        dropStaleResponsiveArt(el);
+        const lazy = hasAttr(el, 'data-src');
+        const url = safeUrl(value, '');
+        const asset = rebuildTarget(el, url, ctx.media);
+        if (asset) rebuildResponsiveArt(el, url, asset, lazy);
+        else {
+          el.attribs[lazy ? 'data-src' : 'src'] = url;
+          dropStaleResponsiveArt(el);
+        }
       }
     }
     const bgKey = el.attribs[BG_ATTR];

@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { buildSwImage, resolveRenderImage, mediaAssetId, filenameAlt } from '../src/image-helper.js';
+import {
+  buildSwImage,
+  resolveRenderImage,
+  mediaAssetId,
+  filenameAlt,
+  responsiveRungs,
+  sizedRaster,
+  lqipPlaceholder,
+  lqipStyle,
+} from '../src/image-helper.js';
 import { renderTemplate } from '../src/template.js';
 import type { RenderMedia } from '../src/folder.js';
 
@@ -166,6 +175,56 @@ describe('buildSwImage', () => {
     expect(html).not.toContain('srcset');
     expect(html).not.toContain('?size=');
     expect(html).not.toContain('<picture');
+  });
+
+  it('gives an SVG ASSET no rungs even when the url naming it does not end in .svg', () => {
+    // Resolved by id: the record, not the url's spelling, says it is a vector (no `?size=` thumbnails).
+    const svg: RenderMedia = { id: 's1', folder: '', kind: 'image', filename: 'logo.svg', url: '/media/acme/s1-logo.svg', width: 300, height: 120 };
+    const html = buildSwImage('/media/acme/s1-logo', [svg]);
+    expect(html).not.toContain('srcset');
+    expect(html).not.toContain('?size=');
+  });
+});
+
+describe('the responsive pieces {{sw-image}} shares with the data-sw-src directive', () => {
+  it('responsiveRungs: sm up to the first rung that covers the source, top descriptor clamped', () => {
+    expect(responsiveRungs('/m/p.jpg', 1200)).toEqual({
+      src: '/m/p.jpg?size=lg',
+      webp: '/m/p.jpg?size=sm 500w, /m/p.jpg?size=md 1000w, /m/p.jpg?size=lg 1200w',
+      avif: '/m/p.jpg?size=sm&format=avif 500w, /m/p.jpg?size=md&format=avif 1000w, /m/p.jpg?size=lg&format=avif 1200w',
+    });
+    // Wider than the delivery cap → every rung, xl at its real 2400 (never a pointless upscale past it).
+    expect(responsiveRungs('/m/p.jpg', 5000).webp.endsWith('/m/p.jpg?size=xl 2400w')).toBe(true);
+    // Narrower than the smallest rung → that one rung alone, clamped to the source.
+    expect(responsiveRungs('/m/p.jpg', 320)).toEqual({ src: '/m/p.jpg?size=sm', webp: '/m/p.jpg?size=sm 320w', avif: '/m/p.jpg?size=sm&format=avif 320w' });
+  });
+
+  it('responsiveRungs concatenates the base VERBATIM (the caller picks markup-escaped or raw)', () => {
+    expect(responsiveRungs('/m/a&amp;b.jpg', 400).src).toBe('/m/a&amp;b.jpg?size=sm');
+  });
+
+  it('sizedRaster: only a raster image with recorded dims qualifies', () => {
+    expect(sizedRaster(img.url, img)).toBe(img);
+    expect(sizedRaster(img.url, undefined)).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, kind: 'file' })).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, width: undefined })).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, height: 0 })).toBeUndefined();
+    expect(sizedRaster('/media/acme/a1/photo.svg', img)).toBeUndefined(); // the url says vector
+    expect(sizedRaster(img.url, { ...img, filename: 'Photo.SVG' })).toBeUndefined(); // the record says vector
+  });
+
+  it('lqipPlaceholder: the recorded webp data URI, unless the art is transparent or the value is foreign', () => {
+    expect(lqipPlaceholder(img)).toBe('data:image/webp;base64,AAAA');
+    expect(lqipPlaceholder({ ...img, hasAlpha: true })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: undefined })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: "data:image/webp;base64,AA');x:url('y" })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: 'https://cdn.example/blur.webp' })).toBeUndefined();
+  });
+
+  it('lqipStyle: the three declarations a replaced image must also be able to remove', () => {
+    expect(lqipStyle('data:image/webp;base64,AAAA')).toBe(
+      "background-image:url('data:image/webp;base64,AAAA');background-size:cover;background-repeat:no-repeat",
+    );
   });
 });
 

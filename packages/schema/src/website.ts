@@ -1348,6 +1348,12 @@ const WebsiteSettingsObject = z.object({
            * Both sizes are materialized, so the export grows by the second variant.
            */
           full: z.enum(['xs', 'sm', 'md', 'lg', 'xl']).optional(),
+          /**
+           * Emit the dataset's rows in this LANGUAGE (dataset sources only): each entry's version in it
+           * (`entry.translations`), or the `<dataset>_<locale>` dataset where one exists — what a page in
+           * that language renders. Absent = the main language. One file per language: declare one each.
+           */
+          locale: z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/).optional(),
         })
         .superRefine((v, ctx) => {
           if (!v.dataset === !v.folder) {
@@ -1358,6 +1364,9 @@ const WebsiteSettingsObject = z.object({
           }
           if (v.folder && v.fields?.length) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'fields= applies to a dataset source, not a folder' });
+          }
+          if (v.folder && v.locale) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'locale= applies to a dataset source, not a folder' });
           }
           if (v.dataset && v.full) {
             // A dataset row's URLs are rewritten IN PLACE inside whatever field holds them, so there

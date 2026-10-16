@@ -1,4 +1,5 @@
 import type { ImageAsset, MediaAsset } from '@sitewright/schema';
+import { resolveLocaleEntries } from '@sitewright/core';
 
 /**
  * PUBLISH-TIME `.json` DATA FILES — the counterpart to the on-page `{{sw-json-data}}` island.
@@ -22,11 +23,14 @@ export interface DataFileSpec {
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   /** Folder sources: ALSO emit `full` at this size, for what a lightbox opens. */
   full?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  /** Dataset sources: the rows in this language (entry translations / a `<dataset>_<locale>` dataset). */
+  locale?: string;
 }
 
 /** A dataset entry as the publish bundle holds it. */
 export interface DatasetEntryLike {
   values?: Record<string, unknown> | null;
+  translations?: Record<string, Record<string, unknown>>;
 }
 
 export interface BuildDataFilesInput {
@@ -147,9 +151,10 @@ export function buildDataFiles({ specs, entries, media, resolveAssetUrl }: Build
 
     let rows: unknown[];
     if (spec.dataset) {
-      const matching = Object.prototype.hasOwnProperty.call(entries, spec.dataset)
-        // eslint-disable-next-line security/detect-object-injection -- own-property-guarded, author-declared dataset name
-        ? (entries[spec.dataset] ?? [])
+      // The rows a page in that language renders — the same resolver, so a file and a page cannot disagree.
+      const source = spec.locale ? resolveLocaleEntries(entries, spec.locale) : entries;
+      const matching = Object.prototype.hasOwnProperty.call(source, spec.dataset)
+        ? (source[spec.dataset] ?? [])
         : [];
       if (matching.length === 0) {
         warnings.push(`data file "${spec.path}": dataset "${spec.dataset}" has no published entries — emitting an empty list`);

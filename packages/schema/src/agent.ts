@@ -861,10 +861,14 @@ or, to make a string editable IN PLACE in the content editor, put the key on an 
 data-sw-translate="key" directive. (The catalog is separate from website.data, the global
 NON-localized JSON store.)
 
-LOCALIZED DATA: duplicate a dataset per locale as "<name>_<locale>" (lowercased, UNDERSCORE — a dataset
-slug is a Handlebars path so it can't contain hyphens), e.g. "services" + "services_de". A page with
-locale "de" auto-resolves {{#each dataset.services}} to "services_de" when it exists (else it falls back
-to "services"); address a specific variant explicitly with {{#each dataset.services_de}}. In source, expose the page's language
+LOCALIZED DATA: give each dataset ROW its other languages — entry \`translations: { de: { <fields that differ> } }\`
+(get_guide("datasets") STEP 2). One row, one order, one status; only what differs is stored (any field — text,
+a photo, a price), and everything else follows the main language, so a price is entered once. A "de" page renders
+every row in German where it has a German version, else in the main language — in loops, {{item.…}} and
+{{#sw-pick-entry}} (references) alike. The older alternative still works and WINS for that dataset: a whole
+dataset copy per locale named "<name>_<locale>" (lowercased, UNDERSCORE — a slug is a Handlebars path), e.g.
+"services_de", which a "de" page reads in place of "services"; address a copy explicitly with
+{{#each dataset.services_de}}. A data file takes \`locale\` to emit one language. In source, expose the page's language
 as {{page.locale}} and its alternates as {{#each page.translations}} (each has \`locale\`,
 \`path\`, \`title\`). The "translation" content kind is legacy — do NOT use it; model
 languages as locale-variant pages instead.
@@ -1024,7 +1028,7 @@ the list is decorative (a photo wall) rather than something each item needs a UR
     data/<path> — fetch('data/gallery.json'). Ships ONCE and is cached, and can be fetched lazily —
     right for a list too large to inline, or one several pages share. "path" is a plain filename; the
     data/ directory is fixed (the site ROOT cannot serve .json, so the build manifest stays private). A dataset source emits PUBLISHED entries only; "fields" narrows the
-    columns. Media URLs are rewritten to published _assets/ paths and MATERIALIZED into the export
+    columns; "locale":"de" emits the rows in that language (one file per language). Media URLs are rewritten to published _assets/ paths and MATERIALIZED into the export
     — for a folder source's images and for any /media/ URL inside a DATASET row (a product photo, an
     <img> in a rich-text cell). "size" picks the variant (xs|sm|md|lg|xl, default md). So the assets a
     data file names are the assets the exported site actually contains.
@@ -1947,7 +1951,7 @@ STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "
   - The SLUG MUST be a lowercase UNDERSCORE identifier — "faq_passengers", NOT "faq-passengers" — because it
     becomes the Handlebars path \`dataset.<slug>\` and a hyphen would parse as minus and break every loop. (The
     put_content \`id\` arg for the dataset itself has no such restriction, but conventionally matches the slug.)
-  - Each field = { name: <identifier>, type, required?: false, localized?: false, config?: {} }. type is one of:
+  - Each field = { name: <identifier>, type, required?: false, config?: {} }. type is one of:
     text, richtext, number, boolean, date, time, datetime, image, icon, file, folder, reference, page, select,
     json, list, object.
     · select needs config: { options: ["a","b","c"] }.  · reference needs config: { dataset: "<other_slug>" }.
@@ -1984,6 +1988,18 @@ STEP 2 — ADD EACH ROW (entry): put_content({ kind: "entry", id: "delays", data
     KEEPS the row's current position. If a list ever renders in the wrong order, get_content one of its entries
     and look at \`order\` — do NOT rename ids to force a sequence.
   - A list/object field's value is stored as-is: values: { slides: [ { image:"/media/…", caption:"A" }, … ] }.
+  - **OTHER LANGUAGES** (a site with locales): the row's version in each language goes under
+    \`translations: { "<locale>": { <only the fields that differ> } }\` — ANY field, a photo or a price as much
+    as text (a list/object field is one unit: send it whole). A field you leave out FOLLOWS the main language,
+    so a price changed in \`values\` changes on every language page that did not set its own; a field you send
+    with the main language's value is dropped for the same reason. On a page in that locale the row renders as
+    \`values\` overlaid with its version — in \`{{#each}}\`, \`{{item.<slug>.<id>}}\` and \`{{#sw-pick-entry}}\`
+    (so a REFERENCE field read with sw-pick-entry gets the referenced row in the reader's language too).
+    Add or change ONE language without touching the rest with merge:true —
+    put_content("entry","p815",{ dataset:"products", translations:{ de:{ name:"Wanderschuh" } } },{ merge:true });
+    \`translations:{ de:{ name:null } }\` makes that field follow the main language again, \`translations:{ de:null }\`
+    removes the German version. Only a language the site has is accepted, never its main one (that is \`values\`).
+    \`de: {}\` is a valid version: reviewed, nothing differs. One \`status\` covers every language.
 
 STEP 3 — LOOP IT in a page/template source:
   {{#each dataset.faq_passengers}}<div class="py-4"><h3>{{question}}</h3><p>{{answer}}</p></div>{{/each}}

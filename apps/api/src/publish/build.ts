@@ -26,7 +26,7 @@ import {
   relativeRoot,
   resolveTemplateSource,
   GLOBAL_TEMPLATE_PREFIX,
-  resolveLocaleDatasets,
+  resolveLocaleEntries,
   resolveDatasetPageRefs,
   resolveCodeRef,
   translationsOf,
@@ -1164,8 +1164,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // naming its sibling locales is valid. hreflang IS gated because search engines must not be
         // pointed at noindex pages.
         const ogLocaleAlternates = group.filter((m) => m.locale !== pageLocale).map((m) => m.locale.replace(/-/g, '_'));
-        // `dataset.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
-        // present, else the base dataset (auto locale-suffix). Translation links for a
+        // `dataset.<name>` resolves to this page's locale variant (`<name>_<locale>`) when
+        // present, else the base dataset (auto locale-suffix) with each entry in this page's
+        // language where it has a version in it (entry.translations). Translation links for a
         // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
         // ROOT-RELATIVE page path — same as nav — so the `{{sw-url}}` helper (which only
         // accepts `/…`/`http(s)`/`#`) emits a real link rather than its `#` fallback.
@@ -1173,7 +1174,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // pages THIS build ships, so a reference to a draft/removed page reads as empty here — which is
         // the honest answer, because on the live site that page is not there.
         const localeData = resolveDatasetPageRefs(
-          resolveLocaleDatasets(datasets, page.locale),
+          resolveLocaleEntries(datasets, page.locale),
           bundle.datasets,
           pubBundle.pages,
           defaultLocale,

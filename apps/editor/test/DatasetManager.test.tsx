@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { Dataset, Entry } from '@sitewright/schema';
 import type { Project } from '../src/api';
 
-const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset } = vi.hoisted(() => ({
+const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset, getSettings } = vi.hoisted(() => ({
+  getSettings: vi.fn<(pid: string) => Promise<unknown>>(),
   listDatasets: vi.fn<() => Promise<{ items: Dataset[] }>>(),
   listEntries: vi.fn<() => Promise<{ items: Entry[] }>>(),
   putDataset: vi.fn<(pid: string, d: Dataset) => Promise<unknown>>(),
@@ -21,6 +22,7 @@ vi.mock('../src/api', () => ({
     deleteDataset: (pid: string, id: string) => deleteDataset(pid, id),
     deleteEntry: (pid: string, id: string, dataset: string) => deleteEntry(pid, id, dataset),
     renameDataset: (pid: string, id: string, slug: string, cascade: boolean) => renameDataset(pid, id, slug, cascade),
+    getSettings: (pid: string) => getSettings(pid),
   },
 }));
 
@@ -40,7 +42,9 @@ const entries: Entry[] = [
 ];
 
 beforeEach(() => {
-  for (const m of [listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset]) m.mockReset();
+  for (const m of [listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset, getSettings]) m.mockReset();
+  // One language unless a test says otherwise — then rows carry no language badges.
+  getSettings.mockResolvedValue({ item: { identity: {}, settings: { defaultLocale: 'en', locales: ['en'] } } });
   listDatasets.mockResolvedValue({ items: datasets });
   listEntries.mockResolvedValue({ items: entries });
   putDataset.mockResolvedValue({});
@@ -54,6 +58,16 @@ async function renderAndSelectAlpha() {
 }
 
 describe('DatasetManager', () => {
+  it('on a multilingual site, each row says which languages it has a version in', async () => {
+    getSettings.mockResolvedValue({ item: { identity: {}, settings: { defaultLocale: 'en', locales: ['en', 'de'] } } });
+    listEntries.mockResolvedValue({
+      items: [{ ...entries[0]!, translations: { de: { title: 'Erster Beitrag' } } }, entries[1]!],
+    });
+    await renderAndSelectAlpha();
+    expect(await screen.findByLabelText('German version')).toBeInTheDocument(); // e1
+    expect(screen.getByLabelText('no German version')).toBeInTheDocument(); // e2
+  });
+
   it('lists datasets sorted alphabetically by name', async () => {
     render(<DatasetManager project={project} />);
     await screen.findByText('Alpha');

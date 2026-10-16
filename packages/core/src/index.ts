@@ -15,4 +15,5 @@ export * from './routes.js';
 export * from './page-parent.js';
 export * from './page-removal.js';
 export * from './page-refs.js';
+export * from './entry-translations.js';
 export * from './ordering.js';

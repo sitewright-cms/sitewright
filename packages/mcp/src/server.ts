@@ -209,7 +209,7 @@ export function parseJsonText(text: string): { ok: true; value: unknown } | { ok
 const NESTED_OBJECT_FIELDS: Readonly<Record<string, readonly string[]>> = {
   settings: ['identity', 'website', 'settings'],
   page: ['data', 'nav', 'link'],
-  entry: ['values'],
+  entry: ['values', 'translations'],
 };
 
 /**

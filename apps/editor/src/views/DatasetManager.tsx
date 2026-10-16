@@ -17,6 +17,8 @@ import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
 import { SearchField } from './ui/SearchField';
 import { useIsMobile } from '../lib/use-is-mobile';
+import { useSiteLocales } from '../lib/site-locales';
+import { localeLabel } from './i18n/locale-catalog';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 
 // Alphabetical: the list is long enough that a curated order is one nobody but its author can
@@ -77,6 +79,8 @@ export function DatasetManager({
 }) {
   // Narrow viewport: the entry pane gets a width floor so it cannot be squeezed out (see the <section>).
   const isMobile = useIsMobile();
+  // On a multilingual site each row says which languages it has a version in.
+  const siteLocales = useSiteLocales(project.id);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
@@ -1079,6 +1083,21 @@ export function DatasetManager({
                       >
                         {entryLabel(selected, e)}
                       </button>
+                      {siteLocales.others.map((l) => {
+                        const has = Object.hasOwn(e.translations ?? {}, l);
+                        return (
+                          <span
+                            key={l}
+                            title={has ? `Has a ${localeLabel(l)} version` : `No ${localeLabel(l)} version — shows in ${localeLabel(siteLocales.main)}`}
+                            aria-label={has ? `${localeLabel(l)} version` : `no ${localeLabel(l)} version`}
+                            className={`rounded px-1 py-0.5 text-[9px] font-semibold uppercase transition group-hover:text-white ${
+                              has ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300 group-hover:bg-white/25' : 'border border-dashed border-slate-300 text-slate-400 dark:border-white/15 dark:text-slate-500'
+                            }`}
+                          >
+                            {l}
+                          </span>
+                        );
+                      })}
                       <span
                         className={`rounded px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white ${
                           e.status === 'published' ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300' : 'bg-slate-100 dark:bg-white/10 text-slate-500 dark:text-slate-400'

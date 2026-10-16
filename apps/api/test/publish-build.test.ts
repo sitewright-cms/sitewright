@@ -1664,6 +1664,32 @@ describe('buildSite', () => {
     await expect(readFile(join(outDir, 'index.html'), 'utf8')).rejects.toBeTruthy();
   });
 
+  it('★ publishes an ABSOLUTE media url exactly as written — only a root-relative one is rebased', async () => {
+    // Unanchored, the rewrite matched the `/media/<slug>/` INSIDE an absolute url and shipped
+    // `https://cms.example.com../_assets/…`. Root-relative refs (incl. in CSS url()) still rebase.
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home',
+            path: '',
+            title: 'Home',
+            source:
+              '<img src="https://cms.example.com/media/acme/a7-hero.png" alt="abs">' +
+              '<div style="background:url(/media/acme/a8-bg.png?size=md)"></div>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('src="https://cms.example.com/media/acme/a7-hero.png"');
+    expect(home).not.toContain('example.com../');
+    expect(home).not.toContain('example.com_assets');
+    expect(home).toContain(`_assets/${assetAlias('a8')}-bg-md.webp`);
+  });
+
   it('ignores media when no reader is provided (no copy)', async () => {
     const asset = {
       kind: 'image' as const, folder: '',

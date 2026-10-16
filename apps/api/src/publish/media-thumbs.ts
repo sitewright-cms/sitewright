@@ -145,13 +145,20 @@ export function rewriteMediaUrlsFlat(
   // The char classes exclude the delimiters that end a URL token (quotes, whitespace, ')', ',', '>'), so
   // a match never runs past its own URL. `splitMediaPath` disambiguates the two shapes on the slash.
   //
+  // ANCHORED by the lookbehind: the `/media/` must START a url, not sit inside one. Only a ROOT-RELATIVE
+  // reference is this project's media; in `https://cms.example.com/media/<slug>/…` (or `//cdn…/media/…`,
+  // or `/other/media/…`) the prefix is preceded by a host or path character, and rewriting it in place
+  // shipped `https://cms.example.com../_assets/…` — a url that resolves nowhere. Those are left exactly
+  // as written. Every real delimiter before a url (quote, `(`, `=`, `,`, whitespace, `>`, `;` of an
+  // entity) is outside the class.
+  //
   // The query separator may be the ESCAPED `&amp;`: the directive pass re-serializes any page carrying a
   // data-sw-* marker, and the serializer writes an attribute's `&` as `&amp;`. Stopping at its `;` read an
   // AVIF rung's `?size=sm&amp;format=avif` as `size=sm` (a WebP file) and left `;format=avif` glued to
   // the rewritten path — a dead AVIF <source> on every such page. The two alternatives start on
   // different characters, so the repetition stays linear.
   const re = new RegExp(
-    `${escapeRegExp(prefix)}([A-Za-z0-9_.-]+(?:/(?:file/)?[A-Za-z0-9_.-]+)?)(\\?(?:[A-Za-z0-9=%_-]|&(?:amp;)?)*)?`,
+    `(?<![A-Za-z0-9._~%@:/\\]-])${escapeRegExp(prefix)}([A-Za-z0-9_.-]+(?:/(?:file/)?[A-Za-z0-9_.-]+)?)(\\?(?:[A-Za-z0-9=%_-]|&(?:amp;)?)*)?`,
     'g',
   );
   return html.replace(re, (whole: string, path: string, query: string | undefined) => {

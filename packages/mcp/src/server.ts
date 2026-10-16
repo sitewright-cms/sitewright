@@ -1553,11 +1553,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         if (typeof v !== 'string') return v;
         const s = v.trim();
         if (!s.startsWith('[') || !s.endsWith(']')) return v;
-        try {
-          return JSON.parse(s);
-        } catch {
-          return v;
-        }
+        const parsed = parseJsonText(s);
+        return parsed.ok ? parsed.value : v;
       }, schema)
       .nonoptional();
 

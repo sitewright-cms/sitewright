@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readdir, stat } from 'node:fs/promises';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { mkdtemp, rm, readdir, stat, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -19,11 +19,18 @@ import { registerAccount } from '../src/repo/accounts.js';
  * Streaming introduces a NEW failure mode these tests exist to guard: a temp file that outlives the
  * request. Every exit path has to remove it, including the ones that reject before storing.
  */
+// A pass-through spy, so a test can ask whether the app ever read a STAGED upload back into the heap.
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, readFile: vi.fn(actual.readFile) };
+});
+
 let app: FastifyInstance;
 let db: Database;
 let mediaRoot: string;
 
 beforeEach(async () => {
+  vi.mocked(readFile).mockClear();
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-upload-'));
   db = await makeTestDb();
   app = await createApp({ db, mediaRoot });
@@ -38,6 +45,9 @@ afterEach(async () => {
 async function stagedTempFiles(): Promise<string[]> {
   return readdir(join(mediaRoot, '.uploads-tmp')).catch(() => []);
 }
+
+/** Reads of a STAGED upload back into the heap since the test began (the spy is cleared per test). */
+const stagedReads = (): unknown[] => vi.mocked(readFile).mock.calls.filter(([p]) => String(p).includes('.uploads-tmp'));
 
 async function setup(email = 'up@e2e.test') {
   await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
@@ -80,6 +90,64 @@ describe('large uploads stream to disk', () => {
     const item = (res.json() as { item: { kind: string; bytes: number; url: string } }).item;
     expect(item.kind, 'a playable extension is stored as video, not a download').toBe('video');
     expect(item.bytes, 'size comes from the file on disk, not a buffer length').toBe(bytes.length);
+  });
+
+  it('★ never reads a staged video or download back into the heap', async () => {
+    // The font sniff compared the detector's answer to `undefined` while it says `null` for "not a
+    // font", so every non-image upload counted as a possible font and was read WHOLE into memory —
+    // the stored asset looked identical, and the heap paid the full size anyway.
+    const { t, projectId } = await setup();
+    for (const filename of ['clip.mp4', 'report.pdf']) {
+      const uploadPath = await mintTicket(t, projectId);
+      const res = await app.inject({
+        method: 'PUT',
+        url: `${uploadPath}?filename=${filename}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        payload: Buffer.alloc(1024 * 1024, 5),
+      });
+      expect(res.statusCode).toBe(201);
+    }
+    expect(stagedReads(), 'a large upload goes from the temp file straight into place').toEqual([]);
+  });
+
+  it('★ refuses an oversized IMAGE/SVG/FONT by its size on disk — before reading a byte of it', async () => {
+    // The kinds that are read in (and handed to sharp / the sanitizer) are chosen by the CLIENT: the
+    // name says ".png", or the first four bytes say "wOF2". Checked only after readFile, either one put
+    // up to the 200MB ticket ceiling into the heap first.
+    const { t, projectId } = await setup();
+    for (const [filename, bytes, message] of [
+      ['huge.png', 15 * 1024 * 1024 + 1, /15MB/],
+      ['huge.svg', 4 * 1024 * 1024 + 1, /4MB/],
+      ['huge.woff2', 5 * 1024 * 1024 + 1, /size limit/],
+    ] as const) {
+      const uploadPath = await mintTicket(t, projectId);
+      const payload = Buffer.alloc(bytes, 0x20);
+      if (filename.endsWith('.woff2')) payload.write('wOF2');
+      const res = await app.inject({
+        method: 'PUT',
+        url: `${uploadPath}?filename=${filename}`,
+        headers: { 'content-type': 'application/octet-stream' },
+        payload,
+      });
+      expect(res.statusCode, filename).toBe(413);
+      expect((res.json() as { error: string }).error, filename).toMatch(message);
+    }
+    expect(stagedReads(), 'refused on its size alone').toEqual([]);
+    expect(await stagedTempFiles(), 'and the refused bytes are gone').toEqual([]);
+  });
+
+  it('a real font under its cap is still read in, detected and stored', async () => {
+    const { t, projectId } = await setup();
+    const uploadPath = await mintTicket(t, projectId);
+    const res = await app.inject({
+      method: 'PUT',
+      url: `${uploadPath}?filename=Brand.woff2`,
+      headers: { 'content-type': 'application/octet-stream' },
+      payload: Buffer.concat([Buffer.from('wOF2'), Buffer.alloc(1024, 1)]),
+    });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { item: { kind: string } }).item.kind).toBe('font');
+    expect(stagedReads()).toHaveLength(1);
   });
 
   it('leaves no temp file behind after a successful upload', async () => {

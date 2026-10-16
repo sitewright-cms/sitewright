@@ -83,6 +83,29 @@ describe('rewriteMediaUrlsFlat', () => {
     expect(refs.size).toBe(0);
   });
 
+  it('★ leaves an ABSOLUTE or nested media url untouched — only a ROOT-RELATIVE one is the project\'s', () => {
+    // Unanchored, `https://cms.example.com/media/acme/…` had its path rewritten in place and shipped as
+    // `https://cms.example.com../_assets/…` — a url that resolves nowhere.
+    const refs: ThumbRefs = new Map();
+    const html = [
+      '<img src="https://cms.example.com/media/acme/a1-photo.jpg?size=lg">',
+      'a{background:url(//cdn.example.com/media/acme/a2-bg.png)}',
+      '<a href="/elsewhere/media/acme/a3-doc.pdf">',
+    ].join('');
+    expect(rewriteMediaUrlsFlat(html, 'acme', '../', refs, idAlias)).toBe(html);
+    expect(refs.size).toBe(0);
+  });
+
+  it('still rewrites a root-relative url after every delimiter a page actually puts before one', () => {
+    const refs: ThumbRefs = new Map();
+    const html =
+      `<img src="/media/acme/a1-x.png"><img src='/media/acme/a1-x.png'>url(/media/acme/a1-x.png) ` +
+      `srcset="/media/acme/a1-x.png 1x,/media/acme/a1-x.png 2x" data-x=&quot;/media/acme/a1-x.png&quot;>/media/acme/a1-x.png`;
+    const out = rewriteMediaUrlsFlat(html, 'acme', '', refs, idAlias);
+    expect(out).not.toContain('/media/acme/');
+    expect(out.match(/_assets\/a1-x-xl\.webp/g)).toHaveLength(7);
+  });
+
   it('records an SVG image as an ORIGINAL ref (copied verbatim), strips any ?size, keeps the .svg name', () => {
     const refs: ThumbRefs = new Map();
     const out = rewriteMediaUrlsFlat('<img src="/media/acme/s1/logo.svg?size=lg">', 'acme', '', refs, idAlias);

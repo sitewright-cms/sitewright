@@ -48,6 +48,13 @@ const AttributionSchema = z.object({
 });
 export type MediaAttribution = z.infer<typeof AttributionSchema>;
 
+/**
+ * An asset's alt text — what `{{sw-image}}` falls back to and what a `{{#sw-folder}}` gallery binds as
+ * `{{alt}}`. Exported so every surface that SETS it (the media PATCH, the bulk-alt route, upload
+ * tickets, the MCP tools) holds it to the one bound the stored record is parsed against.
+ */
+export const MediaAltSchema = z.string().max(500);
+
 // Fields shared by every asset kind.
 const baseShape = {
   id: IdSchema,
@@ -56,7 +63,7 @@ const baseShape = {
   /** Virtual folder this asset is filed under ('' = root). */
   folder: FolderSchema,
   bytes: z.number().int().nonnegative(),
-  alt: z.string().max(500).optional(),
+  alt: MediaAltSchema.optional(),
   attribution: AttributionSchema.optional(),
 } as const;
 

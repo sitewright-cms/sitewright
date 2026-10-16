@@ -27,12 +27,33 @@ import {
   LenientScreenshotViewportNameSchema,
   SCREENSHOT_VIEWPORT_NAMES,
   MediaFolderSchema,
+  MediaAltSchema,
+  FontFamilyNameSchema,
+  FontWeightSchema,
+  FontFallbackSchema,
+  FontFileNameSchema,
+  FONT_WEIGHTS,
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
-import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedMainThread, type TextEdit } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedMainThread, type TextEdit, type MediaUpdate } from './client.js';
+import { searchGoogleFonts, resolveGoogleFamily, suggestGoogleFamilies } from './google-fonts.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
+
+/** The `style` a font face declares. */
+const FontStyleSchema = z.enum(['normal', 'italic']);
+
+/**
+ * A font's metadata as a tool argument — the same bounds the API's upload and PATCH routes hold, so a
+ * bad weight or a CSS-breaking family is refused here, before any request.
+ */
+const FONT_METADATA_INPUT = {
+  family: FontFamilyNameSchema.optional().describe('The CSS family name, e.g. "Inter" — what headings/body will be set in.'),
+  weight: FontWeightSchema.optional().describe(`The face's weight: one of ${FONT_WEIGHTS.join(', ')}.`),
+  style: FontStyleSchema.optional().describe('normal | italic'),
+  fallback: FontFallbackSchema.optional().describe('The generic stack it degrades to: serif | sans-serif | monospace | cursive.'),
+};
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
  *  the generic route (media/mediafolder/deploy_target/project_smtp) are excluded; everything else an
@@ -315,6 +336,7 @@ const PROJECT_FREE_TOOLS: ReadonlySet<string> = new Set([
   'get_components',
   'search_icons',
   'search_textures',
+  'search_google_fonts',
   'get_capabilities',
   'get_guide',
   'get_reference',
@@ -743,6 +765,28 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         matches: g.matches.map((name) => ({ name, css: textureCss(name) })),
       }));
       if (!results.length) return toolError('Provide one or more search terms (comma- or whitespace-separated).');
+      return ok({ results });
+    },
+  );
+
+  // Find Google font FAMILIES. Static (no connection needed): it reads the catalog the platform already
+  // bundles — the editor picker's list and the self-hosting fetch's allowlist — so it makes no request,
+  // and every family it returns is one select_google_font accepts.
+  server.registerTool(
+    'search_google_fonts',
+    {
+      description:
+        'Find Google font families by name and/or generic category, from the catalog the platform bundles (no request is made). Returns each family with its fallback category and the weights it offers. Pass a family to select_google_font to SELF-HOST it — never link fonts.googleapis.com.',
+      inputSchema: {
+        query: z.string().max(100).optional().describe('Part of a family name, e.g. "playfair" or "sans".'),
+        category: z.enum(['serif', 'sans-serif', 'monospace', 'cursive']).optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+      },
+    },
+    ({ query, category, limit }: { query?: string; category?: 'serif' | 'sans-serif' | 'monospace' | 'cursive'; limit?: number }) => {
+      if (!query?.trim() && !category) return toolError('Pass a `query` (part of a family name), a `category`, or both.');
+      const results = searchGoogleFonts(query ?? '', { ...(category ? { category } : {}), limit: limit ?? 20 });
+      if (!results.length) return toolError(`No Google family matches "${query ?? ''}"${category ? ` in ${category}` : ''} — try a shorter part of the name.`);
       return ok({ results });
     },
   );
@@ -1848,10 +1892,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'create_media_upload',
     {
       description:
-        'Upload a LOCAL file (a logo, a photo, a font, a PDF) into the project media library. Use this when the file is on YOUR disk; use import_image when it is at a public https URL. TWO STEPS: (1) call this to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./logo.png "<uploadUrl>?filename=logo.png"` — always pass ?filename=, since a raw upload carries no name and the stored asset is named from it. The response of THAT request is the stored asset; use its `url` in your markup. The ticket is single-use and expires (see expiresInSeconds), so mint one per file, immediately before sending it. It is deliberately not a single tool call: the bytes would have to pass through this conversation as base64, which for a 1MB image is roughly 370k tokens.',
-      inputSchema: { folder: z.string().max(1024).optional() },
+        'Upload LOCAL files (logos, photos, fonts, PDFs) into the project media library. Use this when the file is on YOUR disk; use import_image when it is at a public https URL. TWO STEPS: (1) call this to get a one-shot `uploadUrl`, (2) send the file to it yourself, e.g. `curl -T ./logo.png "<uploadUrl>?filename=logo.png"` — always pass ?filename=, since a raw upload carries no name and the stored asset is named from it. The response of THAT request is the stored asset; use its `url` in your markup. ' +
+        'MANY FILES: pass `count` (up to 50) to get that many tickets in ONE call, as `tickets: [{ uploadUrl, alt? }]` — send one file to each. ' +
+        'ALT TEXT: `alt` describes the single file of a 1-ticket call; for a batch pass `alts` (one per ticket, in order — each ticket echoes the alt it will stamp, so send the matching file to it). A `{{#sw-folder}}` gallery binds each asset\'s alt, so describe photos here or later with set_media_alt. ' +
+        'FONTS: `family`/`weight`/`style`/`fallback` say what a font file IS (otherwise it is recorded as the filename stem at weight 400); they apply to every ticket of the call and only when the file is a font — mint separately per weight. ' +
+        'Each ticket is single-use and expires after 10 minutes (see expiresInSeconds). A project holds at most 200 unused tickets and an unused one cannot be handed back — it holds its slot until it expires — so mint only what you are about to upload. Redeeming is limited to 60 PUTs a minute (a 429 there leaves the ticket unspent — wait and retry). It is deliberately not a single tool call: the bytes would have to pass through this conversation as base64, which for a 1MB image is roughly 370k tokens.',
+      inputSchema: {
+        folder: z.string().max(1024).optional(),
+        count: z.number().int().min(1).max(50).optional().describe('How many single-use tickets to mint (default 1; the length of `alts` when given).'),
+        alt: MediaAltSchema.optional().describe('Alt text for the ONE file of a single ticket.'),
+        alts: z.array(MediaAltSchema).min(1).max(50).optional().describe('One alt per ticket, in order — for a batch ("" leaves that file undescribed).'),
+        ...FONT_METADATA_INPUT,
+      },
     },
-    gate('content:write', ({ folder }) => client.createMediaUpload(folder)),
+    gate('content:write', ({ folder, ...opts }) => client.createMediaUpload(folder, opts)),
   );
 
   // The INLINE path for a small file. Deliberately a separate tool from create_media_upload rather
@@ -1866,9 +1920,13 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         filename: z.string().min(1).max(200),
         content_base64: z.string().min(1).max(MCP_INLINE_UPLOAD_MAX_B64_CHARS),
         folder: z.string().max(1024).optional(),
+        alt: MediaAltSchema.optional().describe('Alt text the stored asset is born with.'),
+        ...FONT_METADATA_INPUT,
       },
     },
-    gate('content:write', ({ filename, content_base64, folder }) => client.uploadMediaBase64(filename, content_base64, folder)),
+    gate('content:write', ({ filename, content_base64, folder, ...describe }) =>
+      client.uploadMediaBase64(filename, content_base64, folder, describe),
+    ),
   );
 
   // REPLACE, in the same two lanes as upload: inline for a small file, a ticket for a large one. The
@@ -1942,21 +2000,87 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'move_media',
     {
       description:
-        'Move and/or rename a single media asset: `folder` re-files it (use list_media_folders / create_media_folder), `filename` sets its display name. Pass at least one. The asset URL is unchanged.',
+        'Move, rename and/or describe a single media asset: `folder` re-files it (use list_media_folders / create_media_folder), `filename` sets its display name, `alt` sets its alt text ("" clears it). Pass at least one. The asset URL is unchanged. For the alt of MANY assets use set_media_alt; to correct a font use set_font_metadata.',
       inputSchema: {
         id: z.string(),
         folder: MediaFolderSchema.optional(),
         filename: z.string().min(1).max(255).optional(),
+        alt: MediaAltSchema.optional(),
       },
     },
-    gate('content:write', ({ id, folder, filename }) => {
-      if (folder === undefined && filename === undefined) {
-        throw new Error('move_media needs at least one of `folder` or `filename`.');
+    gate('content:write', ({ id, folder, filename, alt }) => {
+      if (folder === undefined && filename === undefined && alt === undefined) {
+        throw new Error('move_media needs at least one of `folder`, `filename` or `alt`.');
       }
       return client.updateMedia(id, {
         ...(folder !== undefined ? { folder } : {}),
         ...(filename !== undefined ? { filename } : {}),
+        ...(alt !== undefined ? { alt } : {}),
       });
+    }),
+  );
+
+  // Alt text in BULK. A gallery wants one alt per photo, and through move_media that was a call each.
+  server.registerTool(
+    'set_media_alt',
+    {
+      description:
+        'Set the ALT TEXT of many media assets in ONE call: items = [{ id, alt }] (up to 200; "" clears an alt; a repeated id takes its last alt). A `{{#sw-folder}}` gallery binds each asset\'s `{{alt}}` and {{sw-image}} falls back to it (then to the filename), so this is how a gallery stops shipping alt="". Describe what the picture SHOWS, in the page\'s language. A purely DECORATIVE use is marked on the tag (alt="" in the markup), not here. Partial success is normal — the result is { updated, failed:[{id,error}], requested }.',
+      inputSchema: {
+        items: z
+          .array(z.object({ id: z.string().min(1).max(200), alt: MediaAltSchema }))
+          .min(1)
+          .max(200)
+          .describe('One { id, alt } per asset (ids from list_media or the upload response).'),
+      },
+    },
+    gate('content:write', ({ items }: { items: Array<{ id: string; alt: string }> }) => client.setMediaAlt(items)),
+  );
+
+  // A dedicated tool rather than more move_media arguments: an agent fixing a font's weight would not
+  // look under "move", and these fields mean nothing on any other kind. Same PATCH underneath.
+  server.registerTool(
+    'set_font_metadata',
+    {
+      description:
+        'Correct what an uploaded FONT asset says about itself. A dropped `Inter-Bold.woff2` is recorded as family "Inter-Bold" at weight 400 (the filename stem and a default); fix it here and every typography slot using the asset renders the corrected @font-face — nothing else to re-point. `family`/`fallback` describe the whole family; `weight`/`style` describe ONE face, so on a font with several files name it with `face` (the file name from list_media). The served file names and URLs do not change. Pass at least one of family/fallback/weight/style.',
+      inputSchema: {
+        id: z.string().describe('The font asset id (list_media kind "font").'),
+        ...FONT_METADATA_INPUT,
+        face: FontFileNameSchema.optional().describe('Which stored face weight/style describe, e.g. "inter-400.woff2" — needed only when the font holds several.'),
+      },
+    },
+    gate('content:write', ({ id, ...changes }: { id: string } & MediaUpdate) => {
+      if (changes.family === undefined && changes.fallback === undefined && changes.weight === undefined && changes.style === undefined) {
+        throw new Error('set_font_metadata needs at least one of `family`, `fallback`, `weight` or `style`.');
+      }
+      return client.updateMedia(id, changes);
+    }),
+  );
+
+  // Google Fonts, SELF-HOSTED. The server downloads the woff2 (its only Google contact) into the media
+  // library; a published page never loads Google. The family is checked against the bundled catalog
+  // HERE first, so a near-miss name comes back with suggestions instead of a bare 400.
+  server.registerTool(
+    'select_google_font',
+    {
+      description:
+        'SELF-HOST a Google font family: the server downloads the requested weights once and stores them as a `kind:"font"` media asset (re-selecting a family merges in new weights). Returns the asset — then point a typography slot at it: identity.typography.heading/body = { source:"asset", assetId:<its id>, family:<its family>, weight:<one you selected> } via put_content("settings","settings",{ identity:{ typography:{…} } }, merge:true). Never add a fonts.googleapis.com <link> or @import. Find a family\'s exact name and weights with search_google_fonts.',
+      inputSchema: {
+        family: FontFamilyNameSchema.describe('The exact Google family name, e.g. "Playfair Display".'),
+        weights: z.array(FontWeightSchema).min(1).max(FONT_WEIGHTS.length).describe('Weights to self-host, e.g. [400, 700] — only ones the family offers.'),
+        folder: MediaFolderSchema.optional(),
+      },
+    },
+    gate('content:write', ({ family, weights, folder }: { family: string; weights: number[]; folder?: string }) => {
+      const known = resolveGoogleFamily(family);
+      if (!known) {
+        const near = suggestGoogleFamilies(family);
+        throw new Error(
+          `"${family}" is not a Google family the platform knows${near.length ? ` — did you mean: ${near.join(', ')}?` : '.'} Find the exact name with search_google_fonts.`,
+        );
+      }
+      return client.selectGoogleFont(known, weights, folder);
     }),
   );
 

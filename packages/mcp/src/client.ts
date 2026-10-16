@@ -301,6 +301,50 @@ export interface HeaderMeasureResult {
   advice: string[];
 }
 
+/** Outcome of a BULK alt-text write. `updated` + `failed` account for every distinct requested id. */
+export interface BulkAltResult {
+  updated: string[];
+  failed: Array<{ id: string; error: string }>;
+  requested: number;
+}
+
+/** A font's metadata as an upload or a correction states it (each optional). */
+export interface FontMetadata {
+  family?: string;
+  weight?: number;
+  style?: 'normal' | 'italic';
+  fallback?: 'serif' | 'sans-serif' | 'monospace' | 'cursive';
+}
+
+/** What an upload ticket can pin besides its folder: alt text and — if the file is a font — its metadata. */
+export interface UploadDescription extends FontMetadata {
+  alt?: string;
+}
+
+/** A batch mint: how many tickets, and (instead of one `alt`) one alt per ticket. */
+export interface UploadTicketOptions extends UploadDescription {
+  count?: number;
+  alts?: string[];
+}
+
+/**
+ * What minting returns: ONE `uploadUrl` for a single ticket (the default — the shape every caller
+ * already reads), or `tickets` for a batch, each with the alt it will stamp on its file. A batch has
+ * no top-level url on purpose, so there is no "the" ticket to send every file to.
+ */
+export type UploadTicketGrant =
+  | { uploadUrl: string; alt?: string; expiresInSeconds: number; maxBytes: number }
+  | { tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number };
+
+/** A PATCH to one media asset: move, rename, describe, or correct a font's metadata. */
+export interface MediaUpdate extends FontMetadata {
+  folder?: string;
+  filename?: string;
+  alt?: string;
+  /** Which stored face `weight`/`style` describe, when a font holds several. */
+  face?: string;
+}
+
 /** What a `criticalCss` partial write reports back. */
 export interface CriticalCssReceipt {
   block: string | null;
@@ -1101,8 +1145,11 @@ export class SitewrightClient {
    * configured public URL instead would be wrong exactly when it matters (a LAN instance, a tunnel, a
    * container talking to a host port).
    */
-  async createMediaUpload(folder?: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
-    return this.mintUploadTicket(folder ? { folder } : {});
+  async createMediaUpload(folder?: string, opts: UploadTicketOptions = {}): Promise<UploadTicketGrant> {
+    const minted = await this.mintUploadTickets({ ...(folder ? { folder } : {}), ...opts });
+    const { tickets, expiresInSeconds, maxBytes } = minted;
+    // A single ticket echoes its alt exactly as a batch ticket does, so the agent sees what it will stamp.
+    return tickets.length === 1 ? { ...tickets[0]!, expiresInSeconds, maxBytes } : minted;
   }
 
   /**
@@ -1111,18 +1158,32 @@ export class SitewrightClient {
    * only the bytes, and cannot re-point the ticket at another asset.
    */
   async createMediaReplace(assetId: string): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
-    return this.mintUploadTicket({ replaceAssetId: assetId });
+    return this.mintOneTicket({ replaceAssetId: assetId });
   }
 
-  private async mintUploadTicket(
-    body: { folder?: string; replaceAssetId?: string },
-  ): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
-    const res = await this.request<{ uploadPath: string; expiresInSeconds: number; maxBytes: number }>(
-      'POST',
-      this.projectPath('/media/upload-ticket'),
-      body,
-    );
-    return { uploadUrl: `${this.baseUrl}${res.uploadPath}`, expiresInSeconds: res.expiresInSeconds, maxBytes: res.maxBytes };
+  /** Mint exactly one ticket — the inline upload/replace paths, which send one file and no more. */
+  private async mintOneTicket(body: Record<string, unknown>): Promise<{ uploadUrl: string; expiresInSeconds: number; maxBytes: number }> {
+    const { tickets, expiresInSeconds, maxBytes } = await this.mintUploadTickets(body);
+    return { uploadUrl: tickets[0]!.uploadUrl, expiresInSeconds, maxBytes };
+  }
+
+  private async mintUploadTickets(
+    body: Record<string, unknown>,
+  ): Promise<{ tickets: Array<{ uploadUrl: string; alt?: string }>; expiresInSeconds: number; maxBytes: number }> {
+    const res = await this.request<{
+      uploadPath?: string;
+      tickets?: Array<{ uploadPath: string; alt?: string }>;
+      expiresInSeconds: number;
+      maxBytes: number;
+    }>('POST', this.projectPath('/media/upload-ticket'), body);
+    // A server that predates batches answers with `uploadPath` alone (the retired stdio bridge can
+    // still be pointed at one).
+    const minted = res.tickets ?? [{ uploadPath: res.uploadPath ?? '' }];
+    return {
+      tickets: minted.map((t) => ({ uploadUrl: `${this.baseUrl}${t.uploadPath}`, ...(t.alt ? { alt: t.alt } : {}) })),
+      expiresInSeconds: res.expiresInSeconds,
+      maxBytes: res.maxBytes,
+    };
   }
 
   /**
@@ -1133,9 +1194,9 @@ export class SitewrightClient {
    * fetch — and the whole path, including the per-kind media dispatch, is the one already proven by
    * `create_media_upload`. A second server route would have been a second thing to keep in step.
    */
-  async uploadMediaBase64(filename: string, contentBase64: string, folder?: string): Promise<unknown> {
+  async uploadMediaBase64(filename: string, contentBase64: string, folder?: string, describe: UploadDescription = {}): Promise<unknown> {
     const bytes = this.decodeInline(contentBase64, 'upload_media', 'create_media_upload');
-    const ticket = await this.createMediaUpload(folder);
+    const ticket = await this.mintOneTicket({ ...(folder ? { folder } : {}), ...describe });
     const sent = await this.redeemTicket(ticket.uploadUrl, filename, bytes, 'upload');
     return (sent as { item?: unknown } | undefined)?.item ?? sent;
   }
@@ -1200,18 +1261,37 @@ export class SitewrightClient {
     return this.request('POST', this.projectPath('/media/folders/rename'), { from, to });
   }
 
-  /** Move (`folder`) and/or rename (`filename`) a single media asset. */
   /** Re-file MANY assets in one call. Partial success is normal — the result accounts for every id. */
   async moveMediaBulk(ids: readonly string[], folder: string): Promise<BulkMoveResult> {
     return this.request('POST', this.projectPath('/media/bulk-move'), { ids, folder });
   }
 
-  async updateMedia(id: string, changes: { folder?: string; filename?: string }): Promise<unknown> {
+  /** Move, rename, set the alt of, or (on a font) correct the metadata of ONE asset — the media PATCH. */
+  async updateMedia(id: string, changes: MediaUpdate): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'PATCH',
       this.projectPath(`/media/${encodeURIComponent(id)}`),
       changes,
     );
+    return res.item;
+  }
+
+  /** Set (or, with '', clear) the alt text of up to 200 assets in one call; `failed` names the ids that did not take. */
+  async setMediaAlt(items: ReadonlyArray<{ id: string; alt: string }>): Promise<BulkAltResult> {
+    return this.request<BulkAltResult>('POST', this.projectPath('/media/bulk-alt'), { items });
+  }
+
+  /**
+   * Self-host a Google family's weights as a `kind:'font'` asset (the server downloads them — the only
+   * Google contact — and a published page never loads Google). Re-selecting a family merges in the new
+   * weights. Returns the font asset; a typography slot references it by `id`.
+   */
+  async selectGoogleFont(family: string, weights: readonly number[], folder?: string): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>('POST', this.projectPath('/fonts/select'), {
+      family,
+      weights,
+      ...(folder ? { folder } : {}),
+    });
     return res.item;
   }
 

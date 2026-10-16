@@ -23,6 +23,7 @@ import {
   type CaptchaProvider,
   type CaptchaRenderConfig,
   MediaFolderSchema,
+  MediaAltSchema,
   targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
@@ -33,6 +34,8 @@ import {
   ScriptAssetSchema,
   FontWeightSchema,
   FontFamilyNameSchema,
+  FontFallbackSchema,
+  FontFileNameSchema,
   FONT_WEIGHTS,
   PageSchema,
   InstanceSettingsInputSchema,
@@ -84,7 +87,7 @@ import {
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
-import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asset.js';
+import { createFontAsset as storeFontAsset, mergeFontFaces, correctFontMetadata } from '../fonts/asset.js';
 import {
   renderDocument,
   componentTypesInSource,
@@ -222,7 +225,7 @@ import { draftPageForPath, draftPageNotice } from './preview-draft-page.js';
 import { isPreviewAssetPath } from './preview-asset-path.js';
 import { signPreview, verifyPreview, signShare, verifyShare, shareIdOf } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
-import { UploadTicketStore } from './upload-ticket-store.js';
+import { UploadTicketStore, type UploadTicketFont } from './upload-ticket-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema, SiteArchiveSizeError } from '../publish/adapters.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, DiskSpaceError, assertDiskHeadroom } from '../limits.js';
@@ -6289,7 +6292,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       srcPath: string,
-      meta: { filename: string; mimetype: string; folder?: string },
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string },
       kind: 'video' | 'file',
     ): Promise<VideoAsset | FileAsset> {
       const assetId = await mintAssetId(ctx);
@@ -6304,6 +6307,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bytes,
           storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
+          ...(meta.alt ? { alt: meta.alt } : {}),
         };
         const asset =
           kind === 'video'
@@ -6391,6 +6395,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
      * conventions.
      */
     type StoredUpload = { ok: true; item: unknown } | { ok: false; status: number; error: string };
+    /** What arrives with the bytes. `alt` is honoured by every kind but a font (which has nothing to describe). */
+    type UploadMeta = { filename: string; mimetype: string; folder: string; alt?: string };
+    /** A font's metadata — query strings on the multipart route, numbers on a ticket; FontUploadMeta coerces both. */
+    type UploadFontMeta = { family?: string; weight?: string | number; style?: string; fallback?: string };
+    /** The kinds an upload READS INTO MEMORY, each held to its own cap before a byte is read. */
+    const IN_MEMORY_CAPS = {
+      svg: { bytes: MAX_SVG_BYTES, error: 'SVG exceeds the 4MB limit' },
+      image: { bytes: MAX_IMAGE_UPLOAD_BYTES, error: 'image exceeds the 15MB limit' },
+      font: { bytes: MAX_FONT_BYTES, error: 'file exceeds size limit' },
+    } as const;
     /**
      * Write an incoming upload straight to a temp file next to the media root.
      *
@@ -6427,8 +6441,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       tmpPath: string,
-      meta: { filename: string; mimetype: string; folder: string },
-      font?: { family?: string; weight?: string; style?: string; fallback?: string },
+      meta: UploadMeta,
+      font?: UploadFontMeta,
     ): Promise<StoredUpload> => {
       try {
         const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
@@ -6441,13 +6455,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           try {
             const head = Buffer.alloc(8);
             await fh.read(head, 0, 8, 0);
-            looksLikeFont = detectFontFormat(head) !== undefined;
+            // `null` is the detector's "not a font". This compared against `undefined`, so EVERY
+            // non-image upload looked like a font and was read whole into the heap — the large path
+            // below, which exists so a 200MB video never is, was unreachable.
+            looksLikeFont = detectFontFormat(head) !== null;
           } finally {
             await fh.close();
           }
         }
         if (looksLikeImage || looksLikeFont) {
-          // Bounded by their own caps, so reading these in is cheap and keeps ONE dispatcher.
+          // Bounded by their own caps, so reading these in is cheap and keeps ONE dispatcher — but only
+          // once the cap is checked against the size ON DISK. The kind is client-chosen (a ".png" name,
+          // four "wOF2" bytes), so checking after readFile let either pull up to the 200MB ticket
+          // ceiling into the heap, and an image into sharp.
+          const cap = isSvg ? IN_MEMORY_CAPS.svg : looksLikeImage ? IN_MEMORY_CAPS.image : IN_MEMORY_CAPS.font;
+          if ((await stat(tmpPath)).size > cap.bytes) return { ok: false, status: 413, error: cap.error };
           const buffer = await readFile(tmpPath);
           return await storeUploadBuffer(ctx, projectSlug, buffer, meta, font);
         }
@@ -6464,8 +6486,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; folder: string },
-      font?: { family?: string; weight?: string; style?: string; fallback?: string },
+      meta: UploadMeta,
+      font?: UploadFontMeta,
     ): Promise<StoredUpload> => {
       // An SVG upload is SANITIZED (scripts/handlers/remote refs stripped) and kept VERBATIM as a
       // vector image (never routed through sharp) — served inline under a locked-down CSP. Malformed
@@ -6473,7 +6495,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
       if (isSvg) {
         if (buffer.length > MAX_SVG_BYTES) return { ok: false, status: 413, error: 'SVG exceeds the 4MB limit' };
-        const saved = await createSvgAsset(ctx, projectSlug, buffer.toString('utf8'), { filename: meta.filename, folder: meta.folder });
+        const saved = await createSvgAsset(ctx, projectSlug, buffer.toString('utf8'), {
+          filename: meta.filename,
+          folder: meta.folder,
+          ...(meta.alt ? { alt: meta.alt } : {}),
+        });
         if (!saved) return { ok: false, status: 400, error: 'invalid or unsafe SVG' };
         return { ok: true, item: saved };
       }
@@ -6596,7 +6622,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
      * gets back a one-shot URL it can curl. The bytes then travel over a channel the model is not part
      * of, and file size stops being a context problem. Every dimension except the bytes is pinned now,
      * at a point where the caller is known — see UploadTicketStore.
+     *
+     * BATCHES: `count` mints up to 50 tickets in one call, all pinned to the same folder and font
+     * metadata. A site with 78 photos used to be 78 mint calls before the first byte moved. Each ticket
+     * is still single-use, and each PUT still passes the redemption route's own limit — a batch changes
+     * how many tickets one call returns, not how fast bytes may arrive.
+     *
+     * ALT: `alt` describes the ONE file of a single ticket; `alts` gives each ticket of a batch its own,
+     * echoed beside its path so the pairing is explicit. A shared alt across a batch is refused rather
+     * than applied: one sentence repeated over a gallery describes none of it.
      */
+    const MAX_TICKETS_PER_MINT = 50;
+    /**
+     * Live tickets one project may hold. Batches are what make this necessary: at 30 mints a minute and
+     * one ticket each, the shared store could not be flooded; at fifty a call, one tenant could push every
+     * other tenant's tickets out of it. Four full batches is still far more than any upload needs in flight.
+     */
+    const MAX_LIVE_TICKETS_PER_PROJECT = 200;
+    const UploadTicketBody = z.object({
+      folder: MediaFolderSchema.optional(),
+      replaceAssetId: z.string().min(1).max(64).optional(),
+      count: z.number().int().min(1).max(MAX_TICKETS_PER_MINT).optional(),
+      alt: MediaAltSchema.optional(),
+      alts: z.array(MediaAltSchema).min(1).max(MAX_TICKETS_PER_MINT).optional(),
+      // Applied only when the bytes turn out to be a font — the same bounds as the multipart route's query.
+      family: FontFamilyNameSchema.optional(),
+      weight: FontWeightSchema.optional(),
+      style: z.enum(['normal', 'italic']).optional(),
+      fallback: FontFallbackSchema.optional(),
+    });
     app.post<{ Params: { projectId: string }; Body: unknown }>(
       '/projects/:projectId/media/upload-ticket',
       // ★ On the AGENT LANE with the other ingress routes. NOTE the REDEMPTION route (PUT
@@ -6608,16 +6662,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
-        const parsed = z
-          .object({ folder: MediaFolderSchema.optional(), replaceAssetId: z.string().min(1).max(64).optional() })
-          .safeParse(req.body ?? {});
-        if (!parsed.success) return reply.code(400).send({ error: 'invalid folder' });
+        const parsed = UploadTicketBody.safeParse(req.body ?? {});
+        if (!parsed.success) {
+          return reply.code(400).send({ error: 'invalid upload ticket request', details: parsed.error.flatten() });
+        }
+        const { folder, replaceAssetId, alt, alts, count: requested, ...fontFields } = parsed.data;
+        const count = requested ?? alts?.length ?? 1;
+        const font = Object.fromEntries(Object.entries(fontFields).filter(([, v]) => v !== undefined)) as UploadTicketFont;
+        const hasFont = Object.keys(font).length > 0;
+        if (replaceAssetId !== undefined && (count > 1 || alt !== undefined || alts !== undefined || hasFont)) {
+          return reply.code(400).send({
+            error: 'a replace ticket overwrites ONE asset\'s bytes and keeps its metadata — pass only replaceAssetId (set alt with set_media_alt)',
+          });
+        }
+        if (alt !== undefined && (count > 1 || alts !== undefined)) {
+          return reply.code(400).send({ error: 'alt describes ONE file — for a batch pass alts (one per ticket), or set them afterwards with set_media_alt' });
+        }
+        if (alts !== undefined && alts.length !== count) {
+          return reply.code(400).send({ error: `alts holds ${alts.length} entries for ${count} tickets — give exactly one per ticket` });
+        }
         // A REPLACE ticket names its target now, so the holder cannot re-point it. Checking the asset
         // here as well as at redeem time is what makes a typo'd id fail on the tool call the agent can
         // see, rather than on a curl it has already spent the bytes on.
-        if (parsed.data.replaceAssetId !== undefined) {
+        if (replaceAssetId !== undefined) {
           try {
-            const target = await contentRepo.getLiveMedia(ctx, parsed.data.replaceAssetId);
+            const target = await contentRepo.getLiveMedia(ctx, replaceAssetId);
             if (target.kind === 'font') {
               return reply.code(400).send({ error: 'a font family is stored as many files — upload a new font instead' });
             }
@@ -6625,15 +6694,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             return reply.code(404).send({ error: 'media not found' });
           }
         }
-        const token = uploadTickets.put({
-          projectId: project.id,
-          projectSlug: project.slug,
-          userId: ctx.userId,
-          folder: parsed.data.folder ?? '',
-          ...(parsed.data.replaceAssetId ? { replaceAssetId: parsed.data.replaceAssetId } : {}),
+        // Budgeted as a WHOLE batch: half a batch would leave the agent pairing files to tickets it
+        // does not have.
+        const live = uploadTickets.liveFor(project.id);
+        if (live + count > MAX_LIVE_TICKETS_PER_PROJECT) {
+          return reply.code(429).send({
+            error: `this project already holds ${live} unused upload tickets (at most ${MAX_LIVE_TICKETS_PER_PROJECT}) — send the files to them, or wait up to ${uploadTickets.ttlSeconds}s for them to expire`,
+          });
+        }
+        const tickets = Array.from({ length: count }, (_, i) => {
+          // '' is a placeholder in `alts`: that ticket's file is born undescribed, as the PATCH's '' leaves it.
+          const ticketAlt = alts?.[i] ?? alt;
+          const token = uploadTickets.put({
+            projectId: project.id,
+            projectSlug: project.slug,
+            userId: ctx.userId,
+            folder: folder ?? '',
+            ...(replaceAssetId ? { replaceAssetId } : {}),
+            ...(ticketAlt ? { alt: ticketAlt } : {}),
+            ...(hasFont ? { font } : {}),
+          });
+          return { uploadPath: `/media-upload/${token}`, ...(ticketAlt ? { alt: ticketAlt } : {}) };
         });
         return reply.code(201).send({
-          uploadPath: `/media-upload/${token}`,
+          // A single ticket keeps the shape every existing caller reads; a batch has no "the" path.
+          ...(count === 1 ? { uploadPath: tickets[0]!.uploadPath } : {}),
+          tickets,
           expiresInSeconds: uploadTickets.ttlSeconds,
           maxBytes: MAX_UPLOAD_BYTES,
         });
@@ -6727,11 +6813,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
 
-        const stored = await storeUploadFromPath(ctx, scope.projectSlug, tmpPath, {
-          filename,
-          mimetype: mimeTypeForFilename(filename),
-          folder: scope.folder,
-        });
+        // The alt and font metadata were pinned at mint, by the authenticated caller — like the folder.
+        const stored = await storeUploadFromPath(
+          ctx,
+          scope.projectSlug,
+          tmpPath,
+          { filename, mimetype: mimeTypeForFilename(filename), folder: scope.folder, ...(scope.alt ? { alt: scope.alt } : {}) },
+          scope.font,
+        );
         if (!stored.ok) return reply.code(stored.status).send({ error: stored.error });
         return reply.code(201).send({ item: stored.item });
       },
@@ -7438,11 +7527,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ ...report, binned: doomed.length });
     });
 
-    // Move and/or rename a single asset: `folder` re-files it, `filename` changes its display name.
+    // Move, rename and/or describe a single asset: `folder` re-files it, `filename` changes its display
+    // name, `alt` its alt text. On a FONT, `family`/`fallback`/`weight`/`style` (+ `face` to pick one of
+    // several files) correct what the upload guessed — see correctFontMetadata.
     const PatchAssetBody = z.object({
       folder: MediaFolderSchema.optional(),
       filename: z.string().min(1).max(255).optional(),
+      alt: MediaAltSchema.optional(),
+      family: FontFamilyNameSchema.optional(),
+      fallback: FontFallbackSchema.optional(),
+      weight: FontWeightSchema.optional(),
+      style: z.enum(['normal', 'italic']).optional(),
+      face: FontFileNameSchema.optional(),
     });
+    /**
+     * The asset with `alt` set — or REMOVED for '', returning it to "not described": `{{sw-image}}` then
+     * falls back to the filename stem and a `{{#sw-folder}}` loop binds ''. Storing '' instead would make
+     * every `{{sw-image}}` of the asset decorative, but decorative is a property of a USE, not of the
+     * picture — the same photo is content on one page and ornament on another — so that belongs on the
+     * tag (`alt=""` in the markup). The ONE write shape behind both the single PATCH and bulk-alt.
+     */
+    const withAlt = (asset: MediaAsset, alt: string): MediaAsset => {
+      if (alt) return { ...asset, alt };
+      const cleared = { ...asset };
+      delete cleared.alt;
+      return cleared;
+    };
     // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
     // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
     // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
@@ -7476,6 +7586,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.send({ moved, failed, requested: ids.length, folder });
     });
 
+    // BULK alt text. A gallery wants one alt PER PHOTO, and every `{{#sw-folder}}` loop binds it straight
+    // off the asset — but through the single PATCH that was a round-trip each: 78 photos, 78 calls on a
+    // 60/min limiter, so in practice nobody did it and the galleries shipped `alt=""`. Partial success is
+    // normal and reported per id, like bulk-move. A repeated id takes the LAST alt given for it.
+    const BulkAltBody = z.object({
+      items: z
+        .array(z.object({ id: z.string().min(1).max(200), alt: MediaAltSchema }))
+        .min(1)
+        .max(200),
+    });
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/bulk-alt', { config: rlAgent(30) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = BulkAltBody.safeParse(req.body);
+      if (!body.success) {
+        return reply.code(400).send({ error: 'invalid request — items (1-200) of { id, alt } are required', details: body.error.flatten() });
+      }
+      // A Map keeps each id's FIRST position and its LAST alt.
+      const wanted = new Map(body.data.items.map((item) => [item.id, item.alt] as const));
+      const updated: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const [id, alt] of wanted) {
+        try {
+          const asset = await contentRepo.getLiveMedia(ctx, id);
+          await contentRepo.put(ctx, 'media', asset.id, withAlt(asset, alt));
+          updated.push(id);
+        } catch (err) {
+          // One bad id must not abandon the rest half-described. A fixed vocabulary, never the raw
+          // message — a storage error has no business reaching the caller verbatim.
+          failed.push({ id, error: err instanceof NotFoundError ? 'not found' : 'could not update' });
+        }
+      }
+      return reply.send({ updated, failed, requested: wanted.size });
+    });
+
     app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id', { config: rl(60) }, async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
@@ -7483,11 +7628,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!body.success) return reply.code(400).send({ error: 'invalid update' });
       // `getLiveMedia` rejects a soft-deleted (binned) asset — you restore it, you don't rename it in place.
       const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
-      const next = {
-        ...asset,
-        ...(body.data.folder !== undefined ? { folder: body.data.folder } : {}),
-        ...(body.data.filename !== undefined ? { filename: body.data.filename } : {}),
+      const { folder, filename, alt, ...fontChanges } = body.data;
+      let next: MediaAsset = asset;
+      if (Object.values(fontChanges).some((v) => v !== undefined)) {
+        if (asset.kind !== 'font') {
+          return reply.code(400).send({ error: `family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"` });
+        }
+        const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
+          (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
+        );
+        const corrected = correctFontMetadata(asset, fontChanges, { others });
+        if (!corrected.ok) return reply.code(400).send({ error: corrected.error });
+        next = corrected.asset;
+      }
+      next = {
+        ...next,
+        ...(folder !== undefined ? { folder } : {}),
+        ...(filename !== undefined ? { filename } : {}),
       };
+      if (alt !== undefined) next = withAlt(next, alt);
       return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 

@@ -74,9 +74,11 @@ describe('member-token mode — the tool surface', () => {
     expect(required('list_pages')).toEqual(['project']);
     expect(required('publish_project')).toContain('project');
     // Not about one project → no `project` argument at all.
-    for (const free of ['get_scope', 'login', 'switch_project', 'get_guide', 'get_reference', 'get_components', 'get_capabilities', 'search_icons', 'search_textures', 'list_projects', 'create_project']) {
+    for (const free of ['get_scope', 'login', 'switch_project', 'get_guide', 'get_reference', 'get_components', 'get_capabilities', 'search_icons', 'search_textures', 'search_google_fonts', 'list_projects', 'create_project']) {
       expect(properties(free), free).not.toContain('project');
     }
+    // Choosing a Google family is static; SELF-HOSTING it writes into one project's library.
+    expect(required('select_google_font')).toEqual(expect.arrayContaining(['family', 'weights', 'project']));
     // duplicate_project names its SOURCE project itself.
     expect(required('duplicate_project')).toEqual(['project']);
 

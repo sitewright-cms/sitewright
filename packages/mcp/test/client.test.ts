@@ -372,6 +372,9 @@ describe('SitewrightClient', () => {
     expect(await client.updateMedia('m1', { folder: 'Main', filename: 'logo.svg' })).toEqual(asset);
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('PATCH https://cms.test/projects/p1/media/m1');
     expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ folder: 'Main', filename: 'logo.svg' });
+    // The same PATCH carries alt text and a font's corrected metadata.
+    await client.updateMedia('m1', { alt: 'Logo', family: 'Inter', weight: 700, style: 'normal', fallback: 'serif', face: 'inter-400.woff2' });
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ alt: 'Logo', family: 'Inter', weight: 700, style: 'normal', fallback: 'serif', face: 'inter-400.woff2' });
   });
 
   it('deleteMedia DELETEs /media/:id', async () => {
@@ -526,6 +529,32 @@ describe('SitewrightClient — optional-argument branches', () => {
     expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ ids: ['m1', 'm2'] });
   });
 
+  it('POSTs bulk alt text as one list of { id, alt } and returns the per-id result verbatim', async () => {
+    const result = { updated: ['m1'], failed: [{ id: 'm2', error: 'media not found' }], requested: 2 };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(result) },
+    );
+    const items = [
+      { id: 'm1', alt: 'A red barn' },
+      { id: 'm2', alt: '' },
+    ];
+    await expect(client.setMediaAlt(items)).resolves.toEqual(result);
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('POST https://cms.test/projects/p1/media/bulk-alt');
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ items });
+  });
+
+  it('selectGoogleFont POSTs family + weights (+ folder) to /fonts/select and unwraps the font asset', async () => {
+    const font = { id: 'f1', kind: 'font', family: 'Inter', source: 'google' };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify({ item: font }) },
+    );
+    await expect(client.selectGoogleFont('Inter', [400, 700])).resolves.toEqual(font);
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('POST https://cms.test/projects/p1/fonts/select');
+    expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ family: 'Inter', weights: [400, 700] });
+    await client.selectGoogleFont('Inter', [400], 'Brand/Fonts');
+    expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ family: 'Inter', weights: [400], folder: 'Brand/Fonts' });
+  });
+
   it('folds non-empty zod formErrors into the thrown error, and stays clean when there are none', async () => {
     // formErrors present → appended to the message.
     const withForm = await introspected((input) =>
@@ -577,6 +606,70 @@ describe('SitewrightClient — inline base64 upload', () => {
     expect(put.init?.headers?.['content-type']).toBe('application/octet-stream');
     // The BYTES go up, not the base64 text.
     expect(Buffer.from(put.init!.body as Uint8Array).equals(png)).toBe(true);
+  });
+
+  it('uploadMediaBase64 pins alt and font metadata on the ticket it mints', async () => {
+    const { client, calls } = await introspected(uploadHandler);
+    await client.uploadMediaBase64('Inter-Bold.woff2', Buffer.from('wOF2x').toString('base64'), 'Fonts', {
+      alt: 'unused on a font, but carried',
+      family: 'Inter',
+      weight: 700,
+      style: 'italic',
+      fallback: 'sans-serif',
+    });
+    const mint = calls.find((c) => c.input.endsWith('/media/upload-ticket'))!;
+    expect(JSON.parse(String(mint.init?.body))).toEqual({
+      folder: 'Fonts',
+      alt: 'unused on a font, but carried',
+      family: 'Inter',
+      weight: 700,
+      style: 'italic',
+      fallback: 'sans-serif',
+    });
+  });
+
+  it('createMediaUpload sends the batch options and hands back ABSOLUTE urls, one per ticket', async () => {
+    const { client, calls } = await introspected((input: string) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      return {
+        status: 201,
+        body: JSON.stringify({
+          tickets: [{ uploadPath: '/media-upload/t1', alt: 'One' }, { uploadPath: '/media-upload/t2', alt: 'Two' }],
+          expiresInSeconds: 600,
+          maxBytes: 999,
+        }),
+      };
+    });
+    const grant = await client.createMediaUpload('Gallery', { count: 2, alts: ['One', 'Two'] });
+    expect(JSON.parse(String(calls[1]!.init?.body))).toEqual({ folder: 'Gallery', count: 2, alts: ['One', 'Two'] });
+    // A batch has no single uploadUrl to mistake for "the" ticket.
+    expect(grant).toEqual({
+      tickets: [
+        { uploadUrl: 'https://cms.test/media-upload/t1', alt: 'One' },
+        { uploadUrl: 'https://cms.test/media-upload/t2', alt: 'Two' },
+      ],
+      expiresInSeconds: 600,
+      maxBytes: 999,
+    });
+  });
+
+  it('createMediaUpload keeps the single-ticket shape, echoing its alt like a batch ticket does', async () => {
+    for (const [body, expected] of [
+      [
+        { uploadPath: '/media-upload/one', tickets: [{ uploadPath: '/media-upload/one', alt: 'Hi' }], expiresInSeconds: 600, maxBytes: 9 },
+        { uploadUrl: 'https://cms.test/media-upload/one', alt: 'Hi', expiresInSeconds: 600, maxBytes: 9 },
+      ],
+      [
+        // A server that predates batches: no `tickets` at all.
+        { uploadPath: '/media-upload/one', expiresInSeconds: 600, maxBytes: 9 },
+        { uploadUrl: 'https://cms.test/media-upload/one', expiresInSeconds: 600, maxBytes: 9 },
+      ],
+    ] as const) {
+      const { client } = await introspected((input: string) =>
+        input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 201, body: JSON.stringify(body) },
+      );
+      expect(await client.createMediaUpload()).toEqual(expected);
+    }
   });
 
   it('replaceMediaBase64 pins the ticket to the ASSET, not a folder, and returns the whole receipt', async () => {

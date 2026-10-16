@@ -196,6 +196,7 @@ describe('level 2 — a project’s own credentials', () => {
       { method: 'GET' as const, url: `/projects/${projectId}/payment` },
       { method: 'PUT' as const, url: `/projects/${projectId}/payment`, payload: { gatewayId: 'acme', mode: 'test', values: {} } },
       { method: 'PUT' as const, url: `/projects/${projectId}/payment/mode`, payload: { mode: 'live' } },
+      { method: 'DELETE' as const, url: `/projects/${projectId}/payment/acme` },
     ]) {
       const res = await h.app.inject({ ...req, headers: { authorization: `Bearer ${token}` } });
       expect(res.statusCode, req.url).toBe(403);
@@ -256,6 +257,46 @@ describe('level 2 — a project’s own credentials', () => {
   it('a project member who is not a writer is refused', async () => {
     const other = await h.signup();
     expect((await other.get(`/projects/${projectId}/payment`)).statusCode).toBeGreaterThanOrEqual(403);
+  });
+
+  describe('★ several providers in one project', () => {
+    beforeEach(async () => {
+      await admin.put('/admin/payment-gateways/beta', { ...GATEWAY, name: 'Beta Pay' });
+      await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'a', webhookSecret: 'b' } });
+      await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'beta', mode: 'test', values: { apiKey: 'c', webhookSecret: 'd' } });
+    });
+
+    it('lists every provider with its own webhook URL — saving one never replaced the other', async () => {
+      const res = (await admin.get(`/projects/${projectId}/payment`)).json() as { bindings: Array<{ gatewayId: string; webhookUrl: string; complete: boolean }> };
+      expect(res.bindings.map((b) => [b.gatewayId, b.webhookUrl, b.complete])).toEqual([
+        ['acme', `https://sw.test/pay/${projectId}/webhook/acme`, true],
+        ['beta', `https://sw.test/pay/${projectId}/webhook/beta`, true],
+      ]);
+    });
+
+    it('switches ONE provider live — and refuses to guess which when none is named', async () => {
+      expect((await admin.put(`/projects/${projectId}/payment/mode`, { mode: 'live' })).statusCode).toBe(400);
+      await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'beta', mode: 'live', values: { apiKey: 'C', webhookSecret: 'D' } });
+      expect((await admin.put(`/projects/${projectId}/payment/mode`, { mode: 'live', gatewayId: 'beta' })).statusCode).toBe(200);
+      const modes = ((await admin.get(`/projects/${projectId}/payment`)).json() as { bindings: Array<{ gatewayId: string; mode: string }> }).bindings;
+      expect(modes.map((b) => [b.gatewayId, b.mode])).toEqual([['acme', 'test'], ['beta', 'live']]);
+    });
+
+    it('removes one provider — refused while a checkout channel still charges through it', async () => {
+      await admin.project(projectId).putContent('settings', 'settings', {
+        identity: { name: 'Shop', colors: { primary: '#0a7' } },
+        website: { shop: { enabled: true, currency: { code: 'EUR' }, channels: [{ kind: 'checkout', key: 'pay', gatewayId: 'beta', email: 'o@shop.test' }] } },
+        settings: {},
+      });
+      const refused = await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/beta`, cookies: { sw_session: admin.token } });
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().error).toContain('"pay"');
+      const removed = await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } });
+      expect(removed.statusCode).toBe(204);
+      const left = ((await admin.get(`/projects/${projectId}/payment`)).json() as { bindings: Array<{ gatewayId: string }> }).bindings;
+      expect(left.map((b) => b.gatewayId)).toEqual(['beta']);
+      expect((await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } })).statusCode).toBe(404);
+    });
   });
 });
 

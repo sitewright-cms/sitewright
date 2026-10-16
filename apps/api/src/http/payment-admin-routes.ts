@@ -10,6 +10,7 @@ import {
   fromMinorUnits,
   type PaymentGatewayStored,
   type PaymentMode,
+  type Shop,
 } from '@sitewright/schema';
 import type { ProjectContext } from '../repo/context.js';
 import type { GatewayRepository } from '../payments/gateways.js';
@@ -54,6 +55,8 @@ export interface PaymentAdminDeps {
   isWriter: (ctx: ProjectContext) => boolean;
   /** Absolute base for the webhook URL an operator pastes into the provider's dashboard. */
   publicBaseUrl: () => string;
+  /** The project's shop settings — which checkout channels charge through which gateway. */
+  getShop: (projectId: string) => Promise<Shop | null>;
   io: ExecutorIo;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
@@ -185,12 +188,9 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     const rec = await gateways.byId(body.gatewayId);
     if (!rec) return reply.code(404).send({ error: 'gateway not found' });
 
-    const resolved = await gateways.resolveCredentials(ctx);
+    const resolved = await gateways.resolveCredentials(ctx, rec.gateway.id);
     if (!resolved.ok) {
       return reply.code(409).send({ error: 'the project has no usable credentials for this gateway', reason: resolved.reason, missing: resolved.missing });
-    }
-    if (resolved.gateway.id !== rec.gateway.id) {
-      return reply.code(409).send({ error: 'that project is bound to a different gateway' });
     }
     if (resolved.mode !== 'test') {
       return reply.code(409).send({ error: 'the project must be in test mode to prove a gateway' });
@@ -250,11 +250,18 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     // ★ SESSION-ONLY. See the file header: an agent must not read or write payment credentials.
     const { ctx } = await resolveProject(req, 'session-only');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const binding = await gateways.bindingPublic(ctx);
     const base = deps.publicBaseUrl().replace(/\/+$/, '');
+    // A project may hold credentials for several gateways — one per provider its checkout channels use.
+    const bindings = (await gateways.bindingsPublic(ctx)).map((b) => ({
+      ...b,
+      webhookUrl: `${base}/pay/${ctx.projectId}/webhook/${b.gatewayId}`,
+    }));
+    const first = bindings[0];
     return reply.send({
-      binding,
-      ...(binding ? { webhookUrl: `${base}/pay/${ctx.projectId}/webhook/${binding.gatewayId}` } : {}),
+      bindings,
+      // The single-provider shape, kept for callers that predate several: the first binding.
+      binding: first ?? null,
+      ...(first ? { webhookUrl: first.webhookUrl } : {}),
     });
   });
 
@@ -270,14 +277,38 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
   app.put<{ Params: { projectId: string } }>('/projects/:projectId/payment/mode', { config: rl(30) }, async (req, reply) => {
     const { ctx } = await resolveProject(req, 'session-only');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const { mode } = z.object({ mode: PaymentModeSchema }).parse(req.body);
-    const result = await gateways.setMode(ctx, mode);
+    const body = z.object({ mode: PaymentModeSchema, gatewayId: z.string().min(1).max(64).optional() }).parse(req.body);
+    const { mode } = body;
+    // Which provider to switch: named, or the only one the project has. With several, it must be named
+    // — switching an unnamed one would be a guess about which provider takes real money.
+    let gatewayId = body.gatewayId;
+    if (!gatewayId) {
+      const all = await gateways.bindings(ctx);
+      if (all.length !== 1) return reply.code(400).send({ error: 'name the gateway to switch (gatewayId) — this project has several' });
+      gatewayId = all[0]!.gatewayId;
+    }
+    const result = await gateways.setMode(ctx, gatewayId, mode);
     if (!result.ok) {
       // ★ Refused rather than allowed-and-broken: going live with no live key would make the first
       // symptom a real customer unable to pay.
       return reply.code(409).send({ error: `the ${mode} credentials are incomplete`, missing: result.missing });
     }
-    return reply.send({ mode });
+    return reply.send({ mode, gatewayId });
+  });
+
+  app.delete<{ Params: { projectId: string; gatewayId: string } }>('/projects/:projectId/payment/:gatewayId', { config: rl(30) }, async (req, reply) => {
+    const { ctx } = await resolveProject(req, 'session-only');
+    if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const { gatewayId } = req.params;
+    // A checkout channel still charging through it would turn every order there into an error, so the
+    // channel goes first. Open orders keep their own gateway id; their webhook then finds nothing to
+    // verify with, and the order waits for the operator.
+    const users = ((await deps.getShop(ctx.projectId))?.channels ?? []).filter((c) => c.kind === 'checkout' && c.gatewayId === gatewayId);
+    if (users.length > 0) {
+      return reply.code(409).send({ error: `checkout channel${users.length > 1 ? 's' : ''} ${users.map((c) => `"${c.key}"`).join(', ')} still charge through "${gatewayId}" — remove or switch ${users.length > 1 ? 'them' : 'it'} first` });
+    }
+    if (!(await gateways.removeBinding(ctx, gatewayId))) return reply.code(404).send({ error: 'no credentials for that gateway' });
+    return reply.code(204).send();
   });
 
   // ---- the transactions inbox --------------------------------------------------------------------
@@ -366,12 +397,11 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     const outstanding = txn.amounts.totalMinor - txn.refundedMinor;
     const amountMinor = body.amountMinor ?? outstanding;
 
-    const resolved = await gateways.resolveCredentials(ctx);
-    if (!resolved.ok) return reply.code(409).send({ error: 'the project has no usable payment credentials', reason: resolved.reason });
-    // ★ The order's OWN gateway, not whatever the project is bound to today. A shop that switched
-    // providers must not have last month's orders refunded through the new one's API.
-    if (resolved.gateway.id !== txn.gatewayId) {
-      return reply.code(409).send({ error: 'this order was taken through a different gateway, which the project is no longer bound to' });
+    // ★ The order's OWN gateway, not whichever provider the project uses for new orders today. A shop
+    // that switched providers must not have last month's orders refunded through the new one's API.
+    const resolved = await gateways.resolveCredentials(ctx, txn.gatewayId);
+    if (!resolved.ok) {
+      return reply.code(409).send({ error: `the project has no usable credentials for "${txn.gatewayId}", the gateway this order was taken through`, reason: resolved.reason });
     }
     if (!resolved.gateway.refund) return reply.code(409).send({ error: 'this gateway cannot issue refunds' });
     // ★ Refund in the mode the ORDER was taken in. Refunding a live payment with test credentials

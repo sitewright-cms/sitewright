@@ -17,11 +17,15 @@ import { glassInput, fieldLabel, ghostButton, primaryButton, toggleInput } from 
  * ★ Secrets are never fetched. The server returns which fields HAVE a value, per mode, and a shape
  * hint — so an empty box means "unchanged", not "blank". Saving an untouched field keeps what is
  * stored; clearing one explicitly removes it.
+ *
+ * A project may hold keys for SEVERAL providers — each checkout channel picks the one it charges
+ * through — so the provider picker selects which one's keys are edited, and each has its own test/live
+ * mode, proof and webhook URL. Saving one provider's keys never touches another's.
  */
+type ProviderBinding = PaymentBindingPublic & { webhookUrl?: string };
 export function PaymentCredentialsModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [gateways, setGateways] = useState<PaymentGatewayPublic[]>([]);
-  const [binding, setBinding] = useState<PaymentBindingPublic | null>(null);
-  const [webhookUrl, setWebhookUrl] = useState('');
+  const [bindings, setBindings] = useState<ProviderBinding[]>([]);
   const [gatewayId, setGatewayId] = useState('');
   const [mode, setMode] = useState<'test' | 'live'>('test');
   /** Only what the operator actually typed this session — an untouched field is never sent. */
@@ -38,15 +42,17 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     void (async () => {
       const [g, b] = await Promise.all([
         api.projectPaymentGateways(projectId).catch(() => ({ gateways: [] })),
-        api.getProjectPayment(projectId).catch(() => ({ binding: null, webhookUrl: '' })),
+        api.getProjectPayment(projectId).catch(() => ({ bindings: [] as ProviderBinding[] })),
       ]);
       if (!live) return;
       setGateways(g.gateways);
-      setBinding(b.binding);
-      setWebhookUrl(b.webhookUrl ?? '');
-      if (b.binding) {
-        setGatewayId(b.binding.gatewayId);
-        setMode(b.binding.mode);
+      const all = b.bindings ?? [];
+      setBindings(all);
+      // Open on a provider that is already set up, else the first one offered.
+      const first = all[0];
+      if (first) {
+        setGatewayId(first.gatewayId);
+        setMode(first.mode);
       } else if (g.gateways[0]) {
         setGatewayId(g.gateways[0].id);
       }
@@ -58,7 +64,10 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
 
   const gateway = gateways.find((g) => g.id === gatewayId);
   const fields: CredentialField[] = gateway?.credentialFields ?? [];
-  const stored = binding?.gatewayId === gatewayId ? binding.fields[mode] : undefined;
+  /** The keys stored for the provider being edited — each provider has its own. */
+  const binding = bindings.find((b) => b.gatewayId === gatewayId) ?? null;
+  const webhookUrl = binding?.webhookUrl ?? '';
+  const stored = binding?.fields[mode];
   const has = (key: string): boolean => stored?.find((f) => f.key === key)?.hasValue === true;
   const hint = (key: string): string | undefined => stored?.find((f) => f.key === key)?.display;
 
@@ -67,8 +76,8 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     setError([]);
     setSaved(false);
     try {
-      const res = await api.putProjectPayment(projectId, { gatewayId, mode, values: edits });
-      setBinding(res.binding);
+      await api.putProjectPayment(projectId, { gatewayId, mode, values: edits });
+      await reload();
       setEdits({});
       setSaved(true);
     } catch (e) {
@@ -79,14 +88,38 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
     }
   };
 
+  /** Re-reads every provider's stored keys (masks only) — after a save, a mode switch or a removal. */
+  const reload = async (): Promise<ProviderBinding[]> => {
+    const b = await api.getProjectPayment(projectId);
+    const all = b.bindings ?? [];
+    setBindings(all);
+    return all;
+  };
+
+  /** Removes the keys of the provider being edited. The server refuses while a checkout channel uses it. */
+  const remove = async (): Promise<void> => {
+    if (!binding || !window.confirm(`Remove the ${gateway?.name ?? gatewayId} keys from this project?`)) return;
+    setBusy(true);
+    setError([]);
+    try {
+      await api.deleteProjectPayment(projectId, gatewayId);
+      await reload();
+      setEdits({});
+    } catch (e) {
+      setError([(e as Error).message]);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const goLive = async (): Promise<void> => {
     setBusy(true);
     setError([]);
     try {
-      await api.putProjectPaymentMode(projectId, mode === 'live' ? 'test' : 'live');
-      const b = await api.getProjectPayment(projectId);
-      setBinding(b.binding);
-      if (b.binding) setMode(b.binding.mode);
+      await api.putProjectPaymentMode(projectId, activeMode === 'live' ? 'test' : 'live', gatewayId);
+      const fresh = await reload();
+      const now = fresh.find((b) => b.gatewayId === gatewayId);
+      if (now) setMode(now.mode);
     } catch (e) {
       const missing = (e as { details?: { missing?: string[] } }).details?.missing;
       setError(missing?.length ? [`Fill in the live values first: ${missing.join(', ')}`] : [(e as Error).message]);
@@ -141,13 +174,27 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className={fieldLabel}>Gateway</span>
-                <select className={glassInput} value={gatewayId} onChange={(e) => { setGatewayId(e.target.value); setEdits({}); }}>
-                  {gateways.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
-                    </option>
-                  ))}
+                <span className={fieldLabel}>Provider</span>
+                <select
+                  className={glassInput}
+                  value={gatewayId}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setGatewayId(next);
+                    setMode(bindings.find((b) => b.gatewayId === next)?.mode ?? 'test');
+                    setEdits({});
+                    setProof(null);
+                    setSaved(false);
+                  }}
+                >
+                  {gateways.map((g) => {
+                    const b = bindings.find((x) => x.gatewayId === g.id);
+                    return (
+                      <option key={g.id} value={g.id}>
+                        {g.name} — {b ? `set up (${b.mode})` : 'not set up'}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
               <label className="block">
@@ -159,6 +206,10 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
               </label>
             </div>
             {gateway?.description && <p className="text-[11px] text-slate-500 dark:text-slate-400">{gateway.description}</p>}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              A shop can use several providers — each checkout channel names the one it charges through. Keys,
+              test/live mode and the webhook URL are per provider.
+            </p>
 
             {/* ★ The whole form, from the gateway's own declaration. No per-gateway code. */}
             <div className="flex flex-col gap-3">
@@ -238,8 +289,19 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
                   Prove it works
                 </button>
               )}
+              {binding && (
+                <button type="button" className={ghostButton} disabled={busy} onClick={() => void remove()}>
+                  Remove these keys
+                </button>
+              )}
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                This project is currently in <strong>{activeMode}</strong> mode.
+                {binding ? (
+                  <>
+                    {gateway?.name ?? gatewayId} is in <strong>{activeMode}</strong> mode.
+                  </>
+                ) : (
+                  <>{gateway?.name ?? gatewayId} is not set up for this project yet.</>
+                )}
               </span>
             </div>
 

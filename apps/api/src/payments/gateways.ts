@@ -11,7 +11,7 @@ import {
 } from '@sitewright/schema';
 import { decryptSecret, encryptSecret, type EncryptedSecret } from '../crypto/secret.js';
 import type { ContentRepository } from '../repo/content.js';
-import type { ProjectContext } from '../repo/context.js';
+import { NotFoundError, type ProjectContext } from '../repo/context.js';
 import { GLOBAL_SCOPE_ID, globalCtx } from '../repo/global-library.js';
 import { BUILTIN_GATEWAYS, isBuiltinGateway } from './builtin-gateways.js';
 
@@ -25,8 +25,23 @@ import { BUILTIN_GATEWAYS, isBuiltinGateway } from './builtin-gateways.js';
  * per-project content route and bypass the admin gate entirely.
  *
  * ★ Level 2 is an ordinary per-project `project_payment` row, writer-gated like `project_smtp`, with
- * secrets encrypted at rest and never returned.
+ * secrets encrypted at rest and never returned. A project may hold credentials for SEVERAL gateways —
+ * one row each, keyed by the gateway id — because each `checkout` channel names the gateway it charges
+ * through (a card provider for one market, a local one for another). Each has its own test/live mode.
  */
+
+/**
+ * The single row id a project's ONE binding was stored under before projects could hold several.
+ * Still read, so nothing has to be migrated up front; rewritten under its gateway id the first time
+ * that binding is saved.
+ */
+const LEGACY_BINDING_ID = 'settings';
+
+/** For a read or delete where "there is no such row" is an answer, not a failure. */
+function ignoreNotFound(err: unknown): undefined {
+  if (err instanceof NotFoundError) return undefined;
+  throw err;
+}
 
 /** A stored gateway plus whether it is a read-only built-in. */
 export interface GatewayRecord {
@@ -122,20 +137,63 @@ export class GatewayRepository {
   // Level 2 — the project's own credentials
   // -------------------------------------------------------------------------------------------
 
-  /** The project's stored binding, or null. Validated permissively on read. */
-  async binding(ctx: ProjectContext): Promise<PaymentBindingStored | null> {
-    const [row] = (await this.contentRepo.list(ctx, 'project_payment')) as unknown[];
-    if (!row) return null;
-    const parsed = PaymentBindingStoredSchema.safeParse(row);
-    return parsed.success ? parsed.data : null;
+  /**
+   * Every gateway this project holds credentials for, one binding each, sorted by gateway id.
+   * Validated permissively on read: a row that no longer parses is skipped, not fatal.
+   */
+  async bindings(ctx: ProjectContext): Promise<PaymentBindingStored[]> {
+    const byGateway = new Map<string, PaymentBindingStored>();
+    for (const row of (await this.contentRepo.list(ctx, 'project_payment')) as unknown[]) {
+      const parsed = PaymentBindingStoredSchema.safeParse(row);
+      if (!parsed.success) continue;
+      const prior = byGateway.get(parsed.data.gatewayId);
+      // Two rows for one gateway survive only a save interrupted between writing the new row and
+      // retiring the legacy one — the later write is the one the operator made.
+      if (!prior || (parsed.data.updatedAt ?? '') > (prior.updatedAt ?? '')) byGateway.set(parsed.data.gatewayId, parsed.data);
+    }
+    return [...byGateway.values()].sort((a, b) => a.gatewayId.localeCompare(b.gatewayId));
   }
 
-  /** The editor's view: presence and shape per field per mode, plus missing/orphaned. Never a secret. */
-  async bindingPublic(ctx: ProjectContext): Promise<PaymentBindingPublic | null> {
-    const stored = await this.binding(ctx);
-    if (!stored) return null;
-    const rec = await this.byId(stored.gatewayId);
-    return maskBinding(stored, rec?.gateway.credentialFields ?? []);
+  /** The project's credentials for ONE gateway, or null when it has none. */
+  async binding(ctx: ProjectContext, gatewayId: string): Promise<PaymentBindingStored | null> {
+    return (await this.bindings(ctx)).find((b) => b.gatewayId === gatewayId) ?? null;
+  }
+
+  /** The editor's view of every binding: presence and shape per field per mode. Never a secret. */
+  async bindingsPublic(ctx: ProjectContext): Promise<PaymentBindingPublic[]> {
+    const out: PaymentBindingPublic[] = [];
+    for (const stored of await this.bindings(ctx)) {
+      const rec = await this.byId(stored.gatewayId);
+      out.push(maskBinding(stored, rec?.gateway.credentialFields ?? []));
+    }
+    return out;
+  }
+
+  /** Writes a binding under its gateway id, retiring the legacy single row if it held this gateway. */
+  private async writeBinding(ctx: ProjectContext, next: PaymentBindingStored): Promise<void> {
+    await this.contentRepo.put(ctx, 'project_payment', next.gatewayId, next);
+    if (next.gatewayId === LEGACY_BINDING_ID) return; // a gateway literally named "settings" IS that row
+    await this.removeLegacyRow(ctx, next.gatewayId);
+  }
+
+  /** Drops the legacy single row when it holds `gatewayId` (another gateway's legacy row is kept). */
+  private async removeLegacyRow(ctx: ProjectContext, gatewayId: string): Promise<void> {
+    const legacy = await this.contentRepo.get(ctx, 'project_payment', LEGACY_BINDING_ID).catch(ignoreNotFound);
+    if (legacy === undefined) return;
+    const parsed = PaymentBindingStoredSchema.safeParse(legacy);
+    if (parsed.success && parsed.data.gatewayId === gatewayId) await this.contentRepo.remove(ctx, 'project_payment', LEGACY_BINDING_ID);
+  }
+
+  /**
+   * Removes the project's credentials for one gateway. Refused (by the caller) while a checkout
+   * channel still charges through it; open orders keep their own gateway id, and a webhook or the
+   * reconciler for one then finds no credentials and leaves the order for the operator.
+   */
+  async removeBinding(ctx: ProjectContext, gatewayId: string): Promise<boolean> {
+    if ((await this.binding(ctx, gatewayId)) === null) return false;
+    await this.contentRepo.remove(ctx, 'project_payment', gatewayId).catch(ignoreNotFound);
+    await this.removeLegacyRow(ctx, gatewayId);
+    return true;
   }
 
   /**
@@ -173,11 +231,9 @@ export class GatewayRepository {
     }
     if (errors.length > 0) return { ok: false, errors };
 
-    const prior = await this.binding(ctx);
-    // Switching gateway discards the old values rather than keeping them against the new one's field
-    // names: a key for provider A is meaningless to provider B, and silently carrying it over is how
-    // a "working" binding ends up authenticating against nothing.
-    const priorValues = prior && prior.gatewayId === input.gatewayId ? (prior.values ?? {}) : {};
+    // Each gateway has its own binding, so saving one never touches another's values.
+    const prior = await this.binding(ctx, input.gatewayId);
+    const priorValues = prior?.values ?? {};
     const modeValues: Record<string, EncryptedSecret | string | boolean> = { ...(priorValues[input.mode] ?? {}) };
     for (const [key, value] of Object.entries(input.values)) {
       const field = declared.get(key)!;
@@ -199,18 +255,18 @@ export class GatewayRepository {
     const next = PaymentBindingStoredSchema.parse({
       gatewayId: input.gatewayId,
       // The ACTIVE mode is not changed by saving credentials. Going live is a separate, deliberate act.
-      mode: prior && prior.gatewayId === input.gatewayId ? prior.mode : 'test',
+      mode: prior?.mode ?? 'test',
       values: { ...priorValues, [input.mode]: modeValues },
       updatedAt: new Date().toISOString(),
     });
-    await this.contentRepo.put(ctx, 'project_payment', 'settings', next);
+    await this.writeBinding(ctx, next);
     return { ok: true, binding: maskBinding(next, rec.gateway.credentialFields) };
   }
 
-  /** Switches a project between test and live. Refused while the target mode is incomplete. */
-  async setMode(ctx: ProjectContext, mode: PaymentMode): Promise<{ ok: true } | { ok: false; missing: string[] }> {
-    const stored = await this.binding(ctx);
-    if (!stored) return { ok: false, missing: ['no gateway is configured'] };
+  /** Switches ONE gateway's binding between test and live. Refused while the target mode is incomplete. */
+  async setMode(ctx: ProjectContext, gatewayId: string, mode: PaymentMode): Promise<{ ok: true } | { ok: false; missing: string[] }> {
+    const stored = await this.binding(ctx, gatewayId);
+    if (!stored) return { ok: false, missing: [`no credentials are configured for "${gatewayId}"`] };
     const rec = await this.byId(stored.gatewayId);
     const fields = rec?.gateway.credentialFields ?? [];
     const probe = PaymentBindingStoredSchema.parse({ ...stored, mode });
@@ -218,12 +274,14 @@ export class GatewayRepository {
     // ★ Refused rather than allowed-and-broken: switching to live with no live key would make the
     // first symptom a real customer unable to pay.
     if (!view.complete) return { ok: false, missing: view.missing };
-    await this.contentRepo.put(ctx, 'project_payment', 'settings', { ...probe, updatedAt: new Date().toISOString() });
+    await this.writeBinding(ctx, PaymentBindingStoredSchema.parse({ ...probe, updatedAt: new Date().toISOString() }));
     return { ok: true };
   }
 
   /**
-   * Resolves the plaintext credentials for the project's ACTIVE mode.
+   * Resolves the plaintext credentials for ONE gateway's binding, in that binding's ACTIVE mode. The
+   * caller names the gateway: the checkout channel's, the webhook path's, or the order's own — a
+   * project with several providers has no single "its gateway".
    *
    * ★ The ONLY place a payment secret is decrypted, and the values go straight into
    * `${CRED:…}` substitution. They are never logged, never returned to a client, and never written
@@ -235,11 +293,12 @@ export class GatewayRepository {
    */
   async resolveCredentials(
     ctx: ProjectContext,
+    gatewayId: string,
   ): Promise<
     | { ok: true; gateway: PaymentGatewayStored; mode: PaymentMode; cred: Record<string, string> }
     | { ok: false; reason: 'not-configured' | 'unknown-gateway' | 'disabled' | 'unverified' | 'incomplete'; missing?: string[] }
   > {
-    const stored = await this.binding(ctx);
+    const stored = await this.binding(ctx, gatewayId);
     if (!stored) return { ok: false, reason: 'not-configured' };
     const rec = await this.byId(stored.gatewayId);
     if (!rec) return { ok: false, reason: 'unknown-gateway' };

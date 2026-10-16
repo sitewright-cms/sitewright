@@ -294,7 +294,8 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
 
       // ---- credentials and mode -------------------------------------------------------------
       const ctx = systemContext(projectId);
-      const resolved = await gateways.resolveCredentials(ctx);
+      // The channel names the gateway it charges through; a project may hold several.
+      const resolved = await gateways.resolveCredentials(ctx, channel.gatewayId);
       if (!resolved.ok) {
         // A configuration problem is logged for the OPERATOR and generic to the buyer, who cannot act
         // on "the gateway is unverified".
@@ -305,10 +306,6 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       // run can never transact against the live account.
       if (previewMode && resolved.mode !== 'test') {
         return reply.code(400).send({ error: 'a preview checkout requires test mode' });
-      }
-      if (channel.gatewayId !== resolved.gateway.id) {
-        app.log.warn({ projectId, channelKey, want: channel.gatewayId, have: resolved.gateway.id }, 'checkout refused: the channel names a different gateway than the project configured');
-        return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
       }
 
       // ---- re-price, server-side ------------------------------------------------------------
@@ -468,7 +465,8 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
         const { projectId, gatewayId } = req.params;
         const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.from(typeof req.body === 'string' ? req.body : JSON.stringify(req.body ?? {}), 'utf8');
 
-        const resolved = await gateways.resolveCredentials(systemContext(projectId));
+        // The path names the gateway, so a project with several providers verifies against the right one.
+        const resolved = await gateways.resolveCredentials(systemContext(projectId), gatewayId);
         // ★ 400, with no detail, for everything unresolvable. A webhook endpoint must not be an oracle
         // for which projects exist or which gateways they use.
         if (!resolved.ok || resolved.gateway.id !== gatewayId) return reply.code(400).send({ error: 'invalid' });

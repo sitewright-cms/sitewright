@@ -352,7 +352,7 @@ describe('what a refund refuses to attempt', () => {
     expect(scripted.calls).toEqual([]);
   });
 
-  it('★ refuses when the project has since switched to a different gateway', async () => {
+  it('★ refuses when the project no longer holds credentials for the order\'s own gateway', async () => {
     const id = await paidOrder();
     await h.db.insert(content).values({
       id: 'gw_other', projectId: GLOBAL_SCOPE_ID, kind: 'payment_gateway', entityId: 'other', scope: '',
@@ -365,7 +365,8 @@ describe('what a refund refuses to attempt', () => {
     scripted.calls.length = 0;
     const res = await refund(id);
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toContain('different gateway');
+    // The ORDER's gateway, never whichever provider the project uses now.
+    expect(res.json().error).toContain('the gateway this order was taken through');
     expect(scripted.calls).toEqual([]);
   });
 

@@ -892,3 +892,74 @@ describe('★ proof-of-work on a checkout channel', () => {
     expect(rows.some((r) => r.reason === 'pow-missing')).toBe(false);
   });
 });
+
+// ★ A project may charge through SEVERAL providers — each checkout channel names its own (a card
+// provider for one market, a local one for another). Each must charge, and be verified, through its
+// OWN gateway and credentials: a webhook signed with one provider's secret must never resolve an
+// order taken through the other.
+describe('★★ two payment providers in one project', () => {
+  const WHSEC_LOCAL = 'whsec_local_xyz';
+  const LOCAL = PaymentGatewayStoredSchema.parse({
+    ...GATEWAY,
+    id: 'local',
+    name: 'Local',
+    apiBase: { test: 'https://local-pay.invalid', live: 'https://local-pay.invalid' },
+    allowedOrigins: ['https://local-pay.invalid'],
+  });
+
+  beforeEach(async () => {
+    await h.db.insert(content).values({
+      id: 'gw_local', projectId: GLOBAL_SCOPE_ID, kind: 'payment_gateway', entityId: 'local', scope: '',
+      data: LOCAL, createdAt: new Date(), updatedAt: new Date(),
+    });
+    // The second provider's credentials live in their OWN row, under its gateway id.
+    await h.db.insert(content).values({
+      id: 'bind_local', projectId, kind: 'project_payment', entityId: 'local', scope: '',
+      data: { gatewayId: 'local', mode: 'test', values: { test: { apiKey: encryptSecret('sk_local', KEY), webhookSecret: encryptSecret(WHSEC_LOCAL, KEY) } } },
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    const put = await owner.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Shop', colors: { primary: '#0a7' } },
+      website: { shop: { ...SHOP, channels: [...SHOP.channels, { ...SHOP.channels[0]!, key: 'local', gatewayId: 'local' }] } },
+      settings: {},
+    });
+    expect(put.statusCode).toBeLessThan(400);
+  });
+
+  const checkoutVia = (channel: string) =>
+    h.app.inject({ method: 'POST', url: `/pay/${projectId}/${channel}`, payload: body() as never });
+
+  it('each channel opens its session with ITS provider, and records which one', async () => {
+    scripted.responses.push({ body: { id: 'sess_local', url: 'https://local-pay.invalid/s/1' } });
+    expect((await checkoutVia('local')).statusCode).toBe(200);
+    scripted.responses.push({ body: { id: 'sess_mock', url: 'https://mock-pay.invalid/s/1' } });
+    expect((await checkoutVia('pay')).statusCode).toBe(200);
+
+    expect(scripted.calls.map((c) => new URL(c.url).origin)).toEqual(['https://local-pay.invalid', 'https://mock-pay.invalid']);
+    const rows = await h.db.select().from(shopTransactions);
+    expect(rows.map((r) => r.gatewayId).sort()).toEqual(['local', 'mock']);
+  });
+
+  it('★★ a webhook is verified with its OWN provider’s secret — the other one’s cannot resolve the order', async () => {
+    scripted.responses.push({ body: { id: 'sess_local', url: 'https://local-pay.invalid/s/1' } });
+    const res = await checkoutVia('local');
+    const total = res.json().amounts.totalMinor as number;
+    const raw = JSON.stringify({ event_id: 'evt_l1', session_id: 'sess_local', type: 'session.paid', amount: total, currency: 'EUR' });
+    const post = (path: string, secret: string) =>
+      h.app.inject({ method: 'POST', url: `/pay/${projectId}/webhook/${path}`, headers: { 'content-type': 'application/json', 'x-mock-signature': sign(raw, secret) }, payload: raw });
+
+    // Signed with the OTHER provider's secret, at either address: refused, nothing changes.
+    expect((await post('local', WHSEC)).statusCode).toBe(400);
+    expect((await post('mock', WHSEC)).statusCode).toBe(200); // verified for mock — but no mock order has that ref
+    expect((await h.db.select().from(shopTransactions))[0]?.status).toBe('created');
+
+    expect((await post('local', WHSEC_LOCAL)).statusCode).toBe(200);
+    expect((await h.db.select().from(shopTransactions))[0]?.status).toBe('paid');
+  });
+
+  it('a channel whose provider has no credentials in this project is unavailable, and the other still works', async () => {
+    await h.db.delete(content).where(and(eq(content.projectId, projectId), eq(content.kind, 'project_payment'), eq(content.entityId, 'local')));
+    expect((await checkoutVia('local')).statusCode).toBe(503);
+    expect((await checkoutVia('pay')).statusCode).toBe(200);
+  });
+});

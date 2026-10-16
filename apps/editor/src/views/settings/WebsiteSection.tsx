@@ -170,7 +170,8 @@ export function WebsiteSection({
 
   // What the shop's Payments part reports, and whether any orders exist. `undefined` = not known (the
   // shop is off, or this member may not read payments — the endpoint is owner/admin only).
-  const [binding, setBinding] = useState<PaymentBindingPublic | null | undefined>(undefined);
+  /** Every payment provider the project holds keys for; undefined until read (or when unreadable). */
+  const [bindings, setBindings] = useState<PaymentBindingPublic[] | undefined>(undefined);
   const [ordersTotal, setOrdersTotal] = useState(0);
   const refreshPayments = useCallback(() => {
     if (!form.shopEnabled) return;
@@ -178,8 +179,8 @@ export function WebsiteSection({
     // the catch — the shop tile is a reader of this state, never a casualty of it.
     void Promise.resolve()
       .then(() => api.getProjectPayment(projectId))
-      .then((r) => setBinding(r.binding))
-      .catch(() => setBinding(undefined));
+      .then((r) => setBindings(r.bindings ?? (r.binding ? [r.binding] : [])))
+      .catch(() => setBindings(undefined));
     void Promise.resolve()
       .then(() => api.listTransactions(projectId, { limit: 1 }))
       .then((r) => setOrdersTotal(r.total))
@@ -191,9 +192,14 @@ export function WebsiteSection({
 
   const localeCodes = localeCodesOf(form);
   const siteUrlError = form.siteUrl.trim() ? siteUrlIssue(form.siteUrl.trim()) : null;
-  const gatewayName = binding ? gateways.find((g) => g.id === binding.gatewayId)?.name ?? binding.gatewayId : '';
+  const gatewayName = (b: PaymentBindingPublic) => gateways.find((g) => g.id === b.gatewayId)?.name ?? b.gatewayId;
+  // One line per provider — a shop may charge through several (each checkout channel names its own).
   const paymentsValue =
-    binding === undefined ? '—' : binding === null ? 'Not connected' : binding.complete ? `${gatewayName} · ${binding.mode}` : `${gatewayName} · keys incomplete`;
+    bindings === undefined
+      ? '—'
+      : bindings.length === 0
+        ? 'Not connected'
+        : bindings.map((b) => `${gatewayName(b)} · ${b.complete ? b.mode : 'keys incomplete'}`).join(', ');
   // The Shop and Consent modals send the operator to the labels — which now live in a drill-in.
   const editLabels = () => {
     setShopOpen(false);

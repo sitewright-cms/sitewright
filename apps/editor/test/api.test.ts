@@ -1716,12 +1716,13 @@ describe('payments api', () => {
 
   it('switches mode, and surfaces the server’s refusal with what is missing', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { mode: 'live' }));
-    await api.putProjectPaymentMode('p1', 'live');
-    expect(sent()).toMatchObject({ method: 'PUT', body: { mode: 'live' } });
+    await api.putProjectPaymentMode('p1', 'live', 'stripe');
+    // ★ It names the provider: a project may hold several, and switching an unnamed one is a guess.
+    expect(sent()).toMatchObject({ method: 'PUT', body: { mode: 'live', gatewayId: 'stripe' } });
 
     fetchMock.mockReset();
     fetchMock.mockResolvedValue(jsonResponse(409, { error: 'the live credentials are incomplete', details: { missing: ['secretKey'] } }));
-    await expect(api.putProjectPaymentMode('p1', 'live')).rejects.toBeInstanceOf(ApiError);
+    await expect(api.putProjectPaymentMode('p1', 'live', 'stripe')).rejects.toBeInstanceOf(ApiError);
   });
 
   it('★ the dry run posts to the PROJECT path, never a project id in the body', async () => {

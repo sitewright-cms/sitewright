@@ -11,6 +11,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **A shop can take payments through several providers.** A project could hold keys for exactly
+  one payment provider, so a shop wanting a card provider for one region and a local one for another
+  had to pick one. Now:
+  - Each checkout channel names the provider it charges through.
+  - Each provider has its own keys, its own test/live mode, its own *Prove it works* and its own
+    webhook URL, under **Settings → Website → Payments**.
+  - Webhooks, reconciliation and refunds always use the provider the order was taken through.
+  - Removing a provider's keys is refused while a checkout channel still uses it.
+  - Existing projects keep working unchanged: the keys they stored are read as before and moved to
+    the new shape the next time they are saved.
+  - `PUT /projects/:id/payment/mode` takes a `gatewayId` (required once there are several),
+    `GET /projects/:id/payment` lists them all as `bindings`, and
+    `DELETE /projects/:id/payment/:gatewayId` removes one.
+
 - **Dataset entries in the site's other languages.** On a multilingual site a dataset needed a full
   copy per language (`services` + `services_de`), so every price, photo and link was entered and kept
   up to date twice. An entry now carries its other languages itself, as `translations`, holding only

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Entry } from '@sitewright/schema';
 import {
   jsonEqual,
+  keepEntryLanguages,
   localizeEntry,
   normalizeEntryTranslations,
   resolveLocaleEntries,
@@ -65,9 +66,24 @@ describe('normalizeEntryTranslations', () => {
     expect(normalizeEntryTranslations(entry('x', {}, { de: { note: 'Nur hier' } })).translations).toEqual({ de: { note: 'Nur hier' } });
   });
 
+  it('compares null and empty values like any other — and keeps them when the main language differs', () => {
+    const e = entry('x', { note: null, tag: '' }, { de: { note: null, tag: 'neu', extra: null } });
+    expect(normalizeEntryTranslations(e).translations).toEqual({ de: { tag: 'neu', extra: null } });
+  });
+
   it('leaves an entry without translations untouched', () => {
     const plain = entry('x', { name: 'A' });
     expect(normalizeEntryTranslations(plain)).toBe(plain);
+  });
+});
+
+describe('keepEntryLanguages', () => {
+  it('drops the versions in languages the site does not have (or its main one), and names them', () => {
+    const e = entry('x', { name: 'A' }, { de: { name: 'B' }, fr: { name: 'C' }, en: { name: 'D' } });
+    const { entry: kept, dropped } = keepEntryLanguages(e, ['de']);
+    expect(kept.translations).toEqual({ de: { name: 'B' } });
+    expect(dropped).toEqual(['fr', 'en']);
+    expect(keepEntryLanguages(e, ['de', 'fr', 'en']).entry).toBe(e);
   });
 });
 

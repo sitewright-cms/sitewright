@@ -15,6 +15,13 @@ vi.mock('../src/api', () => ({
   },
 }));
 
+// Swap CodeMirror for a plain textarea so a json field can hold half-typed text in jsdom.
+vi.mock('../src/lib/code-editor', () => ({
+  CodeEditor: ({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel?: string }) => (
+    <textarea aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
 import { EntryEditorModal } from '../src/views/datasets/EntryEditorModal';
 
 /**
@@ -116,6 +123,21 @@ describe('EntryEditorModal — the entry in the site’s other languages', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putEntry).toHaveBeenCalled());
     expect(saved()).not.toHaveProperty('translations');
+  });
+
+  it('half-typed JSON in another tab still blocks Save — and is still there on the way back', async () => {
+    const withJson: Dataset = { ...dataset, fields: [...dataset.fields, { name: 'meta', type: 'json', required: false, localized: false }] };
+    render(<EntryEditorModal projectId="p" dataset={withJson} entry={{ ...entry, values: { ...entry.values, meta: {} } }} onSaved={() => {}} onClose={() => {}} />);
+    await screen.findByRole('tab', { name: /German/ });
+    const box = () => screen.getAllByRole('textbox').find((t) => (t as HTMLTextAreaElement).value.startsWith('{'))!;
+    fireEvent.change(box(), { target: { value: '{"a":' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    fireEvent.click(tab(/German/));
+    // Out of sight is not out of mind: saving from here would store the broken JSON.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    fireEvent.click(tab(/English/));
+    expect(box()).toHaveValue('{"a":');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   it('switching tabs back and forth is not an edit', async () => {

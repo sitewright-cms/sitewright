@@ -833,8 +833,9 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
               onSelect={setLang}
             />
           )}
-          {activeLang === null ? (
-            <>
+          {/* Every language's panel stays MOUNTED, only hidden: a rich-text or JSON input keeps its own
+              in-progress state (half-typed JSON among it), which unmounting on a tab switch threw away. */}
+          <div className={activeLang === null ? 'flex flex-col gap-3' : 'hidden'}>
               {keyFieldOpen ? (
                 <label className="flex flex-col gap-1">
                   <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -897,48 +898,53 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
                   </div>
                 );
               })}
-            </>
-          ) : translations[activeLang] === undefined ? (
-            <UntranslatedNotice
-              locale={activeLang}
-              main={locales.main}
-              // Starts the version with nothing of its own: every field shows the main language's content
-              // to edit, and only what is then changed is stored — the rest keeps following it.
-              onTranslate={() => setTranslations((prev) => ({ ...prev, [activeLang]: {} }))}
-            />
-          ) : (
-            <>
-              <TranslationNotice locale={activeLang} main={locales.main} onRemove={() => void removeLanguage(activeLang)} />
-              {dataset.fields.map((field) => {
-                const own = translations[activeLang] ?? {};
-                const changed = ownNow[activeLang] !== undefined && Object.hasOwn(ownNow[activeLang], field.name);
-                const value = Object.hasOwn(own, field.name) ? readValue(own, field.name) : readValue(values, field.name);
-                const path = `${activeLang}.${field.name}`;
-                return (
-                  // Keyed by language too: a rich-text or JSON input keeps its own state, and must not carry
-                  // one language's text into the next tab.
-                  <div key={path} className={`flex flex-col gap-1 ${fieldShell}`}>
-                    <div className="flex items-center gap-2">
-                      {isGroupFieldType(field.type) ? null : (
-                        <label htmlFor={`entry-${path}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                          {field.name}
-                          <span className="ml-1 text-slate-500 dark:text-slate-400">({field.type})</span>
-                        </label>
-                      )}
-                      <FieldLanguageBadge changed={changed} main={locales.main} field={field.name} onReset={() => resetOwnField(activeLang, field.name)} />
+          </div>
+          {locales.others.map((locale) =>
+            translations[locale] === undefined ? (
+              activeLang === locale && (
+                <UntranslatedNotice
+                  key={locale}
+                  locale={locale}
+                  main={locales.main}
+                  // Starts the version with nothing of its own: every field shows the main language's content
+                  // to edit, and only what is then changed is stored — the rest keeps following it.
+                  onTranslate={() => setTranslations((prev) => ({ ...prev, [locale]: {} }))}
+                />
+              )
+            ) : (
+              <div key={locale} className={activeLang === locale ? 'flex flex-col gap-3' : 'hidden'}>
+                <TranslationNotice locale={locale} main={locales.main} onRemove={() => void removeLanguage(locale)} />
+                {dataset.fields.map((field) => {
+                  const own = translations[locale] ?? {};
+                  const changed = ownNow[locale] !== undefined && Object.hasOwn(ownNow[locale], field.name);
+                  const value = Object.hasOwn(own, field.name) ? readValue(own, field.name) : readValue(values, field.name);
+                  // `:` cannot occur in a field name, so a language's paths never collide with the main
+                  // form's (an object field named `de` with a `title` inside would, joined with a dot).
+                  const path = `${locale}:${field.name}`;
+                  return (
+                    <div key={path} className={`flex flex-col gap-1 ${fieldShell}`}>
+                      <div className="flex items-center gap-2">
+                        {isGroupFieldType(field.type) ? null : (
+                          <label htmlFor={`entry-${path}`} className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                            {field.name}
+                            <span className="ml-1 text-slate-500 dark:text-slate-400">({field.type})</span>
+                          </label>
+                        )}
+                        <FieldLanguageBadge changed={changed} main={locales.main} field={field.name} onReset={() => resetOwnField(locale, field.name)} />
+                      </div>
+                      <FieldInput
+                        field={field}
+                        value={value}
+                        projectId={projectId}
+                        path={path}
+                        ariaLabel={`${field.name} (${localeLabel(locale)})`}
+                        onRaw={(raw) => setOwnField(locale, field, raw)}
+                      />
                     </div>
-                    <FieldInput
-                      field={field}
-                      value={value}
-                      projectId={projectId}
-                      path={path}
-                      ariaLabel={`${field.name} (${localeLabel(activeLang)})`}
-                      onRaw={(raw) => setOwnField(activeLang, field, raw)}
-                    />
-                  </div>
-                );
-              })}
-            </>
+                  );
+                })}
+              </div>
+            ),
           )}
         </div>
       </EntryFormContext.Provider>

@@ -1999,7 +1999,10 @@ STEP 2 — ADD EACH ROW (entry): put_content({ kind: "entry", id: "delays", data
     put_content("entry","p815",{ dataset:"products", translations:{ de:{ name:"Wanderschuh" } } },{ merge:true });
     \`translations:{ de:{ name:null } }\` makes that field follow the main language again, \`translations:{ de:null }\`
     removes the German version. Only a language the site has is accepted, never its main one (that is \`values\`).
-    \`de: {}\` is a valid version: reviewed, nothing differs. One \`status\` covers every language.
+    \`de: {}\` is a valid version: reviewed, nothing differs. One \`status\` covers every language. Setting a main
+    value EQUAL to a translated one makes that field follow the main language from then on. A SHOP product
+    keeps ONE price in every language — a SKU rendered at two prices fails the publish of a shop that takes
+    payments — so translate its text, not its price.
 
 STEP 3 — LOOP IT in a page/template source:
   {{#each dataset.faq_passengers}}<div class="py-4"><h3>{{question}}</h3><p>{{answer}}</p></div>{{/each}}

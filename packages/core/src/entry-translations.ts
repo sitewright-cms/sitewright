@@ -71,6 +71,20 @@ export function withoutEntryTranslation<E extends Entry>(entry: E, locale: strin
   return without;
 }
 
+/**
+ * The entry with only the versions in `locales` — the site's languages other than its main one. A
+ * version for any other language (one the site does not have, or its main language, whose text is
+ * `values`) is dropped. Returns the dropped languages too, so a caller can say what it left out.
+ */
+export function keepEntryLanguages<E extends Entry>(entry: E, locales: readonly string[]): { entry: E; dropped: string[] } {
+  const all = Object.keys(entry.translations ?? {});
+  const dropped = all.filter((l) => !locales.includes(l));
+  if (dropped.length === 0) return { entry, dropped };
+  let kept: E = entry;
+  for (const l of dropped) kept = withoutEntryTranslation(kept, l);
+  return { entry: kept, dropped };
+}
+
 /** Each entry list, overlaid for one locale — computed once per list per locale (a build renders many pages). */
 const overlaid = new WeakMap<readonly TranslatableEntry[], Map<string, readonly TranslatableEntry[]>>();
 

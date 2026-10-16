@@ -46,6 +46,7 @@ import {
 import {
   GLOBAL_TEMPLATE_PREFIX,
   isGlobalTemplate,
+  keepEntryLanguages,
   normalizeEntryTranslations,
   pageRemovalRefusal,
   planPageRemoval,
@@ -609,6 +610,10 @@ export class ContentRepository {
     },
   ): Promise<unknown> {
     const parsed = schemaFor(kind).parse(raw);
+    /** The revision note — a restore may extend it with what it had to leave out. */
+    let note = opts?.note;
+    /** An entry restore, with only the languages the site still has. */
+    let restoredEntry: Entry | undefined;
     // Rich (data-sw-html) content now lives in the single page.data store and is sanitized at RENDER
     // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
     // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
@@ -630,7 +635,15 @@ export class ContentRepository {
       const slug = (parsed as { dataset?: string }).dataset;
       const known = slug ? ((await this.list(ctx, 'dataset')) as Array<{ slug?: string }>).some((d) => d.slug === slug) : false;
       if (!known) throw new ConflictError(`entry "${key}" references unknown dataset "${slug ?? ''}" — create the dataset first (after rename_dataset, entries must carry the NEW slug)`);
-      await this.assertEntryLanguages(ctx, key, parsed as Entry);
+      // A RESTORE brings back a snapshot as it was — possibly with a language removed since. Refusing it
+      // would make History unable to restore the very version it kept; it comes back without that one.
+      if (opts?.op === 'restore') {
+        const kept = keepEntryLanguages(parsed as Entry, (await this.siteLanguages(ctx)).others);
+        restoredEntry = kept.entry;
+        if (kept.dropped.length > 0) note = `${note ?? 'Restored'} — without ${kept.dropped.join(', ')}, no longer a language of the site`;
+      } else {
+        await this.assertEntryLanguages(ctx, key, parsed as Entry);
+      }
     }
     // A TRANSLATION (a page's per-locale title) must target an EXISTING page, and a page must use an
     // EXISTING project template — the same rule as an entry and its dataset. Either written against a
@@ -664,7 +677,7 @@ export class ContentRepository {
       kind === 'page'
         ? await this.withPageParent(ctx, parsed as Page, opts?.merged === true)
         : kind === 'entry'
-          ? normalizeEntryTranslations(parsed as Entry)
+          ? normalizeEntryTranslations(restoredEntry ?? (parsed as Entry))
           : parsed;
     // The dataset-scope is derived from the parsed body (entry.dataset), so PUT needs no dataset param.
     const scope = this.scopeForData(kind, value);
@@ -698,7 +711,7 @@ export class ContentRepository {
       return this.writeRow(this.db, ctx, kind, key, value);
     });
     // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
-    await this.recordRevision(ctx, kind, key, scope, persisted, opts?.op ?? 'put', opts?.note);
+    await this.recordRevision(ctx, kind, key, scope, persisted, opts?.op ?? 'put', note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor, scope, version: contentVersion(persisted) });
     return persisted;
   }
@@ -769,9 +782,7 @@ export class ContentRepository {
     const stored = (await this.row(this.db, ctx, 'entry', key, entry.dataset))?.data as Entry | undefined;
     const introduced = locales.filter((l) => !Object.hasOwn(stored?.translations ?? {}, l));
     if (introduced.length === 0) return;
-    const settings = (await this.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as Settings | undefined;
-    const main = settings?.settings.defaultLocale ?? 'en';
-    const others = (settings?.settings.locales ?? []).filter((l) => l !== main);
+    const { main, others } = await this.siteLanguages(ctx);
     const bad = introduced.find((l) => !others.includes(l));
     if (bad === undefined) return;
     if (bad === main) {
@@ -781,6 +792,18 @@ export class ContentRepository {
       `entry "${key}": the site has no "${bad}" language — add it first (add_language)` +
         (others.length > 0 ? `; its other languages are ${others.join(', ')}` : '; the site has only its main language'),
     );
+  }
+
+  /** The project's language settings — one language (`en`) when it has none stored yet. */
+  private async siteSettingsOf(ctx: ProjectContext): Promise<{ defaultLocale: string; locales: string[] }> {
+    const settings = (await this.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => undefined)) as Settings | undefined;
+    return settings?.settings ?? { defaultLocale: 'en', locales: ['en'] };
+  }
+
+  /** The site's MAIN language and its OTHERS — the only languages an entry may carry a version in. */
+  private async siteLanguages(ctx: ProjectContext): Promise<{ main: string; others: string[] }> {
+    const { defaultLocale: main, locales } = await this.siteSettingsOf(ctx);
+    return { main, others: locales.filter((l) => l !== main) };
   }
 
   private async defaultLocaleOf(ctx: ProjectContext): Promise<string> {
@@ -964,19 +987,10 @@ export class ContentRepository {
             (t) => removedIds.has(t.pageId) || (extra.removedLocale !== undefined && t.locale === extra.removedLocale),
           )
         : [];
-    // …and that language's version of every dataset entry: the entry stays, without it.
-    const removedLocale = extra.removedLocale;
-    const entriesBefore =
-      removedLocale !== undefined
-        ? ((await this.list(ctx, 'entry')) as Entry[]).filter((e) => Object.hasOwn(e.translations ?? {}, removedLocale))
-        : [];
-    const entriesAfter = entriesBefore.map((e) => withoutEntryTranslation(e, removedLocale as string));
     // Tombstone BEFORE the delete, and NOT best-effort — the same rule as `remove`: a lost tombstone
-    // makes a deleted page unrecoverable, so a history failure aborts the delete. An entry's version
-    // in the removed language is kept the same way, so History can bring it back.
+    // makes a deleted page unrecoverable, so a history failure aborts the delete.
     for (const p of plan.removed) await this.revisions?.record(ctx, 'page', p.id, '', p, 'delete');
     for (const t of titles) await this.revisions?.record(ctx, 'translation', t.id, '', t, 'delete');
-    for (const e of entriesBefore) await this.revisions?.record(ctx, 'entry', e.id, e.dataset, e, 'put', 'Before its language was removed');
 
     // One write per page, the most complete version winning: the caller's, then detached, then moved.
     const writes = new Map<string, Page>();
@@ -987,7 +1001,6 @@ export class ContentRepository {
       await assertUnchanged(exec);
       if (extra.settings !== undefined) await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, extra.settings);
       for (const page of writes.values()) await this.writeRow(exec, ctx, 'page', page.id, page);
-      for (const entry of entriesAfter) await this.writeRow(exec, ctx, 'entry', entry.id, entry);
       for (const id of removedIds) {
         const gone = await exec
           .delete(content)
@@ -1012,9 +1025,6 @@ export class ContentRepository {
     for (const p of plan.detached.filter((d) => !reparentedIds.has(d.id))) {
       await this.revisions?.record(ctx, 'page', p.id, '', p, 'put', 'Detached: its main-language page was deleted').catch(() => undefined);
     }
-    for (const e of entriesAfter) {
-      await this.revisions?.record(ctx, 'entry', e.id, e.dataset, e, 'put', `Its ${removedLocale ?? ''} version was removed with the language`).catch(() => undefined);
-    }
 
     if (extra.settings !== undefined) {
       this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor });
@@ -1022,7 +1032,32 @@ export class ContentRepository {
     for (const id of writes.keys()) this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'put', actor: ctx.actor });
     for (const id of deleted) this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'delete', actor: ctx.actor, scope: '' });
     for (const t of titles) this.events?.emit(ctx.projectId, { kind: 'translation', entityId: t.id, op: 'delete', actor: ctx.actor, scope: '' });
-    for (const e of entriesAfter) this.events?.emit(ctx.projectId, { kind: 'entry', entityId: e.id, op: 'put', actor: ctx.actor, scope: e.dataset });
+    if (extra.removedLocale !== undefined) await this.stripEntryLanguage(ctx, extra.removedLocale);
+  }
+
+  /**
+   * A language left the site: take its version out of every dataset entry (the entry stays).
+   *
+   * AFTER the settings commit, one entry at a time, each re-read under that entry's write lock and
+   * changed only in `translations`. Rewriting rows from a list taken before the commit would revert an
+   * edit saved in between — the lost update every other read-modify-write here is guarded against —
+   * and listing only after the commit also catches a row given this language just before it: a write
+   * now can no longer introduce it (`assertEntryLanguages`). History records the version first, so it
+   * can be brought back once the language is added again.
+   */
+  private async stripEntryLanguage(ctx: ProjectContext, locale: string): Promise<void> {
+    const carrying = ((await this.list(ctx, 'entry')) as Entry[]).filter((e) => Object.hasOwn(e.translations ?? {}, locale));
+    for (const { id, dataset } of carrying) {
+      await this.withEntityLock(`${ctx.projectId}:entry:${dataset}:${id}`, async () => {
+        const current = (await this.row(this.db, ctx, 'entry', id, dataset))?.data as Entry | undefined;
+        if (!current || !Object.hasOwn(current.translations ?? {}, locale)) return;
+        // Not best-effort: without this snapshot the removed version could not be restored.
+        await this.revisions?.record(ctx, 'entry', id, dataset, current, 'put', 'Before its language was removed');
+        const persisted = await this.writeRow(this.db, ctx, 'entry', id, withoutEntryTranslation(current, locale));
+        await this.recordRevision(ctx, 'entry', id, dataset, persisted, 'put', `Its ${locale} version was removed with the language`);
+        this.events?.emit(ctx.projectId, { kind: 'entry', entityId: id, op: 'put', actor: ctx.actor, scope: dataset, version: contentVersion(persisted) });
+      });
+    }
   }
 
   /**
@@ -1270,6 +1305,12 @@ export class ContentRepository {
     const bundleLocale = input.project?.settings?.defaultLocale ?? (await this.defaultLocaleOf(ctx));
     const importPages = await this.resolveBatchParents(ctx, input.pages, bundleLocale, { repairDangling: true });
 
+    // An entry may only carry versions in the site's OTHER languages, and only what differs — the same
+    // rule `put` holds every write to. A bundle is the site it brings (its settings) or this project.
+    const siteSettings = input.project?.settings ?? (await this.siteSettingsOf(ctx));
+    const bundleOthers = siteSettings.locales.filter((l) => l !== siteSettings.defaultLocale);
+    const importEntries = input.entries.map((e) => normalizeEntryTranslations(keepEntryLanguages(e, bundleOthers).entry));
+
     const bundle: ProjectBundle = {
       project: {
         formatVersion: PROJECT_FORMAT_VERSION,
@@ -1283,7 +1324,7 @@ export class ContentRepository {
       pages: importPages,
       templates: input.templates,
       datasets: input.datasets,
-      entries: input.entries,
+      entries: importEntries,
     };
     const issues = validateProject(bundle);
     if (issues.length > 0) {
@@ -1313,7 +1354,7 @@ export class ContentRepository {
         await this.writeRow(exec, ctx, 'dataset', dataset.id, dataset);
         imported += 1;
       }
-      for (const entry of input.entries) {
+      for (const entry of importEntries) {
         await this.writeRow(exec, ctx, 'entry', entry.id, entry);
         imported += 1;
       }

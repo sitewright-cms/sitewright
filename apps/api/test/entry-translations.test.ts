@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { RenderPool } from '../src/render/render-pool.js';
+import { ContentRepository } from '../src/repo/content.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -151,6 +152,55 @@ describe('dataset entries in the reader’s language', () => {
     expect(before).toBeDefined();
     const snapshot = (await client.get(`${base}/${before!.id}`)).json() as { revision: { data: { translations?: unknown } } };
     expect(snapshot.revision.data.translations).toEqual({ de: { title: 'Webdesign' } });
+  });
+
+  it('★ removing a language does not revert an edit saved while it runs', async () => {
+    // Open the window deterministically: the moment the removal has listed the entries, another writer
+    // saves a new price. Rewriting from that list would put the old price back.
+    const list = ContentRepository.prototype.list;
+    let raced = false;
+    const spy = vi.spyOn(ContentRepository.prototype, 'list').mockImplementation(async function (this: ContentRepository, ...args) {
+      const out = await list.apply(this, args);
+      if (args[1] === 'entry' && !raced) {
+        raced = true;
+        spy.mockRestore();
+        expect((await client.put(`${proj().base}/content/entry/web?merge=1`, { dataset: 'services', values: { price: 777 } })).statusCode).toBe(200);
+      }
+      return out;
+    });
+    try {
+      expect((await client.del(`/projects/${projectId}/locales/de`)).statusCode).toBe(200);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(raced).toBe(true);
+    const web = (await getEntry('services', 'web')).item;
+    expect(web.values).toMatchObject({ price: 777 });
+    expect(web).not.toHaveProperty('translations');
+  });
+
+  it('★ History restores the version kept before a language was removed — without that language, and says so', async () => {
+    expect((await client.del(`/projects/${projectId}/locales/de`)).statusCode).toBe(200);
+    const base = `/projects/${projectId}/content/entry/web/revisions`;
+    const items = ((await client.get(`${base}?dataset=services`)).json() as { items: Array<{ id: string; note?: string }> }).items;
+    const before = items.find((r) => r.note === 'Before its language was removed')!;
+    const restored = await client.post(`${base}/${before.id}/restore?dataset=services`);
+    expect(restored.statusCode).toBe(200);
+    expect((await getEntry('services', 'web')).item).not.toHaveProperty('translations');
+    const after = ((await client.get(`${base}?dataset=services`)).json() as { items: Array<{ op: string; note?: string }> }).items;
+    expect(after.find((r) => r.op === 'restore')?.note).toMatch(/without de, no longer a language of the site/);
+  });
+
+  it('a bundle import keeps only the site’s other languages, and only what differs', async () => {
+    const res = await client.post(`/projects/${projectId}/import`, {
+      entries: [{
+        id: 'ux', dataset: 'services', status: 'published', values: { title: 'UX', price: 300 },
+        translations: { de: { title: 'UX-Design', price: 300 }, fr: { title: 'Design UX' }, en: { title: 'Main?' } },
+      }],
+      datasets: [{ id: 'services', name: 'Services', slug: 'services', fields: [{ name: 'title', type: 'text' }] }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect((await getEntry('services', 'ux')).item.translations).toEqual({ de: { title: 'UX-Design' } });
   });
 
   it('a data file with a locale emits that language’s rows', async () => {

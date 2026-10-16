@@ -109,4 +109,55 @@ describe('dataset page fields resolve against the published pages — in the pre
     const live = (await client.get(`/sites/${slug}/de/index.html`)).body;
     expect(anchor(live, 'contact')).toEqual({ href: '../contact/', text: 'Contact' });
   });
+
+  // The code editor's render (POST render-template — also MCP render_template) fed the raw entries to the
+  // template: a page field was still its stored id, so `{{target.path}}` / `{{target.title}}` rendered
+  // empty there even for a PUBLISHED page — the one surface where an author checks a loop as they write it.
+  async function renderTemplate(body: Record<string, unknown>): Promise<string> {
+    const res = await client.post(`/projects/${projectId}/render-template`, body);
+    expect(res.statusCode, res.body).toBe(200);
+    return (res.json() as { html: string }).html;
+  }
+
+  it('render-template (ad-hoc body): page fields resolve, against the published pages', async () => {
+    const html = await renderTemplate({ template: LOOP });
+    expect(anchor(html, 'live')).toEqual({ href: '/about/', text: 'About' });
+    expect(anchor(html, 'draftpage')).toEqual({ href: '#', text: '' }); // a draft page is not on the site
+    expect(anchor(html, 'wip')).toEqual({ href: '/about/', text: 'About' }); // draft entries still show, as in the preview
+  });
+
+  it('render-template (a stored page): its locale — dataset variant, page refs and translations, as the preview', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+      website: { translations: { greet: { en: 'Hello', de: 'Hallo' } } },
+    });
+    // A published German About page, so a German reader has somewhere German to land.
+    await proj.putContent('page', 'about', { id: 'about', path: 'about', parent: 'home', title: 'About', root, translationGroup: 'about' });
+    await proj.putContent('page', 'about-de', { id: 'about-de', path: 'ueber', parent: 'home-de', title: 'Über uns', locale: 'de', translationGroup: 'about', root });
+    // The German variant of the dataset, which a German page's `dataset.promos` reads instead.
+    await proj.putContent('dataset', 'promos_de', {
+      id: 'promos_de', name: 'Promos (de)', slug: 'promos_de',
+      fields: [{ name: 'label', type: 'text' }, { name: 'target', type: 'page' }],
+    });
+    await proj.putContent('entry', 'pd_about', { id: 'pd_about', dataset: 'promos_de', status: 'published', values: { label: 'dabout', target: 'about' } });
+    await proj.putContent('entry', 'pd_contact', { id: 'pd_contact', dataset: 'promos_de', status: 'published', values: { label: 'dcontact', target: 'contact' } });
+    const source = `${LOOP}<p class="greet">{{sw-translate "greet"}}</p>`;
+    const page = { id: 'links-de', path: 'links', parent: 'home-de', title: 'Links', locale: 'de', root, source };
+    await proj.putContent('page', 'links-de', page);
+
+    const html = await renderTemplate({ pageId: 'links-de' });
+    expect(anchor(html, 'dabout')).toEqual({ href: '/de/ueber/', text: 'Über uns' }); // the reader's language
+    expect(anchor(html, 'dcontact')).toEqual({ href: '/contact/', text: 'Contact' }); // its German page is a draft
+    expect(anchor(html, 'live')).toBeUndefined(); // the base dataset is replaced by the German variant
+    expect(html).toContain('<p class="greet">Hallo</p>');
+
+    // …and exactly what the member preview shows for the same page.
+    const preview = await client.post(`/projects/${projectId}/preview`, page);
+    expect(preview.statusCode, preview.body).toBe(200);
+    const previewHtml = (preview.json() as { html: string }).html;
+    for (const cls of ['dabout', 'dcontact']) expect(anchor(previewHtml, cls), cls).toEqual(anchor(html, cls));
+    expect(previewHtml).toContain('<p class="greet">Hallo</p>');
+  });
 });

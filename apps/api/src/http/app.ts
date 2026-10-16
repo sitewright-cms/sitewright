@@ -11326,16 +11326,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let themeCriticalCss: string | undefined;
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let projectDefaultLocale = 'en';
+      // The READER's locale: a stored page's own, else (an ad-hoc body) the project default — the rule
+      // /preview and publish apply. A function, because the default is only known once settings are read.
+      const readerLocale = (): string => (storedPage ? localeOf(storedPage, projectDefaultLocale) : projectDefaultLocale);
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
         projectDefaultLocale = settings.settings?.defaultLocale ?? 'en';
-        // This authoring render-template tool feeds `data` un-locale-resolved (see the note below); to
-        // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
-        // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
+        // `{{sw-translate}}` in the reader's locale, like its datasets and page links below — this used to
+        // serve the default locale "to match" datasets that were not locale-resolved here; they are now.
         website = settings.website
-          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, readerLocale(), projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         themeStickyHeader = settings.website?.effects?.stickyHeader;
@@ -11352,18 +11354,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
+      const renderLocale = readerLocale();
       if (storedPage) {
         // Locale context (resolved + default) for a stored page — member-preview/publish parity, so
         // locale-aware helpers ({{sw-active}}'s locale-home rule) behave the same in this authoring
         // render. Ad-hoc bodies stay locale-less (the helper then falls back to the "/"-only rule).
-        pageCtx = { ...pageCtx, locale: localeOf(storedPage, projectDefaultLocale), defaultLocale: projectDefaultLocale };
+        pageCtx = { ...pageCtx, locale: renderLocale, defaultLocale: projectDefaultLocale };
       }
+      // Pages the live site ships (drafts excluded) — what a page link here may resolve to, as in
+      // /preview and publish: a reference to a draft page renders empty rather than as a live link.
+      const renderPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
       const byDataset = new Map<string, Entry[]>();
       for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
       for (const list of byDataset.values()) list.sort(compareEntryOrder);
-      const data = Object.fromEntries(byDataset);
+      // The same projection /preview and publish make: `dataset.<name>` reads the reader's locale variant,
+      // and a `page` field's stored id becomes the page's attributes ({{target.path}}, {{target.title}}) —
+      // without it this render fed the raw id, and a loop checked here rendered blank links. Draft entries
+      // still show (work in progress), as in /preview.
+      const data = resolveDatasetPageRefs(
+        resolveLocaleDatasets(Object.fromEntries(byDataset), storedPage?.locale),
+        (await contentRepo.list(ctx, 'dataset')) as Dataset[],
+        renderPages,
+        projectDefaultLocale,
+        renderLocale,
+      );
       // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
       // globals + the project's own (project wins on a name collision), then the MANAGED Widget
       // bodies LAST so a widget name can't be shadowed.
@@ -11372,19 +11388,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         ...WIDGET_PARTIALS,
       };
-      // Keyed entry access for this template (only the datasets it addresses by key). NOTE: this
-      // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
-      // keys the DEFAULT-locale entries — the member /preview + publish paths locale-resolve both.
-      const item = keyedDatasets(templateSource, data as Record<string, readonly Entry[]>);
+      // Keyed entry access for this template (only the datasets it addresses by key) — over the same
+      // locale-resolved entries as the loops, as in /preview and publish.
+      const item = keyedDatasets(templateSource, data);
       // `{{sw-page-url "<id>"}}` resolves here too (the stored page's locale; an ad-hoc body is the
       // default locale), so a link checked in the code editor matches the preview and the live site.
       const renderPageUrls = templateSource.includes('sw-page-url')
-        ? pageUrlsContext(
-            publishedPages((await contentRepo.list(ctx, 'page')) as Page[]),
-            storedPage ? localeOf(storedPage, projectDefaultLocale) : projectDefaultLocale,
-            projectDefaultLocale,
-            templateSource,
-          )
+        ? pageUrlsContext(renderPages, renderLocale, projectDefaultLocale, templateSource)
         : undefined;
       // Public form definitions + same-origin endpoints so the code editor's live render shows
       // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).

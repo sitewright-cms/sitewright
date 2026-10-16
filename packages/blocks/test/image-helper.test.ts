@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { buildSwImage, resolveRenderImage, mediaAssetId, filenameAlt } from '../src/image-helper.js';
+import {
+  buildSwImage,
+  resolveRenderImage,
+  mediaAssetId,
+  filenameAlt,
+  responsiveRungs,
+  sizedRaster,
+  lqipPlaceholder,
+  lqipStyle,
+  mediaIndex,
+  isStrictMediaUrl,
+} from '../src/image-helper.js';
 import { renderTemplate } from '../src/template.js';
 import type { RenderMedia } from '../src/folder.js';
 
@@ -166,6 +177,100 @@ describe('buildSwImage', () => {
     expect(html).not.toContain('srcset');
     expect(html).not.toContain('?size=');
     expect(html).not.toContain('<picture');
+  });
+
+  it('treats an SVG ASSET as a vector even when the url naming it does not end in .svg — dims kept', () => {
+    // Resolved by id: the record, not the url's spelling, says it is a vector (no `?size=` thumbnails),
+    // and it takes the vector branch WITH its intrinsic dims, so it reserves its box (no layout shift).
+    const svg: RenderMedia = { id: 's1', folder: '', kind: 'image', filename: 'logo.svg', url: '/media/acme/s1-logo.svg', width: 300, height: 120 };
+    expect(buildSwImage('/media/acme/s1-logo', [svg])).toBe(
+      '<img src="/media/acme/s1-logo" alt="logo" width="300" height="120" loading="lazy" decoding="async">',
+    );
+  });
+
+  it('never concatenates a url carrying a srcset delimiter into rungs (dataset/page.data urls are not trusted)', () => {
+    // `/media/acme/a1/…` resolves to the real asset by its id segment; building rungs from the raw string
+    // would put `https://evil.example/p.png` into the srcset as a candidate of its own.
+    for (const url of ['/media/acme/a1/photo.jpg 1w, https://evil.example/p.png', '/media/acme/a1/photo.jpg,https://evil.example/p.png']) {
+      const html = buildSwImage(url, [img]);
+      expect(html).not.toContain('srcset');
+      expect(html).not.toContain('?size=');
+    }
+  });
+});
+
+describe('mediaIndex / resolveRenderImage', () => {
+  it('builds the index ONCE per media list and keeps find()’s first-match-wins semantics', () => {
+    const dupe: RenderMedia = { ...img, alt: 'second' };
+    const media = [img, dupe];
+    expect(mediaIndex(media)).toBe(mediaIndex(media)); // memoised on the array
+    expect(mediaIndex([img])).not.toBe(mediaIndex(media)); // …and per array
+    expect(resolveRenderImage(img.url, media)).toBe(img); // duplicate url → the first record
+    expect(resolveRenderImage('/media/acme/a1/other-name.jpg', media)).toBe(img); // duplicate id → the first
+    expect(resolveRenderImage('/media/acme/zz/none.jpg', media)).toBeUndefined();
+    expect(mediaIndex([{ ...img, id: undefined }]).byId.size).toBe(0); // an id-less record is url-only
+  });
+
+  it('isStrictMediaUrl: exactly a stored media url shape, flat or legacy, and nothing else', () => {
+    expect(isStrictMediaUrl('/media/acme/b2-new.jpg')).toBe(true);
+    expect(isStrictMediaUrl('/media/acme/b2/new.jpg')).toBe(true);
+    for (const bad of [
+      '/media/acme/b2-new.jpg?size=md',
+      '/media/acme/b2-new.jpg#x',
+      '/media/acme/b2-new.jpg 2x',
+      '/media/acme/b2/x.png,https://evil.example/p.png',
+      '/media/acme/b2//new.jpg',
+      '/media/acme/b2/sub/new.jpg',
+      '//evil.example/media/acme/b2-new.jpg',
+      'https://cdn.example/media/acme/b2-new.jpg',
+      '/media/acme/',
+    ]) {
+      expect(isStrictMediaUrl(bad), bad).toBe(false);
+    }
+  });
+});
+
+describe('the responsive pieces {{sw-image}} shares with the data-sw-src directive', () => {
+  it('responsiveRungs: sm up to the first rung that covers the source, top descriptor clamped', () => {
+    expect(responsiveRungs('/m/p.jpg', 1200)).toEqual({
+      src: '/m/p.jpg?size=lg',
+      webp: '/m/p.jpg?size=sm 500w, /m/p.jpg?size=md 1000w, /m/p.jpg?size=lg 1200w',
+      avif: '/m/p.jpg?size=sm&format=avif 500w, /m/p.jpg?size=md&format=avif 1000w, /m/p.jpg?size=lg&format=avif 1200w',
+    });
+    // Wider than the delivery cap → every rung, xl at its real 2400 (never a pointless upscale past it).
+    expect(responsiveRungs('/m/p.jpg', 5000).webp.endsWith('/m/p.jpg?size=xl 2400w')).toBe(true);
+    // Narrower than the smallest rung → that one rung alone, clamped to the source.
+    expect(responsiveRungs('/m/p.jpg', 320)).toEqual({ src: '/m/p.jpg?size=sm', webp: '/m/p.jpg?size=sm 320w', avif: '/m/p.jpg?size=sm&format=avif 320w' });
+  });
+
+  it('responsiveRungs concatenates the base VERBATIM (the caller picks markup-escaped or raw)', () => {
+    expect(responsiveRungs('/m/a&amp;b.jpg', 400).src).toBe('/m/a&amp;b.jpg?size=sm');
+  });
+
+  it('sizedRaster: only a raster image with recorded dims qualifies', () => {
+    expect(sizedRaster(img.url, img)).toBe(img);
+    expect(sizedRaster(img.url, undefined)).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, kind: 'file' })).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, width: undefined })).toBeUndefined();
+    expect(sizedRaster(img.url, { ...img, height: 0 })).toBeUndefined();
+    expect(sizedRaster('/media/acme/a1/photo.svg', img)).toBeUndefined(); // the url says vector
+    expect(sizedRaster(img.url, { ...img, filename: 'Photo.SVG' })).toBeUndefined(); // the record says vector
+    expect(sizedRaster(`${img.url} 2x`, img)).toBeUndefined(); // a srcset delimiter in the url
+    expect(sizedRaster(`${img.url},x`, img)).toBeUndefined();
+  });
+
+  it('lqipPlaceholder: the recorded webp data URI, unless the art is transparent or the value is foreign', () => {
+    expect(lqipPlaceholder(img)).toBe('data:image/webp;base64,AAAA');
+    expect(lqipPlaceholder({ ...img, hasAlpha: true })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: undefined })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: "data:image/webp;base64,AA');x:url('y" })).toBeUndefined();
+    expect(lqipPlaceholder({ ...img, placeholder: 'https://cdn.example/blur.webp' })).toBeUndefined();
+  });
+
+  it('lqipStyle: the three declarations a replaced image must also be able to remove', () => {
+    expect(lqipStyle('data:image/webp;base64,AAAA')).toBe(
+      "background-image:url('data:image/webp;base64,AAAA');background-size:cover;background-repeat:no-repeat",
+    );
   });
 });
 

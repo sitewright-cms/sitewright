@@ -229,7 +229,10 @@ export interface TemplateContext {
   partials?: Record<string, string>;
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
   nav?: Record<string, unknown>;
-  /** Project media (slim projection) for `{{#sw-folder "path"}}` — image galleries / file lists. */
+  /**
+   * Project media (slim projection) for `{{#sw-folder "path"}}` galleries / file lists, `{{sw-image}}`'s
+   * intrinsic dims + LQIP, and the `data-sw-src` pass rebuilding a replaced image's rungs.
+   */
   media?: readonly RenderMedia[];
   /** Site-wide image delivery: true → `{{sw-image}}` emits a `<picture>` with an AVIF tier (else WebP). */
   imageAvif?: boolean;
@@ -2103,6 +2106,9 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
     websiteData: (ctx.website as { data?: Record<string, unknown> } | undefined)?.data,
     // data-sw-translate reads the project i18n catalog, pre-resolved for this page's locale into website.t.
     t: (ctx.website as { t?: Record<string, unknown> } | undefined)?.t,
+    // The project media {{sw-image}} resolved from, so a REPLACED editable image (data-sw-src naming a
+    // project image) gets its responsive rungs rebuilt for the new file instead of shipping one xl file.
+    media: ctx.media,
     preview: ctx.preview,
   });
   // Resolve `data-sw-form` references (helper-emitted and hand-authored alike) into the

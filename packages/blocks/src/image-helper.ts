@@ -16,6 +16,129 @@ const SIZE_ORDER: readonly SizeToken[] = ['sm', 'md', 'lg', 'xl'];
 
 const DEFAULT_SIZES_ATTR = '100vw';
 const PLACEHOLDER_RE = /^data:image\/webp;base64,[A-Za-z0-9+/=]+$/;
+const SVG_RE = /\.svg(?:$|\?)/i;
+/** The characters that DELIMIT srcset candidates — a url carrying one could smuggle in a second candidate. */
+const SRCSET_DELIMITER_RE = /[\s,]/;
+const MEDIA_DIR_SEGMENT_RE = /^[A-Za-z0-9_-]+$/;
+const MEDIA_FILE_SEGMENT_RE = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * Whether `url` has exactly the shape of a stored project media DELIVERY url — flat
+ * `/media/<slug>/<id>-<name>` or legacy `/media/<slug>/<id>/<name>` (the media schema's url pattern,
+ * minus its extension list) — and nothing else: no query, fragment, whitespace, comma, empty or extra
+ * segment. Checked segment by segment, so no pattern ever backtracks over the (untrusted) input.
+ */
+export function isStrictMediaUrl(url: string): boolean {
+  const parts = url.split('/'); // ['', 'media', slug, (id,)? file]
+  if (parts.length < 4 || parts.length > 5 || parts[0] !== '' || parts[1] !== 'media') return false;
+  const dirs = parts.slice(2, -1);
+  return dirs.every((s) => MEDIA_DIR_SEGMENT_RE.test(s)) && MEDIA_FILE_SEGMENT_RE.test(parts[parts.length - 1]!);
+}
+
+/** Url → record and id → record lookups over one media list. */
+export interface MediaIndex {
+  byUrl: ReadonlyMap<string, RenderMedia>;
+  byId: ReadonlyMap<string, RenderMedia>;
+}
+
+const mediaIndexCache = new WeakMap<readonly RenderMedia[], MediaIndex>();
+
+/**
+ * The lookup index of a media list, built ONCE per list and memoised on the array itself. Resolving by
+ * `find` cost two full scans per miss, per image — and a page renders many images against a media list
+ * that can run to tens of thousands of records. The first record wins a duplicate url/id, exactly as
+ * `find` did. A render context's media list is never mutated, so the memo cannot go stale.
+ */
+export function mediaIndex(media: readonly RenderMedia[]): MediaIndex {
+  const hit = mediaIndexCache.get(media);
+  if (hit) return hit;
+  const byUrl = new Map<string, RenderMedia>();
+  const byId = new Map<string, RenderMedia>();
+  for (const m of media) {
+    if (!byUrl.has(m.url)) byUrl.set(m.url, m);
+    if (m.id !== undefined && !byId.has(m.id)) byId.set(m.id, m);
+  }
+  const index: MediaIndex = { byUrl, byId };
+  mediaIndexCache.set(media, index);
+  return index;
+}
+
+/** A RASTER project image whose intrinsic size is recorded — the only kind served as `?size=` rungs. */
+export type SizedRenderImage = RenderMedia & { width: number; height: number };
+
+/**
+ * `asset` narrowed to an image that can be served responsively, or undefined: an unresolved asset, a
+ * non-image, one with no recorded dimensions, or a VECTOR — an SVG scales natively and has no `?size=`
+ * thumbnails. Vector-ness is read from BOTH the url being rendered and the record's filename, so an
+ * SVG addressed by id through a url that doesn't end in `.svg` is still recognised.
+ *
+ * A `src` containing whitespace or a comma never qualifies: the rungs are built by concatenating it, so
+ * `/media/s/<id>/x.png 1w, https://elsewhere/p.png` (which still resolves, by its id segment) would
+ * otherwise add a candidate of its own choosing to the srcset every visitor's browser picks from.
+ */
+export function sizedRaster(src: string, asset: RenderMedia | undefined): SizedRenderImage | undefined {
+  if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) return undefined;
+  if (SVG_RE.test(src) || SVG_RE.test(asset.filename) || SRCSET_DELIMITER_RE.test(src)) return undefined;
+  return asset as SizedRenderImage;
+}
+
+/** The `?size=` rungs of one raster image: the `<img src>` fallback plus a WebP and an AVIF srcset. */
+export interface ResponsiveRungs {
+  /** The `<img src>` fallback — the LARGEST usable rung (also what a lightbox link opens). */
+  src: string;
+  /** WebP srcset. WebP is the server default, so it needs no `&format=` (clean, entity-free markup). */
+  webp: string;
+  /** AVIF srcset for a `<picture>` tier — the format must be requested explicitly. */
+  avif: string;
+}
+
+/**
+ * The responsive rungs of a raster image at `base` whose source is `width` px wide — the ONE rung rule,
+ * shared by {{sw-image}} and the `data-sw-src` directive (which rebuilds them when an editable image is
+ * replaced, so a swapped photo is exactly as responsive as one written with the helper).
+ *
+ * Rungs run from `sm` up to the FIRST size that reaches/exceeds the source width — so the browser can
+ * fetch full source detail (that top rung is server-clamped to the source; its width descriptor is the
+ * clamped value) without any rung being a pointless upscale beyond `xl` (2400, the delivery cap).
+ *
+ * `base` is concatenated VERBATIM: the helper passes it attribute-escaped (it builds a markup string),
+ * the directive passes it raw (it sets a parsed DOM attribute, which the serializer escapes).
+ */
+export function responsiveRungs(base: string, width: number): ResponsiveRungs {
+  const usable: SizeToken[] = [];
+  for (const s of SIZE_ORDER) {
+    usable.push(s);
+    if (SIZE_WIDTHS[s] >= width) break;
+  }
+  const largest = usable[usable.length - 1]!;
+  const descriptor = (s: SizeToken): number => Math.min(SIZE_WIDTHS[s], width);
+  return {
+    src: `${base}?size=${largest}`,
+    webp: usable.map((s) => `${base}?size=${s} ${descriptor(s)}w`).join(', '),
+    avif: usable.map((s) => `${base}?size=${s}&format=avif ${descriptor(s)}w`).join(', '),
+  };
+}
+
+/**
+ * The blur-up LQIP to paint behind `asset`, or undefined — none recorded, a value that is not an inline
+ * WebP data URI (it is interpolated into a CSS `url()`), or art with an ALPHA channel.
+ *
+ * NO BLUR-UP ON TRANSPARENT ART. The LQIP is painted as a background-image BEHIND the <img>, which
+ * works only because an opaque photo covers it once decoded. On art with an alpha channel it shows
+ * THROUGH the transparent pixels as a permanent coloured wash — a cut-out logo, an illustration or a
+ * product shot ends up in a blurred rectangle. A clone hit this on every illustration on the page and
+ * abandoned {{sw-image}} altogether, hand-authoring <img> with explicit width/height to get away from
+ * it. `hasAlpha` is recorded by the image pipeline at import, so this is the actual condition rather
+ * than an extension guess: an OPAQUE png keeps its placeholder, a transparent WebP correctly loses it.
+ */
+export function lqipPlaceholder(asset: RenderMedia): string | undefined {
+  return !asset.hasAlpha && asset.placeholder && PLACEHOLDER_RE.test(asset.placeholder) ? asset.placeholder : undefined;
+}
+
+/** The inline style that paints an LQIP behind its image (`background-image` / `-size` / `-repeat`). */
+export function lqipStyle(placeholder: string): string {
+  return `background-image:url('${placeholder}');background-size:cover;background-repeat:no-repeat`;
+}
 
 export interface SwImageOptions {
   alt?: string;
@@ -37,12 +160,16 @@ export interface SwImageOptions {
    *
    * Without this, an author had to choose: a hand-written `<img data-sw-src>` that is editable but
    * ships one uncapped file to every device, or `{{sw-image}}` which is responsive but frozen. The
-   * directive is a plain attribute on the element `{{sw-image}}` already emits, so there is nothing
-   * to reconcile — the srcset, dimensions, LQIP and lazy-loading all still apply.
+   * directive is a plain attribute on the element `{{sw-image}}` already emits, so an UNEDITED image
+   * keeps its srcset, dimensions, LQIP and lazy-loading untouched.
    *
-   * On a LAZY image the directive writes into `data-src` rather than `src` (see directives.ts), which
-   * is exactly the attribute the blur-up markup already uses — so an editable lazy image keeps its
-   * placeholder instead of flashing.
+   * A REPLACED image: the directive (directives.ts) writes the new url into `src` — this helper emits
+   * native `loading=lazy` + `src`, never the `data-src` of the lazyload runtime — and, when the new url
+   * is a project raster image the render context knows, REBUILDS the art for it with the same rungs
+   * this helper uses (srcset, `<picture>` sources, width/height, LQIP). An external url, an SVG or an
+   * unknown asset has no rungs, so there the old art is dropped and the image ships as a plain `src`.
+   * So does ANY replacement of an image this helper rendered plain (its own url was an SVG, external or
+   * unknown): there was no srcset to keep, and the new file ships as its bare url (the `xl` default).
    */
   editable?: string;
   /**
@@ -86,10 +213,11 @@ export function filenameAlt(filename: string): string {
 
 /** Resolve a delivery url (or the id inside it) to its project RenderMedia record, if any. */
 export function resolveRenderImage(ref: string, media: readonly RenderMedia[]): RenderMedia | undefined {
-  const byUrl = media.find((m) => m.url === ref);
+  const index = mediaIndex(media);
+  const byUrl = index.byUrl.get(ref);
   if (byUrl) return byUrl;
   const id = mediaAssetId(ref);
-  return id ? media.find((a) => a.id === id) : undefined;
+  return id ? index.byId.get(id) : undefined;
 }
 
 /**
@@ -117,69 +245,46 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
 
   // An SVG is a VECTOR — it scales natively, so it is served verbatim (no `?size=` thumbnail, no WebP/
   // AVIF srcset, no LQIP). Emit a plain <img>, carrying the intrinsic dims when known (no layout shift).
-  if (/\.svg(?:$|\?)/i.test(src)) {
+  // Recognised by the url OR the resolved record's filename — an SVG addressed by id through a url that
+  // doesn't end in `.svg` keeps its dims too.
+  if (SVG_RE.test(src) || (asset !== undefined && SVG_RE.test(asset.filename))) {
     const svgDims = asset && asset.kind === 'image' && asset.width && asset.height ? ` width="${asset.width}" height="${asset.height}"` : '';
     return `<img src="${base}" alt="${alt}"${svgDims} loading="${loading}" decoding="async"${fp}${edit}${cls}>`;
   }
 
-  // Unresolved / external / dimensionless → a plain lazy <img> (no srcset/dims/LQIP available).
-  if (!asset || asset.kind !== 'image' || !asset.width || !asset.height) {
+  // Unresolved / external / dimensionless (or a url carrying a srcset delimiter) → a plain lazy <img>
+  // (no srcset/dims/LQIP available).
+  const sized = sizedRaster(src, asset);
+  if (!sized) {
     return `<img src="${base}" alt="${alt}" loading="${loading}" decoding="async"${fp}${edit}${cls}>`;
   }
 
-  const { width, height } = asset as { width: number; height: number };
   const sizesAttr = escapeAttr(opts.sizes ?? DEFAULT_SIZES_ATTR);
-  // Rungs from `sm` up to the FIRST size that reaches/exceeds the source width — so the browser can
-  // fetch full source detail (that top rung is server-clamped to the source; its width descriptor is
-  // the clamped value) without any rung being a pointless upscale beyond `xl` (2400, the delivery cap).
-  const usable: SizeToken[] = [];
-  for (const s of SIZE_ORDER) {
-    usable.push(s);
-    if (SIZE_WIDTHS[s] >= width) break;
-  }
-  const largest = usable[usable.length - 1]!;
-  const descriptor = (s: SizeToken): number => Math.min(SIZE_WIDTHS[s], width);
-
-  // WebP is the server default, so the WebP srcset needs no `&format=` (keeps the markup clean +
-  // entity-free); the AVIF tier must request its format explicitly.
-  const webpSrcset = usable.map((s) => `${base}?size=${s} ${descriptor(s)}w`).join(', ');
-  const imgSrc = `${base}?size=${largest}`;
-  const dims = `width="${width}" height="${height}"`;
-  // NO BLUR-UP ON TRANSPARENT ART. The LQIP is painted as a background-image BEHIND the <img>, which
-  // works only because an opaque photo covers it once decoded. On art with an alpha channel it shows
-  // THROUGH the transparent pixels as a permanent coloured wash — a cut-out logo, an illustration or a
-  // product shot ends up in a blurred rectangle. A clone hit this on every illustration on the page and
-  // abandoned {{sw-image}} altogether, hand-authoring <img> with explicit width/height to get away from
-  // it. `hasAlpha` is recorded by the image pipeline at import, so this is the actual condition rather
-  // than an extension guess: an OPAQUE png keeps its placeholder, a transparent WebP correctly loses it.
-  const safePlaceholder =
-    !asset.hasAlpha && asset.placeholder && PLACEHOLDER_RE.test(asset.placeholder) ? asset.placeholder : undefined;
-  const lqip = safePlaceholder
-    ? ` style="background-image:url('${safePlaceholder}');background-size:cover;background-repeat:no-repeat"`
-    : '';
+  const rungs = responsiveRungs(base, sized.width);
+  const dims = `width="${sized.width}" height="${sized.height}"`;
+  const placeholder = lqipPlaceholder(sized);
+  const lqip = placeholder ? ` style="${lqipStyle(placeholder)}"` : '';
 
   // Gallery item: the anchor carries the FULL-detail variant (what the viewer opens), the <img> keeps
   // its responsive srcset (what the grid paints). `data-full` is what the lightbox reads first, so an
   // authored href is never second-guessed at runtime.
   const galleryWrap = (markup: string): string => {
     if (!opts.lightbox) return markup;
-    const full = `${base}?size=${largest}`;
     const cap = opts.caption ? ` data-caption="${escapeAttr(opts.caption)}"` : '';
-    return `<a href="${full}" data-full="${full}"${cap}>${markup}</a>`;
+    return `<a href="${rungs.src}" data-full="${rungs.src}"${cap}>${markup}</a>`;
   };
 
   if (opts.format === 'avif') {
-    const avifSrcset = usable.map((s) => `${base}?size=${s}&format=avif ${descriptor(s)}w`).join(', ');
     return galleryWrap(
       '<picture>' +
-        `<source type="image/avif" srcset="${avifSrcset}" sizes="${sizesAttr}">` +
-        `<source type="image/webp" srcset="${webpSrcset}" sizes="${sizesAttr}">` +
-        `<img src="${imgSrc}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>` +
+        `<source type="image/avif" srcset="${rungs.avif}" sizes="${sizesAttr}">` +
+        `<source type="image/webp" srcset="${rungs.webp}" sizes="${sizesAttr}">` +
+        `<img src="${rungs.src}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>` +
         '</picture>',
     );
   }
   return galleryWrap(
-    `<img src="${imgSrc}" srcset="${webpSrcset}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
+    `<img src="${rungs.src}" srcset="${rungs.webp}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
       `loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>`,
   );
 }

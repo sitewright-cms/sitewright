@@ -65,6 +65,17 @@ describe('rewriteMediaUrlsFlat', () => {
     expect(refs.get('a1')?.thumbs.has('sm:webp')).toBe(true);
   });
 
+  it('reads an HTML-escaped `&amp;` query (a re-serialized AVIF srcset) and consumes all of it', () => {
+    // The directive pass re-serializes any page carrying a data-sw-* marker, and the serializer writes
+    // `&` in an attribute as `&amp;`. Stopping at the `;` read `size=sm&amp` — format lost (a WebP
+    // file named for an AVIF source) — and left `;format=avif` glued onto the rewritten path.
+    const refs: ThumbRefs = new Map();
+    const html = '<source type="image/avif" srcset="/media/acme/a1-p.jpg?size=sm&amp;format=avif 500w, /media/acme/a1-p.jpg?size=md&format=avif 900w">';
+    const out = rewriteMediaUrlsFlat(html, 'acme', '', refs, idAlias);
+    expect(out).toBe('<source type="image/avif" srcset="_assets/a1-p-sm.avif 500w, _assets/a1-p-md.avif 900w">');
+    expect([...(refs.get('a1')?.thumbs ?? [])].sort()).toEqual(['md:avif', 'sm:avif']);
+  });
+
   it('does not rewrite another project slug', () => {
     const refs: ThumbRefs = new Map();
     const html = '<img src="/media/other/a1/photo.jpg?size=lg">';

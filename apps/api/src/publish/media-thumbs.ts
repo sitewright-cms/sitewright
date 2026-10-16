@@ -67,9 +67,13 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Parse `size`/`format` out of a raw query string (`?size=lg&format=avif`). */
+/**
+ * Parse `size`/`format` out of a raw query string (`?size=lg&format=avif`). The query is read out of
+ * HTML, so its separator may be the attribute-escaped `&amp;` (see `rewriteMediaUrlsFlat`).
+ */
 function parseQuery(query: string): { size: SizeToken | 'original'; format: ThumbFormat } {
-  const params = new URLSearchParams(query.startsWith('?') ? query.slice(1) : query);
+  const raw = (query.startsWith('?') ? query.slice(1) : query).replace(/&amp;/g, '&');
+  const params = new URLSearchParams(raw);
   const rawSize = params.get('size');
   const rawFormat = params.get('format');
   const size: SizeToken | 'original' =
@@ -140,8 +144,14 @@ export function rewriteMediaUrlsFlat(
   // The media PATH — either flat `<id>-<name>` or legacy `<id>/[file/]<name>` — then an optional query.
   // The char classes exclude the delimiters that end a URL token (quotes, whitespace, ')', ',', '>'), so
   // a match never runs past its own URL. `splitMediaPath` disambiguates the two shapes on the slash.
+  //
+  // The query separator may be the ESCAPED `&amp;`: the directive pass re-serializes any page carrying a
+  // data-sw-* marker, and the serializer writes an attribute's `&` as `&amp;`. Stopping at its `;` read an
+  // AVIF rung's `?size=sm&amp;format=avif` as `size=sm` (a WebP file) and left `;format=avif` glued to
+  // the rewritten path — a dead AVIF <source> on every such page. The two alternatives start on
+  // different characters, so the repetition stays linear.
   const re = new RegExp(
-    `${escapeRegExp(prefix)}([A-Za-z0-9_.-]+(?:/(?:file/)?[A-Za-z0-9_.-]+)?)(\\?[A-Za-z0-9=&%_-]*)?`,
+    `${escapeRegExp(prefix)}([A-Za-z0-9_.-]+(?:/(?:file/)?[A-Za-z0-9_.-]+)?)(\\?(?:[A-Za-z0-9=%_-]|&(?:amp;)?)*)?`,
     'g',
   );
   return html.replace(re, (whole: string, path: string, query: string | undefined) => {

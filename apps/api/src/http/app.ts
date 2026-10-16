@@ -980,6 +980,15 @@ function patchContended(): ConflictError {
  */
 class MediaWriteRefusal extends Error {}
 
+/**
+ * The `alt` field an asset is born with: present only when there is something to say. '' (or none) leaves
+ * the asset undescribed rather than storing an empty description — see the media PATCH's `withAlt`. The
+ * ONE spelling every asset creator uses, so a new upload path cannot forget it.
+ */
+function altField(alt: string | undefined): { alt?: string } {
+  return alt ? { alt } : {};
+}
+
 /** Run `attempt` until it doesn't lose a version race (at most {@link PATCH_ATTEMPTS} times). */
 async function retryOnVersionConflict<T>(attempt: () => Promise<T>): Promise<T> {
   for (let n = 1; ; n += 1) {
@@ -6179,7 +6188,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           animated: stored.animated,
           original: logicalStoredName(stored.storedName, assetId),
           url: `/media/${projectSlug}/${stored.storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
@@ -6229,7 +6238,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           animated: false,
           original: storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
@@ -6245,7 +6254,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; folder?: string },
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string },
     ): Promise<FileAsset> {
       const assetId = await mintAssetId(ctx);
       const storedName = MediaStorage.safeStoredName(meta.filename || 'file');
@@ -6261,6 +6270,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           storedName,
           // Flat URL — the serve route serves this download-only by looking up kind:'file'.
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
+          ...altField(meta.alt),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as FileAsset;
       } catch (err) {
@@ -6275,7 +6285,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; folder?: string },
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string },
     ): Promise<VideoAsset> {
       const assetId = await mintAssetId(ctx);
       const storedName = MediaStorage.safeStoredName(meta.filename || 'video');
@@ -6291,6 +6301,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           contentType: VIDEO_CONTENT_TYPES.get(ext) ?? (meta.mimetype || 'video/mp4'),
           storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
+          ...altField(meta.alt),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as VideoAsset;
       } catch (err) {
@@ -6325,7 +6336,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bytes,
           storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
         };
         const asset =
           kind === 'video'
@@ -6516,7 +6527,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const saved = await createSvgAsset(ctx, projectSlug, buffer.toString('utf8'), {
           filename: meta.filename,
           folder: meta.folder,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
         });
         if (!saved) return { ok: false, status: 400, error: 'invalid or unsafe SVG' };
         return { ok: true, item: saved };
@@ -6571,7 +6582,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     };
 
-    app.post<{ Params: { projectId: string }; Querystring: { folder?: string; family?: string; weight?: string; style?: string; fallback?: string } }>(
+    app.post<{
+      Params: { projectId: string };
+      Querystring: { folder?: string; alt?: string; family?: string; weight?: string; style?: string; fallback?: string };
+    }>(
       '/projects/:projectId/media',
       // ★ On the AGENT LANE. 30/min came from the blanket Phase-F sweep, where it is a shared tier — 28
       // other routes carry the same number and nothing about images went into choosing it. What bounds
@@ -6598,6 +6612,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const folderParsed = MediaFolderSchema.safeParse(req.query.folder ?? '');
         if (!folderParsed.success) return reply.code(400).send({ error: 'invalid folder' });
         const folder = folderParsed.data;
+        // …and the alt it is born with, held to the stored bound (MediaAltSchema) — the same as the
+        // upload ticket, the PATCH and bulk-alt. '' leaves it undescribed. A font ignores it.
+        const altParsed = MediaAltSchema.optional().safeParse(req.query.alt);
+        if (!altParsed.success) return reply.code(400).send({ error: 'invalid alt — one value of at most 500 characters' });
 
         const file = await req.file();
         if (!file) return reply.code(400).send({ error: 'no file uploaded' });
@@ -6615,7 +6633,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
 
-        const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
+        const meta = {
+          filename: file.filename || 'upload',
+          mimetype: file.mimetype || 'application/octet-stream',
+          folder,
+          ...altField(altParsed.data),
+        };
         const stored = await storeUploadFromPath(ctx, project.slug, tmpPath, meta, {
           family: req.query.family,
           weight: req.query.weight,

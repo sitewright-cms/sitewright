@@ -348,6 +348,11 @@ describe('SitewrightClient', () => {
     expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ url: 'https://x.test/a.jpg' });
     await client.importImageUrl('https://x.test/b.jpg', 'team');
     expect(JSON.parse(String(calls[2]!.init!.body))).toEqual({ url: 'https://x.test/b.jpg', folder: 'team' });
+    // …and the alt the asset is born with (an empty one is not sent: it would mean "undescribed" anyway).
+    await client.importImageUrl('https://x.test/c.jpg', undefined, 'Fishing boats at dusk');
+    expect(JSON.parse(String(calls[3]!.init!.body))).toEqual({ url: 'https://x.test/c.jpg', alt: 'Fishing boats at dusk' });
+    await client.importImageUrl('https://x.test/d.jpg', undefined, '');
+    expect(JSON.parse(String(calls[4]!.init!.body))).toEqual({ url: 'https://x.test/d.jpg' });
   });
 
   it('lists, creates and renames media folders on the /media/folders routes', async () => {

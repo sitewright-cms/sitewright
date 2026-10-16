@@ -497,7 +497,18 @@ describe('createSitewrightMcpServer — media tools', () => {
     const w = await connect(writer, writeScope);
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
+    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team', undefined);
+  });
+
+  it('import_image carries the alt the asset is born with — held to the stored bound', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', alt: 'Fishing boats at dusk' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', undefined, 'Fishing boats at dusk');
+    const tooLong = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/b.jpg', alt: 'x'.repeat(501) } });
+    expect(tooLong.isError).toBe(true);
+    expect(callsOf(writer).importImageUrl).toHaveBeenCalledTimes(1);
   });
 
   it('create_media_upload mints a one-shot URL for a LOCAL file, gated on content:write', async () => {

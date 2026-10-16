@@ -1128,11 +1128,13 @@ export class SitewrightClient {
     );
   }
 
-  async importImageUrl(url: string, folder?: string): Promise<unknown> {
+  /** Import a PUBLIC url into the media library — optionally filed under `folder` and described by `alt`. */
+  async importImageUrl(url: string, folder?: string, alt?: string): Promise<unknown> {
     const res = await this.request<{ item: unknown }>(
       'POST',
       this.projectPath('/media/import-url'),
-      { url, ...(folder ? { folder } : {}) },
+      // An empty alt is not sent: the server would store the asset undescribed either way.
+      { url, ...(folder ? { folder } : {}), ...(alt ? { alt } : {}) },
     );
     return res.item;
   }

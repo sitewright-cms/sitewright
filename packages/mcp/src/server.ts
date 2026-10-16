@@ -1881,9 +1881,13 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     {
       description:
         'Import an image into the project from a PUBLIC https URL — the server downloads, optimizes, and self-hosts it (never a hotlink), returning the stored asset (use its `url` in your <img src>). For STOCK photos use search_stock_images + import_stock_image instead. This is the ONLY URL-based import, and it holds an IMAGE to 15MB; a playable video/audio URL (.mp4/.webm/.mov/.m4a…) is allowed up to 200MB. Anything else over the cap answers 413 — that is not a dead end: download the file yourself and send it through create_media_upload (one-shot ticket, up to 200MB). NEVER leave a remote asset hotlinked because an import failed; a hotlinked file breaks when the source site changes.',
-      inputSchema: { url: z.string().url().max(2048), folder: z.string().max(1024).optional() },
+      inputSchema: {
+        url: z.string().url().max(2048),
+        folder: z.string().max(1024).optional(),
+        alt: MediaAltSchema.optional().describe('Alt text the stored asset is born with — describe the picture, so a gallery never ships alt="".'),
+      },
     },
-    gate('content:write', ({ url, folder }) => client.importImageUrl(url, folder)),
+    gate('content:write', ({ url, folder, alt }) => client.importImageUrl(url, folder, alt)),
   );
 
   // Upload a LOCAL file. The only media path that does not require the bytes to already be reachable

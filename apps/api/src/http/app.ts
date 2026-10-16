@@ -6879,7 +6879,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // actually resolves, so on its own it let any name with a private A record through. That mattered here
     // more than on a blind fetch — this route STORES the response as a retrievable media asset, and it is
     // reachable by the `import_image` MCP tool, i.e. by an agent loop reading untrusted third-party content.
-    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
+    // `alt`: what the asset is born described as, held to the stored bound (MediaAltSchema); '' leaves it
+    // undescribed — exactly as on the multipart upload and the upload tickets. Every kind stored here
+    // (image, SVG, video, file) carries it.
+    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional(), alt: MediaAltSchema.optional() });
     // ★ On the AGENT LANE — this is the route `import_image` calls, i.e. the one a clone runs thousands
     // of times. The AMPLIFIER concern that shaped `rl(20)` is real (a few hundred bytes of request makes
     // the server fetch and buffer up to MAX_UPLOAD_BYTES from a third party) — and it is answered by the
@@ -6892,6 +6895,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
       const { url } = parsed.data;
       const folder = parsed.data.folder ?? '';
+      const described = altField(parsed.data.alt);
       if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
         return reply.code(400).send({ error: 'only public https URLs can be imported' });
       }
@@ -7005,12 +7009,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         try {
           // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
           const saved = isSvg
-            ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
+            ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder, ...described })
             : contentType.startsWith('image/')
-              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
               : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
-                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
+                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described });
           if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
           return reply.code(201).send({ item: saved });
         } catch (err) {

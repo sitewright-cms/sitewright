@@ -248,6 +248,8 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const res = await (await connect(client, readScope)).callTool({ name: 'patch_text', arguments: { kind: 'page', id: 'home', field: 'source', edits: [{ old: 'a', new: 'b' }] } });
     expect(res.isError).toBe(true);
     expect(callsOf(client).patchText).not.toHaveBeenCalled();
+  });
+
   it('measure_header defaults to the home page and needs only content:read', async () => {
     const client = fakeClient();
     const res = await (await connect(client, readScope)).callTool({ name: 'measure_header', arguments: {} });

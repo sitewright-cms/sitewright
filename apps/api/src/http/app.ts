@@ -849,9 +849,6 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
   return kind;
 }
 
-// Re-exported: the helper lived here before it moved to its own module (see the note there).
-export { abortOnClose };
-
 /** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
 const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
 
@@ -975,6 +972,21 @@ function patchContended(): ConflictError {
   return new ConflictError(
     `the entity kept changing while this patch was applied (${PATCH_ATTEMPTS} concurrent writes in a row) — retry the same call; it re-reads and re-applies`,
   );
+}
+
+/**
+ * A media edit refused on the asset as READ (a font field on an image, an impossible font correction):
+ * thrown out of a guarded write so nothing is stored and the retry loop does not re-run it — answered 400.
+ */
+class MediaWriteRefusal extends Error {}
+
+/**
+ * The `alt` field an asset is born with: present only when there is something to say. '' (or none) leaves
+ * the asset undescribed rather than storing an empty description — see the media PATCH's `withAlt`. The
+ * ONE spelling every asset creator uses, so a new upload path cannot forget it.
+ */
+function altField(alt: string | undefined): { alt?: string } {
+  return alt ? { alt } : {};
 }
 
 /** Run `attempt` until it doesn't lose a version race (at most {@link PATCH_ATTEMPTS} times). */
@@ -5653,13 +5665,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...WIDGET_PARTIALS,
       };
       const sourceData = Object.fromEntries(byDataset);
+      // The pages the live site ships — drafts excluded, as publish does. Everything below that
+      // resolves ANOTHER page (dataset page refs, nav, children, parent, pages.*, sw-page-url) reads
+      // this subset, so the editor never shows a link the published site renders empty.
+      const savedPages = publishedPages(allSavedPages);
       // A `page` field stores an id; a template needs the page's attributes ({{link.path}} /
-      // {{link.title}}). Resolved HERE and in the publish build — both surfaces, one resolver, or the
-      // loop renders correctly in the editor and blank on the published site.
+      // {{link.title}}). Resolved HERE and in the publish build — both surfaces, one resolver, one page
+      // set — or the loop renders correctly in the editor and blank on the published site. A reference
+      // to a draft page (or a draft translation of it) therefore reads as it will live: empty, or the
+      // main-language page. Draft ENTRIES still show here (work in progress) — only pages are filtered.
       const localeData = resolveDatasetPageRefs(
         resolveLocaleDatasets(sourceData, page.locale),
         (await contentRepo.list(ctx, 'dataset')) as Dataset[],
-        allSavedPages,
+        savedPages,
         defaultLocale,
         // …in the READER's language, exactly as publish resolves them.
         localeOf(page, defaultLocale),
@@ -5727,7 +5745,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // the data is here for a source that has ever been read (settings save warms it) and the
         // editor never waits on somebody else's server. Publish still fetches fresh.
         const jsonSnapshot = jsonDataCache.snapshot(project.id, website?.jsonDataUrl);
-        const savedPages = publishedPages(allSavedPages);
         const previewLocale = localeOf(page, defaultLocale);
         const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
         const slotNav = decorateNav({
@@ -6171,7 +6188,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           animated: stored.animated,
           original: logicalStoredName(stored.storedName, assetId),
           url: `/media/${projectSlug}/${stored.storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
@@ -6221,7 +6238,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           animated: false,
           original: storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
@@ -6237,7 +6254,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; folder?: string },
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string },
     ): Promise<FileAsset> {
       const assetId = await mintAssetId(ctx);
       const storedName = MediaStorage.safeStoredName(meta.filename || 'file');
@@ -6253,6 +6270,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           storedName,
           // Flat URL — the serve route serves this download-only by looking up kind:'file'.
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
+          ...altField(meta.alt),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as FileAsset;
       } catch (err) {
@@ -6267,7 +6285,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectSlug: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; folder?: string },
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string },
     ): Promise<VideoAsset> {
       const assetId = await mintAssetId(ctx);
       const storedName = MediaStorage.safeStoredName(meta.filename || 'video');
@@ -6283,6 +6301,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           contentType: VIDEO_CONTENT_TYPES.get(ext) ?? (meta.mimetype || 'video/mp4'),
           storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
+          ...altField(meta.alt),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as VideoAsset;
       } catch (err) {
@@ -6317,7 +6336,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bytes,
           storedName,
           url: `/media/${projectSlug}/${assetId}-${storedName}`,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
         };
         const asset =
           kind === 'video'
@@ -6508,7 +6527,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const saved = await createSvgAsset(ctx, projectSlug, buffer.toString('utf8'), {
           filename: meta.filename,
           folder: meta.folder,
-          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...altField(meta.alt),
         });
         if (!saved) return { ok: false, status: 400, error: 'invalid or unsafe SVG' };
         return { ok: true, item: saved };
@@ -6563,7 +6582,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     };
 
-    app.post<{ Params: { projectId: string }; Querystring: { folder?: string; family?: string; weight?: string; style?: string; fallback?: string } }>(
+    app.post<{
+      Params: { projectId: string };
+      Querystring: { folder?: string; alt?: string; family?: string; weight?: string; style?: string; fallback?: string };
+    }>(
       '/projects/:projectId/media',
       // ★ On the AGENT LANE. 30/min came from the blanket Phase-F sweep, where it is a shared tier — 28
       // other routes carry the same number and nothing about images went into choosing it. What bounds
@@ -6590,6 +6612,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const folderParsed = MediaFolderSchema.safeParse(req.query.folder ?? '');
         if (!folderParsed.success) return reply.code(400).send({ error: 'invalid folder' });
         const folder = folderParsed.data;
+        // …and the alt it is born with, held to the stored bound (MediaAltSchema) — the same as the
+        // upload ticket, the PATCH and bulk-alt. '' leaves it undescribed. A font ignores it.
+        const altParsed = MediaAltSchema.optional().safeParse(req.query.alt);
+        if (!altParsed.success) return reply.code(400).send({ error: 'invalid alt — one value of at most 500 characters' });
 
         const file = await req.file();
         if (!file) return reply.code(400).send({ error: 'no file uploaded' });
@@ -6607,7 +6633,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
 
-        const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
+        const meta = {
+          filename: file.filename || 'upload',
+          mimetype: file.mimetype || 'application/octet-stream',
+          folder,
+          ...altField(altParsed.data),
+        };
         const stored = await storeUploadFromPath(ctx, project.slug, tmpPath, meta, {
           family: req.query.family,
           weight: req.query.weight,
@@ -6848,7 +6879,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // actually resolves, so on its own it let any name with a private A record through. That mattered here
     // more than on a blind fetch — this route STORES the response as a retrievable media asset, and it is
     // reachable by the `import_image` MCP tool, i.e. by an agent loop reading untrusted third-party content.
-    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
+    // `alt`: what the asset is born described as, held to the stored bound (MediaAltSchema); '' leaves it
+    // undescribed — exactly as on the multipart upload and the upload tickets. Every kind stored here
+    // (image, SVG, video, file) carries it.
+    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional(), alt: MediaAltSchema.optional() });
     // ★ On the AGENT LANE — this is the route `import_image` calls, i.e. the one a clone runs thousands
     // of times. The AMPLIFIER concern that shaped `rl(20)` is real (a few hundred bytes of request makes
     // the server fetch and buffer up to MAX_UPLOAD_BYTES from a third party) — and it is answered by the
@@ -6861,6 +6895,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
       const { url } = parsed.data;
       const folder = parsed.data.folder ?? '';
+      const described = altField(parsed.data.alt);
       if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
         return reply.code(400).send({ error: 'only public https URLs can be imported' });
       }
@@ -6974,12 +7009,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         try {
           // SVG → sanitized vector image (null if unusable). Other images → optimized raster. Else file.
           const saved = isSvg
-            ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder })
+            ? await createSvgAsset(ctx, project.slug, buffer.toString('utf8'), { filename, folder, ...described })
             : contentType.startsWith('image/')
-              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+              ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
               : isVideoExt(filename) || contentType.startsWith('video/') || contentType.startsWith('audio/')
-                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
-                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
+                ? await createVideoAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described })
+                : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder, ...described });
           if (!saved) return reply.code(400).send({ error: 'invalid or unsafe SVG' });
           return reply.code(201).send({ item: saved });
         } catch (err) {
@@ -7461,14 +7496,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           await contentRepo.put(ctx, 'mediafolder', f.id, { id: f.id, path: reparentPath(f.path, from, to) });
         }
       }
-      // Re-file every asset under `from`.
+      // Re-file every asset under `from`. The list only says WHICH assets to visit: each is re-filed through
+      // writeMediaGuarded — a fresh versioned read, only `folder` changed, re-applied if another write lands
+      // — because writing back the listed copy reverted any alt, rename or move made in between. The new
+      // folder is derived from the FRESH record, so an asset moved out of `from` meanwhile stays put.
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      const moved: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
       for (const a of assets) {
-        if (isUnderFolder(a.folder, from)) {
-          await contentRepo.put(ctx, 'media', a.id, { ...a, folder: reparentPath(a.folder, from, to) });
+        if (!isUnderFolder(a.folder, from)) continue;
+        let refiled = false;
+        try {
+          await writeMediaGuarded(ctx, a.id, (fresh) => {
+            refiled = isUnderFolder(fresh.folder, from);
+            return refiled ? { ...fresh, folder: reparentPath(fresh.folder, from, to) } : fresh;
+          });
+          if (refiled) moved.push(a.id);
+        } catch (err) {
+          // One asset that can't be re-filed must not abandon the rest — reported per id, like bulk-move.
+          failed.push({ id: a.id, error: err instanceof Error ? err.message : 'move failed' });
         }
       }
-      return reply.send({ ok: true });
+      // `ok` is the whole outcome: a caller that reads only it (the editor did) must not see a partial
+      // re-file — some assets still under the old name — as a success.
+      return reply.send({ ok: failed.length === 0, moved, failed });
     });
 
     // Copy a folder subtree (records + duplicated assets) to a new path.
@@ -7563,6 +7614,40 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       delete cleared.alt;
       return cleared;
     };
+    /**
+     * Read a LIVE asset, `change` it, and write the WHOLE asset back — carrying the version that was read.
+     * Unguarded, a write landing in between (another PATCH, a bulk call, a transform or a byte replace of
+     * the same asset) was silently reverted while every call answered 200. Now this one loses, re-reads
+     * and re-applies on top (see PATCH_ATTEMPTS — the content pattern from #1102), so both survive.
+     * `change` may therefore run more than once and must be a function of the asset it is handed; a
+     * {@link MediaWriteRefusal} it throws ends the write with nothing stored. A binned asset is refused
+     * (NotFound) — you restore it, you don't edit it in place.
+     *
+     * Every media RECORD write that starts from a stored asset goes through here: the metadata edits
+     * (PATCH, bulk-alt, bulk-move) and the record half of the BYTE writes (SVG overwrite, replace,
+     * in-place transform). Those do their slow file work FIRST and hand `change` only the fields that
+     * work determined — so a retry re-applies a few fields to a fresh read and never redoes the files.
+     */
+    const writeMediaGuarded = (
+      ctx: ProjectContext,
+      id: string,
+      change: (asset: MediaAsset) => MediaAsset | Promise<MediaAsset>,
+    ): Promise<MediaAsset> =>
+      retryOnVersionConflict(async () => {
+        const { asset, version } = await contentRepo.getLiveMediaWithVersion(ctx, id);
+        const next = await change(asset);
+        return (await contentRepo.put(ctx, 'media', asset.id, next, { expectedVersion: version })) as MediaAsset;
+      });
+    /**
+     * The record fields an SVG byte write owns: its size, and its intrinsic dimensions — or, when the
+     * markup declares none, the dimensions the (fresh) record already has. Shared by the Studio overwrite
+     * and the SVG branch of a byte replace.
+     */
+    const withSvgBytes = (asset: MediaAsset, bytes: number, dims: ReturnType<typeof svgIntrinsicSize>): MediaAsset => {
+      const image = asset as ImageAsset;
+      const size = dims ?? { width: image.width, height: image.height };
+      return { ...image, bytes, width: Math.max(1, size.width), height: Math.max(1, size.height) };
+    };
     // BULK re-file. The single-asset PATCH below is one round-trip per asset, so reorganising an
     // imported library meant 96 calls for one site — and it hit a 429 partway through, leaving the
     // library half-filed. Partial success is normal and reported per id, like delete_content_bulk.
@@ -7585,8 +7670,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const failed: Array<{ id: string; error: string }> = [];
       for (const id of ids) {
         try {
-          const asset = await contentRepo.getLiveMedia(ctx, id);
-          await contentRepo.put(ctx, 'media', asset.id, { ...asset, folder });
+          // Read → change → write the whole asset, guarded by the version read (see writeMediaGuarded).
+          await writeMediaGuarded(ctx, id, (asset) => ({ ...asset, folder }));
           moved.push(id);
         } catch (err) {
           // One bad id must not abandon the rest half-filed — that is the failure mode this replaces.
@@ -7619,8 +7704,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const failed: Array<{ id: string; error: string }> = [];
       for (const [id, alt] of wanted) {
         try {
-          const asset = await contentRepo.getLiveMedia(ctx, id);
-          await contentRepo.put(ctx, 'media', asset.id, withAlt(asset, alt));
+          await writeMediaGuarded(ctx, id, (asset) => withAlt(asset, alt));
           updated.push(id);
         } catch (err) {
           // One bad id must not abandon the rest half-described. A fixed vocabulary, never the raw
@@ -7636,28 +7720,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = PatchAssetBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid update' });
-      // `getLiveMedia` rejects a soft-deleted (binned) asset — you restore it, you don't rename it in place.
-      const asset = await contentRepo.getLiveMedia(ctx, req.params.id);
       const { folder, filename, alt, ...fontChanges } = body.data;
-      let next: MediaAsset = asset;
-      if (Object.values(fontChanges).some((v) => v !== undefined)) {
-        if (asset.kind !== 'font') {
-          return reply.code(400).send({ error: `family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"` });
-        }
-        const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
-          (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
-        );
-        const corrected = correctFontMetadata(asset, fontChanges, { others });
-        if (!corrected.ok) return reply.code(400).send({ error: corrected.error });
-        next = corrected.asset;
+      const fontChanged = Object.values(fontChanges).some((v) => v !== undefined);
+      try {
+        const item = await writeMediaGuarded(ctx, req.params.id, async (asset) => {
+          let next: MediaAsset = asset;
+          if (fontChanged) {
+            if (asset.kind !== 'font') {
+              throw new MediaWriteRefusal(`family, fallback, weight, style and face describe a FONT — this asset's kind is "${asset.kind}"`);
+            }
+            const others = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
+              (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font' && m.id !== asset.id,
+            );
+            const corrected = correctFontMetadata(asset, fontChanges, { others });
+            if (!corrected.ok) throw new MediaWriteRefusal(corrected.error);
+            next = corrected.asset;
+          }
+          next = {
+            ...next,
+            ...(folder !== undefined ? { folder } : {}),
+            ...(filename !== undefined ? { filename } : {}),
+          };
+          return alt !== undefined ? withAlt(next, alt) : next;
+        });
+        return reply.send({ item });
+      } catch (err) {
+        if (err instanceof MediaWriteRefusal) return reply.code(400).send({ error: err.message });
+        throw err;
       }
-      next = {
-        ...next,
-        ...(folder !== undefined ? { folder } : {}),
-        ...(filename !== undefined ? { filename } : {}),
-      };
-      if (alt !== undefined) next = withAlt(next, alt);
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
     });
 
     // Overwrite an existing SVG asset's CONTENT in place (the Studio's "save to the same file"). Re-sanitizes
@@ -7678,9 +7768,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const img = asset as ImageAsset;
       const storedName = img.original || `${MediaStorage.safeStoredName(img.filename).replace(/\.[^.]+$/, '')}.svg`;
       await storage.storeFile(project.slug, asset.id, storedName, buffer);
-      const dims = svgIntrinsicSize(clean) ?? { width: img.width, height: img.height };
-      const next = { ...img, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+      // The file is written; the RECORD takes only what this changed, onto a fresh read (see withSvgBytes).
+      const dims = svgIntrinsicSize(clean);
+      return reply.send({ item: await writeMediaGuarded(ctx, asset.id, (fresh) => withSvgBytes(fresh, buffer.length, dims)) });
     });
 
     // --- REPLACE an asset's BYTES in place ---------------------------------------------------------
@@ -7827,16 +7917,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Every cached variant came from the OLD pixels; dropping them is what makes the replacement
           // visible everywhere at once. They regenerate on the next request.
           await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
-          const next = {
-            ...image,
+          // The bytes are in place; the RECORD takes only what they determine, onto a FRESH read — an alt,
+          // rename or move made during the encode survives (see writeMediaGuarded).
+          const item = await writeMediaGuarded(ctx, image.id, (fresh) => ({
+            ...(fresh as ImageAsset),
             bytes: out.bytes,
             width: out.width,
             height: out.height,
             placeholder: out.placeholder,
             hasAlpha: out.hasAlpha,
             animated: out.animated,
-          };
-          return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+          }));
+          return { ok: true, item, previous, snapshotId };
         } finally {
           await rm(workDir, { recursive: true, force: true }).catch(() => {});
         }
@@ -7857,9 +7949,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // An SVG is never thumbnailed, but a replaced asset may have been a raster before the migration
         // — sweeping is cheap and leaves nothing stale behind either way.
         await storage.pruneAssetThumbnails(projectSlug, image.id, stored);
-        const dims = svgIntrinsicSize(clean) ?? { width: image.width, height: image.height };
-        const next = { ...image, bytes: buffer.length, width: Math.max(1, dims.width), height: Math.max(1, dims.height) };
-        return { ok: true, item: (await contentRepo.put(ctx, 'media', image.id, next)) as MediaAsset, previous, snapshotId };
+        const dims = svgIntrinsicSize(clean);
+        const item = await writeMediaGuarded(ctx, image.id, (fresh) => withSvgBytes(fresh, buffer.length, dims));
+        return { ok: true, item, previous, snapshotId };
       }
 
       // Everything else (file, video, stylesheet, script) is stored VERBATIM, so the replacement is a
@@ -7870,8 +7962,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // clearing them would throw away a good value whenever the replacement is the same size.
       const snapshotId = await snapshotOutgoing();
       const bytes = await storage.storeFileFromPath(projectSlug, current.id, stored, tmpPath);
-      const next = { ...current, bytes };
-      return { ok: true, item: (await contentRepo.put(ctx, 'media', current.id, next)) as MediaAsset, previous, snapshotId };
+      const item = await writeMediaGuarded(ctx, current.id, (fresh) => ({ ...fresh, bytes }));
+      return { ok: true, item, previous, snapshotId };
     }
 
     app.put<{ Params: { projectId: string; id: string } }>(
@@ -8027,14 +8119,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Every cached variant came from the OLD pixels. Dropping them is what makes the edit visible
       // everywhere at once; they regenerate on the next request.
       await storage.pruneAssetThumbnails(projectSlug, asset.id, image.original);
-      const next = {
-        ...image,
+      // Derived from the new pixels ONCE, here — a re-applied record write must not re-encode.
+      const placeholder = await renderPlaceholder(edited.buffer);
+      // The RECORD takes only what the edit determined, onto a FRESH read: an alt or rename made during
+      // the transform survives (see writeMediaGuarded).
+      const item = await writeMediaGuarded(ctx, asset.id, (fresh) => ({
+        ...(fresh as ImageAsset),
         bytes: edited.buffer.length,
         width: edited.width,
         height: edited.height,
-        placeholder: await renderPlaceholder(edited.buffer),
-      };
-      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+        placeholder,
+      }));
+      return reply.send({ item });
     }
 
     app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/transform', { config: rl(120) }, async (req, reply) => {
@@ -9474,7 +9570,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const refreshQ = ((req.query as { refresh?: string } | undefined)?.refresh ?? '').toLowerCase();
         const wantRefresh = refreshQ === '1' || refreshQ === 'true';
         const wantNames = (target.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS) as ViewportName[];
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
 
         // The BUILD always renders live (it's the agent's current work). Kick it off concurrently.
         const buildP = captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({}) as Partial<Record<ViewportName, Shot>>);
@@ -9534,7 +9630,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // Render both sides concurrently (build = the agent's current work, source = the real site) and diff.
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -9576,7 +9672,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // targetPage is non-null (thrown above), so the only reachable error is a missing import source.
           return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // VISUAL leg first: render BUILD + SOURCE and diff (also tells us whether the ORIGINAL has modals).
         const [build, source] = await Promise.all([
           captureUrlElements(target.buildUrl, { mode: 'loopback', signal: abort.signal }),
@@ -9665,7 +9761,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const url = `http://127.0.0.1:${port}/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/${route}${route && !route.endsWith('/') ? '/' : ''}`;
         let samples: HeaderSample[];
         try {
-          samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(req).signal);
+          samples = await measureHeaderAt(url, HEADER_MEASURE_WIDTHS, abortOnClose(reply).signal);
         } catch (err) {
           if (err instanceof HeaderPageNotRendered) {
             return reply.code(409).send({
@@ -9708,7 +9804,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           originHostPort: `127.0.0.1:${port}`,
         });
         if ('error' in target) return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const vps = [...DEFAULT_SCREENSHOT_VIEWPORTS] as ViewportName[];
         // CLONE via the loopback build, ORIGINAL fresh via the SSRF-pinned path — full-page, desktop + mobile.
         const [build, liveSource] = await Promise.all([
@@ -9795,7 +9891,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // queued slot wait, the build, and Lighthouse — whose Chrome is killed. It used to only skip the
         // reply, so an abandoned audit kept building and auditing inside its render slot; two of those
         // held BOTH slots and the caller's retry waited out the queue into a 500.
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const { signal } = abort;
         try {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
@@ -9928,7 +10024,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Which default regions to capture (unknown names dropped; empty/absent → all defaults).
         const wanted = (req.query.regions ?? '').split(',').map((s) => s.trim()).filter((s) => Object.hasOwn(DEFAULT_COMPARE_REGIONS, s));
         const regions = wanted.length ? Object.fromEntries(wanted.map((n) => [n, DEFAULT_COMPARE_REGIONS[n]!])) : DEFAULT_COMPARE_REGIONS;
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         const [build, source] = await Promise.all([
           captureUrlRegions(target.buildUrl, { mode: 'loopback', regions, signal: abort.signal }),
           captureUrlRegions(target.sourceUrl, { mode: 'pinned', regions, signal: abort.signal }),
@@ -9988,7 +10084,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           if (target.error === 'not-found') throw new NotFoundError('page not found');
           return reply.code(400).send({ error: 'this page has no imported source URL to inspect' });
         }
-        const abort = abortOnClose(req);
+        const abort = abortOnClose(reply);
         // Unlike the capture tools this does NOT swallow render failures: an empty result would read as
         // "the original has no such element", which is precisely the wrong thing to tell a measuring agent.
         const measured = await captureUrlInspect(side === 'build' ? target.buildUrl : target.sourceUrl, {
@@ -11271,16 +11367,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let themeCriticalCss: string | undefined;
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let projectDefaultLocale = 'en';
+      // The READER's locale: a stored page's own, else (an ad-hoc body) the project default — the rule
+      // /preview and publish apply. A function, because the default is only known once settings are read.
+      const readerLocale = (): string => (storedPage ? localeOf(storedPage, projectDefaultLocale) : projectDefaultLocale);
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
         projectDefaultLocale = settings.settings?.defaultLocale ?? 'en';
-        // This authoring render-template tool feeds `data` un-locale-resolved (see the note below); to
-        // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
-        // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
+        // `{{sw-translate}}` in the reader's locale, like its datasets and page links below — this used to
+        // serve the default locale "to match" datasets that were not locale-resolved here; they are now.
         website = settings.website
-          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, consent: settings.website.consent, t: resolveTranslations(settings.website.translations, readerLocale(), projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         themeStickyHeader = settings.website?.effects?.stickyHeader;
@@ -11297,18 +11395,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
+      const renderLocale = readerLocale();
       if (storedPage) {
         // Locale context (resolved + default) for a stored page — member-preview/publish parity, so
         // locale-aware helpers ({{sw-active}}'s locale-home rule) behave the same in this authoring
         // render. Ad-hoc bodies stay locale-less (the helper then falls back to the "/"-only rule).
-        pageCtx = { ...pageCtx, locale: localeOf(storedPage, projectDefaultLocale), defaultLocale: projectDefaultLocale };
+        pageCtx = { ...pageCtx, locale: renderLocale, defaultLocale: projectDefaultLocale };
       }
+      // Pages the live site ships (drafts excluded) — what a page link here may resolve to, as in
+      // /preview and publish: a reference to a draft page renders empty rather than as a live link.
+      const renderPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
       const byDataset = new Map<string, Entry[]>();
       for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
       for (const list of byDataset.values()) list.sort(compareEntryOrder);
-      const data = Object.fromEntries(byDataset);
+      // The same projection /preview and publish make: `dataset.<name>` reads the reader's locale variant,
+      // and a `page` field's stored id becomes the page's attributes ({{target.path}}, {{target.title}}) —
+      // without it this render fed the raw id, and a loop checked here rendered blank links. Draft entries
+      // still show (work in progress), as in /preview.
+      const data = resolveDatasetPageRefs(
+        resolveLocaleDatasets(Object.fromEntries(byDataset), storedPage?.locale),
+        (await contentRepo.list(ctx, 'dataset')) as Dataset[],
+        renderPages,
+        projectDefaultLocale,
+        renderLocale,
+      );
       // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
       // globals + the project's own (project wins on a name collision), then the MANAGED Widget
       // bodies LAST so a widget name can't be shadowed.
@@ -11317,19 +11429,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         ...WIDGET_PARTIALS,
       };
-      // Keyed entry access for this template (only the datasets it addresses by key). NOTE: this
-      // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
-      // keys the DEFAULT-locale entries — the member /preview + publish paths locale-resolve both.
-      const item = keyedDatasets(templateSource, data as Record<string, readonly Entry[]>);
+      // Keyed entry access for this template (only the datasets it addresses by key) — over the same
+      // locale-resolved entries as the loops, as in /preview and publish.
+      const item = keyedDatasets(templateSource, data);
       // `{{sw-page-url "<id>"}}` resolves here too (the stored page's locale; an ad-hoc body is the
       // default locale), so a link checked in the code editor matches the preview and the live site.
       const renderPageUrls = templateSource.includes('sw-page-url')
-        ? pageUrlsContext(
-            publishedPages((await contentRepo.list(ctx, 'page')) as Page[]),
-            storedPage ? localeOf(storedPage, projectDefaultLocale) : projectDefaultLocale,
-            projectDefaultLocale,
-            templateSource,
-          )
+        ? pageUrlsContext(renderPages, renderLocale, projectDefaultLocale, templateSource)
         : undefined;
       // Public form definitions + same-origin endpoints so the code editor's live render shows
       // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).

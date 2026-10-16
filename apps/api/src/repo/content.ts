@@ -1065,9 +1065,19 @@ export class ContentRepository {
    * "copying" it back into the library would bypass the restore flow.
    */
   async getLiveMedia(ctx: ProjectContext, id: string): Promise<MediaAsset> {
+    return (await this.getLiveMediaWithVersion(ctx, id)).asset;
+  }
+
+  /**
+   * {@link getLiveMedia} plus the asset's VERSION (as {@link getWithVersion} gives for any entity). A
+   * route that reads an asset, changes part of it and writes the WHOLE asset back passes this as
+   * {@link put}'s `expectedVersion`, so a write landing in between (a rename, an alt, a transform or a
+   * byte replace of the same asset) makes it lose and re-apply rather than be silently reverted.
+   */
+  async getLiveMediaWithVersion(ctx: ProjectContext, id: string): Promise<{ asset: MediaAsset; version: string }> {
     const row = await this.row(this.db, ctx, 'media', id);
     if (!row || row.deletedAt) throw new NotFoundError('media not found');
-    return row.data as MediaAsset;
+    return { asset: row.data as MediaAsset, version: contentVersion(row.data) };
   }
 
   /**

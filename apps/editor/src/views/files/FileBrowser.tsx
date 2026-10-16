@@ -19,6 +19,7 @@ import { glassCard, glassPanel, ghostButton, primaryButton, toggleInput } from '
 import { cleanSvgFile } from '../library/svg-studio-helpers';
 import { ImageEditorStudio } from '../library/ImageEditorStudio';
 import { assetEmbedUrls } from './media-embed';
+import { folderMoveFailure } from './folder-move';
 import { ImageAltField } from './ImageAltField';
 import {
   sortAssets,
@@ -453,7 +454,21 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
     if (!next) return;
     const name = cleanSegment(next);
     if (!name || name === seg) return;
-    await run(() => api.renameMediaFolder(projectId, pathOf(seg), folder === '' ? name : `${folder}/${name}`));
+    await moveFolder(pathOf(seg), folder === '' ? name : `${folder}/${name}`);
+  }
+  /**
+   * Rename or move a folder. The library reloads either way — the folder DID move — and any assets the
+   * server could not re-file (still under the old name) are named in the error line, rather than the
+   * partial move passing for a success.
+   */
+  async function moveFolder(from: string, to: string) {
+    const partial: string[] = [];
+    await run(async () => {
+      const res = await api.renameMediaFolder(projectId, from, to);
+      const message = folderMoveFailure(res.failed ?? [], assets);
+      if (message) partial.push(message);
+    });
+    if (partial.length > 0) setError(partial[0]!);
   }
   async function deleteFolder(seg: string) {
     const path = pathOf(seg);
@@ -563,7 +578,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       const last = item.path.split('/').pop()!;
       const to = target === '' ? last : `${target}/${last}`;
       if (to === item.path) return;
-      await run(() => api.renameMediaFolder(projectId, item.path, to));
+      await moveFolder(item.path, to);
     }
   }
   /** Drop onto a target folder: desktop files upload there; an internal drag moves there. */

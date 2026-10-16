@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { request, type ClientRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import JSZip from 'jszip';
@@ -27,7 +29,7 @@ interface Built {
   hostScript: ReturnType<typeof vi.fn>;
 }
 
-type PinnedStub = (url: string) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
+type PinnedStub = (url: string, opts?: { signal?: AbortSignal }) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
 
 function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub; cacheSourceRefs?: (slug: string, pages: unknown[], onProgress: (e: unknown) => void, signal: AbortSignal) => Promise<{ captured: number; total: number; capped: boolean }> } = {}): Built {
   const app = Fastify();
@@ -489,5 +491,176 @@ describe('POST /projects/:id/import/website/stream', () => {
     expect(r3.statusCode).toBe(429);
     release();
     await Promise.all([p1, p2]);
+  });
+});
+
+// A crawl runs for minutes; when the client that asked for it hangs up, the work must react — over a REAL
+// socket, because app.inject() never closes one (see abort-on-close.test.ts for the helper itself).
+//
+// The rule: a hang-up cancels the FETCH phase (the crawl) and nothing is written; once WRITING has begun
+// (media hosting, then the page/content write — neither transactional) the import completes regardless,
+// and its response goes nowhere. Cancelling mid-write left a partial import: the crawler answers an abort
+// by returning the pages it has so far, and media fetches failing mid-hosting left pages hotlinking (or
+// missing) their images. ASYNC agent imports are detached from the request and never cancelled by it.
+describe('import routes — a client that hangs up (real socket)', () => {
+  /** A crawl that blocks until its signal aborts or the test releases it — and, like the REAL crawler,
+   *  answers an abort by returning what it has so far (truncated) rather than throwing. */
+  function blockingCrawl(): { crawl: () => Promise<CrawlResult>; started: Promise<AbortSignal>; release: () => void } {
+    let onStart!: (s: AbortSignal) => void;
+    const started = new Promise<AbortSignal>((r) => (onStart = r));
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    const crawl = async (_url: string, _opts: unknown, deps: { signal: AbortSignal }): Promise<CrawlResult> => {
+      onStart(deps.signal);
+      await Promise.race([released, new Promise((r) => deps.signal.addEventListener('abort', r))]);
+      return { ...onePageCrawl(), truncated: deps.signal.aborted };
+    };
+    return { crawl: crawl as unknown as () => Promise<CrawlResult>, started, release };
+  }
+
+  /** A bundle build (the WRITE phase: it hosts media) that blocks until released, then fetches a remote
+   *  image through the route's media port — i.e. a media fetch that happens AFTER the hang-up. */
+  function blockingBuild(): { buildBundle: () => Promise<never>; started: Promise<void>; release: () => void } {
+    let onStart!: () => void;
+    const started = new Promise<void>((r) => (onStart = r));
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    const buildBundle = async (_site: unknown, opts: { media: { hostAsset: (a: unknown) => Promise<unknown> } }) => {
+      onStart();
+      await released;
+      const hosted = await opts.media.hostAsset({ sourceRef: 'https://cdn.ex.com/a.png', remoteUrl: 'https://cdn.ex.com/a.png', kind: 'image' });
+      if (!hosted) throw new Error('the image was not hosted');
+      return {
+        bundles: [{ project: { identity: { name: 'X', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } }, pages: [{ id: 'h', path: '', title: 'H', source: '<p>ok</p>' }], templates: [], datasets: [], entries: [] }],
+        diagnostics: [],
+        stats: { pages: 1, imagesHosted: 1, scriptsDropped: 0, chromeExtracted: false },
+      };
+    };
+    return { buildBundle: buildBundle as unknown as () => Promise<never>, started, release };
+  }
+
+  /** The route's outbound fetch, honouring its signal exactly as pinnedFetch does (an aborted one throws). */
+  const fetchHonouringAbort: PinnedStub = async (_url, opts) => {
+    if (opts?.signal?.aborted) throw new Error('This operation was aborted');
+    return { status: 200, contentType: 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) };
+  };
+
+  async function listen(b: Built): Promise<number> {
+    await b.app.listen({ port: 0, host: '127.0.0.1' });
+    return (b.app.server.address() as AddressInfo).port;
+  }
+
+  /** Send a request on its own connection; resolves with the status + body once (if) the response arrives. */
+  function send(port: number, path: string, body: Buffer, headers: Record<string, string>): { req: ClientRequest; res: Promise<{ status: number; body: string }> } {
+    let req!: ClientRequest;
+    const res = new Promise<{ status: number; body: string }>((resolve, reject) => {
+      req = request({ host: '127.0.0.1', port, path, method: 'POST', agent: false, headers }, (r) => {
+        let text = '';
+        r.setEncoding('utf8');
+        r.on('data', (c: string) => (text += c));
+        r.on('end', () => resolve({ status: r.statusCode ?? 0, body: text }));
+      });
+      req.on('error', reject);
+    });
+    res.catch(() => {}); // a hung-up request rejects with "socket hang up" — expected
+    req.end(body);
+    return { req, res };
+  }
+  const post = (port: number, path: string, json: unknown) => send(port, path, Buffer.from(JSON.stringify(json)), { 'content-type': 'application/json' });
+
+  /** Resolves once the server has seen the client's socket close (so the route's hang-up has fired). */
+  async function serverSawHangUp(b: Built): Promise<void> {
+    const open = (): Promise<number> => new Promise((r, j) => b.app.server.getConnections((e, n) => (e ? j(e) : r(n))));
+    await vi.waitFor(async () => expect(await open()).toBe(0), { timeout: 2000, interval: 10 });
+    await ticks(); // the response's own 'close' is emitted from that same socket close
+  }
+
+  const abortedWithin = (signal: AbortSignal, ms: number): Promise<boolean> =>
+    signal.aborted
+      ? Promise.resolve(true)
+      : new Promise((resolve) => {
+          const t = setTimeout(() => resolve(false), ms);
+          signal.addEventListener('abort', () => {
+            clearTimeout(t);
+            resolve(true);
+          });
+        });
+
+  const CRAWL_ROUTES = [
+    ['the SSE crawl import', 'import/website/stream', {}],
+    ['the agent import in SYNC mode (wait:true)', 'agent/import-website', { wait: true }],
+  ] as const;
+
+  it.each(CRAWL_ROUTES)('%s: a hang-up during the CRAWL cancels it — and nothing is written', async (_label, route, extra) => {
+    const blocking = blockingCrawl();
+    const b = track(makeApp({ crawl: blocking.crawl }));
+    const cancelled = vi.spyOn(b.app.log, 'info');
+    const port = await listen(b);
+    const { req } = post(port, `/projects/hang-crawl-${route.length}/${route}`, { url: 'https://ex.com/', ...extra });
+    try {
+      const signal = await blocking.started;
+      expect(signal.aborted).toBe(false); // the client is still connected
+      req.destroy();
+      expect(await abortedWithin(signal, 2000)).toBe(true);
+      // The crawler hands back the pages it had; the route must not import them. Wait until it has
+      // finished with the cancellation, then check nothing reached the content store.
+      await vi.waitFor(() => expect(cancelled).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/cancelled/)), { timeout: 2000 });
+      expect(b.importBundle).not.toHaveBeenCalled();
+      expect(b.createMediaAsset).not.toHaveBeenCalled();
+    } finally {
+      blocking.release();
+    }
+  });
+
+  it.each(CRAWL_ROUTES)('%s: a hang-up once WRITING has begun does not stop it — the import completes', async (_label, route, extra) => {
+    const build = blockingBuild();
+    const b = track(makeApp({ buildBundle: build.buildBundle, pinnedFetch: fetchHonouringAbort }));
+    const port = await listen(b);
+    const { req } = post(port, `/projects/hang-write-${route.length}/${route}`, { url: 'https://ex.com/', ...extra });
+    try {
+      await build.started; // the crawl is done; media hosting has begun
+      req.destroy();
+      await serverSawHangUp(b);
+      build.release(); // …and a media fetch now happens after the hang-up
+      await vi.waitFor(() => expect(b.importBundle).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(b.createMediaAsset).toHaveBeenCalledTimes(1); // the image was fetched and hosted, not cancelled
+    } finally {
+      build.release();
+    }
+  });
+
+  it('the upload import (no crawl — everything after the upload is writing) completes after a hang-up', async () => {
+    const build = blockingBuild();
+    const b = track(makeApp({ buildBundle: build.buildBundle, pinnedFetch: fetchHonouringAbort }));
+    const port = await listen(b);
+    const { payload, headers } = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
+    const { req } = send(port, '/projects/hang-upload/import/upload/stream', payload, headers);
+    try {
+      await build.started;
+      req.destroy();
+      await serverSawHangUp(b);
+      build.release();
+      await vi.waitFor(() => expect(b.importBundle).toHaveBeenCalledTimes(1), { timeout: 2000 });
+      expect(b.createMediaAsset).toHaveBeenCalledTimes(1);
+    } finally {
+      build.release();
+    }
+  });
+
+  it('the agent import in ASYNC mode keeps running after the caller has its 202 and goes away', async () => {
+    const blocking = blockingCrawl();
+    const b = track(makeApp({ crawl: blocking.crawl }));
+    const port = await listen(b);
+    const { res } = post(port, '/projects/hang-async/agent/import-website', { url: 'https://ex.com/' });
+    const signal = await blocking.started;
+    const answered = await res; // the connection is closed after this response (no keep-alive)
+    expect(answered.status).toBe(202);
+    const { jobId } = JSON.parse(answered.body) as { jobId: string };
+    expect(await abortedWithin(signal, 150)).toBe(false); // detached: the hang-up is not a cancel
+    blocking.release();
+    await ticks(20);
+    const job = await b.app.inject({ method: 'GET', url: `/projects/hang-async/agent/import-website/${jobId}` });
+    expect((JSON.parse(job.payload) as { status: string }).status).toBe('done');
+    expect(b.importBundle).toHaveBeenCalledTimes(1);
   });
 });

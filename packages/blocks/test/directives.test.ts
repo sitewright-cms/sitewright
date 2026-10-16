@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { GLOBAL_TEMPLATES } from '@sitewright/core';
 import { resolveDirectives } from '../src/directives.js';
 import { renderTemplate, validateTemplate } from '../src/template.js';
-import { buildSwImage, type SwImageOptions } from '../src/image-helper.js';
+import { buildSwImage, DERIVED_ALT_ATTR, type SwImageOptions } from '../src/image-helper.js';
 import type { RenderMedia } from '../src/folder.js';
 
 describe('resolveDirectives — data-sw-text', () => {
@@ -558,6 +558,128 @@ describe('resolveDirectives — a replaced PROJECT image stays responsive (data-
     expect(out).toContain('/media/acme/b2-new.jpg?size=xl 2400w');
     expect(out).toContain('width="3000" height="1000"');
     expect(out).not.toContain('a1-old');
+  });
+});
+
+describe('resolveDirectives — a replaced editable image’s DERIVED alt follows the new file', () => {
+  // The bug this pins: with no alt= the helper DERIVES the alt from the asset — its stored alt, else its
+  // file name — so the alt describes THAT file. Replacing the image kept it, and the new photo shipped
+  // described as the old one. A derived alt is now re-derived from the replacement, exactly as a fresh
+  // {{sw-image}} of it would emit; an alt the author WROTE is theirs and stays.
+  const storedOld: RenderMedia = {
+    id: 'a1', folder: '', kind: 'image', filename: 'team.jpg', url: '/media/acme/a1-team.jpg',
+    alt: 'The 2019 team on the steps', width: 1200, height: 800,
+  };
+  const namedOld: RenderMedia = { ...storedOld, id: 'a2', alt: undefined, filename: 'old-team.jpg', url: '/media/acme/a2-old-team.jpg' };
+  const storedNew: RenderMedia = {
+    id: 'b1', folder: '', kind: 'image', filename: 'storefront.jpg', url: '/media/acme/b1-storefront.jpg',
+    alt: 'Our new storefront', width: 1600, height: 900,
+  };
+  const namedNew: RenderMedia = { ...storedNew, id: 'b2', alt: undefined, filename: 'harbour-at-dusk.png', url: '/media/acme/b2-harbour-at-dusk.png' };
+  const svg: RenderMedia = { id: 'e5', folder: '', kind: 'image', filename: 'brand-mark.svg', url: '/media/acme/e5-brand-mark.svg', width: 64, height: 64 };
+  const media = [storedOld, namedOld, storedNew, namedNew, svg];
+  const opts: SwImageOptions = { editable: 'hero', sizes: '50vw' }; // no alt= → derived
+
+  /** {{sw-image from}} as the author wrote it, through the directive pass with the hero override `value`. */
+  const replaced = (from: RenderMedia, value: string, o: SwImageOptions = opts, preview = true): string =>
+    resolveDirectives(buildSwImage(from.url, media, o), { data: { hero: value }, media, preview });
+  /** A FRESH {{sw-image}} of `url` through the same pass, no override — what the replacement must equal. */
+  const fresh = (url: string, o: SwImageOptions = opts, preview = true): string =>
+    resolveDirectives(buildSwImage(url, media, o), { media, preview });
+  /** The `<img>`'s alt VALUE — the serializer writes an empty one as a bare `alt` (same as `alt=""`). */
+  const altOf = (html: string): string | undefined => {
+    const tag = /<img\b[^>]*>/.exec(html)?.[0] ?? '';
+    const valued = /\salt="([^"]*)"/.exec(tag);
+    if (valued) return valued[1];
+    return /\salt[\s>]/.test(tag) ? '' : undefined;
+  };
+
+  it.each([
+    ['a stored alt', 'its stored alt', storedOld, storedNew, 'Our new storefront'],
+    ['a stored alt', 'its file name', storedOld, namedNew, 'harbour-at-dusk'],
+    ['a file name', 'its stored alt', namedOld, storedNew, 'Our new storefront'],
+    ['a file name', 'its file name', namedOld, namedNew, 'harbour-at-dusk'],
+  ])('an alt derived from %s takes the replacement’s alt from %s — byte-identical to a fresh {{sw-image}}', (_from, _to, from, to, alt) => {
+    for (const preview of [true, false]) {
+      const out = replaced(from, to.url, opts, preview);
+      expect(altOf(out)).toBe(alt);
+      expect(out).toBe(fresh(to.url, opts, preview));
+    }
+  });
+
+  it('keeps an alt the author WROTE — including an intentional empty one — whatever the replacement', () => {
+    for (const alt of ['Our team', '']) {
+      for (const value of [storedNew.url, namedNew.url, svg.url, 'https://cdn.example/x.jpg']) {
+        expect(altOf(replaced(storedOld, value, { ...opts, alt })), value).toBe(alt);
+      }
+    }
+  });
+
+  it.each([
+    // The plain-swap path (no rungs to rebuild): the alt still follows the file that is now shown.
+    ['an SVG project image', svg.url, 'brand-mark'],
+    ['a project image addressed with a query', `${storedNew.url}?size=md`, 'Our new storefront'],
+    ['an external url (a fresh {{sw-image}} of one has an empty alt)', 'https://cdn.example/photo.jpg', ''],
+    ['an unknown asset id', '/media/acme/zz-gone.jpg', ''],
+  ])('re-derives on the plain-swap fallback too — %s', (_label, value, alt) => {
+    const out = replaced(storedOld, value);
+    expect(altOf(out)).toBe(alt);
+    expect(out).not.toContain('2019 team');
+  });
+
+  it('re-derives when the default rendered PLAIN (an SVG) and the replacement is a raster image', () => {
+    const out = replaced(svg, namedNew.url);
+    expect(out).toContain('src="/media/acme/b2-harbour-at-dusk.png"'); // the documented bare swap…
+    expect(altOf(out)).toBe('harbour-at-dusk'); // …but described as the file it now shows
+  });
+
+  it('re-derives on a LAZY (data-src) image too', () => {
+    const lazy =
+      `<img data-sw-src="hero" ${DERIVED_ALT_ATTR} data-src="/media/acme/a1-team.jpg?size=lg" ` +
+      'data-srcset="/media/acme/a1-team.jpg?size=sm 500w" sizes="50vw" alt="The 2019 team on the steps">';
+    const out = resolveDirectives(lazy, { data: { hero: storedNew.url }, media });
+    expect(out).toContain('data-src="/media/acme/b1-storefront.jpg?size=lg"');
+    expect(altOf(out)).toBe('Our new storefront');
+  });
+
+  it('an EMPTY override keeps the default — and the default’s derived alt', () => {
+    const out = replaced(storedOld, '');
+    expect(out).toBe(fresh(storedOld.url));
+    expect(altOf(out)).toBe('The 2019 team on the steps');
+  });
+
+  it('with no media list there is nothing to derive from: the alt empties rather than describe the old file', () => {
+    const out = resolveDirectives(buildSwImage(storedOld.url, media, opts), { data: { hero: storedNew.url }, preview: true });
+    expect(out).toContain('src="/media/acme/b1-storefront.jpg"');
+    expect(altOf(out)).toBe('');
+  });
+
+  it('the marker never reaches either surface — consumed whether or not the image was replaced', () => {
+    for (const preview of [true, false]) {
+      for (const value of [storedNew.url, '', 'https://cdn.example/x.jpg']) {
+        const out = replaced(storedOld, value, opts, preview);
+        expect(out, `${String(preview)} ${value}`).not.toContain(DERIVED_ALT_ATTR);
+        expect(out).toContain(preview ? 'data-sw-src="hero"' : '<img'); // still click-to-replace in the editor
+      }
+    }
+    // A stray marker on an element with no directive of its own is removed too.
+    expect(resolveDirectives(`<img src="/a.jpg" ${DERIVED_ALT_ATTR} alt="a">`, { preview: true })).toBe('<img src="/a.jpg" alt="a">');
+    expect(resolveDirectives(`<img src="/a.jpg" ${DERIVED_ALT_ATTR} alt="a">`, {})).toBe('<img src="/a.jpg" alt="a">');
+  });
+
+  it('a hand-written <img data-sw-src> carries no marker, so its alt is the author’s and stays', () => {
+    const out = resolveDirectives('<img data-sw-src="hero" src="/media/acme/a1-team.jpg" alt="Team">', { data: { hero: storedNew.url }, media });
+    expect(out).toBe('<img src="/media/acme/b1-storefront.jpg" alt="Team">');
+  });
+
+  it('is wired through renderTemplate: a published replacement is described as the new file, marker-free', () => {
+    const out = renderTemplate('{{sw-image "/media/acme/a1-team.jpg" editable="hero" sizes="50vw"}}', {
+      page: { data: { hero: storedNew.url } },
+      media,
+    });
+    expect(altOf(out)).toBe('Our new storefront');
+    expect(out).not.toContain('2019 team');
+    expect(out).not.toContain('data-sw-');
   });
 });
 

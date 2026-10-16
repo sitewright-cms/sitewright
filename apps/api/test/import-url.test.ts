@@ -407,3 +407,48 @@ describe('per-tenant fair share of the large-import gate', () => {
     expect((await post(projectId, t, 'https://cdn.example.com/b.mp4')).statusCode).toBe(201);
   });
 })
+
+// `alt` on the URL import — the agent's `import_image` path. Every other way an asset is born (multipart
+// upload, upload tickets) and every edit (PATCH, bulk-alt) takes an alt; this one did not, so a cloned
+// gallery imported here was always undescribed and needed a second round of calls.
+describe('POST /projects/:projectId/media/import-url — alt', () => {
+  const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
+  const importWith = (projectId: string, t: string, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload });
+
+  it.each([
+    ['a raster image', PNG_1X1, 'image/png', 'https://cdn.example.com/harbour.png', 'image'],
+    ['an SVG', SVG, 'image/svg+xml', 'https://cdn.example.com/logo.svg', 'image'],
+    ['a document', Buffer.from('%PDF-1.4 ...'), 'application/pdf', 'https://cdn.example.com/prices.pdf', 'file'],
+    ['a video', Buffer.from('not really a video'), 'video/mp4', 'https://cdn.example.com/loop.mp4', 'video'],
+  ])('stores the alt on %s', async (_label, body, contentType, url, kind) => {
+    await makeApp(fetcherReturning(ok(body, contentType)));
+    const { t, projectId } = await setup();
+    const res = await importWith(projectId, t, { url, alt: 'Fishing boats in the harbour at dusk' });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().item).toMatchObject({ kind, alt: 'Fishing boats in the harbour at dusk' });
+    const listed = (await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } })).json() as {
+      items: Array<{ id: string; alt?: string }>;
+    };
+    expect(listed.items.find((m) => m.id === res.json().item.id)?.alt).toBe('Fishing boats in the harbour at dusk');
+  });
+
+  it('an empty alt leaves the asset undescribed; none at all is unchanged', async () => {
+    await makeApp(fetcherReturning(ok(PNG_1X1, 'image/png')));
+    const { t, projectId } = await setup();
+    for (const payload of [{ url: 'https://cdn.example.com/a.png', alt: '' }, { url: 'https://cdn.example.com/b.png' }]) {
+      const res = await importWith(projectId, t, payload);
+      expect(res.statusCode, res.body).toBe(201);
+      expect('alt' in res.json().item).toBe(false);
+    }
+  });
+
+  it('refuses an alt over the stored bound before fetching anything', async () => {
+    const fetcher = fetcherReturning(ok(PNG_1X1, 'image/png'));
+    await makeApp(fetcher);
+    const { t, projectId } = await setup();
+    const res = await importWith(projectId, t, { url: 'https://cdn.example.com/a.png', alt: 'x'.repeat(501) });
+    expect(res.statusCode).toBe(400);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});

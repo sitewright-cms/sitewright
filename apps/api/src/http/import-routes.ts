@@ -127,6 +127,35 @@ const AgentImportBody = ImportWebsiteBody.extend({
 /** A crawl that reached the URL but found no importable page — a 422, not a server fault. */
 class ImportEmptyError extends Error {}
 
+/**
+ * The import was cancelled — the caller hung up, or the job was cancelled — DURING THE CRAWL, so nothing
+ * was written. Not a failure of the server: logged at info, never as an error.
+ */
+class ImportCancelledError extends Error {
+  constructor() {
+    super('the import was cancelled during the crawl — nothing was written');
+  }
+}
+
+/**
+ * ★ WHERE A CANCEL STOPS AN IMPORT. An import has two phases, and a hang-up (abortOnClose) or a job
+ * cancel means different things in each:
+ *   · FETCH — the crawl (pages, stylesheets, a render). Cancelling it is free: nothing is stored yet.
+ *     The crawler answers an abort by RETURNING what it has so far (truncated), so the route checks the
+ *     signal once the crawl returns ({@link endOfFetchPhase}) — importing that remainder would write a
+ *     partial site.
+ *   · WRITE — media hosting (each remote image fetched, then stored) and then the page/content write.
+ *     Neither is transactional, so stopping halfway leaves a PARTIAL import: pages hotlinking or missing
+ *     the images whose fetch was aborted. Once writing begins it runs to the end on this signal, which
+ *     never fires; a caller that hung up simply never reads the result. (Each fetch keeps its own timeout.)
+ */
+const WRITE_PHASE: AbortSignal = new AbortController().signal;
+
+/** The end of the fetch phase: a cancel that landed during the crawl stops the import here, unwritten. */
+function endOfFetchPhase(signal: AbortSignal): void {
+  if (signal.aborted) throw new ImportCancelledError();
+}
+
 /** Async import jobs, per process. Created here so it lives exactly as long as the route plugin. */
 const importJobs = new ImportJobRegistry();
 
@@ -269,6 +298,11 @@ export async function streamImport(
     const report = await run((e) => send('progress', e));
     send('done', { report });
   } catch (err) {
+    // A hang-up during the crawl is the client leaving, not the server failing: no error log for it.
+    if (err instanceof ImportCancelledError) {
+      log.info(logCtx, 'streaming import cancelled during the crawl — nothing written');
+      return;
+    }
     log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming import failed');
     // Generic message only — never leak internals. (Client-fixable upload errors are surfaced as a clean
     // JSON 400 BEFORE the stream is hijacked, so they never reach here.)
@@ -420,7 +454,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     };
   }
 
-  /** Convert a CapturedSite → bundle (assert script-free, reject invalid) → write it; returns the report. */
+  /**
+   * Convert a CapturedSite → bundle (assert script-free, reject invalid) → write it; returns the report.
+   * This is the WRITE phase (see WRITE_PHASE): `media` must fetch on WRITE_PHASE, and `signal` reaches
+   * only the best-effort source-screenshot cache that runs after the content is written.
+   */
   async function convertAndImport(
     ctx: ProjectContext,
     project: { id: string; name: string; slug: string },
@@ -508,19 +546,17 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const renderMode = renderModeOf(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
-    const abort = abortOnClose(req);
+    const abort = abortOnClose(reply);
 
     try {
       await streamImport(
         reply,
         async (onProgress) => {
-          const fetcher = makeFetcher(abort.signal);
-          const media = makeMediaPort(ctx, project.slug, fetcher);
           const crawlResult = await crawl(
             url,
             { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS, renderMode },
             {
-              fetchResource: fetcher,
+              fetchResource: makeFetcher(abort.signal),
               // Cheap sync pre-filter for the discovery skip; pinnedFetch is the binding SSRF guard.
               isAllowed: async (u) => !targetsPrivateHost(u),
               ...(render ? { render } : {}),
@@ -528,7 +564,10 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
               signal: abort.signal,
             },
           );
+          // A hang-up during the crawl ends the import here, unwritten; from here on it completes (WRITE_PHASE).
+          endOfFetchPhase(abort.signal);
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
+          const media = makeMediaPort(ctx, project.slug, makeFetcher(WRITE_PHASE));
           return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },
@@ -562,30 +601,34 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
     // ASYNC mode detaches the work from the request, so the caller's socket closing is NOT a cancellation
-    // — only an explicit abort is. In sync mode a dropped connection still cancels, as before.
+    // — only an explicit job cancel is. In SYNC mode a dropped connection cancels — but only the CRAWL:
+    // once writing has begun the import completes regardless (see WRITE_PHASE), because stopping
+    // halfway through the media and content writes would leave a partial site.
     const wait = parsed.data.wait ?? false;
-    if (!wait) abortOnClose(req, abort);
+    if (wait) abortOnClose(reply, abort);
 
     const runImport = async (onProgress: (e: unknown) => void): Promise<Record<string, unknown>> => {
-      const fetcher = makeFetcher(abort.signal);
-      const media = makeMediaPort(ctx, project.slug, fetcher);
       const crawlResult = await crawl(
         url,
         { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS, renderMode },
         {
-          fetchResource: fetcher,
+          fetchResource: makeFetcher(abort.signal),
           isAllowed: async (u) => !targetsPrivateHost(u),
           ...(render ? { render } : {}),
           onProgress,
           signal: abort.signal,
         },
       );
+      endOfFetchPhase(abort.signal);
       if (crawlResult.site.pages.length === 0) throw new ImportEmptyError('no pages could be crawled from the URL');
+      const media = makeMediaPort(ctx, project.slug, makeFetcher(WRITE_PHASE));
       return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, { foundation, inferDatasets }, abort.signal);
     };
 
     // SYNCHRONOUS (`wait: true`) — the original behaviour, kept for a small site and for callers that
-    // would rather block than poll.
+    // would rather block than poll. A caller that times out and hangs up DURING THE CRAWL cancels it with
+    // nothing written; one that hangs up after writing began gets a COMPLETE import it never hears about
+    // (list_pages shows it) — never a half-written one.
     if (wait) {
       try {
         const noop = (): void => {};
@@ -593,6 +636,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         return reply.send({ ok: true, ...report });
       } catch (err) {
         if (err instanceof ImportEmptyError) return reply.code(422).send({ error: err.message });
+        if (err instanceof ImportCancelledError) {
+          // The caller is gone; this answer reaches nobody. Logged as what it is, not as a server error.
+          log.info({ projectId: project.id, url }, 'agent import cancelled during the crawl — nothing written');
+          return reply.code(499).send({ error: err.message });
+        }
         throw err;
       } finally {
         releaseSlot(project.id);
@@ -600,9 +648,10 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     }
 
     // ASYNC (the DEFAULT) — a real crawl takes minutes, and an agent's tool call times out long before
-    // that. The old synchronous-only route reported "The operation timed out" while the import went on to
-    // SUCCEED server-side, leaving the caller with no job id, no progress and no way to know whether a
-    // retry would duplicate the work. Now the job id comes back immediately and the caller polls.
+    // that. The old synchronous-only route reported "The operation timed out" while the import went on
+    // server-side, leaving the caller with no job id, no progress and no way to know whether a retry
+    // would duplicate the work. Now the job id comes back immediately and the caller polls. An explicit
+    // cancel follows the same two-phase rule: it stops the crawl, never a write in progress.
     const job = importJobs.start(project.id, url, abort);
     void runImport((e) => importJobs.progress(job.id, e))
       .then((report) => importJobs.finish(job.id, report))
@@ -685,14 +734,15 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     if (!acquireSlot(reply, project.id)) return reply;
     const foundation = wantsFoundation(req);
     const inferDatasets = wantsInferDatasets(req);
-    const abort = abortOnClose(req);
+    // No crawl here: the site arrived in the upload, so everything after it is the WRITE phase and runs
+    // to completion (WRITE_PHASE). The hang-up only cuts short the optional source-screenshot cache.
+    const abort = abortOnClose(reply);
 
     try {
       await streamImport(
         reply,
         async (onProgress) => {
-          const fetcher = makeFetcher(abort.signal);
-          const media = makeMediaPort(ctx, project.slug, fetcher);
+          const media = makeMediaPort(ctx, project.slug, makeFetcher(WRITE_PHASE));
           return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, { foundation, inferDatasets }, abort.signal);
         },
         { projectId: project.id },

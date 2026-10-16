@@ -128,6 +128,33 @@ describe('FileBrowser (Assets)', () => {
     await waitFor(() => expect(createMediaFolder).toHaveBeenCalledWith('p', 'Brand'));
   });
 
+  it('renaming a folder that could not re-file every asset says so, by name — and still refreshes', async () => {
+    // The server re-roots the folder and re-files its assets one by one; one it could not move stays under
+    // the old name. `ok: false` plus `failed` — not a silent success.
+    renameMediaFolder.mockResolvedValue({ ok: false, moved: [], failed: [{ id: 'file2', error: 'the entity kept changing' }] });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    const loadsBefore = listMedia.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Docs' }));
+    fireEvent.change(await screen.findByLabelText('Folder name'), { target: { value: 'Papers' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText('1 file could not be moved — try again (q4.pdf).')).toBeInTheDocument();
+    expect(renameMediaFolder).toHaveBeenCalledWith('p', 'Docs', 'Papers');
+    expect(listMedia.mock.calls.length).toBeGreaterThan(loadsBefore); // the folder DID move: show it
+  });
+
+  it('a folder rename that re-filed everything shows no error', async () => {
+    renameMediaFolder.mockResolvedValue({ ok: true, moved: ['file2'], failed: [] });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename Docs' }));
+    fireEvent.change(await screen.findByLabelText('Folder name'), { target: { value: 'Papers' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(renameMediaFolder).toHaveBeenCalledWith('p', 'Docs', 'Papers'));
+    await waitFor(() => expect(listMedia.mock.calls.length).toBeGreaterThan(1));
+    expect(screen.queryByText(/could not be moved/)).toBeNull();
+  });
+
   it('indicates folder sizes (the recursive total of the assets inside)', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     const docsRow = (await screen.findByRole('button', { name: 'Docs' })).closest('tr')!;

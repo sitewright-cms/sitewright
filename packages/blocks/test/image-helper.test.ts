@@ -4,6 +4,8 @@ import {
   resolveRenderImage,
   mediaAssetId,
   filenameAlt,
+  derivedAlt,
+  DERIVED_ALT_ATTR,
   responsiveRungs,
   sizedRaster,
   lqipPlaceholder,
@@ -162,6 +164,13 @@ describe('buildSwImage', () => {
     const noAlt: RenderMedia = { ...img, alt: undefined, filename: 'Team photo 2024.jpg' };
     const html = buildSwImage(noAlt.url, [noAlt]);
     expect(html).toContain('alt="Team photo 2024"'); // extension dropped, name preserved
+  });
+
+  it('derivedAlt is the ONE fallback rule: stored alt, else the filename stem, else empty when unresolved', () => {
+    expect(derivedAlt(img)).toBe('A photo');
+    expect(derivedAlt({ ...img, alt: undefined, filename: 'Team photo 2024.jpg' })).toBe('Team photo 2024');
+    expect(derivedAlt({ ...img, alt: '' })).toBe(''); // a stored EMPTY alt is a decision (decorative), not a gap
+    expect(derivedAlt(undefined)).toBe('');
   });
 
   it('respects an explicit EMPTY alt (decorative) over the filename fallback', () => {
@@ -376,6 +385,23 @@ describe('buildSwImage — editable= (data-sw-src on a responsive image)', () =>
     expect(buildSwImage(img.url, [img])).not.toContain('data-sw-src');
   });
 
+  it('marks a DERIVED alt (no alt= given) on every branch, so a replacement can re-derive it', () => {
+    // Without alt= the alt comes from the asset — its stored alt or file name — and so describes THIS
+    // file. The directive pass re-derives it for a replacement and consumes the marker (directives.test.ts).
+    const marker = ` ${DERIVED_ALT_ATTR}`;
+    expect(buildSwImage(img.url, [img], { editable: 'hero' })).toContain(marker);
+    expect(buildSwImage(img.url, [img], { editable: 'hero', format: 'avif' })).toContain(marker);
+    expect(buildSwImage(svg.url, [svg], { editable: 'mark' })).toContain(marker);
+    expect(buildSwImage('https://cdn.example/x.jpg', [], { editable: 'ext' })).toContain(marker); // alt="" is derived too
+  });
+
+  it('never marks an AUTHORED alt (an intentional empty one included), nor a non-editable image', () => {
+    expect(buildSwImage(img.url, [img], { editable: 'hero', alt: 'Our team' })).not.toContain(DERIVED_ALT_ATTR);
+    expect(buildSwImage(img.url, [img], { editable: 'hero', alt: '' })).not.toContain(DERIVED_ALT_ATTR);
+    // Not replaceable → nothing could ever re-derive it: the markup stays byte-identical to before.
+    expect(buildSwImage(img.url, [img])).not.toContain(DERIVED_ALT_ATTR);
+  });
+
   it('escapes the key rather than letting it break out of the attribute', () => {
     const html = buildSwImage(img.url, [img], { editable: 'a"><script>x</script>' });
     expect(html).not.toContain('<script>');
@@ -392,6 +418,9 @@ describe('buildSwImage — editable= (data-sw-src on a responsive image)', () =>
     const published = renderTemplate('{{sw-image "/media/acme/a1/photo.jpg" editable="hero"}}', { media: [img] });
     expect(published).not.toContain('data-sw-src');
     expect(published).toContain('srcset=');
+    // The derived-alt marker is consumed by the directive pass on BOTH surfaces — it is no affordance.
+    expect(on).not.toContain(DERIVED_ALT_ATTR);
+    expect(published).not.toContain(DERIVED_ALT_ATTR);
     const off = renderTemplate('{{sw-image "/media/acme/a1/photo.jpg" editable=""}}', { media: [img], preview: true });
     expect(off).not.toContain('data-sw-src');
   });

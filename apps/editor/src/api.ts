@@ -1947,9 +1947,17 @@ export const api = {
     request<{ items: MediaFolderRecord[] }>('GET', `/projects/${projectId}/media/folders`),
   createMediaFolder: (projectId: string, path: string) =>
     request<{ ok: true }>('POST', `/projects/${projectId}/media/folders`, { path }),
-  /** Rename or move a folder (re-roots its subtree + assets). */
+  /**
+   * Rename or move a folder (re-roots its subtree + re-files its assets one by one). `ok` is false when
+   * some assets could not be re-filed — they are in `failed` and still sit under the OLD folder name.
+   * (`moved`/`failed` are absent from an API older than this editor.)
+   */
   renameMediaFolder: (projectId: string, from: string, to: string) =>
-    request<{ ok: true }>('POST', `/projects/${projectId}/media/folders/rename`, { from, to }),
+    request<{ ok: boolean; moved?: string[]; failed?: Array<{ id: string; error: string }> }>(
+      'POST',
+      `/projects/${projectId}/media/folders/rename`,
+      { from, to },
+    ),
   /** Copy a folder subtree (records + duplicated assets) to a new path. */
   copyMediaFolder: (projectId: string, from: string, to: string) =>
     request<{ ok: true }>('POST', `/projects/${projectId}/media/folders/copy`, { from, to }),

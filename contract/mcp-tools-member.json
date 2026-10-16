@@ -311,6 +311,16 @@
     ]
   },
   {
+    "name": "patch_text",
+    "required": [
+      "edits",
+      "field",
+      "id",
+      "kind",
+      "project"
+    ]
+  },
+  {
     "name": "preview_page",
     "required": [
       "page",

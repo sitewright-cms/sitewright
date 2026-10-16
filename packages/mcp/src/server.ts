@@ -31,7 +31,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss } from '@sitewright/blocks';
-import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type TextEdit } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -1420,6 +1420,61 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       },
     },
     gate('content:write', ({ css, block }: { css: string; block?: string }) => client.patchCriticalCss(css, block)),
+  );
+
+  // Same forgiveness as `objectArg`, for an ARRAY argument a caller sent serialised.
+  const arrayArg = <T extends z.ZodTypeAny>(schema: T) =>
+    z
+      .preprocess((v) => {
+        if (typeof v !== 'string') return v;
+        const s = v.trim();
+        if (!s.startsWith('[') || !s.endsWith(']')) return v;
+        try {
+          return JSON.parse(s);
+        } catch {
+          return v;
+        }
+      }, schema)
+      .nonoptional();
+
+  server.registerTool(
+    'patch_text',
+    {
+      description:
+        'FIND-AND-REPLACE inside one long text field, WITHOUT re-sending it: a page/template/snippet `source`, a ' +
+        'settings chrome slot (`website.mainNav`, `website.footer`, `website.sidebarLeft`, `website.sidebarRight`, ' +
+        '`website.bottom`) or the stylesheet (`website.criticalCss`). Use it for every small change to an existing ' +
+        'page — fixing two lines of a 20 KB page via put_page re-sends all 20 KB. Each edit replaces `old` with `new`: ' +
+        '`old` must be copied EXACTLY from the current text (whitespace included) and must match exactly ONCE — make ' +
+        'it longer to disambiguate, or pass `all:true` to replace every occurrence. Edits apply in order, each to the ' +
+        'result of the one before; the batch is ALL-OR-NOTHING (a 422 names the edit that did not match and how often ' +
+        'it was found, and nothing is written). The result is validated exactly like a full save. A write by someone ' +
+        'else in between is kept — your edits are re-applied on top. Returns a receipt ({ field, edits, replacements, ' +
+        'bytes, bytesBefore, changed, version }), never the text; call get_page / get_content to read it. For ' +
+        'stylesheet rules you will keep revising, patch_critical_css named blocks are still the better fit.',
+      inputSchema: {
+        kind: z.enum(['page', 'template', 'snippet', 'settings']).describe('The entity kind. Chrome slots and the stylesheet live on "settings".'),
+        id: z.string().describe('The entity id ("settings" for the settings slots).'),
+        field: z
+          .enum(['source', 'website.mainNav', 'website.footer', 'website.sidebarLeft', 'website.sidebarRight', 'website.bottom', 'website.criticalCss'])
+          .describe('"source" for a page/template/snippet; a website.* slot for settings.'),
+        edits: arrayArg(
+          z
+            .array(
+              z.object({
+                old: z.string().min(1).describe('Exact text to replace — must occur once (or use all:true).'),
+                new: z.string().describe('Replacement text ("" deletes the match).'),
+                all: z.boolean().optional().describe('Replace EVERY occurrence of `old`.'),
+              }),
+            )
+            .min(1)
+            .max(50),
+        ),
+      },
+    },
+    gate('content:write', ({ kind, id, field, edits }: { kind: string; id: string; field: string; edits: TextEdit[] }) =>
+      client.patchText(kind, id, field, edits),
+    ),
   );
 
   server.registerTool(

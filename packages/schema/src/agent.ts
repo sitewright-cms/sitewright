@@ -193,9 +193,15 @@ server-side (schema + no-JS template safety); you cannot exceed the token's role
 BUILD BIG PAGES IN STAGES — BUT KEEP GOING IN THE SAME TURN: a full 6-9 section page can exceed a
 single reply's OUTPUT-TOKEN LIMIT (one giant put_page cut off mid-write LOSES the edit → a
 max-output-tokens error). So build it up across SUCCESSIVE tool calls: put_page an initial version
-(chrome + 2-3 sections), then get_page + put_page with the next sections appended, REPEATing until
-complete. Do NOT stop to ask "shall I continue" — keep calling
+(chrome + 2-3 sections), then APPEND the next sections with patch_text (anchor \`old\` on the unique
+closing lines of what is already there, and repeat them in \`new\` followed by the new sections),
+REPEATing until complete. Do NOT stop to ask "shall I continue" — keep calling
 tools until the page is DONE or you are genuinely blocked.
+EDIT EXISTING TEXT WITH patch_text, NEVER BY RE-SENDING IT: any change to a page source, a chrome slot
+(website.mainNav/footer/…) or the stylesheet is a find-and-replace — patch_text({ kind, id, field,
+edits:[{ old, new }] }), \`old\` copied exactly and matching once (all:true for every occurrence). A
+put_page / full settings write re-sends the whole 10-30 KB field for a two-line fix, and a long write
+can be cut off mid-way.
 PREVIEW SPARINGLY — screenshots are expensive (fed to you as images + resent every turn). Do NOT
 preview_page after a small/simple edit (a headline, a colour, one section); render only at MILESTONES
 — after building a meaningful chunk of a new page, and once before publishing — not after every tool
@@ -1995,6 +2001,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'delete_page', description: "Delete a page by id — its child pages move up a level, and the language variants that follow it go too.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind (`merge:true` PATCHES settings). Returns a RECEIPT — { kind, id, bytes, created, changed } — not the entity.", capability: 'content:write' },
   { name: 'patch_critical_css', description: "Add or change site CSS WITHOUT re-sending the whole stylesheet. A named `block` UPSERTS (repeated edits replace, not duplicate); no block appends; empty css + block removes. Returns a receipt, never the sheet.", capability: 'content:write' },
+  { name: 'patch_text', description: "Find-and-replace inside ONE long text field without re-sending it: a page/template/snippet `source`, a settings chrome slot (website.mainNav/footer/sidebarLeft/sidebarRight/bottom) or website.criticalCss. Each `old` must match exactly once (or all:true); all-or-nothing; validated like a full save. Returns a receipt.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
   { name: 'delete_content_bulk', description: "Delete MANY entities of one kind in ONE call ({ kind, ids }, up to 200). Partial success is reported per id. Use it for import clean-up instead of looping delete_content.", capability: 'content:delete' },
   { name: 'add_language', description: "Add a translation-target language — atomically registers the locale AND scaffolds an inherited translated page for every existing page. The only correct way to add a language.", capability: 'content:write' },

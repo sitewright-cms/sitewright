@@ -368,6 +368,7 @@ import {
 import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
 import { deepMerge } from '../repo/merge.js';
 import { applyCriticalCssPatch, listCriticalCssBlocks, CSS_BLOCK_NAME } from '../repo/critical-css.js';
+import { applyTextEdits, readTextField, writeTextField, TEXT_PATCH_FIELDS } from '../repo/text-patch.js';
 import { normalizeEntryValues } from '../repo/entry-values.js';
 import { summarizeContentList } from '../repo/content-summary.js';
 import { writeReceipt } from '../repo/write-receipt.js';
@@ -933,6 +934,37 @@ function rejectReservedWidgetName(body: unknown): void {
       `Choose a different name (reserved widget names: ${alternatives}), and update each {{> ${name}}} ` +
       'that should point at your snippet.',
   );
+}
+
+/**
+ * How many times a server-side READ-MODIFY-WRITE is re-applied when another writer lands in between.
+ *
+ * `?merge=1`, the stylesheet patch and the text patch all read the stored entity, change part of it and
+ * write the whole thing back. Unguarded, a write that landed between that read and that write was
+ * silently reverted — every call returned 200 (one site lost a mega-menu, a CSS rule and enlarged
+ * footer badges in one session that way). So each such write now carries the version it READ, and a
+ * concurrent writer makes it lose; it is then re-applied to the newer value, which is correct because
+ * the patch is a function of whatever is current. Only a caller-supplied `If-Match` turns a conflict
+ * into a 409 — that caller asked to lose rather than re-apply.
+ */
+const PATCH_ATTEMPTS = 8;
+
+/** Run `attempt` until it doesn't lose a version race (at most {@link PATCH_ATTEMPTS} times). */
+async function retryOnVersionConflict<T>(attempt: () => Promise<T>): Promise<T> {
+  for (let n = 1; ; n += 1) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (!(err instanceof VersionConflictError) || n >= PATCH_ATTEMPTS) throw err;
+    }
+  }
+}
+
+/** The version a caller pinned with `If-Match`, or undefined (absent, or `*` = any version). */
+function ifMatchVersion(header: string | string[] | undefined): string | undefined {
+  return typeof header === 'string' && header.trim() !== '' && header.trim() !== '*'
+    ? header.trim().replace(/^W\//, '').replace(/^"|"$/g, '')
+    : undefined;
 }
 
 function validateSourceOnSave(kind: string, body: unknown): void {
@@ -4488,14 +4520,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           error: `block "${block}" is not a valid name — letters, digits, "-" and "_", starting with a letter, max 49 chars`,
         });
       }
-      const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as
-        | { website?: { criticalCss?: string } }
-        | null;
-      if (!settings) return reply.code(404).send({ error: 'no settings to patch — write the full settings object first' });
-      const before = settings.website?.criticalCss ?? '';
-      const after = applyCriticalCssPatch(before, css, block);
-      const next = { ...settings, website: { ...(settings.website ?? {}), criticalCss: after } };
-      await contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, next);
+      // Read → patch → write, guarded by the version read (see PATCH_ATTEMPTS): a settings write that
+      // lands in between makes this lose and re-apply, rather than be silently reverted by it.
+      const result = await retryOnVersionConflict(async () => {
+        const { item, version } = await contentRepo.getWithVersion(ctx, 'settings', SETTINGS_ENTITY_ID).catch((err: unknown) => {
+          if (err instanceof NotFoundError) return { item: null, version: '' };
+          throw err;
+        });
+        const settings = item as { website?: { criticalCss?: string } } | null;
+        if (!settings) return null;
+        const before = settings.website?.criticalCss ?? '';
+        const after = applyCriticalCssPatch(before, css, block);
+        const next = { ...settings, website: { ...(settings.website ?? {}), criticalCss: after } };
+        await contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, next, { expectedVersion: version });
+        return { before, after };
+      });
+      if (!result) return reply.code(404).send({ error: 'no settings to patch — write the full settings object first' });
+      const { before, after } = result;
       // A receipt, not the sheet: echoing it back is the very cost this route exists to avoid.
       return reply.send({
         block: block ?? null,
@@ -4503,6 +4544,89 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         bytesBefore: before.length,
         blocks: listCriticalCssBlocks(after),
         changed: after !== before,
+      });
+    },
+  );
+
+  // FIND-AND-REPLACE inside one text field — a page/template/snippet `source`, a chrome slot, the site
+  // stylesheet. Those are single strings and `?merge=1` replaces strings wholesale, so a two-line fix to
+  // a 20 KB page meant re-sending the whole page (see repo/text-patch.ts). Each edit names the exact
+  // text it replaces; the batch is all-or-nothing and validated exactly like a full save.
+  const TextPatchBody = z.object({
+    field: z.string().min(1).max(64),
+    edits: z
+      .array(
+        z.object({
+          old: z.string().min(1, 'old must name the exact text to replace'),
+          new: z.string(),
+          all: z.boolean().optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+  });
+  app.post<{ Params: ContentParams }>(
+    '/projects/:projectId/content/:kind/:entityId/text-patch',
+    { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const kind = parseGenericKind(req.params.kind);
+      const { field, edits } = TextPatchBody.parse(req.body);
+      // eslint-disable-next-line security/detect-object-injection -- `kind` passed parseGenericKind; a fixed literal map
+      const fields = Object.prototype.hasOwnProperty.call(TEXT_PATCH_FIELDS, kind) ? TEXT_PATCH_FIELDS[kind]! : [];
+      if (!fields.includes(field)) {
+        return reply.code(400).send({
+          error: fields.length
+            ? `field "${field}" can't be text-patched on a ${kind} — use one of: ${fields.join(', ')}`
+            : `a ${kind} has no text field to patch — text patches apply to page/template/snippet "source" and the settings chrome slots + stylesheet`,
+        });
+      }
+      const entityId = kind === 'settings' ? SETTINGS_ENTITY_ID : req.params.entityId;
+      // A caller that pinned a version with If-Match LOSES on a race (409); otherwise the edits are
+      // re-applied to the newer value — they are anchored on text, so they mean the same thing there.
+      const pinned = ifMatchVersion(req.headers['if-match']);
+      type Outcome =
+        | { status: 'missing' }
+        | { status: 'unmatched'; edit: number; found: number; error: string }
+        | { status: 'written'; before: string; after: string; replacements: number; version: string };
+      const attempt = async (): Promise<Outcome> => {
+        let current: { item: unknown; version: string };
+        try {
+          current = await contentRepo.getWithVersion(ctx, kind, entityId);
+        } catch (err) {
+          if (err instanceof NotFoundError) return { status: 'missing' };
+          throw err;
+        }
+        const before = readTextField(current.item, field);
+        const result = applyTextEdits(before, edits);
+        if (!result.ok) return { status: 'unmatched', edit: result.edit, found: result.found, error: result.error };
+        const next = writeTextField(current.item as Record<string, unknown>, field, result.text);
+        validateSourceOnSave(kind, next);
+        const item = await contentRepo.put(ctx, kind, entityId, next, { merged: true, expectedVersion: pinned ?? current.version });
+        // Saving a page provisions any Widget it composes — same as a full page write.
+        if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (next as { source?: unknown }).source, app.log);
+        return { status: 'written', before, after: result.text, replacements: result.replacements, version: contentVersion(item) };
+      };
+      const outcome = pinned ? await attempt() : await retryOnVersionConflict(attempt);
+      if (outcome.status === 'missing') {
+        return reply.code(404).send({ error: `no ${kind} "${req.params.entityId}" to patch — create it with a full write first` });
+      }
+      if (outcome.status === 'unmatched') {
+        // Nothing was written. 422: the request is well-formed, the anchors just don't fit the stored text.
+        return reply.code(422).send({ error: outcome.error, edit: outcome.edit, found: outcome.found });
+      }
+      reply.header('etag', `"${outcome.version}"`);
+      // A receipt, not the text — echoing the field back is the cost this route exists to avoid.
+      return reply.send({
+        kind,
+        id: entityId,
+        field,
+        edits: edits.length,
+        replacements: outcome.replacements,
+        bytes: outcome.after.length,
+        bytesBefore: outcome.before.length,
+        changed: outcome.after !== outcome.before,
+        version: outcome.version,
       });
     },
   );
@@ -4519,8 +4643,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // (which re-hydrates from the response) is unaffected; the MCP tools opt in, since an agent that
       // wants the entity back can just call get_content.
       const wantReceipt = req.query.receipt === '1' || req.query.receipt === 'true';
-      // The stored value BEFORE this write, loaded at most once and only when something needs it.
+      // The stored value BEFORE this write (+ the version of that stored row), loaded at most once per
+      // attempt and only when something needs it.
       let prior: unknown;
+      let priorVersion: string | undefined;
       let priorLoaded = false;
       const loadPrior = async (): Promise<unknown> => {
         if (!priorLoaded) {
@@ -4529,10 +4655,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // way `put` keys it (from the body), or the lookup misses and a receipt would report a CREATE
           // over an existing row. Merge and the swImport carry are settings/page only, so they are always ''.
           const scope = kind === 'entry' ? String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '') : '';
-          prior = await contentRepo.get(ctx, kind, req.params.entityId, scope).catch((err: unknown) => {
+          const read = await contentRepo.getWithVersion(ctx, kind, req.params.entityId, scope).catch((err: unknown) => {
             if (err instanceof NotFoundError) return undefined;
             throw err;
           });
+          prior = read?.item;
+          priorVersion = read?.version;
         }
         return prior;
       };
@@ -4552,79 +4680,89 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // rather than silently full-replacing. The merged result still goes through the schema in
       // contentRepo.put, so a bad patch fails exactly like a bad full write.
       const wantMerge = req.query.merge === '1' || req.query.merge === 'true';
-      let body: unknown = req.body;
-      if (wantMerge) {
-        if (kind !== 'settings' && kind !== 'page' && kind !== 'entry') {
-          return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings", "page" and "entry" kinds, not "${kind}"` });
-        }
-        const current = (await loadPrior()) ?? null;
-        // Merge needs a base. Settings are seeded on project create and can't be deleted, so that case is a
-        // defensive guard; a page merge legitimately misses when the id is wrong or the page is new. Either
-        // way return an ACTIONABLE 404 rather than letting a fragment fall through to a full write and fail
-        // Zod with a bare "identity: Required" / "path: Required" the agent can't interpret.
-        if (!current) {
-          return reply.code(404).send({
-            error:
-              kind === 'settings'
-                ? 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)'
-                : kind === 'entry'
-                  ? `no entry "${req.params.entityId}" in dataset "${String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '')}" to merge into — create it with a full write first (without ?merge), and check the fragment carries the right \`dataset\``
-                  : `no page "${req.params.entityId}" to merge into — create it with a full write first (without ?merge)`,
-          });
-        }
-        // NORMALISE THE FRAGMENT FIRST. `normalizeEntryValues` folds stray top-level keys into `values`
-        // but resolves collisions as `{...folded, ...existing}` — existing WINS. So merging a flat
-        // fragment `{dataset, price: 123}` before folding produces `{...current, price: 123}`, and the
-        // fold then discards the 123 in favour of the row's current `values.price`: the write reports
-        // success and changes nothing. Folding first makes it `{dataset, values:{price:123}}`, which
-        // deep-merges into `values` exactly as intended.
-        body = deepMerge(current, kind === 'entry' ? normalizeEntryValues(req.body) : req.body);
-      }
-      validateSourceOnSave(req.params.kind, body); // fail fast on unsafe Handlebars source (in the MERGED body)
-      // A full page REPLACE must not silently drop `data.swImport`. It is importer-owned PROVENANCE the
-      // agent never authors, and every fidelity tool (visual_audit / clone_audit / compare_regions /
-      // compare_to_source / fidelity_check) refuses to run without it — so one routine metadata write used
-      // to make a cloned page permanently un-auditable with no warning. Carried over only when the incoming
-      // body OMITS the key entirely; an explicit `data.swImport: null` still clears it (a page that is no
-      // longer import-derived can say so).
-      if (kind === 'page' && !wantMerge) {
-        body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
-      }
-      // A full (non-merge) write must carry `id`, and the path already says what it is. Requiring it in
-      // the BODY as well is pure friction, and the failure was a bare `{"fieldErrors":{"id":["Required"]}}`
-      // that names neither the id nor where it belongs — a caller converting a batch of pages read them,
-      // edited them, wrote them back without the (path-implied) id, and got that on every one. Default it
-      // from the path. An id that is PRESENT and wrong still conflicts in `entityKey`, so the mismatch
-      // guard is untouched; the two path-keyed singletons have no `id` field at all and are skipped.
-      if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp' && kind !== 'project_captcha') {
-        const b = body as Record<string, unknown> | null;
-        if (b && typeof b === 'object' && !Array.isArray(b) && b.id === undefined) {
-          body = { ...b, id: req.params.entityId };
-        }
-      }
-      // Entries: fold FLAT field values into `values` before anything else looks at the body. Sending
-      // them flat is the most common mistake against this API and it fails silently — unknown keys are
-      // stripped, the row saves as values:{}, the write reports success, and the loop renders nothing.
-      // Then give it a default `order` so write order == render order (see assignEntryOrder).
-      if (kind === 'entry') body = normalizeEntryValues(body);
-      if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
-      // A receipt reports what actually CHANGED, so the prior value must be read before the write.
-      if (wantReceipt) await loadPrior();
       // `If-Match` (the `version` from the GET) makes this write LOSE rather than clobber if the entity
       // moved in between — see ContentRepository.put's `expectedVersion`. Absent header = no check, so
       // existing clients are unaffected. `*` is the HTTP idiom for "any existing version": accepted and
       // treated as no check, so the guard is never half-on.
-      const ifMatch = req.headers['if-match'];
-      const expectedVersion =
-        typeof ifMatch === 'string' && ifMatch.trim() !== '' && ifMatch.trim() !== '*'
-          ? ifMatch.trim().replace(/^W\//, '').replace(/^"|"$/g, '')
-          : undefined;
-      const item = await contentRepo.put(ctx, kind, req.params.entityId, body, {
-        merged: wantMerge,
-        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
-      });
+      const pinnedVersion = ifMatchVersion(req.headers['if-match']);
+      // A MERGE is a server-side read-modify-write: without a pinned version it is guarded by the version
+      // it merged INTO and re-applied if another write lands in between (see PATCH_ATTEMPTS) — before,
+      // that other write was silently reverted.
+      const guardMerge = wantMerge && pinnedVersion === undefined;
+      let item: unknown;
+      for (let attempt = 1; ; attempt += 1) {
+        priorLoaded = false;
+        let body: unknown = req.body;
+        if (wantMerge) {
+          if (kind !== 'settings' && kind !== 'page' && kind !== 'entry') {
+            return reply.code(400).send({ error: `merge (?merge=1) is only supported for the "settings", "page" and "entry" kinds, not "${kind}"` });
+          }
+          const current = (await loadPrior()) ?? null;
+          // Merge needs a base. Settings are seeded on project create and can't be deleted, so that case is a
+          // defensive guard; a page merge legitimately misses when the id is wrong or the page is new. Either
+          // way return an ACTIONABLE 404 rather than letting a fragment fall through to a full write and fail
+          // Zod with a bare "identity: Required" / "path: Required" the agent can't interpret.
+          if (!current) {
+            return reply.code(404).send({
+              error:
+                kind === 'settings'
+                  ? 'no settings to merge into — write the full settings object first (a plain PUT, without ?merge)'
+                  : kind === 'entry'
+                    ? `no entry "${req.params.entityId}" in dataset "${String((req.body as { dataset?: unknown } | null | undefined)?.dataset ?? '')}" to merge into — create it with a full write first (without ?merge), and check the fragment carries the right \`dataset\``
+                    : `no page "${req.params.entityId}" to merge into — create it with a full write first (without ?merge)`,
+            });
+          }
+          // NORMALISE THE FRAGMENT FIRST. `normalizeEntryValues` folds stray top-level keys into `values`
+          // but resolves collisions as `{...folded, ...existing}` — existing WINS. So merging a flat
+          // fragment `{dataset, price: 123}` before folding produces `{...current, price: 123}`, and the
+          // fold then discards the 123 in favour of the row's current `values.price`: the write reports
+          // success and changes nothing. Folding first makes it `{dataset, values:{price:123}}`, which
+          // deep-merges into `values` exactly as intended.
+          body = deepMerge(current, kind === 'entry' ? normalizeEntryValues(req.body) : req.body);
+        }
+        validateSourceOnSave(req.params.kind, body); // fail fast on unsafe Handlebars source (in the MERGED body)
+        // A full page REPLACE must not silently drop `data.swImport`. It is importer-owned PROVENANCE the
+        // agent never authors, and every fidelity tool (visual_audit / clone_audit / compare_regions /
+        // compare_to_source / fidelity_check) refuses to run without it — so one routine metadata write used
+        // to make a cloned page permanently un-auditable with no warning. Carried over only when the incoming
+        // body OMITS the key entirely; an explicit `data.swImport: null` still clears it (a page that is no
+        // longer import-derived can say so).
+        if (kind === 'page' && !wantMerge) {
+          body = carryImportMarker((await loadPrior()) ?? null, body); // undefined → creating; nothing to carry
+        }
+        // A full (non-merge) write must carry `id`, and the path already says what it is. Requiring it in
+        // the BODY as well is pure friction, and the failure was a bare `{"fieldErrors":{"id":["Required"]}}`
+        // that names neither the id nor where it belongs — a caller converting a batch of pages read them,
+        // edited them, wrote them back without the (path-implied) id, and got that on every one. Default it
+        // from the path. An id that is PRESENT and wrong still conflicts in `entityKey`, so the mismatch
+        // guard is untouched; the two path-keyed singletons have no `id` field at all and are skipped.
+        if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp' && kind !== 'project_captcha') {
+          const b = body as Record<string, unknown> | null;
+          if (b && typeof b === 'object' && !Array.isArray(b) && b.id === undefined) {
+            body = { ...b, id: req.params.entityId };
+          }
+        }
+        // Entries: fold FLAT field values into `values` before anything else looks at the body. Sending
+        // them flat is the most common mistake against this API and it fails silently — unknown keys are
+        // stripped, the row saves as values:{}, the write reports success, and the loop renders nothing.
+        // Then give it a default `order` so write order == render order (see assignEntryOrder).
+        if (kind === 'entry') body = normalizeEntryValues(body);
+        if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
+        // A receipt reports what actually CHANGED, so the prior value must be read before the write.
+        if (wantReceipt) await loadPrior();
+        const expectedVersion = pinnedVersion ?? (guardMerge ? priorVersion : undefined);
+        try {
+          item = await contentRepo.put(ctx, kind, req.params.entityId, body, {
+            merged: wantMerge,
+            ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+          });
+          break;
+        } catch (err) {
+          if (!(guardMerge && err instanceof VersionConflictError && attempt < PATCH_ATTEMPTS)) throw err;
+        }
+      }
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
-      if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (body as { source?: unknown }).source, app.log);
+      if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (item as { source?: unknown }).source, app.log);
       // Saving SETTINGS provisions the mini-shop's order Forms — same pattern, same reason: the config
       // implies an entity, and deriving it on save is what keeps the two from disagreeing.
       if (kind === 'settings') {

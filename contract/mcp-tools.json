@@ -229,6 +229,15 @@
     ]
   },
   {
+    "name": "patch_text",
+    "required": [
+      "edits",
+      "field",
+      "id",
+      "kind"
+    ]
+  },
+  {
     "name": "preview_page",
     "required": [
       "page"

@@ -286,6 +286,26 @@ export interface CriticalCssReceipt {
   changed: boolean;
 }
 
+/** One find-and-replace edit of a text field (see {@link SitewrightClient.patchText}). */
+export interface TextEdit {
+  old: string;
+  new: string;
+  all?: boolean;
+}
+
+/** What a text-field patch reports back — never the text itself. */
+export interface TextPatchReceipt {
+  kind: string;
+  id: string;
+  field: string;
+  edits: number;
+  replacements: number;
+  bytes: number;
+  bytesBefore: number;
+  changed: boolean;
+  version: string;
+}
+
 /** The short confirmation a write returns with `receipt` (instead of echoing the stored entity). */
 export interface WriteReceipt {
   kind: string;
@@ -751,6 +771,18 @@ export class SitewrightClient {
    *  the sheet — echoing it back is the cost this exists to avoid. */
   async patchCriticalCss(css: string, block?: string): Promise<CriticalCssReceipt> {
     return this.request('POST', this.projectPath('/critical-css'), { css, ...(block ? { block } : {}) });
+  }
+
+  /** FIND-AND-REPLACE inside one text field of an entity (a page `source`, a chrome slot, the
+   *  stylesheet). Each edit's `old` must match exactly once (or every time with `all`); all-or-nothing.
+   *  Sends no `If-Match`: the edits are anchored on text, so the server re-applies them over a
+   *  concurrent write instead of refusing. Returns a receipt, never the text. */
+  async patchText(kind: string, entityId: string, field: string, edits: TextEdit[]): Promise<TextPatchReceipt> {
+    return this.request(
+      'POST',
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/text-patch`),
+      { field, edits },
+    );
   }
 
   async putContent(kind: string, entityId: string, data: unknown, opts: { merge?: boolean; receipt?: boolean } = {}): Promise<unknown> {

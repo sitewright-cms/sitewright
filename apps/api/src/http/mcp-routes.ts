@@ -75,6 +75,9 @@ export function registerMcpRoutes(
         url: input,
         headers: init?.headers,
         payload: init?.body,
+        // An aborted tool call CLOSES the injected request, which is what a long route (the page-speed
+        // audit) listens for to kill its browser and free its render slot.
+        ...(init?.signal ? { signal: init.signal } : {}),
       })) as unknown as { statusCode: number; statusMessage?: string; payload: string };
       return {
         ok: res.statusCode >= 200 && res.statusCode < 300,
@@ -178,6 +181,27 @@ export function registerMcpRoutes(
     // does OAuth out-of-band, so the in-band login/switch tools stay inert here.
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     const server = createSitewrightMcpServer(client, { scope }, staticAuth(token));
+    // The HOST hung up before the reply (its tool-call timeout, a cancelled run): close the server, which
+    // aborts every in-flight tool handler's signal — and a tool that passes it on (pagespeed_audit) then
+    // closes its in-process request, so the work behind it stops. Stateless mode cannot receive a
+    // JSON-RPC cancel for this call (it would arrive as a separate request), so the socket closing is
+    // the only notice there is. The RESPONSE's close, not the request's: a POST's request stream
+    // reports `close` as soon as its body is read, long before the client goes anywhere.
+    // A closed transport never settles the JSON reply it was assembling, so the hang-up also releases
+    // the wait below rather than leaving this handler suspended forever.
+    let hungUp!: () => void;
+    const gone = new Promise<undefined>((resolve) => {
+      hungUp = () => resolve(undefined);
+    });
+    // ONE close, whichever path gets there first (the hang-up below or the `finally`): the second caller
+    // awaits the same promise instead of closing again, and a failed close is not a failed request.
+    let closing: Promise<void> | undefined;
+    const closeServer = (): Promise<void> => (closing ??= server.close().catch(() => {}));
+    reply.raw.on('close', () => {
+      if (reply.raw.writableFinished) return;
+      hungUp();
+      void closeServer();
+    });
     try {
       await server.connect(transport);
       const headers = new Headers();
@@ -186,13 +210,14 @@ export function registerMcpRoutes(
         else if (Array.isArray(v)) headers.set(k, v.join(', '));
       }
       const webReq = new Request(`${issuerOf(req, opts.origins())}${req.url}`, { method: req.method, headers });
-      const webRes = await transport.handleRequest(webReq, { parsedBody: req.body });
+      const webRes = await Promise.race([transport.handleRequest(webReq, { parsedBody: req.body }), gone]);
+      if (!webRes) return reply; // the host is gone — there is nobody to answer
       reply.code(webRes.status);
       webRes.headers.forEach((value, key) => reply.header(key, value));
       return reply.send(await webRes.text());
     } finally {
       // McpServer.close() closes the transport it owns — one close, correct order.
-      await server.close();
+      await closeServer();
     }
   };
 

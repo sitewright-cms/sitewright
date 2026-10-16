@@ -1,4 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
 import type { MediaAsset } from '@sitewright/schema';
@@ -33,6 +34,8 @@ export interface WorkerRunnerOptions {
   cpus?: string;
   /** Kill the worker after this long. */
   timeoutMs?: number;
+  /** How long a give-up waits for `docker kill <container>` before rejecting anyway (default 5s). */
+  killWaitMs?: number;
   /** Reject jobs whose serialized payload exceeds this (bounds media inlining). */
   maxJobBytes?: number;
   /** Cap on the worker's buffered stdout (defaults to 2x job size + headroom). */
@@ -54,6 +57,9 @@ export class WorkerBuildRunner implements BuildRunner {
   constructor(private readonly opts: WorkerRunnerOptions) {}
 
   async run(job: BuildJob): Promise<ReleaseManifest> {
+    // The signal cannot cross into the container (the job is serialized), so it is honoured HERE:
+    // before spawning, and by killing the container if it fires mid-build.
+    job.signal?.throwIfAborted();
     const workerJob = await this.buildWorkerJob(job);
     const payload = JSON.stringify(workerJob);
     const maxBytes = this.opts.maxJobBytes ?? 64 * 1024 * 1024; // 64 MiB
@@ -63,9 +69,14 @@ export class WorkerBuildRunner implements BuildRunner {
 
     // Hardened, throwaway worker: no network, capped CPU/memory/PIDs, all caps
     // dropped, read-only root with only a sized tmpfs for the build's scratch dir.
+    // NAMED, so a build we give up on can be stopped: killing our `docker run` client does not stop
+    // the container it started — that keeps its memory and CPU until the build finishes on its own.
+    const name = `sw-build-${randomUUID()}`;
     const args = [
       'run',
       '--rm',
+      '--name',
+      name,
       '-i',
       '--network',
       'none',
@@ -87,7 +98,7 @@ export class WorkerBuildRunner implements BuildRunner {
       'dist/publish/build-worker.js',
     ];
 
-    const stdout = await this.spawnWorker(args, payload);
+    const stdout = await this.spawnWorker(args, payload, name, job.signal);
     let parsed: WorkerResult;
     try {
       parsed = JSON.parse(stdout) as WorkerResult;
@@ -134,7 +145,7 @@ export class WorkerBuildRunner implements BuildRunner {
     };
   }
 
-  private spawnWorker(args: string[], stdin: string): Promise<string> {
+  private spawnWorker(args: string[], stdin: string, name: string, signal?: AbortSignal): Promise<string> {
     const spawn: Spawn = this.opts.spawnImpl ?? nodeSpawn;
     const timeoutMs = this.opts.timeoutMs ?? 120_000;
     // Bound the buffered artifact so a rogue/buggy worker can't OOM the API.
@@ -149,22 +160,26 @@ export class WorkerBuildRunner implements BuildRunner {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
         fn();
       };
-      const timer = setTimeout(() => {
+      // Giving up on a build: kill our `docker run` client AND the container itself (the client's
+      // death does not stop it), then reject once the container kill has had its bounded chance.
+      const giveUp = (reason: unknown): void =>
         finish(() => {
           child.kill('SIGKILL');
-          rejectP(new Error('build worker timed out'));
+          void this.killContainer(name).then(() => rejectP(reason));
         });
-      }, timeoutMs);
+      const timer = setTimeout(() => giveUp(new Error('build worker timed out')), timeoutMs);
+      // The caller went away (e.g. an abandoned page-speed audit): stop the container now rather than
+      // let it run to completion for nobody.
+      const onAbort = (): void => giveUp((signal as AbortSignal).reason);
+      signal?.addEventListener('abort', onAbort, { once: true });
 
       child.stdout?.on('data', (d: Buffer) => {
         outBytes += d.length;
         if (outBytes > maxOut) {
-          finish(() => {
-            child.kill('SIGKILL');
-            rejectP(new Error('build worker output exceeded the size limit'));
-          });
+          giveUp(new Error('build worker output exceeded the size limit'));
           return;
         }
         out.push(d);
@@ -184,6 +199,29 @@ export class WorkerBuildRunner implements BuildRunner {
         /* worker may exit before consuming stdin — ignore EPIPE */
       });
       child.stdin?.end(stdin);
+    });
+  }
+
+  /**
+   * `docker kill <name>` — best-effort and bounded: a missing container (it already exited) or a
+   * docker CLI that hangs must not hold the caller, so this resolves on the kill's exit, its error,
+   * or after `killWaitMs`, whichever comes first.
+   */
+  private killContainer(name: string): Promise<void> {
+    const spawn: Spawn = this.opts.spawnImpl ?? nodeSpawn;
+    return new Promise<void>((resolveKill) => {
+      const bound = setTimeout(resolveKill, this.opts.killWaitMs ?? 5_000);
+      const done = (): void => {
+        clearTimeout(bound);
+        resolveKill();
+      };
+      try {
+        const killer = spawn(this.opts.dockerPath ?? 'docker', ['kill', name], { stdio: 'ignore' });
+        killer.on('error', done);
+        killer.on('close', done);
+      } catch {
+        done();
+      }
     });
   }
 

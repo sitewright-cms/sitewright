@@ -1168,6 +1168,31 @@ export interface PagespeedFinding {
   /** How many further items exist beyond the capped `items` (so the UI can say "+N more"). */
   moreItems?: number;
 }
+/** One long (≥ 50 ms) main-thread task. */
+export interface PagespeedLongTask {
+  /** The script/page it is attributed to (origin-relative for the site's own files). */
+  url?: string;
+  /** Lighthouse's attribution when there is no URL ("Unattributable", "Browser GC"). */
+  label?: string;
+  durationMs: number;
+  startMs?: number;
+}
+/** One element whose animation runs on the main thread instead of the compositor. */
+export interface PagespeedAnimationIssue {
+  label?: string;
+  /** CSS animation names involved. */
+  animations?: string[];
+  /** The animated properties the compositor refused. */
+  properties?: string[];
+  reasons: string[];
+}
+/** What blocked the main thread — present only when blocking time or the performance score is poor. */
+export interface PagespeedMainThread {
+  longTasks: PagespeedLongTask[];
+  moreLongTasks?: number;
+  nonCompositedAnimations: PagespeedAnimationIssue[];
+  moreNonCompositedAnimations?: number;
+}
 /** One heading in the page's structure outline. */
 export interface HeadingNode {
   /** Heading level, 1 (H1) … 6 (H6). */
@@ -1229,6 +1254,8 @@ export interface PagespeedAuditResult {
     speedIndexMs?: number;
   };
   findings: PagespeedFinding[];
+  /** Long tasks + non-composited animations — only when blocking time or the performance score is poor. */
+  mainThread?: PagespeedMainThread;
   /** Lighthouse environment notices (e.g. a slow-CPU warning) — explain a host-constrained lab score. */
   runWarnings?: string[];
   /** Chrome's CPU benchmark for the audit host; a low value means the container CPU throttled the run. */

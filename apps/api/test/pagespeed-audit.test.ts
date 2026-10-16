@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { RunnerResult } from 'lighthouse';
-import { summarize, redactOrigin, rebaseFindingUrls, type PagespeedFinding } from '../src/render/pagespeed-audit.js';
+import {
+  summarize,
+  redactOrigin,
+  rebaseFindingUrls,
+  rebaseMainThread,
+  abortable,
+  lighthouseRuntimeError,
+  toPagespeedRunError,
+  scrubRunMessage,
+  PagespeedRunError,
+  GENERIC_RUN_FAILURE,
+  type PagespeedFinding,
+} from '../src/render/pagespeed-audit.js';
 
 /**
  * Pure reduction of a Lighthouse result → our compact score/metrics/findings shape. The browser-driven
@@ -261,6 +273,13 @@ describe('rebaseFindingUrls', () => {
     const out = rebaseFindingUrls(withLabel, 'http://127.0.0.1:54321');
     expect(out[0]?.items?.[0]?.label).toBe('allows /x and /y'); // every occurrence removed
   });
+
+  it('scrubs the origin from a url that CONTAINS it without starting with it', () => {
+    const inner: PagespeedFinding[] = [
+      { id: 'r', title: 'R', category: 'performance', score: 0, items: [{ url: 'blob:http://127.0.0.1:54321/9f2c' }] },
+    ];
+    expect(rebaseFindingUrls(inner, 'http://127.0.0.1:54321')[0]?.items?.[0]?.url).toBe('blob:/9f2c');
+  });
 });
 
 describe('redactOrigin', () => {
@@ -277,5 +296,461 @@ describe('redactOrigin', () => {
   it('returns undefined for undefined input, and is a no-op for an empty origin', () => {
     expect(redactOrigin(undefined, 'http://127.0.0.1:9')).toBeUndefined();
     expect(redactOrigin(['x'], '')).toEqual(['x']);
+  });
+});
+
+// ---- main-thread attribution ----------------------------------------------------------------------
+// Fixture fragments are shaped like Lighthouse 13's own audit output (core/audits/long-tasks.js,
+// non-composited-animations.js, insights/forced-reflow-insight.js): long-tasks is an INFORMATIVE table
+// of {url, startTime, duration}; non-composited-animations is an INFORMATIVE table of {node, subItems};
+// forced-reflow-insight is a SCORED `list` of two tables keyed {source, reflowTime}.
+
+function longTasksAudit(items: unknown[]) {
+  return {
+    id: 'long-tasks',
+    title: 'Avoid long main-thread tasks',
+    score: 1, // informative audits are normalised to 1 — never a "failing" finding
+    scoreDisplayMode: 'informative',
+    displayValue: `${items.length} long tasks found`,
+    details: {
+      type: 'table',
+      headings: [
+        { key: 'url', valueType: 'url', label: 'URL' },
+        { key: 'startTime', valueType: 'ms', granularity: 1, label: 'Start Time' },
+        { key: 'duration', valueType: 'ms', granularity: 1, label: 'Duration' },
+      ],
+      items,
+      sortedBy: ['duration'],
+      skipSumming: ['startTime'],
+    },
+  };
+}
+
+function nonCompositedAudit(items: unknown[]) {
+  return {
+    id: 'non-composited-animations',
+    title: 'Avoid non-composited animations',
+    score: 1,
+    scoreDisplayMode: 'informative',
+    displayValue: `${items.length} animated elements found`,
+    details: {
+      type: 'table',
+      headings: [{ key: 'node', valueType: 'node', subItemsHeading: { key: 'failureReason', valueType: 'text' }, label: 'Element' }],
+      items,
+    },
+  };
+}
+
+function animatedNode(nodeLabel: string, reasons: Array<{ failureReason: unknown; animation?: string }>) {
+  return {
+    node: { type: 'node', lhId: 'x', path: '1,HTML', selector: 'section.hero', boundingRect: {}, snippet: '<section class="hero">', nodeLabel },
+    subItems: { type: 'subitems', items: reasons },
+  };
+}
+
+type MutableLhr = {
+  categories: Record<string, { score: number | null; auditRefs: Array<{ id: string }> }>;
+  audits: Record<string, unknown>;
+};
+
+/** A fakeLhr whose performance is POOR because of blocking time, carrying the two diagnostics. */
+function poorTbtLhr(opts: { tbtScore?: number; perfScore?: number } = {}): MutableLhr {
+  const lhr = fakeLhr() as unknown as MutableLhr;
+  lhr.categories.performance!.score = opts.perfScore ?? 0.41;
+  lhr.categories.performance!.auditRefs.push({ id: 'long-tasks' }, { id: 'non-composited-animations' });
+  lhr.audits['total-blocking-time'] = { id: 'total-blocking-time', numericValue: 790, score: opts.tbtScore ?? 0.37, scoreDisplayMode: 'numeric' };
+  lhr.audits['long-tasks'] = longTasksAudit([
+    { url: 'http://127.0.0.1:54321/_assets/_sw/shader-bg.js', startTime: 2310.4, duration: 412.6 },
+    { url: 'Unattributable', startTime: 1800, duration: 230 },
+    { url: 'http://127.0.0.1:54321/', startTime: 950.2, duration: 180.1 },
+    { url: 'Browser GC', startTime: 3000, duration: 90 },
+    { url: 'https://cdn.example/x.js', startTime: 3100, duration: 70 },
+    { url: 'https://cdn.example/y.js', startTime: 3200, duration: 60 },
+    { url: 'https://cdn.example/z.js', startTime: 3300, duration: 55 },
+  ]);
+  lhr.audits['non-composited-animations'] = nonCompositedAudit([
+    animatedNode('Welcome to Acme', [
+      { failureReason: 'Unsupported CSS Property: background-position', animation: 'sw-pan' },
+      { failureReason: 'Unsupported CSS Properties: box-shadow, filter', animation: 'sw-glow' },
+    ]),
+    animatedNode('Card', [{ failureReason: 'Transform-related property depends on box size' }]),
+    animatedNode('Badge', [{ failureReason: 'Custom CSS properties cannot be animated on the compositor: --sw-beam-arc', animation: '' }]),
+  ]);
+  return lhr;
+}
+
+const run = (lhr: unknown) => summarize('http://x/', 'mobile', { lhr } as unknown as RunnerResult);
+
+describe('summarize — main-thread diagnostics', () => {
+  it('when blocking time is poor, names the longest tasks (worst first, url vs label, start + duration)', () => {
+    const mt = run(poorTbtLhr()).mainThread!;
+    expect(mt).toBeDefined();
+    expect(mt.longTasks).toEqual([
+      { url: 'http://127.0.0.1:54321/_assets/_sw/shader-bg.js', durationMs: 413, startMs: 2310 },
+      // Lighthouse's own attribution words are NOT urls — they come back as a label.
+      { label: 'Unattributable', durationMs: 230, startMs: 1800 },
+      { url: 'http://127.0.0.1:54321/', durationMs: 180, startMs: 950 },
+      { label: 'Browser GC', durationMs: 90, startMs: 3000 },
+      { url: 'https://cdn.example/x.js', durationMs: 70, startMs: 3100 },
+    ]);
+    expect(mt.moreLongTasks).toBe(2); // bounded: 7 tasks, 5 shown
+  });
+
+  it('names each non-composited animation: element, animation names, animated properties, reasons', () => {
+    const mt = run(poorTbtLhr()).mainThread!;
+    expect(mt.nonCompositedAnimations).toEqual([
+      {
+        label: 'Welcome to Acme',
+        animations: ['sw-pan', 'sw-glow'],
+        properties: ['background-position', 'box-shadow', 'filter'],
+        reasons: ['Unsupported CSS Property: background-position', 'Unsupported CSS Properties: box-shadow, filter'],
+      },
+      { label: 'Card', reasons: ['Transform-related property depends on box size'] },
+      {
+        label: 'Badge',
+        properties: ['--sw-beam-arc'],
+        reasons: ['Custom CSS properties cannot be animated on the compositor: --sw-beam-arc'],
+      },
+    ]);
+    expect(mt.moreNonCompositedAnimations).toBeUndefined();
+  });
+
+  it('the informative diagnostics never leak into the failing-findings list', () => {
+    const ids = run(poorTbtLhr()).findings.map((f) => f.id);
+    expect(ids).not.toContain('long-tasks');
+    expect(ids).not.toContain('non-composited-animations');
+  });
+
+  it('is absent when blocking time AND the performance score are fine (no noise on a healthy page)', () => {
+    expect(run(poorTbtLhr({ tbtScore: 0.95, perfScore: 0.92 })).mainThread).toBeUndefined();
+  });
+
+  it('a poor performance score alone is enough to include it', () => {
+    expect(run(poorTbtLhr({ tbtScore: 0.95, perfScore: 0.3 })).mainThread?.longTasks.length).toBeGreaterThan(0);
+  });
+
+  it('is absent when the page is poor but Lighthouse found neither long tasks nor animations', () => {
+    const lhr = poorTbtLhr();
+    lhr.audits['long-tasks'] = { id: 'long-tasks', title: 'x', score: 1, scoreDisplayMode: 'notApplicable' };
+    delete lhr.audits['non-composited-animations'];
+    expect(run(lhr).mainThread).toBeUndefined();
+  });
+
+  it("bounds an element's reasons/names/properties and the number of elements, and drops junk rows", () => {
+    const lhr = poorTbtLhr();
+    const manyReasons = Array.from({ length: 9 }, (_v, i) => ({
+      failureReason: `Unsupported CSS Properties: p${i}a, p${i}b`,
+      animation: `anim-${i}`,
+    }));
+    lhr.audits['non-composited-animations'] = nonCompositedAudit([
+      animatedNode('Big', manyReasons),
+      ...Array.from({ length: 7 }, (_v, i) => animatedNode(`El ${i}`, [{ failureReason: 'Effect has unsupported timing parameters' }])),
+      { node: { type: 'node', nodeLabel: 'No reasons' }, subItems: { type: 'subitems', items: [] } }, // nothing to say → dropped
+      'not-an-object',
+    ]);
+    lhr.audits['long-tasks'] = longTasksAudit([{ url: 'https://a.test/a.js', duration: 'NaN' }, { startTime: 5, duration: 99 }, null]);
+    const mt = run(lhr).mainThread!;
+    const big = mt.nonCompositedAnimations[0]!;
+    expect(big.reasons).toHaveLength(4);
+    expect(big.animations).toHaveLength(4);
+    expect(big.properties).toHaveLength(8);
+    expect(mt.nonCompositedAnimations).toHaveLength(5);
+    expect(mt.moreNonCompositedAnimations).toBe(3);
+    // A task with no duration is not a task; one with no url at all is still a (labelled) task.
+    expect(mt.longTasks).toEqual([{ label: 'Unattributed', durationMs: 99, startMs: 5 }]);
+    expect(mt.moreLongTasks).toBeUndefined();
+  });
+
+  it('a nameless animated element still reports its reasons; a non-string reason is ignored', () => {
+    const lhr = poorTbtLhr();
+    lhr.audits['non-composited-animations'] = nonCompositedAudit([
+      { node: { type: 'node' }, subItems: { type: 'subitems', items: [{ failureReason: 'Filter-related property may move pixels' }, { failureReason: 42 }] } },
+    ]);
+    expect(run(lhr).mainThread!.nonCompositedAnimations).toEqual([{ reasons: ['Filter-related property may move pixels'] }]);
+  });
+});
+
+describe('summarize — `list` details (forced-reflow-insight)', () => {
+  const carousel = { type: 'source-location', url: 'http://127.0.0.1:54321/_assets/_sw/carousel.js', urlProvider: 'network', line: 40, column: 2 };
+  function reflowLhr(): MutableLhr {
+    const lhr = fakeLhr() as unknown as MutableLhr;
+    lhr.categories.performance!.auditRefs.push({ id: 'forced-reflow-insight' });
+    lhr.audits['forced-reflow-insight'] = {
+      id: 'forced-reflow-insight',
+      title: 'Forced reflow',
+      score: 0,
+      scoreDisplayMode: 'metricSavings',
+      details: {
+        type: 'list',
+        items: [
+          // Top time-consuming function call.
+          {
+            type: 'table',
+            headings: [
+              { key: 'source', valueType: 'source-location', label: 'Top function call' },
+              { key: 'reflowTime', valueType: 'ms', label: 'Total reflow time' },
+            ],
+            items: [{ source: carousel, reflowTime: 61.5 }],
+          },
+          // Bottom-up: the same location again, an unattributed bucket, and a smaller one.
+          {
+            type: 'table',
+            headings: [
+              { key: 'source', valueType: 'source-location', label: 'Source' },
+              { key: 'reflowTime', valueType: 'ms', label: 'Total reflow time' },
+            ],
+            items: [
+              { source: carousel, reflowTime: 61.5 },
+              { source: { type: 'text', value: 'Unattributed' }, reflowTime: 12 },
+              // Two nameless rows are two rows — only a named place is merged.
+              { reflowTime: 3 },
+              { reflowTime: 2 },
+              { source: { type: 'source-location', url: 'http://127.0.0.1:54321/_assets/app.js', urlProvider: 'network', line: 9, column: 0 }, reflowTime: 30 },
+            ],
+          },
+          { type: 'list-section', title: 'wrapped', value: { type: 'table', headings: [], items: [{ source: { type: 'text', value: 'Wrapped' }, reflowTime: 1 }] } },
+          { type: 'node', nodeLabel: 'not a table — ignored' },
+        ],
+      },
+    };
+    return lhr;
+  }
+
+  it('flattens the sub-tables into one worst-first item list: source location + reflow time', () => {
+    const f = run(reflowLhr()).findings.find((x) => x.id === 'forced-reflow-insight')!;
+    expect(f.items).toEqual([
+      // The top-function row and its bottom-up twin are ONE location — reported once.
+      { url: 'http://127.0.0.1:54321/_assets/_sw/carousel.js:41', wastedMs: 61.5 },
+      { url: 'http://127.0.0.1:54321/_assets/app.js:10', wastedMs: 30 },
+      { label: 'Unattributed', wastedMs: 12 }, // a typed `text` cell is a label
+      { wastedMs: 3 },
+      { wastedMs: 2 },
+      { label: 'Wrapped', wastedMs: 1 }, // a list-section is unwrapped
+    ]);
+  });
+
+  it('a list with no table inside yields no items (and does not throw)', () => {
+    const lhr = reflowLhr();
+    (lhr.audits['forced-reflow-insight'] as { details: unknown }).details = { type: 'list', items: [{ type: 'node' }, null] };
+    expect(run(lhr).findings.find((x) => x.id === 'forced-reflow-insight')!.items).toBeUndefined();
+  });
+});
+
+describe('rebaseMainThread', () => {
+  const origin = 'http://127.0.0.1:54321';
+  it('strips the loopback origin from task urls and scrubs it from every label/reason', () => {
+    const out = rebaseMainThread(
+      {
+        longTasks: [
+          { url: 'http://127.0.0.1:54321/_assets/a.js', durationMs: 100 },
+          { url: 'http://127.0.0.1:54321', durationMs: 90 },
+          { url: 'https://cdn.example/b.js', durationMs: 80 },
+          { label: 'see http://127.0.0.1:54321/x', durationMs: 70 },
+          // The origin INSIDE a url (a blob: or a redirect parameter) is scrubbed too, not only a prefix.
+          { url: 'blob:http://127.0.0.1:54321/9f2c', durationMs: 60 },
+          { url: 'https://cdn.example/r?to=http://127.0.0.1:54321/a', durationMs: 50 },
+        ],
+        nonCompositedAnimations: [
+          { label: '<div style="background:url(http://127.0.0.1:54321/i.png)">', reasons: ['r http://127.0.0.1:54321/z'], properties: ['filter'] },
+          { label: 'clean', reasons: ['clean'] },
+          { reasons: ['nameless http://127.0.0.1:54321/q'] },
+        ],
+        moreLongTasks: 2,
+      },
+      origin,
+    );
+    expect(out!.longTasks).toEqual([
+      { url: '/_assets/a.js', durationMs: 100 },
+      { url: '/', durationMs: 90 },
+      { url: 'https://cdn.example/b.js', durationMs: 80 },
+      { label: 'see /x', durationMs: 70 },
+      { url: 'blob:/9f2c', durationMs: 60 },
+      { url: 'https://cdn.example/r?to=/a', durationMs: 50 },
+    ]);
+    expect(out!.nonCompositedAnimations[0]).toEqual({ label: '<div style="background:url(/i.png)">', reasons: ['r /z'], properties: ['filter'] });
+    expect(out!.nonCompositedAnimations[1]).toEqual({ label: 'clean', reasons: ['clean'] });
+    expect(out!.nonCompositedAnimations[2]).toEqual({ reasons: ['nameless /q'] });
+    expect(out!.moreLongTasks).toBe(2);
+    expect(JSON.stringify(out)).not.toContain('127.0.0.1');
+  });
+
+  it('passes undefined through, and is a no-op for an empty origin', () => {
+    expect(rebaseMainThread(undefined, origin)).toBeUndefined();
+    const mt = { longTasks: [{ url: 'http://127.0.0.1:54321/a', durationMs: 1 }], nonCompositedAnimations: [] };
+    expect(rebaseMainThread(mt, '')).toEqual(mt);
+  });
+});
+
+// ---- failure plumbing ----------------------------------------------------------------------------
+
+describe('abortable', () => {
+  it('passes the work through untouched when there is no signal', async () => {
+    await expect(abortable(Promise.resolve(7), undefined, () => {})).resolves.toBe(7);
+  });
+
+  it('settles with the work when it finishes first, and a later abort does nothing', async () => {
+    const ac = new AbortController();
+    const onAbort = vi.fn();
+    await expect(abortable(Promise.resolve('done'), ac.signal, onAbort)).resolves.toBe('done');
+    ac.abort();
+    expect(onAbort).not.toHaveBeenCalled();
+  });
+
+  it('passes a work failure through', async () => {
+    const ac = new AbortController();
+    await expect(abortable(Promise.reject(new Error('lighthouse blew up')), ac.signal, () => {})).rejects.toThrow('lighthouse blew up');
+  });
+
+  it('on abort: runs the teardown (kill Chrome) once and rejects at once with the abort reason', async () => {
+    const ac = new AbortController();
+    const onAbort = vi.fn();
+    let failWork!: (e: Error) => void;
+    const work = new Promise<string>((_r, rej) => (failWork = rej));
+    const p = abortable(work, ac.signal, onAbort);
+    ac.abort(new Error('client went away'));
+    await expect(p).rejects.toThrow('client went away');
+    expect(onAbort).toHaveBeenCalledTimes(1);
+    // The work then dies BECAUSE Chrome was killed — that late rejection must not surface as unhandled.
+    failWork(new Error('Protocol error: Target closed'));
+    await new Promise((r) => setTimeout(r, 0));
+  });
+
+  it('an already-aborted signal tears down and rejects without waiting on the work', async () => {
+    const ac = new AbortController();
+    ac.abort(new Error('gone'));
+    const onAbort = vi.fn();
+    await expect(abortable(new Promise(() => {}), ac.signal, onAbort)).rejects.toThrow('gone');
+    expect(onAbort).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('Lighthouse failures → PagespeedRunError', () => {
+  it('a result with a fatal runtimeError becomes a typed error carrying its code + message', () => {
+    const err = lighthouseRuntimeError({
+      lhr: { runtimeError: { code: 'NO_FCP', message: 'The page did not paint any content.', errorStack: 'at secret/path.js:1' } },
+    } as unknown as RunnerResult);
+    expect(err).toBeInstanceOf(PagespeedRunError);
+    expect(err!.code).toBe('NO_FCP');
+    expect(err!.message).toBe('The page did not paint any content.');
+    expect(err!.message).not.toContain('secret'); // the stack is never carried
+  });
+
+  it('a usable result is not an error; a missing result is', () => {
+    expect(lighthouseRuntimeError({ lhr: fakeLhr() } as unknown as RunnerResult)).toBeNull();
+    expect(lighthouseRuntimeError(undefined)!.code).toBe('NO_RESULT');
+  });
+
+  it('a runtimeError without a message still says which code failed', () => {
+    const err = lighthouseRuntimeError({ lhr: { runtimeError: { code: 'PAGE_HUNG' } } } as unknown as RunnerResult)!;
+    expect(err.code).toBe('PAGE_HUNG');
+    expect(err.message).toMatch(/PAGE_HUNG/);
+  });
+
+  it('a thrown LighthouseError keeps its code and friendly message (string or ICU form)', () => {
+    const plain = toPagespeedRunError(
+      Object.assign(new Error('PROTOCOL_TIMEOUT'), {
+        code: 'PROTOCOL_TIMEOUT',
+        friendlyMessage: 'Waiting for DevTools protocol response has exceeded the allotted time.',
+      }),
+    );
+    expect(plain.code).toBe('PROTOCOL_TIMEOUT');
+    expect(plain.message).toMatch(/allotted time/);
+    const icu = toPagespeedRunError(
+      Object.assign(new Error('PAGE_HUNG'), {
+        code: 'PAGE_HUNG',
+        friendlyMessage: { i18nId: 'x', formattedDefault: 'Lighthouse was unable to reliably load the URL because the page stopped responding.' },
+      }),
+    );
+    expect(icu.code).toBe('PAGE_HUNG');
+    expect(icu.message).toMatch(/stopped responding/);
+  });
+
+  it('ANY other thrown error gets a FIXED sentence — its own text names internals and never reaches the client', () => {
+    // A Chrome crash and a Node fs error, verbatim: a debug port, a temp path, a Node error code.
+    const crashes = [
+      Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:41873'), { code: 'ECONNREFUSED' }),
+      Object.assign(new Error("ENOENT: no such file or directory, open '/tmp/lighthouse.Xa9/trace.json'"), { code: 'ENOENT' }),
+      new Error('Protocol error (Page.navigate): Target closed'),
+      'weird',
+    ];
+    for (const crash of crashes) {
+      const err = toPagespeedRunError(crash, 'http://127.0.0.1:54321');
+      expect(err.code).toBe('LIGHTHOUSE_FAILED');
+      expect(err.message).toBe(GENERIC_RUN_FAILURE);
+      for (const leak of ['127.0.0.1', '/tmp', 'ECONNREFUSED', 'ENOENT', 'Target closed']) {
+        expect(err.message, leak).not.toContain(leak);
+      }
+      // The detail is kept for the SERVER log, not the response.
+      expect(err.cause).toBe(crash);
+    }
+  });
+
+  it('an existing PagespeedRunError is passed through untouched', () => {
+    const existing = new PagespeedRunError('NO_FCP', 'x');
+    expect(toPagespeedRunError(existing)).toBe(existing);
+  });
+
+  it('bounds the code and the message (both reach the client)', () => {
+    const err = toPagespeedRunError(
+      Object.assign(new Error('x'), { code: 'lower-case and spaces!'.repeat(10), friendlyMessage: 'y'.repeat(5000) }),
+    );
+    expect(err.code).toMatch(/^[A-Z0-9_]{1,64}$/);
+    expect(err.message.length).toBeLessThanOrEqual(400);
+  });
+});
+
+describe('what IS passed through is scrubbed of internals', () => {
+  const origin = 'http://127.0.0.1:54321';
+
+  it('the served origin leaves a site path; any other loopback host:port is removed', () => {
+    const err = toPagespeedRunError(
+      Object.assign(new Error('PAGE_HUNG'), {
+        code: 'PAGE_HUNG',
+        friendlyMessage:
+          'Navigating http://127.0.0.1:54321/about/ hung; DevTools at 127.0.0.1:9222, ws://localhost:41000/devtools and [::1]:8080 stopped answering.',
+      }),
+      origin,
+    );
+    expect(err.message).toContain('/about/'); // the page the author asked about stays readable
+    for (const leak of ['127.0.0.1', '9222', 'localhost', '41000', '[::1]', '8080']) {
+      expect(err.message, leak).not.toContain(leak);
+    }
+  });
+
+  it('absolute filesystem paths (and file: URLs) are removed; a site path inside a URL is not', () => {
+    const err = lighthouseRuntimeError(
+      {
+        lhr: {
+          runtimeError: {
+            code: 'ERRORED_DOCUMENT_REQUEST',
+            message:
+              "Could not read /tmp/sw-pagespeed-Ab12/index.html (see file:///home/app/dist/x.js or C:\\Users\\app\\x.js) for http://127.0.0.1:54321/shop/cart/.",
+          },
+        },
+      } as unknown as RunnerResult,
+      origin,
+    )!;
+    expect(err.message).toContain('/shop/cart/');
+    for (const leak of ['/tmp', 'sw-pagespeed', 'file:', '/home/app', 'C:\\', 'Users']) {
+      expect(err.message, leak).not.toContain(leak);
+    }
+  });
+
+  it('scrubs BEFORE the length cap, so an origin straddling the cut leaves no fragment', () => {
+    // 395 characters, then the loopback origin: a cap first would keep "http://127.0" and the scrub
+    // after it would no longer recognise the cut-off origin.
+    const filler = 'x'.repeat(395);
+    for (const o of [origin, '']) {
+      const err = lighthouseRuntimeError(
+        { lhr: { runtimeError: { code: 'NO_FCP', message: `${filler} http://127.0.0.1:54321/deep/page/` } } } as unknown as RunnerResult,
+        o,
+      )!;
+      expect(err.message.length).toBeLessThanOrEqual(400);
+      expect(err.message).not.toMatch(/127\.0|127\.|:5432/);
+    }
+  });
+
+  it('scrubRunMessage leaves an ordinary sentence alone', () => {
+    expect(scrubRunMessage('The page did not paint any content.', origin)).toBe('The page did not paint any content.');
   });
 });

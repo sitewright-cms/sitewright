@@ -8,7 +8,7 @@ interface Canned {
 }
 
 function fakeFetch(handler: (input: string, init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array }) => Canned) {
-  const calls: Array<{ input: string; init?: { method?: string; headers?: Record<string, string>; body?: string | Uint8Array } }> = [];
+  const calls: Array<{ input: string; init?: Parameters<FetchLike>[1] }> = [];
   const impl: FetchLike = async (input, init) => {
     calls.push({ input, init });
     const r = handler(input, init);
@@ -463,6 +463,14 @@ describe('SitewrightClient — optional-argument branches', () => {
     expect(calls[1]!.input).toBe('https://cms.test/projects/p1/pagespeed-audit/home');
     await client.pagespeedAudit('home', 'desktop');
     expect(calls[2]!.input).toBe('https://cms.test/projects/p1/pagespeed-audit/home?formFactor=desktop');
+    expect(calls[2]!.init?.signal).toBeUndefined(); // no signal asked for → none sent
+  });
+
+  it('hands the pagespeed audit its abort signal, so giving up closes the request', async () => {
+    const { client, calls } = await introspected(ok);
+    const ac = new AbortController();
+    await client.pagespeedAudit('home', 'mobile', { signal: ac.signal });
+    expect(calls[1]!.init?.signal).toBe(ac.signal);
   });
 
   it('omits alt from the stock-import body when no alt is given', async () => {

@@ -2,6 +2,7 @@
 // read the HTML). We render the exact HTML the preview endpoint already builds, in a headless Chromium
 // bundled into the API image. Best-effort: any failure leaves the caller to return HTML without images.
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
+import { createSlotPool } from './render-slots.js';
 import { chromium, type Browser, type Route, type Request as PwRequest, type Page } from 'playwright-core';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -285,51 +286,22 @@ export async function closeScreenshotBrowser(): Promise<void> {
 }
 
 // Cap concurrent renders so a burst can't exhaust container memory (each context ~a tab). A queued
-// request waits at most ACQUIRE_TIMEOUT_MS so a slow render can't pin the queue indefinitely.
-let active = 0;
+// request waits at most ACQUIRE_TIMEOUT_MS so a slow render can't pin the queue indefinitely; a wait
+// that runs out is a typed RenderQueueBusyError (→ 503 + retry-after), see render-slots.ts.
 const MAX_CONCURRENT = 2;
 const ACQUIRE_TIMEOUT_MS = 12_000;
-const waiters: Array<() => void> = [];
-async function acquire(): Promise<void> {
-  if (active < MAX_CONCURRENT) {
-    active++;
-    return;
-  }
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const onFree = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      active++; // take the slot the releaser just freed
-      resolve();
-    };
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      const i = waiters.indexOf(onFree);
-      if (i >= 0) waiters.splice(i, 1);
-      reject(new Error('screenshot render queue is busy'));
-    }, ACQUIRE_TIMEOUT_MS);
-    waiters.push(onFree);
-  });
-}
-function release(): void {
-  active--;
-  waiters.shift()?.();
-}
+const renderSlots = createSlotPool({ max: MAX_CONCURRENT, acquireTimeoutMs: ACQUIRE_TIMEOUT_MS });
+const acquire = (): Promise<void> => renderSlots.acquire();
+const release = (): void => renderSlots.release();
 
 /**
  * Run `fn` while holding a headless-render slot — shares the same concurrency cap as screenshots so a
- * nativize capture + a burst of agent screenshots can't together exhaust container memory.
+ * nativize capture + a burst of agent screenshots can't together exhaust container memory. Pass the
+ * request's `signal` so a caller that disconnects while QUEUED leaves the queue instead of taking a
+ * slot later for nobody.
  */
-export async function withRenderSlot<T>(fn: () => Promise<T>): Promise<T> {
-  await acquire();
-  try {
-    return await fn();
-  } finally {
-    release();
-  }
+export async function withRenderSlot<T>(fn: () => Promise<T>, opts?: { signal?: AbortSignal }): Promise<T> {
+  return renderSlots.run(fn, opts);
 }
 
 // Fixed beat AFTER a child frame's own `load` for its async content to actually PAINT — Google-Maps tiles,

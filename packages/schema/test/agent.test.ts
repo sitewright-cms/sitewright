@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS, buildCapabilitiesIndex, CAPABILITY_MAP, WRITE_KINDS } from '../src/agent.js';
+import { DEFAULT_AGENT_INSTRUCTIONS, AGENT_GUIDES, GUIDE_TOPICS, buildCapabilitiesIndex, CAPABILITY_MAP, WRITE_KINDS, MCP_TOOL_CATALOG } from '../src/agent.js';
 import { NAV_SLOTS } from '../src/page.js';
 import { FieldTypeSchema } from '../src/dataset.js';
 import { SW_HELPERS } from '../src/authoring-reference.js';
@@ -180,6 +180,29 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // built without ever calling get_guide("images") is the failure mode to design against.
     expect(AGENT_GUIDES.images.summary).toMatch(/size/i);
     expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/SIZE them to their box/);
+  });
+
+  // An agent's blocking time went 0 → 790 ms after adding a few CSS effects, and nothing told it the
+  // audit server has no GPU or how to find which effect cost the time.
+  it('the effects guide says the audit renders WITHOUT a GPU, names the costly properties, and teaches the bisect', () => {
+    const body = AGENT_GUIDES.effects.body;
+    expect(body).toMatch(/EFFECT COST/);
+    expect(body).toMatch(/WITHOUT a GPU/);
+    for (const prop of ['transform: scale', 'background-position', 'filter', 'box-shadow']) {
+      expect(body, prop).toContain(prop);
+    }
+    expect(body).toMatch(/opacity.*transform/s);
+    // The bisect: a NAMED block, audit, then the empty-css delete of that same block.
+    expect(body).toContain('patch_critical_css({ block:"perf-test", css:"" })');
+    // Both expensive effects point at it.
+    expect(body).toMatch(/shader background costs far more in the audit/);
+    expect(body).toMatch(/pagespeed_audit renders WITHOUT a GPU — see EFFECT COST/);
+  });
+
+  it("the pagespeed_audit catalog entry states the tool's real formFactor default and its options", () => {
+    const entry = MCP_TOOL_CATALOG.find((t) => t.name === 'pagespeed_audit');
+    expect(entry?.description).toMatch(/`formFactor` defaults to mobile/);
+    expect(entry?.description).toMatch(/'both'/);
   });
 
   it('the core PRESCRIBES the page audit as a finishing step, not just as an available tool', () => {

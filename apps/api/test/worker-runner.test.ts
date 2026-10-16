@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,17 +30,34 @@ interface FakeOpts {
   exitCode?: number;
   stderr?: string;
   hang?: boolean;
+  /** How the `docker kill <name>` call behaves: exits (default), never answers, or throws on spawn. */
+  dockerKill?: 'exits' | 'hangs' | 'throws';
 }
 
-/** A fake `spawn` capturing args/stdin and emitting a canned worker result. */
-function fakeSpawn(opts: FakeOpts, capture: { args?: string[]; stdin?: string }) {
+interface Capture {
+  args?: string[];
+  stdin?: string;
+  killed?: string;
+  /** Container names passed to `docker kill`. */
+  dockerKills?: string[];
+}
+
+/** A fake `spawn` capturing args/stdin (and the kill signal, if any) and emitting a canned worker result. */
+function fakeSpawn(opts: FakeOpts, capture: Capture) {
   return (_cmd: string, args: string[]) => {
+    if (args[0] === 'kill') {
+      if (opts.dockerKill === 'throws') throw new Error('spawn docker ENOENT');
+      capture.dockerKills = [...(capture.dockerKills ?? []), args[1]!];
+      const killer = new EventEmitter();
+      if (opts.dockerKill !== 'hangs') queueMicrotask(() => killer.emit('close', 0));
+      return killer as never;
+    }
     capture.args = args;
     const child = new EventEmitter() as unknown as {
       stdout: EventEmitter;
       stderr: EventEmitter;
       stdin: { end: (s: string) => void; on: () => void };
-      kill: () => void;
+      kill: (sig?: string) => void;
       on: EventEmitter['on'];
       emit: EventEmitter['emit'];
     };
@@ -48,7 +65,9 @@ function fakeSpawn(opts: FakeOpts, capture: { args?: string[]; stdin?: string })
     const stderr = new EventEmitter();
     child.stdout = stdout;
     child.stderr = stderr;
-    child.kill = () => {};
+    child.kill = (sig?: string) => {
+      capture.killed = sig ?? 'SIGTERM';
+    };
     child.stdin = {
       on: () => {},
       end: (s: string) => {
@@ -102,9 +121,60 @@ describe('WorkerBuildRunner', () => {
     await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [] })).rejects.toThrow(/exited 1/);
   });
 
-  it('kills and rejects on timeout', async () => {
-    const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 30, spawnImpl: fakeSpawn({ hang: true }, {}) });
+  /** The `--name` the worker container was started with. */
+  const containerName = (capture: Capture): string | undefined => capture.args?.[(capture.args?.indexOf('--name') ?? -2) + 1];
+
+  it('names every worker container (so a build given up on can be stopped by name)', async () => {
+    const capture: Capture = {};
+    const result: WorkerResult = { manifest: { publishedAt: 't', routes: 0, bytes: 0 }, files: {} };
+    const a = new WorkerBuildRunner({ image: 'x', spawnImpl: fakeSpawn({ result }, capture) });
+    await a.run({ outDir, bundle, publishedAt: 't', media: [] });
+    const first = containerName(capture);
+    await a.run({ outDir, bundle, publishedAt: 't', media: [] });
+    expect(first).toMatch(/^sw-build-[0-9a-f-]{36}$/);
+    expect(containerName(capture)).not.toBe(first); // unique per build
+    expect(capture.dockerKills).toBeUndefined(); // a build that finishes kills nothing
+  });
+
+  it('kills the client AND the container, then rejects, on timeout', async () => {
+    // Killing `docker run` does not stop the container it started: it would keep its memory and CPU
+    // until the build finished on its own.
+    const capture: Capture = {};
+    const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 30, spawnImpl: fakeSpawn({ hang: true }, capture) });
     await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [] })).rejects.toThrow(/timed out/);
+    expect(capture.killed).toBe('SIGKILL');
+    expect(capture.dockerKills).toEqual([containerName(capture)]);
+  });
+
+  it('kills the container and rejects with the abort reason when the caller goes away mid-build', async () => {
+    const capture: Capture = {};
+    const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 60_000, spawnImpl: fakeSpawn({ hang: true }, capture) });
+    const ac = new AbortController();
+    const run = runner.run({ outDir, bundle, publishedAt: 't', media: [], signal: ac.signal });
+    await vi.waitFor(() => expect(capture.stdin).toBeDefined()); // the worker is running
+    ac.abort(new Error('client went away'));
+    await expect(run).rejects.toThrow('client went away');
+    expect(capture.killed).toBe('SIGKILL');
+    expect(capture.dockerKills).toEqual([containerName(capture)]);
+  });
+
+  it('a docker kill that never answers (or cannot start) does not hold the rejection', async () => {
+    for (const dockerKill of ['hangs', 'throws'] as const) {
+      const capture: Capture = {};
+      const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 20, killWaitMs: 30, spawnImpl: fakeSpawn({ hang: true, dockerKill }, capture) });
+      const t0 = Date.now();
+      await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [] }), dockerKill).rejects.toThrow(/timed out/);
+      expect(Date.now() - t0, dockerKill).toBeLessThan(2_000);
+    }
+  });
+
+  it('an already-aborted signal never spawns a worker', async () => {
+    const capture: Capture = {};
+    const runner = new WorkerBuildRunner({ image: 'x', spawnImpl: fakeSpawn({ hang: true }, capture) });
+    const ac = new AbortController();
+    ac.abort(new Error('gone already'));
+    await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [], signal: ac.signal })).rejects.toThrow('gone already');
+    expect(capture.args).toBeUndefined();
   });
 
   it('rejects malformed worker output', async () => {

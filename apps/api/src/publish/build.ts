@@ -408,6 +408,13 @@ export interface BuildSiteOptions {
    * worker (which serializes its job), and the publish path passes nothing at all.
    */
   onProgress?: (progress: BuildProgress) => void;
+  /**
+   * Stops the build at its next step boundary (each page, each image, each phase) — for a build whose
+   * caller can go away, like the page-speed audit's throwaway build. Without it an abandoned audit
+   * kept rendering a whole site inside a render slot nobody was waiting on. The build throws the
+   * signal's reason and discards its temp dir exactly as for any other failure.
+   */
+  signal?: AbortSignal;
 }
 
 /** A build step worth telling a waiting human about. `done`/`total` are set where the step is a
@@ -651,8 +658,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? configuredMaxOutputBytes();
   // Progress is a courtesy to whoever is watching a spinner, never a build dependency: a throwing
-  // reporter must not be able to fail a build that is otherwise fine.
+  // reporter must not be able to fail a build that is otherwise fine. The progress points are also
+  // the build's step boundaries, so they are where an abort is honoured (OUTSIDE the reporter's
+  // try — an abort must fail the build, unlike a broken reporter).
   const report = (progress: BuildProgress): void => {
+    opts.signal?.throwIfAborted();
     try {
       opts.onProgress?.(progress);
     } catch {

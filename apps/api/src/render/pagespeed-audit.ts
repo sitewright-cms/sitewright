@@ -76,6 +76,47 @@ export interface PagespeedFinding {
   moreItems?: number;
 }
 
+/** One long main-thread task (≥ 50 ms) — what the blocking time is made of. */
+export interface PagespeedLongTask {
+  /** The script (or page) Lighthouse attributes the task to — origin-relative for the site's own files. */
+  url?: string;
+  /** Lighthouse's own attribution when there is no URL: "Unattributable", "Browser", "Browser GC". */
+  label?: string;
+  durationMs: number;
+  /** When it started, ms into the (simulated) load. */
+  startMs?: number;
+}
+
+/** One element whose animation Chrome could not run on the compositor (it repaints on the main thread). */
+export interface PagespeedAnimationIssue {
+  /** The element, as Lighthouse labels it (its text or a short snippet). */
+  label?: string;
+  /** The CSS animation names involved, when the animation is named. */
+  animations?: string[];
+  /** The animated CSS properties the compositor refused (parsed from Lighthouse's reasons). */
+  properties?: string[];
+  /** Lighthouse's failure reasons, verbatim. */
+  reasons: string[];
+}
+
+/**
+ * WHY the main thread was busy — present only when blocking time or the performance score is poor.
+ *
+ * Lighthouse's `long-tasks` and `non-composited-animations` are INFORMATIVE audits (no pass/fail score),
+ * so the failing-findings list never shows them, and its scored stand-ins (`bootup-time`,
+ * `mainthread-work-breakdown`) only say "Other: 2 s". An author whose blocking time jumped from 0 to
+ * 790 ms after adding a few CSS effects had no way to learn which ones. These two lists name the task
+ * and the animated element. Bounded like every other list here.
+ */
+export interface PagespeedMainThread {
+  /** Longest tasks first, capped. */
+  longTasks: PagespeedLongTask[];
+  moreLongTasks?: number;
+  /** In Lighthouse's (document) order, capped. */
+  nonCompositedAnimations: PagespeedAnimationIssue[];
+  moreNonCompositedAnimations?: number;
+}
+
 export interface PagespeedAuditResult {
   url: string;
   formFactor: FormFactor;
@@ -83,6 +124,8 @@ export interface PagespeedAuditResult {
   metrics: PagespeedMetrics;
   /** Non-passing, non-informational audits, worst-first — the fix list. */
   findings: PagespeedFinding[];
+  /** Main-thread attribution (long tasks, non-composited animations) — only when blocking time or performance is poor. */
+  mainThread?: PagespeedMainThread;
   /**
    * Lighthouse's own run warnings (e.g. "the tested device appears to have a slower CPU"). Surfaced so a
    * low LAB score can be understood as an environment constraint, not mistaken for a page defect. Absent
@@ -185,6 +228,9 @@ function itemIdentity(item: Record<string, unknown>): { url?: string; label?: st
   const directUrl = nonEmptyStr(item.url);
   if (directUrl) return { url: cap(directUrl, MAX_URL_LEN) };
 
+  // A typed `text` cell (the insight tables' "Unattributed" bucket) is the weakest identity: used only
+  // when no URL/node/code cell and no plain string field names the row.
+  let textCell: string | undefined;
   for (const v of Object.values(item)) {
     if (!v || typeof v !== 'object') continue;
     const o = v as Record<string, unknown>;
@@ -219,6 +265,9 @@ function itemIdentity(item: Record<string, unknown>): { url?: string; label?: st
         if (c) return { label: cap(c.replace(/\s+/g, ' ').trim(), MAX_LABEL_LEN) };
         break;
       }
+      case 'text':
+        textCell ??= nonEmptyStr(o.value);
+        break;
       default:
         break;
     }
@@ -231,15 +280,17 @@ function itemIdentity(item: Record<string, unknown>): { url?: string; label?: st
     nonEmptyStr(item.source) ??
     nonEmptyStr(item.name) ??
     nonEmptyStr(item.statistic) ??
-    nonEmptyStr(item.groupLabel);
+    nonEmptyStr(item.groupLabel) ??
+    textCell;
   return lbl ? { label: cap(lbl, MAX_LABEL_LEN) } : {};
 }
 
 /** Common Lighthouse table byte/time column names beyond the byte-efficiency set (totalBytes/wastedBytes/
- *  wastedMs) — so diagnostics like `bootup-time` ({url,total,scripting}) and `mainthread-work-breakdown`
- *  ({groupLabel,duration}) surface their figures instead of rendering an empty row. */
+ *  wastedMs) — so diagnostics like `bootup-time` ({url,total,scripting}), `mainthread-work-breakdown`
+ *  ({groupLabel,duration}) and `forced-reflow-insight` ({source,reflowTime}) surface their figures instead
+ *  of rendering an empty row. */
 const BYTES_KEYS = ['totalBytes', 'transferSize', 'resourceSize'] as const;
-const MS_KEYS = ['wastedMs', 'duration', 'total', 'blockingTime', 'mainThreadTime'] as const;
+const MS_KEYS = ['wastedMs', 'duration', 'total', 'blockingTime', 'mainThreadTime', 'reflowTime'] as const;
 
 /** First finite number among the given keys of an item, else undefined. */
 function firstNum(item: Record<string, unknown>, keys: readonly string[]): number | undefined {
@@ -257,6 +308,39 @@ interface FindingDetail {
   overallSavingsBytes?: number;
 }
 
+/** A details object's rows, when it is a row-bearing type (`opportunity` / `table`). */
+function tableRows(d: unknown): unknown[] | null {
+  if (!d || typeof d !== 'object') return null;
+  const t = d as { type?: unknown; items?: unknown };
+  if (t.type !== 'opportunity' && t.type !== 'table') return null;
+  return Array.isArray(t.items) ? t.items : [];
+}
+
+/**
+ * The rows of a `list` details object: the insight audits (e.g. `forced-reflow-insight`) wrap SEVERAL
+ * tables in one list — optionally inside a `list-section` — so the rows are the concatenation of each
+ * table's. Anything that is not a table (a node, a checklist) carries no rows.
+ */
+function listRows(items: unknown): unknown[] {
+  if (!Array.isArray(items)) return [];
+  return items.flatMap((sub) => {
+    const inner = sub && typeof sub === 'object' && (sub as { type?: unknown }).type === 'list-section' ? (sub as { value?: unknown }).value : sub;
+    return tableRows(inner) ?? [];
+  });
+}
+
+/** First occurrence of each url/label pair, order kept. A row with neither is not a "place", so never merged. */
+function dedupeByIdentity(items: readonly PagespeedResourceItem[]): PagespeedResourceItem[] {
+  const seen = new Set<string>();
+  return items.filter((it) => {
+    if (!it.url && !it.label) return true;
+    const key = `${it.url ?? ''}\u0000${it.label ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** Extract the concrete file/node list + savings totals from a Lighthouse audit's `details`, if any. */
 function findingDetail(details: unknown): FindingDetail {
   if (!details || typeof details !== 'object') return {};
@@ -267,9 +351,10 @@ function findingDetail(details: unknown): FindingDetail {
     overallSavingsBytes?: unknown;
     summary?: { wastedMs?: unknown; wastedBytes?: unknown };
   };
-  if (d.type !== 'opportunity' && d.type !== 'table') return {};
+  const isList = d.type === 'list';
+  const rawItems = isList ? listRows(d.items) : tableRows(d);
+  if (!rawItems) return {};
 
-  const rawItems = Array.isArray(d.items) ? d.items : [];
   const parsed: PagespeedResourceItem[] = [];
   for (const raw of rawItems) {
     if (!raw || typeof raw !== 'object') continue;
@@ -294,8 +379,11 @@ function findingDetail(details: unknown): FindingDetail {
       (b.wastedMs ?? 0) - (a.wastedMs ?? 0) ||
       (b.totalBytes ?? 0) - (a.totalBytes ?? 0),
   );
-  const items = parsed.slice(0, MAX_ITEMS_PER_FINDING);
-  const moreItems = parsed.length - items.length;
+  // A list's tables overlap — forced-reflow's "top function call" is usually also its biggest bottom-up
+  // row — so keep each location once (the worst copy, since this runs after the sort).
+  const rows = isList ? dedupeByIdentity(parsed) : parsed;
+  const items = rows.slice(0, MAX_ITEMS_PER_FINDING);
+  const moreItems = rows.length - items.length;
 
   const overallSavingsMs = finiteNum(d.overallSavingsMs) ?? finiteNum(d.summary?.wastedMs);
   const overallSavingsBytes = finiteNum(d.overallSavingsBytes) ?? finiteNum(d.summary?.wastedBytes);
@@ -320,7 +408,7 @@ function findingDetail(details: unknown): FindingDetail {
 export function rebaseFindingUrls(findings: readonly PagespeedFinding[], origin: string): PagespeedFinding[] {
   if (!origin) return findings.slice();
   const carriesOrigin = (it: PagespeedResourceItem): boolean =>
-    (it.url?.startsWith(origin) ?? false) || (it.label?.includes(origin) ?? false);
+    (it.url?.includes(origin) ?? false) || (it.label?.includes(origin) ?? false);
   return findings.map((f) => {
     if (!f.items?.some(carriesOrigin)) return f;
     return {
@@ -329,12 +417,20 @@ export function rebaseFindingUrls(findings: readonly PagespeedFinding[], origin:
         if (!carriesOrigin(it)) return it;
         return {
           ...it,
-          ...(it.url?.startsWith(origin) ? { url: it.url.slice(origin.length) || '/' } : {}),
+          ...(it.url?.includes(origin) ? { url: rebaseUrl(it.url, origin) } : {}),
           ...(it.label?.includes(origin) ? { label: it.label.split(origin).join('') } : {}),
         };
       }),
     };
   });
+}
+
+/**
+ * A same-site URL made origin-relative; an origin anywhere else in it (a `blob:` URL, a redirect
+ * parameter) is removed too — a URL only STARTING with the origin is not the only shape that carries it.
+ */
+function rebaseUrl(url: string, origin: string): string {
+  return url.startsWith(origin) ? url.slice(origin.length) || '/' : url.split(origin).join('');
 }
 
 /**
@@ -352,12 +448,265 @@ export function redactOrigin(
   return warnings.map((w) => (origin ? w.split(origin).join('') : w));
 }
 
+/**
+ * {@link rebaseFindingUrls} for the main-thread section (immutable): a long task's `url` is the served
+ * script or page — the loopback origin for the site's own files — and a label or reason is scrubbed of
+ * every occurrence as defense-in-depth, exactly like a finding's label. Pure — unit-tested.
+ */
+export function rebaseMainThread(mt: PagespeedMainThread | undefined, origin: string): PagespeedMainThread | undefined {
+  if (!mt || !origin) return mt;
+  const scrub = (s: string): string => s.split(origin).join('');
+  return {
+    ...mt,
+    longTasks: mt.longTasks.map((t) => ({
+      ...t,
+      ...(t.url !== undefined ? { url: rebaseUrl(t.url, origin) } : {}),
+      ...(t.label !== undefined ? { label: scrub(t.label) } : {}),
+    })),
+    nonCompositedAnimations: mt.nonCompositedAnimations.map((a) => ({
+      ...a,
+      ...(a.label !== undefined ? { label: scrub(a.label) } : {}),
+      reasons: a.reasons.map(scrub),
+    })),
+  };
+}
+
+// ---- main-thread attribution (long tasks / non-composited animations) ---------------------------
+
+/** Lighthouse's own "poor" band: a metric or category score under 0.5 renders red. */
+const POOR_SCORE = 0.5;
+const MAX_LONG_TASKS = 5;
+const MAX_ANIMATED_ELEMENTS = 5;
+const MAX_REASONS_PER_ELEMENT = 4;
+const MAX_NAMES_PER_ELEMENT = 4;
+const MAX_PROPERTIES_PER_ELEMENT = 8;
+const MAX_PROPERTY_LEN = 64;
+
+/** The long-tasks `url` column also carries Lighthouse's attribution words ("Unattributable", "Browser GC"). */
+function looksLikeUrl(s: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) || s.startsWith('/');
+}
+
+/** Rows of an audit's table details, or none. */
+function auditRows(audit: { details?: unknown } | undefined): unknown[] {
+  return tableRows(audit?.details) ?? [];
+}
+
+function parseLongTasks(rows: readonly unknown[]): PagespeedLongTask[] {
+  const tasks: PagespeedLongTask[] = [];
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as Record<string, unknown>;
+    const duration = finiteNum(row.duration);
+    if (duration === undefined) continue; // a task with no duration is not a task
+    const start = finiteNum(row.startTime);
+    const where = nonEmptyStr(row.url) ?? 'Unattributed';
+    tasks.push({
+      ...(looksLikeUrl(where) ? { url: cap(where, MAX_URL_LEN) } : { label: cap(where, MAX_LABEL_LEN) }),
+      durationMs: Math.round(duration),
+      ...(start !== undefined ? { startMs: Math.round(start) } : {}),
+    });
+  }
+  return tasks.sort((a, b) => b.durationMs - a.durationMs);
+}
+
+/** "Unsupported CSS Properties: box-shadow, filter" → the property names (en-US Lighthouse strings). */
+const UNSUPPORTED_PROPS = /^(?:Unsupported CSS Propert(?:y|ies)|Custom CSS properties cannot be animated on the compositor): (.+)$/;
+function unsupportedProperties(reason: string): string[] {
+  const m = UNSUPPORTED_PROPS.exec(reason);
+  return m ? String(m[1]).split(/,\s*/) : [];
+}
+
+/** Unique, non-empty strings, in order, capped in count and length. */
+function uniqueCapped(values: readonly string[], max: number, len: number): string[] {
+  return [...new Set(values.filter((v) => v.length > 0))].slice(0, max).map((v) => cap(v, len));
+}
+
+function parseAnimationIssues(rows: readonly unknown[]): PagespeedAnimationIssue[] {
+  const out: PagespeedAnimationIssue[] = [];
+  for (const raw of rows) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row = raw as { node?: unknown; subItems?: { items?: unknown } };
+    const subItems = row.subItems?.items;
+    const subs: unknown[] = Array.isArray(subItems) ? subItems : [];
+    const reasons: string[] = [];
+    const names: string[] = [];
+    for (const s of subs) {
+      if (!s || typeof s !== 'object') continue;
+      const reason = nonEmptyStr((s as { failureReason?: unknown }).failureReason);
+      if (!reason) continue;
+      reasons.push(reason);
+      const name = nonEmptyStr((s as { animation?: unknown }).animation);
+      if (name) names.push(name);
+    }
+    if (reasons.length === 0) continue; // nothing to say about this element
+    const properties = reasons.flatMap(unsupportedProperties);
+    const { label } = itemIdentity({ node: row.node });
+    const animations = uniqueCapped(names, MAX_NAMES_PER_ELEMENT, MAX_LABEL_LEN);
+    const props = uniqueCapped(properties, MAX_PROPERTIES_PER_ELEMENT, MAX_PROPERTY_LEN);
+    out.push({
+      ...(label ? { label } : {}),
+      ...(animations.length ? { animations } : {}),
+      ...(props.length ? { properties: props } : {}),
+      reasons: uniqueCapped(reasons, MAX_REASONS_PER_ELEMENT, MAX_LABEL_LEN),
+    });
+  }
+  return out;
+}
+
+/**
+ * The main-thread section, or undefined when the page is not poor on blocking time / performance, or
+ * Lighthouse found nothing to attribute. Gated on "poor" so a healthy page's report carries no noise.
+ */
+function mainThreadDiagnostics(
+  audits: Record<string, { score?: number | null; details?: unknown } | undefined>,
+  performanceScore: number | null | undefined,
+): PagespeedMainThread | undefined {
+  const tbtScore = audits['total-blocking-time']?.score;
+  const poor =
+    (typeof tbtScore === 'number' && tbtScore < POOR_SCORE) ||
+    (typeof performanceScore === 'number' && performanceScore < POOR_SCORE);
+  if (!poor) return undefined;
+  const tasks = parseLongTasks(auditRows(audits['long-tasks']));
+  const anims = parseAnimationIssues(auditRows(audits['non-composited-animations']));
+  if (tasks.length === 0 && anims.length === 0) return undefined;
+  const longTasks = tasks.slice(0, MAX_LONG_TASKS);
+  const nonCompositedAnimations = anims.slice(0, MAX_ANIMATED_ELEMENTS);
+  return {
+    longTasks,
+    ...(tasks.length > longTasks.length ? { moreLongTasks: tasks.length - longTasks.length } : {}),
+    nonCompositedAnimations,
+    ...(anims.length > nonCompositedAnimations.length
+      ? { moreNonCompositedAnimations: anims.length - nonCompositedAnimations.length }
+      : {}),
+  };
+}
+
+// ---- failure plumbing ---------------------------------------------------------------------------
+
+const MAX_RUN_ERROR_LEN = 400;
+const MAX_RUN_ERROR_CODE_LEN = 64;
+
 /** Thrown when no headless browser could be launched — lets the route degrade to a clean 503. */
 export class PagespeedUnavailableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'PagespeedUnavailableError';
   }
+}
+
+/**
+ * What the client is told when the failure is NOT a Lighthouse verdict — a Chrome crash, a refused
+ * DevTools connection, a filesystem error. Their own text names a debug port, a temp path or a Node
+ * error code, so it stays in the server log (the error's `cause`) and this fixed sentence goes out.
+ */
+export const GENERIC_RUN_FAILURE =
+  'Lighthouse stopped before it could audit the page: the headless browser or its DevTools connection failed. ' +
+  'Retry; if it keeps failing, look for scripts or animated backgrounds heavy enough to stall a browser.';
+
+const FILE_URL = /\bfile:\/\/[^\s'"()<>]*/gi;
+/** An absolute POSIX path standing on its own — NOT the path part of a URL (those follow a host or port).
+ *  One character class, no nested quantifier: linear on any input. */
+const POSIX_PATH = /(?<![\w.:/~%-])\/[^\s'"()<>,;]+/g;
+const WINDOWS_PATH = /\b[A-Za-z]:\\[^\s'"()<>]*/g;
+/** Any loopback endpoint other than the served origin: the Chrome debug port, a dev server. No nested
+ *  quantifier (the linter's ReDoS rule); the scheme in front of one is dropped by a second pass. */
+const LOOPBACK = /\b127\.\d{1,3}\.\d{1,3}\.\d{1,3}:?\d*|\blocalhost:\d+|\[::1\]:?\d*/gi;
+const LOCAL_PLACEHOLDER = '[local]';
+const SCHEME_BEFORE_LOCAL = /\b[a-z][\w+.-]*:\/\/(?=\[local\])/gi;
+
+/**
+ * Make a Lighthouse sentence safe to send: filesystem paths and `file:` URLs removed, the served
+ * origin removed (its URLs become the site paths the author knows), any other loopback endpoint
+ * replaced. Paths go FIRST, while a site path is still visibly part of its loopback URL and so is not
+ * mistaken for a file. Applied BEFORE the length cap — a cap first could cut an origin in half, and a
+ * half-origin no longer matches anything. Pure — unit-tested.
+ */
+export function scrubRunMessage(text: string, origin = ''): string {
+  const noPaths = text.replace(FILE_URL, '').replace(WINDOWS_PATH, '').replace(POSIX_PATH, '');
+  const noOrigin = origin ? noPaths.split(origin).join('') : noPaths;
+  return noOrigin.replace(LOOPBACK, LOCAL_PLACEHOLDER).replace(SCHEME_BEFORE_LOCAL, '');
+}
+
+/**
+ * Lighthouse ran but could not audit the page — a fatal `runtimeError` on the result (NO_FCP, PAGE_HUNG,
+ * …) or a thrown error. The route answers 502 with `code` + `message` instead of the opaque global 500,
+ * so the author learns WHAT failed — "the page never painted" is actionable; "internal error" is not.
+ * Only a Lighthouse verdict's own sentence is ever passed on, scrubbed ({@link scrubRunMessage}) and
+ * then bounded: both fields reach the client verbatim. `cause` keeps the original for the server log.
+ */
+export class PagespeedRunError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string, opts: { origin?: string; cause?: unknown } = {}) {
+    super(cap(scrubRunMessage(message, opts.origin), MAX_RUN_ERROR_LEN), { cause: opts.cause });
+    this.name = 'PagespeedRunError';
+    // A machine-readable token, so normalised to Lighthouse's own SHOUTED_SNAKE shape and hard-capped.
+    this.code = code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, MAX_RUN_ERROR_CODE_LEN);
+  }
+}
+
+/**
+ * A fatal Lighthouse `runtimeError` (or no result at all) as a typed error; null when the run is usable.
+ * `origin` is the served loopback origin, removed from the message so its URLs read as site paths. Pure.
+ */
+export function lighthouseRuntimeError(result: RunnerResult | undefined, origin = ''): PagespeedRunError | null {
+  if (!result) return new PagespeedRunError('NO_RESULT', 'Lighthouse returned no result');
+  const rt = result.lhr.runtimeError as { code?: unknown; message?: unknown } | undefined;
+  if (!rt) return null;
+  const code = nonEmptyStr(rt.code) ?? 'LIGHTHOUSE_FAILED';
+  // `errorStack` is deliberately NOT carried — it names server paths.
+  return new PagespeedRunError(code, nonEmptyStr(rt.message) ?? `Lighthouse failed with ${code}`, { origin });
+}
+
+/**
+ * A thrown error as a typed {@link PagespeedRunError} (kept as-is if it already is one). Only a real
+ * LighthouseError — a `code` plus its `friendlyMessage` sentence — passes its text on; anything else (a
+ * Chrome crash, a refused DevTools socket, a Node fs error) gets {@link GENERIC_RUN_FAILURE}. Pure.
+ */
+export function toPagespeedRunError(err: unknown, origin = ''): PagespeedRunError {
+  if (err instanceof PagespeedRunError) return err;
+  const lh = err instanceof Error ? (err as Error & { code?: unknown; friendlyMessage?: unknown }) : undefined;
+  // `message` of a LighthouseError is just its code; `friendlyMessage` is the sentence — a plain string,
+  // or an un-formatted ICU message object carrying its English text in `formattedDefault`.
+  const friendly =
+    nonEmptyStr(lh?.friendlyMessage) ??
+    nonEmptyStr((lh?.friendlyMessage as { formattedDefault?: unknown } | undefined)?.formattedDefault);
+  const code = nonEmptyStr(lh?.code);
+  if (friendly && code) return new PagespeedRunError(code, friendly, { origin, cause: err });
+  return new PagespeedRunError('LIGHTHOUSE_FAILED', GENERIC_RUN_FAILURE, { cause: err });
+}
+
+/**
+ * Settle with `work` — unless `signal` aborts first: then run `onAbort` (kill the browser) and reject AT
+ * ONCE with the signal's reason, rather than waiting for Lighthouse to notice its browser died. The
+ * work's own late rejection (it fails BECAUSE the browser was killed) is swallowed so it can't surface
+ * as an unhandled rejection. Pure plumbing — unit-tested; the browser side is v8-ignored.
+ */
+export function abortable<T>(work: Promise<T>, signal: AbortSignal | undefined, onAbort: () => void): Promise<T> {
+  if (!signal) return work;
+  if (signal.aborted) {
+    work.catch(() => {});
+    onAbort();
+    return Promise.reject(signal.reason as Error);
+  }
+  return new Promise<T>((resolve, reject) => {
+    // The work's late rejection lands in the `then` below (a no-op once this has rejected).
+    const abort = (): void => {
+      onAbort();
+      reject(signal.reason as Error);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(
+      (v) => {
+        signal.removeEventListener('abort', abort);
+        resolve(v);
+      },
+      (e: unknown) => {
+        signal.removeEventListener('abort', abort);
+        reject(e as Error);
+      },
+    );
+  });
 }
 
 /** Reduce a raw Lighthouse result to our compact score/metrics/findings shape. Pure — unit-tested directly. */
@@ -396,6 +745,7 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
     ? lhr.runWarnings.filter((w): w is string => typeof w === 'string' && w.length > 0)
     : [];
   const benchmarkIndex = lhr.environment?.benchmarkIndex;
+  const mainThread = mainThreadDiagnostics(audits, lhr.categories.performance?.score);
 
   return {
     url,
@@ -414,6 +764,7 @@ export function summarize(url: string, formFactor: FormFactor, result: RunnerRes
       speedIndexMs: num('speed-index'),
     },
     findings,
+    ...(mainThread ? { mainThread } : {}),
     ...(runWarnings.length ? { runWarnings } : {}),
     ...(typeof benchmarkIndex === 'number' ? { benchmarkIndex } : {}),
     lighthouseVersion: lhr.lighthouseVersion,
@@ -451,11 +802,24 @@ const DESKTOP_THROTTLING = {
    route is exercised end-to-end when a browser is present (graceful 503 when it is not). */
 export async function runPagespeedAudit(
   url: string,
-  opts: { formFactor?: FormFactor } = {},
+  opts: { formFactor?: FormFactor; signal?: AbortSignal } = {},
 ): Promise<PagespeedAuditResult> {
   const formFactor = opts.formFactor ?? 'mobile';
+  const { signal } = opts;
   let chrome: LaunchedChrome | undefined;
+  // Idempotent: the abort path and the `finally` below may both get here.
+  let killed = false;
+  const killChrome = (): void => {
+    if (killed || !chrome) return;
+    killed = true;
+    try {
+      chrome.kill();
+    } catch {
+      /* best-effort teardown */
+    }
+  };
   try {
+    signal?.throwIfAborted();
     try {
       chrome = await launch({ chromePath: resolveChromePath(), chromeFlags: CHROME_FLAGS });
     } catch (err) {
@@ -465,6 +829,8 @@ export async function runPagespeedAudit(
         `could not launch a headless browser: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    // The caller left while Chrome was starting: don't start an audit for nobody.
+    signal?.throwIfAborted();
     const flags: Flags = {
       port: chrome.port,
       logLevel: 'error',
@@ -479,17 +845,24 @@ export async function runPagespeedAudit(
       // Lighthouse default (mobile Slow 4G + 4× CPU), which is the correct, representative mobile profile.
       ...(formFactor === 'desktop' ? { throttling: DESKTOP_THROTTLING } : {}),
     };
-    const result = await lighthouse(url, flags);
-    if (!result) throw new Error('lighthouse returned no result');
-    return summarize(url, formFactor, result);
-  } finally {
-    // chrome-launcher's kill() may be sync (void) or return a promise depending on version;
-    // treat teardown as best-effort either way.
+    // Kill Chrome the moment the caller leaves: Lighthouse otherwise runs its full ~30-90 s pass (and
+    // the route holds its render slot) for a response nobody will read.
+    // The served origin: removed from any Lighthouse sentence passed on, so its URLs read as site paths.
+    const origin = new URL(url).origin;
+    let result: RunnerResult | undefined;
     try {
-      await chrome?.kill();
-    } catch {
-      /* ignore teardown failures */
+      result = await abortable(lighthouse(url, flags), signal, killChrome);
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      throw toPagespeedRunError(err, origin);
     }
+    // A fatal page-load error (NO_FCP, PAGE_HUNG, …) comes back as a RESULT with every score null, not
+    // a throw — report it as the failure it is rather than as a page that scored nothing.
+    const failed = lighthouseRuntimeError(result, origin);
+    if (failed) throw failed;
+    return summarize(url, formFactor, result as RunnerResult);
+  } finally {
+    killChrome();
   }
 }
 /* v8 ignore stop */

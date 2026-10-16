@@ -11,6 +11,14 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Page-speed audit: what blocked the main thread.** Lighthouse files long tasks and non-composited
+  animations as informative audits, so the recommendation list never showed them, and the scored
+  diagnostics only said "Other: 2 s". When Total Blocking Time or the performance score is poor, the
+  audit now adds a main-thread section (route, MCP report and the editor's Page audit tab): the longest
+  tasks (script, duration, start) and every animation the compositor refused (element, animation name,
+  animated properties, Lighthouse's reasons). Bounded to five of each. `forced-reflow-insight` now lists
+  its source locations and reflow time instead of a bare title.
+
 - **System settings → New projects: a default image size cap.** New projects have always started
   with their upload cap at 2400px, the widest size a site serves, but that value was fixed in code. An
   instance admin can now choose it (200–10,000px), or tick **No cap** to have new projects keep
@@ -124,6 +132,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A page-speed audit that cannot run now says why instead of `500 internal error`.**
+  - **Every render slot busy:** `503` with `retry-after` and `code: "capacity"`. The slot pool's wait
+    timing out was a plain error, so the audit, `inspect_source` and anything else that let it through
+    answered 500. A preview screenshot skipped for the same reason is now reported as retryable.
+  - **Lighthouse could not audit the page** (the page never painted, hung, a protocol timeout): `502`
+    with Lighthouse's code and sentence, with loopback addresses and file paths removed. Any other
+    failure (a browser crash, a refused DevTools connection) gets a fixed sentence; its own text, which
+    names ports and temp paths, goes to the server log only.
+  - **A caller that goes away stops the audit.** Closing the request used to only skip the reply: the
+    build and Lighthouse ran on inside their render slot, so a few timed-out calls held both slots and
+    the next call queued into the 500 above. The disconnect now cancels the queue wait, stops the build
+    at its next step and kills the audit's Chrome. Over remote MCP the host hanging up reaches the audit
+    too, and `pagespeed_audit` gives up on its own after 4 minutes (7 for both devices), which stops the
+    run the same way.
+  - **The opt-in isolated build worker (`SW_BUILD_WORKER`) now stops its container** when a build is
+    abandoned or times out. Killing the `docker run` client left the container running with its
+    memory and CPU until the build finished; each worker container is now named and `docker kill`ed.
+
 - **Deleting a page no longer leaves rows pointing at it.** Children kept pointing at the deleted page
   and its translated titles stayed behind — the integrity check's two most common findings. Every delete
   path (the pages list, delete across languages, removing a language, the API and MCP) now applies one rule:
@@ -218,6 +244,13 @@ The running version of an instance is reported at `GET /version` (baked into the
     leaves 13.8 functions of headroom.
 
 ### Changed
+
+- **MCP: `pagespeed_audit` audits mobile unless asked otherwise.** With no `formFactor` it ran both
+  devices, about twice as long, while the agent guide said it defaulted to mobile. It now runs mobile;
+  `formFactor: "desktop"` runs desktop and `"both"` keeps the two-devices-from-one-build result. The
+  route and the editor's Page audit tab still run both. The effects guide now says the audit server has
+  no GPU (WebGL renders in software), which effects cost the most there, and how to find the expensive
+  one with a named `patch_critical_css` block.
 
 - **Deploying to Local Hosting now ends on the address the site is live at.** It ended in a toast that
   counted the published pages and said nothing about where they went. It now opens the same kind of

@@ -390,7 +390,7 @@ describe('CodePageEditor — content mode (in-modal)', () => {
  * written into page.data it became a junk flat key `"website.data.hero"` and the preview kept showing
  * the old image.
  */
-describe('CodePageEditor — a picked image lands in the store its key names', () => {
+describe('CodePageEditor — a picked image, link or HTML source lands in the store its key names', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
   const tick = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
@@ -438,6 +438,71 @@ describe('CodePageEditor — a picked image lands in the store its key names', (
     await tick(1000);
     expect(preview).toHaveBeenCalledTimes(2);
     expect(lastDraftData()).toEqual({ hero_img: '/media/new-hero.webp' });
+    expect(setWebsiteData).not.toHaveBeenCalled();
+  });
+
+  // The same misroute, on the link popover and the `</>` HTML-source view: a `website.data.*` key
+  // became a junk flat page.data key, so the site-wide value never changed and the page got dirty with
+  // something the render never reads.
+  it('★ a website.data LINK writes the site-wide store — href sanitized — and re-renders once it has landed', async () => {
+    await openPage();
+    send({ type: 'link-edit', hrefKey: 'website.data.cta_href', href: 'javascript:alert(1)', textKey: 'website.data.cta_text', text: 'Talk to us' });
+    await tick(5000);
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'cta_href', '');
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'cta_text', 'Talk to us');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled(); // nothing written to the page
+    await tick(1000); // the after-save re-render's own debounce (it starts when the writes resolve)
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(lastDraftData()).toEqual({});
+  });
+
+  it('a page LINK still rides in the draft', async () => {
+    await openPage();
+    send({ type: 'link-edit', hrefKey: 'cta_href', href: '/contact', textKey: 'cta_text', text: 'Talk to us' });
+    await tick(1000);
+    expect(lastDraftData()).toEqual({ cta_href: '/contact', cta_text: 'Talk to us' });
+    expect(setWebsiteData).not.toHaveBeenCalled();
+  });
+
+  /** The `</>` view the rich toolbar opened, by its title. */
+  const htmlDialog = () => screen.getByRole('dialog', { name: /Edit HTML/ });
+
+  it('★ a website.data HTML-source edit writes the site-wide store, and re-renders once it has landed', async () => {
+    await openPage();
+    let land!: () => void;
+    setWebsiteData.mockImplementationOnce(() => new Promise<void>((resolve) => (land = resolve)));
+    send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Rendered now</p>' });
+    const source = within(htmlDialog()).getByLabelText('HTML source');
+    expect(source).toHaveValue('<p>Rendered now</p>'); // seeded from what the preview shows
+    fireEvent.change(source, { target: { value: '<p>Rewritten</p>' } });
+    fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+
+    await tick(5000);
+    expect(setWebsiteData).toHaveBeenCalledWith('p', 'about', '<p>Rewritten</p>');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(preview).toHaveBeenCalledTimes(1); // not from the OLD store
+
+    await act(async () => land());
+    await tick(1000);
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(lastDraftData()).not.toHaveProperty(['website.data.about']);
+  });
+
+  it('seeds the HTML-source view with a site-wide edit still waiting to be saved, not the stale render', async () => {
+    await openPage();
+    send({ type: 'rich-edit', key: 'website.data.about', html: '<p>Typed a moment ago</p>' });
+    // The bridge's innerHTML can lag the queue; the queued value is the newest the author wrote.
+    send({ type: 'edit-html-source', key: 'website.data.about', html: '<p>Older</p>' });
+    expect(within(htmlDialog()).getByLabelText('HTML source')).toHaveValue('<p>Typed a moment ago</p>');
+  });
+
+  it('a page HTML-source edit still rides in the draft', async () => {
+    await openPage();
+    send({ type: 'edit-html-source', key: 'about', html: '<p>Rendered now</p>' });
+    fireEvent.change(within(htmlDialog()).getByLabelText('HTML source'), { target: { value: '<p>Rewritten</p>' } });
+    fireEvent.click(within(htmlDialog()).getByRole('button', { name: 'Save' }));
+    await tick(1000);
+    expect(lastDraftData()).toEqual({ about: '<p>Rewritten</p>' });
     expect(setWebsiteData).not.toHaveBeenCalled();
   });
 });

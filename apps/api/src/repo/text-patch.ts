@@ -23,6 +23,14 @@ export interface TextEdit {
   all?: boolean;
 }
 
+/**
+ * The authoring ceiling every patchable field shares (page `source`, the chrome slots and the stylesheet
+ * are all capped at 256 KB by their schemas). Checked BEFORE each edit builds its string: `all:true`
+ * multiplies, and chained edits compound, so a few hundred bytes of request could otherwise grow a
+ * multi-hundred-megabyte string synchronously before the schema ever saw it.
+ */
+export const TEXT_PATCH_MAX = 256 * 1024;
+
 export type TextPatchResult =
   | { ok: true; text: string; replacements: number }
   | { ok: false; edit: number; found: number; error: string };
@@ -32,6 +40,17 @@ function countOccurrences(hay: string, needle: string): number {
   let n = 0;
   for (let at = hay.indexOf(needle); at !== -1; at = hay.indexOf(needle, at + needle.length)) n += 1;
   return n;
+}
+
+/** The refusal for an edit whose result would exceed {@link TEXT_PATCH_MAX}, or null when it fits. */
+function tooLarge(projected: number, edit: number): TextPatchResult | null {
+  if (projected <= TEXT_PATCH_MAX) return null;
+  return {
+    ok: false,
+    edit,
+    found: 0,
+    error: `edit ${edit + 1}: the result would be ${Math.ceil(projected / 1024)} KB — over the ${TEXT_PATCH_MAX / 1024} KB limit for this field`,
+  };
 }
 
 /** Apply `edits` to `text` in order. Pure; literal matching (no regex, no `$&` replacement patterns). */
@@ -52,9 +71,11 @@ export function applyTextEdits(text: string, edits: readonly TextEdit[]): TextPa
       };
     }
     if (edit.all) {
-      const parts = out.split(edit.old);
-      replacements += parts.length - 1;
-      out = parts.join(edit.new);
+      const count = countOccurrences(out, edit.old);
+      const tooBig = tooLarge(out.length + count * (edit.new.length - edit.old.length), i);
+      if (tooBig) return tooBig;
+      replacements += count;
+      out = out.split(edit.old).join(edit.new);
       continue;
     }
     // A second START anywhere after the first — overlapping included — makes the anchor ambiguous.
@@ -67,6 +88,8 @@ export function applyTextEdits(text: string, edits: readonly TextEdit[]): TextPa
         error: `edit ${i + 1}: \`old\` matches ${found > 1 ? `${found} times` : 'more than once (overlapping)'} — include more surrounding text so it matches exactly once, or pass all:true to replace every occurrence`,
       };
     }
+    const tooBig = tooLarge(out.length + edit.new.length - edit.old.length, i);
+    if (tooBig) return tooBig;
     out = out.slice(0, first) + edit.new + out.slice(first + edit.old.length);
     replacements += 1;
   }

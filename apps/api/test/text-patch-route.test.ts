@@ -120,6 +120,46 @@ describe('text-patch', () => {
     expect(await source()).toBe(SOURCE);
   });
 
+  it('a correctly pinned If-Match succeeds, and a no-op patch writes nothing', async () => {
+    const { version } = (await proj.getContent('page', 'home')).json() as { version: string };
+    const pinned = await client.inject({
+      method: 'POST',
+      url: `${proj.base}/content/page/home/text-patch`,
+      headers: { 'if-match': `"${version}"` },
+      payload: { field: 'source', edits: [{ old: 'Hello', new: 'Hi' }] },
+    });
+    expect(pinned.statusCode).toBe(200);
+    const after = (pinned.json() as { version: string }).version;
+    const noop = await patch('page', 'home', { field: 'source', edits: [{ old: 'Hi', new: 'Hi' }] });
+    expect(noop.json()).toMatchObject({ changed: false, version: after });
+    expect(((await proj.getContent('page', 'home')).json() as { version: string }).version).toBe(after);
+  });
+
+  it('a chrome slot patch is validated like a full settings save', async () => {
+    const res = await patch('settings', 'settings', { field: 'website.footer', edits: [{ old: 'x', new: 'y' }] });
+    expect(res.statusCode).toBe(422); // empty slot: nothing to anchor on
+    const settings = ((await proj.getContent('settings', 'settings')).json() as { item: Record<string, unknown> }).item;
+    await proj.putContent('settings', 'settings', { ...settings, website: { ...((settings.website ?? {}) as object), footer: '<div>f</div>' } });
+    const landmark = await patch('settings', 'settings', { field: 'website.footer', edits: [{ old: '<div>f</div>', new: '<footer>f</footer>' }] });
+    expect(landmark.statusCode).toBe(400);
+    expect((landmark.json() as { error: string }).error).toMatch(/Footer/);
+  });
+
+  it('when every attempt loses a race it says RETRY THE SAME CALL — not "your copy is stale"', async () => {
+    const original = ContentRepository.prototype.getWithVersion;
+    vi.spyOn(ContentRepository.prototype, 'getWithVersion').mockImplementation(async function (this: ContentRepository, ...args) {
+      const read = await original.apply(this, args);
+      const [ctx, k, id] = args as [ProjectContext, Parameters<typeof original>[1], string];
+      if (k === 'page') await this.put(ctx, k, id, { ...(read.item as Record<string, unknown>), title: `t${Math.random()}` });
+      return read; // always stale
+    });
+    const res = await patch('page', 'home', { field: 'source', edits: [{ old: 'Hello', new: 'Hi' }] });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { error: string; code?: string };
+    expect(body.code).not.toBe('version_conflict');
+    expect(body.error).toMatch(/retry the same call/);
+  });
+
   it('a write that lands between its read and its write is NOT reverted — the edit is re-applied on top', async () => {
     interleaveOnce('page', (page) => ({ ...page, title: 'Renamed meanwhile', source: `${page.source as string}<!--other-->` }));
     const res = await patch('page', 'home', { field: 'source', edits: [{ old: '<p>One</p>', new: '<p>Uno</p>' }] });

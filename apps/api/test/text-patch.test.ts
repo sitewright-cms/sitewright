@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyTextEdits, readTextField, writeTextField, TEXT_PATCH_FIELDS } from '../src/repo/text-patch.js';
+import { applyTextEdits, readTextField, writeTextField, TEXT_PATCH_FIELDS, TEXT_PATCH_MAX } from '../src/repo/text-patch.js';
 
 describe('applyTextEdits', () => {
   it('replaces a unique anchor and reports one replacement', () => {
@@ -53,6 +53,21 @@ describe('applyTextEdits', () => {
   it('deletes with an empty replacement, and refuses an empty anchor', () => {
     expect(applyTextEdits('keep<b>drop</b>', [{ old: '<b>drop</b>', new: '' }])).toMatchObject({ ok: true, text: 'keep' });
     expect(applyTextEdits('x', [{ old: '', new: 'y' }])).toMatchObject({ ok: false, edit: 0 });
+  });
+
+  it('refuses an edit whose RESULT would exceed the field ceiling — before building it', () => {
+    // all:true multiplies: 100k matches × a 1 KB replacement would be ~100 MB if it were built.
+    const many = 'a'.repeat(100_000);
+    const res = applyTextEdits(many, [{ old: 'a', new: 'x'.repeat(1024), all: true }]);
+    expect(res).toMatchObject({ ok: false, edit: 0 });
+    expect(res.ok === false && res.error).toMatch(/over the 256 KB limit/);
+    // Chained doubling is caught at the edit that crosses the line, not after.
+    const doubling = Array.from({ length: 30 }, () => ({ old: '<', new: '<<', all: true }));
+    expect(applyTextEdits('<'.repeat(1000), doubling)).toMatchObject({ ok: false, edit: 8 });
+    // A single unique edit is held to the same ceiling.
+    expect(applyTextEdits('x', [{ old: 'x', new: 'y'.repeat(TEXT_PATCH_MAX + 1) }])).toMatchObject({ ok: false, edit: 0 });
+    // …and a result exactly AT the ceiling is fine.
+    expect(applyTextEdits('x', [{ old: 'x', new: 'y'.repeat(TEXT_PATCH_MAX) }])).toMatchObject({ ok: true });
   });
 
   it('is all-or-nothing: a failing later edit returns no text at all', () => {

@@ -776,7 +776,11 @@ export class SitewrightClient {
   /** FIND-AND-REPLACE inside one text field of an entity (a page `source`, a chrome slot, the
    *  stylesheet). Each edit's `old` must match exactly once (or every time with `all`); all-or-nothing.
    *  Sends no `If-Match`: the edits are anchored on text, so the server re-applies them over a
-   *  concurrent write instead of refusing. Returns a receipt, never the text. */
+   *  concurrent write instead of refusing. Returns a receipt, never the text.
+   *
+   *  The remembered version for the entity is deliberately NOT re-armed from the receipt: a later full
+   *  put built from the pre-patch read would silently revert this patch, so its 409 ("re-read first")
+   *  is the right answer. */
   async patchText(kind: string, entityId: string, field: string, edits: TextEdit[]): Promise<TextPatchReceipt> {
     return this.request(
       'POST',

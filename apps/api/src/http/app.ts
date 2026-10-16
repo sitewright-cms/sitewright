@@ -949,13 +949,26 @@ function rejectReservedWidgetName(body: unknown): void {
  */
 const PATCH_ATTEMPTS = 8;
 
+/**
+ * What an UNPINNED patch reports when every attempt lost a race. Deliberately not a
+ * VersionConflictError: that one tells the caller its copy is stale and a retry of the same body will
+ * be refused again — the opposite of the truth here, where nothing was pinned and the same call
+ * re-reads and re-applies. A plain 409 that says so.
+ */
+function patchContended(): ConflictError {
+  return new ConflictError(
+    `the entity kept changing while this patch was applied (${PATCH_ATTEMPTS} concurrent writes in a row) — retry the same call; it re-reads and re-applies`,
+  );
+}
+
 /** Run `attempt` until it doesn't lose a version race (at most {@link PATCH_ATTEMPTS} times). */
 async function retryOnVersionConflict<T>(attempt: () => Promise<T>): Promise<T> {
   for (let n = 1; ; n += 1) {
     try {
       return await attempt();
     } catch (err) {
-      if (!(err instanceof VersionConflictError) || n >= PATCH_ATTEMPTS) throw err;
+      if (!(err instanceof VersionConflictError)) throw err;
+      if (n >= PATCH_ATTEMPTS) throw patchContended();
     }
   }
 }
@@ -4600,6 +4613,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const before = readTextField(current.item, field);
         const result = applyTextEdits(before, edits);
         if (!result.ok) return { status: 'unmatched', edit: result.edit, found: result.found, error: result.error };
+        // Nothing changed (every `new` equalled its `old`): no write, so no revision and no event.
+        if (result.text === before) {
+          return { status: 'written', before, after: before, replacements: result.replacements, version: current.version };
+        }
         const next = writeTextField(current.item as Record<string, unknown>, field, result.text);
         validateSourceOnSave(kind, next);
         const item = await contentRepo.put(ctx, kind, entityId, next, { merged: true, expectedVersion: pinned ?? current.version });
@@ -4758,7 +4775,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           });
           break;
         } catch (err) {
-          if (!(guardMerge && err instanceof VersionConflictError && attempt < PATCH_ATTEMPTS)) throw err;
+          if (!(guardMerge && err instanceof VersionConflictError)) throw err;
+          if (attempt >= PATCH_ATTEMPTS) throw patchContended();
         }
       }
       // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).

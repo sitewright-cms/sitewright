@@ -634,7 +634,8 @@ semi-transparent brand track (underscores become spaces):
 Pair it with a \`rounded-*\` class — the ring inherits the radius.
 It repaints a gradient each frame, so use it on a hero accent, NOT on every card in a grid; under
 prefers-reduced-motion BOTH animations drop — the beam parks at the narrow arc and the border stays.
-Prefer it over hand-rolled conic-gradient CSS.
+Prefer it over hand-rolled conic-gradient CSS. A repaint every frame is main-thread work, and
+pagespeed_audit renders WITHOUT a GPU — see EFFECT COST below before putting it on many boxes.
 
 STICKY (fixed) HEADER: set website.effects.stickyHeader to fix the top nav (\`#main-nav\`) to the viewport
 so it stays visible while scrolling. The modes are POSITIONAL ONLY — \`pinned\` (always visible) or
@@ -765,7 +766,21 @@ above it automatically — never author a \`<canvas>\` or add a WebGL/three.js l
 the marker is seen. For legible text add a \`data-sw-part="overlay"\` scrim (e.g. \`class="bg-black/30"\`) and/or
 lower \`data-intensity\`. Falls back to a static CI gradient with no JS, re-themes on a light/dark switch,
 respects prefers-reduced-motion, and pauses while offscreen — keep to a few instances per page. Full
-contract + every preset: get_components.
+contract + every preset: get_components. pagespeed_audit has NO GPU: its Chrome draws WebGL in SOFTWARE
+on the CPU, so a shader background costs far more in the audit than on a visitor's device — see EFFECT
+COST below, and expect it in the audit's main-thread section rather than treating it as a page defect.
+
+EFFECT COST (what pagespeed_audit measures): the audit server renders WITHOUT a GPU — WebGL runs in
+software and every layer is rasterised on the CPU under Lighthouse's mobile CPU throttling — so animated
+backgrounds and animations of \`transform: scale\`, \`background-position\`, \`filter\` or \`box-shadow\` on
+LARGE layers (a full-width hero, a section backdrop) cost far more there and show up as Total Blocking
+Time. Prefer animating \`opacity\` and \`transform\` (translate) on SMALL elements; never animate
+\`background-position\` or \`filter\` on a full-bleed layer. When performance or TBT is poor the audit adds a
+MAIN-THREAD section naming the longest tasks and every animation the compositor refused (element + the
+animated properties). To find which effect costs the time, BISECT: move the suspect CSS into its own named
+block — patch_critical_css({ block:"perf-test", css:"…" }) — run pagespeed_audit, then remove the block
+(patch_critical_css({ block:"perf-test", css:"" }) — an empty \`css\` with the same \`block\` deletes it)
+and audit again; the difference is that effect's cost.
 `,
   },
   i18n: {
@@ -2021,7 +2036,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'visual_audit', description: "STEP 2 and THE visual acceptance TERMINATOR for a cloned page (run clone_audit first): renders your CLONE + the LIVE original full-page (desktop + mobile) SIDE-BY-SIDE + a defect RUBRIC for YOU to judge (no server AI — works with or without a project provider). EVERY round you MUST WRITE OUT an explicit region-by-region difference list (header, hero, each section, footer), each tagged category (layout|spacing|typography|color|image|component|content|chrome|responsive) + severity (blocker|major|minor) — do NOT summarise as 'looks close', ENUMERATE. Faithful = ZERO blocker+major; you may NOT declare done while any is open. SEES what measurements miss: real rendered fonts (getComputedStyle lies), images, layout, dead components. CAVEAT: the full-page shot can MIS-RENDER a position:fixed/sticky HEADER (a fixed nav bar drops to LOGO-ONLY) — always confirm the header + footer against compare_regions (the source of truth for chrome); never conclude 'no desktop nav' from this shot.", capability: 'content:read' },
   { name: 'compare_regions', description: "SPECIALISED zoom for CHROME only — use after visual_audit has flagged a header/footer difference you cannot resolve at 1x. Crops the nav HEADER + FOOTER of BUILD vs ORIGINAL at 2× as lossless WebP, so you can SEE fine chrome detail (gradient stops, skew, shadow, font weight) a 1× full-page image smears.", capability: 'content:read' },
   { name: 'inspect_source', description: "MEASURE the LIVE ORIGINAL (or, with side:'build', your clone): real computed styles + rects + settled markup for the CSS selectors you name. The only tool that returns NUMBERS for the original — use it BEFORE authoring a section instead of eyeballing, and to read chrome a site builds in JAVASCRIPT (the stored import has no such markup). html:true returns the settled outerHTML.", capability: 'content:read' },
-  { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). Lab-only (no CrUX field data): performance is a throttled lab score (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile.", capability: 'content:read' },
+  { name: 'pagespeed_audit', description: "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, production cache headers — not the sandboxed draft preview): four category scores 0–100 (performance/accessibility/best-practices/seo), core lab metrics (FCP/LCP/TBT/CLS/Speed Index), and a ranked list of actionable failing audits (render-blocking, unused JS, unsized images, low contrast, missing meta description) — each with the CONCRETE files/elements to fix and their estimated byte/time savings — plus the page's H1–H6 heading-structure outline with recommendations (missing/duplicate H1, skipped levels). When performance or TBT is poor it adds a main-thread section naming the longest tasks and the animations the compositor refused. Lab-only (no CrUX field data): performance is a throttled lab score from a server with NO GPU (directional); SEO/accessibility/best-practices are deterministic. `formFactor` defaults to mobile (one run); pass 'desktop', or 'both' for both devices from one build (about twice as long). A 503 means every render slot is busy — retry after the stated seconds; a 502 means Lighthouse could not audit the page (its code says why).", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_preview_shares', description: "List the project's preview SHARE links (each with its no-login url, label, expiry and id).", capability: 'content:read' },
   { name: 'create_preview_share', description: "Create a preview SHARE link — a no-login url to the DRAFT site for a client or reviewer. Expires after the instance default unless `expiryDays` says otherwise (0 = never).", capability: 'content:write' },

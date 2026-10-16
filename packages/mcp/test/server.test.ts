@@ -1018,7 +1018,160 @@ describe('pagespeed_audit tool', () => {
     expect(out).toContain('H4  Deep   ⚠ Skips from H2 to H4');
     expect(out).toContain('…and 2 more headings');
     expect(out).toContain('⚠ No H1 heading');
-    expect(callsOf(reader).pagespeedAudit).toHaveBeenCalledWith('home', 'mobile');
+    expect(callsOf(reader).pagespeedAudit).toHaveBeenCalledWith('home', 'mobile', { signal: expect.any(AbortSignal) });
+  });
+
+  it('defaults to ONE mobile run; "desktop" asks for desktop; "both" asks the route for the keyed pair', async () => {
+    const pair = fakeClient({
+      pagespeedAudit: vi.fn(async (_id: string, ff?: string) => {
+        const one = (formFactor: 'mobile' | 'desktop') => ({
+          url: '/',
+          formFactor,
+          scores: { performance: formFactor === 'mobile' ? 61 : 93, accessibility: 100, bestPractices: 100, seo: 100 },
+          metrics: {},
+          findings: [],
+          lighthouseVersion: '13.5.0',
+          fetchedAt: '2026-10-16T00:00:00.000Z',
+        });
+        return ff ? one(ff as 'mobile' | 'desktop') : { mobile: one('mobile'), desktop: one('desktop') };
+      }),
+    });
+    const r = await connect(pair, readScope);
+    const calls = callsOf(pair).pagespeedAudit;
+
+    const dflt = text(await r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
+    expect(calls).toHaveBeenLastCalledWith('home', 'mobile', { signal: expect.any(AbortSignal) });
+    expect(dflt).toContain('· mobile ·');
+    expect(dflt).not.toContain('· desktop ·');
+
+    await r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'desktop' } });
+    expect(calls).toHaveBeenLastCalledWith('home', 'desktop', { signal: expect.any(AbortSignal) });
+
+    const both = text(await r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'both' } }));
+    // No formFactor on the wire = the route's both-devices answer.
+    expect(calls).toHaveBeenLastCalledWith('home', undefined, { signal: expect.any(AbortSignal) });
+    expect(both).toContain('· mobile ·');
+    expect(both).toContain('· desktop ·');
+  });
+
+  it('renders the MAIN-THREAD section: longest tasks, then the animations the compositor refused', async () => {
+    const heavy = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        url: '/',
+        formFactor: 'mobile' as const,
+        scores: { performance: 38, accessibility: 100, bestPractices: 100, seo: 100 },
+        metrics: { totalBlockingTimeMs: 790 },
+        findings: [],
+        mainThread: {
+          longTasks: [
+            { url: '/_assets/_sw/shader-bg.js', durationMs: 412.6, startMs: 2310.4 },
+            { label: 'Unattributable', durationMs: 230 },
+          ],
+          moreLongTasks: 4,
+          nonCompositedAnimations: [
+            {
+              label: 'Welcome to Acme',
+              animations: ['sw-pan'],
+              properties: ['background-position', 'filter'],
+              reasons: ['Unsupported CSS Properties: background-position, filter'],
+            },
+            { reasons: ['Transform-related property depends on box size'] },
+          ],
+          moreNonCompositedAnimations: 2,
+        },
+        lighthouseVersion: '13.5.0',
+        fetchedAt: '2026-10-16T00:00:00.000Z',
+      })),
+    });
+    const out = text(await (await connect(heavy, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
+    expect(out).toMatch(/Main-thread diagnostics/);
+    expect(out).toContain('• /_assets/_sw/shader-bg.js — 413 ms (at 2310 ms)');
+    expect(out).toContain('• Unattributable — 230 ms');
+    expect(out).toContain('…and 4 more');
+    expect(out).toContain('• Welcome to Acme — animation sw-pan · animates background-position, filter');
+    expect(out).toContain('Unsupported CSS Properties: background-position, filter');
+    expect(out).toContain('• (element)');
+    expect(out).toContain('…and 2 more');
+    // …and how to act on it: the no-GPU caveat and the patch_critical_css bisect.
+    expect(out).toMatch(/WITHOUT a GPU/);
+    expect(out).toMatch(/patch_critical_css/);
+  });
+
+  it('a section with only animations (no long tasks) renders just that half', async () => {
+    const anims = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        url: '/',
+        formFactor: 'mobile' as const,
+        scores: { performance: 40, accessibility: 100, bestPractices: 100, seo: 100 },
+        metrics: {},
+        findings: [],
+        mainThread: { longTasks: [], nonCompositedAnimations: [{ label: 'Card', reasons: ['Effect has unsupported timing parameters'] }] },
+        lighthouseVersion: '13.5.0',
+        fetchedAt: '2026-10-16T00:00:00.000Z',
+      })),
+    });
+    const out = text(await (await connect(anims, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }));
+    expect(out).not.toMatch(/Longest tasks/);
+    expect(out).toContain('• Card');
+    expect(out).not.toContain('• Card —');
+  });
+
+  it('a host that CANCELS the call aborts the request it made (so the server can stop the audit)', async () => {
+    let seen: AbortSignal | undefined;
+    const slow = fakeClient({
+      pagespeedAudit: vi.fn(
+        (_id: string, _ff: string | undefined, opts: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) => {
+            seen = opts.signal;
+            opts.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+          }),
+      ),
+    });
+    const r = await connect(slow, readScope);
+    const ac = new AbortController();
+    const call = r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } }, undefined, { signal: ac.signal });
+    await vi.waitFor(() => expect(seen).toBeDefined());
+    ac.abort();
+    await expect(call).rejects.toThrow();
+    await vi.waitFor(() => expect(seen!.aborted).toBe(true));
+  });
+
+  it('gives up after its deadline — aborting the request — and says what to do next', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let seen: AbortSignal | undefined;
+      const wedged = fakeClient({
+        pagespeedAudit: vi.fn(
+          (_id: string, _ff: string | undefined, opts: { signal: AbortSignal }) =>
+            new Promise((_resolve, reject) => {
+              seen = opts.signal;
+              opts.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+            }),
+        ),
+      });
+      const r = await connect(wedged, readScope);
+      const call = r.callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'both' } }, undefined, { timeout: 3_600_000 });
+      await vi.waitFor(() => expect(seen).toBeDefined());
+      await vi.advanceTimersByTimeAsync(420_000);
+      const res = await call;
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/did not finish within 420s/);
+      expect(text(res)).toMatch(/formFactor 'mobile'/); // a 'both' run is told to drop to one
+      expect(seen!.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('passes a busy server (503) through with its own retry guidance', async () => {
+    const busy = fakeClient({
+      pagespeedAudit: vi.fn(async () => {
+        throw new SitewrightApiError(503, 'the headless-render queue is busy — retry in about 15s');
+      }),
+    });
+    const res = await (await connect(busy, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toBe('Error 503: the headless-render queue is busy — retry in about 15s');
   });
 
   it('renders the all-clear line when there are no failing audits', async () => {

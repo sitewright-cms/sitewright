@@ -150,6 +150,11 @@ export type FetchLike = (
     headers?: Record<string, string>;
     /** A JSON payload, or raw BYTES — an inline media upload PUTs the decoded file itself. */
     body?: string | Uint8Array;
+    /**
+     * Aborts the request — closing it is how the server learns the caller gave up, and the long-running
+     * routes (the page-speed audit) stop their work and free their render slot on that close.
+     */
+    signal?: AbortSignal;
   },
 ) => Promise<{ ok: boolean; status: number; statusText: string; text(): Promise<string> }>;
 
@@ -166,7 +171,8 @@ export interface PreviewShot {
  * can retry the one and stop retrying the other.
  */
 export interface ScreenshotUnavailable {
-  reason: 'memory' | 'failed';
+  /** `memory` / `busy` (every render slot in use) are transient; `failed` is not. */
+  reason: 'memory' | 'busy' | 'failed';
   retryable: boolean;
   message: string;
 }
@@ -406,6 +412,31 @@ export interface PagespeedFinding {
   /** How many further items exist beyond the capped `items`. */
   moreItems?: number;
 }
+/** One long (≥ 50 ms) main-thread task. */
+export interface PagespeedLongTask {
+  /** The script/page it is attributed to (origin-relative for the site's own files). */
+  url?: string;
+  /** Lighthouse's attribution when there is no URL ("Unattributable", "Browser GC"). */
+  label?: string;
+  durationMs: number;
+  startMs?: number;
+}
+/** One element whose animation runs on the main thread instead of the compositor. */
+export interface PagespeedAnimationIssue {
+  label?: string;
+  /** CSS animation names involved. */
+  animations?: string[];
+  /** The animated properties the compositor refused. */
+  properties?: string[];
+  reasons: string[];
+}
+/** Main-thread attribution — present only when blocking time or the performance score is poor. */
+export interface PagespeedMainThread {
+  longTasks: PagespeedLongTask[];
+  moreLongTasks?: number;
+  nonCompositedAnimations: PagespeedAnimationIssue[];
+  moreNonCompositedAnimations?: number;
+}
 /** One heading in the page's structure outline. */
 export interface HeadingNode {
   /** Heading level, 1 (H1) … 6 (H6). */
@@ -463,6 +494,8 @@ export interface PagespeedAuditResult {
     speedIndexMs?: number;
   };
   findings: PagespeedFinding[];
+  /** WHY the main thread was busy (long tasks, non-composited animations) — only when TBT/performance is poor. */
+  mainThread?: PagespeedMainThread;
   /** Lighthouse environment notices (e.g. a slow-CPU warning) — explain a host-constrained lab score. */
   runWarnings?: string[];
   /** Chrome's CPU benchmark for the audit host; a low value means the container CPU throttled the run. */
@@ -591,7 +624,13 @@ export class SitewrightClient {
     this.onUnauthorized = onUnauthorized;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, freshToken?: string): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    freshToken?: string,
+    signal?: AbortSignal,
+  ): Promise<T> {
     // On the post-401 retry we use the refreshed token directly (freshToken); otherwise ask the
     // provider for the current one.
     const token = freshToken ?? (await this.tokenProvider());
@@ -615,6 +654,7 @@ export class SitewrightClient {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      ...(signal ? { signal } : {}),
     });
     // A short-lived OAuth token may expire mid-session: refresh once and retry. Concurrent 401s
     // coalesce into a single refresh so the rotating refresh token isn't consumed twice (which the
@@ -627,7 +667,7 @@ export class SitewrightClient {
       });
       const fresh = await this.refreshPromise;
       if (fresh) {
-        return this.request<T>(method, path, body, fresh);
+        return this.request<T>(method, path, body, fresh, signal);
       }
     }
     if (res.status === 204) {
@@ -937,11 +977,27 @@ export class SitewrightClient {
     return this.request('POST', this.projectPath(`/inspect-source/${encodeURIComponent(pageId)}`), body);
   }
 
-  /** Lighthouse page-speed + SEO audit of a page (deploy-equivalent build). `formFactor` defaults to mobile. */
-  /** Omit `formFactor` for BOTH devices from one build+serve (returned keyed by device). */
-  async pagespeedAudit(pageId: string, formFactor?: 'mobile' | 'desktop'): Promise<unknown> {
+  /**
+   * Lighthouse page-speed + SEO audit of a page (deploy-equivalent build). This mirrors the ROUTE:
+   * omit `formFactor` for BOTH devices from one build+serve (returned keyed by device). The MCP tool
+   * applies its own mobile default before calling this.
+   *
+   * `signal` aborts the request — and the server, seeing the request close, kills the audit's Chrome
+   * and frees its render slot. Pass it whenever the caller can give up (a host cancelling a tool call).
+   */
+  async pagespeedAudit(
+    pageId: string,
+    formFactor?: 'mobile' | 'desktop',
+    opts: { signal?: AbortSignal } = {},
+  ): Promise<unknown> {
     const suffix = formFactor ? `?formFactor=${formFactor}` : '';
-    return this.request('GET', this.projectPath(`/pagespeed-audit/${encodeURIComponent(pageId)}${suffix}`));
+    return this.request(
+      'GET',
+      this.projectPath(`/pagespeed-audit/${encodeURIComponent(pageId)}${suffix}`),
+      undefined,
+      undefined,
+      opts.signal,
+    );
   }
 
   async publish(): Promise<unknown> {

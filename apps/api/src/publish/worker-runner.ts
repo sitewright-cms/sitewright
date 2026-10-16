@@ -54,6 +54,9 @@ export class WorkerBuildRunner implements BuildRunner {
   constructor(private readonly opts: WorkerRunnerOptions) {}
 
   async run(job: BuildJob): Promise<ReleaseManifest> {
+    // The signal cannot cross into the container (the job is serialized), so it is honoured HERE:
+    // before spawning, and by killing the container if it fires mid-build.
+    job.signal?.throwIfAborted();
     const workerJob = await this.buildWorkerJob(job);
     const payload = JSON.stringify(workerJob);
     const maxBytes = this.opts.maxJobBytes ?? 64 * 1024 * 1024; // 64 MiB
@@ -87,7 +90,7 @@ export class WorkerBuildRunner implements BuildRunner {
       'dist/publish/build-worker.js',
     ];
 
-    const stdout = await this.spawnWorker(args, payload);
+    const stdout = await this.spawnWorker(args, payload, job.signal);
     let parsed: WorkerResult;
     try {
       parsed = JSON.parse(stdout) as WorkerResult;
@@ -134,7 +137,7 @@ export class WorkerBuildRunner implements BuildRunner {
     };
   }
 
-  private spawnWorker(args: string[], stdin: string): Promise<string> {
+  private spawnWorker(args: string[], stdin: string, signal?: AbortSignal): Promise<string> {
     const spawn: Spawn = this.opts.spawnImpl ?? nodeSpawn;
     const timeoutMs = this.opts.timeoutMs ?? 120_000;
     // Bound the buffered artifact so a rogue/buggy worker can't OOM the API.
@@ -149,6 +152,7 @@ export class WorkerBuildRunner implements BuildRunner {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
         fn();
       };
       const timer = setTimeout(() => {
@@ -157,6 +161,14 @@ export class WorkerBuildRunner implements BuildRunner {
           rejectP(new Error('build worker timed out'));
         });
       }, timeoutMs);
+      // The caller went away (e.g. an abandoned page-speed audit): stop the container now rather than
+      // let it run to completion for nobody.
+      const onAbort = (): void =>
+        finish(() => {
+          child.kill('SIGKILL');
+          rejectP((signal as AbortSignal).reason);
+        });
+      signal?.addEventListener('abort', onAbort, { once: true });
 
       child.stdout?.on('data', (d: Buffer) => {
         outBytes += d.length;

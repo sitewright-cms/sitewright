@@ -31,7 +31,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
-import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type TextEdit } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedMainThread, type TextEdit } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
@@ -364,6 +364,44 @@ function requireProjectArgument(server: McpServer, client: SitewrightClient): vo
       },
     );
   };
+}
+
+/**
+ * How long `pagespeed_audit` waits before abandoning its request — a BACKSTOP, not an expectation (a
+ * mobile audit normally takes well under a minute). Abandoning means aborting the request, and the
+ * server answers that close by killing the audit's Chrome and freeing its render slot.
+ */
+const PAGESPEED_TIMEOUT_MS = 240_000;
+/** `formFactor: 'both'` runs Lighthouse twice against one build. */
+const PAGESPEED_BOTH_TIMEOUT_MS = 420_000;
+
+/** The audit's main-thread section as report lines: the longest tasks, then the non-composited animations. */
+function mainThreadLines(mt: PagespeedMainThread): string[] {
+  const lines = ['', 'Main-thread diagnostics (what blocked the main thread):'];
+  if (mt.longTasks.length > 0) {
+    lines.push('  Longest tasks:');
+    for (const t of mt.longTasks) {
+      const at = t.startMs !== undefined ? ` (at ${Math.round(t.startMs)} ms)` : '';
+      lines.push(`    • ${t.url ?? t.label ?? '(task)'} — ${Math.round(t.durationMs)} ms${at}`);
+    }
+    if (mt.moreLongTasks) lines.push(`    • …and ${mt.moreLongTasks} more`);
+  }
+  if (mt.nonCompositedAnimations.length > 0) {
+    lines.push('  Animations the compositor refused (repainted on the main thread every frame):');
+    for (const a of mt.nonCompositedAnimations) {
+      const what = [
+        a.animations?.length ? `animation ${a.animations.join(', ')}` : '',
+        a.properties?.length ? `animates ${a.properties.join(', ')}` : '',
+      ].filter((s) => s.length > 0);
+      lines.push(`    • ${a.label ?? '(element)'}${what.length ? ` — ${what.join(' · ')}` : ''}`);
+      for (const reason of a.reasons) lines.push(`        ${reason}`);
+    }
+    if (mt.moreNonCompositedAnimations) lines.push(`    • …and ${mt.moreNonCompositedAnimations} more`);
+  }
+  lines.push(
+    '  The audit server renders WITHOUT a GPU: prefer animating transform/opacity on small elements. To find the culprit, move a suspect effect into its own patch_critical_css `block`, audit, then remove it (empty `css`, same `block`) and audit again.',
+  );
+  return lines;
 }
 
 /** Render the website-import report as a readable next-step summary (the `import_website` tool result). */
@@ -1134,16 +1172,30 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'pagespeed_audit',
     {
       description:
-        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). Lab-only — no real-user CrUX field data; the performance score is a throttled lab run (directional), while SEO / accessibility / best-practices are deterministic. It also reports OVERSIZED IMAGES, which Lighthouse structurally cannot: its image audits read element boxes, so a CSS background served at the largest rung is invisible to it. RUN THIS ON EVERY PAGE YOU FINISH, before telling anyone the page is done — it is the only check that sees what you actually shipped. OMIT `formFactor` to get BOTH devices from one run, keyed `{ mobile, desktop }` — the expensive half is building and serving the site, which is shared, so both cost barely more than one and you should not call this twice. Pass 'mobile' or 'desktop' only when you genuinely need just that one.",
-      inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop']).optional() },
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). When performance or Total Blocking Time is poor it adds a MAIN-THREAD section naming the longest tasks (script + duration) and every animation the compositor refused (element + the animated CSS properties) — that is where a CSS effect or an animated background that costs blocking time shows up. Lab-only — no real-user CrUX field data; the performance score is a throttled lab run on a server WITHOUT a GPU (directional), while SEO / accessibility / best-practices are deterministic. It also reports OVERSIZED IMAGES, which Lighthouse structurally cannot: its image audits read element boxes, so a CSS background served at the largest rung is invisible to it. RUN THIS ON EVERY PAGE YOU FINISH, before telling anyone the page is done — it is the only check that sees what you actually shipped. `formFactor` defaults to 'mobile' (one Lighthouse run, the stricter profile); pass 'desktop' for the desktop profile, or 'both' for both devices from ONE build, keyed `{ mobile, desktop }` (about twice as long — the build is shared, the two Lighthouse runs are not). A 503 means every render slot is busy with other audits/screenshots — wait the stated seconds and retry; a 502 means Lighthouse could not audit the page, and its code says why.",
+      inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop', 'both']).optional() },
     },
-    async ({ pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' }): Promise<ToolResult> => {
+    async (
+      { pageId, formFactor }: { pageId: string; formFactor?: 'mobile' | 'desktop' | 'both' },
+      extra?: { signal?: AbortSignal },
+    ): Promise<ToolResult> => {
       if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       if (!holder.scope.capabilities.includes('content:read')) {
         return toolError(`${connectionLabel(holder.scope)} lacks the “content:read” capability.`);
       }
+      // Mobile unless asked: one Lighthouse run instead of two. The route's own default is BOTH (the
+      // editor's panel shows both), so the tool always says which it wants.
+      const want = formFactor ?? 'mobile';
+      // The request is ABORTED — not merely forgotten — when the host cancels this call or the deadline
+      // passes. Closing it is what tells the server to kill the audit's Chrome and free its render slot;
+      // a request that is only abandoned keeps both, which is how three timed-out calls left the next
+      // one queueing behind two ghosts.
+      const budgetMs = want === 'both' ? PAGESPEED_BOTH_TIMEOUT_MS : PAGESPEED_TIMEOUT_MS;
+      const deadline = new AbortController();
+      const timer = setTimeout(() => deadline.abort(new Error('pagespeed audit deadline')), budgetMs);
+      const signal = extra?.signal ? AbortSignal.any([extra.signal, deadline.signal]) : deadline.signal;
       try {
-        const raw = await client.pagespeedAudit(pageId, formFactor);
+        const raw = await client.pagespeedAudit(pageId, want === 'both' ? undefined : want, { signal });
         const pct = (n: number | null): string => (n === null ? '—' : String(n));
         const ms = (n?: number): string => (n === undefined ? '—' : `${Math.round(n)} ms`);
         const kib = (bytes: number): string => `${Math.round(bytes / 1024)} KiB`;
@@ -1191,6 +1243,10 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
             if (f.moreItems) lines.push(`      • …and ${f.moreItems} more`);
           }
         }
+        // WHY the main thread was busy. Lighthouse reports long tasks and non-composited animations as
+        // INFORMATIVE audits, so they never appear among the failing findings above — and without them a
+        // jump in blocking time after adding a few CSS effects could not be traced to any of them.
+        if (r.mainThread) lines.push(...mainThreadLines(r.mainThread));
         // Heading (h1–h6) structure outline + its SEO/accessibility recommendations.
         if (r.outline) {
           lines.push('', 'Heading structure:');
@@ -1229,8 +1285,17 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         lines.push('', 'Note: performance is a throttled LAB score (directional); SEO / accessibility / best-practices are deterministic. No real-user field data.');
         return { content: [{ type: 'text', text: lines.join('\n') }] };
       } catch (err) {
+        if (deadline.signal.aborted) {
+          return toolError(
+            `Error: the page-speed audit did not finish within ${Math.round(budgetMs / 1000)}s, so it was abandoned — the server stopped the run and freed its render slot. ` +
+              `Retry once${want === 'both' ? " with formFactor 'mobile' (one run instead of two)" : ''}; if it times out again, the page itself is likely too heavy to load (check its scripts and animated backgrounds).`,
+          );
+        }
+        if (extra?.signal?.aborted) return toolError('Error: the page-speed audit was cancelled; the server stopped the run.');
         if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
         return toolError(`Error: ${err instanceof Error ? err.message : 'pagespeed audit failed'}`);
+      } finally {
+        clearTimeout(timer);
       }
     },
   );

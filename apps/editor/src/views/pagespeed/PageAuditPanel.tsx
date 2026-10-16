@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Smartphone,
   Monitor,
@@ -16,6 +16,7 @@ import {
   type PagespeedFinding,
   type HeadingOutline,
   type ImageSizingReport,
+  type PagespeedMainThread,
 } from "../../api";
 import { CapacityNotice } from "../ui/CapacityNotice";
 import { primaryButton, gradientSurface } from "../../theme";
@@ -420,6 +421,94 @@ function ImageSizingView({ report }: { report: ImageSizingReport }) {
 }
 
 /**
+ * WHAT BLOCKED THE MAIN THREAD — the longest tasks and every animation the compositor refused.
+ *
+ * ★ Lighthouse files both as INFORMATIVE audits, so they never appear among the recommendations above,
+ * and the scored diagnostics that do (`mainthread-work-breakdown`) only say "Other: 2 s". An author
+ * whose blocking time jumped from 0 to 790 ms after adding a few CSS effects had nothing to trace it to.
+ * The server only sends this when blocking time or the performance score is poor.
+ */
+export function MainThreadView({ mainThread }: { mainThread: PagespeedMainThread }) {
+  const { longTasks, moreLongTasks, nonCompositedAnimations, moreNonCompositedAnimations } = mainThread;
+  const tasksId = useId();
+  const animsId = useId();
+  return (
+    <div>
+      <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        Main-thread blocking
+      </h4>
+      {longTasks.length > 0 ? (
+        <>
+          <p id={tasksId} className="mb-1 text-xs text-slate-500 dark:text-slate-400">
+            Longest main-thread tasks
+          </p>
+          <ul aria-labelledby={tasksId} className="mb-2 flex flex-col gap-1">
+            {longTasks.map((t, i) => (
+              <li key={i} className="flex items-baseline gap-2 text-xs">
+                <Tooltip tip={t.url ?? t.label ?? ""} className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                    {t.url ?? t.label ?? "—"}
+                  </span>
+                </Tooltip>
+                {t.startMs !== undefined ? (
+                  <span className="shrink-0 tabular-nums text-slate-500 dark:text-slate-400">
+                    at {secs(t.startMs)}
+                  </span>
+                ) : null}
+                <span className="shrink-0 tabular-nums font-medium text-amber-600 dark:text-amber-400">
+                  {msFmt(t.durationMs)}
+                </span>
+              </li>
+            ))}
+            {moreLongTasks ? (
+              <li className="text-xs text-slate-500 dark:text-slate-400">…and {moreLongTasks} more</li>
+            ) : null}
+          </ul>
+        </>
+      ) : null}
+      {nonCompositedAnimations.length > 0 ? (
+        <>
+          <p id={animsId} className="mb-1 text-xs text-slate-500 dark:text-slate-400">
+            Animations not on the compositor — repainted on the main thread every frame
+          </p>
+          <ul aria-labelledby={animsId} className="mb-2 flex flex-col gap-1.5">
+            {nonCompositedAnimations.map((a, i) => (
+              <li
+                key={i}
+                className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="font-medium">{a.label ?? "(element)"}</span>
+                  {a.animations?.length ? (
+                    <span>animation <span className="font-mono text-[11px]">{a.animations.join(", ")}</span></span>
+                  ) : null}
+                  {a.properties?.length ? (
+                    <span>animates <span className="font-mono text-[11px]">{a.properties.join(", ")}</span></span>
+                  ) : null}
+                </div>
+                {a.reasons.map((r, j) => (
+                  <p key={j} className="mt-0.5 opacity-90">
+                    {r}
+                  </p>
+                ))}
+              </li>
+            ))}
+            {moreNonCompositedAnimations ? (
+              <li className="text-xs text-slate-500 dark:text-slate-400">…and {moreNonCompositedAnimations} more</li>
+            ) : null}
+          </ul>
+        </>
+      ) : null}
+      <p className="text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+        The audit server renders without a GPU, so animated backgrounds and animations of scale,
+        background-position, filter or box-shadow on large elements cost far more here. Prefer animating
+        opacity/transform on small elements.
+      </p>
+    </div>
+  );
+}
+
+/**
  * The page's H1–H6 heading outline as an indented tree, with SEO/accessibility recommendations:
  * document-level notices (missing / duplicate H1, no headings) above the tree, and a per-heading warning
  * marker (skipped level, empty heading) inline. Text is rendered as plain text — never HTML.
@@ -522,7 +611,7 @@ function AuditSkeleton() {
 }
 
 function AuditReport({ result }: { result: PagespeedAuditResult }) {
-  const { scores, metrics, findings, runWarnings, outline, imageSizing } = result;
+  const { scores, metrics, findings, mainThread, runWarnings, outline, imageSizing } = result;
   // Surface Lighthouse's own environment notices (e.g. its slow-CPU warning — emitted whenever the host
   // benchmark ≤ 1000) so a host-constrained lab score is understood, not mistaken for a page defect. We
   // defer to Lighthouse's wording + threshold rather than synthesize a second, near-duplicate line.
@@ -570,6 +659,7 @@ function AuditReport({ result }: { result: PagespeedAuditResult }) {
         )}
       </div>
 
+      {mainThread ? <MainThreadView mainThread={mainThread} /> : null}
       {imageSizing ? <ImageSizingView report={imageSizing} /> : null}
       {outline ? <HeadingOutlineView outline={outline} /> : null}
 

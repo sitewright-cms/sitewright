@@ -384,13 +384,22 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
+import { RenderQueueBusyError } from '../render/render-slots.js';
 import { clampShots } from '../render/mcp-image.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, measureHeaderAt, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot, captureIssue
 } from '../render/compare.js';
 import { INSPECT_LIMITS } from '../render/inspect-probe.js';
 import { structuralChecks, behaviouralChecks, visualChecks, assembleAudit, type AuditCheck } from '../render/clone-audit.js';
 import { VISUAL_AUDIT_RUBRIC, VISUAL_DEFECT_CATEGORIES, VISUAL_DEFECT_SEVERITIES } from '../render/visual-audit.js';
-import { runPagespeedAudit, redactOrigin, rebaseFindingUrls, PagespeedUnavailableError, type FormFactor } from '../render/pagespeed-audit.js';
+import {
+  runPagespeedAudit,
+  redactOrigin,
+  rebaseFindingUrls,
+  rebaseMainThread,
+  PagespeedUnavailableError,
+  PagespeedRunError,
+  type FormFactor,
+} from '../render/pagespeed-audit.js';
 import { extractHeadings, analyzeHeadingOutline, type HeadingOutline } from '../render/heading-outline.js';
 import { extractImageRefs, analyzeImageSizing, type ImageSizingReport } from '../render/image-sizing.js';
 import { serveBuiltSite, mimeTypeForFilename } from '../render/serve-built-site.js';
@@ -1335,8 +1344,9 @@ async function styledSourceDocument(
 
 /** Why a requested screenshot is missing, so the caller can SAY so instead of silently omitting it. */
 export interface ScreenshotUnavailable {
-  /** `memory` is transient backpressure; `failed` is this document/environment (no Chromium, a render error). */
-  reason: 'memory' | 'failed';
+  /** `memory` / `busy` are transient backpressure (the memory ledger, every render slot in use);
+   *  `failed` is this document/environment (no Chromium, a render error). */
+  reason: 'memory' | 'busy' | 'failed';
   retryable: boolean;
   message: string;
 }
@@ -1389,6 +1399,11 @@ async function previewScreenshots(
     }));
     return { shots };
   } catch (err) {
+    // Every render slot stayed busy for the whole wait — backpressure, like the memory refusal above,
+    // so say it is worth retrying rather than filing it with the permanent failures below.
+    if (err instanceof RenderQueueBusyError) {
+      return { unavailable: { reason: 'busy', retryable: true, message: `the screenshot was skipped: ${err.message}` } };
+    }
     const message = err instanceof Error ? err.message : String(err);
     req.log?.warn({ err: message }, 'preview screenshot failed');
     // NOT retryable: a render error or a build with no Chromium will fail again immediately. Saying
@@ -2249,9 +2264,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.code(503).send({
         code: 'capacity',
         transient,
-        error: transient
-          ? 'temporarily out of capacity — this is transient, retry shortly'
-          : 'out of capacity — this instance has been refusing for a while; retrying immediately will not help',
+        // The render queue's message is OUR fixed text (no plugin detail in it) and says which
+        // resource is full — every slot held by other audits/screenshots — so it is passed through.
+        error:
+          err instanceof RenderQueueBusyError
+            ? err.message
+            : transient
+              ? 'temporarily out of capacity — this is transient, retry shortly'
+              : 'out of capacity — this instance has been refusing for a while; retrying immediately will not help',
       });
     }
     if (status === 413) return reply.code(413).send({ error: 'request body too large' });
@@ -8392,7 +8412,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     ctx: ProjectContext,
     project: Awaited<ReturnType<ProjectRepository['get']>>,
     outDir: string,
-    buildOpts: { minify?: boolean } = {},
+    // `signal`: a build whose caller can go away (the page-speed audit) stops at its next step.
+    buildOpts: { minify?: boolean; signal?: AbortSignal } = {},
   ): Promise<ReleaseManifest> {
     const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
@@ -8412,6 +8433,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       globalTemplates,
       // Minify is now a `local` deploy-target serve option (the caller passes it) — no longer a website field.
       ...(buildOpts.minify ? { minifyHtml: true } : {}),
+      ...(buildOpts.signal ? { signal: buildOpts.signal } : {}),
       // readStored accepts image variant / raw file / font face names (superset) — all copied in.
       readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
       // Generated thumbnails go back into the asset dir — the same cache `ensureThumb` fills — so a
@@ -9567,7 +9589,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // non-representative of what a visitor actually gets. Returns category scores (performance / accessibility
     // / best-practices / seo), core lab metrics, and a ranked list of actionable findings. Lab-only (no CrUX
     // field data): perf is directional; SEO / a11y / best-practices are deterministic. `?formFactor=` picks
-    // the emulated device (default mobile). content:read.
+    // ONE emulated device; omitted, BOTH run (keyed by device) — the editor's panel relies on that, while
+    // the MCP tool asks for mobile unless told otherwise. content:read.
     app.get<{ Params: { projectId: string; pageId: string }; Querystring: { formFactor?: string } }>(
       '/projects/:projectId/pagespeed-audit/:pageId',
       { config: rl(3) },
@@ -9599,13 +9622,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const local = await findLocalTarget(ctx);
         const dir = await mkdtemp(join(tmpdir(), 'sw-pagespeed-'));
         let served: Awaited<ReturnType<typeof serveBuiltSite>> | undefined;
-        // Note when the client goes away (panel closed / navigated) so we don't reply to a dead socket.
+        // The ephemeral loopback origin, once served — what every outgoing string is scrubbed of.
+        let servedOrigin = '';
+        // The client going away (panel closed, an agent's tool call timed out) ABORTS the work: the
+        // queued slot wait, the build, and Lighthouse — whose Chrome is killed. It used to only skip the
+        // reply, so an abandoned audit kept building and auditing inside its render slot; two of those
+        // held BOTH slots and the caller's retry waited out the queue into a 500.
         const abort = abortOnClose(req);
+        const { signal } = abort;
         try {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
           // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion.
           const result = await withRenderSlot(async () => {
-            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml });
+            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
             // Published asset sizes, read once from the build we just produced. Best-effort: a missing
@@ -9623,6 +9652,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             }
             // Report the LOGICAL page path, never the internal ephemeral loopback URL/port.
             const origin = new URL(served.url).origin;
+            servedOrigin = origin;
             // Heading-structure outline (SEO): best-effort — parse the served static HTML. Hoisted OUT
             // of the device loop: the heading structure is a property of the markup, identical on both
             // passes, so fetching it per device would just be a second request for the same answer.
@@ -9632,7 +9662,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // served markup, and both are properties of the BUILD, identical across device passes.
             let imageSizing: ImageSizingReport | undefined;
             try {
-              const res = await fetch(pageUrl, { signal: abort.signal });
+              const res = await fetch(pageUrl, { signal });
               if (res.ok) {
                 const servedHtml = await res.text();
                 outline = analyzeHeadingOutline(extractHeadings(servedHtml));
@@ -9649,16 +9679,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             for (const formFactor of wanted) {
               // SEQUENTIAL, not concurrent: two Chrome instances at once is the shape that pushed this
               // container into shedding in the first place. The build is shared; the browsers are not.
-              if (abort.signal.aborted) break;
-              const audit = await runPagespeedAudit(pageUrl, { formFactor });
+              signal.throwIfAborted();
+              const audit = await runPagespeedAudit(pageUrl, { formFactor, signal });
               // Scrub the loopback origin from every run-warning (a redirect warning interpolates the
-              // navigated URL) and per-resource finding URL before it leaves the server.
+              // navigated URL), per-resource finding URL and main-thread task before it leaves the server.
               const runWarnings = redactOrigin(audit.runWarnings, origin);
               const findings = rebaseFindingUrls(audit.findings, origin);
+              const mainThread = rebaseMainThread(audit.mainThread, origin);
               runs[formFactor] = {
                 ...audit,
                 url: publicPath,
                 findings,
+                ...(mainThread ? { mainThread } : {}),
                 ...(runWarnings ? { runWarnings } : {}),
                 ...(outline ? { outline } : {}),
                 ...(imageSizing && imageSizing.findings.length > 0 ? { imageSizing } : {}),
@@ -9667,10 +9699,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // One device asked for ⇒ that result verbatim (unchanged shape for existing callers).
             // Otherwise the pair, keyed by device.
             return only ? runs[only] : runs;
-          });
-          if (abort.signal.aborted) return reply; // client disconnected mid-run — the response is moot
+          }, { signal });
+          if (signal.aborted) return reply; // client disconnected mid-run — the response is moot
           return reply.send(result);
         } catch (err) {
+          // The client is gone: whatever was thrown — the abort itself, or Lighthouse failing because its
+          // Chrome was killed — answers nobody.
+          if (signal.aborted) return reply;
           // Author-correctable build failures (bad route graph / bad json_data URL) surface as 409, like publish.
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -9681,6 +9716,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             req.log.warn({ err }, 'pagespeed audit: no headless browser available');
             return reply.code(503).send({ error: 'page-speed audit is unavailable: no headless browser could be launched' });
           }
+          // Lighthouse ran but could not audit the page (NO_FCP, PAGE_HUNG, a protocol timeout…) → 502 with
+          // Lighthouse's code + sentence, so the author learns WHAT failed. The sentence can interpolate the
+          // navigated URL, i.e. the internal loopback origin — scrubbed like every other string here.
+          if (err instanceof PagespeedRunError) {
+            req.log.warn({ code: err.code }, 'pagespeed audit: Lighthouse could not audit the page');
+            const [message] = redactOrigin([err.message], servedOrigin) as string[];
+            return reply.code(502).send({ code: err.code, error: `Lighthouse could not audit this page: ${message}` });
+          }
+          // A busy render queue (RenderQueueBusyError) carries its own 503 + retry-after, which the global
+          // handler sends; anything else is a genuine fault.
           throw err;
         } finally {
           await served?.close();

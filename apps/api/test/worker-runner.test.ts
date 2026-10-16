@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -32,15 +32,15 @@ interface FakeOpts {
   hang?: boolean;
 }
 
-/** A fake `spawn` capturing args/stdin and emitting a canned worker result. */
-function fakeSpawn(opts: FakeOpts, capture: { args?: string[]; stdin?: string }) {
+/** A fake `spawn` capturing args/stdin (and the kill signal, if any) and emitting a canned worker result. */
+function fakeSpawn(opts: FakeOpts, capture: { args?: string[]; stdin?: string; killed?: string }) {
   return (_cmd: string, args: string[]) => {
     capture.args = args;
     const child = new EventEmitter() as unknown as {
       stdout: EventEmitter;
       stderr: EventEmitter;
       stdin: { end: (s: string) => void; on: () => void };
-      kill: () => void;
+      kill: (sig?: string) => void;
       on: EventEmitter['on'];
       emit: EventEmitter['emit'];
     };
@@ -48,7 +48,9 @@ function fakeSpawn(opts: FakeOpts, capture: { args?: string[]; stdin?: string })
     const stderr = new EventEmitter();
     child.stdout = stdout;
     child.stderr = stderr;
-    child.kill = () => {};
+    child.kill = (sig?: string) => {
+      capture.killed = sig ?? 'SIGTERM';
+    };
     child.stdin = {
       on: () => {},
       end: (s: string) => {
@@ -105,6 +107,26 @@ describe('WorkerBuildRunner', () => {
   it('kills and rejects on timeout', async () => {
     const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 30, spawnImpl: fakeSpawn({ hang: true }, {}) });
     await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [] })).rejects.toThrow(/timed out/);
+  });
+
+  it('kills the container and rejects with the abort reason when the caller goes away mid-build', async () => {
+    const capture: { args?: string[]; stdin?: string; killed?: string } = {};
+    const runner = new WorkerBuildRunner({ image: 'x', timeoutMs: 60_000, spawnImpl: fakeSpawn({ hang: true }, capture) });
+    const ac = new AbortController();
+    const run = runner.run({ outDir, bundle, publishedAt: 't', media: [], signal: ac.signal });
+    await vi.waitFor(() => expect(capture.stdin).toBeDefined()); // the worker is running
+    ac.abort(new Error('client went away'));
+    await expect(run).rejects.toThrow('client went away');
+    expect(capture.killed).toBe('SIGKILL');
+  });
+
+  it('an already-aborted signal never spawns a worker', async () => {
+    const capture: { args?: string[]; stdin?: string; killed?: string } = {};
+    const runner = new WorkerBuildRunner({ image: 'x', spawnImpl: fakeSpawn({ hang: true }, capture) });
+    const ac = new AbortController();
+    ac.abort(new Error('gone already'));
+    await expect(runner.run({ outDir, bundle, publishedAt: 't', media: [], signal: ac.signal })).rejects.toThrow('gone already');
+    expect(capture.args).toBeUndefined();
   });
 
   it('rejects malformed worker output', async () => {

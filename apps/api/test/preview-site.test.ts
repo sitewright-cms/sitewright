@@ -194,6 +194,37 @@ describe('buildSite preview options', () => {
     expect(manifest.routes).toBeGreaterThan(0);
   });
 
+  it('an aborted signal stops the build at its next step and leaves no temp dir behind', async () => {
+    // The page-speed audit builds a throwaway site for a caller that can disconnect. An abandoned
+    // audit must stop rendering — it holds a render slot — rather than finish a site nobody reads.
+    const ac = new AbortController();
+    const seen: string[] = [];
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle(pages),
+        signal: ac.signal,
+        onProgress: (p) => {
+          seen.push(p.phase);
+          if (p.phase === 'pages') ac.abort(new Error('client went away'));
+        },
+      }),
+    ).rejects.toThrow('client went away');
+    // Stopped at the first page boundary after the abort: no later phase ran.
+    expect(seen).not.toContain('finalizing');
+    await expect(readFile(join(outDir, 'index.html'), 'utf8')).rejects.toThrow();
+    await expect(readFile(join(`${outDir}.tmp`, 'index.html'), 'utf8')).rejects.toThrow();
+  });
+
+  it('an already-aborted signal never starts the build', async () => {
+    const ac = new AbortController();
+    ac.abort();
+    await expect(
+      buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(pages), signal: ac.signal }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('a clean build reports no page failures at all', async () => {
     const manifest = await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

@@ -404,6 +404,10 @@
     ]
   },
   {
+    "name": "search_google_fonts",
+    "required": []
+  },
+  {
     "name": "search_icons",
     "required": [
       "query"
@@ -421,6 +425,28 @@
     "name": "search_textures",
     "required": [
       "query"
+    ]
+  },
+  {
+    "name": "select_google_font",
+    "required": [
+      "family",
+      "project",
+      "weights"
+    ]
+  },
+  {
+    "name": "set_font_metadata",
+    "required": [
+      "id",
+      "project"
+    ]
+  },
+  {
+    "name": "set_media_alt",
+    "required": [
+      "items",
+      "project"
     ]
   },
   {

@@ -161,3 +161,38 @@ describe('fonts as media assets', () => {
     expect(res.statusCode).toBe(413);
   });
 });
+
+describe('correcting a font asset after upload (PATCH /media/:id)', () => {
+  /** A dropped `Inter-Bold.woff2` with no metadata — recorded as family "Inter-Bold", weight 400. */
+  async function guessedFont() {
+    const ctx = await setup('fontfix@e2e.test');
+    const { payload, headers } = multipart(woff2Bytes(), 'Inter-Bold.woff2');
+    const res = await app.inject({ method: 'POST', url: `/projects/${ctx.projectId}/media`, cookies: { sw_session: ctx.t }, headers, payload });
+    expect(res.statusCode).toBe(201);
+    return { ...ctx, font: res.json().item as { id: string; url: string; files: Array<{ file: string }> } };
+  }
+  const patch = (t: string, projectId: string, id: string, body: Record<string, unknown>) =>
+    app.inject({ method: 'PATCH', url: `/projects/${projectId}/media/${id}`, cookies: { sw_session: t }, payload: body });
+
+  it('fixes family, weight, style and fallback in place — the id, file and URL do not move', async () => {
+    const { t, projectId, slug, font } = await guessedFont();
+    const res = await patch(t, projectId, font.id, { family: 'Inter', weight: 700, style: 'italic', fallback: 'serif' });
+    expect(res.statusCode).toBe(200);
+    const item = res.json().item;
+    expect(item).toMatchObject({ id: font.id, kind: 'font', family: 'Inter', filename: 'Inter', fallback: 'serif', url: font.url });
+    expect(item.files).toEqual([{ weight: 700, style: 'italic', format: 'woff2', file: font.files[0]!.file }]);
+    // Still served from the same URL — a criticalCss url() pointing at it keeps working.
+    expect((await app.inject({ method: 'GET', url: `/media/${slug}/${font.id}-${font.files[0]!.file}` })).statusCode).toBe(200);
+  });
+
+  it('answers a bad correction with the reason, and stores nothing', async () => {
+    const { t, projectId, font } = await guessedFont();
+    expect((await patch(t, projectId, font.id, { weight: 450 })).statusCode).toBe(400);
+    expect((await patch(t, projectId, font.id, { family: 'Evil"}' })).statusCode).toBe(400);
+    const wrongFace = await patch(t, projectId, font.id, { face: 'nope-400.woff2', weight: 700 });
+    expect(wrongFace.statusCode).toBe(400);
+    expect(wrongFace.json().error).toMatch(/no face/);
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } });
+    expect((list.json().items as Array<{ id: string; family?: string }>).find((a) => a.id === font.id)?.family).toBe('Inter-Bold');
+  });
+});

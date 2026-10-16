@@ -263,6 +263,9 @@ DESIGN TOKENS — where a reusable value LIVES. \`identity.colors\`/\`spacing\`/
 put_content("settings","settings",{ identity:{ cssTokens:{ "grad-hero":"linear-gradient(135deg,#06f,#0cf)", "z1":"0 2px 5px rgba(0,0,0,.2)", "ease-out":"cubic-bezier(.16,1,.3,1)" } } }, merge:true)
 then use var(--sw-grad-hero) / var(--sw-z1) anywhere CSS is allowed (criticalCss, a <style> block, an inline style, a Tailwind arbitrary value like [box-shadow:var(--sw-z1)]). Define a repeated value ONCE here rather than retyping the literal on every page or burying it in criticalCss where nothing validates it. cssTokens generate NO utility class (they are values, not roles) — always reach them through var(). A token may reference another (var(--sw-color-primary), color-mix(), calc()); url() and the other resource-fetching functions are REJECTED, so images belong in the media library.
 
+FONTS — set them in identity.typography, never with a fonts.googleapis.com <link> or @import. A slot is { source, family, weight, assetId? }: source:"system" takes a generic keyword (sans-serif / serif / monospace) or a NAMED web-safe face ("Georgia"); source:"asset" + assetId renders a self-hosted font from the media library. ★ source:"google" (or "local") is a LEGACY value that silently DEGRADES to a system slot of the same name — the text falls back to a generic face and nothing errors. A Google family: search_google_fonts("playfair") → select_google_font({ family:"Playfair Display", weights:[400,700] }) (downloaded once, self-hosted — a published page never contacts Google) → put_content("settings","settings",{ identity:{ typography:{ heading:{ source:"asset", assetId:<the returned id>, family:"Playfair Display", weight:700 } } } }, merge:true). Your OWN font files: create_media_upload / upload_media with family, weight, style (normal|italic) and fallback — without them a dropped Inter-Bold.woff2 is recorded as family "Inter-Bold" at weight 400 — one ticket per weight. One already uploaded wrong: set_font_metadata (face picks the file when a font holds several). A slot renders the ASSET's family and faces, so a correction needs no slot change.
+A font or SVG referenced from CSS — website.criticalCss, a <style> block — DOES ship with the published site when its url() is ROOT-RELATIVE, exactly the \`url\` list_media returns: url(/media/<project-slug>/<id>-<file>). Publish rewrites those to the bundled copy. An ABSOLUTE https://<host>/media/… url is not rebased and breaks once deployed. For a site-wide face prefer a slot over a hand-written @font-face.
+
 COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
 
 THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are token-driven and landmark-safe (use <section>/<div>, never <nav>/<main>/<footer>/<aside>); fill in real copy + images.
@@ -487,8 +490,20 @@ media url in \`source\`:
 - FROM YOUR OWN DISK, LARGER: create_media_upload → a one-shot uploadUrl you send the file to yourself
   (curl -T ./photo.jpg "<uploadUrl>?filename=photo.jpg"). Two steps because past ~256KB the bytes must
   NOT travel through the conversation — as base64 a 1MB image is ~370k tokens. Always pass ?filename=.
-  The ticket is single-use and expires in 10 minutes: mint one per file, right before sending it.
+  Each ticket is single-use and expires in 10 minutes. MANY FILES → ONE call: count:N (up to 50)
+  returns tickets:[{ uploadUrl, alt? }] — send file i to tickets[i]; add alts:[…] (one per ticket, in
+  order) and every asset is born with its alt. Redeeming is capped at 60 PUTs a minute per IP (a 429
+  leaves the ticket unspent — wait and retry it), and a project holds at most 200 unused tickets.
 - EXISTING: list_media to find assets already in the project and reuse their url.
+
+ALT TEXT LIVES ON THE ASSET. {{sw-image}} falls back to it (then to the bare filename) and a
+{{#sw-folder}} gallery binds it as {{alt}}, so a library uploaded without alts publishes every gallery
+photo with alt="". Set it as the file goes in (alt / alts on create_media_upload — "" in alts skips
+that file — alt on upload_media and import_stock_image), or later for many at once with
+set_media_alt({ items:[{ id, alt }] }) — up to 200 per call, "" clears one; move_media sets a single
+one. Describe what the picture SHOWS, in the page's language. A purely DECORATIVE use is marked where
+it is used — alt="" on the tag, e.g. {{sw-image url alt=""}} — since the same photo can be content on
+another page.
 
 SWAPPING AN IMAGE THAT IS ALREADY IN USE — use replace_media (or create_media_replace past 256KB),
 NOT a fresh upload. An upload always mints a NEW id, so the old url keeps serving the old picture and
@@ -513,7 +528,7 @@ the same file uploaded through the ticket without complaint.
 
 ORGANIZE — keep the media library tidy with virtual folders (grouping labels only; the asset url
 never changes when you move it). list_media_folders to see what exists; create_media_folder to make
-one; move_media to file an asset (folder) and/or set its display name (filename); rename_media_folder
+one; move_media to file an asset (folder), set its display name (filename) and/or its alt; rename_media_folder
 to rename/move a whole folder. Organize PER PAGE, and only make a folder when the grouping earns it:
 a picture gallery → its own folder (e.g. "About/Gallery"); one-off hero images → a shared "Header
 Images"; loose singletons like the logo/icon → "Main".
@@ -1699,9 +1714,11 @@ against this list BEFORE you publish it:
   is already local), and do NOT re-declare \`@font-face\` / \`font-family:…!important\` or a \`body{font-family:…}\`
   rule in criticalCss to "fix" a font (the duplicate fights the platform typography and drifts the heading
   WEIGHT/SIZE — a very common "fonts look off" miss). To CHANGE a font, set identity.typography (a font slot =
-  { source, family, weight, assetId? } — source, family AND weight are ALL required) or use the platform font
-  picker, NEVER an external stylesheet. Use criticalCss only for a genuine per-element override the CI settings
-  can't express (e.g. a script font on ONE brand title, via var(--sw-font-*)).
+  { source, family, weight, assetId? } — source, family AND weight are ALL required). A Google family the import
+  missed: select_google_font, then a source:"asset" slot with its assetId — source:"google" silently degrades to
+  a system face. NEVER an external stylesheet. Use criticalCss only for a genuine per-element override the CI settings
+  can't express (e.g. a script font on ONE brand title, via var(--sw-font-*)). A self-hosted font recorded at the
+  wrong family/weight: set_font_metadata.
   A \`source:'system'\` slot takes EITHER a generic keyword (\`sans-serif\`/\`serif\`/\`monospace\`) OR a NAMED
   web-safe face — \`{ source:'system', family:'Verdana', weight:400 }\` renders
   \`--sw-font-body:"Verdana", <matching generic stack>\`. So when the original uses a system face (a
@@ -2022,6 +2039,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
   { name: 'search_icons', description: "Find icon names for {{sw-icon \"name\"}} (Phosphor, filled by default; add a \":weight\" like \":bold\"/\":duotone\"). Pass one or more terms, comma- or whitespace-separated." },
   { name: 'search_textures', description: "Find transparent background textures (tileable PNG overlays) to set as an element background. Pass one or more terms, comma- or whitespace-separated; returns matching names + ready-to-paste CSS (colour comes from a var(--sw-color-*) token; resolves in preview + exports)." },
+  { name: 'search_google_fonts', description: "Find Google font families by name and/or category (serif, sans-serif, monospace, cursive) in the catalog the platform bundles — no request is made. Returns each family's fallback and available weights; self-host one with select_google_font." },
   { name: 'get_reference', description: "The authoring reference for writing a page source: the {{sw-*}} helpers, the data-sw-* directives, the binding namespaces, and the loop variables (derived from the engine, can't drift)." },
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
   { name: 'list_pages', description: "List the project's pages — METADATA only (source + data omitted, described under `_summary`), because a full listing of a real site exceeds the output limit. Use get_page for the one body you need; includeSource:true forces the full (large) listing." },
@@ -2060,15 +2078,18 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted). The ONLY URL-based import: images up to 15MB, playable video/audio URLs up to 200MB. A 413 is not a dead end — download the file and use create_media_upload. Never leave an asset hotlinked because an import failed.", capability: 'content:write' },
-  { name: 'create_media_upload', description: "Upload a LARGE local file (on YOUR disk): returns a one-shot uploadUrl to send the file to yourself (curl -T), so the bytes never enter the conversation. Use import_image when the file is already at a public URL; upload_media for something small.", capability: 'content:write' },
-  { name: 'upload_media', description: "Upload a SMALL local file (<=256KB) by sending its bytes inline as base64 — one call, no shell. Anything bigger: create_media_upload.", capability: 'content:write' },
+  { name: 'create_media_upload', description: "Upload LARGE local files (on YOUR disk): returns one-shot uploadUrls to send the files to yourself (curl -T), so the bytes never enter the conversation. `count` mints up to 50 tickets in one call; `alt` (one file) or `alts` (one per ticket) set alt text; family/weight/style/fallback describe a font. Use import_image when the file is already at a public URL; upload_media for something small.", capability: 'content:write' },
+  { name: 'upload_media', description: "Upload a SMALL local file (<=256KB) by sending its bytes inline as base64 — one call, no shell; takes the same alt and font metadata as create_media_upload. Anything bigger: create_media_upload.", capability: 'content:write' },
   { name: 'replace_media', description: "REPLACE an existing asset's bytes IN PLACE (<=256KB inline base64), keeping its id and URL — so every page, entry and chrome slot pointing at it shows the new file with nothing to repoint. Use this for \"swap this logo/photo/PDF\", NOT a fresh upload (which mints a new id and leaves every reference behind). Same extension only; fonts cannot be replaced. The old bytes go to the Recycle Bin; the receipt's `previous` shows whether the aspect ratio changed. Anything bigger: create_media_replace.", capability: 'content:write' },
   { name: 'create_media_replace', description: "Replace a LARGE local file in place: returns a one-shot uploadUrl, pinned to that asset, which you send the file to yourself (curl -T). The ticket lane for replace_media.", capability: 'content:write' },
   { name: 'import_website', description: "Crawl + import a public website URL into this project (server renders the live page, follows embed wrappers, self-hosts images + fonts, creates the imported swImport scaffold) — the FIRST step of cloning a site from a URL. ASYNC: it returns a jobId immediately; poll import_status. It creates NO datasets — you author every collection yourself. renderMode:'always' when the import comes back missing JS-built chrome.", capability: 'content:write' },
   { name: 'import_status', description: "Poll a website import started by import_website: running | done | failed, the latest progress line, and the report once finished. Never start a second import while one is running.", capability: 'content:write' },
   { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
   { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
-  { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
+  { name: 'move_media', description: "Move, rename and/or describe a single media asset (folder re-files it; filename sets its display name; alt sets its alt text, \"\" clears it).", capability: 'content:write' },
+  { name: 'set_media_alt', description: "Set the alt text of MANY media assets in one call (items: [{ id, alt }], up to 200; partial success reported per id). Folder galleries and {{sw-image}} read the asset's alt — use this so they stop shipping alt=\"\".", capability: 'content:write' },
+  { name: 'set_font_metadata', description: "Correct an uploaded FONT asset's family / fallback / weight / style (an upload guesses family from the filename and weight 400). `face` picks the file on a multi-face font. Typography using the asset renders the correction; URLs do not change.", capability: 'content:write' },
+  { name: 'select_google_font', description: "Self-host a Google font family's weights as a font media asset (downloaded once server-side; a published page never loads Google), then reference it from identity.typography as { source:'asset', assetId, family, weight }.", capability: 'content:write' },
   { name: 'transform_image', description: "Rotate (90/180/270) and/or crop an image. IN PLACE by default — the id and URL are unchanged, so every reference keeps working; use it to CORRECT a photograph. Pass saveAs to write a new asset instead. Rotation applies before the crop.", capability: 'content:write' },
   { name: 'move_media_bulk', description: "Re-file MANY assets into one folder in a single call (partial success reported per id). Use instead of looping move_media.", capability: 'content:write' },
   { name: 'delete_media', description: "Bin a media asset (RECOVERABLE 90 days via the File Manager Recycle Bin) — prune orphaned files. It's excluded from the next publish; ensure nothing references it.", capability: 'content:delete' },
@@ -2101,6 +2122,9 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: 'icons (Phosphor) / brand logos / country flags', where: 'get_guide("icons") — {{sw-icon "name:weight"}} (FILLED by default), brand:<slug>, {{sw-flag}}; search_icons finds names' },
   { need: 'background texture / paper, fabric, noise, grid overlay pattern', where: 'search_textures — transparent tileable PNGs; returns names + copy-paste CSS (colour = a var(--sw-color-*) token; resolves in preview + exports)' },
   { need: 'fonts, colors, light/dark theme, spacing tokens', where: 'get_guide("design") + the COLORS/THEME notes in the core instructions' },
+  { need: 'use a Google font / upload my own font / fix a font recorded at the wrong weight', where: 'search_google_fonts + select_google_font (self-hosted) · create_media_upload with family/weight · set_font_metadata — then identity.typography { source:"asset", assetId } (get_guide("design") FONTS)' },
+  { need: 'alt text for many images / a folder gallery that ships alt=""', where: 'set_media_alt({ items:[{ id, alt }] }) — or `alts` on create_media_upload at upload time; {{#sw-folder}} binds each asset\'s {{alt}}' },
+  { need: 'upload MANY local files', where: 'create_media_upload({ count, alts? }) — up to 50 one-shot tickets per call (get_guide("images"))' },
   { need: 'store a gradient / shadow ramp / easing curve as a reusable token', where: 'identity.cssTokens — an open record of ANY CSS value → `--sw-<key>`; reference with var(). (colors/spacing/radii are open too, for values of THOSE kinds.)' },
   { need: 'collections / repeating lists (team, FAQ, menu, slides)', where: 'get_guide("datasets") — schema + entries (rows go under data.values). On a CLONE these are yours to author: import_website infers none.' },
   { need: 'clear out many entities at once (junk datasets/entries, scaffolded pages)', where: 'delete_content_bulk({ kind, ids }) — one call, up to 200 ids, per-id result; needs content:delete' },

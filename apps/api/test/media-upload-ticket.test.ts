@@ -22,6 +22,9 @@ const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z/C/HgAGgwJ/lK3Q6wAAAABJRU5ErkJggg==',
   'base64',
 );
+/** A "font" by magic bytes — all the upload dispatcher looks at. */
+const WOFF2 = Buffer.concat([Buffer.from('wOF2'), Buffer.from('x')]);
+const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
 
 let app: FastifyInstance;
 let db: Awaited<ReturnType<typeof makeTestDb>>;
@@ -137,6 +140,14 @@ describe('media upload tickets', () => {
     expect(up.statusCode).toBe(400);
   });
 
+  it('a font ticket with no metadata keeps the old guess: family from the filename, weight 400', async () => {
+    const { t, projectId } = await setup('fontguess@e.test');
+    const { uploadPath } = (await mint(t, projectId)).json() as { uploadPath: string };
+    const up = await redeem(uploadPath, 'Inter-Bold.woff2', WOFF2);
+    expect(up.statusCode).toBe(201);
+    expect((up.json() as { item: unknown }).item).toMatchObject({ kind: 'font', family: 'Inter-Bold', files: [{ weight: 400, style: 'normal' }] });
+  });
+
   it('derives the type from the FILENAME, not the client-chosen content-type header', async () => {
     const { t, projectId } = await setup('mime@e.test');
     const { uploadPath } = (await mint(t, projectId)).json() as { uploadPath: string };
@@ -149,5 +160,161 @@ describe('media upload tickets', () => {
     });
     expect(up.statusCode).toBe(201);
     expect((up.json() as { item: { kind: string } }).item.kind).toBe('image');
+  });
+});
+
+/**
+ * BATCH tickets, ALT text and FONT metadata. An agent building a site with 78 photos made 78 mint
+ * calls, and every photo landed with no alt — so every `{{#sw-folder}}` gallery shipped `alt=""` — and
+ * a dropped font became family "<filename stem>", weight 400, with nothing able to say otherwise.
+ * All three ride the ticket now: pinned at MINT time, by the authenticated caller, like the folder.
+ */
+describe('media upload tickets — batches, alt text and font metadata', () => {
+  type Grant = { uploadPath?: string; tickets: Array<{ uploadPath: string; alt?: string }>; expiresInSeconds: number; maxBytes: number };
+
+  it('mints `count` single-use tickets in ONE call, all pinned to the same folder', async () => {
+    const { t, projectId } = await setup('batch@e.test');
+    const res = await mint(t, projectId, { folder: 'Gallery', count: 3 });
+    expect(res.statusCode).toBe(201);
+    const grant = res.json() as Grant;
+    expect(grant.tickets).toHaveLength(3);
+    // A batch has no single top-level path to mistake for "the" ticket.
+    expect(grant.uploadPath).toBeUndefined();
+    expect(new Set(grant.tickets.map((x) => x.uploadPath)).size).toBe(3);
+
+    for (const [i, ticket] of grant.tickets.entries()) {
+      const up = await redeem(ticket.uploadPath, `photo-${i}.png`, PNG_1X1);
+      expect(up.statusCode).toBe(201);
+      expect((up.json() as { item: { folder: string } }).item.folder).toBe('Gallery');
+    }
+    // Each is still single-use.
+    expect((await redeem(grant.tickets[0]!.uploadPath, 'again.png', PNG_1X1)).statusCode).toBe(404);
+  });
+
+  it('a single mint keeps its old shape, with the one ticket also listed', async () => {
+    const { t, projectId } = await setup('single@e.test');
+    const grant = (await mint(t, projectId)).json() as Grant;
+    expect(grant.uploadPath).toMatch(/^\/media-upload\//);
+    expect(grant.tickets).toEqual([{ uploadPath: grant.uploadPath }]);
+  });
+
+  it('★ bakes `alt` into the asset at redemption — the gallery binds it with no second call', async () => {
+    const { t, projectId } = await setup('alt@e.test');
+    const grant = (await mint(t, projectId, { alt: 'The orchard in spring' })).json() as Grant;
+    expect(grant.tickets[0]!.alt).toBe('The orchard in spring');
+    const up = await redeem(grant.uploadPath!, 'orchard.png', PNG_1X1);
+    expect(up.statusCode).toBe(201);
+    expect((up.json() as { item: { alt?: string } }).item.alt).toBe('The orchard in spring');
+  });
+
+  it('`alts` gives every ticket in a batch its OWN alt, echoed beside its upload path', async () => {
+    const { t, projectId } = await setup('alts@e.test');
+    const grant = (await mint(t, projectId, { alts: ['First photo', 'Second photo'] })).json() as Grant;
+    // count defaults to alts.length, and the echo makes the file↔ticket pairing explicit.
+    expect(grant.tickets.map((x) => x.alt)).toEqual(['First photo', 'Second photo']);
+    const second = await redeem(grant.tickets[1]!.uploadPath, 'b.png', PNG_1X1);
+    expect((second.json() as { item: { alt?: string } }).item.alt).toBe('Second photo');
+    const first = await redeem(grant.tickets[0]!.uploadPath, 'a.png', PNG_1X1);
+    expect((first.json() as { item: { alt?: string } }).item.alt).toBe('First photo');
+  });
+
+  it('an empty entry in `alts` is a placeholder — that ticket\'s file is born undescribed', async () => {
+    const { t, projectId } = await setup('altsempty@e.test');
+    const grant = (await mint(t, projectId, { alts: ['', 'Described'] })).json() as Grant;
+    expect(grant.tickets[0]).toEqual({ uploadPath: grant.tickets[0]!.uploadPath });
+    const up = await redeem(grant.tickets[0]!.uploadPath, 'a.png', PNG_1X1);
+    expect((up.json() as { item: Record<string, unknown> }).item).not.toHaveProperty('alt');
+  });
+
+  it('alt reaches SVG and download-only files too, not just raster images', async () => {
+    const { t, projectId } = await setup('altkinds@e.test');
+    const grant = (await mint(t, projectId, { alts: ['Company logo', 'Annual report'] })).json() as Grant;
+    const svg = await redeem(grant.tickets[0]!.uploadPath, 'logo.svg', SVG);
+    expect(svg.statusCode).toBe(201);
+    expect((svg.json() as { item: { alt?: string; kind: string } }).item).toMatchObject({ kind: 'image', alt: 'Company logo' });
+    const pdf = await redeem(grant.tickets[1]!.uploadPath, 'report.pdf', Buffer.from('%PDF-1.4 hello'));
+    expect(pdf.statusCode).toBe(201);
+    expect((pdf.json() as { item: { alt?: string; kind: string } }).item).toMatchObject({ kind: 'file', alt: 'Annual report' });
+  });
+
+  it('alt reaches a playable video too', async () => {
+    const { t, projectId } = await setup('altvideo@e.test');
+    const grant = (await mint(t, projectId, { alt: 'Drone flight over the farm' })).json() as Grant;
+    const up = await redeem(grant.uploadPath!, 'farm.mp4', Buffer.from('not really a video but stored as one'));
+    expect(up.statusCode).toBe(201);
+    expect((up.json() as { item: { alt?: string; kind: string } }).item).toMatchObject({ kind: 'video', alt: 'Drone flight over the farm' });
+  });
+
+  it('refuses an alt/alts/count combination that would not say which file gets which alt', async () => {
+    const { t, projectId } = await setup('altrules@e.test');
+    // `alt` names ONE file.
+    const shared = await mint(t, projectId, { alt: 'Same for all', count: 3 });
+    expect(shared.statusCode).toBe(400);
+    expect((shared.json() as { error: string }).error).toMatch(/alts/);
+    expect((await mint(t, projectId, { alt: 'x', alts: ['y'] })).statusCode).toBe(400);
+    // One alt per ticket — no more, no less.
+    const short = await mint(t, projectId, { alts: ['a', 'b'], count: 3 });
+    expect(short.statusCode).toBe(400);
+    expect((short.json() as { error: string }).error).toMatch(/2 .* 3/);
+  });
+
+  it('bounds the batch: 1..50 tickets, alts at most 500 characters each', async () => {
+    const { t, projectId } = await setup('bounds@e.test');
+    expect((await mint(t, projectId, { count: 0 })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { count: 51 })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { alt: 'x'.repeat(501) })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { count: 50 })).statusCode).toBe(201);
+  });
+
+  it('★ a project cannot hold more than 200 live tickets — a batch is budgeted as a whole', async () => {
+    // Batches are what make this reachable: 30 mints a minute used to mean 30 tickets; at 50 a call one
+    // project could flush every other tenant's tickets out of the shared store. Each PUT is still bound
+    // by the redemption route's own limit — this caps what can be OUTSTANDING.
+    const { t, projectId } = await setup('budget@e.test');
+    for (let i = 0; i < 4; i += 1) expect((await mint(t, projectId, { count: 50 })).statusCode).toBe(201);
+    const over = await mint(t, projectId);
+    expect(over.statusCode).toBe(429);
+    expect((over.json() as { error: string }).error).toMatch(/200/);
+    // Another project's budget is its own.
+    const other = await setup('budget2@e.test', 'other');
+    expect((await mint(other.t, other.projectId, { count: 50 })).statusCode).toBe(201);
+  });
+
+  it('★ font metadata on the ticket is applied when the file is a font', async () => {
+    const { t, projectId } = await setup('fontmeta@e.test');
+    const grant = (await mint(t, projectId, { family: 'Inter', weight: 700, style: 'italic', fallback: 'serif' })).json() as Grant;
+    const up = await redeem(grant.uploadPath!, 'Inter-BoldItalic.woff2', WOFF2);
+    expect(up.statusCode).toBe(201);
+    expect((up.json() as { item: unknown }).item).toMatchObject({
+      kind: 'font',
+      family: 'Inter',
+      fallback: 'serif',
+      files: [{ weight: 700, style: 'italic', format: 'woff2' }],
+    });
+  });
+
+  it('weight alone keeps the filename-derived family', async () => {
+    const { t, projectId } = await setup('fontweight@e.test');
+    const grant = (await mint(t, projectId, { weight: 300 })).json() as Grant;
+    const up = await redeem(grant.uploadPath!, 'Lato.woff2', WOFF2);
+    expect((up.json() as { item: unknown }).item).toMatchObject({ family: 'Lato', files: [{ weight: 300 }] });
+  });
+
+  it('font metadata is validated at MINT, where the agent can see the error', async () => {
+    const { t, projectId } = await setup('fontbad@e.test');
+    expect((await mint(t, projectId, { weight: 450 })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { family: 'x";}body{' })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { style: 'oblique' })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { fallback: 'fantasy' })).statusCode).toBe(400);
+  });
+
+  it('a REPLACE ticket takes nothing but its asset id', async () => {
+    const { t, projectId } = await setup('replaceonly@e.test');
+    const { uploadPath } = (await mint(t, projectId)).json() as { uploadPath: string };
+    const asset = (await redeem(uploadPath, 'a.png', PNG_1X1)).json() as { item: { id: string } };
+    expect((await mint(t, projectId, { replaceAssetId: asset.item.id, count: 2 })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { replaceAssetId: asset.item.id, alt: 'x' })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { replaceAssetId: asset.item.id, weight: 700 })).statusCode).toBe(400);
+    expect((await mint(t, projectId, { replaceAssetId: asset.item.id })).statusCode).toBe(201);
   });
 });

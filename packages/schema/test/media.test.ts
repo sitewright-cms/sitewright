@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MediaAssetSchema, ImageAssetSchema, FileAssetSchema, FontAssetSchema } from '../src/media.js';
+import { MediaAssetSchema, ImageAssetSchema, FileAssetSchema, FontAssetSchema, MediaAltSchema } from '../src/media.js';
 
 const fontBase = {
   kind: 'font' as const,
@@ -50,6 +50,15 @@ describe('MediaAssetSchema (image | file discriminated union)', () => {
     expect(a.kind).toBe('file');
     expect(a.folder).toBe('Docs/2026');
     if (a.kind === 'file') expect(a.storedName).toBe('brochure.pdf');
+  });
+
+  it('bounds alt with the SAME schema every alt-setting surface validates against', () => {
+    // The PATCH, the bulk-alt route, upload tickets and the MCP tools all use MediaAltSchema; if the
+    // stored record's bound drifted from theirs, a write they accepted would fail to parse on read.
+    expect(MediaAltSchema.safeParse('x'.repeat(500)).success).toBe(true);
+    expect(MediaAltSchema.safeParse('x'.repeat(501)).success).toBe(false);
+    expect(MediaAssetSchema.safeParse({ ...imageBase, alt: 'x'.repeat(500) }).success).toBe(true);
+    expect(MediaAssetSchema.safeParse({ ...imageBase, alt: 'x'.repeat(501) }).success).toBe(false);
   });
 
   it('rejects a folder with a leading slash or traversal', () => {

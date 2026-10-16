@@ -155,6 +155,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     updateMedia: vi.fn(async (_id: string, changes: unknown) => ({ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', ...(changes as object) })),
     deleteMedia: vi.fn(async () => ({ ok: true })),
     deleteMediaBulk: vi.fn(async (ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
+    setMediaAlt: vi.fn(async (items: ReadonlyArray<{ id: string }>) => ({ updated: items.map((i) => i.id), failed: [], requested: items.length })),
+    selectGoogleFont: vi.fn(async (family: string) => ({ id: 'f1', kind: 'font', family, source: 'google', files: [{ weight: 400 }] })),
     renameDataset: vi.fn(async () => ({ oldSlug: 'items', newSlug: 'features', cascaded: true, entriesUpdated: 2, pagesUpdated: 1, templatesUpdated: 0, referencesUpdated: 0 })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
@@ -506,7 +508,7 @@ describe('createSitewrightMcpServer — media tools', () => {
     const w = await connect(writer, writeScope);
     const res = await w.callTool({ name: 'create_media_upload', arguments: { folder: 'Logos' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).createMediaUpload).toHaveBeenCalledWith('Logos');
+    expect(callsOf(writer).createMediaUpload).toHaveBeenCalledWith('Logos', {});
     // The agent needs the URL back to be able to do anything with it.
     expect(text(res)).toContain('https://sw.test/media-upload/tok-1');
 
@@ -519,6 +521,41 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(callsOf(reader).createMediaUpload).not.toHaveBeenCalled();
   });
 
+  it('create_media_upload mints a BATCH with per-ticket alts and font metadata in one call', async () => {
+    // 78 photos used to be 78 mint calls, and none of them could carry an alt.
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({
+      name: 'create_media_upload',
+      arguments: { folder: 'Gallery', count: 2, alts: ['Front door', 'Garden'] },
+    });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).createMediaUpload).toHaveBeenCalledWith('Gallery', { count: 2, alts: ['Front door', 'Garden'] });
+
+    await w.callTool({ name: 'create_media_upload', arguments: { alt: 'Logo', family: 'Inter', weight: 700, style: 'italic', fallback: 'serif' } });
+    expect(callsOf(writer).createMediaUpload).toHaveBeenLastCalledWith(undefined, {
+      alt: 'Logo',
+      family: 'Inter',
+      weight: 700,
+      style: 'italic',
+      fallback: 'serif',
+    });
+
+    // The bounds hold at the schema, before the API is asked.
+    expect((await w.callTool({ name: 'create_media_upload', arguments: { count: 51 } })).isError).toBe(true);
+    expect((await w.callTool({ name: 'create_media_upload', arguments: { weight: 450 } })).isError).toBe(true);
+    expect(callsOf(writer).createMediaUpload).toHaveBeenCalledTimes(2);
+  });
+
+  it('upload_media carries alt and font metadata through to the ticket', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const b64 = Buffer.from('wOF2x').toString('base64');
+    const res = await w.callTool({ name: 'upload_media', arguments: { filename: 'Inter-Bold.woff2', content_base64: b64, family: 'Inter', weight: 700 } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).uploadMediaBase64).toHaveBeenCalledWith('Inter-Bold.woff2', b64, undefined, { family: 'Inter', weight: 700 });
+  });
+
   it('upload_media sends a SMALL file inline, gated on content:write', async () => {
     // The one-call path, for when there is no shell and the file is small enough that its base64 does
     // not dominate the conversation.
@@ -527,7 +564,7 @@ describe('createSitewrightMcpServer — media tools', () => {
     const b64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64');
     const res = await w.callTool({ name: 'upload_media', arguments: { filename: 'icon.svg', content_base64: b64, folder: 'Icons' } });
     expect(res.isError).toBeFalsy();
-    expect(callsOf(writer).uploadMediaBase64).toHaveBeenCalledWith('icon.svg', b64, 'Icons');
+    expect(callsOf(writer).uploadMediaBase64).toHaveBeenCalledWith('icon.svg', b64, 'Icons', {});
 
     const reader = fakeClient();
     const r = await connect(reader, readScope);
@@ -918,6 +955,127 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await w.callTool({ name: 'move_media', arguments: { id: 'm1', folder: 'bad/seg!' } });
     expect(res.isError).toBe(true);
     expect(callsOf(writer).updateMedia).not.toHaveBeenCalled();
+  });
+
+  it('move_media sets alt text too — alone or with a move — and "" clears it', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    expect((await w.callTool({ name: 'move_media', arguments: { id: 'm1', alt: 'The team at work' } })).isError).toBeFalsy();
+    expect(callsOf(writer).updateMedia).toHaveBeenLastCalledWith('m1', { alt: 'The team at work' });
+    await w.callTool({ name: 'move_media', arguments: { id: 'm1', folder: 'Team', alt: '' } });
+    expect(callsOf(writer).updateMedia).toHaveBeenLastCalledWith('m1', { folder: 'Team', alt: '' });
+    // The nothing-to-do message names alt as an option now.
+    const none = await w.callTool({ name: 'move_media', arguments: { id: 'm1' } });
+    expect(text(none)).toMatch(/alt/);
+    expect((await w.callTool({ name: 'move_media', arguments: { id: 'm1', alt: 'x'.repeat(501) } })).isError).toBe(true);
+  });
+
+  it('set_media_alt describes MANY assets in one call and returns the per-id result', async () => {
+    const reader = fakeClient();
+    const denied = await (await connect(reader, readScope)).callTool({ name: 'set_media_alt', arguments: { items: [{ id: 'm1', alt: 'x' }] } });
+    expect(denied.isError).toBe(true);
+    expect(text(denied)).toMatch(/content:write/);
+    expect(callsOf(reader).setMediaAlt).not.toHaveBeenCalled();
+
+    const writer = fakeClient({
+      setMediaAlt: vi.fn(async () => ({ updated: ['m1'], failed: [{ id: 'm2', error: 'media not found' }], requested: 2 })),
+    });
+    const w = await connect(writer, writeScope);
+    const items = [
+      { id: 'm1', alt: 'Front door' },
+      { id: 'm2', alt: 'Garden path' },
+    ];
+    const res = await w.callTool({ name: 'set_media_alt', arguments: { items } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).setMediaAlt).toHaveBeenCalledWith(items);
+    expect(text(res)).toContain('media not found'); // a partial result reaches the agent
+  });
+
+  it('set_media_alt holds the server bounds at the schema (1-200 items, alt ≤ 500)', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    expect((await w.callTool({ name: 'set_media_alt', arguments: { items: [] } })).isError).toBe(true);
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({ id: `m${i}`, alt: 'x' }));
+    expect((await w.callTool({ name: 'set_media_alt', arguments: { items: tooMany } })).isError).toBe(true);
+    expect((await w.callTool({ name: 'set_media_alt', arguments: { items: [{ id: 'm1', alt: 'x'.repeat(501) }] } })).isError).toBe(true);
+    expect(callsOf(writer).setMediaAlt).not.toHaveBeenCalled();
+  });
+
+  it('set_font_metadata corrects a font through the media PATCH, and needs something to change', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'set_font_metadata', arguments: { id: 'f1', family: 'Inter', weight: 700, face: 'inter-bold-400.woff2' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).updateMedia).toHaveBeenCalledWith('f1', { family: 'Inter', weight: 700, face: 'inter-bold-400.woff2' });
+
+    await w.callTool({ name: 'set_font_metadata', arguments: { id: 'f1', style: 'italic', fallback: 'serif' } });
+    expect(callsOf(writer).updateMedia).toHaveBeenLastCalledWith('f1', { style: 'italic', fallback: 'serif' });
+
+    const none = await w.callTool({ name: 'set_font_metadata', arguments: { id: 'f1', face: 'inter-400.woff2' } });
+    expect(none.isError).toBe(true);
+    expect(text(none)).toMatch(/at least one/i);
+    expect((await w.callTool({ name: 'set_font_metadata', arguments: { id: 'f1', weight: 450 } })).isError).toBe(true);
+    expect(callsOf(writer).updateMedia).toHaveBeenCalledTimes(2);
+
+    const reader = fakeClient();
+    expect((await (await connect(reader, readScope)).callTool({ name: 'set_font_metadata', arguments: { id: 'f1', weight: 700 } })).isError).toBe(true);
+    expect(callsOf(reader).updateMedia).not.toHaveBeenCalled();
+  });
+
+  it('select_google_font self-hosts a catalog family and returns the asset to reference', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'select_google_font', arguments: { family: 'Inter', weights: [400, 700] } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).selectGoogleFont).toHaveBeenCalledWith('Inter', [400, 700], undefined);
+    expect(text(res)).toContain('"source": "google"');
+
+    await w.callTool({ name: 'select_google_font', arguments: { family: 'Inter', weights: [400], folder: 'Brand' } });
+    expect(callsOf(writer).selectGoogleFont).toHaveBeenLastCalledWith('Inter', [400], 'Brand');
+  });
+
+  it('select_google_font fixes the CASE of a family, since the server allowlist is exact', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    expect((await w.callTool({ name: 'select_google_font', arguments: { family: 'playfair display', weights: [700] } })).isError).toBeFalsy();
+    expect(callsOf(writer).selectGoogleFont).toHaveBeenCalledWith('Playfair Display', [700], undefined);
+  });
+
+  it('select_google_font answers a wrong family with catalog suggestions, without asking the server', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    // The usual miss: a style word glued onto the family.
+    const res = await w.callTool({ name: 'select_google_font', arguments: { family: 'Playfair Bold', weights: [700] } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toContain('Playfair Display');
+    expect(text(res)).toMatch(/search_google_fonts/);
+    const nothing = await w.callTool({ name: 'select_google_font', arguments: { family: 'Zzqx Nonexistent', weights: [400] } });
+    expect(nothing.isError).toBe(true);
+    expect(text(nothing)).toMatch(/search_google_fonts/);
+    expect(callsOf(writer).selectGoogleFont).not.toHaveBeenCalled();
+
+    const reader = fakeClient();
+    expect((await (await connect(reader, readScope)).callTool({ name: 'select_google_font', arguments: { family: 'Inter', weights: [400] } })).isError).toBe(true);
+    expect(callsOf(reader).selectGoogleFont).not.toHaveBeenCalled();
+  });
+
+  it('search_google_fonts searches the bundled catalog — no connection, no outbound fetch', async () => {
+    const mcp = await connect(fakeClient(), null);
+    const res = JSON.parse(text(await mcp.callTool({ name: 'search_google_fonts', arguments: { query: 'playfair' } }))) as {
+      results: Array<{ family: string; fallback: string; weights: number[] }>;
+    };
+    expect(res.results.map((r) => r.family)).toContain('Playfair Display');
+    expect(res.results.find((r) => r.family === 'Playfair Display')?.weights).toContain(700);
+
+    const serif = JSON.parse(text(await mcp.callTool({ name: 'search_google_fonts', arguments: { category: 'monospace', limit: 5 } }))) as {
+      results: Array<{ fallback: string }>;
+    };
+    expect(serif.results).toHaveLength(5);
+    expect(serif.results.every((r) => r.fallback === 'monospace')).toBe(true);
+
+    expect((await mcp.callTool({ name: 'search_google_fonts', arguments: {} })).isError).toBe(true);
+    const none = await mcp.callTool({ name: 'search_google_fonts', arguments: { query: 'zzqx nonexistent' } });
+    expect(none.isError).toBe(true);
   });
 });
 

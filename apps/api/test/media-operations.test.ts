@@ -187,6 +187,64 @@ describe('bulk media move', () => {
   });
 });
 
+describe('bulk media alt text', () => {
+  // Describing a gallery is one alt PER PHOTO, and every `{{#sw-folder}}` gallery binds `alt` straight
+  // off the asset. Through the single PATCH that was one round-trip each — 78 photos, 78 calls, on a
+  // 60/min limiter — so in practice nobody did it and every gallery shipped `alt=""`.
+  const bulkAlt = (t: string, projectId: string, items: unknown) =>
+    app.inject({ method: 'POST', url: `/projects/${projectId}/media/bulk-alt`, cookies: { sw_session: t }, payload: { items } });
+
+  it('sets a different alt on many assets in ONE call and accounts for every id', async () => {
+    const { t, projectId } = await setup('bulkalt@e2e.test');
+    const a = await uploadImage(t, projectId, 'Gallery');
+    const b = await uploadImage(t, projectId, 'Gallery');
+    const res = await bulkAlt(t, projectId, [
+      { id: a.id, alt: 'Front door' },
+      { id: b.id, alt: 'Garden path' },
+    ]);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ updated: [a.id, b.id], failed: [], requested: 2 });
+    const byId = new Map((await listMedia(t, projectId)).map((m) => [m.id, m]));
+    expect(byId.get(a.id)?.alt).toBe('Front door');
+    expect(byId.get(b.id)?.alt).toBe('Garden path');
+    expect(byId.get(a.id)?.folder).toBe('Gallery'); // only the alt changed
+  });
+
+  it('a bad id fails on its own, an empty alt clears, and a repeated id takes its LAST alt', async () => {
+    const { t, projectId } = await setup('bulkalt2@e2e.test');
+    const a = await uploadImage(t, projectId);
+    const b = await uploadImage(t, projectId);
+    await bulkAlt(t, projectId, [{ id: b.id, alt: 'to be cleared' }]);
+
+    const res = await bulkAlt(t, projectId, [
+      { id: a.id, alt: 'first try' },
+      { id: 'no-such-asset', alt: 'ghost' },
+      { id: b.id, alt: '' },
+      { id: a.id, alt: 'second thought' },
+    ]);
+    expect(res.statusCode).toBe(200);
+    const out = res.json() as { updated: string[]; failed: Array<{ id: string; error: string }>; requested: number };
+    expect(out.updated).toEqual([a.id, b.id]);
+    expect(out.failed).toEqual([{ id: 'no-such-asset', error: 'media not found' }]);
+    expect(out.requested).toBe(3);
+
+    const byId = new Map((await listMedia(t, projectId)).map((m) => [m.id, m]));
+    expect(byId.get(a.id)?.alt).toBe('second thought');
+    expect(byId.get(b.id)).not.toHaveProperty('alt');
+  });
+
+  it('is bounded (1-200 items, alt ≤ 500 chars) and needs write access to the project', async () => {
+    const { t, projectId } = await setup('bulkalt3@e2e.test');
+    expect((await bulkAlt(t, projectId, [])).statusCode).toBe(400);
+    expect((await bulkAlt(t, projectId, Array.from({ length: 201 }, (_, i) => ({ id: `id${i}`, alt: 'x' })))).statusCode).toBe(400);
+    expect((await bulkAlt(t, projectId, [{ id: 'a', alt: 'x'.repeat(501) }])).statusCode).toBe(400);
+    expect((await bulkAlt(t, projectId, [{ id: 'a' }])).statusCode).toBe(400);
+
+    const { t: outsider } = await setup('bulkalt-outsider@e2e.test');
+    expect((await bulkAlt(outsider, projectId, [{ id: 'a', alt: 'x' }])).statusCode).toBe(403);
+  });
+});
+
 describe('media folders — persistence', () => {
   it('an EMPTY folder persists (the original bug: it used to vanish)', async () => {
     const { t, projectId } = await setup('f1@e2e.test');
@@ -334,6 +392,39 @@ describe('media assets — move / rename / copy', () => {
     expect(updated.folder).toBe('Archive');
     expect(updated.filename).toBe('renamed.png');
     expect(updated.id).toBe(asset.id); // identity + binaries unchanged
+  });
+
+  it('PATCH sets alt text, and an empty alt CLEARS it (removes the key) rather than storing ""', async () => {
+    const { t, projectId } = await setup('alt1@e2e.test');
+    const asset = await uploadImage(t, projectId, 'Gallery');
+    const patch = (alt: string) =>
+      app.inject({ method: 'PATCH', url: `/projects/${projectId}/media/${asset.id}`, cookies: { sw_session: t }, payload: { alt } });
+
+    const set = await patch('A lighthouse at dawn');
+    expect(set.statusCode).toBe(200);
+    expect((set.json() as { item: MediaAsset }).item.alt).toBe('A lighthouse at dawn');
+    expect((await listMedia(t, projectId))[0]!.alt).toBe('A lighthouse at dawn');
+
+    // '' returns the asset to "not described" — a decorative USE says alt="" on its own tag.
+    const cleared = await patch('');
+    expect(cleared.statusCode).toBe(200);
+    expect((cleared.json() as { item: MediaAsset }).item).not.toHaveProperty('alt');
+    expect((cleared.json() as { item: MediaAsset }).item.folder).toBe('Gallery'); // nothing else moved
+
+    expect((await patch('x'.repeat(501))).statusCode).toBe(400);
+  });
+
+  it('PATCH refuses font metadata on an asset that is not a font', async () => {
+    const { t, projectId } = await setup('fontonimg@e2e.test');
+    const asset = await uploadImage(t, projectId);
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/projects/${projectId}/media/${asset.id}`,
+      cookies: { sw_session: t },
+      payload: { weight: 700 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/describe a FONT .* "image"/);
   });
 
   it('POST /copy duplicates an asset into the target folder', async () => {

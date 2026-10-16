@@ -119,3 +119,73 @@ export async function mergeFontFaces(
   });
   return (await contentRepo.put(ctx, 'media', existing.id, asset)) as FontAsset;
 }
+
+/** What may be corrected on a font asset (each optional; already boundary-validated by the caller). */
+export interface FontMetadataChanges {
+  family?: string;
+  fallback?: FontAsset['fallback'];
+  weight?: FontAsset['files'][number]['weight'];
+  style?: 'normal' | 'italic';
+  /** The stored face file `weight`/`style` describe — needed only when the family holds several. */
+  face?: string;
+}
+
+export type FontCorrection = { ok: true; asset: FontAsset } | { ok: false; error: string };
+
+/**
+ * Correct what an upload GUESSED about a font. A dropped `Inter-Bold.woff2` is recorded as family
+ * "Inter-Bold", weight 400 — the filename stem and a default — and the font cannot be replaced (a
+ * family is many files), so this is the only way to fix the record.
+ *
+ * `family`/`fallback` describe the whole family; `weight`/`style` describe ONE face, so on a family
+ * of several faces the caller has to name which (`face`). The stored FILE names are deliberately left
+ * alone even when they carry the old weight: a name is part of the served URL, and a `url()` in
+ * criticalCss pointing at it must not break because the metadata was corrected. Typography needs
+ * nothing else — the renderer reads family, fallback and each face's weight off the asset.
+ *
+ * Pure: returns the corrected record (schema-checked) or the reason it cannot be, never writes.
+ */
+export function correctFontMetadata(existing: FontAsset, changes: FontMetadataChanges): FontCorrection {
+  let files = existing.files;
+  if (changes.weight !== undefined || changes.style !== undefined) {
+    const names = existing.files.map((f) => f.file).join(', ');
+    const target =
+      changes.face !== undefined
+        ? existing.files.find((f) => f.file === changes.face)
+        : existing.files.length === 1
+          ? existing.files[0]
+          : undefined;
+    if (!target) {
+      return {
+        ok: false,
+        error:
+          changes.face !== undefined
+            ? `this font has no face "${changes.face}" — its faces are: ${names}`
+            : `this font holds ${existing.files.length} faces — name the one to change with \`face\` (one of: ${names})`,
+      };
+    }
+    const weight = changes.weight ?? target.weight;
+    const style = changes.style ?? target.style;
+    // A VARIABLE face's `weight` is its default point on the axis; a default off the axis is a face
+    // the file cannot render.
+    if (target.weightRange && (weight < target.weightRange[0] || weight > target.weightRange[1])) {
+      return { ok: false, error: `weight ${weight} is outside this variable face's axis (${target.weightRange[0]}–${target.weightRange[1]})` };
+    }
+    // The same weight×style twice in one container is ambiguous to @font-face — the schema refuses it,
+    // but a sentence naming the clash beats a schema error.
+    if (existing.files.some((f) => f !== target && f.weight === weight && f.style === style && f.format === target.format)) {
+      return { ok: false, error: `another ${target.format} face of this font is already ${weight} ${style}` };
+    }
+    files = existing.files.map((f) => (f === target ? { ...f, weight, style } : f));
+  }
+  const family = changes.family ?? existing.family;
+  const asset = FontAssetSchema.parse({
+    ...existing,
+    family,
+    fallback: changes.fallback ?? existing.fallback,
+    // createFontAsset names the asset after its family; keep the two in step unless someone renamed it.
+    filename: existing.filename === existing.family ? family : existing.filename,
+    files,
+  });
+  return { ok: true, asset };
+}

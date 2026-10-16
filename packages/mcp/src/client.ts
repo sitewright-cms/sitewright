@@ -526,6 +526,14 @@ function decodeBase64(input: string): Buffer {
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
+
+  /**
+   * The origin a CALLER reaches this instance at — what makes the instance's own root-relative
+   * addresses (a draft `previewUrl`, an upload ticket) usable outside it. The stdio bridge already has
+   * it (its `baseUrl`); the hosted endpoint talks to the API in-process with an empty base, so it sets
+   * this from the incoming request. Empty = unknown (addresses stay relative).
+   */
+  publicOrigin = '';
   private readonly tokenProvider: () => Promise<string | null>;
   private readonly fetchImpl: FetchLike;
   private readonly onUnauthorized?: () => Promise<string | null>;
@@ -559,6 +567,7 @@ export class SitewrightClient {
   ) {
     // Trim a trailing slash so `${baseUrl}${path}` never double-slashes.
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.publicOrigin = this.baseUrl;
     this.tokenProvider = tokenProvider;
     this.fetchImpl = fetchImpl;
     this.onUnauthorized = onUnauthorized;

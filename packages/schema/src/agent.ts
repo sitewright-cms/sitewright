@@ -185,7 +185,10 @@ spacing). Children need no own nav slots. Every new project already has the empt
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK and refine before moving on;
-includeHtml:true adds the HTML) → pagespeed_audit → publish_project.
+includeHtml:true adds the HTML, selector:"main" just that part, screenshot:false skips the images; it
+renders DRAFT pages too — never publish a throwaway page to inspect one) → pagespeed_audit →
+publish_project. Addresses the tools return (previewUrl, upload tickets) are absolute; get_scope names
+the instance's origin.
 ★ RUN pagespeed_audit ON EVERY PAGE YOU FINISH, before you call it done. A screenshot cannot show
 weight: it is the only check that reads what you actually shipped (oversized images, render-blocking
 bytes, contrast, heading structure) and it names the files to fix. All writes are validated

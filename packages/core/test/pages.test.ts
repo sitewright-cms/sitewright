@@ -70,9 +70,11 @@ describe('pagesContext', () => {
     const ctx = pagesContext(PAGES, deHome, 'en', '{{pages.leistungen.seo._attributes.data.header_title}}');
     expect(dig(ctx, 'leistungen', 'seo', '_attributes', 'data', 'header_title')).toBe('SEO & Leistung');
     expect(dig(ctx, 'leistungen', '_attributes', 'title')).toBe('Leistungen');
-    // the English slug path does NOT resolve on a German page
+    // The MAIN-language slug path (what an inherited source spells) reaches the GERMAN page — never the
+    // English one: a German reader gets German data whichever spelling the source used.
     const enOnDe = pagesContext(PAGES, deHome, 'en', '{{pages.services.seo._attributes.data.header_title}}');
-    expect(dig(enOnDe, 'services')).toBeUndefined();
+    expect(dig(enOnDe, 'services', 'seo', '_attributes', 'data', 'header_title')).toBe('SEO & Leistung');
+    expect(dig(enOnDe, 'services', '_attributes', 'path')).toBe('/de/leistungen/');
   });
 
   it('is referenced-only: an unreferenced page is absent; data is gated to _attributes.data uses', () => {

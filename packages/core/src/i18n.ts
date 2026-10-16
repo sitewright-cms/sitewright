@@ -147,6 +147,46 @@ export function codeOwnerOf(
 }
 
 /**
+ * `page`'s member of its translation group in `locale` — the page itself when it is already in that
+ * locale, its group sibling when one exists, else undefined. A page that never had `translationGroup`
+ * written is the group named by its own id (the scaffold's convention, see {@link localeHomeFor}).
+ *
+ * This is what keeps a cross-page LINK in the reader's language: translated pages inherit the main
+ * page's source, so a link written there names the main-language page, and only the group knows
+ * which page a German reader should get. Never a slug match — slugs are translated too.
+ */
+export function localeVariantOf(
+  page: Page,
+  pages: readonly Page[],
+  locale: string,
+  defaultLocale: string,
+): Page | undefined {
+  if (localeOf(page, defaultLocale) === locale) return page;
+  return variantIndex(pages, defaultLocale).get(page.translationGroup ?? page.id)?.get(locale);
+}
+
+// group → locale → page, built ONCE per page list. A publish asks this for every page-field value of
+// every entry on every translated page, and a `pages.*` chain asks it per child per segment — a linear
+// `pages.find` there made a 500-page bilingual build quadratic. The lists passed in are per-build /
+// per-request snapshots that nothing mutates, so the array itself is a sound cache key.
+const variantIndexes = new WeakMap<readonly Page[], { defaultLocale: string; index: Map<string, Map<string, Page>> }>();
+
+function variantIndex(pages: readonly Page[], defaultLocale: string): Map<string, Map<string, Page>> {
+  const cached = variantIndexes.get(pages);
+  if (cached?.defaultLocale === defaultLocale) return cached.index;
+  const index = new Map<string, Map<string, Page>>();
+  for (const p of pages) {
+    const group = p.translationGroup ?? p.id;
+    const byLocale = index.get(group) ?? new Map<string, Page>();
+    index.set(group, byLocale);
+    const locale = localeOf(p, defaultLocale);
+    if (!byLocale.has(locale)) byLocale.set(locale, p); // first wins, as `Array.find` would
+  }
+  variantIndexes.set(pages, { defaultLocale, index });
+  return index;
+}
+
+/**
  * Resolve a page's effective code reference: its own `source`/`template` when set,
  * otherwise (inherit mode) the code of its translation-group owner. A page that
  * inherits but has no resolvable owner returns an empty ref — the caller renders an

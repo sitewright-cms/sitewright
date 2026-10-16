@@ -37,6 +37,7 @@ import {
   childrenView,
   parentPageView,
   pagesContext,
+  pageUrlsContext,
   referencesChildren,
   referencesParentPage,
   resolveTranslations,
@@ -1166,6 +1167,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           bundle.datasets,
           pubBundle.pages,
           defaultLocale,
+          // …and to the READER's language: a stored main-language id lands a German page on the German page.
+          pageLocale,
         );
         const pageTranslations = group.map((m) => ({ locale: m.locale, path: m.path, title: m.title }));
         // `{{ page.path }}` is the page's FULL route (computed from the parent chain), not
@@ -1183,7 +1186,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Cross-page slug-path access (`{{pages.services.seo._attributes.data.x}}`) — referenced-only +
         // same-locale, scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
         // slots, so a footer/nav can reference another page too); no-ops when nothing names `pages`.
-        const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, [pageSource, ...slotSources].filter(Boolean).join('\n'));
+        const crossPageScan = [pageSource, ...slotSources].filter(Boolean).join('\n');
+        const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, crossPageScan);
+        // `{{sw-page-url "<id>"}}` — each named page's route in THIS page's locale; same scan + subset.
+        const pageUrls = pageUrlsContext(pubBundle.pages, pageLocale, defaultLocale, crossPageScan);
         // Fail fast (clear error) if a pathological source named many data-heavy pages — bound it like
         // the render-IPC ceiling rather than letting an oversized payload OOM the render worker mid-build.
         if (pagesForRender && JSON.stringify(pagesForRender).length > 4 * 1024 * 1024) {
@@ -1239,6 +1245,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
             : undefined,
           pages: pagesForRender,
+          pageUrls,
           dataset: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)

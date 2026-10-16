@@ -108,6 +108,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '<a href="{{sw-url \'/about\'}}">About</a>\n<img src="{{sw-url image}}" alt="">',
       },
       {
+        id: 'h-page-url',
+        syntax: '{{sw-page-url "<page id>"}}',
+        name: 'sw-page-url',
+        keywords: 'link page id translation language locale multilingual href',
+        description:
+          'A link to another page by its id, in the reader’s language: on a German page it emits the German version’s address (/de/kontakt/), on the main language the main page’s. Use it for links in a page your translations inherit — a literal {{sw-url \'/contact\'}} sends every language to the main-language page. It also survives renaming or moving the page. An unknown id renders "#".',
+        args: [{ name: 'page id', desc: 'The id of the page to link to (any language version of it).' }],
+        example: '<a href="{{sw-page-url "contact"}}">Contact</a>',
+      },
+      {
         id: 'h-date',
         syntax: '{{sw-date value [format]}}',
         name: 'sw-date',

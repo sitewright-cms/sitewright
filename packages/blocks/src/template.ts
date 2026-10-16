@@ -210,6 +210,13 @@ export interface TemplateContext {
    * `parentPageView` in @sitewright/core; one level only (no nested `page.parent.parent`).
    */
   parentPage?: Record<string, unknown>;
+  /**
+   * `{{sw-page-url "<page id>"}}`'s lookup: each id the source names → that page's route IN THIS PAGE'S
+   * LOCALE (its translation-group sibling, else itself). Built referenced-only by `pageUrlsContext` in
+   * @sitewright/core. A render INPUT consumed by the helper, not a `{{pageUrls.*}}` namespace. Absent on
+   * a surface that doesn't resolve pages (snippet/widget previews).
+   */
+  pageUrls?: Record<string, string>;
   /** Named collections (datasets), addressable as `{{ dataset.* }}` / `{{#each dataset.* }}`. */
   dataset?: Record<string, unknown>;
   /**
@@ -417,7 +424,7 @@ function validateTemplateUncached(source: string): void {
       // above — that content isn't escaped.)
       if (attrName.startsWith('on')) reject(`an interpolation in the "${attrName}" event-handler attribute`);
       if (URL_ATTRS.has(attrName)) {
-        const isUrlHelper = /^sw-url(\s|$)/.test(inner);
+        const isUrlHelper = /^sw-(?:page-)?url(\s|$)/.test(inner);
         if (valuePrefix === '') {
           // The interpolation is the whole value → it must be sanitized by {{sw-url …}}.
           if (!isUrlHelper) reject(`a bare value in the URL attribute "${attrName}" (use {{sw-url …}})`);
@@ -635,6 +642,20 @@ function createInstance(): typeof Handlebars {
   });
   // {{sw-url page.link}} → scheme-sanitized URL (blocks javascript:/data:/protocol-relative).
   hb.registerHelper('sw-url', (value: unknown) => safeUrl(typeof value === 'string' ? value : ''));
+  // {{sw-page-url "contact"}} → the route of page `contact` IN THE READER'S LANGUAGE. A literal
+  // `{{sw-url '/contact'}}` in a main page's source is inherited by every translation and sends the
+  // German reader to the English page; an id survives that, a rename, a move and a translated slug.
+  // The id → route map is precomputed per page (`root.pageUrls`). A dataset `page` field arrives already
+  // resolved, so its VIEW is accepted too. An unknown id — or a surface that resolves no pages — is '#':
+  // a dead link the author can see, never the raw id.
+  hb.registerHelper('sw-page-url', function swPageUrl(value: unknown, options: Handlebars.HelperOptions) {
+    if (value && typeof value === 'object' && typeof (value as { path?: unknown }).path === 'string') {
+      return safeUrl((value as { path: string }).path);
+    }
+    const urls = (options?.data?.root as { pageUrls?: Record<string, string> } | undefined)?.pageUrls;
+    const id = typeof value === 'string' ? value : '';
+    return id && urls && Object.prototype.hasOwnProperty.call(urls, id) ? safeUrl(urls[id]!) : '#';
+  });
   // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; {{sw-date x "YYYY"}} → year.
   // A NOW value — the literal "now" or a bare {{sw-date}} (no first arg) — renders the CURRENT date, so
   // {{sw-date "now" "YYYY"}} always emits the current year (e.g. a © line). "" if the value is unparseable.
@@ -2053,7 +2074,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
   // `preview` rides along so a helper can emit the editor-only markers the directive passes add
   // (today: {{sw-imagemap}} naming its map so a click can open the Studio). Never true on publish.
-  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps, preview: ctx.preview };
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, pageUrls: ctx.pageUrls, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps, preview: ctx.preview };
   let html: string;
   try {
     html = template(data, {

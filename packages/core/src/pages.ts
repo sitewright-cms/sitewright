@@ -1,6 +1,6 @@
-import type { JsonValue, Page } from '@sitewright/schema';
+import { isLinkPage, type JsonValue, type Page } from '@sitewright/schema';
 import { pagesById, pagePath } from './routes.js';
-import { localeOf, localeHomeFor } from './i18n.js';
+import { localeOf, localeHomeFor, localeVariantOf } from './i18n.js';
 import { childrenView } from './children.js';
 
 // The `pages` namespace: cross-page DIRECT access by slug path, rooted at the CURRENT page's locale
@@ -105,6 +105,13 @@ export function pagesContext(
   // Direct children of a page, in THIS locale.
   const childrenOf = (parentId: string): Page[] =>
     pages.filter((p) => p.parent === parentId && localeOf(p, defaultLocale) === locale);
+  // A translated page inherits the MAIN page's source, so its chains spell the main language's slugs —
+  // `pages.contact` on a German page whose contact page is now `kontakt`. Match a kid by its own slug
+  // first, then by the slug of its main-language sibling. Only a translated locale needs the fallback.
+  const mainSlugOf = (kid: Page): string | undefined =>
+    locale === defaultLocale ? undefined : localeVariantOf(kid, pages, defaultLocale, defaultLocale)?.path;
+  const kidFor = (kids: readonly Page[], seg: string): Page | undefined =>
+    kids.find((k) => k.path === seg) ?? kids.find((k) => mainSlugOf(k) === seg);
 
   // Two budgets: how many NODES may be built, and how many BYTES their child listings may weigh in
   // total. The second is the one that bounds the payload — see MAX_PAGES_CONTEXT_BYTES.
@@ -122,7 +129,7 @@ export function pagesContext(
   };
   const build = (node: Page, chains: string[][], depth: number): PageNode => {
     const out: PageNode = {};
-    const childChains = new Map<string, string[][]>(); // child slug → remaining chains
+    const childChains = new Map<string, { kid: Page; chains: string[][] }>(); // referenced slug → its page + remaining chains
     let needData = false;
     let needChildren = false;
     let needCode = false;
@@ -146,19 +153,17 @@ export function pagesContext(
           else if (field === 'code') needCode = true;
           continue;
         }
-        const kid = kids.find((k) => k.path === seg);
-        if (kid) {
-          const list = childChains.get(seg) ?? [];
-          list.push(chain.slice(1));
-          childChains.set(seg, list);
-        }
+        const known = childChains.get(seg);
+        const kid = known?.kid ?? kidFor(kids, seg);
+        if (kid) childChains.set(seg, { kid, chains: [...(known?.chains ?? []), chain.slice(1)] });
         // an unknown slug → stop (the path renders empty)
       }
-      for (const [slug, list] of childChains) {
+      for (const [slug, { kid, chains: list }] of childChains) {
         if (budget.n >= MAX_PAGES_NODES) break;
         budget.n++;
-        const kid = kids.find((k) => k.path === slug)!;
-        out[slug] = build(kid, list, depth + 1); // slug = a page's own `path`, not user input; out is a fresh object
+        // Keyed by the slug the SOURCE wrote, so the template's own lookup finds it. It only got here by
+        // equalling a page's own or its main sibling's `path` (PageSlugSchema), and `out` is a fresh object.
+        out[slug] = build(kid, list, depth + 1);
       }
     }
     // The node's OWN fields, namespaced under `_attributes` so they never collide with a child slug.
@@ -180,4 +185,55 @@ export function pagesContext(
   };
 
   return build(home, referencedPagePaths(source as string), 0);
+}
+
+// `{{sw-page-url "<page id>"}}` — a link to another page BY ID, in the reader's language. The id is the
+// one thing that survives every way a link goes stale: a rename, a move, and a translated slug (where
+// both a literal `{{sw-url '/contact'}}` and a slug chain `pages.contact` stop pointing at the German
+// page). Literal ids only: a dataset `page` field already arrives as a resolved, locale-aware view.
+const PAGE_URL_RE = /\bsw-page-url\s+(["'])([\w-]{1,128})\1/g;
+// IdSchema's charset admits these; as keys of the map below they would reach the prototype.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** The literal page ids a source passes to `{{sw-page-url}}`, deduplicated. */
+export function referencedPageUrlIds(source: string): string[] {
+  const ids = new Set<string>();
+  for (const m of source.matchAll(PAGE_URL_RE)) {
+    if (ids.size >= MAX_PAGES_NODES) break;
+    if (!UNSAFE_KEYS.has(m[2]!)) ids.add(m[2]!);
+  }
+  return [...ids];
+}
+
+/**
+ * The `pageUrls` render input for a page in `locale`: every id the source names via `{{sw-page-url}}` →
+ * the root-relative route of that page's member in `locale` (the rendered page's), or of the page itself
+ * when it has no variant there (a working link to the page that exists beats a dead one); a menu
+ * placeholder gives its link target. An id that
+ * resolves to nothing in `pages` is left OUT, so the helper can tell "unknown" from "not wired". Like
+ * {@link pagesContext}, pass the subset the surface renders (published-only on every call site), and
+ * `undefined` when the source never names the helper — no payload.
+ */
+export function pageUrlsContext(
+  pages: readonly Page[],
+  locale: string,
+  defaultLocale: string,
+  source: string | null | undefined,
+): Record<string, string> | undefined {
+  if (typeof source !== 'string' || !source.includes('sw-page-url')) return undefined;
+  const ids = referencedPageUrlIds(source);
+  if (ids.length === 0) return undefined;
+  const byId = pagesById(pages);
+  const urls: Record<string, string> = {};
+  for (const id of ids) {
+    const stored = byId.get(id);
+    if (!stored) continue;
+    const target = localeVariantOf(stored, pages, locale, defaultLocale) ?? stored;
+    // A menu placeholder (`kind:'link'`) has no route of its own — it points where its menu item does,
+    // and a pure dropdown label points nowhere (left out → '#'), rather than at a route that 404s.
+    const href = isLinkPage(target) ? target.link?.target?.trim() : pagePath(target, byId);
+    // eslint-disable-next-line security/detect-object-injection -- `id` matched [\w-]{1,128}; `urls` is a fresh object
+    if (href) urls[id] = href;
+  }
+  return urls;
 }

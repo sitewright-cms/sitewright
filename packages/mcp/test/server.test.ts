@@ -1311,6 +1311,16 @@ describe('put_content: a stringified `data` that does not parse is REFUSED with 
     expect(callsOf(client).putContent).not.toHaveBeenCalled();
   });
 
+  it('repairs ANY raw control character inside a string, and a stray backslash before a line break', () => {
+    expect(parseJsonText('{"a":"x\fy\u0001z"}')).toEqual({ ok: true, value: { a: 'x\fy\u0001z' } });
+    expect(parseJsonText('{"a":"one\\\ntwo"}')).toEqual({ ok: true, value: { a: 'one\ntwo' } });
+  });
+
+  it('an unparseable stringified payload names the expected shape for its kind', async () => {
+    const res = await (await connect(fakeClient(), writeScope)).callTool({ name: 'put_content', arguments: { kind: 'page', id: 'home', data: '{"path":' } });
+    expect(text(res)).toMatch(/not valid JSON[\s\S]*Expected `data` shape for kind "page"/);
+  });
+
   it('parseJsonText keeps escaped quotes and existing escapes intact', () => {
     expect(parseJsonText('{"a":"x\\"y\\n"}')).toEqual({ ok: true, value: { a: 'x"y\n' } });
     expect(parseJsonText('nope')).toMatchObject({ ok: false });
@@ -1318,16 +1328,27 @@ describe('put_content: a stringified `data` that does not parse is REFUSED with 
 });
 
 describe('instance addresses come back ABSOLUTE', () => {
-  it('rewrites previewUrl / share / upload paths against the origin, never media URLs', () => {
+  it('rewrites previewUrl / share / upload addresses against the origin — and NEVER site data', () => {
     const out = absolutizeInstanceUrls(
-      { items: [{ id: 'home', previewUrl: '/preview-site/p1/sig/' }], uploadUrl: '/media-upload/tok', url: '/media/site/a1/x.jpg', nav: '/preview-sitex' },
+      {
+        items: [{ id: 'home', previewUrl: '/preview-site/p1/sig/' }],
+        uploadUrl: '/media-upload/tok',
+        url: '/media/site/a1/x.jpg',
+        // Site data an agent will write back: a nav/link target, a page path, a dataset value that
+        // happen to look like instance paths must survive a read-then-write untouched.
+        link: { target: '/preview/pricing' },
+        target: '/preview-site/p1/sig/',
+        values: { cta: '/preview-site/p1/sig/' },
+      },
       'https://cms.example',
     );
     expect(out).toEqual({
       items: [{ id: 'home', previewUrl: 'https://cms.example/preview-site/p1/sig/' }],
       uploadUrl: 'https://cms.example/media-upload/tok',
       url: '/media/site/a1/x.jpg', // goes INTO page sources — root-relative is what publish rewrites
-      nav: '/preview-sitex',
+      link: { target: '/preview/pricing' },
+      target: '/preview-site/p1/sig/',
+      values: { cta: '/preview-site/p1/sig/' },
     });
     expect(absolutizeInstanceUrls({ previewUrl: '/preview-site/x' }, '')).toEqual({ previewUrl: '/preview-site/x' }); // origin unknown
   });

@@ -161,8 +161,13 @@ export function parseJsonText(text: string): { ok: true; value: unknown } | { ok
     let inString = false;
     let escaped = false;
     for (const ch of text) {
-      if (inString && !escaped && (ch === '\n' || ch === '\r' || ch === '\t')) {
-        fixed += ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : '\\t';
+      // Any raw control character inside a string literal (JSON allows none) — a line break most often.
+      if (inString && ch < ' ') {
+        const named = ch === '\n' ? '\\n' : ch === '\r' ? '\\r' : ch === '\t' ? '\\t' : undefined;
+        // After a stray backslash the escape is already open: emit just the letter/code it needs.
+        const esc = named ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+        fixed += escaped ? esc.slice(1) : esc;
+        escaped = false;
         continue;
       }
       if (escaped) escaped = false;
@@ -240,20 +245,31 @@ type ToolResult = { content: ContentBlock[]; isError?: boolean };
 
 // The instance's OWN addresses an agent is handed and must open from outside: a page's draft
 // `previewUrl`, a share link, an upload ticket. The API returns them root-relative and no tool returned
-// the host, so an agent had to know the origin from earlier notes. Media URLs (`/media/…`) are
-// deliberately NOT here: those go INTO page sources, where the root-relative form is what the publish
-// rewrite recognises — an absolute one would ship pointing at the editor.
-const INSTANCE_URL_PREFIXES = ['/preview-site/', '/preview/', '/media-upload/'];
+// the host, so an agent had to know the origin from earlier notes.
+//
+// Rewritten ONLY under these keys AND with these exact path shapes. Site DATA passes through the same
+// results — a nav target, a dataset value, a page body — and an agent writes what it read back, so a
+// blanket prefix rewrite would turn a site's own `/preview/pricing` link into an absolute editor URL on
+// the next put. Media URLs (`/media/…`) are never touched: those go INTO page sources, where the
+// root-relative form is what the publish rewrite recognises.
+const INSTANCE_URL_KEYS = new Set(['previewUrl', 'uploadUrl', 'shareUrl', 'url']);
+const INSTANCE_URL_SHAPES = [/^\/preview-site\/[A-Za-z0-9_-]+\//, /^\/media-upload\/[A-Za-z0-9_-]+$/];
 
-/** `value` with every instance-address string made absolute against `origin` (deep; a fresh copy). */
+/** `value` with every instance address made absolute against `origin` (deep; a fresh copy). */
 export function absolutizeInstanceUrls(value: unknown, origin: string, depth = 0): unknown {
   if (!origin || depth > 12) return value;
-  if (typeof value === 'string') {
-    return INSTANCE_URL_PREFIXES.some((p) => value.startsWith(p)) ? `${origin}${value}` : value;
-  }
   if (Array.isArray(value)) return value.map((v) => absolutizeInstanceUrls(v, origin, depth + 1));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, absolutizeInstanceUrls(v, origin, depth + 1)]));
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [
+        k,
+        typeof v === 'string'
+          ? INSTANCE_URL_KEYS.has(k) && INSTANCE_URL_SHAPES.some((re) => re.test(v))
+            ? `${origin}${v}`
+            : v
+          : absolutizeInstanceUrls(v, origin, depth + 1),
+      ]),
+    );
   }
   return value;
 }
@@ -871,7 +887,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source. Works for DRAFT pages too (any status) — the way to inspect a draft, which has no previewUrl; never publish a throwaway page just to look at it. RENDERED HTML: includeHtml:true adds the markup with inline <style>/<script> bodies elided (the compiled stylesheet alone is 25k+ tokens); selector:"main" (or "#id", ".class", "section.hero", "header nav > a", "a, b" — tag/#id/.class/[attr]/[attr="v"] with descendant and ">" combinators) returns only the matching elements; screenshot:false skips the images when you only need the HTML; fullHtml:true returns the untouched document. The <head> SEO tags (canonical, hreflang) are NOT rendered here — check those on the page's previewUrl.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source. Works for DRAFT pages too (any status) — the way to inspect a draft, which has no previewUrl; never publish a throwaway page just to look at it. RENDERED HTML: includeHtml:true adds the markup with inline <style>/<script> bodies elided (the compiled stylesheet alone is 25k+ tokens); selector:"main" (or "#id", ".class", "section.hero", "header nav > a", "a, b" — tag/#id/.class/[attr]/[attr="v"]/[class~="md:flex"] with descendant and ">" combinators; escape a Tailwind ":" or "/" in a class, ".md\\:flex") returns only the matching elements; screenshot:false skips the images when you only need the HTML; fullHtml:true returns the untouched document. The <head> SEO tags (canonical, hreflang) are NOT rendered here — check those on the page's previewUrl.`,
       inputSchema: {
         // A SAVED page may be named by id alone — the route loads the stored page and renders it. The
         // description has promised that since the stored-page fallback landed; the schema still demanded
@@ -1601,8 +1617,15 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:write', async ({ kind, id, dataset, data, merge }) => {
       // Weak-model forgiveness: parse a stringified `data` and backfill the id/dataset the schema
       // demands but models routinely omit (see normalizePutData). Keeps a clean payload untouched.
-      const normalized = normalizePutData(kind, id, dataset, data);
       try {
+        let normalized: unknown;
+        try {
+          normalized = normalizePutData(kind, id, dataset, data);
+        } catch (err) {
+          // An unparseable stringified payload: a 400 like the API's own, so the catch below appends the
+          // expected shape for this kind.
+          throw new SitewrightApiError(400, err instanceof Error ? err.message : 'invalid data');
+        }
         return await client.putContent(kind, id, normalized, { merge, receipt: true });
       } catch (err) {
         // Teach on failure: append the expected top-level shape for this kind so a model that guessed

@@ -3,12 +3,15 @@
 // `preview_page includeHtml:true` handed back the WHOLE document — the inlined, compiled stylesheet
 // alone is 25k+ tokens, so the response was truncated before it reached the markup the agent asked
 // about. Two cuts make it usable: inline <style>/<script> BODIES are elided (the markup stays, a note
-// says how much was dropped), and a CSS selector narrows the output to the matching elements.
+// says how much was dropped; JSON data islands are kept up to a size), and a CSS selector narrows the
+// output to the matching elements.
 //
-// The selector support is a deliberate SUBSET — enough to address a region, not a CSS engine:
-// a comma-separated list of compound selectors (`tag`, `#id`, `.class`, `[attr]`, `[attr="value"]`,
-// combined like `section.hero[data-x]`), joined by descendant (space) or child (`>`) combinators.
-// Parsing is htmlparser2 (linear); the selector is length-capped and parsed without backtracking.
+// The selector support is a deliberate SUBSET — enough to address a region, not a CSS engine: a
+// comma-separated list of compound selectors (`tag`, `#id`, `.class`, `[attr]`, `[attr="v"]`,
+// `[attr~="v"]`, `^=`, `$=`, `*=`), joined by descendant (space) or child (`>`) combinators. A class
+// with a `:` or `/` in it (Tailwind's `md:flex`, `w-1/2`) is written escaped, `.md\:flex`, or as
+// `[class~="md:flex"]`. The tokenizer is quote-aware and the matcher is ONE linear pass over the tree
+// (no per-element ancestor walks), iterative, so a deep or hostile document can't stall it.
 import { parseDocument } from 'htmlparser2';
 import { getOuterHTML } from 'domutils';
 import type { AnyNode, Element } from 'domhandler';
@@ -17,14 +20,17 @@ import type { AnyNode, Element } from 'domhandler';
 export const MAX_SCOPE_MATCHES = 20;
 /** Upper bound on the scoped output, in characters. */
 export const MAX_SCOPE_CHARS = 200_000;
+/** JSON data islands (`<script type="application/json">`, ld+json) up to this size are kept. */
+const MAX_KEPT_JSON = 8 * 1024;
 const MAX_SELECTOR_LENGTH = 200;
 const MAX_SELECTOR_STEPS = 12;
 
+type AttrOp = '=' | '~=' | '^=' | '$=' | '*=';
 interface Compound {
   tag?: string;
   id?: string;
   classes: string[];
-  attrs: Array<{ name: string; value?: string }>;
+  attrs: Array<{ name: string; op?: AttrOp; value?: string }>;
 }
 interface Step {
   compound: Compound;
@@ -39,69 +45,171 @@ export class SelectorError extends Error {
   }
 }
 
-const IDENT = /^-?[A-Za-z_][\w-]*/;
+const UNSUPPORTED =
+  'supported: tag, #id, .class (escape ":" and "/" as \\: \\/), [attr], [attr="v"], [attr~="v"], ^= $= *=, descendant and ">" combinators, "," lists';
 
-/** Parse one compound selector (`div.a#b[x="y"]`), or throw a SelectorError naming what's unsupported. */
-function parseCompound(text: string): Compound {
+/** A cursor over the selector text — every read is bounded by its length, no regex backtracking. */
+class Cursor {
+  i = 0;
+  constructor(readonly s: string) {}
+  get done(): boolean {
+    return this.i >= this.s.length;
+  }
+  peek(): string {
+    return this.s[this.i] ?? '';
+  }
+  skipSpace(): boolean {
+    const start = this.i;
+    while (!this.done && /\s/.test(this.peek())) this.i += 1;
+    return this.i > start;
+  }
+  /** An identifier: [\w-] characters and `\`-escaped characters (`md\:flex` → `md:flex`). */
+  ident(): string {
+    let out = '';
+    while (!this.done) {
+      const ch = this.peek();
+      if (ch === '\\' && this.i + 1 < this.s.length) {
+        out += this.s[this.i + 1];
+        this.i += 2;
+      } else if (/[\w-]/.test(ch)) {
+        out += ch;
+        this.i += 1;
+      } else break;
+    }
+    return out;
+  }
+  /** A quoted string (either quote) or a bare word up to `]`. */
+  value(): string {
+    const q = this.peek();
+    if (q === '"' || q === "'") {
+      this.i += 1;
+      let out = '';
+      while (!this.done && this.peek() !== q) {
+        if (this.peek() === '\\' && this.i + 1 < this.s.length) this.i += 1;
+        out += this.peek();
+        this.i += 1;
+      }
+      if (this.done) throw new SelectorError(`unterminated quote in "${this.s}"`);
+      this.i += 1;
+      return out;
+    }
+    let out = '';
+    while (!this.done && !/[\]\s]/.test(this.peek())) {
+      out += this.peek();
+      this.i += 1;
+    }
+    return out;
+  }
+}
+
+/** Parse one compound selector at the cursor; empty → null. */
+function compoundAt(c: Cursor): Compound | null {
   const out: Compound = { classes: [], attrs: [] };
-  let rest = text;
-  const tag = /^(\*|[A-Za-z][\w-]*)/.exec(rest);
-  if (tag) {
-    if (tag[1] !== '*') out.tag = tag[1]!.toLowerCase();
-    rest = rest.slice(tag[0].length);
+  let any = false;
+  if (c.peek() === '*') {
+    c.i += 1;
+    any = true;
+  } else if (/[A-Za-z]/.test(c.peek())) {
+    out.tag = c.ident().toLowerCase();
+    any = true;
   }
-  while (rest.length > 0) {
-    const sigil = rest[0];
-    if (sigil === '#' || sigil === '.') {
-      const name = IDENT.exec(rest.slice(1));
-      if (!name) throw new SelectorError(`expected a name after "${sigil}" in "${text}"`);
-      if (sigil === '#') out.id = name[0];
-      else out.classes.push(name[0]);
-      rest = rest.slice(1 + name[0].length);
-      continue;
-    }
-    if (sigil === '[') {
-      const m = /^\[\s*([A-Za-z_:][\w:.-]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+))\s*)?\]/.exec(rest);
-      if (!m) throw new SelectorError(`unsupported attribute selector in "${text}" — use [name] or [name="value"]`);
-      out.attrs.push({ name: m[1]!.toLowerCase(), value: m[2] ?? m[3] ?? m[4] });
-      rest = rest.slice(m[0].length);
-      continue;
-    }
-    throw new SelectorError(`unsupported selector syntax "${rest}" in "${text}" — supported: tag, #id, .class, [attr], [attr="v"], descendant and ">" combinators`);
+  for (;;) {
+    const ch = c.peek();
+    if (ch === '#' || ch === '.') {
+      c.i += 1;
+      const name = c.ident();
+      if (!name) throw new SelectorError(`expected a name after "${ch}" in "${c.s}"`);
+      if (ch === '#') out.id = name;
+      else out.classes.push(name);
+      any = true;
+    } else if (ch === '[') {
+      c.i += 1;
+      c.skipSpace();
+      const name = c.ident().toLowerCase();
+      if (!name) throw new SelectorError(`expected an attribute name in "${c.s}"`);
+      c.skipSpace();
+      let op: AttrOp | undefined;
+      let value: string | undefined;
+      for (const candidate of ['~=', '^=', '$=', '*=', '='] as const) {
+        if (c.s.startsWith(candidate, c.i)) {
+          op = candidate;
+          c.i += candidate.length;
+          break;
+        }
+      }
+      if (op) {
+        c.skipSpace();
+        value = c.value();
+        c.skipSpace();
+      }
+      if (c.peek() !== ']') throw new SelectorError(`unsupported attribute selector in "${c.s}" — ${UNSUPPORTED}`);
+      c.i += 1;
+      out.attrs.push({ name, ...(op ? { op, value } : {}) });
+      any = true;
+    } else break;
   }
-  if (!out.tag && !out.id && out.classes.length === 0 && out.attrs.length === 0 && !text.startsWith('*')) {
-    throw new SelectorError(`empty selector part in "${text}"`);
-  }
-  return out;
+  return any ? out : null;
 }
 
 /** Parse a selector list into chains of steps. */
 export function parseSelector(selector: string): Step[][] {
   if (selector.length > MAX_SELECTOR_LENGTH) throw new SelectorError(`selector is longer than ${MAX_SELECTOR_LENGTH} characters`);
+  const c = new Cursor(selector.trim());
   const chains: Step[][] = [];
-  for (const part of selector.split(',')) {
-    const tokens = part.replace(/\s*>\s*/g, ' > ').trim().split(/\s+/).filter(Boolean);
-    if (tokens.length === 0) throw new SelectorError('empty selector');
-    const chain: Step[] = [];
-    let pending: ' ' | '>' | undefined;
-    for (const token of tokens) {
-      if (token === '>') {
-        if (chain.length === 0 || pending === '>') throw new SelectorError(`misplaced ">" in "${part.trim()}"`);
-        pending = '>';
-        continue;
-      }
-      chain.push({ compound: parseCompound(token), ...(chain.length > 0 ? { combinator: pending ?? ' ' } : {}) });
+  let chain: Step[] = [];
+  let pending: ' ' | '>' | undefined;
+  while (!c.done) {
+    const spaced = c.skipSpace();
+    if (c.done) break;
+    const ch = c.peek();
+    if (ch === ',') {
+      if (chain.length === 0 || pending === '>') throw new SelectorError(`empty selector part in "${selector}"`);
+      chains.push(chain);
+      chain = [];
       pending = undefined;
+      c.i += 1;
+      continue;
     }
-    if (pending) throw new SelectorError(`selector ends with ">" in "${part.trim()}"`);
+    if (ch === '>') {
+      if (chain.length === 0 || pending === '>') throw new SelectorError(`misplaced ">" in "${selector}"`);
+      pending = '>';
+      c.i += 1;
+      continue;
+    }
+    const compound = compoundAt(c);
+    if (!compound) throw new SelectorError(`unsupported selector syntax at "${selector.slice(c.i)}" — ${UNSUPPORTED}`);
+    if (chain.length > 0) {
+      if (!pending && !spaced) throw new SelectorError(`unsupported selector syntax at "${selector.slice(c.i)}" — ${UNSUPPORTED}`);
+      chain.push({ compound, combinator: pending ?? ' ' });
+    } else {
+      chain.push({ compound });
+    }
     if (chain.length > MAX_SELECTOR_STEPS) throw new SelectorError(`selector has more than ${MAX_SELECTOR_STEPS} steps`);
-    chains.push(chain);
+    pending = undefined;
   }
+  if (pending) throw new SelectorError(`selector ends with "${pending}" in "${selector}"`);
+  if (chain.length === 0) throw new SelectorError('empty selector');
+  chains.push(chain);
   return chains;
 }
 
 function isElement(node: AnyNode | null | undefined): node is Element {
   return !!node && (node.type === 'tag' || node.type === 'script' || node.type === 'style');
+}
+
+function attrMatches(actual: string, op: AttrOp, value: string): boolean {
+  switch (op) {
+    case '=':
+      return actual === value;
+    case '~=':
+      return actual.split(/\s+/).includes(value);
+    case '^=':
+      return value !== '' && actual.startsWith(value);
+    case '$=':
+      return value !== '' && actual.endsWith(value);
+    case '*=':
+      return value !== '' && actual.includes(value);
+  }
 }
 
 function matchesCompound(el: Element, c: Compound): boolean {
@@ -114,56 +222,73 @@ function matchesCompound(el: Element, c: Compound): boolean {
   for (const a of c.attrs) {
     if (!Object.prototype.hasOwnProperty.call(el.attribs, a.name)) return false;
     // eslint-disable-next-line security/detect-object-injection -- own attribute, checked above
-    if (a.value !== undefined && el.attribs[a.name] !== a.value) return false;
+    if (a.op && !attrMatches(el.attribs[a.name] ?? '', a.op, a.value ?? '')) return false;
   }
   return true;
 }
 
+/** Per-element, per-chain state: does it match the chain up to step i (`m`), or does it or an ancestor (`a`)? */
+interface ChainState {
+  m: boolean[];
+  a: boolean[];
+}
+
 /**
- * Does `el` match the chain, read right-to-left from step `i`? Memoised per (element, step): a
- * descendant combinator tries every ancestor, so without it `div div div …` over a deep tree is
- * exponential. With it, each (element, step) pair is decided once.
+ * Every OUTERMOST element matching any chain, in document order. One iterative pre-order pass: an
+ * element's state is computed from its parent's, so a descendant combinator is an O(1) look at the
+ * parent's "some ancestor matched step i−1" flag rather than a walk up the tree.
  */
-function matchesChain(el: Element, chain: readonly Step[], memo: Map<Element, Array<boolean | undefined>>, i = chain.length - 1): boolean {
-  let row = memo.get(el);
-  if (row?.[i] !== undefined) return row[i]!;
-  const step = chain[i]!;
-  let result = false;
-  if (matchesCompound(el, step.compound)) {
-    if (i === 0) result = true;
-    else if (step.combinator === '>') result = isElement(el.parent) && matchesChain(el.parent, chain, memo, i - 1);
-    else {
-      for (let p = el.parent; isElement(p); p = p.parent) {
-        if (matchesChain(p, chain, memo, i - 1)) {
-          result = true;
-          break;
-        }
+function findMatches(roots: readonly AnyNode[], chains: readonly Step[][]): Element[] {
+  const found: Element[] = [];
+  const state = new Map<Element, { chains: ChainState[]; inMatch: boolean }>();
+  const stack: AnyNode[] = [...roots].reverse();
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (!isElement(node)) continue;
+    const parent = isElement(node.parent) ? state.get(node.parent) : undefined;
+    const perChain = chains.map((chain, n) => {
+      const up = parent?.chains[n];
+      const m: boolean[] = [];
+      const a: boolean[] = [];
+      for (let i = 0; i < chain.length; i += 1) {
+        const step = chain[i]!;
+        const linked = i === 0 || (step.combinator === '>' ? up?.m[i - 1] === true : up?.a[i - 1] === true);
+        m[i] = linked && matchesCompound(node, step.compound);
+        a[i] = m[i]! || up?.a[i] === true;
       }
-    }
+      return { m, a };
+    });
+    const matched = chains.some((chain, n) => perChain[n]!.m[chain.length - 1]);
+    const inMatch = parent?.inMatch === true;
+    if (matched && !inMatch) found.push(node);
+    state.set(node, { chains: perChain, inMatch: inMatch || matched });
+    for (let k = node.children.length - 1; k >= 0; k -= 1) stack.push(node.children[k]!);
   }
-  if (!row) memo.set(el, (row = []));
-  row[i] = result;
-  return result;
+  return found;
 }
 
 /** Replace inline <style>/<script> bodies with a short note, in place (the document is ours). */
-function elideAssetBodies(nodes: readonly AnyNode[]): void {
-  for (const node of nodes) {
+function elideAssetBodies(roots: readonly AnyNode[]): void {
+  const stack: AnyNode[] = [...roots];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
     if (!isElement(node)) continue;
-    if (node.name === 'style' || node.name === 'script') {
-      const text = node.children.map((c) => ('data' in c ? String(c.data) : '')).join('');
-      if (text.trim().length > 0) {
-        const kb = Math.max(1, Math.round(text.length / 1024));
-        const note = node.name === 'style' ? `/* ${kb} KB of inline CSS omitted */` : `/* ${kb} KB of inline script omitted */`;
-        const first = node.children[0];
-        if (first && 'data' in first) {
-          first.data = note;
-          node.children = [first];
-        }
-      }
+    if (node.name !== 'style' && node.name !== 'script') {
+      stack.push(...node.children);
       continue;
     }
-    elideAssetBodies(node.children);
+    const text = node.children.map((c) => ('data' in c ? String(c.data) : '')).join('');
+    if (text.trim().length === 0) continue;
+    // A JSON data island (page data, structured data) is CONTENT an agent may need to check — keep it
+    // when it is small; a stylesheet or a runtime never is.
+    if (node.name === 'script' && /json/i.test(node.attribs.type ?? '') && text.length <= MAX_KEPT_JSON) continue;
+    const kb = Math.max(1, Math.round(text.length / 1024));
+    const what = node.name === 'style' ? 'inline CSS' : /json/i.test(node.attribs.type ?? '') ? 'JSON data' : 'inline script';
+    const first = node.children[0];
+    if (first && 'data' in first) {
+      first.data = `/* ${kb} KB of ${what} omitted */`;
+      node.children = [first];
+    }
   }
 }
 
@@ -182,6 +307,16 @@ export interface ScopedHtml {
   truncated: boolean;
 }
 
+/** Serialize, or say why not — dom-serializer recurses, so a pathologically deep tree can't be printed. */
+function serialize(node: AnyNode | AnyNode[]): string {
+  try {
+    return getOuterHTML(node);
+  } catch (err) {
+    if (err instanceof RangeError) return '<!-- this part of the document is nested too deeply to print -->';
+    throw err;
+  }
+}
+
 /** Scope a rendered document for reading: assets elided, optionally narrowed to a selector. */
 export function scopeHtml(html: string, opts: ScopeHtmlOptions = {}): ScopedHtml {
   const chains = opts.selector !== undefined ? parseSelector(opts.selector) : undefined;
@@ -191,29 +326,18 @@ export function scopeHtml(html: string, opts: ScopeHtmlOptions = {}): ScopedHtml
   let matches: number | undefined;
   let truncated = false;
   if (chains) {
-    const found: Element[] = [];
-    const memos = chains.map(() => new Map<Element, Array<boolean | undefined>>());
-    const walk = (nodes: readonly AnyNode[]): void => {
-      for (const node of nodes) {
-        if (!isElement(node)) continue;
-        if (chains.some((chain, n) => matchesChain(node, chain, memos[n]!))) {
-          found.push(node);
-          continue; // a match's own descendants are already inside its outerHTML
-        }
-        walk(node.children);
-      }
-    };
-    walk(doc.children);
+    const found = findMatches(doc.children, chains);
     matches = found.length;
     truncated = found.length > MAX_SCOPE_MATCHES;
     out = found
       .slice(0, MAX_SCOPE_MATCHES)
-      .map((el) => getOuterHTML(el))
+      .map((el) => serialize(el))
       .join('\n');
   } else {
-    out = getOuterHTML(doc);
+    out = serialize(doc.children);
   }
   if (out.length > MAX_SCOPE_CHARS) {
+    // May end mid-tag; the caller's note says the output was cut.
     out = out.slice(0, MAX_SCOPE_CHARS);
     truncated = true;
   }

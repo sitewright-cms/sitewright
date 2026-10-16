@@ -52,11 +52,29 @@ describe('scopeHtml', () => {
     expect(res.truncated).toBe(true);
   });
 
-  it('stays fast on a deep tree with a long descendant chain (memoised matching)', () => {
-    const deep = '<div>'.repeat(300) + 'x' + '</div>'.repeat(300);
+  it('is linear on a very deep tree with a long descendant chain (and never blows the stack)', () => {
+    const deep = '<div>'.repeat(10_000) + '<span>x</span>' + '</div>'.repeat(10_000);
     const t0 = Date.now();
-    scopeHtml(deep, { selector: 'div div div div div div div div div div div span' });
-    expect(Date.now() - t0).toBeLessThan(2000);
+    const res = scopeHtml(deep, { selector: 'div div div div div div div div div div div span' });
+    expect(Date.now() - t0).toBeLessThan(3000);
+    expect(res.matches).toBe(1);
+  });
+
+  it('addresses Tailwind classes escaped or via ~=, and quoted values with spaces and commas', () => {
+    const html = '<div class="md:flex w-1/2"><p title="a b, c">t</p></div><div class="flex">n</div>';
+    expect(scopeHtml(html, { selector: '.md\\:flex' }).matches).toBe(1);
+    expect(scopeHtml(html, { selector: '.w-1\\/2' }).matches).toBe(1);
+    expect(scopeHtml(html, { selector: '[class~="md:flex"]' }).matches).toBe(1);
+    expect(scopeHtml(html, { selector: '[title="a b, c"]' }).matches).toBe(1);
+    expect(scopeHtml(html, { selector: '[class^="md:"], [class$="flex"]' }).matches).toBe(2);
+    expect(scopeHtml(html, { selector: '[title*="b,"]' }).matches).toBe(1);
+  });
+
+  it('keeps a small JSON data island readable, elides a big one', () => {
+    const small = '<script type="application/ld+json">{"@type":"Organization"}</script>';
+    expect(scopeHtml(small).html).toContain('"@type":"Organization"');
+    const big = `<script type="application/json">${JSON.stringify({ x: 'y'.repeat(20_000) })}</script>`;
+    expect(scopeHtml(big).html).toContain('KB of JSON data omitted');
   });
 });
 
@@ -67,6 +85,8 @@ describe('parseSelector', () => {
     expect(() => parseSelector('> a')).toThrow(/misplaced/);
     expect(() => parseSelector('a >')).toThrow(/ends with/);
     expect(() => parseSelector('x'.repeat(201))).toThrow(/longer than/);
+    expect(() => parseSelector('[title="open')).toThrow(/unterminated quote/);
+    expect(() => parseSelector('a,,b')).toThrow(/empty selector part/);
     expect(() => parseSelector(Array.from({ length: 13 }, () => 'a').join(' '))).toThrow(/more than 12 steps/);
   });
 });

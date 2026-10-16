@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { createSitewrightMcpServer, staticAuth, SitewrightClient, SitewrightApiError, type FetchLike } from '@sitewright/mcp';
 import { hashApiToken } from '../auth/api-keys.js';
 import { issuerOf } from './oauth-routes.js';
+import { resolvePlatformOrigin } from './platform-origins.js';
 
 /**
  * Per-minute ceiling on `/mcp` calls. The rate-limit bucket is keyed by the BEARER TOKEN (see the
@@ -144,8 +145,10 @@ export function registerMcpRoutes(
     // Resolve the token's project scope (validates it); a bad/expired token → the OAuth challenge,
     // any other API error (e.g. a 429 from the introspect rate-limit) → its real status as a JSON-RPC
     // error envelope, not a 500. Fresh scopes are cached briefly (see SCOPE_TTL_MS above).
-    // issuerOf: SW_PUBLIC_URL, else the request's own (proxy-aware) origin — the address the agent used.
-    const client = injectClient(token, issuerOf(req, opts.origins()));
+    // Only an operator-CONFIGURED origin (SW_PUBLIC_URL / approved origins) — never one guessed from the
+    // Host header: behind a default proxy that is the upstream's internal name, and handing an agent a
+    // bearer upload ticket on `http://api:3000` is worse than a relative address. Unconfigured → relative.
+    const client = injectClient(token, resolvePlatformOrigin(req, opts.origins())?.replace(/\/$/, '') ?? '');
     // Cache key = the token's sha256 (the codebase-wide rule: raw tokens are never persisted or held
     // beyond the request), so a heap inspection of the cache yields no usable bearer material.
     const cacheKey = hashApiToken(token);

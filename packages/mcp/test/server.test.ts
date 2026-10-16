@@ -18,6 +18,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     listRevisions: vi.fn(async () => [{ id: 'rev1', op: 'put', actor: 'user' }]),
     restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
+    patchText: vi.fn(async (kind: string, id: string, field: string, edits: unknown[]) => ({ kind, id, field, edits: edits.length, replacements: edits.length, bytes: 1, bytesBefore: 1, changed: true, version: 'v' })),
     deleteContent: vi.fn(async () => undefined),
     deleteContentBulk: vi.fn(async (_k: string, ids: readonly string[]) => ({ deleted: [...ids], failed: [], requested: ids.length })),
     addLocale: vi.fn(async (locale: string) => ({ locale, created: 3, pages: [] })),
@@ -223,6 +224,29 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
 
     // patch_page takes the same treatment
     expect((await mcp.callTool({ name: 'patch_page', arguments: { page: JSON.stringify({ id: 'home', title: 'X' }) } })).isError).toBeFalsy();
+  });
+
+  it('patch_text forwards the edits (a stringified array too) and refuses a field it cannot patch', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const edits = [{ old: '<p>One</p>', new: '<p>Uno</p>' }, { old: 'a', new: 'b', all: true }];
+    expect((await mcp.callTool({ name: 'patch_text', arguments: { kind: 'page', id: 'home', field: 'source', edits } })).isError).toBeFalsy();
+    expect(callsOf(client).patchText).toHaveBeenLastCalledWith('page', 'home', 'source', edits);
+    // A model that serialised the array sends the same data — parsed, not refused.
+    const res = await mcp.callTool({ name: 'patch_text', arguments: { kind: 'settings', id: 'settings', field: 'website.footer', edits: JSON.stringify(edits) } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(client).patchText).toHaveBeenLastCalledWith('settings', 'settings', 'website.footer', edits);
+    // Operator-only raw fields are not addressable, and an empty batch is meaningless.
+    expect((await mcp.callTool({ name: 'patch_text', arguments: { kind: 'settings', id: 'settings', field: 'website.head', edits } })).isError).toBe(true);
+    expect((await mcp.callTool({ name: 'patch_text', arguments: { kind: 'page', id: 'home', field: 'source', edits: [] } })).isError).toBe(true);
+    expect(callsOf(client).patchText).toHaveBeenCalledTimes(2);
+  });
+
+  it('patch_text is a write: a read-only token is refused before any client call', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'patch_text', arguments: { kind: 'page', id: 'home', field: 'source', edits: [{ old: 'a', new: 'b' }] } });
+    expect(res.isError).toBe(true);
+    expect(callsOf(client).patchText).not.toHaveBeenCalled();
   });
 
   it('a string that is not JSON is still rejected by the same schema', async () => {

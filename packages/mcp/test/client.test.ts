@@ -96,6 +96,24 @@ describe('SitewrightClient', () => {
     expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/settings/settings?merge=1&receipt=1');
   });
 
+  it('patchText POSTs the field + edits to the text-patch route, WITHOUT If-Match, and returns the receipt', async () => {
+    const receipt = { kind: 'page', id: 'home', field: 'source', edits: 1, replacements: 1, bytes: 10, bytesBefore: 9, changed: true, version: 'v2' };
+    const { client, calls } = await introspected((input) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      if (input.endsWith('/content/page/home')) return { status: 200, body: JSON.stringify({ item: { id: 'home' }, version: 'v1' }) };
+      return { status: 200, body: JSON.stringify(receipt) };
+    });
+    await client.getContent('page', 'home'); // arms a remembered version for this page
+    const edits = [{ old: 'a', new: 'b' }];
+    await expect(client.patchText('page', 'home', 'source', edits)).resolves.toEqual(receipt);
+    const post = calls[2]!;
+    expect(post.input).toBe('https://cms.test/projects/p1/content/page/home/text-patch');
+    expect(post.init?.method).toBe('POST');
+    expect(JSON.parse(String(post.init!.body))).toEqual({ field: 'source', edits });
+    // Anchored edits are re-applied server-side over a concurrent write, so no version is pinned.
+    expect(post.init?.headers?.['if-match']).toBeUndefined();
+  });
+
   it('treats 204 as a void delete', async () => {
     const { client } = await introspected((input) =>
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 204 },

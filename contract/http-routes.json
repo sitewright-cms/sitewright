@@ -199,6 +199,7 @@
   "POST /projects/:projectId/api-keys",
   "POST /projects/:projectId/captcha/test",
   "POST /projects/:projectId/content/:kind/:entityId/revisions/:revisionId/restore",
+  "POST /projects/:projectId/content/:kind/:entityId/text-patch",
   "POST /projects/:projectId/content/:kind/bulk-delete",
   "POST /projects/:projectId/content/:kind/reorder",
   "POST /projects/:projectId/critical-css",

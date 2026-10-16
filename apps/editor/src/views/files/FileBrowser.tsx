@@ -19,6 +19,7 @@ import { glassCard, glassPanel, ghostButton, primaryButton, toggleInput } from '
 import { cleanSvgFile } from '../library/svg-studio-helpers';
 import { ImageEditorStudio } from '../library/ImageEditorStudio';
 import { assetEmbedUrls } from './media-embed';
+import { ImageAltField } from './ImageAltField';
 import {
   sortAssets,
   sortFolders,
@@ -1130,11 +1131,17 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
       {preview && preview.kind === 'image' && (
         <Modal title={preview.filename} size="xl" onClose={() => setPreview(null)}>
           <ImagePreview
+            projectId={projectId}
             asset={preview}
             copiedId={copiedId}
             onCopy={copy}
             onEdit={() => setEditing(preview)}
             onReplace={() => replaceAsset(preview)}
+            onAltSaved={(item) => {
+              // Re-read the library too: the rows, the search and the next/previous steps are built from it.
+              if (item.kind === 'image' && item.id === preview.id) setPreview(item);
+              void load();
+            }}
             nonce={previewNonce}
             position={previewIndex >= 0 ? { index: previewIndex, total: previewSiblings.length } : undefined}
             onPrev={previewIndex > 0 ? () => goPreview(-1) : undefined}
@@ -1173,19 +1180,24 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
  * thumbnail size). Each row copies its root-relative `/media/…` URL — what you paste into page code.
  */
 function ImagePreview({
+  projectId,
   asset,
   copiedId,
   onCopy,
   onEdit,
   onReplace,
+  onAltSaved,
   nonce,
   position,
   onPrev,
   onNext,
 }: {
+  projectId: string;
   asset: MediaAsset & { kind: 'image' };
   copiedId: string | null;
   onCopy: (text: string, id: string) => void;
+  /** The asset after its alt text was saved — the caller refreshes the preview and the list from it. */
+  onAltSaved: (item: MediaAsset) => void;
   /** Open the Image Editor on this asset. Absent for a format that has no pixels to edit. */
   onEdit?: () => void;
   /** Swap the FILE behind this asset, keeping its id and URL (not the same as repointing an <img>). */
@@ -1267,6 +1279,9 @@ function ImagePreview({
           </a>
         </span>
       </div>
+
+      {/* Keyed by asset: stepping to the next image must show ITS alt text, not a draft typed for this one. */}
+      <ImageAltField key={asset.id} projectId={projectId} asset={asset} onSaved={onAltSaved} />
 
       <div className="w-full">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Embed URLs</p>

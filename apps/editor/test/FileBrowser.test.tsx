@@ -685,3 +685,86 @@ describe('FileBrowser — image preview navigation', () => {
     expect(within(dialog).getByRole('button', { name: 'Previous image' })).toBeDisabled();
   });
 });
+
+/**
+ * An image's ALT TEXT, set where the image is looked at. `{{sw-image}}` and every `{{#sw-folder}}`
+ * gallery read the asset's stored `alt`, but until now only an MCP agent could write it — so a gallery
+ * an author built by hand shipped `alt=""` on every photo.
+ */
+describe('FileBrowser — alt text for an image', () => {
+  const described = { ...image, alt: 'A red bicycle against a white wall' } as MediaAsset;
+
+  async function openPreview(items: MediaAsset[] = [described, file]) {
+    listMedia.mockResolvedValue({ items });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    fireEvent.click(await screen.findByRole('button', { name: (items[0] as MediaAsset).filename }));
+    return screen.findByRole('dialog', { name: (items[0] as MediaAsset).filename });
+  }
+  const altField = (dialog: HTMLElement) => within(dialog).getByRole('textbox', { name: 'Alt text' });
+  const saveButton = (dialog: HTMLElement) => within(dialog).getByRole('button', { name: 'Save alt text' });
+
+  it('shows the current alt text in a labelled field that says what it is for', async () => {
+    const dialog = await openPreview();
+    expect(altField(dialog)).toHaveValue('A red bicycle against a white wall');
+    expect(altField(dialog)).toHaveAccessibleDescription(/screen readers and search engines.*galleries use it/i);
+    expect(saveButton(dialog)).toBeDisabled(); // nothing to save until it changes
+  });
+
+  it('saves an edited alt text through the media PATCH, trimmed', async () => {
+    patchMedia.mockResolvedValueOnce({ item: { ...described, alt: 'A red bicycle' } });
+    const dialog = await openPreview();
+    fireEvent.change(altField(dialog), { target: { value: '  A red bicycle ' } });
+    fireEvent.click(saveButton(dialog));
+
+    await waitFor(() => expect(patchMedia).toHaveBeenCalledWith('p', 'img1', { alt: 'A red bicycle' }));
+    expect(await within(dialog).findByText('Saved')).toBeInTheDocument();
+    expect(saveButton(dialog)).toBeDisabled();
+    // The library is re-read, so the saved value is what the rows and the next visit show.
+    await waitFor(() => expect(listMedia).toHaveBeenCalledTimes(2));
+  });
+
+  it('saves on Enter, like the rest of the File Manager’s fields', async () => {
+    const dialog = await openPreview();
+    fireEvent.change(altField(dialog), { target: { value: 'A red bicycle' } });
+    fireEvent.submit(altField(dialog));
+    await waitFor(() => expect(patchMedia).toHaveBeenCalledWith('p', 'img1', { alt: 'A red bicycle' }));
+  });
+
+  it('CLEARS it by saving an empty field — the PATCH takes "" as "not described"', async () => {
+    patchMedia.mockResolvedValueOnce({ item: image }); // the server drops the key
+    const dialog = await openPreview();
+    fireEvent.change(altField(dialog), { target: { value: '   ' } });
+    fireEvent.click(saveButton(dialog));
+    await waitFor(() => expect(patchMedia).toHaveBeenCalledWith('p', 'img1', { alt: '' }));
+    expect(await within(dialog).findByText('Saved')).toBeInTheDocument();
+    expect(altField(dialog)).toHaveValue('');
+  });
+
+  it('starts EMPTY for an image nobody has described yet (the file name is not shown as if it were alt text)', async () => {
+    const dialog = await openPreview([image, file]);
+    expect(altField(dialog)).toHaveValue('');
+  });
+
+  it('shows the server’s refusal and keeps what was typed', async () => {
+    patchMedia.mockRejectedValueOnce(new Error('insufficient role for this operation'));
+    const dialog = await openPreview();
+    fireEvent.change(altField(dialog), { target: { value: 'A red bicycle' } });
+    fireEvent.click(saveButton(dialog));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('insufficient role for this operation');
+    expect(altField(dialog)).toHaveValue('A red bicycle');
+    expect(within(dialog).queryByText('Saved')).toBeNull();
+  });
+
+  it('stepping to the next image shows THAT image’s alt text, not the one typed for the last', async () => {
+    // Named to sort AFTER hero.png, so it is the "next" image.
+    const other = { ...described, id: 'img2', filename: 'z.png', original: 'z.png', url: '/media/p/img2/z.png', alt: 'A blue door' } as MediaAsset;
+    const dialog = await openPreview([described, other]);
+    fireEvent.change(altField(dialog), { target: { value: 'typed, never saved' } });
+    // An arrow key typed IN the field moves the caret; it does not step the preview away from the edit.
+    fireEvent.keyDown(altField(dialog), { key: 'ArrowRight' });
+    expect(altField(screen.getByRole('dialog'))).toHaveValue('typed, never saved');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next image' }));
+    expect(altField(await screen.findByRole('dialog', { name: 'z.png' }))).toHaveValue('A blue door');
+  });
+});

@@ -1920,7 +1920,8 @@ export const api = {
   emptyRecycleBin: (projectId: string) =>
     request<{ purged: number }>('DELETE', `/projects/${projectId}/media/deleted`),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */
-  patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
+  // `alt` sets the asset's alt text; '' REMOVES it (the server then falls back to the file name).
+  patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string; alt?: string }) =>
     request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),
   /** Duplicate an asset (optionally into another folder). */
   copyMedia: (projectId: string, id: string, folder?: string) =>

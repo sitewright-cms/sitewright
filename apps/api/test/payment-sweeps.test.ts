@@ -79,6 +79,13 @@ describe('payments maintenance is reachable from the app', () => {
     expect(fn).toContain('app.log.warn');
   });
 
+  it('★ reconciliation asks the ORDER’s provider, in the ORDER’s mode — a project may hold several', () => {
+    const fn = bodyOf('reconcileDuePayments');
+    expect(fn).toContain('txn.gatewayId);');
+    // A live order asked about with test keys reaches an account that never saw it.
+    expect(fn).toContain('resolved.mode !== txn.mode');
+  });
+
   it('★ reconciliation leaves a still-unknown payment alone rather than guessing', () => {
     const fn = bodyOf('reconcileDuePayments');
     expect(fn).toContain("status.kind === 'recheck'");

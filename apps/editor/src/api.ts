@@ -2201,15 +2201,23 @@ export const api = {
   /** Gateways this project may bind to — enabled AND proven. Public metadata only. */
   projectPaymentGateways: (projectId: string) =>
     request<{ gateways: PaymentGatewayPublic[] }>('GET', `/projects/${projectId}/payment-gateways`),
-  /** The project's binding: which fields have values, per mode. Never a secret. */
+  /** Every provider the project holds keys for: which fields have values, per mode. Never a secret.
+   *  `binding`/`webhookUrl` are the first one, for callers that predate several providers. */
   getProjectPayment: (projectId: string) =>
-    request<{ binding: PaymentBindingPublic | null; webhookUrl?: string }>('GET', `/projects/${projectId}/payment`),
+    request<{
+      bindings: Array<PaymentBindingPublic & { webhookUrl?: string }>;
+      binding: PaymentBindingPublic | null;
+      webhookUrl?: string;
+    }>('GET', `/projects/${projectId}/payment`),
   /** Saves ONE mode's values. An omitted field keeps what is stored; a blank one clears it. */
   putProjectPayment: (projectId: string, body: { gatewayId: string; mode: 'test' | 'live'; values: Record<string, string | boolean> }) =>
     request<{ binding: PaymentBindingPublic }>('PUT', `/projects/${projectId}/payment`, body),
-  /** Switches between test and live. Refused while the target mode is incomplete. */
-  putProjectPaymentMode: (projectId: string, mode: 'test' | 'live') =>
-    request<{ mode: string }>('PUT', `/projects/${projectId}/payment/mode`, { mode }),
+  /** Switches ONE provider between test and live. Refused while the target mode is incomplete. */
+  putProjectPaymentMode: (projectId: string, mode: 'test' | 'live', gatewayId: string) =>
+    request<{ mode: string; gatewayId: string }>('PUT', `/projects/${projectId}/payment/mode`, { mode, gatewayId }),
+  /** Removes one provider's keys. Refused (409) while a checkout channel still charges through it. */
+  deleteProjectPayment: (projectId: string, gatewayId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/payment/${encodeURIComponent(gatewayId)}`),
 
   /** The dry run: a REAL test-mode checkout with this project's own stored credentials. ★ Requires
    *  both a writer session here and gateway-author rights, which is why it is not on an agent path. */

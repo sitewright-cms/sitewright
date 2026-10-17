@@ -364,6 +364,12 @@ export class ContentRepository {
     return rows.map((row) => this.normalizeOnRead(kind, row.data));
   }
 
+  /** {@link list}, with each row's entity id — for a kind whose row id carries meaning of its own. */
+  async listWithIds(ctx: ProjectContext, kind: ContentKind): Promise<Array<{ id: string; data: unknown }>> {
+    const rows = await this.db.select().from(content).where(this.listWhere(ctx, kind, {}));
+    return rows.map((row) => ({ id: row.entityId, data: this.normalizeOnRead(kind, row.data) }));
+  }
+
   /**
    * The WHERE every list path shares: the project + kind, minus soft-deleted rows, plus the optional
    * dataset scope and text search.

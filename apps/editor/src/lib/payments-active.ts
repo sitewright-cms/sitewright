@@ -28,7 +28,8 @@ export async function fetchPaymentsActive(projectId: string): Promise<boolean> {
       .catch(() => false),
     Promise.resolve()
       .then(() => api.getProjectPayment(projectId))
-      .then((r) => r.binding?.complete === true)
+      // Any provider with complete keys: a shop may charge through several.
+      .then((r) => (r.bindings ?? (r.binding ? [r.binding] : [])).some((b) => b.complete))
       .catch(() => false),
   ]);
   return shopOn && complete;

@@ -258,7 +258,7 @@ import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus } from '../payments/executor.js';
 import { runOrderMail } from '../payments/notify-runner.js';
-import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS } from '@sitewright/schema';
+import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -10536,6 +10536,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const shopTransactionsRepo = new ShopTransactionRepository(db);
   const shopStockRepo = new ShopStockRepository(db);
   const gatewayRepo = opts.encryptionKey ? new GatewayRepository(contentRepo, opts.encryptionKey) : undefined;
+  /** A project's shop settings, for the public payment routes and the admin ones alike. */
+  const getProjectShop = async (projectId: string): Promise<ShopSettings | null> => {
+    // ★ The same reserved-scope refusal `systemContext` makes. These deps build their own
+    // context from the untrusted route param, so leaving the check to the sibling closure would
+    // put the isolation back on "nothing project-shaped is ever stored under __global__" —
+    // exactly the invariant the guard exists to stop depending on.
+    if (projectId === GLOBAL_SCOPE_ID) return null;
+    const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+    const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
+      | { website?: { shop?: unknown } }
+      | null;
+    const shop = settings?.website?.shop;
+    return (shop ?? null) as never;
+  };
   if (gatewayRepo) {
     registerPaymentRoutes(app, {
       transactions: shopTransactionsRepo,
@@ -10550,19 +10564,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
       getPowSecret: () => currentCookieSecret,
       claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
-      getShop: async (projectId: string) => {
-        // ★ The same reserved-scope refusal `systemContext` makes. These deps build their own
-        // context from the untrusted route param, so leaving the check to the sibling closure would
-        // put the isolation back on "nothing project-shaped is ever stored under __global__" —
-        // exactly the invariant the guard exists to stop depending on.
-        if (projectId === GLOBAL_SCOPE_ID) return null;
-        const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
-        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
-          | { website?: { shop?: unknown } }
-          | null;
-        const shop = settings?.website?.shop;
-        return (shop ?? null) as never;
-      },
+      getShop: getProjectShop,
       getCatalog: async (projectId: string, mode: 'live' | 'draft') => {
         if (projectId === GLOBAL_SCOPE_ID) return null;
         const [row] = await db
@@ -10632,6 +10634,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (gatewayRepo) {
     registerPaymentAdminRoutes(app, {
       gateways: gatewayRepo,
+      getShop: getProjectShop,
       transactions: shopTransactionsRepo,
       stock: shopStockRepo,
       requireInstanceAdmin,
@@ -11765,8 +11768,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const due = await shopTransactionsRepo.dueForReconciliation(now, PAYMENT_RECONCILE_AFTER_MS, 25);
     for (const txn of due) {
       try {
-        const resolved = await gatewayRepo.resolveCredentials({ userId: 'system', projectId: txn.projectId, role: 'owner' });
+        // The order's OWN gateway — a project may hold several providers.
+        const resolved = await gatewayRepo.resolveCredentials({ userId: 'system', projectId: txn.projectId, role: 'owner' }, txn.gatewayId);
         if (!resolved.ok || resolved.gateway.id !== txn.gatewayId || !resolved.gateway.status) continue;
+        // ★ In the mode the ORDER was taken in — the refund's rule. Asking about a live order with test
+        // keys (the provider was switched back to test meanwhile) reaches an account that never saw it.
+        if (resolved.mode !== txn.mode) continue;
         const status = await fetchProviderStatus(resolved.gateway, txn.mode, {
           cred: resolved.cred,
           amount: { minor: txn.amounts.totalMinor, decimal: fromMinorUnits(txn.amounts.totalMinor, txn.currency), currency: txn.currency },

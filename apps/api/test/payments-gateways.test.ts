@@ -13,13 +13,15 @@ const KEY = Buffer.alloc(32, 7);
 const PROJECT = 'p_gw';
 let db: Database;
 let repo: GatewayRepository;
+let contentRepo: ContentRepository;
 let ctx: ProjectContext;
 
 beforeEach(async () => {
   db = await makeTestDb();
   await ensureGlobalProject(db);
   await db.insert(projects).values({ id: PROJECT, name: 'GW', slug: 'gw', createdAt: new Date() });
-  repo = new GatewayRepository(new ContentRepository(db), KEY);
+  contentRepo = new ContentRepository(db);
+  repo = new GatewayRepository(contentRepo, KEY);
   ctx = { userId: 'u1', projectId: PROJECT, role: 'owner' };
 });
 
@@ -119,7 +121,7 @@ describe('project bindings (level 2)', () => {
   it('saves and masks per-mode credentials, never returning a secret', async () => {
     const saved = await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_abcdef1234', region: 'eu' } });
     expect(saved.ok).toBe(true);
-    const pub = await repo.bindingPublic(ctx);
+    const pub = await repo.bindingsPublic(ctx).then((all) => all.find((b) => b.gatewayId === 'acme') ?? null);
     const json = JSON.stringify(pub);
     expect(json).not.toContain('sk_test_abcdef1234');
     // ★ PRESENCE ONLY for a stored secret. The value is an AES-GCM envelope, so the server cannot
@@ -134,7 +136,7 @@ describe('project bindings (level 2)', () => {
   it('★ saving the TEST mode does not touch LIVE values', async () => {
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'live', values: { secretKey: 'sk_live_zzzz9999' } });
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_aaaa1111' } });
-    const pub = await repo.bindingPublic(ctx);
+    const pub = await repo.bindingsPublic(ctx).then((all) => all.find((b) => b.gatewayId === 'acme') ?? null);
     expect(pub?.fields.live.find((f) => f.key === 'secretKey')?.hasValue).toBe(true);
     expect(pub?.fields.test.find((f) => f.key === 'secretKey')?.hasValue).toBe(true);
   });
@@ -144,12 +146,12 @@ describe('project bindings (level 2)', () => {
     // Omitted → retained. This is what lets the editor render a form full of masks without the save
     // blanking everything it could not show.
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { region: 'us' } });
-    let pub = await repo.bindingPublic(ctx);
+    let pub = await repo.bindingsPublic(ctx).then((all) => all.find((b) => b.gatewayId === 'acme') ?? null);
     expect(pub?.fields.test.find((f) => f.key === 'secretKey')?.hasValue).toBe(true);
     expect(pub?.fields.test.find((f) => f.key === 'region')?.display).toBe('us');
     // Explicit blank → cleared, so an operator can remove a credential without deleting the binding.
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: '' } });
-    pub = await repo.bindingPublic(ctx);
+    pub = await repo.bindingsPublic(ctx).then((all) => all.find((b) => b.gatewayId === 'acme') ?? null);
     expect(pub?.fields.test.find((f) => f.key === 'secretKey')?.hasValue).toBe(false);
     expect(pub?.complete).toBe(false);
   });
@@ -178,21 +180,52 @@ describe('project bindings (level 2)', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('★ switching gateway DISCARDS the old values rather than keeping them against new field names', async () => {
+  it('★ a second gateway gets its OWN binding — the first keeps its values and its mode', async () => {
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_old12345' } });
     await repo.put(custom({ id: 'other', name: 'Other' }), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'other', mode: 'test', values: { secretKey: 'sk_test_new12345' } });
-    const stored = await repo.binding(ctx);
-    expect(stored?.gatewayId).toBe('other');
-    // A key for provider A is meaningless to provider B; carrying it over is how a "working" binding
-    // ends up authenticating against nothing.
-    expect(Object.keys(stored?.values?.test ?? {})).toEqual(['secretKey']);
+    expect((await repo.bindings(ctx)).map((b) => b.gatewayId)).toEqual(['acme', 'other']);
+    // Each provider's keys are its own: nothing is carried across, nothing is discarded.
+    expect(Object.keys((await repo.binding(ctx, 'acme'))?.values?.test ?? {})).toEqual(['secretKey']);
+    expect(Object.keys((await repo.binding(ctx, 'other'))?.values?.test ?? {})).toEqual(['secretKey']);
+    const acme = await repo.resolveCredentials(ctx, 'acme');
+    const other = await repo.resolveCredentials(ctx, 'other');
+    expect(acme.ok && acme.cred.secretKey).toBe('sk_test_old12345');
+    expect(other.ok && other.cred.secretKey).toBe('sk_test_new12345');
+  });
+
+  it('★ reads the single binding a project stored before it could hold several — and moves it on the next save', async () => {
+    // The pre-multi-provider shape: ONE row under the fixed id "settings".
+    await contentRepo.put(ctx, 'project_payment', 'settings', { gatewayId: 'acme', mode: 'test', values: { test: { region: 'eu' } } });
+    expect((await repo.binding(ctx, 'acme'))?.values?.test).toEqual({ region: 'eu' });
+    await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_moved123' } });
+    // Now under its gateway id, with what it held — and the legacy row gone, so it cannot shadow it.
+    expect(Object.keys((await repo.binding(ctx, 'acme'))?.values?.test ?? {}).sort()).toEqual(['region', 'secretKey']);
+    await expect(contentRepo.get(ctx, 'project_payment', 'settings')).rejects.toThrow(/not found/);
+    expect((await repo.bindings(ctx)).length).toBe(1);
+  });
+
+  it('★ an own row ALWAYS wins over the legacy row for the same gateway, whatever the timestamps say', async () => {
+    await contentRepo.put(ctx, 'project_payment', 'acme', { gatewayId: 'acme', mode: 'live', values: {}, updatedAt: '2020-01-01T00:00:00.000Z' });
+    await contentRepo.put(ctx, 'project_payment', 'settings', { gatewayId: 'acme', mode: 'test', values: {}, updatedAt: '2030-01-01T00:00:00.000Z' });
+    expect((await repo.binding(ctx, 'acme'))?.mode).toBe('live');
+    expect((await repo.bindings(ctx)).length).toBe(1);
+  });
+
+  it('a gateway the project has no credentials for resolves as not-configured, and removal takes one provider only', async () => {
+    await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_old12345' } });
+    await repo.put(custom({ id: 'other', name: 'Other' }), 'admin1');
+    expect(await repo.resolveCredentials(ctx, 'other')).toEqual({ ok: false, reason: 'not-configured' });
+    await repo.saveBinding(ctx, { gatewayId: 'other', mode: 'test', values: { secretKey: 'sk_test_new12345' } });
+    expect(await repo.removeBinding(ctx, 'other')).toBe(true);
+    expect(await repo.removeBinding(ctx, 'other')).toBe(false);
+    expect((await repo.bindings(ctx)).map((b) => b.gatewayId)).toEqual(['acme']);
   });
 
   it('saving credentials does NOT silently switch the active mode', async () => {
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'live', values: { secretKey: 'sk_live_x1234567' } });
     // Going live is a separate, deliberate act.
-    expect((await repo.binding(ctx))?.mode).toBe('test');
+    expect((await repo.binding(ctx, 'acme'))?.mode).toBe('test');
   });
 });
 
@@ -203,16 +236,16 @@ describe('setMode', () => {
   });
 
   it('★ REFUSES to go live while the live mode is incomplete, and names what is missing', async () => {
-    const r = await repo.setMode(ctx, 'live');
+    const r = await repo.setMode(ctx, 'acme', 'live');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.missing).toEqual(['secretKey']);
-    expect((await repo.binding(ctx))?.mode).toBe('test');
+    expect((await repo.binding(ctx, 'acme'))?.mode).toBe('test');
   });
 
   it('allows it once live credentials exist', async () => {
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'live', values: { secretKey: 'sk_live_y1234567' } });
-    expect(await repo.setMode(ctx, 'live')).toEqual({ ok: true });
-    expect((await repo.binding(ctx))?.mode).toBe('live');
+    expect(await repo.setMode(ctx, 'acme', 'live')).toEqual({ ok: true });
+    expect((await repo.binding(ctx, 'acme'))?.mode).toBe('live');
   });
 });
 
@@ -221,7 +254,7 @@ describe('resolveCredentials', () => {
     await repo.put(custom(), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_plain123' } });
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'live', values: { secretKey: 'sk_live_plain123' } });
-    const r = await repo.resolveCredentials(ctx);
+    const r = await repo.resolveCredentials(ctx, 'acme');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.mode).toBe('test');
@@ -234,7 +267,7 @@ describe('resolveCredentials', () => {
     // that declares one must get its literal value through to the request template.
     await repo.put(custom(), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_x1234567', region: 'eu' } });
-    const r = await repo.resolveCredentials(ctx);
+    const r = await repo.resolveCredentials(ctx, 'acme');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.cred.region).toBe('eu');
@@ -248,26 +281,26 @@ describe('resolveCredentials', () => {
           { key: 'sandbox', label: 'Sandbox', kind: 'bool', required: false, perMode: false },
         ] }), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_x1234567', sandbox: true } });
-    const r = await repo.resolveCredentials(ctx);
+    const r = await repo.resolveCredentials(ctx, 'acme');
     if (r.ok) expect(r.cred.sandbox).toBe('true');
   });
 
   it('reports not-configured, disabled and incomplete distinctly', async () => {
-    expect(await repo.resolveCredentials(ctx)).toEqual({ ok: false, reason: 'not-configured' });
+    expect(await repo.resolveCredentials(ctx, 'acme')).toEqual({ ok: false, reason: 'not-configured' });
     await repo.put(custom(), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'test', values: { secretKey: 'sk_test_x1234567' } });
     await repo.put(custom({ enabled: false }), 'admin1');
-    expect(await repo.resolveCredentials(ctx)).toEqual({ ok: false, reason: 'disabled' });
+    expect(await repo.resolveCredentials(ctx, 'acme')).toEqual({ ok: false, reason: 'disabled' });
   });
 
   it('★ LIVE mode requires a VERIFIED gateway; test mode deliberately does not', async () => {
     await repo.put(custom(), 'admin1');
     await repo.saveBinding(ctx, { gatewayId: 'acme', mode: 'live', values: { secretKey: 'sk_live_x1234567' } });
-    await repo.setMode(ctx, 'live');
-    expect(await repo.resolveCredentials(ctx)).toEqual({ ok: false, reason: 'unverified' });
+    await repo.setMode(ctx, 'acme', 'live');
+    expect(await repo.resolveCredentials(ctx, 'acme')).toEqual({ ok: false, reason: 'unverified' });
     // The dry run is how a gateway BECOMES proven, so test mode must work without the flag.
     await repo.markVerified('acme', 'admin1');
-    const r = await repo.resolveCredentials(ctx);
+    const r = await repo.resolveCredentials(ctx, 'acme');
     expect(r.ok).toBe(true);
   });
 
@@ -277,7 +310,7 @@ describe('resolveCredentials', () => {
     // The operator rotated or removed SW_ENCRYPTION_KEY. A 500 tells them nothing they can act on;
     // "this credential is missing" points straight at the cause.
     const wrongKey = new GatewayRepository(new ContentRepository(db), Buffer.alloc(32, 9));
-    const r = await wrongKey.resolveCredentials(ctx);
+    const r = await wrongKey.resolveCredentials(ctx, 'acme');
     expect(r).toMatchObject({ ok: false, reason: 'incomplete', missing: ['secretKey'] });
   });
 });

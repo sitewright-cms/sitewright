@@ -227,8 +227,8 @@ refund *happened*, so the claim stands and the operator is told to check the das
 ### What a refund refuses to attempt
 
 A preview order (never took money), a gateway with no `refund` template, an order taken through a
-gateway the project is no longer bound to, and an order whose mode no longer matches the project's —
-refunding a live payment with test credentials reaches a provider that has never heard of it.
+gateway the project no longer holds keys for, and an order whose mode no longer matches that
+provider's — refunding a live payment with test credentials reaches a provider that has never heard of it.
 
 ### Restocking is the operator's call
 
@@ -250,6 +250,13 @@ outstanding balance, and a repeated event cannot drive the balance past the orde
 - Paste the webhook URL (shown in **Settings → Website → Payments**) into the provider's dashboard.
   Without it a payment still succeeds, but the shop hears about it only when reconciliation asks —
   so orders arrive late.
+- **A project may hold keys for several providers.** Each `checkout` channel names the gateway it
+  charges through (`gatewayId`), and each provider has its own credentials row (`project_payment`,
+  keyed by gateway id), its own test/live mode, its own proof and its own webhook URL
+  (`/pay/<project>/webhook/<gateway>`). Webhooks, reconciliation and refunds always use the ORDER's
+  gateway, never "the project's". Removing a provider's keys is refused while a channel still uses it.
+  The single row older projects stored (`project_payment/settings`) is still read, and is rewritten
+  under its gateway id the next time those keys are saved.
 - The orders inbox carries the undelivered banner, because emailing somebody about broken email is
   circular.
 

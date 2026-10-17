@@ -24,6 +24,7 @@
   "DELETE /projects/:projectId/media/deleted",
   "DELETE /projects/:projectId/media/folders",
   "DELETE /projects/:projectId/members/:userId",
+  "DELETE /projects/:projectId/payment/:gatewayId",
   "DELETE /projects/:projectId/preview-shares/:shareId",
   "DELETE /projects/:projectId/smtp",
   "DELETE /projects/:projectId/submissions/:id",

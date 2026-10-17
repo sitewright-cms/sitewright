@@ -33,6 +33,8 @@ export const FieldTypeSchema = z.enum([
   'folder',
   'reference',
   'page',
+  /** A shop product's price PER MARKET — `{ <market id>: number }`, read by `{{sw-add-to-cart prices=…}}`. */
+  'prices',
   'select',
   'json',
   'list',

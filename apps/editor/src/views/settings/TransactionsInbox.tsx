@@ -18,6 +18,15 @@ import { glassInput, ghostButton } from '../../theme';
 // ★ Uses the SHARED exponent table, not a local copy. The copy that used to live here knew only
 // five zero-decimal currencies and nothing about the 3-decimal ones, so a KWD order rendered ten
 // times its real value — the same mistake, in a second place, which is the argument for one table.
+/** "Switzerland (CH)" — the code stays visible, because it is what a label and a provider use. */
+const countryLabel = (code: string): string => {
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code);
+    return name && name !== code ? `${name} (${code})` : code;
+  } catch {
+    return code;
+  }
+};
 const money = (minor: number, currency: string): string => {
   const places = minorPlaces(currency);
   return `${(minor / 10 ** places).toFixed(places)} ${currency}`;
@@ -200,6 +209,23 @@ export function OrdersPanel({ projectId }: { projectId: string }) {
               {open.amounts.taxMinor > 0 && <div className="flex justify-between"><span>Tax</span><span className="tabular-nums">{money(open.amounts.taxMinor, open.currency)}</span></div>}
               <div className="flex justify-between font-semibold"><span>Total</span><span className="tabular-nums">{money(open.amounts.totalMinor, open.currency)}</span></div>
             </div>
+            {/* Where it ships first: for a shop with markets it decides how the order is fulfilled. */}
+            {(open.shipCountry || open.market) && (
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 text-xs" aria-label="Where it ships">
+                {open.shipCountry && (
+                  <div className="contents">
+                    <dt className="text-slate-500 dark:text-slate-400">Ship to</dt>
+                    <dd className="font-semibold">{countryLabel(open.shipCountry)}</dd>
+                  </div>
+                )}
+                {open.market && (
+                  <div className="contents">
+                    <dt className="text-slate-500 dark:text-slate-400">Market</dt>
+                    <dd>{open.market}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
             {Object.keys(open.buyer).length > 0 && (
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 text-xs">
                 {Object.entries(open.buyer).map(([k, v]) => (

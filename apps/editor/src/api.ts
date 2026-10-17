@@ -1302,6 +1302,9 @@ export interface ShopTransaction {
   status: TransactionStatus;
   fulfilment: FulfilmentState;
   currency: string;
+  /** The shop market the order was placed in, and the country it ships to — null without markets. */
+  market?: string | null;
+  shipCountry?: string | null;
   amounts: TransactionAmounts;
   refundedMinor: number;
   lines: TransactionLine[];

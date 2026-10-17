@@ -60,6 +60,19 @@ export function coerceFieldValue(type: FieldType, raw: unknown): unknown {
         return raw;
       }
     }
+    case 'prices': {
+      // { <market>: number } — a blank market is left out (that market does not sell the product), and
+      // anything that is not a finite, non-negative number is dropped rather than stored as text.
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+      const out: Record<string, number> = {};
+      for (const [market, v] of Object.entries(raw as Record<string, unknown>)) {
+        if (v === '' || v === null || v === undefined) continue;
+        const n = Number(v);
+        // eslint-disable-next-line security/detect-object-injection -- market ids from the shop's own settings; fresh literal
+        if (Number.isFinite(n) && n >= 0) out[market] = n;
+      }
+      return out;
+    }
     case 'list':
     case 'object':
       // Nested values (array / sub-record) are NOT edited as a raw string — pass the value
@@ -82,6 +95,8 @@ function emptyFieldValue(field: Field): unknown {
       return undefined;
     case 'list':
       return []; // items are appended on demand (see defaultFieldValues for one item's shape)
+    case 'prices':
+      return {};
     case 'object':
       return defaultFieldValues(field.fields ?? []);
     default:

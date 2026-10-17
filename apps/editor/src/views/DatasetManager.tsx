@@ -28,7 +28,7 @@ import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButt
 // field is schema level 1, so its children are level 2 — within MAX_FIELD_DEPTH.)
 const VALUE_FIELD_TYPES: ReadonlyArray<FieldType> = [
   'boolean', 'date', 'datetime', 'file', 'folder', 'icon', 'image', 'json',
-  'number', 'page', 'reference', 'richtext', 'select', 'text', 'time',
+  'number', 'page', 'prices', 'reference', 'richtext', 'select', 'text', 'time',
 ];
 const FIELD_TYPES: ReadonlyArray<FieldType> = [...VALUE_FIELD_TYPES, 'list', 'object'];
 

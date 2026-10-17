@@ -1427,7 +1427,7 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    in its "dataset" (re-putting with a stale value silently renders the loop EMPTY). Read entries AFTER the
    rename, or set the "dataset" field to the new slug explicitly.
    FIELD TYPES — a dataset field's \`type\` is one of: text, richtext, number, boolean, date, time, datetime,
-   image, icon, file, folder, reference, page, select, json, list, object. PICK THE MOST SPECIFIC one rather than
+   image, icon, file, folder, reference, page, prices, select, json, list, object. PICK THE MOST SPECIFIC one rather than
    dumping everything into text/richtext: a price/count → number, a toggle → boolean, a publish/launch day →
    date (add a clock → time / datetime), a photo or download → image / file, an ICON NAME → icon (a picker
    over the whole library — never make an author type one, a typo renders nothing and looks like a broken
@@ -1435,7 +1435,8 @@ PORT CHECKLIST (per page — preserve the layout at every step):
    collection → reference (config.dataset), a link to a PAGE of this site → page (stores the page id; the
    template reads the PAGE — {{link.path}}, {{link.title}} — so renaming or moving it keeps the link), a
    repeatable group of sub-fields (slides, features) → list, a named sub-group → object (both carry child
-   \`fields\`). get_guide("datasets") has the exact put_content shapes + per-type config for all 17.
+   \`fields\`), a shop product's price in each MARKET (several currencies) → prices.
+   get_guide("datasets") has the exact put_content shapes + per-type config for all 18.
 4b. SHARED LAYOUTS -> TEMPLATE: when several imported pages share ONE layout — legal pages (Imprint +
    Privacy Policy = a titled rich-text card), or repeated service/detail/blog pages — do NOT author them as
    N standalone pages. Create ONE template (put_content "template" { id, name, source }) and render each page
@@ -1967,8 +1968,11 @@ STEP 1 — CREATE THE DATASET (its schema): put_content({ kind: "dataset", id: "
     becomes the Handlebars path \`dataset.<slug>\` and a hyphen would parse as minus and break every loop. (The
     put_content \`id\` arg for the dataset itself has no such restriction, but conventionally matches the slug.)
   - Each field = { name: <identifier>, type, required?: false, config?: {} }. type is one of:
-    text, richtext, number, boolean, date, time, datetime, image, icon, file, folder, reference, page, select,
-    json, list, object.
+    text, richtext, number, boolean, date, time, datetime, image, icon, file, folder, reference, page, prices,
+    select, json, list, object.
+    · prices stores a shop product's price PER MARKET: values: { price_by_market: { eu: 95, ch: 99 } } (market
+      ids from website.shop.markets). Read it with {{sw-add-to-cart … prices=<field>}} and {{sw-price prices=<field>}};
+      a market left out does not sell the product. Use number when the shop has no markets.
     · select needs config: { options: ["a","b","c"] }.  · reference needs config: { dataset: "<other_slug>" }.
     · page stores a PAGE ID (no config) and is the one type whose stored value is NOT what a template reads:
       the render swaps the id for that page's attributes, so a loop reads {{<field>.path}} (the full route,

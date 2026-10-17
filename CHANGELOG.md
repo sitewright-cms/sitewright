@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.63.0] — 2026-10-17
+
 ### Added
 
 - **Shop markets: one shop selling in several currencies and regions.** A shop could charge in one
@@ -82,6 +84,32 @@ The running version of an instance is reported at `GET /version` (baked into the
     dataset. The `localized` field flag, which never did anything, is no longer documented: every
     field is translatable.
 
+- **Agents can run a shop, and write payment providers.** Over MCP an agent could build a shop but
+  not operate one. New tools:
+  - **Orders:** `list_orders`, `get_order`, `set_order_fulfilment` and `resend_order_mail`. They show
+    where each order ships and whether its emails arrived, without the buyer's private order-page
+    token. A token moves only paid orders, and resends only an email that failed.
+  - **Payments:** `list_payment_providers` shows which providers the project can use and whether its
+    keys are entered for test and live (names only, never values). It also lists what would stop a
+    checkout, such as a channel whose provider has no keys.
+  - **Provider definitions:** `list_gateway_definitions`, `fork_gateway_definition`,
+    `put_gateway_definition` and `delete_gateway_definition`. They need an API key or member token
+    owned by an instance admin, with the new **`payments:provider:write`** option, which instance
+    admins can tick when creating one.
+  - **Limits on what a token can do:**
+    - It cannot change or delete a provider that is taking live money, or one any project has
+      entered keys for (it can fork instead).
+    - It never enters keys or proves a provider: both stay with a person.
+  - **Proving a provider:** the payment keys dialog now lists enabled providers that have not been
+    proven yet, for instance admins. Before *Prove it works* it shows where the keys and buyers go,
+    and it warns when a provider's addresses differ from the shipped one it was copied from or is
+    named like. A proof no longer counts if the definition was edited while it ran.
+  - **Stricter definitions, for every author:**
+    - A secret key may only travel in a request header or through the provider's sign-in settings.
+    - A web address written into a request must be one of the provider's own.
+    - Private and internal hosts are refused, as are placeholders the platform does not fill in.
+  - The agent guides gain a `payments` guide, and the shop guide covers providers and orders.
+
 ### Fixed
 
 - **Text typed into the preview could be lost when the preview reloaded.** In the header/footer
@@ -91,6 +119,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   reload of a preview you type into now waits until you have paused (2 s) and every pending save has
   landed. A render you typed through is thrown away and redone. The page editor works the same way,
   and a reload that typing on the page cancelled is no longer dropped.
+
+### Security
+
+- **Payment-provider calls reach only public internet addresses, and never follow a redirect.**
+  Provider definitions were checked by name only. A name that looks public but points into a private
+  network, or a provider answering "go here instead", could make the server contact devices on the
+  operator's own network (a router, a NAS, cloud metadata) on every checkout. Every provider call now
+  looks up where the address leads, refuses it if any part is private or it does not resolve, and
+  connects only to the address it checked. A redirect fails the call. A request that may already have
+  reached the provider is never sent again, so a refund cannot go out twice. *Prove it works* says
+  plainly when an address was refused. The importer's check also blocks a few more internal ranges
+  (`198.18.0.0/15`, `192.0.0.0/24`, multicast, `fec0::/10`).
 
 ## [0.62.0] — 2026-10-16
 
@@ -5056,7 +5096,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.62.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.63.0...HEAD
+[0.63.0]: https://github.com/sitewright-cms/sitewright/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/sitewright-cms/sitewright/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/sitewright-cms/sitewright/compare/v0.60.0...v0.61.0
 [0.60.0]: https://github.com/sitewright-cms/sitewright/compare/v0.59.0...v0.60.0

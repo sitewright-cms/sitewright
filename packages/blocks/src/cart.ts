@@ -104,6 +104,10 @@ export const CART_PARTS = Object.freeze({
   checkoutStatus: 'checkout-status',
   /** The pre-payment review panel the server's authoritative breakdown is rendered into. */
   review: 'review',
+  /** A market checkout's ship-to country question (inserted before a checkout button unless authored). */
+  shipTo: 'ship-to',
+  /** The default drawer's market switcher (markets only). */
+  market: 'market',
 } as const);
 
 /**
@@ -261,6 +265,10 @@ export const CART_CSS = [
   // Inline order form (the `form` channel).
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
+  '[data-sw-cart] [data-sw-part="ship-to"]{display:block;margin:.25rem 0 .5rem;font-size:.8125rem}',
+  '[data-sw-cart] [data-sw-part="ship-to"] select{display:block;width:100%;margin-top:.25rem}',
+  '[data-sw-cart] [data-sw-part="market"]{margin-left:auto;margin-right:.5rem;font-size:.8125rem}',
+  '[data-sw-cart-add][data-sw-unavailable]{opacity:.55;cursor:not-allowed}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
   '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea,[data-sw-cart] [data-sw-part="order-field"] select{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
   // CHOICE + TOGGLE order fields. A radio group is a <fieldset> (its <legend> replaces the usual >span
@@ -378,6 +386,14 @@ export const CART_JS = `(function(){
     // missing. Change the shipped defaults in the schema registry, not here.
     // The PROJECT's captcha provider + public site key, emitted only when a channel actually asks for
     // one. Both are public by nature (the site key ships in the markup of every captcha-guarded form).
+    // MARKETS — where the visitor shops: the price list, the currency, the channels (providers) offered
+    // and the countries a checkout ships to. None configured: everything below is exactly as before.
+    var markets=readMarkets(mount);
+    var market=pickMarket(mount,markets);
+    if(market&&market.channels&&market.channels.length!==undefined){
+      var offered=market.channels;
+      channels=channels.filter(function(c){return !c||c.kind!=='checkout'||offered.indexOf(c.key)>=0;});
+    }
     var captcha=null;
     var cp=mount.getAttribute('data-captcha-provider');
     var ck=mount.getAttribute('data-captcha-sitekey');
@@ -413,10 +429,116 @@ export const CART_JS = `(function(){
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       yesLabel:mount.getAttribute('data-yes-label')||'Yes', // the value a ticked checkbox order field contributes
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
+      markets:markets,
+      market:market,
+      marketLabel:mount.getAttribute('data-market-label')||'Shop in',
+      shipToLabel:mount.getAttribute('data-ship-to-label')||'Ship to',
+      unavailableLabel:mount.getAttribute('data-unavailable-label')||'Not available in {market}',
       channels:channels
     };
   }
+  // ---- MARKETS -----------------------------------------------------------------------------------
+  //
+  // ★ The market is chosen HERE, in the browser: a published site is static and may be hosted
+  // anywhere, so there is no server to decide per request. The server re-checks everything that
+  // matters — the price list, the currency, the channel and the ship-to country — at checkout.
+  function readMarkets(mount){
+    var raw=mount.getAttribute('data-markets');if(!raw){return [];}
+    try{var p=JSON.parse(raw);return Object.prototype.toString.call(p)==='[object Array]'?p.filter(function(m){return m&&typeof m.id==='string';}):[];}catch(e){return [];}
+  }
+  function marketStoreKey(mount){return 'sw-market:'+siteKey(mount);}
+  function browserRegion(){
+    var langs=(navigator.languages&&navigator.languages.length)?navigator.languages:[navigator.language||''];
+    for(var i=0;i<langs.length;i++){var parts=String(langs[i]||'').split('-');var r=parts.length>1?parts[parts.length-1].toUpperCase():'';if(r.length===2){return r;}}
+    return '';
+  }
+  function shipsTo(m,region){var sh=(m&&m.ship)||[];for(var i=0;i<sh.length;i++){if(sh[i]===region){return true;}}return false;}
+  // The visitor's own earlier choice; else the market for the page's language (the browser's region
+  // deciding between several that share it); else the market shipping to their region; else the
+  // first, the shop's default.
+  function pickMarket(mount,markets){
+    if(!markets.length){return null;}
+    var stored='';try{stored=localStorage.getItem(marketStoreKey(mount))||'';}catch(e){}
+    for(var i=0;i<markets.length;i++){if(markets[i].id===stored){return markets[i];}}
+    var lang=String(document.documentElement.getAttribute('lang')||'').toLowerCase();
+    var region=browserRegion();
+    var forLang=markets.filter(function(m){var l=String(m.locale||'').toLowerCase();return !!l&&(l===lang||l===lang.split('-')[0]);});
+    if(forLang.length){for(var j=0;j<forLang.length;j++){if(shipsTo(forLang[j],region)){return forLang[j];}}return forLang[0];}
+    if(region){for(var k=0;k<markets.length;k++){if(shipsTo(markets[k],region)){return markets[k];}}}
+    return markets[0];
+  }
+  function setMarket(mount,id){try{localStorage.setItem(marketStoreKey(mount),String(id));}catch(e){}window.location.reload();}
+  // The cart a visitor is filling: one PER MARKET, so a basket never mixes currencies.
+  function cartKey(mount,cfg){
+    var base='sw-cart:'+siteKey(mount);
+    if(!cfg.market){return base;}
+    var key=base+':'+cfg.market.id;
+    // A basket filled before the shop had markets moves into the DEFAULT market's cart, once — it was
+    // priced in that market's terms — rather than vanishing when the key changed.
+    if(cfg.markets[0]&&cfg.markets[0].id===cfg.market.id){
+      try{var old=localStorage.getItem(base);if(old&&!localStorage.getItem(key)){localStorage.setItem(key,old);localStorage.removeItem(base);}}catch(e){}
+    }
+    return key;
+  }
+  // The price a button (or a {{sw-price}}) carries for the visitor's market — DISPLAY ONLY: the server
+  // charges from its own sealed list. null = not sold in this market. Mirrors the publish rule: the
+  // default (first) market alone also takes the plain price.
+  function priceOf(el,cfg){
+    var plain=Number(el.getAttribute('data-price'));
+    if(!cfg.market){return isFinite(plain)&&plain>=0?plain:0;}
+    var p={};try{p=JSON.parse(el.getAttribute('data-prices')||'{}')||{};}catch(e){p={};}
+    if(Object.prototype.hasOwnProperty.call(p,cfg.market.id)){var v=Number(p[cfg.market.id]);return isFinite(v)&&v>=0?v:null;}
+    // No price at all is not sold — never 0 (the publish reads it the same way).
+    var rawPlain=el.getAttribute('data-price');
+    if(cfg.markets[0]&&cfg.markets[0].id===cfg.market.id&&rawPlain!==null&&String(rawPlain).trim()!==''){return isFinite(plain)&&plain>=0?plain:null;}
+    return null;
+  }
+  function unavailableText(cfg){return String(cfg.unavailableLabel||'').split('{market}').join(cfg.market?String(cfg.market.name||cfg.market.id):'');}
+  // Every buy button and price on the page, for the visitor's market: a product not sold there cannot
+  // be added and says so; a {{sw-price}} shows the market's price in its currency.
+  function applyMarket(mount,cfg){
+    if(!cfg.market){return;}
+    var btns=q('[data-sw-cart-add]');
+    for(var i=0;i<btns.length;i++){
+      if(priceOf(btns[i],cfg)===null){btns[i].disabled=true;btns[i].setAttribute('aria-disabled','true');btns[i].setAttribute('data-sw-unavailable','');btns[i].title=unavailableText(cfg);}
+    }
+    var prices=q('[data-sw-price]');
+    for(var j=0;j<prices.length;j++){
+      var v=priceOf(prices[j],cfg);
+      prices[j].textContent=v===null?unavailableText(cfg):money(v,cfg);
+      if(v===null){prices[j].setAttribute('data-sw-unavailable','');}
+    }
+    bindSwitchers(mount,cfg);
+  }
+  function bindSwitchers(mount,cfg){
+    var sws=q('[data-sw-market-switcher]');
+    for(var i=0;i<sws.length;i++){(function(sel){
+      if(sel.getAttribute('data-sw-bound')==='true'){return;}
+      sel.setAttribute('data-sw-bound','true');
+      if(!sel.options||!sel.options.length){for(var k=0;k<cfg.markets.length;k++){var o=mk('option',null,String(cfg.markets[k].name||cfg.markets[k].id));o.value=cfg.markets[k].id;sel.appendChild(o);}}
+      sel.value=cfg.market.id;
+      sel.addEventListener('change',function(){if(sel.value&&sel.value!==cfg.market.id){setMarket(mount,sel.value);}});
+    })(sws[i]);}
+  }
+  // The ship-to country a checkout asks for: the market's countries, by name in the page's language.
+  // A market shipping to one country has it chosen already.
+  function shipToControl(cfg){
+    var wrap=part('label','ship-to');wrap.appendChild(mk('span',null,(cfg.shipToLabel||'Ship to')+' *'));
+    var sel=document.createElement('select');sel.required=true;sel.setAttribute('data-sw-ship-to','');sel.appendChild(mk('option',null,''));
+    var names=null;try{names=new Intl.DisplayNames([document.documentElement.getAttribute('lang')||'en'],{type:'region'});}catch(e){names=null;}
+    var codes=(cfg.market&&cfg.market.ship)||[];var rows=[];
+    for(var i=0;i<codes.length;i++){var c=String(codes[i]);var n=c;try{n=(names&&names.of(c))||c;}catch(e){n=c;}rows.push([n,c]);}
+    rows.sort(function(a,b){return a[0].localeCompare(b[0]);});
+    for(var j=0;j<rows.length;j++){var o=mk('option',null,rows[j][0]);o.value=rows[j][1];sel.appendChild(o);}
+    if(codes.length===1){sel.value=String(codes[0]);}
+    wrap.appendChild(sel);
+    return wrap;
+  }
   function money(amount,cfg){
+    // A market's prices read in ITS currency, formatted for the page's language.
+    if(cfg.market&&cfg.market.currency&&typeof Intl!=='undefined'&&Intl.NumberFormat){
+      try{return new Intl.NumberFormat(document.documentElement.getAttribute('lang')||undefined,{style:'currency',currency:String(cfg.market.currency)}).format(isFinite(amount)?amount:0);}catch(e){}
+    }
     var n=(isFinite(amount)?amount:0).toFixed(cfg.decimals);
     return cfg.pos==='after'?(n+(cfg.symbol?(' '+cfg.symbol):'')):((cfg.symbol||'')+n);
   }
@@ -578,7 +700,7 @@ export const CART_JS = `(function(){
   // ★ The cart is NOT cleared on redirect. The buyer is leaving for the provider's page and may well
   // come back without paying; clearing here would lose their basket for an abandoned payment. The
   // thank-you page clears it, on a confirmed paid status.
-  function postCheckout(ch,items,cfg,values,onDone,prior){
+  function postCheckout(ch,items,cfg,values,onDone,prior,shipTo){
     if(!window.__swp){onDone({error:'unavailable'});return;}
     var lines=[];
     for(var i=0;i<items.length;i++){lines.push({sku:items[i].sku,qty:items[i].qty});}
@@ -587,6 +709,8 @@ export const CART_JS = `(function(){
     // and return its units before reserving again. Without it, Checkout -> Back -> Checkout holds a
     // fresh reservation on every click.
     if(prior){payload.supersede=prior;}
+    // The market and ship-to country: re-checked by the server against the market's own countries.
+    if(cfg.market){payload.market=cfg.market.id;payload.shipTo=shipTo||'';}
     fetch(window.__swp(ch.key),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)})
       .then(function(res){return res.json().then(function(body){return {status:res.status,body:body};});})
       .then(function(r){
@@ -665,6 +789,12 @@ export const CART_JS = `(function(){
       return;
     }
     var values=collectFields(host,cfg).values;
+    var shipTo='';
+    if(cfg.market){
+      var st=mount.querySelector('[data-sw-ship-to]');
+      if(!st||!st.value){if(st&&typeof st.reportValidity==='function'){st.reportValidity();}btn.disabled=false;status.textContent='';return;}
+      shipTo=st.value;
+    }
 
     // The previous attempt's token, if this buyer already started one and came back.
     var prior='';
@@ -696,7 +826,7 @@ export const CART_JS = `(function(){
       });
       btn.hidden=true;
       host.insertBefore(panel,status.nextSibling);
-    },prior);
+    },prior,shipTo);
   }
 
   // ---- authored-markup binding ----
@@ -712,9 +842,10 @@ export const CART_JS = `(function(){
   function bindAuthored(mount){
     mount.setAttribute('data-sw-enhanced','true');
     var cfg=readConfig(mount);
-    var key='sw-cart:'+siteKey(mount);
+    var key=cartKey(mount,cfg);
     var items=load(key);
     var sent=false;
+    applyMarket(mount,cfg);
 
     var drawer=part$(mount,'drawer');
     var list=part$(mount,'items');
@@ -776,6 +907,9 @@ export const CART_JS = `(function(){
           return;
         }
         if(ch.kind==='checkout'){
+          // A market's checkout asks where it ships. An author who placed their own
+          // [data-sw-ship-to] select keeps it; otherwise the platform's goes in before the button.
+          if(cfg.market&&!mount.querySelector('[data-sw-ship-to]')&&btn.parentNode){btn.parentNode.insertBefore(shipToControl(cfg),btn);}
           btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key);});
           return;
         }
@@ -832,7 +966,8 @@ export const CART_JS = `(function(){
     function add(btn){
       sent=false;
       var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
-      var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
+      // Not sold in this market: the button is disabled, and a stray click adds nothing.
+      var price=priceOf(btn,cfg);if(price===null){return;}
       var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}
       if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
       else{
@@ -868,8 +1003,9 @@ export const CART_JS = `(function(){
     if(mount.getAttribute('data-sw-enhanced')==='true'){return;}
     if(isAuthored(mount)){bindAuthored(mount);return;}
     var cfg=readConfig(mount);
-    var key='sw-cart:'+siteKey(mount);
+    var key=cartKey(mount,cfg);
     var items=load(key);
+    applyMarket(mount,cfg);
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     // …and for the /f INTERACTION gate, which drops a submission carrying no trusted input at all. The
     // cart builds its own payload rather than reusing the form runtime's, so it has to collect its own
@@ -893,7 +1029,14 @@ export const CART_JS = `(function(){
     // dialog carries the title as its aria-label instead, so it keeps an accessible name — a <dialog>
     // never took one from a contained heading anyway.
     var head=part('div','head');var h=part('div','title',cfg.title);var close=part('button','close');close.type='button';close.setAttribute('aria-label','Close cart');close.appendChild(closeIcon());ripple(close);
-    head.appendChild(h);head.appendChild(close);
+    head.appendChild(h);
+    // A shop selling in several markets lets the visitor change theirs where they see the prices.
+    if(cfg.market&&cfg.markets.length>1){
+      var mwrap=part('label','market');var msel=document.createElement('select');
+      msel.setAttribute('data-sw-market-switcher','');msel.setAttribute('aria-label',cfg.marketLabel||'Shop in');
+      mwrap.appendChild(msel);head.appendChild(mwrap);
+    }
+    head.appendChild(close);
     var list=part('ul','items');
     var empty=part('p','empty',cfg.emptyLabel);
     var foot=part('div','foot');
@@ -930,6 +1073,8 @@ export const CART_JS = `(function(){
           // none was a button that could only ever fail.
           var kf=buildChannelForm(ch,null,true);
           if(kf){foot.appendChild(kf.form);}
+          // One ship-to question, however many providers the market offers.
+          if(cfg.market&&!foot.querySelector('[data-sw-ship-to]')){foot.appendChild(shipToControl(cfg));}
           b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key);});
           foot.appendChild(b);
         }else{
@@ -947,6 +1092,7 @@ export const CART_JS = `(function(){
     var sentMsg=part('p','sent-msg',cfg.sentLabel);
     dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);dialog.appendChild(sentMsg);
     mount.appendChild(toggle);mount.appendChild(dialog);
+    if(cfg.market){bindSwitchers(mount,cfg);}
 
     // A whatsapp/mailto channel WITH custom "fields": a collapsible inline form collecting the buyer
     // inputs, then opening the deep link with them appended as "Label: value" lines (see orderMessage).
@@ -1176,7 +1322,8 @@ export const CART_JS = `(function(){
       sent=false; // a new item returns the drawer from the sent-confirmation back to the cart
       var wasEmpty=items.length===0; // drives the one-time reveal below
       var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
-      var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
+      // Not sold in this market: the button is disabled, and a stray click adds nothing.
+      var price=priceOf(btn,cfg);if(price===null){return;}
       var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}
       if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
       else{if(items.length>=MAX_LINES){return;}items.push({sku:String(sku).slice(0,200),name:(btn.getAttribute('data-name')||sku).slice(0,300),price:price,image:(btn.getAttribute('data-image')||'').slice(0,2048),qty:1});}

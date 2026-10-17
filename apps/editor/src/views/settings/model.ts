@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type ShopMarket, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -249,6 +249,11 @@ export interface SettingsForm {
   /** False ships NO platform cart CSS — the escape hatch for a fully-forked drawer. */
   shopPlatformCartStyles: boolean;
   shopChannels: KeyedShopChannel[];
+  /**
+   * website.shop.markets — preserved verbatim through the form so a settings save never drops them
+   * (they are set via API/MCP until the Markets board lands). Empty = a shop without markets.
+   */
+  shopMarkets: ShopMarket[];
   // CONSENT MANAGER (website.consent): preserved verbatim through the form so a settings save never drops
   // it. PR2 ships the engine; the dedicated config panel + enable toggle land in a later PR (set via API/MCP
   // until then). The reserved consent_* translation rows surface when `consent.enabled` is true.
@@ -440,6 +445,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     shopTaxRate: w?.shop?.pricing?.tax?.rateBp != null ? String(w.shop.pricing.tax.rateBp / 100) : '',
     shopTaxMode: w?.shop?.pricing?.tax?.mode ?? 'inclusive',
     shopPlatformCartStyles: w?.shop?.platformCartStyles !== false,
+    shopMarkets: w?.shop?.markets ?? [],
     shopChannels: (w?.shop?.channels ?? []).map((c) => ({
       id: rowId(),
       kind: c.kind,
@@ -696,7 +702,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // schema default), so a fresh/disabled shop stays minimal. The object is built when enabled OR any
   // config is present (so toggling off keeps the config but drops `enabled` → the cart is gated off).
   const shop =
-    form.shopEnabled || shopCurrency || shopPricing || shopChannels.length || !form.shopPlatformCartStyles
+    form.shopEnabled || shopCurrency || shopPricing || shopChannels.length || form.shopMarkets.length || !form.shopPlatformCartStyles
       ? {
           ...(form.shopEnabled ? { enabled: true } : {}),
           ...(shopCurrency ? { currency: shopCurrency } : {}),
@@ -705,6 +711,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
           // settings of every project that never touched the switch.
           ...(form.shopPlatformCartStyles ? {} : { platformCartStyles: false }),
           ...(shopChannels.length ? { channels: shopChannels } : {}),
+          ...(form.shopMarkets.length ? { markets: form.shopMarkets } : {}),
         }
       : undefined;
   // security.txt: `enabled` is emitted only when ON (omitted = off, the schema default), but the

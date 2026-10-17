@@ -109,9 +109,10 @@ import {
   validateAuthoredCart,
   cartMountContents,
   createCatalogAccumulator,
-  harvestCatalogPage,
+  harvestCatalogPages,
   finishCatalog,
   describeCatalogProblems,
+  type CatalogProblem,
   type ShopCatalog,
 } from '@sitewright/blocks';
 import { buildDataFiles } from './data-files.js';
@@ -258,6 +259,8 @@ export interface ReleaseManifest {
    * reason: the published manifest describes the release, not the platform's bookkeeping.
    */
   shopCatalog?: ShopCatalog;
+  /** The same, ONE PER MARKET (keyed by market id), for a shop with markets — instead of `shopCatalog`. */
+  shopCatalogs?: Record<string, ShopCatalog>;
   /**
    * Problems with `website.dataFiles` that did NOT fail the publish: a source that resolved to nothing,
    * a duplicate path, a file over the size cap. Each one means the site shipped a data file that is
@@ -1016,11 +1019,22 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     //
     // Built only when the shop declares a settlement currency: without one the minor-unit exponent
     // is unknowable, and a mini-shop that takes no payments has no use for a price list.
-    const shopSettlementCurrency = website?.shop?.enabled === true ? website.shop.currency?.code : undefined;
+    const shopOn = website?.shop?.enabled === true;
+    const shopSettlementCurrency = shopOn ? website?.shop?.currency?.code : undefined;
     // ★ Whether a bad price must STOP the publish. True only once a real charge depends on it.
     const shopTakesPayments = (website?.shop?.channels ?? []).some((c) => c.kind === 'checkout');
-    const catalogAcc = shopSettlementCurrency ? createCatalogAccumulator(shopSettlementCurrency) : undefined;
+    // ONE PRICE LIST PER MARKET, each in its market's currency (the first market is the default, which
+    // also prices a button that carries only a plain `price=`). A shop without markets has the one list
+    // in its settlement currency, exactly as before markets existed.
+    const shopMarkets = shopOn ? (website?.shop?.markets ?? []) : [];
+    const catalogAccs =
+      shopMarkets.length > 0
+        ? shopMarkets.map((m, i) => createCatalogAccumulator(m.currency, { id: m.id, isDefault: i === 0 }))
+        : shopSettlementCurrency
+          ? [createCatalogAccumulator(shopSettlementCurrency)]
+          : [];
     let shopCatalog: ShopCatalog | undefined;
+    let shopCatalogs: Record<string, ShopCatalog> | undefined;
     const shopCatalogWarnings: string[] = [];
     const shopCartWarnings: string[] = [];
     const shopChannelKeys = (website?.shop?.channels ?? []).map((c) => c.key);
@@ -1368,7 +1382,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           .join('\n');
         // Harvest this route's buy buttons from the SAME string the CSP scan reads — body plus every
         // chrome slot, so a product tile in a footer is priced exactly as one in a page body is.
-        if (catalogAcc) harvestCatalogPage(catalogAcc, cspScanHtml, pageFullPath);
+        if (catalogAccs.length > 0) harvestCatalogPages(catalogAccs, cspScanHtml, pageFullPath);
         // An AUTHORED cart drawer on this page, checked against the contract and the shop's own
         // channel keys. Only pages that actually mount a cart cost anything here.
         if (website?.shop?.enabled === true) {
@@ -1744,11 +1758,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Seal the catalog snapshot. A problem here is a price that cannot be charged exactly, or one SKU
     // carrying two different prices — the latter would make "which price is authoritative" depend on
     // the order routes happened to render in, which is the one thing a charge may never depend on.
-    if (catalogAcc) {
-      const sealed = finishCatalog(catalogAcc);
-      shopCatalog = sealed.catalog;
-      if (sealed.problems.length > 0) {
-        const message = describeCatalogProblems(sealed.problems);
+    if (catalogAccs.length > 0) {
+      const problems: CatalogProblem[] = [];
+      for (const acc of catalogAccs) {
+        const sealed = finishCatalog(acc);
+        problems.push(...sealed.problems);
+        if (acc.market !== undefined) (shopCatalogs ??= {})[acc.market] = sealed.catalog;
+        else shopCatalog = sealed.catalog;
+      }
+      if (problems.length > 0) {
+        const message = describeCatalogProblems(problems);
         // ★ Fail the publish only when a real charge depends on these prices (see shopTakesPayments).
         if (shopTakesPayments && !previewMode) throw new PublishError(message);
         shopCatalogWarnings.push(message);
@@ -1952,6 +1971,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (pageFailures.length > 0) manifest.pageFailures = pageFailures;
     // Same placement, same reason: this must not be in the file that was just written.
     if (shopCatalog) manifest.shopCatalog = shopCatalog;
+    if (shopCatalogs) manifest.shopCatalogs = shopCatalogs;
 
     // Swap the completed build into place (brief gap only between rm and rename).
     await rm(base, { recursive: true, force: true });

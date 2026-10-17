@@ -73,6 +73,37 @@ Card data never touches the published site or the platform. Hosted redirect only
 
 ---
 
+## 2b. Markets — several currencies, one price list each
+
+A shop may sell in several **markets** (`website.shop.markets`, the first the default): each has a
+currency, the countries it ships to (or `restOfWorld` — every country no other market claims), a
+default language, its own `pricing` (shipping + one tax rate) and the checkout channels — the
+providers — it offers.
+
+- **Prices are entered per market, never converted.** `{{sw-add-to-cart prices=…}}` writes every
+  market's price on the button (`data-prices`); the publish seals **one price list per market**
+  (`shop_catalog` keyed by project + mode + market), each in its currency. A market with no price for
+  a SKU does not sell it; a plain `price=` sells in the default market only. One SKU at two prices
+  WITHIN a market still blocks the publish. A publish REPLACES the mode's lists whole, so a removed
+  market leaves nothing chargeable.
+- **The market is chosen in the browser** (a static site has no server per request): the visitor's own
+  choice, else the page language (the browser region deciding between markets sharing it), else the
+  region, else the default. One cart per market, so a basket never mixes currencies.
+- **The server re-checks everything at checkout**: the request names `market` and `shipTo`; the
+  market must exist, offer the channel, and ship to the country (a rest-of-world market never ships
+  to a country another market claims). The charge uses that market's sealed list, currency and
+  pricing; a gateway that declares `currencies` without the market's is refused before anything is
+  held. The order records `market` and `ship_country`. Stock stays per SKU across markets.
+- **The ship-to country is the buyer's declaration.** The built-in gateways collect no address, so
+  the platform asks for the country and holds it to the market — but it cannot see where the parcel
+  really goes. Both order mails lead with *Ship to*; a merchant ships only there (and refunds an order
+  whose address field names somewhere else).
+- `channels: []` is a market with **no online checkout** (its WhatsApp/e-mail/form channels still
+  work); leaving `channels` out offers every checkout channel.
+- **A price list that cannot be stored fails closed.** If writing a publish's lists fails, the mode's
+  lists are deleted: checkout then refuses ("no published price list yet") until the next publish,
+  rather than charging the previous prices for a page that now shows new ones.
+
 ## 3. Gateways live in the database
 
 A gateway is a **declarative record**. The host owns everything that can be lied about:
@@ -262,8 +293,9 @@ outstanding balance, and a repeated event cannot drive the balance past the orde
 
 ### Explicitly out of scope
 
-Tax *determination* (one project rate, displayed — no OSS thresholds or per-country rates), invoicing,
-multi-currency, saved cards, subscriptions, marketplaces and shipping-rate calculation.
+Tax *determination* (one rate per market, displayed — no OSS thresholds or per-country rates within a
+market), invoicing, currency conversion (prices are entered per market), saved cards, subscriptions,
+marketplaces and shipping-rate calculation.
 
 ## What broke, and where to look first
 

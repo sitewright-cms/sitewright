@@ -34,6 +34,70 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
  */
 export const MAX_JSON_DATA_BYTES = 256 * 1024;
 
+/** A money amount in a currency, for the page's language — or the bare number when either is unknown. */
+function formatMoney(amount: number, currency: string | undefined, locale: string): string {
+  if (!Number.isFinite(amount)) return '';
+  if (currency) {
+    try {
+      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(amount);
+    } catch {
+      /* an unknown locale or currency: fall through to the bare number */
+    }
+  }
+  return String(amount);
+}
+
+/** The shop's markets as the cart runtime reads them, or undefined for a shop without markets. */
+function projectMarkets(raw: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const markets = raw.filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof (m as { id?: unknown }).id === 'string');
+  if (markets.length === 0) return undefined;
+  const claimed = new Set(markets.flatMap((m) => (Array.isArray(m.countries) ? (m.countries as unknown[]).filter((c): c is string => typeof c === 'string') : [])));
+  return markets.map((m) => {
+    const own = Array.isArray(m.countries) ? (m.countries as unknown[]).filter((c): c is string => typeof c === 'string') : [];
+    const ship = m.restOfWorld === true ? [...own, ...COUNTRY_CODES.filter((c) => !claimed.has(c))] : own;
+    return {
+      id: m.id,
+      name: typeof m.name === 'string' ? m.name : m.id,
+      currency: m.currency,
+      ...(typeof m.locale === 'string' ? { locale: m.locale } : {}),
+      ...(Array.isArray(m.channels) ? { channels: m.channels } : {}),
+      ship,
+    };
+  });
+}
+
+/** A market key — the shape `ShopMarketSchema.id` allows. */
+const MARKET_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/** More markets than a shop may have is not a price list, it is a mistake. */
+const MAX_MARKET_PRICES = 20;
+
+/**
+ * `{{sw-add-to-cart prices=…}}`: market key → price, each a finite non-negative number written in its
+ * canonical form (as `price=` is). Anything else — a bad key, a negative or non-numeric price — is
+ * dropped: that market then simply does not sell the product, which the publish reports where it matters.
+ */
+export function marketPrices(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const out: Record<string, string> = {};
+  for (const [market, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(out).length >= MAX_MARKET_PRICES) break;
+    if (!MARKET_KEY.test(market)) continue;
+    if (raw === null || raw === '' || (typeof raw !== 'number' && typeof raw !== 'string')) continue;
+    const n = Number(raw);
+    // eslint-disable-next-line security/detect-object-injection -- key matched MARKET_KEY; fresh literal
+    if (Number.isFinite(n) && n >= 0) out[market] = String(n);
+  }
+  return out;
+}
+
+/** The id of the shop's default (first) market, when it has markets. */
+function firstMarketId(markets: unknown): string | undefined {
+  if (!Array.isArray(markets) || markets.length === 0) return undefined;
+  const id = (markets[0] as { id?: unknown } | null)?.id;
+  return typeof id === 'string' ? id : undefined;
+}
+
 /** A dataset entry as stored — `{ id, dataset, values: {…}, … }` — rather than a row of fields. */
 function isStoredEntry(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -165,7 +229,7 @@ import { buildSwImage } from './image-helper.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
 import {
   type CaptchaRenderConfig, RESERVED_TRANSLATION_DEFAULTS,
-  SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, parseShopFieldOptions } from '@sitewright/schema';
+  SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, parseShopFieldOptions, COUNTRY_CODES } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -1425,7 +1489,9 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
-    const root = (options.data?.root ?? {}) as { website?: { shop?: { enabled?: unknown }; t?: Record<string, unknown> } };
+    const root = (options.data?.root ?? {}) as {
+      website?: { shop?: { enabled?: unknown; markets?: unknown }; t?: Record<string, unknown> };
+    };
     // Gated by the master switch: with the shop OFF (website.shop.enabled !== true) the cart is disabled
     // site-wide, so this button renders nothing — even if the helper is still in the template source.
     if (root.website?.shop?.enabled !== true) return new Handlebars.SafeString('');
@@ -1433,12 +1499,25 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     const name = str(h.name);
     const key = sku || name;
     if (!key) return new Handlebars.SafeString('');
+    // `prices=` — the price PER MARKET ({ eu: 95, ch: 99 }, from a dataset's prices field), each one
+    // checked like `price`. A market with no valid price is a market this product is not sold in.
+    const prices = marketPrices(h.prices);
     const priceNum = Number(h.price);
-    const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
+    // The plain price the market-less cart and the default market read: `price=`, else the default
+    // (first) market's own.
+    const firstMarket = firstMarketId(root.website?.shop?.markets);
+    const fallback = firstMarket !== undefined && Object.hasOwn(prices, firstMarket) ? prices[firstMarket] : undefined;
+    const plain = h.price !== undefined && Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : undefined;
+    // ★ With markets, NO plain price is written unless there is one: the default market reads the plain
+    // price, so a '0' stand-in would sell a product priced only for OTHER markets for nothing there.
+    // Without markets, the long-standing '0' floor stays (the button has always carried a price).
+    const price = plain ?? fallback ?? (firstMarket !== undefined ? undefined : '0');
     // Label precedence: explicit hash → translation catalog (reserved `cart.add`, localized per page
     // locale) → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
     const label = str(h.label) || reservedTr(root, 'cart.add') || RESERVED_TRANSLATION_DEFAULTS['cart.add']!;
-    let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
+    let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}"`;
+    if (price !== undefined) attrs += ` data-price="${escapeAttr(price)}"`;
+    if (Object.keys(prices).length > 0) attrs += ` data-prices="${escapeAttr(JSON.stringify(prices))}"`;
     const img = str(h.image);
     if (img) {
       const safe = safeUrl(img); // blocks javascript:/data:/protocol-relative → '#'
@@ -1458,6 +1537,54 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     const cls = str(h.class) || 'btn btn-sm';
     attrs += ` class="${escapeAttr(cls)}"`;
     return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
+  });
+  /**
+   * {{sw-price prices=prices price=price}} → a product's price, as text, for the visitor's market.
+   *
+   * Rendered server-side in the DEFAULT market's currency (what a crawler and a no-JS visitor see), then
+   * switched by the cart runtime to the visitor's market — or to "Not available in …" where the product
+   * is not sold. Display only, like every price on the page: the server charges from its own sealed list.
+   */
+  hb.registerHelper('sw-price', function swPrice(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options?.hash ?? {}) as Record<string, unknown>;
+    const root = (options.data?.root ?? {}) as {
+      website?: { shop?: { enabled?: unknown; markets?: unknown; currency?: { code?: unknown } } };
+      page?: { locale?: unknown; defaultLocale?: unknown };
+    };
+    const shop = root.website?.shop;
+    if (shop?.enabled !== true) return new Handlebars.SafeString('');
+    const prices = marketPrices(h.prices);
+    const first = Array.isArray(shop.markets) && shop.markets.length > 0 ? (shop.markets[0] as { id?: unknown; currency?: unknown }) : undefined;
+    const plainNum = Number(h.price);
+    const plain = h.price !== undefined && Number.isFinite(plainNum) && plainNum >= 0 ? String(plainNum) : undefined;
+    const firstId = typeof first?.id === 'string' ? first.id : undefined;
+    const shown = (firstId !== undefined && Object.hasOwn(prices, firstId) ? prices[firstId] : undefined) ?? plain;
+    const currency = typeof first?.currency === 'string' ? first.currency : typeof shop.currency?.code === 'string' ? shop.currency.code : undefined;
+    const locale = typeof root.page?.locale === 'string' ? root.page.locale : typeof root.page?.defaultLocale === 'string' ? root.page.defaultLocale : 'en';
+    let attrs = 'data-sw-price';
+    if (plain !== undefined) attrs += ` data-price="${escapeAttr(plain)}"`;
+    if (Object.keys(prices).length > 0) attrs += ` data-prices="${escapeAttr(JSON.stringify(prices))}"`;
+    const cls = typeof h.class === 'string' ? h.class : '';
+    if (cls) attrs += ` class="${escapeAttr(cls)}"`;
+    return new Handlebars.SafeString(`<span ${attrs}>${escapeHtml(shown !== undefined ? formatMoney(Number(shown), currency, locale) : '')}</span>`);
+  });
+  /**
+   * {{sw-market-switcher}} → where the visitor shops: a <select> of the shop's markets, which the cart
+   * runtime selects and acts on (it remembers the choice and reloads into that market's prices and
+   * cart). Renders nothing for a shop with fewer than two markets.
+   */
+  hb.registerHelper('sw-market-switcher', function swMarketSwitcher(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options?.hash ?? {}) as Record<string, unknown>;
+    const root = (options.data?.root ?? {}) as { website?: { shop?: { enabled?: unknown; markets?: unknown }; t?: Record<string, unknown> } };
+    const shop = root.website?.shop;
+    const markets = shop?.enabled === true ? projectMarkets(shop.markets) : undefined;
+    if (!markets || markets.length < 2) return new Handlebars.SafeString('');
+    const label = (typeof h.label === 'string' && h.label) || reservedTr(root, 'cart.market') || RESERVED_TRANSLATION_DEFAULTS['cart.market']!;
+    const cls = typeof h.class === 'string' && h.class ? ` class="${escapeAttr(h.class)}"` : '';
+    const opts = markets.map((m) => `<option value="${escapeAttr(String(m.id))}">${escapeHtml(String(m.name))}</option>`).join('');
+    return new Handlebars.SafeString(`<select data-sw-market-switcher aria-label="${escapeAttr(label)}"${cls}>${opts}</select>`);
   });
   /**
    * {{sw-order-status}} / {{#sw-order-status}}…{{/sw-order-status}} → the THANK-YOU panel mount.
@@ -1570,6 +1697,17 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     const company = (root.company ?? {}) as Record<string, unknown>;
     const brand = str(company.name);
     if (brand) attrs += ` data-brand="${escapeAttr(brand)}"`;
+    // MARKETS: what the runtime needs to choose the visitor's market and send a checkout there — each
+    // market's id, name, currency, language and offered channels, and the countries it SHIPS to (for the
+    // rest-of-the-world market: every country no other market claims). Never its shipping or tax: the
+    // review step shows the server's own figures. Absent for a shop without markets (byte-stable).
+    const markets = projectMarkets(shop.markets);
+    if (markets) {
+      attrs += ` data-markets="${escapeAttr(JSON.stringify(markets))}"`;
+      attrs += ` data-market-label="${escapeAttr(str(h.marketLabel) || tr('cart.market'))}"`;
+      attrs += ` data-ship-to-label="${escapeAttr(str(h.shipTo) || tr('cart.ship_to'))}"`;
+      attrs += ` data-unavailable-label="${escapeAttr(str(h.unavailable) || tr('cart.unavailable'))}"`;
+    }
     // A channel/field LABEL is translatable: it lives in the catalog under `shop.<key>`, resolved per
     // page-locale here. No catalog entry → the bare key as a visible fallback (so it's never blank).
     const shopLabel = (key: string): string => (key ? reservedTr(root, `shop.${key}`) || key : '');

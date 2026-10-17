@@ -52,6 +52,9 @@ export interface CreateTransactionInput {
   /** True for a DRAFT PREVIEW checkout: it holds no stock, so it must not commit any. */
   preview?: boolean;
   customerEmail?: string;
+  /** The shop market the order was placed in (a shop with markets), and the country it ships to. */
+  market?: string;
+  shipCountry?: string;
 }
 
 export interface TransactionRow {
@@ -68,6 +71,10 @@ export interface TransactionRow {
    *  column was set and never read back, so the inbox could never show what an operator recorded. */
   fulfilmentNote: string | null;
   currency: string;
+  /** The shop market the order was placed in, or null for a shop without markets. */
+  market: string | null;
+  /** The ship-to country the buyer chose — one of the market's. Null for a shop without markets. */
+  shipCountry: string | null;
   amounts: TransactionAmounts;
   refundedMinor: number;
   lines: TransactionLine[];
@@ -97,6 +104,8 @@ function toRow(r: any): TransactionRow {
     fulfilment: r.fulfilment,
     fulfilmentNote: r.fulfilmentNote ?? null,
     currency: r.currency,
+    market: r.market ?? null,
+    shipCountry: r.shipCountry ?? null,
     amounts: {
       subtotalMinor: r.subtotalMinor,
       shippingMinor: r.shippingMinor,
@@ -140,6 +149,8 @@ export class ShopTransactionRepository {
       status: 'created',
       fulfilment: 'new',
       currency: input.currency,
+      ...(input.market !== undefined ? { market: input.market } : {}),
+      ...(input.shipCountry !== undefined ? { shipCountry: input.shipCountry } : {}),
       subtotalMinor: input.amounts.subtotalMinor,
       shippingMinor: input.amounts.shippingMinor,
       taxMinor: input.amounts.taxMinor,

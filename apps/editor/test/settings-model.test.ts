@@ -142,6 +142,22 @@ describe('settings model', () => {
     expect(toBundle(cfgOnly, empty()).website?.shop).toEqual({ currency: { position: 'after', decimals: 2 } });
   });
 
+  it('★ a settings save keeps the shop’s MARKETS — the form must never drop what it does not edit yet', () => {
+    const markets = [
+      { id: 'eu', name: 'Europe', currency: 'EUR', countries: ['DE', 'AT'], locale: 'de' },
+      { id: 'row', name: 'Rest of world', currency: 'USD', countries: [], restOfWorld: true, pricing: {} },
+    ];
+    const bundle: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { shop: { enabled: true, markets } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    } as never;
+    expect(toBundle(toForm(bundle), bundle).website?.shop).toEqual({ enabled: true, markets });
+    // Markets alone are config too: a disabled shop keeps them.
+    const off = { ...bundle, website: { shop: { markets } } } as never;
+    expect(toBundle(toForm(off), off).website?.shop).toEqual({ markets });
+  });
+
   it('round-trips per-channel order fields (whatsapp + mailto) and defaults the field type to text', () => {
     const withFields: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

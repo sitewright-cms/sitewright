@@ -53,13 +53,53 @@ export interface CatalogProblem {
 /** Accumulates across pages. Build one, feed every page's HTML, then `finishCatalog`. */
 export interface CatalogAccumulator {
   readonly currency: string;
+  /**
+   * The MARKET this price list is for, or undefined for a shop without markets. A market's price is
+   * read from the button's `data-prices[<market>]`; a button with none for it is not sold there.
+   */
+  readonly market?: string;
+  /**
+   * Whether a button carrying only a plain `data-price` is sold here at that price: a shop without
+   * markets, and its DEFAULT (first) market — so pages written before markets keep selling where they
+   * always did, and nowhere they were never priced for.
+   */
+  readonly plainPrice: boolean;
   /** sku → item, plus the first route it was seen on (for a conflict message). */
   readonly items: Map<string, CatalogItem & { route: string }>;
   readonly problems: CatalogProblem[];
 }
 
-export function createCatalogAccumulator(currency: string): CatalogAccumulator {
-  return { currency, items: new Map(), problems: [] };
+export function createCatalogAccumulator(currency: string, market?: { id: string; isDefault: boolean }): CatalogAccumulator {
+  return {
+    currency,
+    ...(market ? { market: market.id } : {}),
+    plainPrice: market === undefined || market.isDefault,
+    items: new Map(),
+    problems: [],
+  };
+}
+
+/**
+ * The per-market prices on one button: `data-prices` is the JSON object `{{sw-add-to-cart prices=…}}`
+ * writes. Unreadable means none: the button is then priced by `data-price` alone, where that applies.
+ */
+function readMarketPrices(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      // A string (what the helper writes) or a number (a hand-authored attribute), as the runtime reads it.
+      // eslint-disable-next-line security/detect-object-injection -- own keys of a parsed object into a fresh literal
+      if (typeof v === 'string') out[k] = v;
+      // eslint-disable-next-line security/detect-object-injection -- as above
+      else if (typeof v === 'number' && Number.isFinite(v)) out[k] = String(v);
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -102,9 +142,18 @@ function readStock(value: string | undefined): number | undefined {
  * place to buy something, and a body-only scan would price it on some pages and not others.
  */
 export function harvestCatalogPage(acc: CatalogAccumulator, html: string, route: string): void {
+  harvestCatalogPages([acc], html, route);
+}
+
+/**
+ * {@link harvestCatalogPage} for several price lists at once — one per market — parsing the page ONCE.
+ * Each list reads the button's price for ITS market; a SKU with two prices within one market is the
+ * same publish-blocking conflict as ever, while two markets pricing it differently is the point.
+ */
+export function harvestCatalogPages(accs: readonly CatalogAccumulator[], html: string, route: string): void {
   // Cheap pre-filter: parsing every page of a 1,000-page site to find nothing is pure cost, and the
   // overwhelming majority of pages have no cart marker at all.
-  if (!html.includes(CART_ADD_MARKER)) return;
+  if (accs.length === 0 || !html.includes(CART_ADD_MARKER)) return;
   const doc = parseDocument(html, { decodeEntities: true });
   const markers = DomUtils.find(
     (node) => node.type === 'tag' && Object.prototype.hasOwnProperty.call((node as Element).attribs, CART_ADD_MARKER),
@@ -113,27 +162,42 @@ export function harvestCatalogPage(acc: CatalogAccumulator, html: string, route:
     MAX_MARKERS_PER_PAGE + 1,
   ) as Element[];
   if (markers.length > MAX_MARKERS_PER_PAGE) {
-    acc.problems.push({ sku: '', route, message: `more than ${MAX_MARKERS_PER_PAGE} add-to-cart buttons on one page` });
+    for (const acc of accs) acc.problems.push({ sku: '', route, message: `more than ${MAX_MARKERS_PER_PAGE} add-to-cart buttons on one page` });
     return;
   }
-  for (const el of markers) {
+  for (const acc of accs) for (const el of markers) harvestMarker(acc, el, route);
+}
+
+/** Folds one add-to-cart button into one price list. */
+function harvestMarker(acc: CatalogAccumulator, el: Element, route: string): void {
+  {
     const sku = (el.attribs['data-sku'] ?? '').trim();
     // A marker with no sku cannot be priced or ordered. The helper will not emit one (it requires a
     // key), so this is a hand-authored button — report it rather than dropping it, because a button
     // that silently cannot be bought is worse than a loud publish failure.
     if (!sku) {
       acc.problems.push({ sku: '', route, message: 'an add-to-cart button has no data-sku' });
-      continue;
+      return;
     }
     if (sku.length > 200) {
       acc.problems.push({ sku: sku.slice(0, 32), route, message: 'data-sku is longer than 200 characters' });
-      continue;
+      return;
     }
-    const rawPrice = (el.attribs['data-price'] ?? '').trim();
+    // This list's price: its market's from `data-prices`, else the plain `data-price` where that
+    // applies. Neither: the SKU is simply not sold in this market — a choice, not a problem.
+    const perMarket = acc.market !== undefined ? readMarketPrices(el.attribs['data-prices']) : {};
+    const marketPrice = acc.market !== undefined && Object.hasOwn(perMarket, acc.market) ? perMarket[acc.market] : undefined;
+    if (marketPrice === undefined && !acc.plainPrice) return;
+    // ★ In a MARKET, no price at all means not sold here — the default market included. (A shop without
+    // markets keeps reporting a missing price as the problem it always was.) Reading an absent plain price
+    // as anything else is how a product priced only for other markets would be sold for nothing.
+    if (marketPrice === undefined && acc.market !== undefined && (el.attribs['data-price'] ?? '').trim() === '') return;
+    const rawPrice = (marketPrice ?? el.attribs['data-price'] ?? '').trim();
+    const where = acc.market !== undefined ? ` in market "${acc.market}"` : '';
     const parsed = toMinorUnits(rawPrice, acc.currency);
     if (!parsed.ok) {
-      acc.problems.push({ sku, route, message: describePriceFailure(parsed, rawPrice) });
-      continue;
+      acc.problems.push({ sku, route, message: `${describePriceFailure(parsed, rawPrice)}${where}` });
+      return;
     }
     const name = (el.attribs['data-name'] ?? sku).slice(0, 300);
     const image = el.attribs['data-image'];
@@ -148,7 +212,7 @@ export function harvestCatalogPage(acc: CatalogAccumulator, html: string, route:
         acc.problems.push({
           sku,
           route,
-          message: `priced ${fmt(prior.priceMinor)} on ${prior.route} and ${fmt(parsed.minor)} here — one SKU cannot have two prices`,
+          message: `priced ${fmt(prior.priceMinor)} on ${prior.route} and ${fmt(parsed.minor)} here${where} — one SKU cannot have two prices`,
         });
       }
       // A later marker may legitimately carry a stock number the first did not (one tile shows
@@ -156,7 +220,7 @@ export function harvestCatalogPage(acc: CatalogAccumulator, html: string, route:
       // disagreement is not worth failing a publish over, because stock is reconciled against the
       // ledger's own record of what the author last said.
       if (prior.stock === undefined && stock !== undefined) prior.stock = stock;
-      continue;
+      return;
     }
     acc.items.set(sku, { sku, name, priceMinor: parsed.minor, ...(image ? { image } : {}), ...(stock !== undefined ? { stock } : {}), route });
   }
@@ -170,6 +234,8 @@ function fmt(minor: number): string {
 /** The finished snapshot. `digest` identifies exactly this price list on a transaction row. */
 export interface ShopCatalog {
   currency: string;
+  /** The market this price list belongs to; absent for a shop without markets. */
+  market?: string;
   items: Record<string, CatalogItem>;
   digest: string;
 }
@@ -196,8 +262,10 @@ export function finishCatalog(acc: CatalogAccumulator): { catalog: ShopCatalog; 
       ...(it.stock !== undefined ? { stock: it.stock } : {}),
     };
   }
-  const digest = createHash('sha256').update(JSON.stringify({ c: acc.currency, i: items })).digest('hex').slice(0, 32);
-  return { catalog: { currency: acc.currency, items, digest }, problems: acc.problems };
+  // A market-less list hashes exactly as it always did, so an unchanged shop keeps its digest.
+  const content = acc.market !== undefined ? { c: acc.currency, m: acc.market, i: items } : { c: acc.currency, i: items };
+  const digest = createHash('sha256').update(JSON.stringify(content)).digest('hex').slice(0, 32);
+  return { catalog: { currency: acc.currency, ...(acc.market !== undefined ? { market: acc.market } : {}), items, digest }, problems: acc.problems };
 }
 
 /** Formats problems into one publish-failure message that names every offender. */

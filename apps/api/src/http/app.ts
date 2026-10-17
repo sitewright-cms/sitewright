@@ -255,7 +255,7 @@ import { GatewayRepository } from '../payments/gateways.js';
 import { ShopTransactionRepository } from '../repo/shop-transactions.js';
 import { ShopStockRepository } from '../repo/shop-stock.js';
 import { shopCatalog as shopCatalogTable } from '../db/schema.js';
-import { reconcileStock } from '../publish/shop-catalog.js';
+import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus } from '../payments/executor.js';
 import { runOrderMail } from '../payments/notify-runner.js';
 import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
@@ -10565,13 +10565,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       getPowSecret: () => currentCookieSecret,
       claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
       getShop: getProjectShop,
-      getCatalog: async (projectId: string, mode: 'live' | 'draft') => {
+      getCatalog: async (projectId: string, mode: 'live' | 'draft', market = '') => {
         if (projectId === GLOBAL_SCOPE_ID) return null;
         const [row] = await db
           .select()
           .from(shopCatalogTable)
-          .where(and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode)));
-        return row ? { currency: row.currency, items: row.items, digest: row.digest } : null;
+          .where(and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode), eq(shopCatalogTable.market, market)));
+        return row ? { currency: row.currency, ...(market ? { market } : {}), items: row.items, digest: row.digest } : null;
       },
       // ★ The reserved GLOBAL scope is refused here too, mirroring `resolveProject`.
       //
@@ -10611,23 +10611,47 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * shop, and an author rebuilding a preview twenty times while editing must not touch the ledger at
    * all.
    */
-  async function persistShopCatalog(projectId: string, mode: 'live' | 'draft', manifest: { shopCatalog?: ShopCatalog }): Promise<void> {
-    const catalog = manifest.shopCatalog;
-    if (!catalog) return;
+  async function persistShopCatalog(
+    projectId: string,
+    mode: 'live' | 'draft',
+    manifest: { shopCatalog?: ShopCatalog; shopCatalogs?: Record<string, ShopCatalog> },
+  ): Promise<void> {
+    // One list per MARKET for a shop with markets; else the one list, under market ''.
+    const lists = manifest.shopCatalogs
+      ? Object.entries(manifest.shopCatalogs).map(([market, catalog]) => ({ market, catalog }))
+      : manifest.shopCatalog
+        ? [{ market: '', catalog: manifest.shopCatalog }]
+        : [];
+    if (lists.length === 0) return;
+    const modeRows = and(eq(shopCatalogTable.projectId, projectId), eq(shopCatalogTable.mode, mode));
     try {
-      await db
-        .insert(shopCatalogTable)
-        .values({ projectId, mode, currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() })
-        .onConflictDoUpdate({
-          target: [shopCatalogTable.projectId, shopCatalogTable.mode],
-          set: { currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt: new Date() },
-        });
+      const publishedAt = new Date();
+      await db.transaction(async (tx) => {
+        // ★ REPLACED WHOLE, never merged: a market removed since the last build must not leave a price
+        // list a checkout could still charge against, nor a shop that dropped markets its old ones.
+        await tx.delete(shopCatalogTable).where(modeRows);
+        for (const { market, catalog } of lists) {
+          await tx
+            .insert(shopCatalogTable)
+            .values({ projectId, mode, market, currency: catalog.currency, items: catalog.items, digest: catalog.digest, publishedAt });
+        }
+      });
+    } catch (err) {
+      // ★ FAIL CLOSED. The site now shows the new prices; leaving the old lists in place would charge
+      // the old ones without a word. With none, checkout answers "no published price list yet" until the
+      // next publish writes them — a refused sale instead of a wrong charge.
+      await db.delete(shopCatalogTable).where(modeRows).catch(() => undefined);
+      app.log.error({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not persist the shop price lists — checkout is closed until the next publish');
+      return;
+    }
+    try {
       if (mode === 'live') {
+        // Stock is a fact about the SKU, not the market: reconciled once, from every market's buttons.
         const ledger = await shopStockRepo.all(projectId);
-        await shopStockRepo.applyReconciliation(projectId, reconcileStock(catalog, ledger));
+        await shopStockRepo.applyReconciliation(projectId, reconcileStock(mergeCatalogStock(lists.map((l) => l.catalog)), ledger));
       }
     } catch (err) {
-      app.log.warn({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not persist the shop catalog snapshot');
+      app.log.warn({ projectId, mode, errMsg: err instanceof Error ? err.message : String(err) }, 'could not reconcile stock from the shop price lists');
     }
   }
 

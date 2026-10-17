@@ -114,6 +114,11 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'cart.out_of_stock', label: 'Out-of-stock message', default: 'Sorry, that is out of stock.' },
       { key: 'cart.gone', label: 'Item-no-longer-sold message', default: 'An item in your cart is no longer available.' },
       { key: 'cart.checkout_failed', label: 'Checkout-unavailable message', default: 'Checkout is unavailable right now. Please try again.' },
+      // MARKETS — a shop selling in several currencies/regions. The switcher, the ship-to country a
+      // checkout asks for, and a product that is not sold in the visitor's market.
+      { key: 'cart.market', label: 'Market switcher label', default: 'Shop in' },
+      { key: 'cart.ship_to', label: 'Ship-to country prompt', default: 'Ship to' },
+      { key: 'cart.unavailable', label: 'Not-sold-in-this-market message', default: 'Not available in {market}' },
       // THANK-YOU PAGE. Separate from the cart keys because they are read at a different moment, by
       // someone who has already paid — and the wrong tone there is expensive.
       { key: 'order.paid', label: 'Payment-confirmed message', default: 'Thank you — your payment is confirmed.' },

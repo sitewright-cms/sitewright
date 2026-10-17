@@ -9,11 +9,13 @@ import {
   MIN_SUBMIT_ELAPSED_MS,
   MAX_CHECKOUT_LINES,
   fromMinorUnits,
+  isCountryCode,
   validateFormSubmission,
   type CaptchaProvider,
   type FormField,
   type Shop,
   type ShopChannel,
+  type ShopMarket,
 } from '@sitewright/schema';
 import { z } from 'zod';
 import type { ShopCatalog } from '@sitewright/blocks';
@@ -87,8 +89,8 @@ export interface PaymentRoutesDeps {
   claimPowChallenge: (challenge: string, expiresAt: Date) => Promise<boolean>;
   /** The project's shop settings, or null when it has none. */
   getShop: (projectId: string) => Promise<Shop | null>;
-  /** The catalog snapshot for a mode, or null when the site has never been built in that mode. */
-  getCatalog: (projectId: string, mode: 'live' | 'draft') => Promise<ShopCatalog | null>;
+  /** The catalog snapshot for a mode (and a MARKET, for a shop with markets), or null when none was built. */
+  getCatalog: (projectId: string, mode: 'live' | 'draft', market?: string) => Promise<ShopCatalog | null>;
   /** A tenant context for a project, WITHOUT a user — the public endpoints have no session. */
   systemContext: (projectId: string) => ProjectContext;
   /** Absolute base for URLs handed to a provider (return/cancel/webhook). */
@@ -131,7 +133,46 @@ const CheckoutBodySchema = z.object({
    * 24 random bytes the browser only has because the server issued it for that cart.
    */
   supersede: z.string().min(1).max(128).optional(),
+  /**
+   * The MARKET the buyer is shopping in, and the country the order ships to — required by a shop with
+   * markets, ignored by one without. Both are re-checked here: the market decides the price list, the
+   * currency, shipping and tax, and which channels may take the order; the country must be one the
+   * market ships to, or a buyer could pick the cheapest market and ship anywhere.
+   */
+  market: z.string().min(1).max(64).optional(),
+  shipTo: z.string().min(1).max(8).optional(),
 });
+
+/** Why a checkout's market or ship-to country was refused — each one actionable by the buyer. */
+type MarketRefusal = 'market_required' | 'unknown_market' | 'channel_not_offered' | 'ship_to_required' | 'ship_to_not_in_market';
+
+/**
+ * The market an order is placed in, and its ship-to country, or why not. A shop without markets has
+ * none (undefined), exactly as before. A REST-OF-WORLD market ships to every country no other market
+ * claims — never to one another market claims, or it would undercut that market's own prices.
+ */
+export function resolveMarket(
+  shop: Shop,
+  channelKey: string,
+  marketId: string | undefined,
+  shipTo: string | undefined,
+): { ok: true; market?: ShopMarket; shipTo?: string } | { ok: false; reason: MarketRefusal } {
+  const markets = shop.markets ?? [];
+  if (markets.length === 0) return { ok: true };
+  if (!marketId) return { ok: false, reason: 'market_required' };
+  const market = markets.find((m) => m.id === marketId);
+  if (!market) return { ok: false, reason: 'unknown_market' };
+  // Which providers a market offers is the merchant's choice: a channel it does not list cannot take
+  // its orders, whatever the page's markup asks for.
+  if (market.channels && !market.channels.includes(channelKey)) return { ok: false, reason: 'channel_not_offered' };
+  if (!shipTo) return { ok: false, reason: 'ship_to_required' };
+  const country = shipTo.toUpperCase();
+  if (!isCountryCode(country)) return { ok: false, reason: 'ship_to_not_in_market' };
+  const claimed = markets.some((m) => m.id !== market.id && m.countries.includes(country));
+  const ships = market.countries.includes(country) || (market.restOfWorld === true && !claimed);
+  if (!ships) return { ok: false, reason: 'ship_to_not_in_market' };
+  return { ok: true, market, shipTo: country };
+}
 
 /** Flattens submitted fields to a text map, exactly as the form endpoint does. */
 function flattenFields(raw: Record<string, string | string[]>): Record<string, string> | { error: string } {
@@ -262,6 +303,11 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       const invalid = validateFormSubmission(toFormFields(channel), bodyFields);
       if (invalid.length > 0) return reply.code(400).send({ error: 'invalid fields', fields: invalid });
 
+      // The market: which price list, currency, shipping and tax, and where it may ship.
+      const placed = resolveMarket(shop, channelKey, parsed.data.market, parsed.data.shipTo);
+      if (!placed.ok) return reply.code(400).send({ error: placed.reason });
+      const market = placed.market;
+
       if (channel.pow) {
         // Verifying CONSUMES the solution, and the scope ties it to THIS channel — so the work a
         // visitor paid buys this one checkout and nothing further, here or at any other endpoint.
@@ -302,6 +348,13 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
         app.log.warn({ projectId, channelKey, reason: resolved.reason, missing: resolved.missing }, 'checkout refused: the gateway is not usable');
         return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
       }
+      // A gateway that declares its currencies cannot be asked to charge another one — the provider
+      // would refuse the session, after stock was held and a transaction opened.
+      const chargeCurrency = market?.currency ?? shop.currency?.code;
+      if (chargeCurrency && resolved.gateway.currencies?.length && !resolved.gateway.currencies.includes(chargeCurrency)) {
+        app.log.warn({ projectId, channelKey, gatewayId: resolved.gateway.id, currency: chargeCurrency }, 'checkout refused: the gateway does not charge in this currency');
+        return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
+      }
       // ★ A draft preview is FORCED to test mode. Combined with per-mode credentials, an author's dry
       // run can never transact against the live account.
       if (previewMode && resolved.mode !== 'test') {
@@ -309,15 +362,23 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
       }
 
       // ---- re-price, server-side ------------------------------------------------------------
-      const catalog = await getCatalog(projectId, previewMode ? 'draft' : 'live');
+      const catalog = await getCatalog(projectId, previewMode ? 'draft' : 'live', market?.id ?? '');
       if (!catalog) return reply.code(503).send({ error: 'this shop has no published price list yet' });
-      if (shop.currency?.code && catalog.currency !== shop.currency.code) {
+      if (market && catalog.currency !== market.currency) {
+        // Built before the market's currency changed: charging against it would mean charging in a
+        // currency that market no longer uses. The next publish rebuilds it.
+        app.log.warn({ projectId, market: market.id, snapshot: catalog.currency, configured: market.currency }, 'checkout refused: the market price list predates a currency change');
+        return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
+      }
+      if (!market && shop.currency?.code && catalog.currency !== shop.currency.code) {
         // The snapshot was built under a different settlement currency — charging against it would
         // mean charging in a currency the shop no longer uses.
         app.log.warn({ projectId, snapshot: catalog.currency, configured: shop.currency.code }, 'checkout refused: the price list predates a currency change');
         return reply.code(503).send({ error: 'checkout is temporarily unavailable' });
       }
-      const priced = priceOrder(parsed.data.items, catalog, shop.pricing);
+      // A market's own shipping and tax — or the shop's, which the schema allows only when the market
+      // charges in the shop's own currency (a shipping fee is an amount).
+      const priced = priceOrder(parsed.data.items, catalog, market ? (market.pricing ?? shop.pricing) : shop.pricing);
       if (!priced.ok) {
         // These ARE actionable by the buyer: an item is gone, or the cart is malformed. Naming the
         // SKU is the difference between a recoverable cart and an abandoned one.
@@ -387,6 +448,8 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
           owesNotification: true,
           ...(previewMode ? { preview: true } : {}),
           ...(customerEmail ? { customerEmail } : {}),
+          ...(market ? { market: market.id } : {}),
+          ...(placed.shipTo ? { shipCountry: placed.shipTo } : {}),
         });
       } catch (err) {
         if (!previewMode) await stock.release(projectId, held).catch(() => undefined);

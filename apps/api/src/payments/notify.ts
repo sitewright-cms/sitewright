@@ -31,10 +31,23 @@ export interface OrderMailContext {
     placedAt: string;
     /** `test` orders say so, loudly — a merchant must never mistake a rehearsal for a sale. */
     mode: 'test' | 'live';
+    /** The shop market and ship-to country, for a shop with markets ("Switzerland (CH)"). */
+    market?: string;
+    shipTo?: string;
   };
   /** The buyer's own submitted fields. Text only, exactly as stored. */
   buyer: Record<string, string>;
   shop: { name: string };
+}
+
+/** "Switzerland (CH)" — the code stays visible, because it is what an address form and a provider use. */
+function countryLabel(code: string): string {
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(code);
+    return name && name !== code ? `${name} (${code})` : code;
+  } catch {
+    return code;
+  }
 }
 
 /** Shapes a transaction into the narrow context above. */
@@ -52,6 +65,8 @@ export function orderMailContext(txn: TransactionRow, shopName: string): OrderMa
       lines: txn.lines.map((l: TransactionLine) => ({ name: l.name, qty: l.qty, amount: money(l.lineMinor) })),
       placedAt: (txn.paidAt ?? txn.createdAt).toISOString(),
       mode: txn.mode,
+      ...(txn.market ? { market: txn.market } : {}),
+      ...(txn.shipCountry ? { shipTo: countryLabel(txn.shipCountry) } : {}),
     },
     buyer: txn.buyer,
     shop: { name: shopName },
@@ -101,7 +116,12 @@ export interface RenderedMail {
 
 /** The order notification the SHOP receives. Carries the buyer's fields so it is actionable. */
 export function renderAdminMail(ctx: OrderMailContext, subject?: string): RenderedMail {
-  const buyerRows = Object.entries(ctx.buyer)
+  // Where it ships, first: for a shop with markets it decides how the order is fulfilled.
+  const placed: Array<[string, string]> = [
+    ...(ctx.order.shipTo ? ([['Ship to', ctx.order.shipTo]] as Array<[string, string]>) : []),
+    ...(ctx.order.market ? ([['Market', ctx.order.market]] as Array<[string, string]>) : []),
+  ];
+  const buyerRows = [...placed, ...Object.entries(ctx.buyer)]
     .map(([k, v]) => `<tr><td style="padding:2px 8px;color:#555">${esc(k)}</td><td style="padding:2px 8px">${esc(v)}</td></tr>`)
     .join('');
   const prefix = ctx.order.mode === 'test' ? '[TEST] ' : '';
@@ -116,7 +136,7 @@ export function renderAdminMail(ctx: OrderMailContext, subject?: string): Render
     text:
       (ctx.order.mode === 'test' ? 'THIS IS A TEST ORDER. No money has changed hands.\n\n' : '') +
       `New order ${ctx.order.reference}\n\n${linesText(ctx)}\n\n` +
-      Object.entries(ctx.buyer)
+      [...placed, ...Object.entries(ctx.buyer)]
         .map(([k, v]) => `  ${k}: ${v}`)
         .join('\n'),
   };
@@ -132,11 +152,12 @@ export function renderCustomerMail(ctx: OrderMailContext): RenderedMail {
       `<h2 style="font-size:18px">Thank you for your order</h2>` +
       `<p>We have received your payment. Your reference is <strong>${esc(ctx.order.reference)}</strong>.</p>` +
       linesTable(ctx) +
+      (ctx.order.shipTo ? `<p>Ships to: ${esc(ctx.order.shipTo)}</p>` : '') +
       `<p style="margin-top:16px;color:#555">${esc(ctx.shop.name)}</p></div>`,
     text:
       (ctx.order.mode === 'test' ? 'THIS IS A TEST ORDER. No money has changed hands.\n\n' : '') +
       `Thank you for your order\n\nWe have received your payment. Your reference is ${ctx.order.reference}.\n\n` +
-      `${linesText(ctx)}\n\n${ctx.shop.name}`,
+      `${linesText(ctx)}\n\n${ctx.order.shipTo ? `Ships to: ${ctx.order.shipTo}\n\n` : ''}${ctx.shop.name}`,
   };
 }
 

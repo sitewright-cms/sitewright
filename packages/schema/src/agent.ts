@@ -905,6 +905,21 @@ gateway an instance admin has enabled AND proven, and that project's own keys (c
 in Settings -> Website -> Payments; that route is session-only and no token can reach it). Point
 returnPath at a page carrying {{sw-order-status}}. A "payment" channel is NOT this: it opens a link
 and the platform learns nothing.
+★ MARKETS — selling in several currencies/regions (shop.markets, the FIRST is the default):
+  markets:[ {id:"eu", name:"Europe", currency:"EUR", countries:["DE","AT"], locale:"de", channels:["card"]},
+            {id:"ch", name:"Switzerland", currency:"CHF", countries:["CH"], locale:"de",
+             channels:["card","twint"], pricing:{ shipping:{flatMinor:900}, tax:{rateBp:810} }},
+            {id:"row", name:"Rest of world", currency:"USD", restOfWorld:true, pricing:{}} ]
+  Prices are ENTERED per market, never converted: {{sw-add-to-cart sku=sku name=name prices=prices}} with
+  a per-market object ({ eu: 95, ch: 99 }); show one with {{sw-price prices=prices}}. A market with no price
+  for a product does not sell it ("Not available in …"); a plain price= sells in the DEFAULT market only.
+  Each market gets its own sealed price list at publish and checkout charges in ITS currency with ITS
+  shipping/tax (a market in another currency than currency.code must bring its own pricing). channels =
+  which checkout channels (providers) it offers (absent = all). A checkout asks the SHIP-TO country and
+  the server refuses one outside the market; restOfWorld ships to every country no other market claims
+  (at most one; a country may be in only one market). The visitor's market comes from their own choice
+  ({{sw-market-switcher}}, also in the default drawer), else the page language (the browser region
+  deciding between markets sharing it), else the region, else the first. One cart per market.
 ★ REFUNDS are operator-only and session-only: POST /projects/<id>/transactions/<txn>/refund, or the
 Refund control on an order in the inbox. No token reaches it — money leaving a merchant's account is
 not an agent capability at any role. Omit amountMinor to refund everything outstanding; restock is an

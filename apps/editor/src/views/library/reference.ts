@@ -439,6 +439,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'sku', desc: 'Stable product key (falls back to name); dedupes in the cart.' },
           { name: 'name', desc: 'Product name shown in the cart + order.' },
           { name: 'price', desc: 'A number; the cart formats it with the configured currency.' },
+          { name: 'prices', desc: 'With shop MARKETS: the price per market ({ eu: 95, ch: 99 }, a dataset Prices field). A market with no price does not sell the product; price= alone sells in the first (default) market only.' },
           { name: 'image', desc: 'Optional product image URL.' },
           { name: 'label', desc: 'Optional per-button text. Falls back to the site-wide Shop settings label, then to “Add to cart”.' },
           { name: 'class', desc: 'Optional CSS classes for the button.' },
@@ -450,6 +451,33 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '  </div>\n' +
           '{{/each}}',
         note: 'Configure the currency + checkout channels (WhatsApp / email / payment link / order form) in Settings → Website → Shop, or use the global:shop page template.',
+      },
+      {
+        id: 'h-price',
+        syntax: '{{sw-price prices= [price=] [class=]}}',
+        name: 'sw-price',
+        keywords: 'shop price market currency multi-currency',
+        description:
+          'SHOP MARKETS: a product’s price as text. Rendered in the default market’s currency, then switched by the cart to the visitor’s market — or to “Not available in …” where the product is not sold there. Display only: checkout charges from the published price list.',
+        args: [
+          { name: 'prices', desc: 'The price per market, e.g. a dataset Prices field ({ eu: 95, ch: 99 }).' },
+          { name: 'price', desc: 'Optional plain price — the default market’s, for a product with no prices=.' },
+          { name: 'class', desc: 'Optional CSS classes.' },
+        ],
+        example: '{{#each dataset.products}}<p>{{name}} — {{sw-price prices=prices}}</p>{{sw-add-to-cart sku=sku name=name prices=prices}}{{/each}}',
+      },
+      {
+        id: 'h-market-switcher',
+        syntax: '{{sw-market-switcher [label=] [class=]}}',
+        name: 'sw-market-switcher',
+        keywords: 'shop market switcher currency country region',
+        description:
+          'SHOP MARKETS: a select of the shop’s markets. The visitor’s market starts from the page language, then their browser’s region; choosing another reloads the page into its prices, currency and cart. Renders nothing with fewer than two markets. The default cart drawer carries one too.',
+        args: [
+          { name: 'label', desc: 'Optional accessible label. Falls back to the cart.market translation, then “Shop in”.' },
+          { name: 'class', desc: 'Optional CSS classes for the select.' },
+        ],
+        example: '<header>… {{sw-market-switcher class="select select-sm"}}</header>',
       },
       {
         id: 'h-cart',

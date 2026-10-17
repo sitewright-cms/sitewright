@@ -66,3 +66,23 @@ export function reconcileStock(catalog: ShopCatalog, ledger: readonly StockLedge
   // transactions that produced it are still in the inbox.
   return ops;
 }
+
+/**
+ * Every SKU any of a shop's price lists sells, once — for {@link reconcileStock}. Stock is a fact about
+ * the SKU, not about a market: a product sold in two markets draws on one shelf. The first DECLARED
+ * stock wins, as it does across the pages of one list.
+ */
+export function mergeCatalogStock(catalogs: readonly ShopCatalog[]): ShopCatalog {
+  const items: ShopCatalog['items'] = {};
+  for (const catalog of catalogs) {
+    for (const [sku, item] of Object.entries(catalog.items)) {
+      // eslint-disable-next-line security/detect-object-injection -- own keys of sealed price lists into a fresh object
+      const prior = items[sku];
+      // eslint-disable-next-line security/detect-object-injection -- as above
+      if (!prior) items[sku] = item;
+      // eslint-disable-next-line security/detect-object-injection -- as above
+      else if (prior.stock === undefined && item.stock !== undefined) items[sku] = { ...prior, stock: item.stock };
+    }
+  }
+  return { currency: catalogs[0]?.currency ?? '', items, digest: '' };
+}

@@ -27,6 +27,10 @@ const NO_LEGACY_NAME = new Set([
   'cart.out_of_stock',
   'cart.gone',
   'cart.checkout_failed',
+  // MARKETS shipped scoped too: the switcher, the ship-to prompt, the not-sold-here message.
+  'cart.market',
+  'cart.ship_to',
+  'cart.unavailable',
   // The thank-you page's own scope — new, and never flat.
   'order.paid',
   'order.failed',

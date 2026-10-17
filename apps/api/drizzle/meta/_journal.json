@@ -253,6 +253,13 @@
       "when": 1791825630858,
       "tag": "0035_temporary_passwords",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1791826630858,
+      "tag": "0036_shop_markets",
+      "breakpoints": true
     }
   ]
 }

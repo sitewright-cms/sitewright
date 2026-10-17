@@ -11,6 +11,29 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Shop markets: one shop selling in several currencies and regions.** A shop could charge in one
+  currency, at one set of prices, through one provider. It now has **markets**, the first being the
+  default. Each market has a currency, the countries it ships to, a default language, its own
+  shipping and tax, and the payment providers it offers. An optional *Rest of world* market covers
+  every country no other market claims.
+  - **Prices are entered per market, never converted:**
+    - `{{sw-add-to-cart prices=…}}` takes `{ eu: 95, ch: 99 }`, and the new `{{sw-price prices=…}}`
+      shows the price.
+    - Each market gets its own sealed price list at publish, in its own currency.
+    - A product with no price in a market is shown there as *Not available in …*.
+    - Existing pages with a single `price=` keep selling in the default market.
+  - **Visitors pick their market with a switcher:**
+    - It is in the default cart drawer, and `{{sw-market-switcher}}` places one anywhere else.
+    - It starts from the page language, then the browser's region. The choice is remembered.
+    - Prices switch to that market's currency, and there is one cart per market.
+  - **Checkout asks where the order ships:** only that market's countries are offered, and the server
+    checks it again. It charges in the market's currency from the market's own price list, with the
+    market's shipping and tax, through a provider that market offers. A provider that declares its
+    currencies is never asked to charge one it does not list. Orders record their market and ship-to
+    country, and both order emails say where the order ships.
+  - A shop without markets works exactly as before. Markets are configured in the shop settings
+    (`website.shop.markets`); the editor's Markets board follows in a later release.
+
 - **A shop can take payments through several providers.** A project could hold keys for exactly
   one payment provider, so a shop wanting a card provider for one region and a local one for another
   had to pick one. Now:

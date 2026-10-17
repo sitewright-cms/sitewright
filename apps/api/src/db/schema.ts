@@ -1004,6 +1004,8 @@ export const shopCatalog = sqliteTable(
       .references(() => projects.id),
     /** `live` (published) or `draft` (preview). */
     mode: text('mode', { enum: ['live', 'draft'] }).notNull(),
+    /** The MARKET this list prices for; '' for a shop without markets (its one list). */
+    market: text('market').notNull().default(''),
     /** ISO-4217 settlement currency the prices below are denominated in. */
     currency: text('currency').notNull(),
     /** sku → { name, priceMinor, image?, stock? }. Prices are integer MINOR units. */
@@ -1014,7 +1016,7 @@ export const shopCatalog = sqliteTable(
     digest: text('digest').notNull(),
     publishedAt: integer('published_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.projectId, t.mode] })],
+  (t) => [primaryKey({ columns: [t.projectId, t.mode, t.market] })],
 );
 
 /**
@@ -1087,6 +1089,10 @@ export const shopTransactions = sqliteTable(
     fulfilment: text('fulfilment', { enum: ['new', 'packed', 'shipped', 'done', 'cancelled'] }).notNull().default('new'),
     fulfilmentNote: text('fulfilment_note'),
     currency: text('currency').notNull(),
+    /** The shop MARKET the order was placed in, when the shop has markets. */
+    market: text('market'),
+    /** The ship-to country (ISO 3166-1 alpha-2) the buyer chose — always one of the market's. */
+    shipCountry: text('ship_country'),
     subtotalMinor: integer('subtotal_minor').notNull(),
     shippingMinor: integer('shipping_minor').notNull().default(0),
     taxMinor: integer('tax_minor').notNull().default(0),

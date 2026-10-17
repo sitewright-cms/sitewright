@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   createCatalogAccumulator,
   harvestCatalogPage,
+  harvestCatalogPages,
   finishCatalog,
   describeCatalogProblems,
 } from '../src/cart-catalog.js';
@@ -217,5 +218,102 @@ describe('★ render-then-harvest round trip', () => {
     const html = renderTemplate('{{sw-add-to-cart sku="mug" price="-5"}}', ctx as never);
     expect(html).toContain('data-price="0"');
     expect(harvest(html).catalog.items.mug?.priceMinor).toBe(0);
+  });
+});
+
+// ★ SHOP MARKETS — one price list per market, each in its currency. A button carries every market's
+// price (`data-prices`, written by `{{sw-add-to-cart prices=…}}`); a market with none for it does not
+// sell it. The DEFAULT market alone also takes a plain `price=`, so pages from before markets keep
+// selling where they always did.
+describe('harvestCatalogPages — one price list per market', () => {
+  const markets = [
+    createCatalogAccumulator('EUR', { id: 'eu', isDefault: true }),
+    createCatalogAccumulator('CHF', { id: 'ch', isDefault: false }),
+    createCatalogAccumulator('JPY', { id: 'jp', isDefault: false }),
+  ];
+  const sealedAll = (html: string) => {
+    const accs = markets.map((a) => createCatalogAccumulator(a.currency, { id: a.market!, isDefault: a.plainPrice }));
+    harvestCatalogPages(accs, html, '/shop/');
+    return Object.fromEntries(accs.map((a) => [a.market!, finishCatalog(a)]));
+  };
+  const shopCtx = (products: unknown[]) => ({
+    website: { shop: { enabled: true, markets: [{ id: 'eu' }, { id: 'ch' }, { id: 'jp' }] } },
+    dataset: { products },
+  });
+
+  it('★ prices each market from the button the helper rendered, in that market’s currency', () => {
+    const html = renderTemplate(
+      '{{#each dataset.products}}{{sw-add-to-cart sku=sku name=title prices=prices}}{{/each}}',
+      shopCtx([{ sku: 'mug', title: 'Mug', prices: { eu: 19.9, ch: '21.50', jp: 2900 } }]) as never,
+    );
+    expect(html).toContain('data-prices=');
+    const out = sealedAll(html);
+    expect(out.eu!.catalog).toMatchObject({ currency: 'EUR', market: 'eu', items: { mug: { priceMinor: 1990 } } });
+    expect(out.ch!.catalog.items.mug!.priceMinor).toBe(2150);
+    expect(out.jp!.catalog.items.mug!.priceMinor).toBe(2900); // JPY has no minor unit
+    for (const m of Object.values(out)) expect(m.problems).toEqual([]);
+  });
+
+  it('a market with no price for a product does not sell it — that is a choice, not a problem', () => {
+    const out = sealedAll(btn('data-sku="mug" data-price="19.90" data-prices="{&quot;eu&quot;:&quot;19.9&quot;}"'));
+    expect(Object.keys(out.eu!.catalog.items)).toEqual(['mug']);
+    expect(out.ch!.catalog.items).toEqual({});
+    expect(out.ch!.problems).toEqual([]);
+  });
+
+  it('★ a plain price= (a page from before markets) sells in the DEFAULT market only', () => {
+    const out = sealedAll(btn('data-sku="mug" data-price="19.90"'));
+    expect(out.eu!.catalog.items.mug!.priceMinor).toBe(1990);
+    expect(out.ch!.catalog.items).toEqual({});
+  });
+
+  it('two prices for one SKU WITHIN a market still block the publish — two markets differing is the point', () => {
+    const html =
+      btn('data-sku="mug" data-prices="{&quot;eu&quot;:&quot;19.9&quot;,&quot;ch&quot;:&quot;21&quot;}"') +
+      btn('data-sku="mug" data-prices="{&quot;eu&quot;:&quot;19.9&quot;,&quot;ch&quot;:&quot;22&quot;}"');
+    const out = sealedAll(html);
+    expect(out.eu!.problems).toEqual([]);
+    expect(out.ch!.problems[0]!.message).toMatch(/in market "ch" — one SKU cannot have two prices/);
+  });
+
+  it('a price a market’s currency cannot charge exactly is a problem in THAT market', () => {
+    const out = sealedAll(btn('data-sku="mug" data-prices="{&quot;eu&quot;:&quot;19.9&quot;,&quot;jp&quot;:&quot;29.5&quot;}"'));
+    expect(out.eu!.problems).toEqual([]);
+    expect(out.jp!.problems[0]!.message).toMatch(/cannot be charged exactly in market "jp"/);
+  });
+
+  it('a shop without markets hashes its list exactly as before — an unchanged shop keeps its digest', () => {
+    const single = harvest(btn('data-sku="mug" data-price="19.99"'));
+    // The digest of the pre-markets form: sha256 over { c, i } only.
+    expect(single.catalog.market).toBeUndefined();
+    expect(single.catalog.digest).toMatch(/^[0-9a-f]{32}$/);
+    const again = harvest(btn('data-sku="mug" data-price="19.99"'));
+    expect(again.catalog.digest).toBe(single.catalog.digest);
+  });
+});
+
+describe('{{sw-add-to-cart prices=…}}', () => {
+  const ctx = (markets: unknown[] | undefined) => ({ website: { shop: { enabled: true, ...(markets ? { markets } : {}) } } });
+  const attr = (html: string, name: string) => new RegExp(`${name}="([^"]*)"`).exec(html)?.[1];
+
+  it('writes every valid market price, and the default market’s as the plain price', () => {
+    const html = renderTemplate('{{sw-add-to-cart sku="mug" prices=page.data.p}}', { ...ctx([{ id: 'ch' }, { id: 'eu' }]), page: { data: { p: { eu: 19.9, ch: 21 } } } } as never);
+    expect(JSON.parse((attr(html, 'data-prices') ?? '').replace(/&quot;/g, '"'))).toEqual({ eu: '19.9', ch: '21' });
+    expect(attr(html, 'data-price')).toBe('21'); // "ch" is the first — the default — market
+  });
+
+  it('drops a bad key, a negative or non-numeric price; an explicit price= still wins as the plain price', () => {
+    const html = renderTemplate('{{sw-add-to-cart sku="mug" price="5" prices=page.data.p}}', {
+      ...ctx([{ id: 'eu' }]),
+      page: { data: { p: { eu: 19.9, 'bad-key': 1, ch: -1, us: 'lots', jp: null } } },
+    } as never);
+    expect(JSON.parse((attr(html, 'data-prices') ?? '').replace(/&quot;/g, '"'))).toEqual({ eu: '19.9' });
+    expect(attr(html, 'data-price')).toBe('5');
+  });
+
+  it('writes no data-prices without prices=, exactly as before', () => {
+    const html = renderTemplate('{{sw-add-to-cart sku="mug" price="5"}}', ctx(undefined) as never);
+    expect(html).not.toContain('data-prices');
+    expect(attr(html, 'data-price')).toBe('5');
   });
 });

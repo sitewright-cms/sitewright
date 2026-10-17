@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CurrencyCodeSchema, ShopPricingSchema } from './payments.js';
+import { COUNTRY_CODES, CountryCodeSchema } from './countries.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 import { targetsPrivateHost, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
@@ -392,6 +393,43 @@ export const ShopChannelSchema = z.discriminatedUnion('kind', [
 ]);
 export type ShopChannel = z.infer<typeof ShopChannelSchema>;
 
+/**
+ * ★ A MARKET — where a shop sells, in which currency, at which prices, shipping where, through which
+ * providers. A shop with no markets is one market, configured by the shop-level fields as before.
+ *
+ * A visitor's market is chosen by a SWITCHER on the published site (a static site has no server to decide
+ * per request), defaulting from the page's language and then the browser's region, and remembered in
+ * the browser. Prices are entered PER MARKET, never converted, and each market gets its own sealed price
+ * list at publish; checkout charges in the market's currency and ships only to its countries.
+ */
+export const ShopMarketSchema = z.object({
+  /** Stable key — what a price list, the cart, a checkout and an order record carry. */
+  id: ShopItemKeySchema,
+  /** The name the switcher shows ("Switzerland"). Not translatable here: it names a place, not a phrase. */
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(60)
+    .refine((v) => !shopHasControlChars(v), 'name must not contain control characters'),
+  /** The SETTLEMENT currency of every charge in this market (ISO-4217). */
+  currency: CurrencyCodeSchema,
+  /** The countries an order placed in this market may ship to. */
+  countries: z.array(CountryCodeSchema).max(COUNTRY_CODES.length).default([]),
+  /** Also every country no other market claims — the optional "Rest of World" market. At most one. */
+  restOfWorld: z.boolean().optional(),
+  /** The language this market is the default for: a page in it opens in this market. */
+  locale: z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/).optional(),
+  /**
+   * Shipping and tax, in this market's currency. Absent: the shop's own `pricing` — allowed only when
+   * this market charges in the shop's settlement currency, because a shipping fee is an amount.
+   */
+  pricing: ShopPricingSchema.optional(),
+  /** The checkout channels offered in this market, by key — which payment providers. Absent: every one. */
+  channels: z.array(ShopItemKeySchema).max(8).optional(),
+});
+export type ShopMarket = z.infer<typeof ShopMarketSchema>;
+
 /** Per-project MINI SHOP configuration (front-end cart). Every field is optional. */
 export const ShopSchema = z.object({
   /**
@@ -427,6 +465,11 @@ export const ShopSchema = z.object({
    */
   pricing: ShopPricingSchema.optional(),
   /**
+   * The shop's MARKETS (see {@link ShopMarketSchema}), the first one the default. Absent or empty: one
+   * market, the shop-level `currency` and `pricing` — exactly as before markets existed.
+   */
+  markets: z.array(ShopMarketSchema).max(20).optional(),
+  /**
    * Whether the platform's own cart stylesheet ships.
    *
    * ★ Defaults to ON, and author CSS already wins without touching this: the platform sheet is
@@ -450,9 +493,55 @@ export const ShopSchema = z.object({
    * buyer unable to pay.
    */
   .refine(
-    (shop) => !(shop.channels ?? []).some((c) => c.kind === 'checkout') || typeof shop.currency?.code === 'string',
+    (shop) =>
+      !(shop.channels ?? []).some((c) => c.kind === 'checkout') ||
+      typeof shop.currency?.code === 'string' ||
+      (shop.markets ?? []).length > 0,
     { message: 'a checkout channel requires currency.code (the ISO-4217 settlement currency)', path: ['currency', 'code'] },
-  );
+  )
+  .superRefine((shop, ctx) => {
+    const markets = shop.markets ?? [];
+    const checkoutKeys = new Set((shop.channels ?? []).filter((c) => c.kind === 'checkout').map((c) => c.key));
+    const ids = new Set<string>();
+    const claimedBy = new Map<string, string>();
+    let restOfWorld: string | undefined;
+    markets.forEach((m, i) => {
+      const at = (...rest: Array<string | number>) => ['markets', i, ...rest];
+      if (ids.has(m.id)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `two markets are called "${m.id}"`, path: at('id') });
+      ids.add(m.id);
+      if (m.restOfWorld) {
+        if (restOfWorld !== undefined) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `only one market can be the rest of the world ("${restOfWorld}" already is)`, path: at('restOfWorld') });
+        }
+        restOfWorld = m.id;
+      }
+      // A market that ships nowhere could take an order it can never fulfil.
+      if (m.countries.length === 0 && !m.restOfWorld) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `market "${m.id}" ships nowhere — give it countries, or make it the rest of the world`, path: at('countries') });
+      }
+      for (const country of m.countries) {
+        const other = claimedBy.get(country);
+        // One country, one market: otherwise the cheaper one is a choice a buyer makes, not the shop.
+        if (other !== undefined && other !== m.id) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${country} is in two markets ("${other}" and "${m.id}")`, path: at('countries') });
+        }
+        claimedBy.set(country, m.id);
+      }
+      for (const key of m.channels ?? []) {
+        if (!checkoutKeys.has(key)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: `market "${m.id}" offers "${key}", which is not a checkout channel of this shop`, path: at('channels') });
+        }
+      }
+      // A shipping fee is an AMOUNT: the shop's, in its currency, cannot be charged in another one.
+      if (!m.pricing && shop.pricing?.shipping && m.currency !== shop.currency?.code) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `market "${m.id}" charges in ${m.currency} — give it its own shipping and tax (the shop's are in ${shop.currency?.code ?? 'no currency'})`,
+          path: at('pricing'),
+        });
+      }
+    });
+  });
 export type Shop = z.infer<typeof ShopSchema>;
 
 /** The OPTIONAL consent categories (Necessary is implicit + always granted). */

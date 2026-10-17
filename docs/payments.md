@@ -217,8 +217,12 @@ in red when those addresses differ from the built-in it was forked from or is na
   rewrites, and not with whatever `forkedFrom` names, which the author sets.
 - The fields used for webhook verification and request auth must be `secret` fields.
 - `apiBase` and `allowedOrigins` must be public hosts (no localhost, `.local`, `.internal`, single-label
-  names or private/loopback/link-local literals, trailing dot or not). A public name that *resolves* to a
-  private address is not caught, and provider calls still follow redirects.
+  names or private/loopback/link-local literals, trailing dot or not). The lint judges the NAME; the
+  transport (`apps/api/src/payments/provider-fetch.ts`) judges where it LEADS. Every provider call
+  resolves the host once, refuses it if any address is private or it does not resolve, connects to the
+  checked address (the real name still drives SNI and the certificate check), and never follows a
+  redirect: a 3xx fails the call as "a redirect, which is never followed". It tries the next address only
+  when the connection never came up, so a refund that may have arrived is never sent twice.
 
 **What an agent can read about a project's payments.** `GET /projects/<id>/payment-gateways`
 (`content:read`, MCP `list_payment_providers`) lists the offered gateways and, per gateway, `keys`:

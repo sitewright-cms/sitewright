@@ -24,8 +24,11 @@ export interface TestCert {
   dir: string;
 }
 
-/** Generates a throwaway cert for 127.0.0.1 + ::1 + localhost (openssl CLI; suites skip without it). */
-export async function makeCert(): Promise<TestCert> {
+/**
+ * Generates a throwaway cert for 127.0.0.1 + ::1 + localhost (openssl CLI; suites skip without it).
+ * `extraNames` adds DNS names, e.g. one that never resolves, to prove a client connected by address.
+ */
+export async function makeCert(extraNames: string[] = []): Promise<TestCert> {
   const dir = await mkdtemp(join(tmpdir(), 'sw-php-cert-'));
   const key = join(dir, 'key.pem');
   const cert = join(dir, 'cert.pem');
@@ -35,7 +38,7 @@ export async function makeCert(): Promise<TestCert> {
      '-subj', '/CN=localhost',
      // All three names, so the same cert serves an IPv4, IPv6 or by-hostname connection — the
      // DNS/family tests would otherwise fail on the NAME rather than on what they mean to test.
-     '-addext', 'subjectAltName=IP:127.0.0.1,IP:::1,DNS:localhost',
+     '-addext', `subjectAltName=IP:127.0.0.1,IP:::1,DNS:localhost${extraNames.map((n) => `,DNS:${n}`).join('')}`,
      '-addext', 'basicConstraints=critical,CA:TRUE'],
     { stdio: 'ignore' },
   );

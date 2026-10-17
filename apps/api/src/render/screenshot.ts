@@ -48,7 +48,9 @@ export function isPrivateIp(ip: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true; // private
     if (a === 192 && b === 168) return true; // private
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-    if (a >= 240) return true; // class E / reserved (240.0.0.0/4) — not publicly routable
+    if (a === 192 && b === 0 && p[2] === 0) return true; // IETF protocol assignments (192.0.0.0/24)
+    if (a === 198 && (b === 18 || b === 19)) return true; // benchmarking (198.18.0.0/15), used inside some networks
+    if (a >= 224) return true; // multicast (224.0.0.0/4) and class E / reserved (240.0.0.0/4) — never a web host
     return false;
   }
   if (v === 6) {
@@ -73,6 +75,11 @@ export function isPrivateIp(ip: string): boolean {
     }
     if (ip6.startsWith('fc') || ip6.startsWith('fd')) return true; // unique-local fc00::/7
     if (/^fe[89ab]/.test(ip6)) return true; // link-local fe80::/10
+    if (g) {
+      if ((g[0]! & 0xffc0) === 0xfec0) return true; // site-local fec0::/10 (deprecated, still routed inside)
+      if ((g[0]! & 0xff00) === 0xff00) return true; // multicast ff00::/8
+      if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return true; // discard-only 100::/64
+    }
     return false;
   }
   return true; // not a literal IP that we recognise → caller resolves the host; bare unknown → block

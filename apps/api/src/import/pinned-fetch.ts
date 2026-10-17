@@ -75,6 +75,33 @@ async function defaultResolve(host: string): Promise<{ address: string; family: 
 }
 
 /**
+ * THE GUARD, shared by every pinned outbound: the addresses `host` may be reached at, IPv4 first, or
+ * null when it must not be contacted at all.
+ *
+ * A literal IP has exactly one candidate. A DNS name contributes EVERY resolved address and is refused
+ * wholesale if ANY is private (anti-rebinding), so is an unresolvable one. The caller connects to these
+ * addresses and never resolves the name again.
+ */
+export async function resolvePublicAddresses(
+  host: string,
+  resolve: PinnedOptions['resolve'] = defaultResolve,
+): Promise<{ ip: string; family: number }[] | null> {
+  const litFamily = isIP(host);
+  if (litFamily) return isPrivateIp(host) ? null : [{ ip: host, family: litFamily }];
+  let ips: { address: string; family: number }[];
+  try {
+    ips = await resolve(host);
+  } catch {
+    return null;
+  }
+  if (ips.length === 0 || ips.some((r) => isPrivateIp(r.address))) return null;
+  // IPv4 FIRST: a dual-stack host whose first DNS record is an AAAA would otherwise fail outright in an
+  // IPv4-only egress environment — the cause of "every image self-host failed" while the box has (IPv4)
+  // internet.
+  return ips.map((r) => ({ ip: r.address, family: r.family })).sort((a, b) => a.family - b.family);
+}
+
+/**
  * Fetch `rawUrl` over https against a pinned, SSRF-validated IP, FOLLOWING up to {@link MAX_REDIRECTS}
  * 3xx hops — each hop is independently resolved + private-IP-guarded + pinned (so a redirect can never
  * escape the SSRF guard or rebind). Returns null on: non-https, a private/unresolvable host, a redirect
@@ -119,27 +146,10 @@ async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promis
   if (u.protocol !== 'https:') return { ok: false, reason: 'blocked' };
 
   const host = u.hostname.replace(/^\[|\]$/g, ''); // unbracket IPv6 literals
-  // Candidate connect addresses, each already private-IP-guarded. A literal-IP host has exactly one; a
-  // DNS host contributes EVERY resolved address (rejected wholesale if ANY is private — anti-rebinding).
-  let candidates: { ip: string; family: number }[];
-  const litFamily = isIP(host);
-  if (litFamily) {
-    if (isPrivateIp(host)) return { ok: false, reason: 'blocked' };
-    candidates = [{ ip: host, family: litFamily }];
-  } else {
-    let ips: { address: string; family: number }[];
-    try {
-      ips = await (opts.resolve ?? defaultResolve)(host);
-    } catch {
-      return { ok: false, reason: 'blocked' };
-    }
-    if (ips.length === 0 || ips.some((r) => isPrivateIp(r.address))) return { ok: false, reason: 'blocked' };
-    // Try EVERY resolved address, IPv4 FIRST: a dual-stack host whose first DNS record is an AAAA would
-    // otherwise fail outright in an IPv4-only egress environment — the cause of "every image self-host
-    // failed" while the box has (IPv4) internet. Falling through to the next address on a connect error
-    // makes the fetch resilient to a single dead/unreachable address.
-    candidates = ips.map((r) => ({ ip: r.address, family: r.family })).sort((a, b) => a.family - b.family);
-  }
+  // Candidate connect addresses, each already private-IP-guarded. Falling through to the next address on
+  // a connect error makes the fetch resilient to a single dead/unreachable address.
+  const candidates = await resolvePublicAddresses(host, opts.resolve);
+  if (!candidates) return { ok: false, reason: 'blocked' };
 
   const port = u.port ? Number(u.port) : 443;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;

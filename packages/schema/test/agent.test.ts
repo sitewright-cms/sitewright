@@ -67,7 +67,11 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // with every background at the largest rung passed preview_page, a human review AND Lighthouse's
     // own image audit; nothing in the flow asked the one question that would have caught it. The
     // how-to (rungs, {{sw-image}}, ?size=) stayed in the images guide.
-    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_600);
+    // 21_600 -> 21_800 for a new guide TOPIC, not a core rule: the payments guide (writing a payment
+    // provider definition) is read by one audience — an instance admin's agent — so it is its own topic
+    // rather than ~4k characters every shop-building agent pays for inside the shop guide. A topic is
+    // discoverable only through its index line, which is what this costs; the core itself did not grow.
+    expect(DEFAULT_AGENT_INSTRUCTIONS.length).toBeLessThan(21_800);
     // and it advertises the on-demand guide mechanism + every topic with its (drift-free) summary.
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide');
     for (const t of GUIDE_TOPICS) {
@@ -151,7 +155,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   });
 
   it('every guide has a title, summary, and non-trivial body', () => {
-    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
+    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'payments', 'consent', 'templates', 'icons', 'nav', 'import', 'datasets']);
     for (const t of GUIDE_TOPICS) {
       const g = AGENT_GUIDES[t];
       expect(g.title).toBeTruthy();
@@ -349,6 +353,51 @@ describe('get_capabilities index', () => {
     // and it points ripple at the effects guide (not "unsupported")
     expect(CAPABILITY_MAP.find((c) => c.need.includes('ripple'))?.where).toMatch(/effects/);
   });
+  it('routes the shop needs an agent will phrase in its own words (markets, providers, orders, row translations)', () => {
+    const where = (probe: string) => CAPABILITY_MAP.find((c) => c.need.toLowerCase().includes(probe))?.where ?? '';
+    expect(where('currencies')).toMatch(/markets/);
+    expect(where('online payments')).toMatch(/list_payment_providers/);
+    expect(where('new payment provider')).toMatch(/get_guide\("payments"\)/);
+    expect(where('orders')).toMatch(/list_orders/);
+    expect(where('dataset row')).toMatch(/translations/);
+    // The entry write shape names the translations overlay, and the legacy kind is no longer offered.
+    expect(WRITE_KINDS.find((w) => w.kind === 'entry')?.shape).toMatch(/translations/);
+    expect(WRITE_KINDS.some((w) => w.kind === 'translation')).toBe(false);
+  });
+
+  it('the shop guide sends an agent to the provider + order tools, and keeps refunds and keys with a person', () => {
+    const body = AGENT_GUIDES.shop.body;
+    for (const tool of ['list_payment_providers', 'list_orders', 'get_order', 'set_order_fulfilment', 'resend_order_mail', 'shopCatalogs']) {
+      expect(body, tool).toContain(tool);
+    }
+    expect(body).toMatch(/PERSONAL\s+DATA/);
+    expect(body).toMatch(/REFUNDS are operator-only/);
+    expect(AGENT_GUIDES.shop.summary).toMatch(/markets/);
+  });
+
+  it('the payments guide walks the whole flow and names the step only a person can take', () => {
+    const body = AGENT_GUIDES.payments.body;
+    for (const tool of ['list_gateway_definitions', 'fork_gateway_definition', 'put_gateway_definition', 'list_payment_providers']) {
+      expect(body, tool).toContain(tool);
+    }
+    expect(body).toContain('payments:provider:write');
+    expect(body).toMatch(/Prove it works/);
+    expect(body).toMatch(/LIVE definition/);
+    // The placeholders survive the template literal as text, not as interpolations.
+    expect(body).toContain('${CRED:<field>}');
+    expect(body).toContain('${#AMOUNT:minor}');
+    // Every verification scheme the schema accepts is named.
+    for (const scheme of ['hmac-sha256-header', 'hmac-timestamped', 'remote-verify']) expect(body).toContain(scheme);
+  });
+
+  it('every tool that writes a gateway definition is gated on payments:provider:write in the catalog', () => {
+    for (const name of ['list_gateway_definitions', 'put_gateway_definition', 'fork_gateway_definition', 'delete_gateway_definition']) {
+      expect(MCP_TOOL_CATALOG.find((t) => t.name === name)?.capability, name).toBe('payments:provider:write');
+    }
+    expect(MCP_TOOL_CATALOG.find((t) => t.name === 'list_orders')?.capability).toBe('content:read');
+    expect(MCP_TOOL_CATALOG.find((t) => t.name === 'set_order_fulfilment')?.capability).toBe('content:write');
+  });
+
   it('the bootstrap advertises get_capabilities as the anti-"assume-missing" index', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_capabilities');
   });

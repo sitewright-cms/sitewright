@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { projectPaymentGateways, getProjectPayment, putProjectPayment, putProjectPaymentMode, deleteProjectPayment } = vi.hoisted(() => ({
+const { projectPaymentGateways, getProjectPayment, putProjectPayment, putProjectPaymentMode, deleteProjectPayment, listGatewayDefinitions } = vi.hoisted(() => ({
+  listGatewayDefinitions: vi.fn(),
   projectPaymentGateways: vi.fn(),
   getProjectPayment: vi.fn(),
   putProjectPayment: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('../src/api', () => ({
     putProjectPayment: (p: string, b: unknown) => putProjectPayment(p, b),
     putProjectPaymentMode: (p: string, m: string, g: string) => putProjectPaymentMode(p, m, g),
     deleteProjectPayment: (p: string, g: string) => deleteProjectPayment(p, g),
+    listGatewayDefinitions: () => listGatewayDefinitions(),
   },
 }));
 
@@ -40,7 +42,9 @@ const binding = (gatewayId: string, mode: 'test' | 'live') => ({
 });
 
 beforeEach(() => {
-  for (const m of [projectPaymentGateways, getProjectPayment, putProjectPayment, putProjectPaymentMode, deleteProjectPayment]) m.mockReset();
+  for (const m of [projectPaymentGateways, getProjectPayment, putProjectPayment, putProjectPaymentMode, deleteProjectPayment, listGatewayDefinitions]) m.mockReset();
+  // Not an instance admin, unless a test says otherwise.
+  listGatewayDefinitions.mockRejectedValue(Object.assign(new Error('forbidden'), { status: 403 }));
   projectPaymentGateways.mockResolvedValue({ gateways });
   getProjectPayment.mockResolvedValue({ bindings: [binding('mollie', 'test'), binding('stripe', 'live')] });
   putProjectPayment.mockResolvedValue({});
@@ -86,5 +90,79 @@ describe('PaymentCredentialsModal — several providers', () => {
     fireEvent.change(picker(), { target: { value: 'mollie' } });
     expect(screen.getByText('Mollie is not set up for this project yet.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove these keys' })).not.toBeInTheDocument();
+  });
+});
+
+describe('PaymentCredentialsModal — an instance admin proving a provider', () => {
+  const definition = (id: string, name: string, verified: boolean) => ({
+    id,
+    name,
+    enabled: true,
+    verified,
+    builtin: false,
+    kind: 'declarative',
+    apiBase: { test: `https://api.${id}.example/v1`, live: `https://api.${id}.example/v1` },
+    allowedOrigins: [`https://api.${id}.example`, `https://checkout.${id}.example`],
+    credentialFields: [field],
+    auth: { kind: 'none' },
+    checkout: { request: { method: 'POST', path: '/s', format: 'json', headers: {} }, refPath: 'id', redirectUrlPath: 'url' },
+    verification: { scheme: 'remote-verify', path: '/v', resultPath: 'ok', successValue: 'yes' },
+    events: { refPath: 'id', types: {} },
+  });
+
+  it('★ offers a provider that is enabled but not proven yet — the only way to enter its test keys here', async () => {
+    getProjectPayment.mockResolvedValue({ bindings: [] });
+    listGatewayDefinitions.mockResolvedValue({ gateways: [definition('stripe', 'Stripe', true), definition('acme', 'Acme Pay', false)] });
+    render(<PaymentCredentialsModal projectId="p" onClose={() => {}} />);
+    await waitFor(() => expect([...picker().options].map((o) => o.textContent)).toEqual(['Stripe — not set up', 'Mollie — not set up', 'Acme Pay (not proven yet) — not set up']));
+  });
+
+  it('★ shows where the provider in view sends the keys and the buyer, before anyone proves it', async () => {
+    getProjectPayment.mockResolvedValue({ bindings: [] });
+    listGatewayDefinitions.mockResolvedValue({ gateways: [definition('stripe', 'Stripe', true), definition('acme', 'Acme Pay', false)] });
+    render(<PaymentCredentialsModal projectId="p" onClose={() => {}} />);
+    await waitFor(() => expect(picker().options).toHaveLength(3));
+    fireEvent.change(picker(), { target: { value: 'acme' } });
+    expect(screen.getByText(/Not proven yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Test keys are sent to/)).toHaveTextContent('Test keys are sent to https://api.acme.example, live keys to https://api.acme.example.');
+    expect(screen.getByText(/Buyers may be sent to/)).toHaveTextContent('https://api.acme.example, https://checkout.acme.example');
+  });
+
+  it('★ says in red when a definition named like a built-in reaches other addresses — and what it counts as paid', async () => {
+    getProjectPayment.mockResolvedValue({ bindings: [] });
+    const lookalike = {
+      ...definition('stripe_eu', 'Stripe', false),
+      forkedFrom: 'stripe',
+      events: { refPath: 'id', typePath: 'type', types: { 'payment.failed': 'paid', 'checkout.session.completed': 'paid' } },
+    };
+    // The proven built-in is stored (builtin:false after a proof) — only `shipped` says what is real.
+    const shipped = { name: 'Stripe Checkout', apiBase: definition('stripe', 'Stripe', true).apiBase, allowedOrigins: definition('stripe', 'Stripe', true).allowedOrigins };
+    // A sibling the same author wrote, with the same hostile addresses, must not vouch for the lookalike.
+    const sibling = { ...definition('evil_src', 'Evil', false), enabled: false };
+    listGatewayDefinitions.mockResolvedValue({
+      gateways: [{ ...definition('stripe', 'Stripe', true), builtin: false, shipped }, { ...lookalike, forkedFrom: 'stripe' }, { ...definition('acme', 'Stripe', false) }, sibling, { ...definition('stripe_two', 'Payments', false), forkedFrom: 'evil_src' }],
+    });
+    render(<PaymentCredentialsModal projectId="p" onClose={() => {}} />);
+    await waitFor(() => expect(picker().options).toHaveLength(5));
+    // Forked from the built-in, on other addresses.
+    fireEvent.change(picker(), { target: { value: 'stripe_eu' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('These addresses differ from Stripe Checkout (stripe): https://api.stripe.example, https://checkout.stripe.example');
+    expect(screen.getByText(/An order counts as paid on/)).toHaveTextContent('webhook "payment.failed", webhook "checkout.session.completed"');
+    // Not forked, but NAMED like the built-in — the same red line.
+    fireEvent.change(picker(), { target: { value: 'acme' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('These addresses differ from Stripe Checkout (stripe)');
+    // forkedFrom naming an author-written sibling is no reference at all: nothing to compare, no false all-clear claimed.
+    fireEvent.change(picker(), { target: { value: 'stripe_two' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+    // The proven built-in itself raises no alarm.
+    fireEvent.change(picker(), { target: { value: 'stripe' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows none of it to anyone else — and only proven providers', async () => {
+    render(<PaymentCredentialsModal projectId="p" onClose={() => {}} />);
+    await waitFor(() => expect(picker().value).toBe('mollie'));
+    expect(picker().options).toHaveLength(2);
+    expect(screen.queryByText(/Test keys are sent to/)).toBeNull();
   });
 });

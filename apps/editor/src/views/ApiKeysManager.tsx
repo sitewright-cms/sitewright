@@ -3,11 +3,14 @@ import { api, type ApiKeyCapability, type ApiKeyView, type Project, type Project
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton, toggleInput } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 import { IssuedTokenBanner } from './ui/IssuedTokenBanner';
+import { ProviderWriteCapability } from './ui/ProviderWriteCapability';
 
 const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
 
 interface ApiKeysManagerProps {
   project: Project;
+  /** Offers `payments:provider:write`, which the API honours only on an instance admin's key. */
+  isInstanceAdmin?: boolean;
 }
 
 /**
@@ -15,7 +18,7 @@ interface ApiKeysManagerProps {
  * tokens (PATs) used by CI and headless tools. The raw token is shown exactly
  * once on creation; thereafter only its prefix is visible.
  */
-export function ApiKeysManager({ project }: ApiKeysManagerProps) {
+export function ApiKeysManager({ project, isInstanceAdmin = false }: ApiKeysManagerProps) {
   const { confirm, dialog } = useDialogs();
   const [keys, setKeys] = useState<ApiKeyView[]>([]);
   const [name, setName] = useState('');
@@ -135,6 +138,11 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
               </label>
             ))}
           </div>
+          {isInstanceAdmin && (
+            <div className="pt-2">
+              <ProviderWriteCapability checked={caps.includes('payments:provider:write')} onToggle={() => toggleCap('payments:provider:write')} />
+            </div>
+          )}
         </fieldset>
         <button
           type="submit"

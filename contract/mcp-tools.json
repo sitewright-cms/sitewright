@@ -64,6 +64,12 @@
     ]
   },
   {
+    "name": "delete_gateway_definition",
+    "required": [
+      "gatewayId"
+    ]
+  },
+  {
     "name": "delete_media",
     "required": [
       "id"
@@ -88,6 +94,13 @@
     ]
   },
   {
+    "name": "fork_gateway_definition",
+    "required": [
+      "fromId",
+      "id"
+    ]
+  },
+  {
     "name": "get_capabilities",
     "required": []
   },
@@ -105,6 +118,12 @@
   {
     "name": "get_guide",
     "required": []
+  },
+  {
+    "name": "get_order",
+    "required": [
+      "orderId"
+    ]
   },
   {
     "name": "get_page",
@@ -163,6 +182,10 @@
     ]
   },
   {
+    "name": "list_gateway_definitions",
+    "required": []
+  },
+  {
     "name": "list_media",
     "required": []
   },
@@ -171,7 +194,15 @@
     "required": []
   },
   {
+    "name": "list_orders",
+    "required": []
+  },
+  {
     "name": "list_pages",
+    "required": []
+  },
+  {
+    "name": "list_payment_providers",
     "required": []
   },
   {
@@ -260,6 +291,13 @@
     ]
   },
   {
+    "name": "put_gateway_definition",
+    "required": [
+      "definition",
+      "gatewayId"
+    ]
+  },
+  {
     "name": "put_page",
     "required": [
       "page"
@@ -291,6 +329,13 @@
       "content_base64",
       "filename",
       "id"
+    ]
+  },
+  {
+    "name": "resend_order_mail",
+    "required": [
+      "kind",
+      "orderId"
     ]
   },
   {
@@ -347,6 +392,13 @@
     "name": "set_media_alt",
     "required": [
       "items"
+    ]
+  },
+  {
+    "name": "set_order_fulfilment",
+    "required": [
+      "orderId",
+      "to"
     ]
   },
   {

@@ -21,6 +21,7 @@ import type {
   SmtpInput,
   SmtpPublic,
   PaymentGatewayPublic,
+  PaymentGatewayStored,
   PaymentBindingPublic,
   TransactionStatus,
   FulfilmentState,
@@ -797,7 +798,13 @@ export interface InvitePeek {
   /** Whether the invited email already has an account (→ sign in instead of setting a password). */
   hasAccount: boolean;
 }
-export type ApiKeyCapability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
+/** What the platform SHIPS for a built-in gateway id — the trustworthy reference for its addresses. */
+export interface ShippedGateway {
+  name: string;
+  apiBase: PaymentGatewayStored['apiBase'];
+  allowedOrigins: string[];
+}
+export type ApiKeyCapability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy' | 'payments:provider:write';
 /** Redacted view of a project API key (the management list never returns the token). */
 export interface ApiKeyView {
   id: string;
@@ -2204,6 +2211,10 @@ export const api = {
   /** Gateways this project may bind to — enabled AND proven. Public metadata only. */
   projectPaymentGateways: (projectId: string) =>
     request<{ gateways: PaymentGatewayPublic[] }>('GET', `/projects/${projectId}/payment-gateways`),
+
+  /** INSTANCE ADMINS ONLY (403 for anyone else): every gateway definition in full. */
+  listGatewayDefinitions: () =>
+    request<{ gateways: Array<PaymentGatewayStored & { builtin: boolean; shipped?: ShippedGateway }> }>('GET', '/admin/payment-gateways'),
   /** Every provider the project holds keys for: which fields have values, per mode. Never a secret.
    *  `binding`/`webhookUrl` are the first one, for callers that predate several providers. */
   getProjectPayment: (projectId: string) =>

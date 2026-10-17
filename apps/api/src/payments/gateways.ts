@@ -113,12 +113,22 @@ export class GatewayRepository {
     return next;
   }
 
-  /** Marks a gateway proven, after a test-mode checkout actually succeeded against it. */
-  async markVerified(id: string, userId: string): Promise<void> {
+  /**
+   * Marks a gateway proven, after a test-mode checkout actually succeeded against it.
+   *
+   * ★ Only the definition that was PROVEN. The dry run spends seconds at the provider, and a write
+   * landing in that window used to be stamped proven by the re-read here — a definition nobody ever
+   * sent, made live by someone else's proof. Pass the record the dry run used as `proven`: when the
+   * stored one no longer matches it, nothing is marked and this returns false. (The comparison and the
+   * write are not one atomic step; what is closed is the provider call's window, not a microsecond.)
+   */
+  async markVerified(id: string, userId: string, proven?: PaymentGatewayStored): Promise<boolean> {
     const rec = await this.byId(id);
-    if (!rec) return;
+    if (!rec) return false;
+    if (proven && JSON.stringify(rec.gateway) !== JSON.stringify(proven)) return false;
     const next = PaymentGatewayStoredSchema.parse({ ...rec.gateway, builtin: false, verified: true, updatedAt: new Date().toISOString() });
     await this.contentRepo.put(this.globalCtx(userId), 'payment_gateway', id, next);
+    return true;
   }
 
   /** Removes a stored gateway. A built-in reverts to its shipped definition rather than vanishing. */

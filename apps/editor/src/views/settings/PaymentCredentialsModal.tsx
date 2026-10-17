@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Check, Copy, Loader2 } from 'lucide-react';
-import type { CredentialField, PaymentBindingPublic, PaymentGatewayPublic } from '@sitewright/schema';
+import { toPublicGateway, type CredentialField, type PaymentBindingPublic, type PaymentGatewayPublic, type PaymentGatewayStored } from '@sitewright/schema';
 import { Modal } from '../ui/Modal';
 import { SubLabel } from './ui';
-import { api } from '../../api';
+import { api, type ShippedGateway } from '../../api';
 import { glassInput, fieldLabel, ghostButton, primaryButton, toggleInput } from '../../theme';
 
 /**
@@ -23,6 +23,8 @@ import { glassInput, fieldLabel, ghostButton, primaryButton, toggleInput } from 
  * mode, proof and webhook URL. Saving one provider's keys never touches another's.
  */
 type ProviderBinding = PaymentBindingPublic & { webhookUrl?: string };
+/** A definition as the admin listing returns it; `shipped` is what the platform ships for a built-in id. */
+type Definition = PaymentGatewayStored & { builtin?: boolean; shipped?: ShippedGateway };
 export function PaymentCredentialsModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
   const [gateways, setGateways] = useState<PaymentGatewayPublic[]>([]);
   const [bindings, setBindings] = useState<ProviderBinding[]>([]);
@@ -36,16 +38,28 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
   const [copied, setCopied] = useState(false);
   /** The dry run's outcome: the provider's own hosted page, or its refusal. */
   const [proof, setProof] = useState<{ ok: boolean; url?: string; message?: string } | null>(null);
+  /** The full definitions — an instance admin's view only (null for anyone else). */
+  const [definitions, setDefinitions] = useState<ReadonlyMap<string, Definition> | null>(null);
 
   useEffect(() => {
     let live = true;
     void (async () => {
-      const [g, b] = await Promise.all([
+      const [g, b, d] = await Promise.all([
         api.projectPaymentGateways(projectId).catch(() => ({ gateways: [] })),
         api.getProjectPayment(projectId).catch(() => ({ bindings: [] as ProviderBinding[] })),
+        // 403 for anyone but an instance admin, which simply means "no admin view".
+        api.listGatewayDefinitions().catch(() => null),
       ]);
       if (!live) return;
-      setGateways(g.gateways);
+      const defs = d ? new Map(d.gateways.map((x) => [x.id, x])) : null;
+      setDefinitions(defs);
+      // ★ An instance admin also gets the providers that are enabled but NOT proven yet. Proving one
+      // needs test keys in a project first, and without this the only way to enter them was a raw API
+      // call — which left a provider an agent had written with no way to be proven in the editor.
+      const offered = new Set(g.gateways.map((x) => x.id));
+      const unproven = [...(defs?.values() ?? [])].filter((x) => x.enabled && !x.verified && !offered.has(x.id)).map(toPublicGateway);
+      const pickable = [...g.gateways, ...unproven];
+      setGateways(pickable);
       const all = b.bindings ?? [];
       setBindings(all);
       // Open on a provider that is already set up, else the first one offered.
@@ -53,8 +67,8 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
       if (first) {
         setGatewayId(first.gatewayId);
         setMode(first.mode);
-      } else if (g.gateways[0]) {
-        setGatewayId(g.gateways[0].id);
+      } else if (pickable[0]) {
+        setGatewayId(pickable[0].id);
       }
     })();
     return () => {
@@ -63,6 +77,7 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
   }, [projectId]);
 
   const gateway = gateways.find((g) => g.id === gatewayId);
+  const definition = definitions?.get(gatewayId);
   const fields: CredentialField[] = gateway?.credentialFields ?? [];
   /** The keys stored for the provider being edited — each provider has its own. */
   const binding = bindings.find((b) => b.gatewayId === gatewayId) ?? null;
@@ -193,9 +208,11 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
                 >
                   {gateways.map((g) => {
                     const b = bindings.find((x) => x.gatewayId === g.id);
+                    const unproven = definitions?.get(g.id)?.verified === false;
                     return (
                       <option key={g.id} value={g.id}>
-                        {g.name} — {b ? `set up (${b.mode})` : 'not set up'}
+                        {g.name}
+                        {unproven ? ' (not proven yet)' : ''} — {b ? `set up (${b.mode})` : 'not set up'}
                       </option>
                     );
                   })}
@@ -210,6 +227,7 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
               </label>
             </div>
             {gateway?.description && <p className="text-[11px] text-slate-500 dark:text-slate-400">{gateway.description}</p>}
+            {definition && definitions && <GatewayDestinations definition={definition} all={definitions} />}
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
               A shop can use several providers — each checkout channel names the one it charges through. Keys,
               test/live mode and the webhook URL are per provider.
@@ -386,5 +404,92 @@ export function PaymentCredentialsModal({ projectId, onClose }: { projectId: str
         )}
       </div>
     </Modal>
+  );
+}
+
+/** The origin of a URL, or the URL itself when it does not parse. */
+function originOf(url: string | undefined): string {
+  if (!url) return '—';
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
+
+/** Every address a definition reaches — its API bases and its allowed origins — as one comparable string. */
+function addressesOf(g: Pick<PaymentGatewayStored, 'apiBase' | 'allowedOrigins'>): string {
+  const all = [originOf(g.apiBase.test), originOf(g.apiBase.live), ...g.allowedOrigins].map((o) => o.toLowerCase().replace(/\/$/, ''));
+  return [...new Set(all)].sort().join(', ');
+}
+
+/** The provider events and status-check states a definition treats as PAID. */
+function paidSignals(g: PaymentGatewayStored): string[] {
+  const out = Object.entries(g.events.types ?? {})
+    .filter(([, kind]) => kind === 'paid')
+    .map(([type]) => `webhook "${type}"`);
+  if (g.events.defaultKind === 'paid' && !g.events.typePath) out.push('every verified webhook');
+  for (const [state, kind] of Object.entries(g.status?.states ?? {})) if (kind === 'paid') out.push(`status "${state}"`);
+  return out;
+}
+
+/**
+ * Where a provider's definition sends this project's keys and its buyers, and what it counts as paid —
+ * an INSTANCE ADMIN'S view.
+ *
+ * ★ "Prove it works" sends the project's test keys to the definition's API, and its success is what
+ * lets the definition take live money for every project. A definition can be written by an agent, so
+ * the person proving it has to see what they are approving — and agent-written text cannot vouch for
+ * itself: a definition NAMED "Stripe" on other addresses is exactly the trick. So it is compared with
+ * the built-in it was forked from (or shares a name with), and a difference is said in red.
+ */
+function GatewayDestinations({ definition, all }: { definition: Definition; all: ReadonlyMap<string, Definition> }) {
+  const unproven = !definition.verified;
+  // ★ Only what the PLATFORM ships is a reference — `shipped`, from the server's own built-in list. Not
+  // the stored record at a built-in id (a proof rewrites it), and not whatever `forkedFrom` names (the
+  // author sets that): either could be the very author whose definition is being checked.
+  const shipped = [...all.values()].flatMap((g) => (g.shipped ? [{ id: g.id, ...g.shipped }] : []));
+  const byId = (id: string | undefined) => shipped.find((r) => r.id === id);
+  // A name borrowing a built-in's brand word ("Stripe EU" against "Stripe Checkout") is the lookalike.
+  const words = (n: string) => n.trim().toLowerCase().split(/[\s\-_()]+/).filter(Boolean);
+  const brand = (n: string) => words(n)[0] ?? '';
+  const reference =
+    byId(definition.id) ??
+    byId(definition.forkedFrom) ??
+    shipped.find((r) => brand(r.name).length >= 4 && words(definition.name).includes(brand(r.name)));
+  const differs = reference !== undefined && addressesOf(reference) !== addressesOf(definition);
+  const paid = paidSignals(definition);
+  return (
+    <div
+      className={`rounded-md border p-2 text-[11px] ${
+        unproven
+          ? 'border-amber-200/70 dark:border-amber-500/20 bg-amber-50/60 dark:bg-amber-500/10 text-amber-900 dark:text-amber-200'
+          : 'border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300'
+      }`}
+    >
+      {unproven && (
+        <p className="mb-1 font-medium">
+          Not proven yet: save TEST keys, then press Prove it works. It takes no live money until that succeeds.
+        </p>
+      )}
+      <p>Check these are the provider&rsquo;s own addresses{unproven ? ' before you prove it' : ''}:</p>
+      <ul className="mt-1 list-disc pl-4">
+        <li>
+          Test keys are sent to <code>{originOf(definition.apiBase.test)}</code>, live keys to <code>{originOf(definition.apiBase.live)}</code>.
+        </li>
+        <li>
+          Buyers may be sent to <code>{definition.allowedOrigins.join(', ') || '—'}</code>.
+        </li>
+        <li>
+          An order counts as paid on: <code>{paid.join(', ') || 'nothing'}</code>.
+        </li>
+      </ul>
+      {differs && (
+        <p role="alert" className="mt-1 font-medium text-red-700 dark:text-red-300">
+          These addresses differ from {reference.name} ({reference.id}): <code>{addressesOf(reference)}</code>. Prove it only if you know why.
+        </p>
+      )}
+      <p className="mt-1 text-slate-500 dark:text-slate-400">Shown to instance admins only.</p>
+    </div>
   );
 }

@@ -1697,6 +1697,15 @@ describe('payments api', () => {
     expect(res.gateways[0]?.id).toBe('stripe');
   });
 
+  it('reads every gateway definition — an instance admin’s view, a 403 for anyone else', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { gateways: [{ id: 'acme', name: 'Acme', enabled: true, verified: false, builtin: false }] }));
+    const res = await api.listGatewayDefinitions();
+    expect(sent()).toMatchObject({ method: 'GET', url: expect.stringContaining('/admin/payment-gateways') });
+    expect(res.gateways[0]).toMatchObject({ id: 'acme', verified: false });
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
+    await expect(api.listGatewayDefinitions()).rejects.toBeInstanceOf(ApiError);
+  });
+
   it('reads the binding and its webhook URL', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { binding: null, webhookUrl: 'https://sw.test/pay/p1/webhook/stripe' }));
     const res = await api.getProjectPayment('p1');

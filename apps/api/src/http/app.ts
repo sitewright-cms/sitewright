@@ -255,6 +255,7 @@ import { GatewayRepository } from '../payments/gateways.js';
 import { ShopTransactionRepository } from '../repo/shop-transactions.js';
 import { ShopStockRepository } from '../repo/shop-stock.js';
 import { shopCatalog as shopCatalogTable } from '../db/schema.js';
+import { projectsHoldingKeys } from '../payments/gateway-usage.js';
 import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus } from '../payments/executor.js';
 import { runOrderMail } from '../payments/notify-runner.js';
@@ -10659,6 +10660,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerPaymentAdminRoutes(app, {
       gateways: gatewayRepo,
       getShop: getProjectShop,
+      projectsHoldingKeys: (gatewayId) => projectsHoldingKeys(db, gatewayId),
       transactions: shopTransactionsRepo,
       stock: shopStockRepo,
       requireInstanceAdmin,

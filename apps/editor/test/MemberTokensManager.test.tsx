@@ -97,6 +97,26 @@ describe('MemberTokensManager', () => {
     expect(screen.queryByLabelText('New projects per day')).toBeNull();
   });
 
+  it('offers payments:provider:write to an instance admin only — the API honours it on nobody else\'s token', async () => {
+    const { unmount } = render(<MemberTokensManager isInstanceAdmin={false} hasPassword />);
+    await screen.findByText(/No member tokens yet/);
+    expect(screen.queryByRole('checkbox', { name: /payments:provider:write/ })).toBeNull();
+    unmount();
+
+    createMemberToken.mockResolvedValue({ token: 'swm_secret', key: token() });
+    render(<MemberTokensManager isInstanceAdmin hasPassword />);
+    await screen.findByText(/No member tokens yet/);
+    const box = toggle(/payments:provider:write/);
+    // Off unless the admin turns it on: it reaches every project on the instance.
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    fireEvent.change(screen.getByLabelText('Member token name'), { target: { value: 'Providers' } });
+    fireEvent.change(screen.getByLabelText('Your password'), { target: { value: 'hunter2-hunter2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create member token' }));
+    await waitFor(() => expect(createMemberToken).toHaveBeenCalledTimes(1));
+    expect((createMemberToken.mock.calls[0]?.[0] as { capabilities: string[] }).capabilities).toContain('payments:provider:write');
+  });
+
   it('★ a token that may create projects gets a daily limit: the instance maximum unless lowered, never above it', async () => {
     createMemberToken.mockResolvedValue({ token: 'swm_secret', key: token() });
     render(<MemberTokensManager isInstanceAdmin={false} hasPassword />);

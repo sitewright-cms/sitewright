@@ -51,7 +51,7 @@ export interface TranslationRow {
  * is what a payment provider charges, but a merchant setting a shipping fee should never have to do
  * that arithmetic — and a field that silently wanted cents would produce a €499 delivery charge.
  */
-function minorToMajor(minor: number, currencyCode?: string): string {
+export function minorToMajor(minor: number, currencyCode?: string): string {
   const places = minorPlaces(currencyCode);
   return (minor / 10 ** places).toFixed(places);
 }

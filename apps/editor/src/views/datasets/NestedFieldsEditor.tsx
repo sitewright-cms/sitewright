@@ -9,7 +9,7 @@ import { Tooltip } from '../ui/Tooltip';
 
 /** Scalar (leaf) field types — every type except the two structural group types. */
 /** The non-structural types, ALPHABETICAL — same order as the top-level picker (see DatasetManager). */
-export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['boolean', 'date', 'datetime', 'file', 'folder', 'icon', 'image', 'json', 'number', 'page', 'reference', 'richtext', 'select', 'text', 'time'];
+export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['boolean', 'date', 'datetime', 'file', 'folder', 'icon', 'image', 'json', 'number', 'page', 'prices', 'reference', 'richtext', 'select', 'text', 'time'];
 
 /** `list` (ordered repeatable group) and `object` (named sub-group) carry child `fields`. */
 export function isGroupFieldType(t: FieldType): boolean {

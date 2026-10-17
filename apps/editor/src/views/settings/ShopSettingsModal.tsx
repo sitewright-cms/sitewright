@@ -2,7 +2,11 @@ import { Languages } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SubLabel } from './ui';
 import { Field } from './ui';
+import { useMemo } from 'react';
+import { ShopSchema } from '@sitewright/schema';
 import { ShopChannelsEditor, type AvailableGateway } from './ShopChannelsEditor';
+import { MarketsEditor } from './MarketsEditor';
+import { toBundle } from './model';
 import { glassInput, fieldLabel, ghostButton, toggleInput } from '../../theme';
 import type { Patch, SettingsForm } from './model';
 
@@ -30,7 +34,14 @@ export function ShopSettingsModal({
 }) {
   // A checkout channel cannot be saved without a settlement currency — the schema refuses it, so the
   // form says so BEFORE the save fails rather than after.
-  const needsCurrency = form.shopChannels.some((c) => c.kind === 'checkout');
+  const needsCurrency = form.shopChannels.some((c) => c.kind === 'checkout') && form.shopMarkets.length === 0;
+  const checkoutChannels = form.shopChannels.filter((c) => c.kind === 'checkout' && c.key).map((c) => ({ key: c.key, label: c.key }));
+  // The schema's own verdict on the markets — the same rules the save and a checkout apply.
+  const marketIssues = useMemo(() => {
+    if (form.shopMarkets.length === 0) return [];
+    const parsed = ShopSchema.safeParse(toBundle(form).website?.shop ?? {});
+    return parsed.success ? [] : [...new Set(parsed.error.issues.filter((i) => i.path[0] === 'markets').map((i) => i.message))];
+  }, [form]);
   // Jump to the always-visible "Translations & Labels" card: close this modal, then scroll it into view.
   const editLabels = (): void => {
     onClose();
@@ -140,6 +151,24 @@ export function ShopSettingsModal({
         <div>
           <SubLabel>Checkout channels</SubLabel>
           <ShopChannelsEditor rows={form.shopChannels} onChange={(shopChannels) => patch({ shopChannels })} gateways={gateways} />
+        </div>
+
+        <div>
+          <SubLabel>Markets</SubLabel>
+          <p className="mb-2 text-[11px] text-slate-500 dark:text-slate-400">
+            Sell in several currencies: each market has its own prices (a dataset <strong>Prices</strong> field —
+            entered per market, never converted), the countries it ships to, its shipping and tax, and the checkout
+            channels it offers. Visitors pick theirs with a switcher; it starts from the page language and the
+            browser&rsquo;s region. The first market is the default.
+          </p>
+          <MarketsEditor
+            markets={form.shopMarkets}
+            onChange={(shopMarkets) => patch({ shopMarkets })}
+            checkoutChannels={checkoutChannels}
+            locales={form.locales.map((l) => l.value).filter(Boolean)}
+            shopCurrency={form.shopCurrencyCode.trim().toUpperCase()}
+            issues={marketIssues}
+          />
         </div>
 
         <div>

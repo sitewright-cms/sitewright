@@ -31,6 +31,7 @@ import { IconField } from '../ui/IconPicker';
 import { SearchSelect, type SearchOption } from '../ui/SearchSelect';
 import { Tooltip } from '../ui/Tooltip';
 import { useSiteLocales } from '../../lib/site-locales';
+import { useShopMarkets } from '../../lib/shop-markets';
 import { changedFields, EntryLanguageTabs, FieldLanguageBadge, TranslationNotice, UntranslatedNotice } from './EntryLanguages';
 import { localeLabel } from '../i18n/locale-catalog';
 
@@ -525,6 +526,8 @@ function FieldInput({
       return <ReferenceField field={field} value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;
     case 'page':
       return <PageField value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;
+    case 'prices':
+      return <PricesField value={value} onRaw={onRaw} id={id} ariaLabel={aria} projectId={projectId} />;
     case 'object':
       return <ObjectField field={field} value={value} projectId={projectId} path={path} onRaw={onRaw} />;
     case 'list':
@@ -543,6 +546,52 @@ function ownTranslations(values: Record<string, unknown>, translations: Translat
       const changed = changedFields(values, own);
       return [locale, Object.fromEntries(Object.entries(own).filter(([name]) => changed.has(name)))];
     }),
+  );
+}
+
+/**
+ * A product's price PER MARKET — one input per market of the shop, in that market's currency. A market
+ * left blank does not sell the product there ("Not available in …"); nothing is converted between them.
+ */
+function PricesField({ value, onRaw, id, ariaLabel, projectId }: { value: unknown; onRaw: (raw: unknown) => void; id: string; ariaLabel: string; projectId: string }) {
+  const markets = useShopMarkets(projectId);
+  const current = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  // Markets the shop no longer has keep their stored price visible (and editable) rather than vanishing.
+  const known = new Set(markets.map((m) => m.id));
+  const stray = Object.keys(current).filter((k) => !known.has(k));
+  const rows: Array<{ id: string; label: string }> = [
+    ...markets.map((m) => ({ id: m.id, label: `${m.name} (${m.currency})` })),
+    ...stray.map((k) => ({ id: k, label: `${k} — not a market of this shop` })),
+  ];
+  if (rows.length === 0) {
+    return (
+      <p id={id} className="text-[11px] text-slate-500 dark:text-slate-400">
+        This shop has no markets yet — add them under Settings → Website → Shop → Markets. Until then, use a number field for the price.
+      </p>
+    );
+  }
+  return (
+    <div id={id} role="group" aria-label={ariaLabel} className="grid gap-2 sm:grid-cols-2">
+      {rows.map((r) => {
+        const raw = current[r.id];
+        return (
+          <label key={r.id} className="flex flex-col gap-0.5">
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">{r.label}</span>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              inputMode="decimal"
+              className={glassInput}
+              aria-label={`${ariaLabel} — ${r.label}`}
+              placeholder="not sold here"
+              value={typeof raw === 'number' || typeof raw === 'string' ? String(raw) : ''}
+              onChange={(e) => onRaw({ ...current, [r.id]: e.target.value })}
+            />
+          </label>
+        );
+      })}
+    </div>
   );
 }
 

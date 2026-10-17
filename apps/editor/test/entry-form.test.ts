@@ -54,6 +54,14 @@ describe('identifierize', () => {
   });
 });
 
+describe('coerceFieldValue — prices (per market)', () => {
+  it('keeps each market’s finite, non-negative price as a number; a blank market is left out', () => {
+    expect(coerceFieldValue('prices', { eu: '19.90', ch: '', us: 23, jp: '-1', mx: 'lots' })).toEqual({ eu: 19.9, us: 23 });
+    expect(coerceFieldValue('prices', 'not an object')).toEqual({});
+    expect(coerceFieldValue('prices', ['eu'])).toEqual({});
+  });
+});
+
 describe('coerceFieldValue', () => {
   it('keeps text/richtext as strings', () => {
     expect(coerceFieldValue('text', 'hi')).toBe('hi');

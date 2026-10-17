@@ -31,8 +31,15 @@ The running version of an instance is reported at `GET /version` (baked into the
     market's shipping and tax, through a provider that market offers. A provider that declares its
     currencies is never asked to charge one it does not list. Orders record their market and ship-to
     country, and both order emails say where the order ships.
-  - A shop without markets works exactly as before. Markets are configured in the shop settings
-    (`website.shop.markets`); the editor's Markets board follows in a later release.
+  - **In the editor:**
+    - **Settings → Website → Shop → Markets** has a card per market: name, currency, countries
+      (one market each), the language it is the default for, rest of world, which checkout channels
+      it offers, and its shipping and tax in its own currency. The first card is the default market.
+      The schema's checks are shown on the board as you edit.
+    - A new dataset field type, **Prices**, has one input per market. A blank market means the
+      product is not sold there.
+    - The orders inbox shows each order's ship-to country and market.
+  - A shop without markets works exactly as before.
 
 - **A shop can take payments through several providers.** A project could hold keys for exactly
   one payment provider, so a shop wanting a card provider for one region and a local one for another

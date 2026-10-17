@@ -35,6 +35,7 @@ function boot(): HTMLElement {
     '<div data-sw-cart data-cart-key="mk"></div>' +
     '<button data-sw-cart-add data-sku="mug" data-name="Mug" data-price="19.9" data-prices=\'{"eu":"19.9","ch":"21.5","us":"23"}\'>Add</button>' +
     '<button data-sw-cart-add data-sku="cap" data-name="Cap" data-price="9" data-prices=\'{"eu":"9"}\'>Add</button>' +
+    '<button data-sw-cart-add data-sku="lamp" data-name="Lamp" data-prices=\'{"ch":"99"}\'>Add</button>' +
     '<span id="pmug" data-sw-price data-price="19.9" data-prices=\'{"eu":"19.9","ch":"21.5","us":"23"}\'>€19.90</span>' +
     '<span id="pcap" data-sw-price data-price="9" data-prices=\'{"eu":"9"}\'>€9.00</span>' +
     '<select id="switch" data-sw-market-switcher></select>';
@@ -128,6 +129,28 @@ describe('★★ prices, buttons and the cart follow the market', () => {
     setLanguages('de', ['de-CH']);
     const ch = boot();
     expect(channelsShown(ch).length).toBe(2);
+  });
+});
+
+describe('★ a product with no price in the visitor’s market is never 0', () => {
+  it('the default market without a plain price or its own: unavailable, not free', () => {
+    setLanguages('de', ['de-DE']);
+    boot();
+    // The third button carries a Swiss price only, and no plain price (what the helper now writes).
+    const lamp = buttons()[2]!;
+    expect(lamp.getAttribute('data-sku')).toBe('lamp');
+    expect(lamp.disabled).toBe(true);
+    lamp.disabled = false; // even a forced click adds nothing
+    lamp.click();
+    expect(Object.keys(window.localStorage).filter((k) => k.startsWith('sw-cart:') && window.localStorage.getItem(k)?.includes('lamp'))).toEqual([]);
+  });
+
+  it('a basket filled before the shop had markets moves into the default market’s cart', () => {
+    setLanguages('de', ['de-DE']);
+    window.localStorage.setItem('sw-cart:mk', JSON.stringify([{ sku: 'mug', name: 'Mug', price: 19.9, qty: 2 }]));
+    boot();
+    expect(window.localStorage.getItem('sw-cart:mk')).toBeNull();
+    expect(JSON.parse(window.localStorage.getItem('sw-cart:mk:eu')!)[0]).toMatchObject({ sku: 'mug', qty: 2 });
   });
 });
 

@@ -261,6 +261,19 @@ describe('harvestCatalogPages — one price list per market', () => {
     expect(out.ch!.problems).toEqual([]);
   });
 
+  it('★★ a product priced only for OTHER markets is not sold in the default one — never for nothing', () => {
+    // What the helper writes for prices={ ch: 99 } and no price=: no plain data-price at all.
+    const html = renderTemplate('{{sw-add-to-cart sku="mug" name="Mug" prices=page.data.p}}', {
+      website: { shop: { enabled: true, markets: [{ id: 'eu' }, { id: 'ch' }, { id: 'jp' }] } },
+      page: { data: { p: { ch: 99 } } },
+    } as never);
+    expect(html).not.toContain('data-price=');
+    const out = sealedAll(html);
+    expect(out.eu!.catalog.items).toEqual({});
+    expect(out.eu!.problems).toEqual([]);
+    expect(out.ch!.catalog.items.mug!.priceMinor).toBe(9900);
+  });
+
   it('★ a plain price= (a page from before markets) sells in the DEFAULT market only', () => {
     const out = sealedAll(btn('data-sku="mug" data-price="19.90"'));
     expect(out.eu!.catalog.items.mug!.priceMinor).toBe(1990);
@@ -309,6 +322,13 @@ describe('{{sw-add-to-cart prices=…}}', () => {
     } as never);
     expect(JSON.parse((attr(html, 'data-prices') ?? '').replace(/&quot;/g, '"'))).toEqual({ eu: '19.9' });
     expect(attr(html, 'data-price')).toBe('5');
+  });
+
+  it('★ writes NO plain price when markets exist and neither price= nor the default market’s is given', () => {
+    const html = renderTemplate('{{sw-add-to-cart sku="mug" prices=page.data.p}}', { ...ctx([{ id: 'eu' }, { id: 'ch' }]), page: { data: { p: { ch: 21 } } } } as never);
+    expect(attr(html, 'data-price')).toBeUndefined();
+    // Without markets the long-standing floor stays: the button carries a price.
+    expect(attr(renderTemplate('{{sw-add-to-cart sku="mug"}}', ctx(undefined) as never), 'data-price')).toBe('0');
   });
 
   it('writes no data-prices without prices=, exactly as before', () => {

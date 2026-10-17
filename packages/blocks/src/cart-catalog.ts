@@ -90,8 +90,11 @@ function readMarketPrices(raw: string | undefined): Record<string, string> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      // A string (what the helper writes) or a number (a hand-authored attribute), as the runtime reads it.
       // eslint-disable-next-line security/detect-object-injection -- own keys of a parsed object into a fresh literal
       if (typeof v === 'string') out[k] = v;
+      // eslint-disable-next-line security/detect-object-injection -- as above
+      else if (typeof v === 'number' && Number.isFinite(v)) out[k] = String(v);
     }
     return out;
   } catch {
@@ -185,6 +188,10 @@ function harvestMarker(acc: CatalogAccumulator, el: Element, route: string): voi
     const perMarket = acc.market !== undefined ? readMarketPrices(el.attribs['data-prices']) : {};
     const marketPrice = acc.market !== undefined && Object.hasOwn(perMarket, acc.market) ? perMarket[acc.market] : undefined;
     if (marketPrice === undefined && !acc.plainPrice) return;
+    // ★ In a MARKET, no price at all means not sold here — the default market included. (A shop without
+    // markets keeps reporting a missing price as the problem it always was.) Reading an absent plain price
+    // as anything else is how a product priced only for other markets would be sold for nothing.
+    if (marketPrice === undefined && acc.market !== undefined && (el.attribs['data-price'] ?? '').trim() === '') return;
     const rawPrice = (marketPrice ?? el.attribs['data-price'] ?? '').trim();
     const where = acc.market !== undefined ? ` in market "${acc.market}"` : '';
     const parsed = toMinorUnits(rawPrice, acc.currency);

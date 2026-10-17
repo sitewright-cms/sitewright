@@ -188,13 +188,13 @@ describe('★★ checkout in a market', () => {
 });
 
 describe('★★ publish → one sealed price list per market → the charge', () => {
-  const PAGE = '<section>{{sw-add-to-cart sku="mug" name="Mug" prices=page.data.prices}}{{sw-add-to-cart sku="cap" name="Cap" price="9.50"}}</section>';
+  const PAGE = '<section>{{sw-add-to-cart sku="mug" name="Mug" prices=page.data.prices}}{{sw-add-to-cart sku="cap" name="Cap" price="9.50"}}{{sw-add-to-cart sku="lamp" name="Lamp" prices=page.data.lamp}}</section>';
 
   it('the price a buyer is charged is the one the published page carries for their market', async () => {
     await h.db.delete(shopCatalog);
     await putShop(SHOP);
     const page = await owner.project(projectId).putContent('page', 'home', {
-      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: PAGE, data: { prices: { eu: 19.9, ch: '24.50' } },
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: PAGE, data: { prices: { eu: 19.9, ch: '24.50' }, lamp: { ch: 30 } },
     });
     expect(page.statusCode).toBeLessThan(400);
     expect((await owner.post(`/projects/${projectId}/publish`, {})).statusCode).toBe(200);
@@ -203,8 +203,9 @@ describe('★★ publish → one sealed price list per market → the charge', (
     const byMarket = Object.fromEntries(lists.map((l) => [l.market, l]));
     expect(Object.keys(byMarket).sort()).toEqual(['ch', 'eu', 'row']);
     expect(byMarket.ch!.currency).toBe('CHF');
-    expect(byMarket.ch!.items).toEqual({ mug: { sku: 'mug', name: 'Mug', priceMinor: 2450 } });
-    // The plain-price cap sells in the DEFAULT market only; the mug was given no US price.
+    expect(byMarket.ch!.items).toEqual({ mug: { sku: 'mug', name: 'Mug', priceMinor: 2450 }, lamp: { sku: 'lamp', name: 'Lamp', priceMinor: 3000 } });
+    // The plain-price cap sells in the DEFAULT market only; the mug was given no US price — and ★ the
+    // lamp, priced for Switzerland alone, is NOT sold in the default market (never for nothing).
     expect(Object.keys(byMarket.eu!.items).sort()).toEqual(['cap', 'mug']);
     expect(byMarket.row!.items).toEqual({});
 

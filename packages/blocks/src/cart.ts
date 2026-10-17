@@ -469,7 +469,17 @@ export const CART_JS = `(function(){
   }
   function setMarket(mount,id){try{localStorage.setItem(marketStoreKey(mount),String(id));}catch(e){}window.location.reload();}
   // The cart a visitor is filling: one PER MARKET, so a basket never mixes currencies.
-  function cartKey(mount,cfg){return 'sw-cart:'+siteKey(mount)+(cfg.market?':'+cfg.market.id:'');}
+  function cartKey(mount,cfg){
+    var base='sw-cart:'+siteKey(mount);
+    if(!cfg.market){return base;}
+    var key=base+':'+cfg.market.id;
+    // A basket filled before the shop had markets moves into the DEFAULT market's cart, once — it was
+    // priced in that market's terms — rather than vanishing when the key changed.
+    if(cfg.markets[0]&&cfg.markets[0].id===cfg.market.id){
+      try{var old=localStorage.getItem(base);if(old&&!localStorage.getItem(key)){localStorage.setItem(key,old);localStorage.removeItem(base);}}catch(e){}
+    }
+    return key;
+  }
   // The price a button (or a {{sw-price}}) carries for the visitor's market — DISPLAY ONLY: the server
   // charges from its own sealed list. null = not sold in this market. Mirrors the publish rule: the
   // default (first) market alone also takes the plain price.
@@ -478,7 +488,9 @@ export const CART_JS = `(function(){
     if(!cfg.market){return isFinite(plain)&&plain>=0?plain:0;}
     var p={};try{p=JSON.parse(el.getAttribute('data-prices')||'{}')||{};}catch(e){p={};}
     if(Object.prototype.hasOwnProperty.call(p,cfg.market.id)){var v=Number(p[cfg.market.id]);return isFinite(v)&&v>=0?v:null;}
-    if(cfg.markets[0]&&cfg.markets[0].id===cfg.market.id&&el.getAttribute('data-price')!==null){return isFinite(plain)&&plain>=0?plain:null;}
+    // No price at all is not sold — never 0 (the publish reads it the same way).
+    var rawPlain=el.getAttribute('data-price');
+    if(cfg.markets[0]&&cfg.markets[0].id===cfg.market.id&&rawPlain!==null&&String(rawPlain).trim()!==''){return isFinite(plain)&&plain>=0?plain:null;}
     return null;
   }
   function unavailableText(cfg){return String(cfg.unavailableLabel||'').split('{market}').join(cfg.market?String(cfg.market.name||cfg.market.id):'');}

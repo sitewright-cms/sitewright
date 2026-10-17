@@ -94,6 +94,15 @@ providers — it offers.
   to a country another market claims). The charge uses that market's sealed list, currency and
   pricing; a gateway that declares `currencies` without the market's is refused before anything is
   held. The order records `market` and `ship_country`. Stock stays per SKU across markets.
+- **The ship-to country is the buyer's declaration.** The built-in gateways collect no address, so
+  the platform asks for the country and holds it to the market — but it cannot see where the parcel
+  really goes. Both order mails lead with *Ship to*; a merchant ships only there (and refunds an order
+  whose address field names somewhere else).
+- `channels: []` is a market with **no online checkout** (its WhatsApp/e-mail/form channels still
+  work); leaving `channels` out offers every checkout channel.
+- **A price list that cannot be stored fails closed.** If writing a publish's lists fails, the mode's
+  lists are deleted: checkout then refuses ("no published price list yet") until the next publish,
+  rather than charging the previous prices for a page that now shows new ones.
 
 ## 3. Gateways live in the database
 

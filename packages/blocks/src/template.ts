@@ -1508,11 +1508,15 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     const firstMarket = firstMarketId(root.website?.shop?.markets);
     const fallback = firstMarket !== undefined && Object.hasOwn(prices, firstMarket) ? prices[firstMarket] : undefined;
     const plain = h.price !== undefined && Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : undefined;
-    const price = plain ?? fallback ?? '0';
+    // ★ With markets, NO plain price is written unless there is one: the default market reads the plain
+    // price, so a '0' stand-in would sell a product priced only for OTHER markets for nothing there.
+    // Without markets, the long-standing '0' floor stays (the button has always carried a price).
+    const price = plain ?? fallback ?? (firstMarket !== undefined ? undefined : '0');
     // Label precedence: explicit hash → translation catalog (reserved `cart.add`, localized per page
     // locale) → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
     const label = str(h.label) || reservedTr(root, 'cart.add') || RESERVED_TRANSLATION_DEFAULTS['cart.add']!;
-    let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
+    let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}"`;
+    if (price !== undefined) attrs += ` data-price="${escapeAttr(price)}"`;
     if (Object.keys(prices).length > 0) attrs += ` data-prices="${escapeAttr(JSON.stringify(prices))}"`;
     const img = str(h.image);
     if (img) {

@@ -2,7 +2,7 @@ import { Languages } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { SubLabel } from './ui';
 import { Field } from './ui';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { ShopSchema } from '@sitewright/schema';
 import { ShopChannelsEditor, type AvailableGateway } from './ShopChannelsEditor';
 import { MarketsEditor } from './MarketsEditor';
@@ -37,11 +37,15 @@ export function ShopSettingsModal({
   const needsCurrency = form.shopChannels.some((c) => c.kind === 'checkout') && form.shopMarkets.length === 0;
   const checkoutChannels = form.shopChannels.filter((c) => c.kind === 'checkout' && c.key).map((c) => ({ key: c.key, label: c.key }));
   // The schema's own verdict on the markets — the same rules the save and a checkout apply.
+  // Recomputed only when something the shop rules read changes — not on every keystroke in Settings.
+  const formRef = useRef(form);
+  formRef.current = form;
+  const { shopMarkets, shopChannels, shopCurrencyCode, shopShippingFlat, shopShippingFreeOver } = form;
   const marketIssues = useMemo(() => {
-    if (form.shopMarkets.length === 0) return [];
-    const parsed = ShopSchema.safeParse(toBundle(form).website?.shop ?? {});
+    if (shopMarkets.length === 0) return [];
+    const parsed = ShopSchema.safeParse(toBundle(formRef.current).website?.shop ?? {});
     return parsed.success ? [] : [...new Set(parsed.error.issues.filter((i) => i.path[0] === 'markets').map((i) => i.message))];
-  }, [form]);
+  }, [shopMarkets, shopChannels, shopCurrencyCode, shopShippingFlat, shopShippingFreeOver]);
   // Jump to the always-visible "Translations & Labels" card: close this modal, then scroll it into view.
   const editLabels = (): void => {
     onClose();

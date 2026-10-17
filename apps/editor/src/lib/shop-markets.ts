@@ -10,8 +10,10 @@ const NONE: readonly ShopMarket[] = [];
  * prices a product per market. Fetched where needed rather than threaded down (see useSiteLocales);
  * unreadable reads as "no markets", which only hides inputs and loses nothing stored.
  */
-export function useShopMarkets(projectId: string): readonly ShopMarket[] {
+export function useShopMarkets(projectId: string): { markets: readonly ShopMarket[]; loaded: boolean } {
   const [markets, setMarkets] = useState<readonly ShopMarket[]>(NONE);
+  // Until (or unless) the settings answer, nothing is known — not "this shop has no markets".
+  const [loaded, setLoaded] = useState(false);
   const [nonce, setNonce] = useState(0);
   useProjectEvents(projectId, (c) => {
     if (c.kind === 'settings') setNonce((n) => n + 1);
@@ -21,12 +23,14 @@ export function useShopMarkets(projectId: string): readonly ShopMarket[] {
     void Promise.resolve()
       .then(() => api.getSettings(projectId))
       .then(({ item }) => {
-        if (alive) setMarkets(item.website?.shop?.markets ?? NONE);
+        if (!alive) return;
+        setMarkets(item.website?.shop?.markets ?? NONE);
+        setLoaded(true);
       })
       .catch(() => undefined);
     return () => {
       alive = false;
     };
   }, [projectId, nonce]);
-  return markets;
+  return { markets, loaded };
 }

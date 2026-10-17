@@ -62,6 +62,47 @@ describe('MarketsEditor', () => {
     expect(last(onChange)[0]!.pricing).toEqual({ shipping: { flatMinor: 950 } });
   });
 
+  it('★ a decimal tax rate can be typed — "7." is held while typing, not thrown away', () => {
+    const onChange = setup([{ ...ch, pricing: {} }]);
+    const tax = screen.getByLabelText('Tax rate of market Switzerland');
+    fireEvent.focus(tax);
+    fireEvent.change(tax, { target: { value: '7.' } });
+    expect(tax).toHaveValue('7.');
+    expect(onChange).not.toHaveBeenCalled(); // half-typed: nothing committed
+    fireEvent.change(tax, { target: { value: '7.7' } });
+    expect(last(onChange)[0]!.pricing).toEqual({ tax: { rateBp: 770, mode: 'inclusive' } });
+  });
+
+  it('★ typing a decimal shipping fee keeps the free-shipping threshold', () => {
+    const onChange = setup([{ ...ch, pricing: { shipping: { flatMinor: 500, freeOverMinor: 5000 } } }]);
+    const fee = screen.getByLabelText('Shipping (CHF)');
+    fireEvent.focus(fee);
+    fireEvent.change(fee, { target: { value: '4.' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.change(fee, { target: { value: '4.50' } });
+    expect(last(onChange)[0]!.pricing).toEqual({ shipping: { flatMinor: 450, freeOverMinor: 5000 } });
+  });
+
+  it('"Free over" waits for a shipping fee', () => {
+    setup([{ ...ch, pricing: {} }]);
+    expect(screen.getByLabelText('Free over')).toBeDisabled();
+  });
+
+  it('★ changing the currency keeps the amount the merchant SEES (EUR → JPY is not ×100)', () => {
+    const onChange = setup([{ ...eu, pricing: { shipping: { flatMinor: 950 } } }]);
+    fireEvent.change(screen.getByLabelText('Currency of market Europe'), { target: { value: 'JPY' } });
+    expect(last(onChange)[0]).toMatchObject({ currency: 'JPY', pricing: { shipping: { flatMinor: 10 } } });
+  });
+
+  it('asks before removing a market, and keeps each card’s own state across a reorder', () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const onChange = setup([eu, ch]);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove market Europe' }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('the default market'));
+    expect(onChange).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
   it('shows the schema’s verdict on the markets', () => {
     setup([eu], { issues: ['DE is in two markets ("eu" and "dach")'] });
     expect(screen.getByRole('list', { name: 'Market problems' })).toHaveTextContent('DE is in two markets');

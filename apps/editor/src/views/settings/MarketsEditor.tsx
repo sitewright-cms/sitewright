@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 import { COUNTRY_CODES, type ShopMarket, type ShopPricing } from '@sitewright/schema';
 import { glassInput, fieldLabel, ghostButton, toggleInput } from '../../theme';
 import { localeLabel } from '../i18n/locale-catalog';
-import { majorToMinor, minorToMajor } from './model';
+import { majorToMinor, minorPlaces, minorToMajor } from './model';
 
 /**
  * The shop's MARKETS: where it sells, in which currency, shipping where, at which shipping and tax,
@@ -57,9 +57,26 @@ function idFrom(name: string, taken: ReadonlySet<string>): string {
   return id;
 }
 
-/** A money amount typed in MAJOR units, kept as typed while focused (so "4." survives) and stored in minor units. */
-function MoneyInput({ label, minor, currency, onChange }: { label: string; minor: number | undefined; currency: string; onChange: (minor: number | undefined) => void }) {
-  const shown = minor === undefined ? '' : minorToMajor(minor, currency);
+/**
+ * A number typed as text: kept exactly as typed while focused (so "4." and "7." survive), and committed
+ * only when it parses — or is cleared. A half-typed value never reaches the stored settings.
+ */
+function DraftInput({
+  label,
+  shown,
+  parse,
+  onCommit,
+  disabled,
+  hint,
+}: {
+  label: string;
+  shown: string;
+  /** The stored value for what was typed, or `invalid` when it does not parse (yet). Blank = undefined. */
+  parse: (typed: string) => number | undefined | 'invalid';
+  onCommit: (value: number | undefined) => void;
+  disabled?: boolean;
+  hint?: string;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <label className="block">
@@ -70,15 +87,44 @@ function MoneyInput({ label, minor, currency, onChange }: { label: string; minor
         aria-label={label}
         value={draft ?? shown}
         placeholder="none"
+        disabled={disabled}
+        title={hint}
         onFocus={() => setDraft(shown)}
         onBlur={() => setDraft(null)}
         onChange={(e) => {
           setDraft(e.target.value);
-          onChange(majorToMinor(e.target.value, currency));
+          const v = parse(e.target.value);
+          if (v !== 'invalid') onCommit(v);
         }}
       />
+      {hint && disabled && <span className="mt-0.5 block text-[10px] text-slate-500 dark:text-slate-400">{hint}</span>}
     </label>
   );
+}
+
+/** A money amount in MAJOR units of `currency`, stored in its minor units. */
+const parseMoney = (currency: string) => (typed: string): number | undefined | 'invalid' => {
+  if (typed.trim() === '') return undefined;
+  return majorToMinor(typed, currency) ?? 'invalid';
+};
+/** A tax rate in percent, stored in basis points (19.6% → 1960). */
+const parseRate = (typed: string): number | undefined | 'invalid' => {
+  const v = typed.trim();
+  if (v === '') return undefined;
+  return /^\d+(\.\d+)?$/.test(v) && Number(v) <= 100 ? Math.round(Number(v) * 100) : 'invalid';
+};
+
+/** Minor units re-expressed for another currency's exponent, so the amount SHOWN stays the same. */
+function rescaleMinor(minor: number | undefined, from: string, to: string): number | undefined {
+  if (minor === undefined) return undefined;
+  const shift = minorPlaces(to) - minorPlaces(from);
+  return shift === 0 ? minor : Math.round(minor * 10 ** shift);
+}
+function rescalePricing(pricing: ShopPricing | undefined, from: string, to: string): ShopPricing | undefined {
+  if (!pricing?.shipping) return pricing;
+  const flatMinor = rescaleMinor(pricing.shipping.flatMinor, from, to)!;
+  const freeOverMinor = rescaleMinor(pricing.shipping.freeOverMinor, from, to);
+  return { ...pricing, shipping: { flatMinor, ...(freeOverMinor !== undefined ? { freeOverMinor } : {}) } };
 }
 
 function MarketCard({
@@ -125,6 +171,7 @@ function MarketCard({
             className={glassInput}
             aria-label={`Id of ${label}`}
             value={market.id}
+            title="Prices are entered per market id: changing it disconnects the prices entered for the old one."
             onChange={(e) => update({ ...market, id: e.target.value.replace(/[^A-Za-z0-9_]/g, '').slice(0, 64) })}
           />
         </label>
@@ -135,7 +182,14 @@ function MarketCard({
             aria-label={`Currency of ${label}`}
             value={market.currency}
             placeholder="EUR"
-            onChange={(e) => update({ ...market, currency: e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3) })}
+            onChange={(e) => {
+              const currency = e.target.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+              // A shipping fee is stored in minor units: moving to a currency with another exponent
+              // (EUR → JPY) keeps the amount the merchant SEES, rather than silently scaling it by 100.
+              const complete = currency.length === 3 && market.currency.length === 3;
+              const pricing = complete ? rescalePricing(market.pricing, market.currency, currency) : market.pricing;
+              update({ ...market, currency, ...(pricing !== undefined ? { pricing } : {}) });
+            }}
           />
         </label>
         <label className="block w-40">
@@ -260,40 +314,36 @@ function MarketCard({
         </label>
         {ownPricing && (
           <div className="grid gap-2 sm:grid-cols-4">
-            <MoneyInput
+            <DraftInput
               label={`Shipping (${market.currency || '…'})`}
-              minor={pricing.shipping?.flatMinor}
-              currency={market.currency}
-              onChange={(flatMinor) => {
-                const rest = without(pricing, 'shipping');
-                setPricing(flatMinor === undefined ? rest : { ...rest, shipping: { ...pricing.shipping, flatMinor } });
+              shown={pricing.shipping ? minorToMajor(pricing.shipping.flatMinor, market.currency) : ''}
+              parse={parseMoney(market.currency)}
+              onCommit={(flatMinor) => {
+                // No fee means no shipping at all — and so no "free over" either.
+                setPricing(flatMinor === undefined ? without(pricing, 'shipping') : { ...pricing, shipping: { ...pricing.shipping, flatMinor } });
               }}
             />
-            <MoneyInput
+            <DraftInput
               label="Free over"
-              minor={pricing.shipping?.freeOverMinor}
-              currency={market.currency}
-              onChange={(freeOverMinor) => {
+              shown={pricing.shipping?.freeOverMinor !== undefined ? minorToMajor(pricing.shipping.freeOverMinor, market.currency) : ''}
+              parse={parseMoney(market.currency)}
+              disabled={!pricing.shipping}
+              hint="Set a shipping fee first."
+              onCommit={(freeOverMinor) => {
                 if (!pricing.shipping) return;
                 const shipping = without(pricing.shipping, 'freeOverMinor');
                 setPricing({ ...pricing, shipping: freeOverMinor === undefined ? shipping : { ...shipping, freeOverMinor } });
               }}
             />
-            <label className="block">
-              <span className={fieldLabel}>Tax rate (%)</span>
-              <input
-                className={glassInput}
-                inputMode="decimal"
-                aria-label={`Tax rate of ${label}`}
-                value={pricing.tax ? String(pricing.tax.rateBp / 100) : ''}
-                placeholder="none"
-                onChange={(e) => {
-                  const v = e.target.value.trim();
-                  const rest = without(pricing, 'tax');
-                  setPricing(/^\d+(\.\d+)?$/.test(v) ? { ...rest, tax: { rateBp: Math.round(Number(v) * 100), mode: pricing.tax?.mode ?? 'inclusive' } } : rest);
-                }}
-              />
-            </label>
+            <DraftInput
+              label={`Tax rate of ${label}`}
+              shown={pricing.tax ? String(pricing.tax.rateBp / 100) : ''}
+              parse={parseRate}
+              onCommit={(rateBp) => {
+                const rest = without(pricing, 'tax');
+                setPricing(rateBp === undefined ? rest : { ...rest, tax: { rateBp, mode: pricing.tax?.mode ?? 'inclusive' } });
+              }}
+            />
             <label className="block">
               <span className={fieldLabel}>Prices are</span>
               <select
@@ -314,20 +364,46 @@ function MarketCard({
   );
 }
 
+let nextCardKey = 0;
+const cardKey = () => `market-card-${(nextCardKey += 1)}`;
+
 export function MarketsEditor(props: MarketsEditorProps) {
   const { markets, onChange } = props;
-  // The country → market map the cards use to grey out what another market already ships to.
+  // A STABLE key per card that moves with it (a market's id is editable, so it cannot be the key): a
+  // card's filter text and half-typed amounts stay with ITS market across a reorder or a removal.
+  const [keys, setKeys] = useState<string[]>(() => markets.map(cardKey));
+  const cardKeys = keys.length === markets.length ? keys : markets.map((_, i) => keys[i] ?? cardKey());
+  // Country → the INDEX of the market that ships there (names can repeat; positions cannot).
   const claimed = useMemo(() => {
-    const out = new Map<string, string>();
-    for (const m of markets) for (const c of m.countries) if (!out.has(c)) out.set(c, m.name || m.id);
+    const out = new Map<string, number>();
+    markets.forEach((m, i) => m.countries.forEach((c) => !out.has(c) && out.set(c, i)));
     return out;
   }, [markets]);
 
+  const commit = (next: ShopMarket[], nextKeys: string[]) => {
+    setKeys(nextKeys);
+    onChange(next);
+  };
   const set = (i: number, next: ShopMarket) => onChange(markets.map((m, j) => (j === i ? next : m)));
   const add = () => {
     const taken = new Set(markets.map((m) => m.id));
     const name = markets.length === 0 ? 'Default' : `Market ${markets.length + 1}`;
-    onChange([...markets, { id: idFrom(name, taken), name, currency: props.shopCurrency || 'EUR', countries: [] }]);
+    commit([...markets, { id: idFrom(name, taken), name, currency: props.shopCurrency || 'EUR', countries: [] }], [...cardKeys, cardKey()]);
+  };
+  const remove = (i: number) => {
+    const m = markets[i]!;
+    const what = i === 0 ? `the default market "${m.name || m.id}" (the next one becomes the default)` : `market "${m.name || m.id}"`;
+    if (!window.confirm(`Remove ${what}? Products priced for it will no longer be sold there.`)) return;
+    commit(markets.filter((_, j) => j !== i), cardKeys.filter((_, j) => j !== i));
+  };
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d;
+    if (j < 0 || j >= markets.length) return;
+    const next = [...markets];
+    const nextKeys = [...cardKeys];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    [nextKeys[i], nextKeys[j]] = [nextKeys[j]!, nextKeys[i]!];
+    commit(next, nextKeys);
   };
 
   return (
@@ -339,29 +415,24 @@ export function MarketsEditor(props: MarketsEditorProps) {
         </p>
       )}
       {markets.map((m, i) => {
-        const others = new Map([...claimed].filter(([, owner]) => owner !== (m.name || m.id)));
+        const others = new Map<string, string>();
+        for (const [country, owner] of claimed) if (owner !== i) others.set(country, markets[owner]!.name || markets[owner]!.id);
         return (
           <MarketCard
-            key={i}
+            key={cardKeys[i]}
             market={m}
             index={i}
             count={markets.length}
             others={others}
             props={props}
             update={(next) => set(i, next)}
-            move={(d) => {
-              const j = i + d;
-              if (j < 0 || j >= markets.length) return;
-              const next = [...markets];
-              [next[i], next[j]] = [next[j]!, next[i]!];
-              onChange(next);
-            }}
-            remove={() => onChange(markets.filter((_, j) => j !== i))}
+            move={(d) => move(i, d)}
+            remove={() => remove(i)}
           />
         );
       })}
       {props.issues.length > 0 && (
-        <ul className="rounded-md bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300" aria-label="Market problems">
+        <ul className="rounded-md bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300" aria-label="Market problems" aria-live="polite">
           {props.issues.map((m) => (
             <li key={m}>{m}</li>
           ))}

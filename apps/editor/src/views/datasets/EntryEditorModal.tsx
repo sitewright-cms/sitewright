@@ -554,15 +554,23 @@ function ownTranslations(values: Record<string, unknown>, translations: Translat
  * left blank does not sell the product there ("Not available in …"); nothing is converted between them.
  */
 function PricesField({ value, onRaw, id, ariaLabel, projectId }: { value: unknown; onRaw: (raw: unknown) => void; id: string; ariaLabel: string; projectId: string }) {
-  const markets = useShopMarkets(projectId);
+  const { markets, loaded } = useShopMarkets(projectId);
   const current = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-  // Markets the shop no longer has keep their stored price visible (and editable) rather than vanishing.
+  // Markets the shop no longer has keep their stored price visible (and editable) rather than vanishing —
+  // and until the shop's markets are known, the stored prices show under their ids, labelled as nothing.
   const known = new Set(markets.map((m) => m.id));
   const stray = Object.keys(current).filter((k) => !known.has(k));
   const rows: Array<{ id: string; label: string }> = [
     ...markets.map((m) => ({ id: m.id, label: `${m.name} (${m.currency})` })),
-    ...stray.map((k) => ({ id: k, label: `${k} — not a market of this shop` })),
+    ...stray.map((k) => ({ id: k, label: loaded ? `${k} — not a market of this shop` : k })),
   ];
+  if (!loaded && rows.length === 0) {
+    return (
+      <p id={id} className="text-[11px] text-slate-500 dark:text-slate-400">
+        Reading the shop’s markets…
+      </p>
+    );
+  }
   if (rows.length === 0) {
     return (
       <p id={id} className="text-[11px] text-slate-500 dark:text-slate-400">

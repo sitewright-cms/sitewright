@@ -169,11 +169,65 @@ A checklist, not a code change. Everything below is data.
    tenant's secret.
 
 An agent can do all of this — except the dry run, which is session-only — with the opt-in
-`payments:provider:write` capability, **and only when the key's owner is an instance admin**. The
+`payments:provider:write` capability, **and only when the key's owner is an instance admin**. Over MCP
+that is `list_gateway_definitions`, `fork_gateway_definition`, `put_gateway_definition` and
+`delete_gateway_definition`, with the walk-through in `get_guide("payments")`. Instance admins see the
+capability on the API-key and member-token forms; the OAuth consent screen offers it unticked. The
 capability alone is not enough: an API key is bound to one project and may be minted by that
 project's owner at any role, while a gateway definition is instance-wide infrastructure. It deliberately
 cannot touch a **project's** keys: those are session-only, because an agent that can mint a live key
 into a project can redirect that project's revenue.
+
+★ **What a token may not do to a definition** (a person on a session may do all of it):
+- **Change a LIVE gateway** — enabled *and* proven — or delete one. Every write clears `verified`, so an
+  edit in place would stop live checkout in every project charging through it. A token forks instead;
+  the fork carries no live traffic until a person proves it and the projects' channels are switched.
+- **Change a definition any project holds keys for** — none of it, not just its hosts: a request body
+  tells the provider what to do with the keys, and a provider calls the return and webhook URLs it is
+  handed, so a template is as much a way out as `apiBase`. Nor delete it. Keys are filed under the gateway
+  **id** and outlive a deleted definition, so a token may not create or fork a definition onto an id that
+  projects hold keys under either. The create → prove → fix loop goes through a person removing that
+  project's keys (or a fork to a new id).
+
+Deleting a custom gateway is refused, for anybody, while an order through it is still open in any
+project — its webhook could no longer be verified.
+
+★ **The proof shows what it approves, and stamps only what it proved.** Instance admins see enabled but
+unproven gateways in a project's payment keys dialog (so a new one can get test keys and be proven
+without a raw API call), and for the gateway in view the dialog names where its keys go (`apiBase`),
+where buyers may be sent (`allowedOrigins`) and which provider events count an order as paid — and says
+in red when those addresses differ from the built-in it was forked from or is named like. A definition edited while the dry run is at the provider is
+**not** marked proven (409, `reason: "changed"`).
+
+★ **A definition is linted where its author can still fix it** (any author, person or token):
+- Every `${…}` in a request template must be one the host substitutes — `CRED` naming a declared
+  credential field, `AMOUNT`/`TXN`/`URL` with a known key, `FIELD`/`TEXT` (these two resolve a missing
+  key to an empty string) — and `${#…}` only as a whole body value; anything else used to be sent to the
+  provider as literal text.
+- A **secret** field reaches the provider only through `auth` (every built-in) or as a request header —
+  the whole value, or after `Bearer `/`Basic `/`Token ` — never in a body, path or query, and never next to
+  other placeholders: a provider may print body fields on its hosted checkout page, where any buyer reads
+  them, and calls the return and webhook addresses it is handed.
+- A **non-secret** field may be a whole body value or a path segment — never part of longer text, a body
+  field name or a query string.
+- A literal `http(s)://` or `//host` address in a template (body, header or path) must be on
+  `allowedOrigins`; the shop's own come from `${URL:…}`.
+- The admin dialog compares a definition's addresses only with what the platform SHIPS for a built-in
+  id (`shipped` on `GET /admin/payment-gateways`) — not with the stored record at that id, which a proof
+  rewrites, and not with whatever `forkedFrom` names, which the author sets.
+- The fields used for webhook verification and request auth must be `secret` fields.
+- `apiBase` and `allowedOrigins` must be public hosts (no localhost, `.local`, `.internal`, single-label
+  names or private/loopback/link-local literals, trailing dot or not). A public name that *resolves* to a
+  private address is not caught, and provider calls still follow redirects.
+
+**What an agent can read about a project's payments.** `GET /projects/<id>/payment-gateways`
+(`content:read`, MCP `list_payment_providers`) lists the offered gateways and, per gateway, `keys`:
+which mode the project transacts in and, for test and live, whether every required key is present and
+the NAMES of the missing ones — never a value or a mask. `channels` names the checkout channels using
+it, `problems` lists in plain sentences what would stop a channel taking a payment in the mode it is in
+(an unknown or disabled gateway; missing keys; live mode on an unproven gateway; a market charging a
+currency its gateway does not take), and `notes` what is true but not a failure (a channel taking test
+payments only). The keys themselves stay behind the session-only routes.
 
 ---
 
@@ -290,6 +344,12 @@ outstanding balance, and a repeated event cannot drive the balance past the orde
   under its gateway id the next time those keys are saved.
 - The orders inbox carries the undelivered banner, because emailing somebody about broken email is
   circular.
+- **Agents run orders over MCP**: `list_orders` / `get_order` (`content:read`; the buyer's order-page
+  token is withheld from the agent; each row carries `notifyState` / `receiptState`) and
+  `set_order_fulfilment` / `resend_order_mail` (`content:write`). A token is held tighter than a person in
+  the inbox: it moves fulfilment only on a paid order, and resends only a mail that `failed` or was
+  `abandoned` — a person may re-send a delivered receipt on purpose, a looping agent would mail every
+  buyer twice. Refunds have no MCP tool, by design.
 
 ### Explicitly out of scope
 

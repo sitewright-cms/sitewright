@@ -91,6 +91,12 @@
     ]
   },
   {
+    "name": "delete_gateway_definition",
+    "required": [
+      "gatewayId"
+    ]
+  },
+  {
     "name": "delete_media",
     "required": [
       "id",
@@ -125,6 +131,13 @@
     ]
   },
   {
+    "name": "fork_gateway_definition",
+    "required": [
+      "fromId",
+      "id"
+    ]
+  },
+  {
     "name": "get_capabilities",
     "required": []
   },
@@ -143,6 +156,13 @@
   {
     "name": "get_guide",
     "required": []
+  },
+  {
+    "name": "get_order",
+    "required": [
+      "orderId",
+      "project"
+    ]
   },
   {
     "name": "get_page",
@@ -217,6 +237,10 @@
     ]
   },
   {
+    "name": "list_gateway_definitions",
+    "required": []
+  },
+  {
     "name": "list_media",
     "required": [
       "project"
@@ -235,7 +259,19 @@
     ]
   },
   {
+    "name": "list_orders",
+    "required": [
+      "project"
+    ]
+  },
+  {
     "name": "list_pages",
+    "required": [
+      "project"
+    ]
+  },
+  {
+    "name": "list_payment_providers",
     "required": [
       "project"
     ]
@@ -349,6 +385,13 @@
     ]
   },
   {
+    "name": "put_gateway_definition",
+    "required": [
+      "definition",
+      "gatewayId"
+    ]
+  },
+  {
     "name": "put_page",
     "required": [
       "page",
@@ -384,6 +427,14 @@
       "content_base64",
       "filename",
       "id",
+      "project"
+    ]
+  },
+  {
+    "name": "resend_order_mail",
+    "required": [
+      "kind",
+      "orderId",
       "project"
     ]
   },
@@ -447,6 +498,14 @@
     "required": [
       "items",
       "project"
+    ]
+  },
+  {
+    "name": "set_order_fulfilment",
+    "required": [
+      "orderId",
+      "project",
+      "to"
     ]
   },
   {

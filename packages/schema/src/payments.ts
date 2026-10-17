@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
-import { MAX_IDENTIFIER_LENGTH } from './primitives.js';
+import { MAX_IDENTIFIER_LENGTH, targetsPrivateHost } from './primitives.js';
 
 /**
  * PAYMENTS — processed payments for the shop, and the gateway definitions that drive them.
@@ -432,6 +432,14 @@ export const PaymentGatewayInputSchema = PaymentGatewayStoredSchema.omit({
     for (const key of need) {
       if (!keys.has(key)) ctx.addIssue({ code: 'custom', message: `"${key}" is referenced but not declared as a credential field`, path: ['credentialFields'] });
     }
+    // A gateway is called from the platform's own network: no loopback, private or link-local host.
+    for (const [where, url] of [...Object.entries(gw.apiBase).map(([m, u]) => [`apiBase.${m}`, u] as const), ...gw.allowedOrigins.map((o) => ['allowedOrigins', o] as const)]) {
+      if (typeof url === 'string' && privateGatewayHost(url)) {
+        ctx.addIssue({ code: 'custom', message: `${where} ${url} is not a public host`, path: [where.split('.')[0]!] });
+      }
+    }
+    lintPlaceholders(gw, keys, ctx);
+    lintKeyHandling(gw, ctx);
     // The apiBases must themselves be inside the admin-approved origins, or the allowlist is
     // decorative: a request would go somewhere the admin never approved.
     for (const [mode, url] of Object.entries(gw.apiBase)) {
@@ -448,6 +456,207 @@ export const PaymentGatewayInputSchema = PaymentGatewayStoredSchema.omit({
     }
   });
 export type PaymentGatewayInput = z.infer<typeof PaymentGatewayInputSchema>;
+
+/**
+ * Whether a gateway URL names a host the platform must not call: localhost, `.local`/`.internal`, a
+ * single-label name, or a private / loopback / link-local IP LITERAL. A DNS name is judged by name only — `targetsPrivateHost`
+ * also flags names that merely START like an IPv6 ULA (`fd…`, `fc…`), which would refuse a real
+ * provider such as `fdpay.example`. (A public name that RESOLVES privately is not caught here.)
+ */
+function privateGatewayHost(url: string): boolean {
+  let host: string;
+  try {
+    // A trailing dot is the same name (`localhost.`), so it must not slip past the suffix checks.
+    host = new URL(url).hostname.toLowerCase().replace(/\.+$/, '');
+  } catch {
+    return false; // reported by .url() / the origin regex
+  }
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return true;
+  const literal = host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  if (literal) return targetsPrivateHost(url);
+  // A single-label name (`intranet`, a cluster service) resolves only inside a network.
+  return !host.includes('.');
+}
+
+/** An origin as `allowedOrigins` holds it: lower-case, no trailing slash. */
+function normalOrigin(o: string): string {
+  return o.toLowerCase().replace(/\/$/, '');
+}
+
+/**
+ * Where a definition may put a KEY, and which addresses its templates may name.
+ *
+ * ★ The host fixes WHERE every request goes (`apiBase`, checked against `allowedOrigins`), but a
+ * request also tells the provider what to do — and a provider calls the return and webhook URLs it is
+ * handed, prints body fields on its hosted checkout page (where any buyer reads them), and keeps them
+ * in its dashboard. So a key the template puts in the wrong place leaves through the provider:
+ *  - a SECRET field reaches the provider only as a request HEADER — the whole value, or after a fixed
+ *    `Bearer ` / `Basic ` / `Token ` — or through `auth` (no built-in needs anything else). Never in a
+ *    body, a path or a query, and never next to other placeholders.
+ *  - a non-secret field (a merchant id, a choice) may be a WHOLE body value or sit in a path segment,
+ *    but is never composed into longer body text, a body field name, or a query string.
+ *  - a literal `http(s)://` or `//host` address anywhere in a template must be on `allowedOrigins`; the
+ *    shop's own addresses come from `${URL:…}`, which the host builds.
+ *  - the fields that SIGN things — webhook verification, request auth — must be `secret` fields: a
+ *    signing key declared `public` is shown in the editor, and a webhook signed with a known key can
+ *    mark an unpaid order paid.
+ */
+function lintKeyHandling(
+  gw: Pick<PaymentGatewayInput, 'credentialFields' | 'allowedOrigins' | 'verification' | 'auth'> & { checkout: { request: GatewayRequest }; status?: { request: GatewayRequest }; refund?: { request: GatewayRequest } },
+  ctx: z.RefinementCtx,
+): void {
+  const origins = new Set(gw.allowedOrigins.map(normalOrigin));
+  const kind = new Map(gw.credentialFields.map((f) => [f.key, f.kind]));
+  const issue = (where: string, message: string) => ctx.addIssue({ code: 'custom', message: `${where}: ${message}`, path: [where.split('.')[0]!] });
+  const credKeys = (value: string): string[] => [...value.matchAll(/\$\{#?CRED:([A-Za-z0-9_.-]{1,64})\}/g)].map((m) => m[1]!);
+  const secretIn = (value: string): string[] => credKeys(value).filter((k) => kind.get(k) === 'secret');
+  const literalUrls = (value: string, where: string): void => {
+    // Absolute, and scheme-relative (`//host`, which a provider resolves against its own scheme).
+    for (const m of value.matchAll(/(?:https?:)?\/\/[^\s"'<>${}/?#]+/gi)) {
+      const at = m.index ?? 0;
+      const absolute = /^https?:/i.test(m[0]);
+      // A bare `//` counts only where an address could start — not in the middle of a path.
+      if (!absolute && at > 0 && !/[\s"'(=,]/.test(value.charAt(at - 1))) continue;
+      let origin: string;
+      try {
+        origin = new URL(absolute ? m[0] : `https:${m[0]}`).origin;
+      } catch {
+        issue(where, `${m[0]} is not a valid address`);
+        continue;
+      }
+      if (!origins.has(normalOrigin(origin))) issue(where, `${m[0]} is not on allowedOrigins — a template may name only the provider's own addresses (the shop's come from \${URL:…})`);
+    }
+  };
+  const bodyValue = (value: unknown, where: string, depth = 0): void => {
+    if (depth > 12) return;
+    if (typeof value === 'string') {
+      literalUrls(value, where);
+      for (const key of secretIn(value)) {
+        issue(where, `"${key}" is a secret field, and a secret never goes in a request body — the provider may print a body field on its checkout page or keep it in its dashboard. Send it as a header ("Bearer \${CRED:${key}}") or through auth`);
+      }
+      if (credKeys(value).length > 0 && !/^\$\{CRED:[A-Za-z0-9_.-]{1,64}\}$/.test(value)) {
+        issue(where, `a key may be a WHOLE body value ("\${CRED:<field>}"), never part of longer text — "${value}" would hand it to the provider inside other text, such as an address it calls`);
+      }
+    } else if (Array.isArray(value)) {
+      value.forEach((v) => bodyValue(v, where, depth + 1));
+    } else if (value && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (credKeys(k).length > 0) issue(where, `a key may not be part of a body field NAME ("${k}")`);
+        literalUrls(k, where);
+        bodyValue(v, where, depth + 1);
+      }
+    }
+  };
+  /** A path goes only to apiBase, but its QUERY is the kind of text a provider passes on. */
+  const pathValue = (path: string, where: string): void => {
+    literalUrls(path, where);
+    for (const key of secretIn(path)) issue(where, `"${key}" is a secret field and may not be in a path — send it as a header or through auth`);
+    const query = path.includes('?') ? path.slice(path.indexOf('?')) : '';
+    if (credKeys(query).length > 0) issue(where, 'a key may not be in a query string');
+  };
+  const headerValue = (name: string, value: string, where: string): void => {
+    literalUrls(`${name} ${value}`, where);
+    if (credKeys(name).length > 0) issue(where, `a key may not be part of a header NAME ("${name}")`);
+    if (credKeys(value).length > 0 && !/^(?:(?:Bearer|Basic|Token) )?\$\{CRED:[A-Za-z0-9_.-]{1,64}\}$/i.test(value)) {
+      issue(where, `"${name}" puts a key next to other text — a header carries a key only as its whole value, or after "Bearer ", "Basic " or "Token "`);
+    }
+  };
+  const requests: Array<[string, GatewayRequest | undefined]> = [
+    ['checkout.request', gw.checkout.request],
+    ['status.request', gw.status?.request],
+    ['refund.request', gw.refund?.request],
+  ];
+  for (const [where, req] of requests) {
+    if (!req) continue;
+    pathValue(req.path, `${where}.path`);
+    for (const [k, v] of Object.entries(req.headers ?? {})) headerValue(k, v, `${where}.headers`);
+    bodyValue(req.body, `${where}.body`);
+  }
+  // The other paths the host calls: the token exchange and the provider-side signature check.
+  if (gw.auth.kind === 'oauth2-client-credentials') pathValue(gw.auth.tokenPath, 'auth.tokenPath');
+  if (gw.verification.scheme === 'remote-verify') pathValue(gw.verification.path, 'verification.path');
+
+  const signing: Array<[string, string]> = [];
+  if (gw.verification.scheme !== 'remote-verify') signing.push(['verification', gw.verification.secretField]);
+  if (gw.auth.kind === 'bearer' || gw.auth.kind === 'basic') signing.push(['auth', gw.auth.secretField]);
+  if (gw.auth.kind === 'oauth2-client-credentials') signing.push(['auth', gw.auth.clientSecretField]);
+  for (const [where, key] of signing) {
+    const k = kind.get(key);
+    if (k !== undefined && k !== 'secret') issue(where, `"${key}" signs or authenticates requests, so it must be a secret field (kind "secret"), not "${k}"`);
+  }
+}
+
+/**
+ * Every placeholder the host's interpolator resolves, by namespace (apps/api/src/payments/
+ * interpolate.ts — a test there pins the two together). `null` = any key: FIELD (a buyer field, which
+ * may legitimately be absent) and TEXT resolve an unknown key to ''.
+ */
+export const GATEWAY_PLACEHOLDERS: Readonly<Record<string, readonly string[] | null>> = Object.freeze({
+  CRED: null, // checked against the declared credentialFields instead
+  AMOUNT: ['minor', 'decimal', 'currency', 'currency_lower'],
+  TXN: ['id', 'token', 'reference'],
+  URL: ['return', 'cancel', 'webhook'],
+  FIELD: null,
+  TEXT: null,
+});
+
+/**
+ * Refuses a request template whose `${…}` the host would not substitute.
+ *
+ * ★ The interpolator only RECOGNISES `${NS:key}` with an upper-case namespace; anything else — a
+ * lower-case `${cred:apiKey}`, a stray space, `${#…}` inside a longer string — is sent to the provider
+ * as literal text, and an unknown `${CRED:…}` fails only at checkout. Both are typos an author (an
+ * agent above all) makes, and both used to surface first as a buyer unable to pay. Caught here, at the
+ * write, where the error can name the field.
+ */
+function lintPlaceholders(gw: { checkout: { request: GatewayRequest }; status?: { request: GatewayRequest }; refund?: { request: GatewayRequest } }, declared: ReadonlySet<string>, ctx: z.RefinementCtx): void {
+  const check = (value: string, where: string, wholeValueMayBeNumeric: boolean): void => {
+    for (const m of value.matchAll(/\$\{([^}]*)\}/g)) {
+      const token = m[0];
+      const parsed = /^(#?)([A-Z]+):([A-Za-z0-9_.-]{1,64})$/.exec(m[1] ?? '');
+      const fail = (why: string) => ctx.addIssue({ code: 'custom', message: `${where}: ${token} ${why}`, path: [where.split('.')[0]!] });
+      if (!parsed) {
+        fail('is not a placeholder — use ${NAMESPACE:key}, e.g. ${CRED:secretKey}, ${AMOUNT:minor}, ${TXN:reference}, ${URL:webhook}');
+        continue;
+      }
+      const [, hash, ns, key] = parsed as unknown as [string, string, string, string];
+      if (!Object.hasOwn(GATEWAY_PLACEHOLDERS, ns)) {
+        fail(`has an unknown namespace — one of ${Object.keys(GATEWAY_PLACEHOLDERS).join(', ')}`);
+        continue;
+      }
+      // eslint-disable-next-line security/detect-object-injection -- own-property checked on a frozen literal
+      const allowed = GATEWAY_PLACEHOLDERS[ns];
+      if (ns === 'CRED' && !declared.has(key)) fail(`names a credential that is not declared in credentialFields`);
+      else if (allowed && !allowed.includes(key)) fail(`is not one of ${allowed.map((k) => `\${${ns}:${k}}`).join(', ')}`);
+      if (hash && !(wholeValueMayBeNumeric && token === value)) fail('— the # (number) form works only as a whole body value');
+    }
+  };
+  const walk = (value: unknown, where: string, depth = 0): void => {
+    if (depth > 12) return;
+    if (typeof value === 'string') check(value, where, true);
+    else if (Array.isArray(value)) value.forEach((v) => walk(v, where, depth + 1));
+    else if (value && typeof value === 'object') {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        check(k, where, false);
+        walk(v, where, depth + 1);
+      }
+    }
+  };
+  const requests: Array<[string, GatewayRequest | undefined]> = [
+    ['checkout.request', gw.checkout.request],
+    ['status.request', gw.status?.request],
+    ['refund.request', gw.refund?.request],
+  ];
+  for (const [where, req] of requests) {
+    if (!req) continue;
+    check(req.path, `${where}.path`, false);
+    for (const [k, v] of Object.entries(req.headers ?? {})) {
+      check(k, `${where}.headers`, false);
+      check(v, `${where}.headers`, false);
+    }
+    walk(req.body, `${where}.body`);
+  }
+}
 
 /**
  * ★★ WHY THERE IS NO AUTHOR-SUPPLIED REGEX HERE.
@@ -600,6 +809,37 @@ export function maskBinding(stored: PaymentBindingStored, fields: readonly Crede
     ...new Set(PAYMENT_MODES.flatMap((m) => Object.keys(stored.values?.[m] ?? {})).filter((k) => !declared.has(k))),
   ].sort();
   return { gatewayId: stored.gatewayId, mode: stored.mode, fields: perMode, missing, orphaned, complete: missing.length === 0 };
+}
+
+/** Whether one mode's keys are all there, and which required ones are not. Key NAMES only. */
+export interface PaymentModeReadiness {
+  complete: boolean;
+  missing: string[];
+}
+
+/**
+ * How far a project's keys for one gateway have got — what an AGENT may know about them.
+ *
+ * ★ Presence only, per mode, and nothing from {@link MaskedCredentialField.display}: not the last four
+ * of a secret, not a public value. Enough to say "Stripe still needs its live secret key" or "this
+ * shop is taking live money", which an agent has to know to build a checkout that works. The values
+ * themselves stay with the session-only credential routes.
+ */
+export interface PaymentKeysStatus {
+  /** Which mode the project transacts in through this gateway. */
+  mode: PaymentMode;
+  test: PaymentModeReadiness;
+  live: PaymentModeReadiness;
+}
+
+/** Projects a masked binding down to {@link PaymentKeysStatus}, against the gateway's CURRENT fields. */
+export function bindingKeysStatus(binding: PaymentBindingPublic, fields: readonly CredentialField[]): PaymentKeysStatus {
+  const readiness = (mode: PaymentMode): PaymentModeReadiness => {
+    const present = new Set(binding.fields[mode].filter((f) => f.hasValue).map((f) => f.key));
+    const missing = fields.filter((f) => f.required && !present.has(f.key)).map((f) => f.key);
+    return { complete: missing.length === 0, missing };
+  };
+  return { mode: binding.mode, test: readiness('test'), live: readiness('live') };
 }
 
 /**

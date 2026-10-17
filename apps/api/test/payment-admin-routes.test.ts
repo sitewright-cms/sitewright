@@ -7,10 +7,15 @@ import { GLOBAL_SCOPE_ID, ensureGlobalProject } from '../src/repo/global-library
 const KEY = Buffer.alloc(32, 7);
 let scripted: Array<{ ok?: boolean; status?: number; body: unknown }>;
 let calls: string[];
+/** Runs ONCE inside the next provider call — something happening while a request is in flight. */
+let duringNextCall: (() => Promise<void>) | null = null;
 
 function makeFetch() {
   return async (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => {
     calls.push(`${init.method} ${url}`);
+    const during = duringNextCall;
+    duringNextCall = null;
+    if (during) await during();
     const r = scripted.shift() ?? { body: { id: 'sess', url: 'https://mock-pay.invalid/s/1' } };
     return { ok: r.ok ?? true, status: r.status ?? 200, text: async () => JSON.stringify(r.body) };
   };
@@ -44,6 +49,7 @@ const GATEWAY = {
 beforeEach(async () => {
   scripted = [];
   calls = [];
+  duringNextCall = null;
   h = await makeHarness({ encryptionKey: KEY, publicUrl: 'https://sw.test', paymentFetch: makeFetch() });
   admin = await h.signup({ admin: true });
   member = await h.signup();
@@ -67,6 +73,13 @@ describe('level 1 — gateway definitions are instance-admin only', () => {
     const ids = res.json().gateways.map((g: { id: string }) => g.id).sort();
     expect(ids).toEqual(['mock', 'mollie', 'paypal', 'stripe']);
     expect(res.json().gateways.every((g: { builtin: boolean }) => g.builtin)).toBe(true);
+  });
+
+  it('★ names what the platform SHIPS for a built-in id — the one reference no author wrote', async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    const listed = (await admin.get('/admin/payment-gateways')).json().gateways as Array<{ id: string; shipped?: { name: string; apiBase: { live: string }; allowedOrigins: string[] } }>;
+    expect(listed.find((g) => g.id === 'stripe')?.shipped).toMatchObject({ name: 'Stripe Checkout', apiBase: { live: 'https://api.stripe.com' } });
+    expect(listed.find((g) => g.id === 'acme')).not.toHaveProperty('shipped');
   });
 
   it('★ a non-admin project member is refused every level-1 operation', async () => {
@@ -313,6 +326,276 @@ describe('level 2 — a project’s own credentials', () => {
       expect(left.map((b) => b.gatewayId)).toEqual(['beta']);
       expect((await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } })).statusCode).toBe(404);
     });
+  });
+});
+
+describe('★ what an AGENT may read about a project\'s payments', () => {
+  /** A project key the instance admin minted — `content:read` only, no payments capability at all. */
+  async function readerToken(): Promise<string> {
+    const made = await admin.post(`/projects/${projectId}/api-keys`, { name: 'reader', role: 'owner', expiresInDays: 1, capabilities: ['content:read'] });
+    expect(made.statusCode).toBe(201);
+    return made.json().token as string;
+  }
+
+  beforeEach(async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    await admin.put(`/projects/${projectId}/payment`, {
+      gatewayId: 'acme',
+      mode: 'test',
+      values: { apiKey: 'sk_test_SECRETVALUE1234', webhookSecret: 'whsec_SECRETVALUE5678' },
+    });
+    scripted.push({ body: { id: 's', url: 'https://mock-pay.invalid/s' } });
+    expect((await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' })).statusCode).toBe(200);
+    await admin.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Shop', colors: { primary: '#0a7' } },
+      website: {
+        shop: {
+          enabled: true,
+          currency: { code: 'EUR' },
+          channels: [
+            { kind: 'checkout', key: 'pay', gatewayId: 'acme', email: 'o@shop.test' },
+            { kind: 'checkout', key: 'ghost', gatewayId: 'ghost', email: 'o@shop.test' },
+          ],
+        },
+      },
+      settings: {},
+    });
+  });
+
+  it('a content:read token sees each offered provider, how far its keys have got, and what would stop a checkout', async () => {
+    const res = await h.app.inject({ method: 'GET', url: `/projects/${projectId}/payment-gateways`, headers: { authorization: `Bearer ${await readerToken()}` } });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { gateways: Array<Record<string, unknown>>; problems: string[] };
+    expect(body.gateways).toHaveLength(1);
+    expect(body.gateways[0]).toMatchObject({
+      id: 'acme',
+      webhookUrl: `https://sw.test/pay/${projectId}/webhook/acme`,
+      keys: { mode: 'test', test: { complete: true, missing: [] }, live: { complete: false, missing: ['apiKey', 'webhookSecret'] } },
+      channels: ['pay'],
+    });
+    expect(body.problems).toEqual([expect.stringMatching(/checkout channel "ghost" charges through "ghost", which this instance does not offer/)]);
+  });
+
+  it('★ and nothing of the keys themselves — no value, no mask, no tail', async () => {
+    const res = await h.app.inject({ method: 'GET', url: `/projects/${projectId}/payment-gateways`, headers: { authorization: `Bearer ${await readerToken()}` } });
+    for (const leak of ['SECRETVALUE', '1234', '5678', '••••', 'sk_test', 'whsec_', 'display', 'hasValue']) expect(res.body, leak).not.toContain(leak);
+    // The credential routes themselves stay closed to the same token.
+    const keys = await h.app.inject({ method: 'GET', url: `/projects/${projectId}/payment`, headers: { authorization: `Bearer ${await readerToken()}` } });
+    expect(keys.statusCode).toBe(403);
+  });
+
+  it('reports no keys as null, and says a person has to enter them', async () => {
+    await admin.put('/admin/payment-gateways/beta', { ...GATEWAY, name: 'Beta Pay' });
+    // Prove beta from a project that has keys, then look at one that has none.
+    const other = await admin.createProject('Other', 'other');
+    await admin.put(`/projects/${other}/payment`, { gatewayId: 'beta', mode: 'test', values: { apiKey: 'a', webhookSecret: 'b' } });
+    scripted.push({ body: { id: 's', url: 'https://mock-pay.invalid/s' } });
+    expect((await admin.post(`/projects/${other}/payment/verify`, { gatewayId: 'beta', mode: 'test' })).statusCode).toBe(200);
+    await admin.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Shop', colors: { primary: '#0a7' } },
+      website: { shop: { enabled: true, currency: { code: 'EUR' }, channels: [{ kind: 'checkout', key: 'card', gatewayId: 'beta', email: 'o@shop.test' }] } },
+      settings: {},
+    });
+    const body = (await admin.get(`/projects/${projectId}/payment-gateways`)).json() as { gateways: Array<{ id: string; keys: unknown }>; problems: string[] };
+    expect(body.gateways.find((g) => g.id === 'beta')?.keys).toBeNull();
+    expect(body.problems).toEqual([expect.stringContaining('no keys for "beta" yet')]);
+  });
+});
+
+describe('★★ an agent may not change a LIVE gateway in place', () => {
+  async function providerToken(): Promise<string> {
+    const made = await admin.post(`/projects/${projectId}/api-keys`, {
+      name: 'provider agent',
+      role: 'owner',
+      expiresInDays: 1,
+      capabilities: ['content:read', 'payments:provider:write'],
+    });
+    return made.json().token as string;
+  }
+  const bearer = (token: string, method: 'GET' | 'PUT' | 'POST' | 'DELETE', url: string, payload?: unknown) =>
+    h.app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, ...(payload !== undefined ? { payload: payload as never } : {}) });
+
+  async function makeLive(): Promise<void> {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'a', webhookSecret: 'b' } });
+    scripted.push({ body: { id: 's', url: 'https://mock-pay.invalid/s' } });
+    expect((await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' })).statusCode).toBe(200);
+  }
+
+  it('refuses an edit and a delete of an enabled, proven gateway — and leaves it proven', async () => {
+    await makeLive();
+    const token = await providerToken();
+    const edit = await bearer(token, 'PUT', '/admin/payment-gateways/acme', { ...GATEWAY, apiBase: { test: 'https://evil.invalid', live: 'https://evil.invalid' }, allowedOrigins: ['https://evil.invalid'] });
+    expect(edit.statusCode).toBe(409);
+    expect(edit.json()).toMatchObject({ forkable: true });
+    expect(edit.json().error).toContain('fork_gateway_definition');
+    expect((await bearer(token, 'DELETE', '/admin/payment-gateways/acme')).statusCode).toBe(409);
+    const still = (await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme');
+    expect(still).toMatchObject({ verified: true, enabled: true, apiBase: GATEWAY.apiBase });
+  });
+
+  it('★ a MEMBER token is held to the same rule as a project key', async () => {
+    await makeLive();
+    const minted = await admin.post('/account/member-tokens', {
+      name: 'fleet',
+      expiresInDays: 1,
+      currentPassword: 'Pw-secret-1',
+      capabilities: ['content:read', 'payments:provider:write'],
+    });
+    expect(minted.statusCode).toBe(201);
+    const token = minted.json().token as string;
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/acme', { ...GATEWAY, name: 'Member edit' })).statusCode).toBe(409);
+    expect((await bearer(token, 'DELETE', '/admin/payment-gateways/acme')).statusCode).toBe(409);
+    // …and may still write a new draft, which is what the capability is for.
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/member_draft', GATEWAY)).statusCode).toBe(200);
+  });
+
+  it('lets the agent fork it and edit the fork, which carries no live traffic until proven', async () => {
+    await makeLive();
+    const token = await providerToken();
+    expect((await bearer(token, 'POST', '/admin/payment-gateways/acme/fork', { id: 'acme_v2' })).statusCode).toBe(201);
+    const edit = await bearer(token, 'PUT', '/admin/payment-gateways/acme_v2', { ...GATEWAY, name: 'Acme v2' });
+    expect(edit.statusCode).toBe(200);
+    expect(edit.json()).toMatchObject({ gateway: { verified: false }, mustReverify: true });
+    expect((await bearer(token, 'DELETE', '/admin/payment-gateways/acme_v2')).statusCode).toBe(204);
+  });
+
+  it('an unproven gateway stays the agent\'s to change — and a person may still edit a live one', async () => {
+    const token = await providerToken();
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/draft', GATEWAY)).statusCode).toBe(200);
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/draft', { ...GATEWAY, name: 'Draft 2' })).statusCode).toBe(200);
+    await makeLive();
+    expect((await admin.put('/admin/payment-gateways/acme', { ...GATEWAY, name: 'Renamed by a person' })).statusCode).toBe(200);
+  });
+});
+
+describe('★★ once a project holds keys for an id, an agent may not change where they go', () => {
+  async function providerToken(): Promise<string> {
+    const made = await admin.post(`/projects/${projectId}/api-keys`, { name: 'provider agent', role: 'owner', expiresInDays: 1, capabilities: ['payments:provider:write'] });
+    return made.json().token as string;
+  }
+  const bearer = (token: string, method: 'PUT' | 'POST' | 'DELETE', url: string, payload?: unknown) =>
+    h.app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, ...(payload !== undefined ? { payload: payload as never } : {}) });
+  const EVIL = { apiBase: { test: 'https://evil.invalid', live: 'https://evil.invalid' }, allowedOrigins: ['https://evil.invalid'] };
+
+  it('an unused draft is the agent\'s to change freely — destinations included', async () => {
+    const token = await providerToken();
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/acme', GATEWAY)).statusCode).toBe(200);
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/acme', { ...GATEWAY, ...EVIL })).statusCode).toBe(200);
+  });
+
+  it('★ with keys in a project the definition is the agent\'s no longer — not its hosts, not its templates', async () => {
+    const token = await providerToken();
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/acme', GATEWAY)).statusCode).toBe(200);
+    await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'sk_test_real', webhookSecret: 'whsec_real' } });
+
+    // A body tells the provider what to do with the keys — so a template change is refused like a host change.
+    const templated = { ...GATEWAY, checkout: { ...GATEWAY.checkout, request: { ...GATEWAY.checkout.request, path: '/v2/sessions' } } };
+    for (const change of [templated, { ...GATEWAY, ...EVIL }, { ...GATEWAY, name: 'Renamed' }]) {
+      const res = await bearer(token, 'PUT', '/admin/payment-gateways/acme', change);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error).toContain('1 project holds keys for "acme"');
+    }
+    expect((await bearer(token, 'DELETE', '/admin/payment-gateways/acme')).statusCode).toBe(409);
+    const stored = (await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme');
+    expect(stored).toMatchObject({ name: 'Acme Pay', apiBase: GATEWAY.apiBase, checkout: { request: { path: '/sessions' } } });
+
+    // The iteration loop: once the person removes the keys, the agent may change it again.
+    expect((await h.app.inject({ method: 'DELETE', url: `/projects/${projectId}/payment/acme`, cookies: { sw_session: admin.token } })).statusCode).toBe(204);
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/acme', templated)).statusCode).toBe(200);
+  });
+
+  it('★ keys outlive a deleted definition — an agent may not re-create or fork onto that id', async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'sk_test_real', webhookSecret: 'whsec_real' } });
+    expect((await admin.del('/admin/payment-gateways/acme')).statusCode).toBe(204);
+    const token = await providerToken();
+    const recreate = await bearer(token, 'PUT', '/admin/payment-gateways/acme', { ...GATEWAY, ...EVIL });
+    expect(recreate.statusCode).toBe(409);
+    expect(recreate.json().error).toContain('Pick a new id');
+    expect((await bearer(token, 'PUT', '/admin/payment-gateways/evil_src', { ...GATEWAY, ...EVIL })).statusCode).toBe(200);
+    expect((await bearer(token, 'POST', '/admin/payment-gateways/evil_src/fork', { id: 'acme' })).statusCode).toBe(409);
+    expect((await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme')).toBeUndefined();
+    // A person may: they are the one the keys belong to.
+    expect((await admin.put('/admin/payment-gateways/acme', GATEWAY)).statusCode).toBe(200);
+  });
+});
+
+describe('★ what a TOKEN may do to an order — narrower than a person in the inbox', () => {
+  async function agent() {
+    const made = await admin.post(`/projects/${projectId}/api-keys`, { name: 'ops agent', role: 'owner', expiresInDays: 1, capabilities: ['content:read', 'content:write'] });
+    const token = made.json().token as string;
+    return (method: 'POST' | 'PATCH', url: string, payload: unknown) =>
+      h.app.inject({ method, url, headers: { authorization: `Bearer ${token}` }, payload: payload as never });
+  }
+
+  it('the order row says where each mail stands, so a reader can tell WHICH order owes one', async () => {
+    const id = await insertTxn({ seq: 1, values: { notifyState: 'sent', receiptState: 'failed', receiptError: 'mailbox full' } });
+    expect((await admin.get(`/projects/${projectId}/transactions/${id}`)).json().transaction).toMatchObject({
+      notifyState: 'sent',
+      receiptState: 'failed',
+      receiptError: 'mailbox full',
+    });
+  });
+
+  it('★ a token resends only a mail that failed — never one that arrived or is still queued', async () => {
+    const call = await agent();
+    const id = await insertTxn({ seq: 1, values: { notifyState: 'sent', receiptState: 'failed' } });
+    const dup = await call('POST', `/projects/${projectId}/transactions/${id}/resend`, { kind: 'notify' });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error).toContain('"sent", not failed');
+    const queued = await insertTxn({ id: 2, seq: 2, values: { receiptState: 'pending' } });
+    expect((await call('POST', `/projects/${projectId}/transactions/${queued}/resend`, { kind: 'receipt' })).statusCode).toBe(409);
+    expect((await call('POST', `/projects/${projectId}/transactions/${id}/resend`, { kind: 'receipt' })).statusCode).toBe(200);
+    const [row] = await h.db.select().from(shopTransactions).where(eq(shopTransactions.id, id));
+    expect(row?.notifyState).toBe('sent');
+    expect(row?.receiptState).toBe('pending');
+    // A person may still resend a delivered one on purpose — the buyer lost it.
+    expect((await admin.post(`/projects/${projectId}/transactions/${id}/resend`, { kind: 'notify' })).statusCode).toBe(200);
+  });
+
+  it('★ a token moves fulfilment only on a PAID order', async () => {
+    const call = await agent();
+    const unpaid = await insertTxn({ seq: 1, values: { status: 'pending' } });
+    const refused = await call('PATCH', `/projects/${projectId}/transactions/${unpaid}/fulfilment`, { to: 'shipped' });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toContain('"pending", not paid');
+    const paid = await insertTxn({ id: 2, seq: 2 });
+    expect((await call('PATCH', `/projects/${projectId}/transactions/${paid}/fulfilment`, { to: 'shipped', note: 'DHL' })).statusCode).toBe(200);
+    expect((await call('PATCH', `/projects/${projectId}/transactions/txn_nope/fulfilment`, { to: 'shipped' })).statusCode).toBe(404);
+  });
+});
+
+describe('★★ a proof stamps only the definition that was proven', () => {
+  it('a definition edited while the dry run was at the provider is NOT marked proven', async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    await admin.put(`/projects/${projectId}/payment`, { gatewayId: 'acme', mode: 'test', values: { apiKey: 'a', webhookSecret: 'b' } });
+    // The provider call is where the window is: write a new definition while it is in flight.
+    scripted.push({ body: { id: 's', url: 'https://mock-pay.invalid/s' } });
+    duringNextCall = async () => {
+      expect((await admin.put('/admin/payment-gateways/acme', { ...GATEWAY, name: 'Edited mid-proof' })).statusCode).toBe(200);
+    };
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ verified: false, reason: 'changed' });
+    const stored = (await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme');
+    expect(stored).toMatchObject({ name: 'Edited mid-proof', verified: false });
+  });
+});
+
+describe('★ a gateway definition is not deleted while an order through it is open, anywhere', () => {
+  it('refuses with a 409 naming the count, then allows it once the order settled', async () => {
+    await admin.put('/admin/payment-gateways/acme', GATEWAY);
+    const other = await admin.createProject('Other', 'other-orders');
+    await h.db.insert(shopTransactions).values({
+      id: 'txn_elsewhere', projectId: other, channelKey: 'pay', gatewayId: 'acme', mode: 'test', status: 'created', currency: 'EUR',
+      subtotalMinor: 100, totalMinor: 100, lines: [], buyer: {}, catalogDigest: 'd', publicToken: 'tok_elsewhere', createdAt: new Date(), updatedAt: new Date(),
+    } as never);
+    const refused = await admin.del('/admin/payment-gateways/acme');
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toContain('1 order through "acme" is still open');
+    await h.db.update(shopTransactions).set({ status: 'paid' }).where(eq(shopTransactions.id, 'txn_elsewhere'));
+    expect((await admin.del('/admin/payment-gateways/acme')).statusCode).toBe(204);
   });
 });
 

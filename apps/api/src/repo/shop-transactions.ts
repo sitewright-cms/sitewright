@@ -57,6 +57,9 @@ export interface CreateTransactionInput {
   shipCountry?: string;
 }
 
+/** One order mail's delivery state (the `notify_state` / `receipt_state` columns). */
+export type MailState = 'pending' | 'sent' | 'failed' | 'na' | 'abandoned';
+
 export interface TransactionRow {
   id: string;
   projectId: string;
@@ -86,6 +89,16 @@ export interface TransactionRow {
   /** Attempts already made for each mail — the runner's back-off input. */
   notifyAttempts: number;
   receiptAttempts: number;
+  /**
+   * Where each of the two mails stands — `na` (never owed), `pending` (queued or retrying), `sent`,
+   * `failed`, `abandoned` — and why the last attempt failed. Mapped so a reader can tell WHICH order
+   * owes a mail: the inbox summary only counts them, and resending one that was delivered sends a
+   * duplicate a buyer reads as a second charge.
+   */
+  notifyState: MailState;
+  receiptState: MailState;
+  notifyError: string | null;
+  receiptError: string | null;
   createdAt: Date;
   paidAt: Date | null;
 }
@@ -121,6 +134,10 @@ function toRow(r: any): TransactionRow {
     customerEmail: r.customerEmail ?? null,
     notifyAttempts: r.notifyAttempts ?? 0,
     receiptAttempts: r.receiptAttempts ?? 0,
+    notifyState: r.notifyState ?? 'na',
+    receiptState: r.receiptState ?? 'na',
+    notifyError: r.notifyError ?? null,
+    receiptError: r.receiptError ?? null,
     createdAt: r.createdAt,
     paidAt: r.paidAt ?? null,
   };
@@ -608,6 +625,15 @@ export class ShopTransactionRepository {
           gatewayId !== undefined ? eq(shopTransactions.gatewayId, gatewayId) : undefined,
         ),
       );
+    return Number(n);
+  }
+
+  /** How many orders through one gateway are still open, across EVERY project — a definition is instance-wide. */
+  async countOpenForGateway(gatewayId: string): Promise<number> {
+    const [{ n } = { n: 0 }] = await this.db
+      .select({ n: sql<number>`count(*)` })
+      .from(shopTransactions)
+      .where(and(eq(shopTransactions.gatewayId, gatewayId), inArray(shopTransactions.status, ['created', 'pending'])));
     return Number(n);
   }
 }

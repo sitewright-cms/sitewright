@@ -1083,6 +1083,64 @@ export class SitewrightClient {
     return this.request('GET', this.projectPath(`/submissions${qs ? `?${qs}` : ''}`));
   }
 
+  // ---- the shop's orders (the editor's Orders inbox) ----
+
+  async listOrders(opts: { status?: string; limit?: number; offset?: number } = {}): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (opts.status) params.set('status', opts.status);
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    const qs = params.toString();
+    return this.request('GET', this.projectPath(`/transactions${qs ? `?${qs}` : ''}`));
+  }
+
+  async getOrder(orderId: string): Promise<unknown> {
+    return this.request('GET', this.projectPath(`/transactions/${encodeURIComponent(orderId)}`));
+  }
+
+  /** How many paid orders are still owed their shop notification / buyer receipt. */
+  async undeliveredOrderMail(): Promise<unknown> {
+    return this.request('GET', this.projectPath('/transactions-undelivered'));
+  }
+
+  async setOrderFulfilment(orderId: string, to: string, note?: string): Promise<unknown> {
+    return this.request('PATCH', this.projectPath(`/transactions/${encodeURIComponent(orderId)}/fulfilment`), {
+      to,
+      ...(note !== undefined ? { note } : {}),
+    });
+  }
+
+  async resendOrderMail(orderId: string, kind: 'notify' | 'receipt'): Promise<unknown> {
+    return this.request('POST', this.projectPath(`/transactions/${encodeURIComponent(orderId)}/resend`), { kind });
+  }
+
+  // ---- payment providers ----
+
+  /** The providers this project can charge through, with how far its keys have got, and what would stop a checkout. */
+  async listPaymentProviders(): Promise<unknown> {
+    return this.request('GET', this.projectPath('/payment-gateways'));
+  }
+
+  /** Every gateway DEFINITION on the instance, in full. Instance-wide; needs `payments:provider:write`. */
+  async listGatewayDefinitions(): Promise<unknown> {
+    return this.request('GET', '/admin/payment-gateways');
+  }
+
+  async putGatewayDefinition(gatewayId: string, definition: unknown): Promise<unknown> {
+    return this.request('PUT', `/admin/payment-gateways/${encodeURIComponent(gatewayId)}`, definition);
+  }
+
+  async forkGatewayDefinition(fromId: string, id: string, name?: string): Promise<unknown> {
+    return this.request('POST', `/admin/payment-gateways/${encodeURIComponent(fromId)}/fork`, {
+      id,
+      ...(name !== undefined ? { name } : {}),
+    });
+  }
+
+  async deleteGatewayDefinition(gatewayId: string): Promise<unknown> {
+    return this.request('DELETE', `/admin/payment-gateways/${encodeURIComponent(gatewayId)}`);
+  }
+
   async stockProviders(): Promise<unknown> {
     return this.request('GET', this.projectPath('/stock/providers'));
   }

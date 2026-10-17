@@ -11,6 +11,7 @@ import {
   PaymentBindingInputSchema,
   toPublicGateway,
   maskBinding,
+  bindingKeysStatus,
   validateCredentialValue,
   canTransitionPayment,
   FULFILMENT_TRANSITIONS,
@@ -328,6 +329,33 @@ const fields: CredentialField[] = [
   { key: 'whsec', label: 'Webhook secret', kind: 'secret', required: true, perMode: true },
   { key: 'region', label: 'Region', kind: 'choice', required: false, perMode: false, options: ['eu', 'us'] },
 ];
+
+describe('bindingKeysStatus — what an agent may know about a project\'s keys', () => {
+  const stored = PaymentBindingStoredSchema.parse({
+    gatewayId: 'acme',
+    mode: 'live',
+    values: { test: { secretKey: 'sk_test_abcdef123456', whsec: 'whsec_zyxw98765' }, live: { secretKey: 'sk_live_abcdef654321', region: 'eu' } },
+  });
+
+  it('reports per-mode completeness and the NAMES of the missing required keys', () => {
+    expect(bindingKeysStatus(maskBinding(stored, fields), fields)).toEqual({
+      mode: 'live',
+      test: { complete: true, missing: [] },
+      // `region` is optional, so only the webhook secret is owed in live mode.
+      live: { complete: false, missing: ['whsec'] },
+    });
+  });
+
+  it('★ carries no value, no mask tail and no public value — presence only', () => {
+    const json = JSON.stringify(bindingKeysStatus(maskBinding(stored, fields), fields));
+    for (const leak of ['abcdef', '654321', '123456', '98765', '••••', 'sk_', '"eu"', 'display']) expect(json, leak).not.toContain(leak);
+  });
+
+  it('a blank value is not a key', () => {
+    const blank = PaymentBindingStoredSchema.parse({ gatewayId: 'acme', mode: 'test', values: { test: { secretKey: '', whsec: 'w' } } });
+    expect(bindingKeysStatus(maskBinding(blank, fields), fields).test).toEqual({ complete: false, missing: ['secretKey'] });
+  });
+});
 
 describe('maskBinding', () => {
   it('★ never returns a secret, and gives presence plus a shape hint only', () => {

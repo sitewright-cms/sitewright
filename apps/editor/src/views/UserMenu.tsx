@@ -325,7 +325,7 @@ function AccessKeysTab({ project, isStaff, isInstanceAdmin, hasPassword }: { pro
               Project-scoped tokens (PATs) for <span className="font-medium text-slate-700 dark:text-slate-200">{project.name}</span> — used by CI and headless tools.
             </p>
             {/* Keyed so the one-time-token banner + state reset if the open project changes. */}
-            <ApiKeysManager key={project.id} project={project} />
+            <ApiKeysManager key={project.id} project={project} isInstanceAdmin={isInstanceAdmin} />
           </>
         ) : (
           <div className={`${glassCard} p-5 text-sm text-slate-500 dark:text-slate-400`}>

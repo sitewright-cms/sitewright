@@ -4,6 +4,7 @@ import { api, ApiError, type ApiKeyCapability, type MemberTokenAdminCapability, 
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, toggleInput } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 import { IssuedTokenBanner } from './ui/IssuedTokenBanner';
+import { ProviderWriteCapability } from './ui/ProviderWriteCapability';
 
 /** What the token may do INSIDE each project it reaches — the same set a project token offers. */
 const PROJECT_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
@@ -248,6 +249,9 @@ export function MemberTokensManager({ isInstanceAdmin, hasPassword }: MemberToke
                 </span>
               </label>
             ))}
+            {isInstanceAdmin && (
+              <ProviderWriteCapability checked={caps.includes('payments:provider:write')} onToggle={() => toggleCap('payments:provider:write')} />
+            )}
           </div>
         </fieldset>
         {createsProjects && dailyMax !== null && (

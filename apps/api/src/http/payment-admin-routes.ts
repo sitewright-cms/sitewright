@@ -7,6 +7,7 @@ import {
   FulfilmentStateSchema,
   GatewayIdSchema,
   toPublicGateway,
+  bindingKeysStatus,
   fromMinorUnits,
   type PaymentGatewayStored,
   type PaymentMode,
@@ -16,7 +17,8 @@ import type { ProjectContext } from '../repo/context.js';
 import type { GatewayRepository } from '../payments/gateways.js';
 import type { ShopTransactionRepository } from '../repo/shop-transactions.js';
 import type { ShopStockRepository } from '../repo/shop-stock.js';
-import { isBuiltinGateway } from '../payments/builtin-gateways.js';
+import { BUILTIN_GATEWAYS, isBuiltinGateway } from '../payments/builtin-gateways.js';
+import { checkoutReadiness } from '../payments/readiness.js';
 import { createCheckoutSession, refundPayment, GatewayError, type ExecutorIo } from '../payments/executor.js';
 import type { InterpolationScope } from '../payments/interpolate.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -57,6 +59,8 @@ export interface PaymentAdminDeps {
   publicBaseUrl: () => string;
   /** The project's shop settings — which checkout channels charge through which gateway. */
   getShop: (projectId: string) => Promise<Shop | null>;
+  /** How many projects, instance-wide, hold keys for a gateway id ({@link projectsHoldingKeys}). */
+  projectsHoldingKeys: (gatewayId: string) => Promise<number>;
   io: ExecutorIo;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
@@ -72,6 +76,18 @@ const RefundBodySchema = z.object({
   amountMinor: z.number().int().min(1).max(100_000_000).optional(),
   restock: z.boolean().optional(),
 });
+
+/** Payment statuses an order has been paid in — the only ones a token may move fulfilment on. */
+const PAID_STATUSES: ReadonlySet<string> = new Set(['paid', 'partially_refunded', 'refunded']);
+
+/** The shipped name and addresses of a built-in gateway id, for comparing a definition against. */
+function shippedOf(id: string): { shipped: { name: string; apiBase: PaymentGatewayStored['apiBase']; allowedOrigins: string[] } } | Record<string, never> {
+  const b = BUILTIN_GATEWAYS.find((g) => g.id === id);
+  return b ? { shipped: { name: b.name, apiBase: b.apiBase, allowedOrigins: b.allowedOrigins } } : {};
+}
+
+/** What {@link registerPaymentAdminRoutes}' author check returns for a bearer token rather than a person. */
+const AGENT_AUTHOR = 'agent';
 
 /** Body of a fork request. */
 const ForkBodySchema = z.object({ id: GatewayIdSchema, name: z.string().min(1).max(120).optional() });
@@ -106,9 +122,46 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
    * definitions are instance-wide infrastructure.
    */
   async function requireGatewayAuthor(req: FastifyRequest): Promise<string> {
-    if (await hasProviderWriteScope(req)) return 'agent';
+    if (await hasProviderWriteScope(req)) return AGENT_AUTHOR;
     return requireInstanceAdmin(req);
   }
+
+  /**
+   * Why an AGENT may not make this change to a definition, or null when it may.
+   *
+   * ★ Two rules, both about a bearer token that may be acting on injected instructions. A person on a
+   * session is held to neither — they are the approver the proof step exists for.
+   *
+   *  1. A LIVE gateway — enabled and proven — is off-limits. Any write un-proves it (`put` clears
+   *     `verified`), so one edit stops live checkout in every project on the instance that charges
+   *     through it, and a delete does the same with no way back. An agent forks instead: the copy
+   *     carries no live traffic until a person proves it and projects are switched over.
+   *  2. Once ANY project holds keys for an id, the definition at that id is off-limits too — editing
+   *     it, deleting it, and creating or forking one onto it after a delete (keys are filed under the
+   *     id and outlive the definition). Not just its hosts: a definition decides what the provider is
+   *     ASKED to do with the keys, and a body can hand a key to the provider inside a return or
+   *     webhook URL that the provider then calls — so every field is a way out, and only "no keys
+   *     yet" is safe to change. To iterate, a person removes the project's keys, or the agent forks.
+   *
+   * Not atomic with the write that follows: a project saving keys in the same instant is missed. The
+   * window is one request's, not the provider call's, and the next agent write is refused again.
+   */
+  async function agentRefusal(author: string, gatewayId: string, change: 'edit' | 'create' | 'delete'): Promise<string | null> {
+    if (author !== AGENT_AUTHOR) return null;
+    const current = await gateways.byId(gatewayId);
+    if (current?.gateway.enabled && current.gateway.verified) {
+      return `"${gatewayId}" is live (enabled and proven), and an agent may not change a live payment provider — an edit would un-prove it and stop live checkout in every project that charges through it. Fork it (fork_gateway_definition), change the fork, and have a person prove it before projects switch over; or ask an instance admin.`;
+    }
+    const holding = await deps.projectsHoldingKeys(gatewayId);
+    if (holding === 0) return null;
+    const used = `${holding} project${holding === 1 ? ' holds' : 's hold'} keys for "${gatewayId}"`;
+    if (change === 'edit') {
+      return `${used}, so an agent may not change it — a definition decides where and how those keys are used. Ask the person to remove the keys (Settings → Website → Payments → Remove these keys) and change it then, or fork it to a new id.`;
+    }
+    if (change === 'delete') return `${used} — a person removes a payment provider that projects use.`;
+    return `${used} under that id, so an agent may not create a definition there — it would decide where those keys go. Pick a new id.`;
+  }
+
 
   // ---- level 1: the gateway definitions ----------------------------------------------------------
 
@@ -119,6 +172,10 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
       gateways: all.map(({ gateway, builtin }) => ({
         ...gateway,
         builtin,
+        // ★ For a built-in id, what the PLATFORM ships — never inferred from the stored record, which a
+        // proof rewrites (`builtin:false`) and an override replaces. It is the one reference a person
+        // checking a definition can trust, because no author wrote it.
+        ...shippedOf(gateway.id),
         // Where the provider's dashboard should send events. Shown so an operator can copy it rather
         // than assemble it by hand and get it subtly wrong.
         webhookUrl: `${deps.publicBaseUrl().replace(/\/+$/, '')}/pay/<projectId>/webhook/${gateway.id}`,
@@ -134,6 +191,8 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
       return reply.code(409).send({ error: 'a built-in gateway cannot be edited — fork it first', forkable: true });
     }
     const input = PaymentGatewayInputSchema.parse({ ...(req.body as object), id: req.params.id });
+    const refused = await agentRefusal(userId, req.params.id, (await gateways.byId(req.params.id)) ? 'edit' : 'create');
+    if (refused) return reply.code(409).send({ error: refused, forkable: true });
     const saved = await gateways.put(input as PaymentGatewayStored, userId);
     // `verified` is cleared by `put`; say so, because an operator who just edited a live gateway needs
     // to know it has to be re-proven before it can take money again.
@@ -146,6 +205,8 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     if ((await gateways.byId(body.id)) !== undefined) {
       return reply.code(409).send({ error: `a gateway with the id "${body.id}" already exists` });
     }
+    const refused = await agentRefusal(userId, body.id, 'create');
+    if (refused) return reply.code(409).send({ error: refused });
     const forked = await gateways.fork(req.params.id, body.id, userId);
     if (!forked) return reply.code(404).send({ error: 'gateway not found' });
     return reply.code(201).send({ gateway: body.name ? await gateways.put({ ...forked, name: body.name }, userId) : forked });
@@ -153,8 +214,20 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
 
   app.delete<{ Params: { id: string } }>('/admin/payment-gateways/:id', { config: rl(30) }, async (req, reply) => {
     const userId = await requireGatewayAuthor(req);
+    const refused = await agentRefusal(userId, req.params.id, 'delete');
+    if (refused) return reply.code(409).send({ error: refused });
     // Deleting a built-in's STORED OVERRIDE reverts to the shipped definition; the built-in itself
     // cannot be removed, so there is always a reference implementation to compare against.
+    if (!isBuiltinGateway(req.params.id)) {
+      // ★ Not while an order through it is still open, in any project. A buyer may be paying at the
+      // provider right now; with the definition gone their webhook cannot be verified and the
+      // reconciler cannot ask, so a PAID order would never be confirmed. The same rule as removing
+      // one project's keys, held instance-wide because a definition is.
+      const open = await transactions.countOpenForGateway(req.params.id);
+      if (open > 0) {
+        return reply.code(409).send({ error: `${open} order${open > 1 ? 's' : ''} through "${req.params.id}" ${open > 1 ? 'are' : 'is'} still open — keep the definition until ${open > 1 ? 'they are' : 'it is'} paid, expired or cancelled` });
+      }
+    }
     await gateways.remove(req.params.id, userId);
     return reply.code(204).send();
   });
@@ -208,7 +281,9 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
         field: {},
         text: { order_name: 'Sitewright gateway verification' },
       }, io);
-      await gateways.markVerified(rec.gateway.id, userId === 'agent' ? 'system' : userId);
+      if (!(await gateways.markVerified(rec.gateway.id, userId === AGENT_AUTHOR ? 'system' : userId, rec.gateway))) {
+        return reply.code(409).send({ verified: false, reason: 'changed', message: 'the definition changed while it was being proven — prove it again' });
+      }
       return reply.send({
         verified: true,
         // Returned so an operator can open it and SEE the provider's own page — the proof that
@@ -226,23 +301,42 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
 
   // ---- level 2: one project's credentials ---------------------------------------------------------
 
-  /** What a project may read about the gateways available to it. Public metadata only. */
+  /**
+   * What a project may read about the gateways available to it, and how ready its checkout is.
+   *
+   * Public metadata, plus — per gateway — whether the project's keys are there for each mode and
+   * which mode it transacts in ({@link bindingKeysStatus}: key names and presence, never a value or
+   * a mask). Reachable by an agent's `content:read`, because building a checkout that works needs
+   * exactly this: which gateway ids exist, and what a person still has to enter.
+   */
   app.get<{ Params: { projectId: string } }>('/projects/:projectId/payment-gateways', { config: rl(60) }, async (req, reply) => {
     const { ctx } = await resolveProject(req, 'content:read');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-    const all = await gateways.list();
+    const [all, bindings, shop] = await Promise.all([gateways.list(), gateways.bindingsPublic(ctx), deps.getShop(ctx.projectId)]);
     const base = deps.publicBaseUrl().replace(/\/+$/, '');
+    const bindingOf = new Map(bindings.map((b) => [b.gatewayId, b]));
+    const readiness = all.map(({ gateway }) => {
+      const binding = bindingOf.get(gateway.id);
+      return { gateway, keys: binding ? bindingKeysStatus(binding, gateway.credentialFields) : null };
+    });
+    const checkout = (Array.isArray(shop?.channels) ? shop.channels : []).filter((c) => c?.kind === 'checkout');
+    const { problems, notes } = checkoutReadiness(shop, readiness);
     return reply.send({
       // ★ Only ENABLED and VERIFIED gateways are offered. Letting a project bind an unproven one
       // would mean the first sign of an unfinished gateway is a buyer unable to pay.
-      gateways: all
+      gateways: readiness
         .filter(({ gateway }) => gateway.enabled && gateway.verified)
-        .map(({ gateway }) => ({
+        .map(({ gateway, keys }) => ({
           ...toPublicGateway(gateway),
           // The exact URL to paste into the provider's dashboard, assembled here rather than left for
           // an operator to build by hand and get subtly wrong.
           webhookUrl: `${base}/pay/${ctx.projectId}/webhook/${gateway.id}`,
+          keys,
+          // The checkout channels that charge through it.
+          channels: checkout.filter((c) => c.gatewayId === gateway.id).map((c) => c.key),
         })),
+      problems,
+      notes,
     });
   });
 
@@ -360,6 +454,17 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     const { ctx, project } = await resolveProject(req, 'content:write');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const { kind } = z.object({ kind: z.enum(['notify', 'receipt']) }).parse(req.body ?? {});
+    if (ctx.actor === 'agent') {
+      // ★ A token resends only a mail that did NOT arrive. A person may resend a delivered receipt on
+      // purpose (the buyer lost it), from the inbox; an agent looping over orders would mail every
+      // buyer twice — and a second order confirmation reads as a second charge.
+      const row = await transactions.byId(project.id, req.params.id);
+      if (!row) return reply.code(404).send({ error: 'transaction not found' });
+      const state = kind === 'notify' ? row.notifyState : row.receiptState;
+      if (state !== 'failed' && state !== 'abandoned') {
+        return reply.code(409).send({ error: `this order's ${kind === 'notify' ? 'shop notification' : 'receipt'} is "${state}", not failed — a token resends only a mail that failed (a person can resend a delivered one from the Orders inbox)` });
+      }
+    }
     const queued = await transactions.requeueMail(project.id, req.params.id, kind);
     if (!queued) return reply.code(404).send({ error: 'transaction not found' });
     return reply.send({ queued: true, kind });
@@ -370,6 +475,15 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     const { ctx, project } = await resolveProject(req, 'content:write');
     if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const body = z.object({ to: FulfilmentStateSchema, note: z.string().max(2000).optional() }).parse(req.body);
+    if (ctx.actor === 'agent') {
+      // A token moves fulfilment only on an order that was PAID. Marking an unpaid or failed order
+      // "shipped" is how goods leave without the money having arrived.
+      const row = await transactions.byId(project.id, req.params.id);
+      if (!row) return reply.code(404).send({ error: 'transaction not found' });
+      if (!PAID_STATUSES.has(row.status)) {
+        return reply.code(409).send({ error: `this order is "${row.status}", not paid — a token moves fulfilment only on a paid order` });
+      }
+    }
     const moved = await transactions.setFulfilment(project.id, req.params.id, body.to, body.note);
     if (!moved.ok) {
       return moved.reason === 'not-found'

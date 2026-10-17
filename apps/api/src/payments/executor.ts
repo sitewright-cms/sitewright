@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { GatewayEventKind, PaymentGatewayStored, PaymentMode } from '@sitewright/schema';
 import { interpolateString, interpolateValue, readStringPath, readPath, InterpolationError, type InterpolationScope } from './interpolate.js';
 import { verifyWebhookSignature, type VerifyFailure } from './verify.js';
+import { ProviderFetchError } from './provider-fetch.js';
 
 /**
  * THE GATEWAY EXECUTOR — the host half of a declarative gateway.
@@ -115,6 +116,8 @@ async function callProvider(
   try {
     res = await io.fetch(url, { method, headers, ...(body !== undefined ? { body } : {}), signal: controller.signal });
   } catch (err) {
+    // The transport's own refusals carry a message written to be shown (never a URL or an address).
+    if (err instanceof ProviderFetchError) throw new GatewayError(err.message, err.kind === 'oversize' ? 'response' : 'config');
     // ★ Only a short reason escapes. A fetch error can carry the resolved IP and the full URL, and
     // for several providers the URL carries the key.
     throw new GatewayError(`the payment provider could not be reached (${err instanceof Error ? err.name : 'network error'})`, 'upstream');
@@ -123,6 +126,11 @@ async function callProvider(
   }
   const text = await res.text();
   if (text.length > MAX_RESPONSE_BYTES) throw new GatewayError('the payment provider returned an oversized response', 'response', res.status);
+  if (res.status >= 300 && res.status < 400) {
+    // Never followed (see provider-fetch.ts): said plainly, because "rejected" would send an operator
+    // hunting for a bad key.
+    throw new GatewayError(`the payment provider answered with a redirect (HTTP ${res.status}), which is never followed`, 'upstream', res.status);
+  }
   if (!res.ok) {
     // ★ The STATUS only. A provider error body routinely echoes the request back, key included.
     throw new GatewayError(`the payment provider rejected the request (HTTP ${res.status})`, 'upstream', res.status);

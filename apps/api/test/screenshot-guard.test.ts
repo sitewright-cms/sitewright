@@ -14,6 +14,15 @@ describe('isPrivateIp', () => {
       '100.64.0.1', // CGNAT
       '240.0.0.1', // class E / reserved
       '255.255.255.255', // broadcast / reserved
+      '192.0.0.8', // IETF protocol assignments 192.0.0.0/24
+      '198.18.0.1', // benchmarking 198.18.0.0/15 — internal in some labs and VPCs
+      '198.19.255.254',
+      '224.0.0.1', // multicast
+      '239.255.255.250',
+      'fec0::1', // site-local (deprecated)
+      'feff::1',
+      'ff02::1', // multicast
+      '100::1', // discard-only
       '::1',
       '::',
       'fc00::1',
@@ -45,6 +54,11 @@ describe('isPrivateIp', () => {
       '1.1.1.1',
       '93.184.216.34',
       '172.32.0.1',
+      '192.0.1.1', // just outside 192.0.0.0/24
+      '198.17.255.255', // just outside the benchmarking /15
+      '198.20.0.1',
+      '223.255.255.254', // the last unicast /8 before multicast
+      '2001:db8::1', // documentation, but not an internal range
       '2606:4700:4700::1111',
       '[2606:4700:4700::1111]',
       // The embedding forms must stay usable when what they wrap is PUBLIC — the rule is "judge the

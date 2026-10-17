@@ -1031,7 +1031,8 @@ every database write); the record only describes the provider's API.
   address in a template must be on allowedOrigins (the shop's own come from \${URL:…}). A field used for
   webhook verification or request auth must be kind "secret".
   apiBase and allowedOrigins must be public hosts: no localhost, .local, .internal, single-label name, or
-  private / loopback / link-local address.
+  private / loopback / link-local address. At call time the platform also refuses a name that RESOLVES
+  to a private address, and never follows a redirect: a 3xx answer fails the call ("never followed").
 - verification: the webhook check, one of the schemes the host implements.
   { scheme:"hmac-sha256-header", header, encoding: hex|base64, valuePrefix?, secretField } |
   { scheme:"hmac-timestamped", header, timestampKey:"t", signatureKey:"v1", toleranceSeconds,

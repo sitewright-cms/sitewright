@@ -50,7 +50,12 @@ beforeEach(async () => {
   scripted = [];
   calls = [];
   duringNextCall = null;
-  h = await makeHarness({ encryptionKey: KEY, publicUrl: 'https://sw.test', paymentFetch: makeFetch() });
+  await boot();
+});
+
+/** A harness with payments on. `scripted: false` keeps the app's OWN provider transport. */
+async function boot(scriptedProvider = true): Promise<void> {
+  h = await makeHarness({ encryptionKey: KEY, publicUrl: 'https://sw.test', ...(scriptedProvider ? { paymentFetch: makeFetch() } : {}) });
   admin = await h.signup({ admin: true });
   member = await h.signup();
   projectId = await admin.createProject('Shop', 'shop');
@@ -60,7 +65,7 @@ beforeEach(async () => {
     .insert(instanceSettings)
     .values({ id: INSTANCE_SETTINGS_ID, data, updatedAt: new Date() })
     .onConflictDoUpdate({ target: instanceSettings.id, set: { data, updatedAt: new Date() } });
-});
+}
 
 afterEach(async () => {
   await h?.close();
@@ -179,6 +184,23 @@ describe('★★ the dry run is the only thing that marks a gateway verified', (
     expect(res.json().verified).toBe(false);
     const gw = (await admin.get('/admin/payment-gateways')).json().gateways.find((g: { id: string }) => g.id === 'acme');
     expect(gw.verified).toBe(false);
+  });
+
+  it('★★ the app’s own transport refuses a private address — and says so', async () => {
+    // No scripted provider: this is the transport the deployed app calls with. The stored record is
+    // pointed at a private LITERAL behind the input lint's back (as a name resolving there would be),
+    // so the refusal needs no DNS and cannot reach the network.
+    await h.close();
+    await boot(false);
+    await configure();
+    const where = and(eq(content.kind, 'payment_gateway'), eq(content.entityId, 'acme'));
+    const [row] = await h.db.select().from(content).where(where);
+    // Loopback's closed discard port: should this guard ever regress, the request still goes nowhere.
+    const internal = 'https://127.0.0.1:9';
+    await h.db.update(content).set({ data: { ...(row!.data as object), apiBase: { test: internal, live: internal }, allowedOrigins: [internal] } }).where(where);
+    const res = await admin.post(`/projects/${projectId}/payment/verify`, { gatewayId: 'acme', mode: 'test' });
+    expect(res.statusCode).toBe(422);
+    expect(res.json()).toMatchObject({ verified: false, reason: 'config', message: expect.stringContaining('did not resolve to a public internet address') });
   });
 
   it('refuses when the named project has no credentials for the gateway', async () => {

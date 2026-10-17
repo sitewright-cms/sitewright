@@ -11,6 +11,7 @@ import {
   type FetchLike,
 } from '../src/payments/executor.js';
 import type { InterpolationScope } from '../src/payments/interpolate.js';
+import { makeProviderFetch } from '../src/payments/provider-fetch.js';
 import { BUILTIN_GATEWAYS, BUILTIN_GATEWAY_IDS, isBuiltinGateway } from '../src/payments/builtin-gateways.js';
 
 const NOW = 1_760_000_000_000;
@@ -429,5 +430,25 @@ describe('★ every built-in gateway is internally consistent', () => {
     const mock = BUILTIN_GATEWAYS.find((g) => g.id === 'mock')!;
     // Its live base is an unresolvable host, so a mis-click cannot take real money.
     expect(mock.apiBase.live).toContain('.invalid');
+  });
+});
+
+describe('★ what the transport refuses reaches the operator as itself', () => {
+  it('an address leading into a private network reads as a definition problem, not an outage', async () => {
+    const io: ExecutorIo = { fetch: makeProviderFetch({ resolve: async () => [{ address: '10.0.0.10', family: 4 }] }), now: () => NOW };
+    const err = await createCheckoutSession(gateway(), 'test', scope, io).then(() => null, (e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayError);
+    expect(err).toMatchObject({ kind: 'config', message: expect.stringContaining('did not resolve to a public internet address') });
+    expect((err as Error).message).not.toContain('10.0.0.10');
+  });
+
+  it('★ a redirect is named as one — "rejected" would send the operator hunting for a bad key', async () => {
+    const io = scriptedIo([{ ok: false, status: 302, body: '' }]);
+    await expect(createCheckoutSession(gateway(), 'test', scope, io)).rejects.toMatchObject({
+      kind: 'upstream',
+      status: 302,
+      message: expect.stringContaining('redirect (HTTP 302), which is never followed'),
+    });
+    expect(io.calls).toHaveLength(1);
   });
 });

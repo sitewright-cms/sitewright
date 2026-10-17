@@ -257,7 +257,8 @@ import { ShopStockRepository } from '../repo/shop-stock.js';
 import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { projectsHoldingKeys } from '../payments/gateway-usage.js';
 import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
-import { fetchProviderStatus } from '../payments/executor.js';
+import { fetchProviderStatus, type FetchLike } from '../payments/executor.js';
+import { providerFetch } from '../payments/provider-fetch.js';
 import { runOrderMail } from '../payments/notify-runner.js';
 import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
@@ -1651,9 +1652,9 @@ export interface AppOptions {
    *
    * ★ Injected so a suite can script a provider instead of reaching the network — the same seam
    * `StockProvider` uses, and for the same reason: a test that mocks the module under test proves
-   * nothing about the exchange. Defaults to the platform `fetch`.
+   * nothing about the exchange. Defaults to `providerFetch`, the pinned transport.
    */
-  paymentFetch?: (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+  paymentFetch?: FetchLike;
   /**
    * `Contact` URIs for this instance's `/.well-known/security.txt`, most-preferred first
    * (`SW_SECURITY_CONTACT`). Empty/unset → the upstream advisory channel; see `security-txt.ts`.
@@ -1888,6 +1889,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
   // The SSRF-safe outbound for `media/import-url` (see that route). Injectable for tests only.
   const importUrlFetch = opts.importUrlFetch ?? pinnedFetchDetailed;
+  // The SSRF-safe outbound for payment-provider calls: pinned to a public address, never redirected.
+  const paymentFetch: FetchLike = opts.paymentFetch ?? providerFetch;
   const aiQuota = opts.aiQuota ?? {};
   // Isolated template renderer (child-process worker pool). Injected in tests; in
   // production server.ts constructs one. Absent → the render route returns 503.
@@ -10596,7 +10599,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
       },
       paymentsEnabled: () => instanceSettingsRepo.getPaymentsEnabled(),
-      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      io: { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
       rl,
     });
   }
@@ -10690,7 +10693,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
-      io: { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
+      io: { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
       rl,
     });
   }
@@ -11807,7 +11810,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           url: { return: '', cancel: '', webhook: '' },
           field: {},
           text: {},
-        }, { fetch: (opts.paymentFetch ?? (globalThis.fetch as never)) as never, now: () => Date.now() });
+        }, { fetch: paymentFetch, now: () => Date.now() });
         // `recheck` means the provider still has no answer — leave it for the next pass.
         if (status.kind === 'recheck') continue;
         if (status.kind === 'paid') {

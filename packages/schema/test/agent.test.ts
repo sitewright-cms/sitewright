@@ -84,11 +84,36 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(GUIDE_TOPICS[0]).toBe('design');
     // The core nudges the agent to read it before laying out a page (so it is not under-used).
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("design")');
-    // It carries the flagship section toolkit, not just prose.
+    // It used to carry ONE copy-paste section toolkit (split hero, 3-up icon cards, alternating rows, stats
+    // band, testimonials, pricing, FAQ, CTA band) plus a fixed type scale and a "6-9 sections" quota. Agents
+    // followed it faithfully, so every generated site shared one skeleton. It now asks for an art direction
+    // first, offers a vocabulary to compose from, and names that skeleton as the thing to avoid.
     const body = AGENT_GUIDES.design.body;
-    for (const probe of ['HERO', 'ALTERNATING FEATURE ROWS', 'STATS BAND', 'CLOSING CTA', 'type scale', '6-9']) {
+    for (const probe of ['DECIDE THE ART DIRECTION', 'COMPOSE FROM THE VOCABULARY', 'GENERIC-TEMPLATE CHECK', 'HEADER + FOOTER']) {
       expect(body).toContain(probe);
     }
+    // The skeletons must not creep back: a numbered toolkit entry or a quota re-creates the template.
+    for (const gone of ['1) HERO', 'ALTERNATING FEATURE ROWS', 'THE SECTION TOOLKIT', '6-9']) {
+      expect(body).not.toContain(gone);
+    }
+    expect(DEFAULT_AGENT_INSTRUCTIONS).not.toContain('6-9 composed sections');
+    // Freeing the LAYOUT must not drop the rules that keep a site WORKING; each is a fact agents need.
+    for (const kept of [
+      '.sw-container', // aligned width + the owner's one Content-width control
+      'PRETTY-PRINTED',
+      'identity.typography',
+      'LEGACY value that silently DEGRADES', // source:"google" quietly falls back to a generic face
+      'minmax(0,1fr)', // a bare 1fr track scrolls the whole page sideways
+      'font-body',
+      'sw-stagger',
+      '--radius-box', // what actually rounds daisyUI components (identity.radii does not)
+      'measure_header', // a restyled bar of another height
+      '--sw-header-offset:0', // a bar laid over the opening
+    ]) {
+      expect(body, kept).toContain(kept);
+    }
+    // The header recipe is mechanics, not a look — the nav guide says so and points back here.
+    expect(AGENT_GUIDES.nav.body).toContain('MECHANICS, not the look');
   });
 
   it('teaches CHROME SLOT authoring (website.mainNav/footer) so header/footer are not built as pages', () => {

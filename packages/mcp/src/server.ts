@@ -1057,7 +1057,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           const dims = shots.map(([name, s]) => `${name} ${s!.width}×${s!.height}`).join(', ');
           content.push({
             type: 'text',
-            text: `Rendered (${dims}). Look at the screenshot(s) below and judge it like a designer — section rhythm, whitespace, type hierarchy, colour balance, real imagery, and the mobile view — then refine until it reads as flagship-quality.${includeHtml ? '' : ' (Pass includeHtml:true to also get the HTML source.)'}`,
+            text: `Rendered (${dims}). Look at the screenshot(s) below and judge it like a designer: does it carry the art direction you chose, or could it be any business's template? Then type hierarchy, spacing, colour balance, real imagery and the mobile view — refine until it reads as finished work made for this client.${includeHtml ? '' : ' (Pass includeHtml:true to also get the HTML source.)'}`,
           });
           for (const [, s] of shots) content.push({ type: 'image', data: s!.base64, mimeType: s!.mimeType });
         } else {

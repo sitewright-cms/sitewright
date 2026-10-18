@@ -72,4 +72,4 @@ one alignment and respond to the Content width setting together. When nativizing
 ## See also
 
 - [Color tokens](color-tokens.md) — the brand color custom properties.
-- The `design` agent guide (`get_guide("design")`) — the section toolkit uses `.sw-container`.
+- The `design` agent guide (`get_guide("design")`) — every section wrapper uses `.sw-container`, except deliberate breakouts.

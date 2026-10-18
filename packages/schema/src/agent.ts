@@ -54,9 +54,9 @@ landmarks). Never make a "header" or "footer" PAGE. Details + nav recipes: get_g
 
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
-renders an empty body. Before you lay out a page, call \`get_guide("design")\` for the section
-patterns, type/spacing rhythm, and colour-depth rules that separate a flagship page from a
-skeleton (a real landing page is 6-9 composed sections, not a hero + three cards). The exact
+renders an empty body. Before you lay out a page, call \`get_guide("design")\`: decide THIS site's
+art direction FIRST, then compose from its layout vocabulary — a site must look like ITS business, never
+the stock AI template every generated site shares (nor a thin hero + three cards). The exact
 authoring vocabulary — every \`{{sw-*}}\` helper, \`data-sw-*\` directive, binding namespace, and
 loop variable — is in the \`get_reference\` tool (don't guess helper names). If a page carries a
 \`data.swImport\` marker it was IMPORTED from an external site as a raw scaffold — call
@@ -219,7 +219,7 @@ rather than a flat wall of static sections; prefer a first-party component over 
 get_components (contracts + skeletons) before laying out a page.
 USE ICONS: {{sw-icon "name"}} (Phosphor, FILLED default; "name:weight" picks
 thin|light|regular|bold|fill|duotone), brand:<slug> logos, {{sw-flag "de"}} country flags; search_icons
-finds names (countries by NAME too). Don't ship an icon-less contact / footer / feature / stats section.
+finds names (countries by NAME too). Use them where they help a reader scan (contact details, lists, the footer).
 DELETING is separate: delete_page / delete_content / delete_content_bulk (many ids) need the
 \`content:delete\` capability, often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if absent,
 don't attempt removals: ask the user to delete it in the editor, or to grant \`content:delete\`. Prefer
@@ -235,12 +235,68 @@ rolls it back (non-destructive; a deleted entity is recreated).
  */
 export const AGENT_GUIDES = {
   design: {
-    title: "Design — section patterns & visual craft",
-    summary: "what flagship looks like: layout rhythm, type scale, layered surfaces + copy-paste section skeletons (hero, feature rows, stats, testimonials, pricing, FAQ, CTA) — READ before laying out a page",
+    title: "Design — art direction, layout vocabulary & visual craft",
+    summary: "decide THIS site's art direction, then compose from a wide layout vocabulary (never one stock template) + type, colour, imagery and motion craft — READ before laying out a page",
     body: `
-DESIGN — read this BEFORE composing a page's layout. The other guides tell you HOW to wire a feature; this tells you what GOOD looks like. It is what separates a flagship site from a generic skeleton.
+DESIGN — read this BEFORE composing a page. The other guides tell you HOW to wire a feature; this one is about what the site should LOOK like.
 
-THE BAR. Flagship = generous whitespace, a clear type scale, layered surfaces for depth, ONE accent colour used sparingly, real imagery, an alternating section rhythm, one tasteful motion accent per section, and a strong closing CTA. The #1 failure mode is the "hero + 3 cards + stop" skeleton — a real landing page has 6-9 distinct sections with a narrative arc (hook -> proof -> how it works -> depth -> social proof -> objection handling -> call to action).
+TWO FAILURES, EQUALLY BAD. (1) The THIN skeleton: a hero, one grid of cards, stop. (2) The GENERIC TEMPLATE: a polished page that could belong to ANY business, because it was assembled from the same default sections every AI-built site uses — eyebrow + headline + two buttons, three icon cards, alternating image rows, a stats band, testimonials, pricing, an FAQ, a gradient call-to-action. When every site an agency ships has that one skeleton, its clients notice. The goal is a site that looks like THIS business and no other.
+
+STEP 1 — DECIDE THE ART DIRECTION before you write any markup, and state it to the user in ONE line (two illustrations of the FORM, not suggestions: "Direction: quiet gallery — vast white space, small captions, one image per screen." / "Direction: loud market poster — stacked condensed type, clashing colour blocks, hard edges."). Derive it from the brief, the content and the brand, never from habit:
+- WHO visits, and what they came to do (book, buy, trust, browse, find the opening hours).
+- PERSONALITY in three words — the brief's own words where it gives them.
+- ONE CENTRAL VISUAL IDEA that ties the site to this business and that a visitor would remember: an architecture studio's blueprint grid; a bakery's handwritten prices on brown paper; a surf school's tide-chart lines; a locksmith's stamped-metal key tags. Every page comes back to it.
+- Then COMMIT on each axis. Choose deliberately — the first option that comes to mind is usually the template:
+  LAYOUT ARCHETYPE: editorial/magazine, full-bleed photographic, typographic/poster, asymmetric grid, bento mosaic, split screen with a sticky side, single-column long read, catalogue/index, utility (hours, menus, schedules first).
+  TYPE: the pairing (serif display + sans body, a condensed grotesque, a mono accent, one family in many weights) and the CONTRAST — quiet (h1 about 3x the body size) or dramatic (h1 6-10x — e.g. text-5xl sm:text-8xl; the largest sizes overflow a phone, so step down below sm).
+  COLOUR STRATEGY: quiet neutrals + one accent; bold colour-blocked bands; dark-first; duotone; monochrome where the photography carries the colour.
+  SHAPE LANGUAGE: sharp (rounded-none, hairline borders), soft (large radii), pill, or organic (masks, clip-path); borders vs shadows vs flat fills. Buttons take website.effects.buttonShape (sharp, soft, rounded, pill, cut, skewed) or a sw-btn-shape-* class on one button; daisyUI cards, badges and inputs read --radius-box / --radius-field / --radius-selector, set once in website.criticalCss (:root{--radius-box:0}). identity.radii only feeds your own var(--sw-radius-<key>).
+  IMAGE TREATMENT: full-bleed, framed with generous margins, cut-out and overlapping, duotone or grain, collage.
+  DENSITY + RHYTHM: airy or dense. Section height and padding follow the content (a statement band is tall, a details list is tight) — never one padding everywhere.
+  MOTION: none, restrained, or expressive (get_guide("effects")), chosen once for the whole site.
+  CHROME: the header and footer belong to the direction; they are not fixed furniture (HEADER + FOOTER below).
+- PERSIST the decisions as TOKENS (identity colours, typography, radii, cssTokens — DESIGN TOKENS below) so every page and every later session reuses them.
+One or two bold moves executed well beat ten effects. Distinct does not mean noisy: a quiet, typographic site is a direction too.
+
+STEP 2 — COMPOSE FROM THE VOCABULARY. Choose each section for what ITS content needs. The lists are a menu, not a running order, and their order means nothing: no page uses all of them, and two pages of one site should not share one section sequence.
+OPENINGS (the first screen):
+- full-bleed photograph or video loop, the text set low-left or in a band across the bottom
+- typographic: an oversized headline and little else, or a statement paragraph beside a small image
+- an editorial split on an ASYMMETRIC grid (7/5, 8/4) with the image bleeding off the viewport edge
+- stacked: the headline above a wide panoramic image
+- a layered collage: two or three overlapping, offset images with the headline crossing them
+- the content IS the opening: a menu, a schedule, a portfolio grid, a map, a product
+- no hero at all: one intro line, straight into the content
+BODY SECTIONS:
+- a bento mosaic of UNEQUAL tiles (image tiles mixed with text tiles, spanning 1-3 columns or rows)
+- numbered index rows (01-05) separated by hairline rules instead of cards
+- a sticky split: a heading or image pinned on one side (sticky top-(--sw-header-h)) while the other side scrolls
+- a horizontal strip that scrolls sideways (snap-x), or a carousel component
+- magazine columns: a pull quote, a drop cap, captions, flowing text (columns-2)
+- a full-bleed image band carrying ONE sentence
+- a timeline or process along a line; steps with large numerals
+- a price list set like a menu (name, leader dots, price); a schedule or opening-hours table
+- ONE large quote instead of a testimonial grid (a real quote)
+- a location block with a map; contact details set as big type
+- tabs or accordions for detail (get_components); a logo strip only when real logos exist
+DEVICES that break the template: asymmetry; overlap (negative margins + z-index); deliberate breakouts from the container (full-bleed bands, edge-bleed images, a narrower reading measure with max-w-prose); oversized numerals or words used as graphic elements; vertical text (writing-mode); image masks and clip-path; textures (search_textures); hairline dividers instead of alternating backgrounds; colour-blocked halves; a grid whose column count changes between sections.
+
+STEP 3 — THE GENERIC-TEMPLATE CHECK, before you call a page done. These are the hallmarks of the stock AI landing page. Any ONE is fine when the content calls for it; FOUR OR MORE on one page means you rebuilt the template — rework the LAYOUT, not just the colours:
+- every section opens the same way: a small uppercase tracked eyebrow, a centred h2, a muted lead paragraph
+- the split hero: eyebrow, bold headline, grey sub-line, a primary + ghost button pair, a rounded image on the right
+- a row of three or four cards, each a tinted rounded-square icon, a title and one sentence
+- image/text rows alternating left and right, each with a check-mark list
+- a band of big statistics
+- testimonial cards or a carousel with avatars
+- three pricing tiers with a highlighted "Popular" middle card
+- an FAQ accordion followed by a rounded gradient call-to-action band
+- the same vertical padding on every section, backgrounds alternating base-100 / base-200
+- one radius and one card style on everything (rounded-2xl + shadow-sm)
+- a fade-up entrance on every block
+- a header of logo left / links right / button far right, over a four-column footer
+If you have built other sites in this session, do not reuse one's home-page section sequence.
+
+CRAFT — the rules that hold whatever the direction.
 
 SAVE IT PRETTY-PRINTED. A page's \`source\` is stored VERBATIM and is exactly what the owner opens in the
 editor, so write it the way you would commit it: one element per line, children indented under their
@@ -249,14 +305,11 @@ unreadable in the editor, undiffable in a revision, and the next edit (yours or 
 the whole file to change one line. It costs nothing to ship: a deploy target that wants compact HTML
 gets it from the build-time \`minifyHtml\` option, not from how you stored it.
 
-LAYOUT RHYTHM (use on every section):
-- Section shell: <section class="py-20 sm:py-28"><div class="sw-container"> ... </div></section>. Put the platform .sw-container on EVERY section's inner wrapper — it applies the SITE-WIDE content width (the Website "Content width" setting → the --sw-container CSS var, default 1200px) plus centering + a responsive gutter, so every section lines up edge-to-edge AND the owner can retune the whole site from one control. Vary only the vertical py. For a FULL-BLEED band (an edge-to-edge coloured/photo background), put the bg-* on the <section> and keep the .sw-container inside it (the background spans the viewport; the content stays aligned). (.sw-container replaces a hand-rolled mx-auto max-w-* px-* — use it so your pages match imported/nativized pages and respond to the Content width setting.)
-- Depth via ALTERNATING surfaces: give consecutive sections bg-base-100 -> bg-base-200 -> bg-base-100 (never all-white/all-one-colour). Use base-300 for card borders on top. This one move reads as "designed".
-- Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
-- In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
+WIDTH + ALIGNMENT. Put the platform .sw-container on each section's content wrapper: it applies the SITE-WIDE content width (the Website "Content width" setting → the --sw-container CSS var, default 1200px) plus centering and a responsive gutter, so content lines up across sections and the owner can retune the whole site from one control (it replaces a hand-rolled mx-auto max-w-* px-*). For a full-bleed band, put the background on the <section> and keep the .sw-container inside it. Break OUT of it deliberately where the direction calls for it — an edge-bleed image, a full-width band, a narrower reading column — never by accident.
+
+TYPE. Define THIS site's scale once, from the direction's contrast, and reuse its steps — do not invent a size per element. A dramatic editorial scale might be h1 text-6xl sm:text-8xl, h2 text-4xl sm:text-5xl, body text-lg; a quiet corporate one h1 text-4xl sm:text-5xl, h2 text-3xl, body text-base. Tight tracking and leading on large display sizes (tracking-tight leading-none), relaxed on body text; long-form bodies go in class="prose".
 - HEADING TAGS belong to the PAGE's own source — that is the document outline, and where h1-h6 are exactly right. They are NOT used anywhere else: nothing the platform injects carries one (a tooltip headline, the cart drawer's title), and an h1-h6 inside RICH content (a \`data-sw-html\`/\`{{sw-html}}\` value, a dataset richtext field) is rewritten at the render sink to \`<p class="sw-hN">\` — pixel-identical, it just stops joining an outline whose levels the page's author never chose. For a headline LOOK inside rich content, reach for size + \`font-heading\` + bold (e.g. \`text-2xl font-heading font-bold\`), which is also all the rich-text toolbar offers.
 - Fonts follow the ELEMENT: h1-h6 get the heading face, everything else the body face. To break that (a slogan or sidebar title that should read in the body face, or a <p>/<span> that should carry the display face) add the \`font-body\` / \`font-heading\` utility — plus \`font-<name>\` for any custom named slot.
-- Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
 - Custom CSS grids: size flexible tracks minmax(0,1fr), NOT bare 1fr — a wide child (a carousel scroll-strip, an unbroken word) makes a 1fr track grow past the viewport and the whole page scrolls sideways; minmax(0,1fr) lets the track shrink and clip instead.
 
 DESIGN TOKENS — where a reusable value LIVES. \`identity.colors\`/\`spacing\`/\`radii\` are OPEN records: add your own key and you get \`--sw-color-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\`, and a custom COLOUR key additionally gets a Tailwind \`--color-<key>\`, so \`bg-<key>\`/\`text-<key>\`/\`border-<key>\` compile as real utilities. Each of those records is typed by what it MEANS (a colour, a length), so a gradient, an elevation ramp or a shared easing curve does not fit — put those in \`identity.cssTokens\`, an open record of ANY CSS value emitted as \`--sw-<key>\`:
@@ -266,42 +319,22 @@ then use var(--sw-grad-hero) / var(--sw-z1) anywhere CSS is allowed (criticalCss
 FONTS — set them in identity.typography, never with a fonts.googleapis.com <link> or @import. A slot is { source, family, weight, assetId? }: source:"system" takes a generic keyword (sans-serif / serif / monospace) or a NAMED web-safe face ("Georgia"); source:"asset" + assetId renders a self-hosted font from the media library. ★ source:"google" (or "local") is a LEGACY value that silently DEGRADES to a system slot of the same name — the text falls back to a generic face and nothing errors. A Google family: search_google_fonts("playfair") → select_google_font({ family:"Playfair Display", weights:[400,700] }) (downloaded once, self-hosted — a published page never contacts Google) → put_content("settings","settings",{ identity:{ typography:{ heading:{ source:"asset", assetId:<the returned id>, family:"Playfair Display", weight:700 } } } }, merge:true). Your OWN font files: create_media_upload / upload_media with family, weight, style (normal|italic) and fallback — without them a dropped Inter-Bold.woff2 is recorded as family "Inter-Bold" at weight 400 — one ticket per weight. One already uploaded wrong: set_font_metadata (face picks the file when a font holds several). A slot renders the ASSET's family and faces, so a correction needs no slot change.
 A font or SVG referenced from CSS — website.criticalCss, a <style> block — DOES ship with the published site when its url() is ROOT-RELATIVE, exactly the \`url\` list_media returns: url(/media/<project-slug>/<id>-<file>). Publish rewrites those to the bundled copy. An ABSOLUTE https://<host>/media/… url is not rebased and breaks once deployed. For a site-wide face prefer a slot over a hand-written @font-face.
 
-COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
+COLOUR. Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content, …) so light AND dark both work; a strategy that needs more hues adds them as custom identity.colors keys (→ bg-<key>, text-<key>). Whatever the strategy, ONE colour leads the calls to action. Text on a coloured band uses that band's -content token (bg-primary text-primary-content); keep long reading text on base surfaces. Secondary text = text-base-content/70. Gradients only on always-coloured elements (an accent shape, a band), e.g. bg-gradient-to-br from-primary to-secondary.
 
-THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are token-driven and landmark-safe (use <section>/<div>, never <nav>/<main>/<footer>/<aside>); fill in real copy + images.
+IMAGERY. Use search_stock_images + import_stock_image for REAL photos — empty boxes and placeholder greys read as unfinished. Pick ONE treatment for the site and keep a consistent aspect within a group (aspect-[4/3], aspect-video, aspect-square) with object-cover; never distort an image. Galleries → data-sw-component="lightbox". Size every image to its box (get_guide("images")).
 
-1) HERO (split — the flagship default):
-<section class="py-20 sm:py-28"><div class="sw-container grid lg:grid-cols-2 gap-12 items-center">
-  <div data-sw-animation="fade-up">
-    <p class="text-sm font-semibold uppercase tracking-wide text-primary">{{ company.name }}</p>
-    <h1 class="mt-3 text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight">Headline that states the value</h1>
-    <p class="mt-5 text-lg text-base-content/70">One sentence that earns the next scroll.</p>
-    <div class="mt-8 flex flex-wrap gap-3"><a href="#contact" class="btn btn-primary">Primary action</a><a href="#work" class="btn btn-ghost">Secondary</a></div>
-  </div>
-  <div data-sw-animation="fade-up" data-sw-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200">{{sw-image "/media/…" alt="…" loading="eager" sizes="(min-width:1024px) 50vw, 100vw" class="h-full w-full object-cover"}}</div>
-</div></section>
+MOTION. Match the direction, with restraint by default: animate a few focal elements, never every block. To stagger a grid's children inside an {{#each}}, use data-sw-delay="{{sw-stagger @index 90}}".
 
-2) PROOF STRIP: a muted row of client logos or 3 trust stats directly under the hero.
+WORKING MARKUP worth reusing (mechanics, not layout):
+- An FAQ as native accordions (no JS) — each MUST carry the collapse-title + collapse-content children: <details class="collapse collapse-plus border border-base-300 rounded-box"><summary class="collapse-title font-semibold">Question?</summary><div class="collapse-content text-base-content/70">Answer.</div></details>
+- A button on a primary-coloured band reads best as class="btn border-0 bg-base-100 text-primary hover:bg-base-200".
+- The first-screen image loads eagerly and is sized to its box: {{sw-image "/media/…" alt="…" loading="eager" sizes="(min-width:1024px) 50vw, 100vw" class="h-full w-full object-cover"}}
 
-3) FEATURE GRID (3-up): eyebrow + h2 + lead, then a grid sm:grid-cols-3 gap-6 of cards; each card leads with {{sw-icon "name" "h-6 w-6"}} in a rounded-xl bg-primary/10 text-primary p-3 tile, then a title + a sentence.
+HEADER + FOOTER. Every new project starts with the {{> nav-header}} recipe in website.mainNav. That is MECHANICS — the data-driven menu, the pure-CSS mobile drawer, the language and theme switch — not a design. Keep the mechanics and give the header the layout the direction calls for: a centred logo with the links split either side; a minimal bar with a menu button at every width; a transparent bar laid over a full-bleed opening; a tall editorial masthead; a slim utility strip (hours, phone) above the main bar. Footers too: a big contact statement, an address with a map, a single quiet line — not always four link columns. How the menus and the drawer work: get_guide("nav"). A bar of a different HEIGHT needs measure_header: --sw-header-h is a constant sized for the stock recipe, and anchors and sticky elements read it. A bar laid OVER the opening needs :root{--sw-header-offset:0} on that page, or the page starts a bar-height lower (get_guide("effects")). Mastheads, utility strips and sticky side panels are still <div>s: <nav>/<main>/<footer>/<aside> belong to the skeleton.
 
-4) ALTERNATING FEATURE ROWS (the workhorse — repeat 2-3x, flipping sides each time): grid lg:grid-cols-2 gap-12 items-center, image on one side (swap with lg:order-last on alternate rows), copy on the other (eyebrow + h3 + paragraph + a checklist of {{sw-icon "check"}} items). This is what makes a page feel substantial rather than thin.
+SUBSTANCE. A page is finished when it tells the whole story its content supports; a home page that stops after an opening and one grid is unfinished. The NUMBER of sections follows the content — there is no quota.
 
-5) STATS BAND: a coloured break — <section> with bg-primary text-primary-content (or bg-base-200), grid grid-cols-2 sm:grid-cols-4, each cell a text-4xl font-bold number + a small label.
-
-6) TESTIMONIALS: one large pull-quote, OR several via data-sw-component="carousel" (call get_guide("components")). Quote + avatar + name/role.
-
-7) PRICING: grid sm:grid-cols-3; highlight the middle card (border-primary ring-1 ring-primary + a "Popular" badge); each has a price, a feature list, and a btn.
-
-8) FAQ: native <details> accordions (no JS), grouped with space-y-3 — each MUST carry the collapse-title + collapse-content children: <details class="collapse collapse-plus border border-base-300 rounded-box"><summary class="collapse-title font-semibold">Question?</summary><div class="collapse-content text-base-content/70">Answer.</div></details>
-
-9) CLOSING CTA BAND (end every landing page with one): a centred section, bg-primary text-primary-content rounded-3xl, h2 + lead + a contrasting button — a solid white button reads best: class="btn border-0 bg-base-100 text-primary hover:bg-base-200".
-
-IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty boxes/placeholder greys read as unfinished. Keep a consistent aspect per group (aspect-[4/3], aspect-video, aspect-square) + object-cover + rounded-2xl; galleries -> data-sw-component="lightbox". Never distort an image.
-
-MOTION (restraint): exactly one data-sw-animation="fade-up" focus per section; stagger a grid's children with increasing data-sw-delay (0/100/200) — inside an {{#each}} use data-sw-delay="{{sw-stagger @index 90}}". Animating everything cheapens it.
-
-CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? every section's content wrapped in .sw-container (one aligned width throughout)? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
+CHECK BEFORE PUBLISH: Is the direction you stated visible on the page? Cover the logo — could this be any other business? (If yes, back to STEP 3.) One type scale, applied? Token colours only? Real images, sized to their boxes? Content aligned on .sw-container except the deliberate breakouts? Then call preview_page and LOOK at the desktop AND mobile screenshots — fix anything that does not read as finished work made for this client.
 `,
   },
   components: {
@@ -1339,10 +1372,12 @@ so use <div>/<ul> and NEVER <footer>/<nav>/<aside>. A slot value can just includ
 website.footer = "{{> nav-footer}}". Do NOT create pages named "header"/"footer" and do NOT use a template
 for chrome — neither fills a slot. (A slot may also hold a {{> partial}} whose snippet you author separately.)
 
-DON'T REINVENT THIS — copy the recipes: {{> nav-header}} (the full default: data-driven desktop bar +
-a pure-CSS mobile drawer + language dropdown + theme toggle), {{> nav-footer}}, or {{> navbar}} (simple).
+DON'T REINVENT THE MECHANICS — start from a recipe: {{> nav-header}} (the full default: data-driven desktop
+bar + a pure-CSS mobile drawer + language dropdown + theme toggle), {{> nav-footer}}, or {{> navbar}} (simple).
 Read one with get_content("snippet","nav-header"). New projects already ship {{> nav-header}} in their
-Main Navigation slot (website.mainNav). The notes below explain how it works so you can adapt it.
+Main Navigation slot (website.mainNav). A recipe is the MECHANICS, not the look: copy its menu loops, drawer
+and switches into your own markup and give the header and footer the LAYOUT the site's art direction calls
+for (get_guide("design") → HEADER + FOOTER). The notes below explain how each part works.
 
 NAV SLOTS (page settings) — a DIFFERENT thing from the chrome slots above: each page's nav.slots places it
 in a menu — "header" (the Main Navigation),
@@ -1450,7 +1485,7 @@ and the site is published.
 
 NATIVIZE = A FAITHFUL PORT, NOT A REDESIGN. Your job is to REPLICATE the existing layout and look using
 native primitives — keep the SAME sections, structure, order, and visual design; swap only the
-IMPLEMENTATION. Do NOT apply get_guide("design") here — that flagship section toolkit is for NET-NEW pages.
+IMPLEMENTATION. Do NOT apply get_guide("design") here — its art direction and layout vocabulary are for NET-NEW pages.
 An imported page is "done" when it renders the SAME as the original but is now token-driven, on-brand,
 editable, and free of the foreign framework's CSS/JS. Compare your result against the source site, not a
 design ideal.

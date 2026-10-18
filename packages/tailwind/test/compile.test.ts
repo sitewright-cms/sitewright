@@ -15,6 +15,28 @@ describe('compileUtilityCss', () => {
     expect(loadingRules.some((r) => /pointer-events\s*:\s*none/.test(r))).toBe(false);
   });
 
+  // daisyUI 5.7.38 began painting any `[aria-current]` in a `.menu` as the filled `.menu-active` pill
+  // (and a `.dock` item with its active bar). The platform's nav pattern sets aria-current="page" as
+  // semantics, so the predicate is neutralised. If a bump respells it, the "no other spelling" check is the alarm.
+  const NAV =
+    '<ul class="menu md:menu-horizontal"><li><a class="active" aria-current="page" href="/">Home</a></li><li><a class="menu-active" href="/a">A</a></li></ul>' +
+    '<div class="dock"><a aria-current="page" href="/">Home</a><a class="dock-active" href="/a">A</a></div>';
+  const NEUTRALISED = /\[aria-current\]:not\(\[aria-current\]\)/g;
+
+  it.each([false, true])('never lets daisyUI style an aria-current menu/dock item (minify=%s)', async (minify) => {
+    const css = await compileUtilityCss([NAV], {}, { minify });
+    expect(css).toContain('--menu-active-bg'); // the menu component IS emitted…
+    expect(css).toMatch(/\.menu-active/); // …and its explicit active class keeps its pill
+    expect(css).toMatch(/\.dock-active/);
+    expect(css.match(NEUTRALISED)?.length ?? 0).toBeGreaterThan(0); // the predicate was there and rewritten
+    expect(css.replace(NEUTRALISED, '')).not.toContain('aria-current'); // and NO other spelling survived
+  });
+
+  it('leaves the rating component\'s own aria-current=true state alone', async () => {
+    const css = await compileUtilityCss(['<div class="rating"><input class="mask mask-star" aria-current="true"></div>'], {}, { minify: true });
+    expect(css).toContain('.rating [aria-current=true]');
+  });
+
   it('emits only the utilities actually used in the HTML', async () => {
     const css = await compileUtilityCss(
       ['<div class="flex gap-4"><span class="underline">hi</span></div>'],

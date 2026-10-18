@@ -9,6 +9,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The current nav link no longer turns into a dark filled pill after a republish.** daisyUI 5.7.38
+  (bundled since v0.62.0) started painting any `.menu` link with `aria-current` like `.menu-active`: a
+  `--color-neutral` background plus a shadow. The platform's nav pattern puts `aria-current="page"` on the
+  current link, and scrollspy sets `aria-current="true"`, so every site built that way gained the pill on
+  its next publish. Nothing in the site's own CSS or markup changed. Where a site recolours `.active` text,
+  this was text on a background of nearly the same colour.
+  - The site stylesheet now leaves `aria-current` alone, as it did before v0.62.0. `aria-current` stays in
+    the markup for screen readers.
+  - The visible active state again belongs to `.active`, the nav effects and the site's own CSS.
+  - `.menu-active` still gets its pill.
+  - The current item highlights on hover and focus like every other item.
+  - The same applies to `.dock` items, which had gained daisyUI's active bar.
+  - **A site published on v0.62.0 or v0.63.0 keeps the pill until it is published again.**
+
 ## [0.63.0] — 2026-10-17
 
 ### Added

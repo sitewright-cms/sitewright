@@ -21,6 +21,23 @@ const TAILWIND_BASE = dirname(require.resolve('tailwindcss/theme.css'));
 // the skeleton's unlayered rules).
 const BASE_INPUT = `@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/utilities.css";`;
 
+// daisyUI's "this item is the current one" predicate — any `aria-current` except "false"/"". From 5.7.38
+// on, `.menu` paints a match exactly like `.menu-active` (the filled `--color-neutral` pill + shadow) and
+// `.dock` gives it the active bar. The platform's nav pattern sets aria-current="page" on the current
+// link (scrollspy sets "true") as SEMANTICS; the visible active state belongs to `.active`, the sw-nav-*
+// schemes and the author's own CSS. So every site that followed the guide gained a pill it never asked
+// for on its next republish, olive-on-olive wherever the site recolours `.active` text. Quotes and spacing
+// are optional so the rewrite holds on both the unminified build and any re-optimised output. It runs on
+// the whole build, so an author arbitrary variant spelling this exact predicate is neutralised too;
+// accepted, since nothing the platform documents writes it.
+const DAISY_ARIA_CURRENT = /\[aria-current\]:not\(\s*\[aria-current=(["']?)false\1\]\s*,\s*\[aria-current=(["'])\2\]\s*\)/g;
+// A never-matching selector of the same specificity as the predicate it replaces, (0,2,0), so daisyUI's
+// rules keep the relative order they have in the installed version.
+// In a `:not(…)` list (the hover / focus rules) it stops excluding the current item; in a positive
+// position (the active-look rules) it stops matching it. That is the pre-5.7.38 look exactly, without
+// re-implementing daisyUI's hover and focus values. `compile.test.ts` fails if a bump respells it.
+const NEVER_CURRENT = '[aria-current]:not([aria-current])';
+
 export interface CompileOptions {
   /** Minify the output with Lightning CSS (default true). */
   minify?: boolean;
@@ -65,8 +82,11 @@ export async function compileUtilityCss(
   // daisyUI's `.loading` spinner utility hard-sets `pointer-events:none`. On a REPLACED media element
   // (the importer uses `.loading` as a lazy-media skeleton on a self-hosted PDF/video <iframe>) that class
   // persists after load and makes the embedded viewer un-scrollable / un-clickable. Drop it from the
-  // standalone `.loading{…}` rule only — a real spinner has nothing to click anyway.
-  const deSpun = css.replace(/(\.loading\s*\{[^}]*?)pointer-events\s*:\s*none\s*;?/g, '$1');
+  // standalone `.loading{…}` rule only — a real spinner has nothing to click anyway. Then neutralise
+  // daisyUI's aria-current styling (see DAISY_ARIA_CURRENT).
+  const patched = css
+    .replace(/(\.loading\s*\{[^}]*?)pointer-events\s*:\s*none\s*;?/g, '$1')
+    .replace(DAISY_ARIA_CURRENT, NEVER_CURRENT);
 
   // The nav/button EFFECT schemes are compiled SEPARATELY and appended, for two reasons.
   //   1. They belong in `@layer sw-effects` — a scheme selector reaches (0,4,1), which no author
@@ -80,6 +100,6 @@ export async function compileUtilityCss(
   // last segment — the same rule daisy.ts uses. Lightning CSS flattens the `&` nesting either way, so
   // the unminified output is as browser-ready as the minified one.
   const used = new Set(candidates.map((c) => c.slice(c.lastIndexOf(':') + 1)));
-  const out = `${deSpun}\n${effectCss((name) => used.has(name))}`;
+  const out = `${patched}\n${effectCss((name) => used.has(name))}`;
   return minify ? optimize(out, { minify: true }).code : out;
 }

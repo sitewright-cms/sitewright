@@ -9,6 +9,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Agents now design each site for its own business instead of filling in one template.** The agent
+  design guide used to hand every agent the same copy-paste page, so sites built by different agents for
+  different businesses came out with one skeleton. That page was a split hero with two buttons, three icon
+  cards, alternating image rows, a stats band, testimonials, pricing, an FAQ and a gradient
+  call-to-action, with a fixed type scale and a "6–9 sections" quota.
+  - The guide now asks the agent to decide an art direction first, from the brief and the brand: layout
+    approach, type, colour, shapes, imagery, motion, header and footer. The agent states that direction
+    in one line, and saves its choices as brand tokens.
+  - Pages are composed from a wide menu of openings, sections and layout devices.
+  - A "generic-template check" lists the stock layout's hallmarks. Four or more on one page means the
+    layout gets reworked.
+  - The header and footer recipes are described as mechanics to keep, not a look to copy.
+  - The rules that keep sites working are unchanged: theme colours for dark mode, the shared content
+    width, fonts, image sizing and editability.
+
 ## [0.64.0] — 2026-10-18
 
 ### Fixed

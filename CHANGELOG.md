@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.64.0] — 2026-10-18
+
 ### Fixed
 
 - **The current nav link no longer turns into a dark filled pill after a republish.** daisyUI 5.7.38
@@ -5112,7 +5114,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.63.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.64.0...HEAD
+[0.64.0]: https://github.com/sitewright-cms/sitewright/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/sitewright-cms/sitewright/compare/v0.62.0...v0.63.0
 [0.62.0]: https://github.com/sitewright-cms/sitewright/compare/v0.61.0...v0.62.0
 [0.61.0]: https://github.com/sitewright-cms/sitewright/compare/v0.60.0...v0.61.0

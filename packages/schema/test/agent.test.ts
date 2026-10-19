@@ -89,11 +89,15 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     // followed it faithfully, so every generated site shared one skeleton. It now asks for an art direction
     // first, offers a vocabulary to compose from, and names that skeleton as the thing to avoid.
     const body = AGENT_GUIDES.design.body;
-    for (const probe of ['DECIDE THE ART DIRECTION', 'COMPOSE FROM THE VOCABULARY', 'GENERIC-TEMPLATE CHECK', 'HEADER + FOOTER']) {
+    // The first rewrite (#1122) was A/B-tested on three briefs: the stock skeleton vanished, but all three sites
+    // converged on a SECOND look (cream + serif, mono captions, a utility strip over a centred wordmark, a big
+    // statement footer) — the first header/footer options the guide listed and its all-paper example ideas.
+    // So the guide names that look too, and lists no stock chrome to adopt.
+    for (const probe of ['DECIDE THE ART DIRECTION', 'COMPOSE FROM THE VOCABULARY', 'GENERIC-TEMPLATE CHECK', 'SECOND-WAVE TEMPLATE', 'HEADER + FOOTER']) {
       expect(body).toContain(probe);
     }
     // The skeletons must not creep back: a numbered toolkit entry or a quota re-creates the template.
-    for (const gone of ['1) HERO', 'ALTERNATING FEATURE ROWS', 'THE SECTION TOOLKIT', '6-9']) {
+    for (const gone of ['1) HERO', 'ALTERNATING FEATURE ROWS', 'THE SECTION TOOLKIT', '6-9', 'a slim utility strip (hours, phone) above the main bar']) {
       expect(body).not.toContain(gone);
     }
     expect(DEFAULT_AGENT_INSTRUCTIONS).not.toContain('6-9 composed sections');
@@ -112,6 +116,11 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     ]) {
       expect(body, kept).toContain(kept);
     }
+    // The second-wave check is a real list, list order is declared meaningless, and no paper concept is offered.
+    const wave = body.slice(body.indexOf('SECOND-WAVE TEMPLATE'), body.indexOf('CRAFT —'));
+    expect(wave.split('\n').filter((l) => l.startsWith('- ')).length).toBeGreaterThanOrEqual(5);
+    expect(body).toContain('ORDER of every list in this guide means nothing');
+    expect(body).toContain('printed-artefact concept counts against you');
     // The header recipe is mechanics, not a look — the nav guide says so and points back here.
     expect(AGENT_GUIDES.nav.body).toContain('MECHANICS, not the look');
   });

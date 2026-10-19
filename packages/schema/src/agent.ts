@@ -242,14 +242,14 @@ DESIGN — read this BEFORE composing a page. The other guides tell you HOW to w
 
 TWO FAILURES, EQUALLY BAD. (1) The THIN skeleton: a hero, one grid of cards, stop. (2) The GENERIC TEMPLATE: a polished page that could belong to ANY business, because it was assembled from the same default sections every AI-built site uses — eyebrow + headline + two buttons, three icon cards, alternating image rows, a stats band, testimonials, pricing, an FAQ, a gradient call-to-action. When every site an agency ships has that one skeleton, its clients notice. The goal is a site that looks like THIS business and no other.
 
-STEP 1 — DECIDE THE ART DIRECTION before you write any markup, and state it to the user in ONE line (two illustrations of the FORM, not suggestions: "Direction: quiet gallery — vast white space, small captions, one image per screen." / "Direction: loud market poster — stacked condensed type, clashing colour blocks, hard edges."). Derive it from the brief, the content and the brand, never from habit:
+STEP 1 — DECIDE THE ART DIRECTION before you write any markup, and state it to the user in ONE line in the form "Direction: <archetype> — <type>, <colour>, <the one signature move>.". Derive it from the brief, the content and the brand, never from habit:
 - WHO visits, and what they came to do (book, buy, trust, browse, find the opening hours).
 - PERSONALITY in three words — the brief's own words where it gives them.
-- ONE CENTRAL VISUAL IDEA that ties the site to this business and that a visitor would remember: an architecture studio's blueprint grid; a bakery's handwritten prices on brown paper; a surf school's tide-chart lines; a locksmith's stamped-metal key tags. Every page comes back to it.
-- Then COMMIT on each axis. Choose deliberately — the first option that comes to mind is usually the template:
-  LAYOUT ARCHETYPE: editorial/magazine, full-bleed photographic, typographic/poster, asymmetric grid, bento mosaic, split screen with a sticky side, single-column long read, catalogue/index, utility (hours, menus, schedules first).
-  TYPE: the pairing (serif display + sans body, a condensed grotesque, a mono accent, one family in many weights) and the CONTRAST — quiet (h1 about 3x the body size) or dramatic (h1 6-10x — e.g. text-5xl sm:text-8xl; the largest sizes overflow a phone, so step down below sm).
-  COLOUR STRATEGY: quiet neutrals + one accent; bold colour-blocked bands; dark-first; duotone; monochrome where the photography carries the colour.
+- ONE CENTRAL VISUAL IDEA that ties the site to this business and that a visitor would remember. Find it in what the business DOES and what its world looks and feels like — a material, a kind of light, a motion, a scale, a colour system, a pattern, a quality of space — not in paper: a document or printed-artefact concept counts against you in STEP 3, whatever the business. Every page comes back to the idea.
+- Then COMMIT on each axis. Choose deliberately — the first option that comes to mind is usually the template, and the ORDER of every list in this guide means nothing:
+  LAYOUT ARCHETYPE: utility (hours, menus, schedules first), split screen with a sticky side, full-bleed photographic, catalogue/index, typographic/poster, asymmetric grid, single-column long read, bento mosaic, editorial/magazine.
+  TYPE: chosen from the direction, never by reflex — the face you reach for first is probably every generated site's face (Fraunces, Inter and their kind), so it needs a reason specific to THIS site. Range widely: a grotesque or geometric sans in many weights, a condensed or extended display face, a slab, a rounded face, a high-contrast didone, a text serif for long reading; a mono rarely, and only for tabular data. Then the CONTRAST — quiet (h1 about 3x the body size) or dramatic (h1 6-10x — e.g. text-5xl sm:text-8xl; the largest sizes overflow a phone, so step down below sm).
+  COLOUR STRATEGY: monochrome where the photography carries the colour; quiet neutrals + one accent; dark-first; duotone; bold colour-blocked bands. White, cool grey and near-black grounds are as valid as warm ones — cream or "paper" needs a reason, it is not a default.
   SHAPE LANGUAGE: sharp (rounded-none, hairline borders), soft (large radii), pill, or organic (masks, clip-path); borders vs shadows vs flat fills. Buttons take website.effects.buttonShape (sharp, soft, rounded, pill, cut, skewed) or a sw-btn-shape-* class on one button; daisyUI cards, badges and inputs read --radius-box / --radius-field / --radius-selector, set once in website.criticalCss (:root{--radius-box:0}). identity.radii only feeds your own var(--sw-radius-<key>).
   IMAGE TREATMENT: full-bleed, framed with generous margins, cut-out and overlapping, duotone or grain, collage.
   DENSITY + RHYTHM: airy or dense. Section height and padding follow the content (a statement band is tall, a details list is tight) — never one padding everywhere.
@@ -268,8 +268,8 @@ OPENINGS (the first screen):
 - the content IS the opening: a menu, a schedule, a portfolio grid, a map, a product
 - no hero at all: one intro line, straight into the content
 BODY SECTIONS:
-- a bento mosaic of UNEQUAL tiles (image tiles mixed with text tiles, spanning 1-3 columns or rows)
 - numbered index rows (01-05) separated by hairline rules instead of cards
+- a bento mosaic of UNEQUAL tiles (image tiles mixed with text tiles, spanning 1-3 columns or rows)
 - a sticky split: a heading or image pinned on one side (sticky top-(--sw-header-h)) while the other side scrolls
 - a horizontal strip that scrolls sideways (snap-x), or a carousel component
 - magazine columns: a pull quote, a drop cap, captions, flowing text (columns-2)
@@ -295,6 +295,12 @@ STEP 3 — THE GENERIC-TEMPLATE CHECK, before you call a page done. These are th
 - a fade-up entrance on every block
 - a header of logo left / links right / button far right, over a four-column footer
 If you have built other sites in this session, do not reuse one's home-page section sequence.
+THE SECOND-WAVE TEMPLATE is what agents reach for when they avoid the first one, and it is just as recognisable. Each item is a stylistic signature rather than a section, so the bar is lower — TWO OR MORE on one site means rework:
+- a warm cream or paper background with a serif display face and a terracotta, rust or forest-green accent
+- broadsheet hairline rules with small monospace captions ("Fig. 1", "§", coordinates, "Log 01")
+- a document or printed-artefact concept, whatever the business
+- a thin utility strip above a centred wordmark with the menu split either side
+- a footer that opens with one big statement sentence
 
 CRAFT — the rules that hold whatever the direction.
 
@@ -330,7 +336,7 @@ WORKING MARKUP worth reusing (mechanics, not layout):
 - A button on a primary-coloured band reads best as class="btn border-0 bg-base-100 text-primary hover:bg-base-200".
 - The first-screen image loads eagerly and is sized to its box: {{sw-image "/media/…" alt="…" loading="eager" sizes="(min-width:1024px) 50vw, 100vw" class="h-full w-full object-cover"}}
 
-HEADER + FOOTER. Every new project starts with the {{> nav-header}} recipe in website.mainNav. That is MECHANICS — the data-driven menu, the pure-CSS mobile drawer, the language and theme switch — not a design. Keep the mechanics and give the header the layout the direction calls for: a centred logo with the links split either side; a minimal bar with a menu button at every width; a transparent bar laid over a full-bleed opening; a tall editorial masthead; a slim utility strip (hours, phone) above the main bar. Footers too: a big contact statement, an address with a map, a single quiet line — not always four link columns. How the menus and the drawer work: get_guide("nav"). A bar of a different HEIGHT needs measure_header: --sw-header-h is a constant sized for the stock recipe, and anchors and sticky elements read it. A bar laid OVER the opening needs :root{--sw-header-offset:0} on that page, or the page starts a bar-height lower (get_guide("effects")). Mastheads, utility strips and sticky side panels are still <div>s: <nav>/<main>/<footer>/<aside> belong to the skeleton.
+HEADER + FOOTER. Every new project starts with the {{> nav-header}} recipe in website.mainNav. That is MECHANICS — the data-driven menu, the pure-CSS mobile drawer, the language and theme switch — not a design. Keep the mechanics and DERIVE the chrome from the direction and the visitor's first task: where the logo sits, how many links show, whether the bar is solid, transparent, vertical, oversized or nearly invisible, and whether the hours or the phone belong in it at all. There is no stock alternative to adopt — the logo-left / links-right / button-right bar is the first template and a utility strip over a centred wordmark is the second (STEP 3). The footer follows the same rule: what does a visitor of THIS site need at the bottom of the page? How the menus and the drawer work: get_guide("nav"). A bar of a different HEIGHT needs measure_header: --sw-header-h is a constant sized for the stock recipe, and anchors and sticky elements read it. A bar laid OVER the opening needs :root{--sw-header-offset:0} on that page, or the page starts a bar-height lower (get_guide("effects")). Mastheads, utility strips and sticky side panels are still <div>s: <nav>/<main>/<footer>/<aside> belong to the skeleton.
 
 SUBSTANCE. A page is finished when it tells the whole story its content supports; a home page that stops after an opening and one grid is unfinished. The NUMBER of sections follows the content — there is no quota.
 

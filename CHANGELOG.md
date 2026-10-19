@@ -59,6 +59,34 @@ The running version of an instance is reported at `GET /version` (baked into the
   - Now all spied lists in the same navigation share one active item. That includes the desktop halves
     and the mobile menu. Wrapping both halves in `data-sw-scrollspy` is no longer needed.
   - A separate spy elsewhere, such as a sidebar table of contents, still keeps its own active item.
+- **`border-b border-dashed` draws only the bottom border.** Sites get Tailwind without its reset, so
+  every side kept the browser's default 3px width. A border-style class then drew a dashed or dotted box
+  instead of one rule; `divide-dashed` did the same. Border widths now start at zero, except on form
+  controls, buttons, fieldsets, `<hr>`, dialogs and tables or images with a `border` attribute, which
+  keep their own borders.
+  - Published sites change on their next publish only where this bug showed. The example project's 91
+    pages render identically at desktop and phone width.
+  - One case does change: a border style with no width anywhere (`border-solid` alone, or
+    `style="border-style:solid"`) used to draw a 3px border and now draws none, as in standard Tailwind.
+    Add a width class such as `border` or `border-2`.
+- **The recipe snippets the agent guides point to can be read.** `get_content("snippet","nav-header")`,
+  `form-custom` and the other built-in recipes returned 404, because they live in the instance-wide
+  library rather than in the project. The MCP tool now falls back to that library for a snippet or
+  template the project does not have. The result is marked read-only and says how to override it with
+  a project snippet of the same name. This works with project keys and member tokens. `list_content`
+  for snippets and templates lists the built-in names next to the project's own.
+- **A Google Maps embed from `maps.google.com` loads.** That address redirects to `www.google.com`,
+  which the site's content security policy did not allow, so the map frame stayed blank. The policy now
+  also allows the redirect target for Google Maps addresses.
+- **A third font is easier to set up correctly.** The design guide now says how to add a third face
+  beside the heading and body fonts. You select the font and reference it from a named slot
+  (`font-<name>`).
+  `typography.fontFamilies` only names a font and ships no file.
+  - A settings write now warns when a font it names is not served: a `fontFamilies` entry or a system
+    slot naming an uninstalled face, or a slot pointing at a missing font asset. The warning names the
+    fix. The write still goes through.
+  - A `fontFamilies` entry with no generic fallback now gets one (`JetBrains Mono` becomes
+    `JetBrains Mono, monospace`). Before, a missing font showed in the browser's default serif.
 
 ## [0.64.0] — 2026-10-18
 

@@ -58,6 +58,37 @@ describe('authorContentCspOrigins — author iframe + gated-script origins', () 
   it('does not truncate on a `>` inside a quoted media src (quote-aware tag match)', () => {
     expect(authorContentCspOrigins('<source src="https://cdn.example.com/v.mp4?a=1>2">').media).toContain('cdn.example.com');
   });
+
+  // CSP checks EVERY hop of a frame navigation against frame-src. `maps.google.com/maps?…&output=embed`
+  // answers with a redirect to `www.google.com/maps?…`, so allowing only the host the author wrote let
+  // the first request through and blocked the frame at the redirect: an empty map box, nothing logged
+  // anywhere the author looks.
+  it('also allows the host a Google Maps embed REDIRECTS to (maps.google.com → www.google.com)', () => {
+    const frame = authorContentCspOrigins('<iframe src="https://maps.google.com/maps?q=Berlin&amp;output=embed"></iframe>').frame;
+    expect(frame).toEqual(expect.arrayContaining(['maps.google.com', 'www.google.com']));
+    // A country domain redirects to its own www host, and the bare apex to www as well.
+    expect(authorContentCspOrigins('<iframe data-src="https://maps.google.de/maps?q=x&output=embed"></iframe>').frame)
+      .toEqual(expect.arrayContaining(['maps.google.de', 'www.google.de']));
+    expect(authorContentCspOrigins('<iframe src="https://google.co.uk/maps/embed?pb=1"></iframe>').frame)
+      .toEqual(expect.arrayContaining(['google.co.uk', 'www.google.co.uk']));
+    // …and through the consent gate, which is how the embed reaches the policy on a consent site.
+    expect(authorContentCspOrigins(gateAuthorIframes('<iframe src="https://maps.google.com/maps?q=a&output=embed"></iframe>')).frame)
+      .toContain('www.google.com');
+  });
+
+  it('adds a redirect host ONLY for the embed hosts known to redirect — nothing else widens', () => {
+    expect(authorContentCspOrigins('<iframe src="https://www.google.com/maps/embed?pb=1"></iframe>').frame).toEqual(['www.google.com']);
+    expect(authorContentCspOrigins('<iframe src="https://player.vimeo.com/video/1"></iframe>').frame).toEqual(['player.vimeo.com']);
+    // A look-alike is not Google: no www.google.* appears for it.
+    expect(authorContentCspOrigins('<iframe src="https://maps.google.com.evil.test/maps"></iframe>').frame).toEqual(['maps.google.com.evil.test']);
+    expect(authorContentCspOrigins('<iframe src="https://maps.notgoogle.com/maps"></iframe>').frame).toEqual(['maps.notgoogle.com']);
+  });
+
+  it('lands the redirect host in the frame-src of the built policy', () => {
+    const header = buildSiteCspHeader(undefined, authorContentCspOrigins('<iframe src="https://maps.google.com/maps?q=a&output=embed"></iframe>'));
+    expect(header).toMatch(/frame-src 'self' [^;]*https:\/\/maps\.google\.com/);
+    expect(header).toMatch(/frame-src 'self' [^;]*https:\/\/www\.google\.com/);
+  });
 });
 
 describe('gateAuthorIframes — hold cross-origin author iframes', () => {

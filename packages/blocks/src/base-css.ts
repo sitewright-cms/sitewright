@@ -360,6 +360,25 @@ form:invalid [type="submit"] {
   .sw-h6 { font-size: .67em; font-weight: bold; }
 }
 
+/* BORDER WIDTHS START AT ZERO wherever the browser draws no border of its own.
+   Tailwind ships here WITHOUT preflight, and preflight is what normally zeroes every border width. Without
+   it each side keeps the UA initial width (medium, 3px), invisible only while its style is none. A
+   border-style utility sets the style on ALL FOUR sides, so "border-b border-dashed" drew a 3px dashed
+   border on the top, left and right as well as the 1px bottom it asked for ("divide-dashed" the same).
+   A zero width shows nothing until a style is set, so this changes no element that has no border style.
+   EXCLUDED are the elements that DO carry a UA border, or whose native look depends on no author rule
+   touching border at all: the form controls, meter and progress (Chromium drops their native rendering the
+   moment an author rule declares a border width, even a no-op one), fieldset, hr, dialog, popovers, and the
+   presentational border/frame/rules attributes. Those attributes lose to ANY author rule, layered or not,
+   so they have to be excluded rather than out-ranked. Weak layer and zero specificity: every utility,
+   daisyUI component and author rule that sets a width still wins.
+   Trade-off: a border style set with NO width anywhere (border-solid alone, or style="border-style:solid")
+   used to draw a 3px border and now draws none, exactly as Tailwind with preflight does. */
+@layer sw-normalize {
+  :where(:not(input, button, select, textarea, meter, progress, fieldset, hr, dialog, [popover], [border], [frame], [rules], table:is([border], [rules]) :is(td, th))),
+  ::before, ::after { border-width: 0; }
+}
+
 /* Rich/markdown content opt-in: class="prose" restores a readable vertical rhythm to authored
    long-form bodies (article / legal / FAQ) AFTER the reset above; escape any child with
    class="not-prose". A LIGHTWEIGHT stand-in for @tailwindcss/typography (margins only — fonts come

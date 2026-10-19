@@ -1,4 +1,4 @@
-import type { BrandTokens, MediaAsset } from '@sitewright/schema';
+import { webSafeFontCategory, type BrandTokens, type MediaAsset } from '@sitewright/schema';
 
 // Resolves a project's heading/body font SLOTS into a small CSS block that applies them to real
 // page elements (`body`, `h1`–`h6`) — so it works for code-first (DaisyUI/Tailwind) pages, not just
@@ -38,17 +38,6 @@ const SYSTEM_STACKS: Record<string, string> = {
   monospace: "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
 };
 const DEFAULT_SYSTEM = SYSTEM_STACKS['sans-serif']!;
-
-/**
- * Well-known NAMED system faces → the generic stack that should trail them, so a named slot degrades
- * into the right *kind* of face where the named one is absent. Everything unlisted trails sans-serif.
- * Lower-cased keys; lookup is case-insensitive.
- */
-const NAMED_SYSTEM_CATEGORY: Record<string, keyof typeof SYSTEM_STACKS> = {
-  georgia: 'serif', 'times new roman': 'serif', times: 'serif', garamond: 'serif', palatino: 'serif',
-  cambria: 'serif', baskerville: 'serif', 'book antiqua': 'serif',
-  'courier new': 'monospace', courier: 'monospace', consolas: 'monospace', monaco: 'monospace', menlo: 'monospace',
-};
 
 /** Platform defaults when a slot is unset: serif/700 headings, sans-serif/400 body. */
 const DEFAULT_HEADING: FontSlot = { source: 'system', family: 'serif', weight: 700 };
@@ -101,7 +90,9 @@ function familyStack(slot: FontSlot, font: FontAsset | undefined): string {
   // {source:'system', family:'Verdana'}), so an imported site's whole body font came out wrong with
   // nothing anywhere reporting it.
   if (SAFE_FAMILY.test(slot.family)) {
-    return `"${slot.family}", ${SYSTEM_STACKS[NAMED_SYSTEM_CATEGORY[slot.family.toLowerCase()] ?? 'sans-serif']}`;
+    // The trailing stack is the face's own KIND (Georgia → serif) from the schema's single table of
+    // well-known faces, which the settings-write font check reads too; anything unlisted trails sans-serif.
+    return `"${slot.family}", ${SYSTEM_STACKS[webSafeFontCategory(slot.family) ?? 'sans-serif']}`;
   }
   return DEFAULT_SYSTEM;
 }

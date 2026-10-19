@@ -122,6 +122,44 @@ describe('baseStyles — platform base stylesheet', () => {
     });
   });
 
+  // Tailwind ships without preflight, so nothing zeroed the UA `medium` (3px) border width: a
+  // border-style utility sets ALL FOUR sides, and `border-b border-dashed` drew a dashed box instead of
+  // a dashed bottom rule. Verified in Chromium (both before and after): the bare controls listed below
+  // render pixel-identically with this rule, and only the style-without-width case changes.
+  describe('border widths start at zero (the preflight reset Tailwind would have shipped)', () => {
+    const RESET =
+      ':where(:not(input, button, select, textarea, meter, progress, fieldset, hr, dialog, [popover], [border], [frame], [rules], table:is([border], [rules]) :is(td, th))),\n  ::before, ::after { border-width: 0; }';
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+    it('zeroes border widths on every element and on ::before/::after, at zero specificity', () => {
+      expect(stripped).toContain(RESET);
+      // ONLY the width. Setting a style too (preflight's `border: 0 solid`) would make every bare element
+      // a solid-border box the moment anything gives it a width.
+      const rule = stripped.slice(stripped.indexOf(RESET), stripped.indexOf('}', stripped.indexOf(RESET)) + 1);
+      expect(rule).not.toMatch(/border-style|border:\s/);
+    });
+
+    it('sits in the weak sw-normalize layer, so every utility / component / author width wins', () => {
+      const at = stripped.indexOf(RESET);
+      expect(at).toBeGreaterThan(0);
+      const layerOpen = stripped.lastIndexOf('@layer sw-normalize {', at);
+      expect(layerOpen).toBeGreaterThan(-1);
+      // No layer closed between the opening and the rule: it really is inside that block.
+      expect(stripped.slice(layerOpen, at).split('{').length - 1).toBe(stripped.slice(layerOpen, at).split('}').length);
+    });
+
+    it('leaves every element that carries a UA border of its own untouched', () => {
+      // Form controls (incl. submit / colour inputs and buttons, whose native look Chromium drops on any
+      // author border rule), meter + progress (same), fieldset, hr, dialog, popovers — and the
+      // presentational border/frame/rules attributes, which lose to ANY author rule and so must be
+      // excluded rather than out-ranked (a table[border] went borderless under a plain `*` reset).
+      for (const kept of ['input', 'button', 'select', 'textarea', 'meter', 'progress', 'fieldset', 'hr', 'dialog', '[popover]', '[border]', '[frame]', '[rules]', 'table:is([border], [rules]) :is(td, th)']) {
+        expect(RESET).toContain(kept);
+      }
+      expect(stripped).not.toMatch(/(^|[\s,{])\*\s*,\s*::before\s*,\s*::after\s*\{\s*border-width/); // not a bare universal reset
+    });
+  });
+
   describe('Sitewright platform defaults', () => {
     it('keeps a border-box foundation unlayered (always wins)', () => {
       // the platform copy lives OUTSIDE the @layer block (after the normalize layer)

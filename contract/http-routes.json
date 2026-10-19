@@ -105,6 +105,8 @@
   "GET /projects/:projectId/export.zip",
   "GET /projects/:projectId/fidelity/:pageId",
   "GET /projects/:projectId/form-modes",
+  "GET /projects/:projectId/global/:kind",
+  "GET /projects/:projectId/global/:kind/:entityId",
   "GET /projects/:projectId/header-measure/:pageId",
   "GET /projects/:projectId/imagemaps/preview",
   "GET /projects/:projectId/integrity",

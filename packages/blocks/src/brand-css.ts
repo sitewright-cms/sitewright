@@ -1,6 +1,6 @@
 // Brand tokens → CSS custom properties for the rendered document (the single source
 // of truth now that the legacy Astro renderer is gone).
-import { containsCssComment, isSafeCssTokenValue, type BrandTokens } from '@sitewright/schema';
+import { containsCssComment, isSafeCssTokenValue, withGenericFallback, type BrandTokens } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we
 // never emit anything that could break out of a CSS declaration (`;{}<>`) or
@@ -53,7 +53,10 @@ function emitRich(map: Record<string, string> | undefined, lines: string[]): voi
 export function brandToCss(brand: BrandTokens): string {
   const lines: string[] = [];
   emit('color', brand.colors, lines);
-  emit('font', brand.typography?.fontFamilies, lines);
+  // A fontFamilies stack names a family and ships no file: one without a generic gets one appended, the
+  // same stack the `font-<key>` utility uses (brandToTailwindTheme).
+  const fonts = brand.typography?.fontFamilies;
+  emit('font', fonts && Object.fromEntries(Object.entries(fonts).map(([k, v]) => [k, withGenericFallback(k, v)])), lines);
   emit('space', brand.spacing, lines);
   emit('radius', brand.radii, lines);
   // Last, so a free-form token may deliberately restate a categorized one (later wins in a tie).

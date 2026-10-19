@@ -877,6 +877,22 @@ export class SitewrightClient {
     return res.item;
   }
 
+  /**
+   * One entry of the instance-wide GLOBAL snippet/template library (nav-header, form-custom, …), read
+   * through the project this call addresses — the project-scoped route is what lets a project key and a
+   * member token reach it at all. `global:<id>` (how a page names a global template) is accepted too.
+   */
+  async getGlobalContent(kind: 'snippet' | 'template', entityId: string): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>('GET', this.projectPath(`/global/${kind}/${encodeURIComponent(entityId)}`));
+    return res.item;
+  }
+
+  /** The global library's entries of one kind, bodies omitted (the summary projection). */
+  async listGlobalContent(kind: 'snippet' | 'template'): Promise<unknown[]> {
+    const res = await this.request<{ items: unknown[] }>('GET', this.projectPath(`/global/${kind}?summary=1`));
+    return res.items;
+  }
+
   /** PARTIAL write of `website.criticalCss`. A NAMED block upserts (replace in place, else append);
    *  an unnamed write appends; an empty body with a name removes that block. Returns a receipt, never
    *  the sheet — echoing it back is the cost this exists to avoid. */

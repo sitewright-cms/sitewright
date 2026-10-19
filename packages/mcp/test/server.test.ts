@@ -478,6 +478,83 @@ describe('createSitewrightMcpServer — snippet authoring (was unreachable)', ()
   });
 });
 
+// The recipes every guide names (get_content("snippet","nav-header")) live in the instance-wide global
+// library, not in the project — so a project-scoped read 404'd. get_content falls back; list_content
+// says where they are. Driven end to end over /mcp (both credential kinds) in apps/api mcp-http.test.ts.
+describe('createSitewrightMcpServer — the global snippet/template library', () => {
+  const notFound = () => Promise.reject(new SitewrightApiError(404, 'snippet not found'));
+
+  it('get_content falls back to the global library for a snippet the project lacks, labelled read-only', async () => {
+    const client = fakeClient({
+      getContent: vi.fn(notFound),
+      getGlobalContent: vi.fn(async () => ({ id: 'nav-header', name: 'nav-header', source: '<div>nav</div>' })),
+    });
+    const res = await (await connect(client, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'nav-header' } });
+    expect(res.isError).toBeFalsy();
+    const item = JSON.parse(text(res)) as { source: string; _global: { readOnly: boolean; note: string } };
+    expect(item.source).toBe('<div>nav</div>');
+    expect(item._global.readOnly).toBe(true);
+    expect(item._global.note).toContain('put_content("snippet","nav-header",{ name:"nav-header", source })');
+    expect(callsOf(client).getGlobalContent).toHaveBeenCalledWith('snippet', 'nav-header');
+  });
+
+  it('a global:<id> template reference goes straight to the library (there is no project row to try)', async () => {
+    const client = fakeClient({ getGlobalContent: vi.fn(async () => ({ id: 'landing', name: 'Landing', source: 'x' })) });
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_content', arguments: { kind: 'template', id: 'global:landing' } });
+    expect(JSON.parse(text(res))._global.note).toContain('template:"global:landing"');
+    expect(callsOf(client).getContent).not.toHaveBeenCalled();
+    expect(callsOf(client).getGlobalContent).toHaveBeenCalledWith('template', 'landing');
+    // …and one the library lacks is a plain 404 naming it.
+    const none = fakeClient({ getGlobalContent: vi.fn(notFound) });
+    const miss = await (await connect(none, readScope)).callTool({ name: 'get_content', arguments: { kind: 'template', id: 'global:nope' } });
+    expect(miss.isError).toBe(true);
+    expect(text(miss)).toBe('Error 404: no global template "nope"');
+  });
+
+  it('keeps the ORIGINAL error when the fallback cannot help — and never falls back for other kinds or statuses', async () => {
+    // Not in the library either (or an older instance without the route): the project's own 404.
+    const both = fakeClient({ getContent: vi.fn(notFound), getGlobalContent: vi.fn(notFound) });
+    const res = await (await connect(both, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'x' } });
+    expect(text(res)).toBe('Error 404: snippet not found');
+    // A non-object answer is not a library entry.
+    const odd = fakeClient({ getContent: vi.fn(notFound), getGlobalContent: vi.fn(async () => 'nope') });
+    expect((await (await connect(odd, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'x' } })).isError).toBe(true);
+    // A page is never looked up in the library; a 403 on a snippet is not a "missing" one.
+    const page = fakeClient({ getContent: vi.fn(notFound), getGlobalContent: vi.fn() });
+    await (await connect(page, readScope)).callTool({ name: 'get_content', arguments: { kind: 'page', id: 'x' } });
+    const denied = fakeClient({ getContent: vi.fn(() => Promise.reject(new SitewrightApiError(403, 'forbidden'))), getGlobalContent: vi.fn() });
+    expect(text(await (await connect(denied, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'x' } }))).toBe('Error 403: forbidden');
+    expect(callsOf(page).getGlobalContent).not.toHaveBeenCalled();
+    expect(callsOf(denied).getGlobalContent).not.toHaveBeenCalled();
+    // A failure of the library read that is NOT a 404 is reported as itself, never as "not found".
+    const limited = fakeClient({ getContent: vi.fn(notFound), getGlobalContent: vi.fn(() => Promise.reject(new SitewrightApiError(429, 'slow down'))) });
+    expect(text(await (await connect(limited, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'x' } }))).toBe('Error 429: slow down');
+  });
+
+  it('list_content for snippets/templates names the global library beside the project’s own', async () => {
+    const client = fakeClient({
+      listContent: vi.fn(async () => [{ id: 'mine' }]),
+      listGlobalContent: vi.fn(async () => [{ id: 'nav-header' }, { id: 'form-custom' }, 'junk']),
+    });
+    const mcp = await connect(client, readScope);
+    const snippets = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'snippet' } })));
+    expect(snippets.items).toEqual([{ id: 'mine' }]);
+    expect(snippets.global).toMatchObject({ readOnly: true, names: ['nav-header', 'form-custom'] });
+    expect(snippets.global.note).toContain('get_content("snippet","<name>")');
+    const templates = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'template' } })));
+    expect(templates.global.note).toContain('template:"global:<name>"');
+    // A search narrows the global names as it narrows the project's own.
+    const searched = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'snippet', q: ' NAV ' } })));
+    expect(searched.global.names).toEqual(['nav-header']);
+    expect(callsOf(client).listContent).toHaveBeenLastCalledWith('snippet', undefined, { summary: undefined, q: ' NAV ', limit: undefined, offset: undefined });
+    // Other kinds keep their plain array; an unreachable library leaves the list exactly as before.
+    expect(JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'dataset' } })))).toEqual([{ id: 'mine' }]);
+    const old = fakeClient({ listContent: vi.fn(async () => []), listGlobalContent: vi.fn(notFound) });
+    expect(JSON.parse(text(await (await connect(old, readScope)).callTool({ name: 'list_content', arguments: { kind: 'snippet' } })))).toEqual([]);
+  });
+});
+
 describe('createSitewrightMcpServer — media tools', () => {
   it('list_media is content:read; import_image is gated on content:write', async () => {
     const reader = fakeClient();

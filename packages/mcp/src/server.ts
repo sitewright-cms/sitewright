@@ -338,6 +338,52 @@ function toolError(text: string): ToolResult {
   return { content: [{ type: 'text', text }], isError: true };
 }
 
+/** The kinds with an instance-wide GLOBAL library behind the project's own entities. */
+type LibraryKind = 'snippet' | 'template';
+const isLibraryKind = (kind: string): kind is LibraryKind => kind === 'snippet' || kind === 'template';
+/** How a page names a global template (`template: "global:landing"`); the library row is the bare id. */
+const GLOBAL_REF = 'global:';
+
+/**
+ * A snippet/template from the instance-wide GLOBAL library (nav-header, form-custom, the slider and
+ * gallery recipes, …), labelled as what it is, or undefined when the library has no such entry either.
+ *
+ * Render has always merged the global library BELOW a project's own snippets and templates, but a READ
+ * was project-scoped only — so the call every guide names, get_content("snippet","nav-header"), 404'd
+ * for every agent. A 404 here (no such entry, or an older instance without the route) yields undefined,
+ * and the caller reports the project's own 404 exactly as before. Any OTHER failure (a rate limit, a
+ * server error) is thrown as itself, so it is not disguised as "not found".
+ */
+async function readGlobalLibrary(client: SitewrightClient, kind: LibraryKind, id: string): Promise<Record<string, unknown> | undefined> {
+  const bare = id.startsWith(GLOBAL_REF) ? id.slice(GLOBAL_REF.length) : id;
+  let item: unknown;
+  try {
+    item = await client.getGlobalContent(kind, bare);
+  } catch (err) {
+    if (err instanceof SitewrightApiError && err.status === 404) return undefined;
+    throw err;
+  }
+  if (!isPlainRecord(item)) return undefined;
+  const note =
+    kind === 'snippet'
+      ? `Built-in GLOBAL snippet (instance-wide, read-only); this project has no snippet "${bare}" of its own. {{> ${bare}}} already renders it. To change it, write a PROJECT snippet with the same name, put_content("snippet","${bare}",{ name:"${bare}", source }): it wins over this one at render, and this one stays as it is.`
+      : `Built-in GLOBAL template (instance-wide, read-only). A page uses it as template:"global:${bare}". To change it, copy it into a PROJECT template, put_content("template","${bare}",{ name, source }), and point the page at template:"${bare}"; this one stays as it is.`;
+  return { ...item, _global: { readOnly: true, note } };
+}
+
+/**
+ * The global library's names of one kind, for list_content to say where they are — `[]` from a project
+ * listing otherwise reads as "the recipes the guides name do not exist". Null when unreachable.
+ */
+async function globalLibraryNames(client: SitewrightClient, kind: LibraryKind): Promise<string[] | null> {
+  try {
+    const rows = await client.listGlobalContent(kind);
+    return rows.flatMap((r) => (isPlainRecord(r) && typeof r.id === 'string' ? [r.id] : []));
+  } catch {
+    return null;
+  }
+}
+
 /** How to name the connection in a refusal. A member token has no single project or role to name. */
 function connectionLabel(scope: Scope): string {
   return isMemberScope(scope) ? 'Your member token' : `Your connection to project ${scope.projectId}`;
@@ -944,7 +990,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_content',
     {
       description:
-        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit. `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's values) and `limit`/`offset` page through the result with a `total`; all of these compose with `dataset`, so a collection of thousands of rows is reachable without ever pulling the whole kind.",
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit. `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's values) and `limit`/`offset` page through the result with a `total`; all of these compose with `dataset`, so a collection of thousands of rows is reachable without ever pulling the whole kind. For 'snippet' / 'template' the result is { items: <this project's own>, global: { names } } — the built-in global library (nav-header, form-custom, …) is listed under `global`, read-only; get_content reads one.",
       inputSchema: {
         kind: GENERIC_KIND,
         dataset: z.string().optional(),
@@ -956,8 +1002,27 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     },
     gate(
       null,
-      ({ kind, dataset, summary, q, limit, offset }: { kind: string; dataset?: string; summary?: boolean; q?: string; limit?: number; offset?: number }) =>
-        client.listContent(kind, dataset, { summary, q, limit, offset }),
+      async ({ kind, dataset, summary, q, limit, offset }: { kind: string; dataset?: string; summary?: boolean; q?: string; limit?: number; offset?: number }) => {
+        const items = await client.listContent(kind, dataset, { summary, q, limit, offset });
+        if (!isLibraryKind(kind)) return items;
+        const all = await globalLibraryNames(client, kind);
+        if (all === null) return items;
+        // A search narrows the global names the same way it narrows the project's own (substring, any case).
+        const needle = q?.trim().toLowerCase();
+        const names = needle ? all.filter((n) => n.toLowerCase().includes(needle)) : all;
+        const how =
+          kind === 'snippet'
+            ? '{{> <name>}} renders one, get_content("snippet","<name>") reads it, and a project snippet of the same name takes precedence'
+            : 'a page uses one as template:"global:<name>", get_content("template","<name>") reads it, and a copy saved as a project template (with the page pointed at it) changes it';
+        return {
+          items,
+          global: {
+            readOnly: true,
+            names,
+            note: `\`items\` are this project's OWN ${kind}s. \`names\` are the built-in GLOBAL library (instance-wide, read-only): ${how}.`,
+          },
+        };
+      },
     ),
   );
 
@@ -965,10 +1030,26 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_content',
     {
       description:
-        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id.',
+        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id. A snippet/template this project does not have is read from the built-in global library (e.g. "nav-header"), marked `_global` (read-only, with how to override it).',
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
-    gate(null, ({ kind, id, dataset }) => client.getContent(kind, id, dataset)),
+    gate(null, async ({ kind, id, dataset }: { kind: string; id: string; dataset?: string }) => {
+      // `global:<id>` is how a page names a global template — there is no project row to try first.
+      if (kind === 'template' && id.startsWith(GLOBAL_REF)) {
+        const global = await readGlobalLibrary(client, kind, id);
+        if (global) return global;
+        throw new SitewrightApiError(404, `no global template "${id.slice(GLOBAL_REF.length)}"`);
+      }
+      try {
+        return await client.getContent(kind, id, dataset);
+      } catch (err) {
+        // The project's own entity wins (as at render); only a MISSING snippet/template falls back.
+        if (!(err instanceof SitewrightApiError) || err.status !== 404 || !isLibraryKind(kind)) throw err;
+        const global = await readGlobalLibrary(client, kind, id);
+        if (!global) throw err;
+        return global;
+      }
+    }),
   );
 
   server.registerTool(

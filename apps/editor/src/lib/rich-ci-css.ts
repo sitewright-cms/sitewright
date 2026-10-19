@@ -13,7 +13,7 @@
 // next to the field. Scoping to `.sw-rich-edit` (specificity 0,2,0) also means these rules beat any
 // same-named editor-chrome utility (0,1,0), so a brand token always wins inside author content.
 import { ciRichPalette, fontSlotStacks } from '@sitewright/blocks';
-import { isSafeCssTokenValue, type CorporateIdentity } from '@sitewright/schema';
+import { isSafeCssTokenValue, withGenericFallback, type CorporateIdentity } from '@sitewright/schema';
 import { fontFaceCss, type FontLibraryAsset } from './font-face-css';
 
 /** The scope every generated rule is nested under — the rich-text editable itself. */
@@ -76,7 +76,7 @@ export function richCiCss(
     if (!SAFE_TOKEN.test(slot)) continue;
     // A named slot resolves through the shared stack resolver; a legacy `fontFamilies` entry is a raw
     // stack (and wins on key clash, matching brandToTailwindTheme's precedence).
-    const stack = typeof legacy[slot] === 'string' ? String(legacy[slot]) : stacks[slot]?.stack;
+    const stack = typeof legacy[slot] === 'string' ? withGenericFallback(slot, String(legacy[slot])) : stacks[slot]?.stack;
     if (!stack || !safeValue(stack)) continue;
     // family ONLY — the site's `font-<slot>` utility sets no weight either (weight is applied to real
     // heading ELEMENTS), so matching that keeps the field a true preview.

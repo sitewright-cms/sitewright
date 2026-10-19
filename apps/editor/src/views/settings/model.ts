@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type ShopMarket, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type ShopMarket, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, ConsentIntegrationSchema, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -566,10 +566,10 @@ const put = <T extends object, K extends string, V>(obj: T, key: K, value: V | u
  * other consent field is preserved verbatim. (`integrations: undefined` is JSON-dropped + toEqual-ignored.)
  */
 function cleanConsent(c: Consent): Consent {
-  const ok = (it: ConsentIntegration): boolean => {
-    const preset = it.preset ?? 'custom';
-    return preset === 'custom' ? !!(it.name && it.src) : !!(it.name && it.measurementId);
-  };
+  // A row the API would reject (half-filled in the editor) is dropped so the save validates; a complete one is
+  // kept. The schema itself decides, so a preset added on the server can never be dropped here by a stale
+  // per-preset check — the editor once deleted every non-Google analytics row an agent had set up.
+  const ok = (it: ConsentIntegration): boolean => !!it.name && ConsentIntegrationSchema.safeParse(it).success;
   const ints = (c.integrations ?? []).filter(ok);
   return { ...c, integrations: ints.length ? ints : undefined };
 }

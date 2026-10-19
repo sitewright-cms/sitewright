@@ -280,7 +280,7 @@ describe('ConsentIntegrationSchema validation', () => {
 describe('integrationRuntimeInfo / consentRuntimeIntegrations', () => {
   it('maps ga4 → the gtag loader + bootstrap descriptor', () => {
     const info = integrationRuntimeInfo({ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' });
-    expect(info).toEqual({ id: 'ga', cat: 'analytics', kind: 'ga4', mid: 'G-ABC123', src: 'https://www.googletagmanager.com/gtag/js?id=G-ABC123', async: true });
+    expect(info).toEqual({ id: 'ga', cat: 'analytics', kind: 'ga4', mid: 'G-ABC123', src: 'https://www.googletagmanager.com/gtag/js?id=G-ABC123', async: true, ana: true });
   });
   it('maps a custom integration → a plain script descriptor (async default true)', () => {
     expect(integrationRuntimeInfo({ id: 'c', name: 'C', category: 'functional', src: 'https://w.example/c.js' })).toMatchObject({ kind: 'script', src: 'https://w.example/c.js', async: true });
@@ -440,5 +440,150 @@ describe('platformInjectedCspOrigins — what the PUBLISHER puts on the page', (
     expect(o.connect).toEqual(['sitewright.example', 'hcaptcha.com', '*.hcaptcha.com']);
     // …and a page without the widget keeps the strict policy.
     expect(platformInjectedCspOrigins(routed, 'https://sitewright.example').frame).toEqual([]);
+  });
+});
+
+describe('★ analytics presets beyond Google (Plausible, Umami, Matomo, Fathom, Simple Analytics)', () => {
+  const int = (x: Record<string, unknown>): Record<string, unknown> => ({ id: 'a', name: 'A', category: 'analytics', ...x });
+  const UUID = '94db1cb1-74f4-4a40-ad6c-962362670409';
+  const ok = (x: Record<string, unknown>): void => expect(() => ConsentIntegrationSchema.parse(int(x)), JSON.stringify(x)).not.toThrow();
+  const bad = (x: Record<string, unknown>): void => expect(() => ConsentIntegrationSchema.parse(int(x)), JSON.stringify(x)).toThrow();
+
+  it('validates each preset’s site identifier and host', () => {
+    ok({ preset: 'plausible', siteId: 'pa-AbC123_x-9' }); // the current per-site script id
+    ok({ preset: 'plausible', siteId: 'example.com' }); // the legacy data-domain snippet
+    ok({ preset: 'plausible', siteId: 'pa-AbC123', host: 'https://stats.example.com' }); // self-hosted
+    ok({ preset: 'umami', siteId: UUID });
+    ok({ preset: 'umami', siteId: UUID, host: 'https://u.example.com' });
+    ok({ preset: 'matomo', siteId: '7', host: 'https://stats.example.com/matomo/' });
+    ok({ preset: 'matomo', siteId: '1', host: 'https://acme.matomo.cloud' });
+    ok({ preset: 'fathom', siteId: 'ABCDEFGH' });
+    ok({ preset: 'simpleanalytics' }); // the page hostname identifies the site
+    ok({ preset: 'simpleanalytics', siteId: 'example.com' });
+
+    bad({ preset: 'plausible' });
+    bad({ preset: 'plausible', siteId: 'not a domain!' });
+    bad({ preset: 'umami', siteId: 'abc' });
+    bad({ preset: 'matomo', siteId: '7' }); // a Matomo has no default host
+    bad({ preset: 'matomo', siteId: 'x', host: 'https://stats.example.com' });
+    bad({ preset: 'fathom', siteId: 'a b' });
+    bad({ preset: 'umami', siteId: UUID, host: 'http://u.example.com' }); // https only
+    bad({ preset: 'umami', siteId: UUID, host: 'https://192.168.1.2' }); // no private hosts
+    bad({ preset: 'umami', siteId: UUID, host: 'https://u.example.com/?x=1' }); // a base URL, nothing else
+    bad({ preset: 'fathom', siteId: 'ABCDEFGH', host: 'https://f.example.com' }); // Fathom is cloud-only
+  });
+
+  it('lets ONLY cookieless presets load without waiting for consent', () => {
+    for (const x of [
+      { preset: 'plausible', siteId: 'pa-AbC123' },
+      { preset: 'umami', siteId: UUID },
+      { preset: 'fathom', siteId: 'ABCDEFGH' },
+      { preset: 'simpleanalytics' },
+      { preset: 'matomo', siteId: '7', host: 'https://stats.example.com/' }, // with cookies switched off
+    ])
+      ok({ ...x, requireConsent: false });
+    bad({ preset: 'ga4', measurementId: 'G-ABC', requireConsent: false });
+    bad({ preset: 'gtm', measurementId: 'GTM-AB12', requireConsent: false });
+    bad({ src: 'https://x.example/s.js', requireConsent: false }); // a custom script could set anything
+  });
+
+  it('maps each preset to the script it loads and the attributes its vendor reads', () => {
+    const info = (x: Record<string, unknown>): unknown => integrationRuntimeInfo(ConsentIntegrationSchema.parse(int(x)));
+    expect(info({ preset: 'plausible', siteId: 'pa-AbC123' })).toMatchObject({ kind: 'plausible', src: 'https://plausible.io/js/pa-AbC123.js' });
+    expect(info({ preset: 'plausible', siteId: 'pa-AbC123', host: 'https://stats.example.com/' })).toMatchObject({ src: 'https://stats.example.com/js/pa-AbC123.js' });
+    expect(info({ preset: 'plausible', siteId: 'example.com' })).toMatchObject({ kind: 'script', src: 'https://plausible.io/js/script.js', attrs: { 'data-domain': 'example.com' } });
+    expect(info({ preset: 'umami', siteId: UUID })).toMatchObject({ kind: 'script', src: 'https://cloud.umami.is/script.js', attrs: { 'data-website-id': UUID } });
+    expect(info({ preset: 'umami', siteId: UUID, host: 'https://u.example.com' })).toMatchObject({ src: 'https://u.example.com/script.js' });
+    expect(info({ preset: 'matomo', siteId: '7', host: 'https://stats.example.com/matomo' })).toMatchObject({
+      kind: 'matomo',
+      mid: '7',
+      src: 'https://stats.example.com/matomo/matomo.js',
+      track: 'https://stats.example.com/matomo/matomo.php',
+    });
+    expect(info({ preset: 'matomo', siteId: '1', host: 'https://acme.matomo.cloud' })).toMatchObject({
+      src: 'https://cdn.matomo.cloud/acme.matomo.cloud/matomo.js',
+      track: 'https://acme.matomo.cloud/matomo.php',
+    });
+    expect(info({ preset: 'fathom', siteId: 'ABCDEFGH' })).toMatchObject({ kind: 'script', src: 'https://cdn.usefathom.com/script.js', attrs: { 'data-site': 'ABCDEFGH' } });
+    expect(info({ preset: 'simpleanalytics' })).toMatchObject({ kind: 'script', src: 'https://scripts.simpleanalyticscdn.com/latest.js' });
+    expect(info({ preset: 'simpleanalytics', siteId: 'example.com' })).toMatchObject({ attrs: { 'data-hostname': 'example.com' } });
+    // Loading without consent is carried to the runtime; a cookieless Matomo also switches its cookies off.
+    expect(info({ preset: 'umami', siteId: UUID, requireConsent: false })).toMatchObject({ free: true });
+    expect(info({ preset: 'matomo', siteId: '7', host: 'https://s.example.com/', requireConsent: false })).toMatchObject({ free: true, nocookie: true });
+    expect(info({ preset: 'umami', siteId: UUID })).not.toHaveProperty('free');
+  });
+
+  it('derives each preset’s CSP hosts (and the host Google’s current GA4 guidance adds)', () => {
+    const o = (x: Record<string, unknown>) => consentCspOrigins(consent([int(x)]));
+    expect(o({ preset: 'plausible', siteId: 'pa-AbC123' })).toMatchObject({ script: ['plausible.io'], connect: ['plausible.io'] });
+    expect(o({ preset: 'plausible', siteId: 'pa-AbC123', host: 'https://stats.example.com' })).toMatchObject({ script: ['stats.example.com'], connect: ['stats.example.com'] });
+    const umami = o({ preset: 'umami', siteId: UUID });
+    expect(umami.script).toEqual(['cloud.umami.is']);
+    expect(umami.connect).toEqual(expect.arrayContaining(['gateway.umami.is']));
+    const matomo = o({ preset: 'matomo', siteId: '7', host: 'https://stats.example.com/matomo/' });
+    expect(matomo).toMatchObject({ script: ['stats.example.com'], connect: ['stats.example.com'], img: ['stats.example.com'] });
+    const cloud = o({ preset: 'matomo', siteId: '1', host: 'https://acme.matomo.cloud' });
+    expect(cloud.script).toEqual(['cdn.matomo.cloud']);
+    expect(cloud.connect).toEqual(['acme.matomo.cloud']);
+    expect(o({ preset: 'fathom', siteId: 'ABCDEFGH' })).toMatchObject({ script: ['cdn.usefathom.com'], connect: ['cdn.usefathom.com'], img: ['cdn.usefathom.com'] });
+    expect(o({ preset: 'simpleanalytics' })).toMatchObject({ script: ['scripts.simpleanalyticscdn.com'], connect: ['queue.simpleanalyticscdn.com'], img: ['queue.simpleanalyticscdn.com'] });
+    expect(o({ preset: 'ga4', measurementId: 'G-X' }).connect).toEqual(expect.arrayContaining(['www.google.com', '*.google-analytics.com', 'www.googletagmanager.com']));
+  });
+
+  it('★ a cookieless integration that skips consent loads and widens the CSP with the consent manager OFF; a gated one does not', () => {
+    const off = (integrations: unknown[]): Consent => ({ enabled: false, integrations } as unknown as Consent);
+    const free = int({ id: 'pl', preset: 'plausible', siteId: 'pa-AbC123', requireConsent: false });
+    const gated = int({ id: 'ga', preset: 'ga4', measurementId: 'G-X' });
+    expect(consentCspOrigins(off([free, gated])).script).toEqual(['plausible.io']);
+    expect(consentRuntimeIntegrations(off([free, gated])).map((i) => i.id)).toEqual(['pl']);
+    // With the manager ON, both are present: the gated one still waits for consent at runtime.
+    expect(consentRuntimeIntegrations(consent([free, gated])).map((i) => i.id)).toEqual(['pl', 'ga']);
+    expect(buildSiteCspHeader(off([gated]))).toBeUndefined();
+  });
+});
+
+describe('★ analytics presets — hostile input (review hardening)', () => {
+  const UUID = '94db1cb1-74f4-4a40-ad6c-962362670409';
+  const parse = (x: Record<string, unknown>) => ConsentIntegrationSchema.safeParse({ id: 'a', name: 'A', category: 'analytics', ...x }).success;
+  /** The schema bypassed: what an import or a direct DB write could hand the builders. */
+  const raw = (x: Record<string, unknown>) => ({ id: 'a', name: 'A', category: 'analytics', ...x }) as never;
+
+  it('rejects a host with an empty query or fragment, a trailing dot, one label, an empty label or a backslash', () => {
+    for (const host of ['https://a.example.com/m?', 'https://a.example.com/m#', 'https://localhost.', 'https://acme.matomo.cloud.', 'https://stats', 'https://a..example.com', 'https://a.example.com\\m', ' https://a.example.com'])
+      expect(parse({ preset: 'matomo', siteId: '7', host }), host).toBe(false);
+    expect(parse({ preset: 'matomo', siteId: '7', host: 'https://stats.example.com:8443/matomo' })).toBe(true); // a port is fine
+  });
+
+  it('builds URLs from the PARSED base: a raw `?` never reaches a script or tracker URL', () => {
+    expect(integrationRuntimeInfo(raw({ preset: 'matomo', siteId: '7', host: 'https://a.example.com/m?' }))).toBeNull();
+    expect(integrationRuntimeInfo(raw({ preset: 'matomo', siteId: '7', host: 'https://stats.example.com/m//' }))).toMatchObject({ src: 'https://stats.example.com/m/matomo.js' });
+    // Matomo Cloud lives at the root of its host, whatever path was typed.
+    expect(integrationRuntimeInfo(raw({ preset: 'matomo', siteId: '1', host: 'https://acme.matomo.cloud/x' }))).toMatchObject({ track: 'https://acme.matomo.cloud/matomo.php' });
+  });
+
+  it('never lets ga4/gtm/custom skip consent, even when the schema is bypassed', () => {
+    const off = (i: unknown): Consent => ({ enabled: false, integrations: [i] } as unknown as Consent);
+    for (const x of [
+      { preset: 'ga4', measurementId: 'G-X', requireConsent: false },
+      { preset: 'gtm', measurementId: 'GTM-X', requireConsent: false },
+      { src: 'https://x.example/s.js', requireConsent: false },
+    ]) {
+      expect(integrationRuntimeInfo(raw(x)), JSON.stringify(x)).not.toHaveProperty('free');
+      expect(consentRuntimeIntegrations(off(raw(x)))).toEqual([]);
+      expect(buildSiteCspHeader(off(raw(x)))).toBeUndefined();
+    }
+  });
+
+  it('GA4 adds www.google.com — not a wildcard over every Google host', () => {
+    const o = consentCspOrigins(consent([{ id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' }]));
+    expect(o.connect).toContain('www.google.com');
+    expect(o.connect).not.toContain('*.google.com');
+    // …and a site without Google gets no Google host at all.
+    expect(consentCspOrigins(consent([{ id: 'u', name: 'U', category: 'analytics', preset: 'umami', siteId: UUID }])).connect.join(' ')).not.toMatch(/google/);
+  });
+
+  it('an owner who types Umami Cloud’s own address still gets its collection gateway', () => {
+    const o = consentCspOrigins(consent([{ id: 'u', name: 'U', category: 'analytics', preset: 'umami', siteId: UUID, host: 'https://cloud.umami.is' }]));
+    expect(o.connect).toContain('gateway.umami.is');
   });
 });

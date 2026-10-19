@@ -9,8 +9,8 @@ import { CAPTCHA_HOSTS, CAPTCHA_PROVIDERS } from './captcha.js';
 // https `src` host (+ schema-validated bare-hostname `origins`). The widening is PER-SITE and OPT-IN: a
 // site with no integrations gets no widened CSP (it keeps the strict `default-src 'self'` default).
 
-import type { Consent, ConsentIntegration } from './website.js';
-import { CONSENT_CATEGORY_VALUES } from './website.js';
+import type { Consent, ConsentIntegration, ConsentIntegrationPreset } from './website.js';
+import { CONSENT_CATEGORY_VALUES, COOKIELESS_PRESETS, SELF_HOSTABLE_PRESETS, analyticsBase } from './website.js';
 
 type ConsentCategory = (typeof CONSENT_CATEGORY_VALUES)[number];
 
@@ -37,26 +37,53 @@ export type SiteCspOrigins = Partial<Record<keyof CspOrigins, readonly string[]>
  * Curated, versioned origin bundles per preset. Maintained in-repo — the owner picks a preset and never
  * types a URL. Bare hostnames (a single leading `*.` wildcard allowed); the builders prepend `https://`.
  */
-export const CONSENT_PRESET_ORIGINS: Readonly<Record<'ga4' | 'gtm', CspOrigins>> = {
-  ga4: {
-    script: ['www.googletagmanager.com'],
-    frame: [],
-    connect: ['www.google-analytics.com', '*.analytics.google.com', '*.google-analytics.com', 'www.googletagmanager.com'],
-    img: ['www.google-analytics.com', 'www.googletagmanager.com'],
-    style: [],
-    font: [],
-    media: [],
-  },
-  gtm: {
-    script: ['www.googletagmanager.com'],
-    frame: [],
-    connect: ['www.googletagmanager.com', 'www.google-analytics.com', '*.analytics.google.com', '*.google-analytics.com'],
-    img: ['www.googletagmanager.com', 'www.google-analytics.com'],
-    style: [],
-    font: [],
-    media: [],
-  },
+// Google's CSP guide now lists `*.google.com` for GA4 collection; the older list (`*.analytics.google.com`) still
+// circulates in copied configs, so both shapes are covered. Only `www.google.com` is added, where GA4's own calls
+// go: a wildcard over every Google host (Apps Script, Forms, Sites) would be a ready exfiltration channel.
+const GOOGLE_CONNECT = ['www.google-analytics.com', '*.analytics.google.com', '*.google-analytics.com', 'www.googletagmanager.com', 'www.google.com'];
+const bundle = (o: Partial<CspOrigins>): CspOrigins => ({ ...EMPTY, ...o });
+export const CONSENT_PRESET_ORIGINS: Readonly<Partial<Record<ConsentIntegrationPreset, CspOrigins>>> = {
+  ga4: bundle({ script: ['www.googletagmanager.com'], connect: GOOGLE_CONNECT, img: ['www.google-analytics.com', '*.google-analytics.com', 'www.googletagmanager.com'] }),
+  gtm: bundle({ script: ['www.googletagmanager.com'], connect: GOOGLE_CONNECT, img: ['www.googletagmanager.com', 'www.google-analytics.com', '*.google-analytics.com'] }),
+  // The cloud defaults; a self-hosted `host` replaces them (see presetOrigins).
+  plausible: bundle({ script: ['plausible.io'], connect: ['plausible.io'] }),
+  // Umami Cloud's script now posts to gateway.umami.is (cloud changelog, June 2026).
+  umami: bundle({ script: ['cloud.umami.is'], connect: ['gateway.umami.is', 'cloud.umami.is'] }),
+  // Pageviews go out as an image beacon, events by sendBeacon.
+  fathom: bundle({ script: ['cdn.usefathom.com'], connect: ['cdn.usefathom.com'], img: ['cdn.usefathom.com'] }),
+  simpleanalytics: bundle({ script: ['scripts.simpleanalyticscdn.com'], connect: ['queue.simpleanalyticscdn.com'], img: ['queue.simpleanalyticscdn.com'] }),
 };
+
+/**
+ * Matomo Cloud: `https://<name>.matomo.cloud` serves its script from cdn.matomo.cloud/<name>.matomo.cloud/. That
+ * CDN is shared by every Matomo Cloud tenant, so allowing it allows all of them: the price of the vendor's setup.
+ */
+const MATOMO_CLOUD_RE = /^[a-z0-9-]+\.matomo\.cloud$/i;
+
+/** The self-hosted instance an integration points at (preset allowing it, valid base), as a parsed URL. */
+const ownInstance = (i: ConsentIntegration, preset: ConsentIntegrationPreset): URL | null => {
+  const base = SELF_HOSTABLE_PRESETS.includes(preset) ? analyticsBase(i.host) : null;
+  return base ? new URL(base) : null;
+};
+
+/** The CSP hosts one integration preset needs: its curated bundle, or the owner's own instance. */
+function presetOrigins(i: ConsentIntegration, preset: ConsentIntegrationPreset): CspOrigins {
+  const own = ownInstance(i, preset)?.host ?? null;
+  if (preset === 'matomo') {
+    if (!own) return EMPTY;
+    // Matomo sends by sendBeacon, then XHR, then an image GET — all to the tracker host.
+    return bundle({ script: [MATOMO_CLOUD_RE.test(own) ? 'cdn.matomo.cloud' : own], connect: [own], img: [own] });
+  }
+  const cloud = CONSENT_PRESET_ORIGINS[preset] ?? EMPTY;
+  // An owner who types the vendor's own cloud address still needs the whole cloud bundle (Umami posts to its gateway).
+  if (own && !cloud.script.includes(own)) return bundle({ script: [own], connect: [own] });
+  return cloud;
+}
+
+/** True when an integration loads on every page without waiting for consent (a cookieless preset, opted in). */
+export function loadsWithoutConsent(i: ConsentIntegration): boolean {
+  return i.requireConsent === false && COOKIELESS_PRESETS.includes(i.preset ?? 'custom');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTHOR-CONTENT GATING — any cross-origin author `<iframe>` (an embed: YouTube/Vimeo/Maps/Calendly/…) is
@@ -308,14 +335,27 @@ export interface ConsentIntegrationRuntime {
   id: string;
   /** The gating category. */
   cat: 'functional' | 'analytics' | 'marketing';
-  /** ga4 (gtag) | gtm (Tag Manager) | script (a plain external <script src>). */
-  kind: 'ga4' | 'gtm' | 'script';
+  /**
+   * ga4 (gtag) | gtm (Tag Manager) | plausible (the per-site script, started by plausible.init()) | matomo (the
+   * `_paq` queue) | script (a plain external <script src>, plus any vendor `attrs`).
+   */
+  kind: 'ga4' | 'gtm' | 'plausible' | 'matomo' | 'script';
   /** The external script URL to inject (always https; for ga4/gtm it's the gtag/gtm loader). */
   src: string;
-  /** ga4/gtm measurement/container id (for the self-origin bootstrap consent.js runs). */
+  /** ga4/gtm measurement/container id, or Matomo's site id (for the self-origin bootstrap consent.js runs). */
   mid?: string;
   /** Load async (default true). */
   async: boolean;
+  /** The data-* attributes the vendor's script reads (data-domain, data-website-id, data-site, data-hostname). */
+  attrs?: Record<string, string>;
+  /** Matomo: the tracker endpoint (`…/matomo.php`). */
+  track?: string;
+  /** Loads without waiting for consent (a cookieless preset with `requireConsent: false`). */
+  free?: true;
+  /** Matomo loading without consent: switch its cookies off (`disableCookies`). */
+  nocookie?: true;
+  /** An analytics PRESET (anything but `custom`): the preview never runs it, whatever category it is filed under. */
+  ana?: true;
 }
 
 /** A bare hostname with an optional port — no ';'/space/',' (those would break out of a CSP directive). */
@@ -332,20 +372,53 @@ const hostOf = (url: string): string | null => {
   }
 };
 
+const enc = encodeURIComponent;
+
 /** The runtime descriptor the consent mount bakes into the config for one integration. */
 export function integrationRuntimeInfo(i: ConsentIntegration): ConsentIntegrationRuntime | null {
   const preset = i.preset ?? 'custom';
-  if (preset === 'ga4' && i.measurementId)
-    return { id: i.id, cat: i.category, kind: 'ga4', mid: i.measurementId, src: `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(i.measurementId)}`, async: true };
-  if (preset === 'gtm' && i.measurementId)
-    return { id: i.id, cat: i.category, kind: 'gtm', mid: i.measurementId, src: `https://www.googletagmanager.com/gtm.js?id=${encodeURIComponent(i.measurementId)}`, async: true };
-  if (preset === 'custom' && i.src && hostOf(i.src)) return { id: i.id, cat: i.category, kind: 'script', src: i.src, async: i.async !== false };
+  const base = { id: i.id, cat: i.category, ...(loadsWithoutConsent(i) ? { free: true as const } : {}), ...(preset !== 'custom' ? { ana: true as const } : {}) };
+  const own = ownInstance(i, preset)?.href ?? null;
+  const sid = i.siteId ?? '';
+  switch (preset) {
+    case 'ga4':
+      return i.measurementId ? { ...base, kind: 'ga4', mid: i.measurementId, src: `https://www.googletagmanager.com/gtag/js?id=${enc(i.measurementId)}`, async: true } : null;
+    case 'gtm':
+      return i.measurementId ? { ...base, kind: 'gtm', mid: i.measurementId, src: `https://www.googletagmanager.com/gtm.js?id=${enc(i.measurementId)}`, async: true } : null;
+    case 'plausible':
+      if (/^pa-[A-Za-z0-9_-]+$/.test(sid)) return { ...base, kind: 'plausible', src: `${own ?? 'https://plausible.io/'}js/${sid}.js`, async: true };
+      return sid ? { ...base, kind: 'script', src: `${own ?? 'https://plausible.io/'}js/script.js`, async: true, attrs: { 'data-domain': sid } } : null;
+    case 'umami':
+      return sid ? { ...base, kind: 'script', src: `${own ?? 'https://cloud.umami.is/'}script.js`, async: true, attrs: { 'data-website-id': sid } } : null;
+    case 'matomo': {
+      if (!own || !/^[1-9][0-9]*$/.test(sid)) return null;
+      const host = new URL(own).host;
+      // Matomo Cloud lives at the root of its own host, whatever path the owner typed.
+      const cloud = MATOMO_CLOUD_RE.test(host);
+      const src = cloud ? `https://cdn.matomo.cloud/${host}/matomo.js` : `${own}matomo.js`;
+      const track = cloud ? `https://${host}/matomo.php` : `${own}matomo.php`;
+      return { ...base, kind: 'matomo', mid: sid, src, track, async: true, ...(base.free ? { nocookie: true as const } : {}) };
+    }
+    case 'fathom':
+      return sid ? { ...base, kind: 'script', src: 'https://cdn.usefathom.com/script.js', async: true, attrs: { 'data-site': sid } } : null;
+    case 'simpleanalytics':
+      return { ...base, kind: 'script', src: 'https://scripts.simpleanalyticscdn.com/latest.js', async: true, ...(sid ? { attrs: { 'data-hostname': sid } } : {}) };
+    case 'custom':
+      return i.src && hostOf(i.src) ? { ...base, kind: 'script', src: i.src, async: i.async !== false } : null;
+  }
   return null; // an invalid integration contributes nothing (defence-in-depth over the schema)
 }
 
-/** The runtime descriptors for all valid integrations (what the helper bakes; the runtime injects on consent). */
+/**
+ * The integrations a page's runtime loads: all valid ones while the consent manager is on (each still waits for
+ * its category unless it is `free`), and only the ones that load WITHOUT consent while it is off.
+ */
 export function consentRuntimeIntegrations(consent: Consent | undefined): ConsentIntegrationRuntime[] {
-  return (consent?.integrations ?? []).map(integrationRuntimeInfo).filter((x): x is ConsentIntegrationRuntime => x !== null);
+  const on = consent?.enabled === true;
+  return (consent?.integrations ?? [])
+    .filter((i) => on || loadsWithoutConsent(i))
+    .map(integrationRuntimeInfo)
+    .filter((x): x is ConsentIntegrationRuntime => x !== null);
 }
 
 /**
@@ -372,9 +445,10 @@ export function consentCspOrigins(consent: Consent | undefined, extraOrigins: Pa
     // advanced integration `origins` already do, so `{script:['x.test']}` doesn't silently half-work.
     for (const h of siteOrigins.script ?? []) if (CSP_HOST_TOKEN_RE.test(h)) acc.connect.add(h);
   }
-  for (const i of consent?.enabled === true ? consent.integrations ?? [] : []) {
+  // While the manager is off only the integrations that load WITHOUT consent can run, so only they widen it.
+  for (const i of (consent?.integrations ?? []).filter((x) => consent?.enabled === true || loadsWithoutConsent(x))) {
     const preset = i.preset ?? 'custom';
-    mergeBundle(preset === 'ga4' || preset === 'gtm' ? CONSENT_PRESET_ORIGINS[preset] : EMPTY);
+    if (preset !== 'custom') mergeBundle(presetOrigins(i, preset));
     if (preset === 'custom') {
       const h = i.src ? hostOf(i.src) : null;
       // Re-validate the extracted host as a bare hostname(+optional port) before it enters the CSP — a

@@ -345,7 +345,8 @@ function ipv4MappedToDotted(host: string): string | null {
 export function targetsPrivateHost(url: string): boolean {
   let host: string;
   try {
-    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    // A trailing dot is the same host to a resolver (`localhost.` IS localhost), so it must not dodge the list.
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
   } catch {
     return true;
   }

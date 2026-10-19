@@ -585,3 +585,38 @@ describe('Consent runtime — analytics hygiene (jsdom)', () => {
     expect(dl.filter((a) => a && a[0] === 'js')).toHaveLength(1);
   });
 });
+
+describe('★ consent runtime — cookieless integrations alongside the banner (jsdom)', () => {
+  const injected = (id: string): Element | null => document.querySelector(`script[data-sw-consent-loaded="${id}"]`);
+  beforeEach(() => {
+    localStorage.clear();
+    document.body.innerHTML = '';
+    Array.from(document.querySelectorAll('[data-sw-consent-loaded]')).forEach((s) => s.remove());
+  });
+
+  it('loads a cookieless integration before any choice, while a gated one waits for consent', () => {
+    run({
+      ...CONFIG,
+      ints: [
+        { id: 'fa', cat: 'analytics', kind: 'script', src: 'https://cdn.usefathom.com/script.js', async: true, attrs: { 'data-site': 'ABCD' }, free: true, ana: true },
+        { id: 'chat', cat: 'functional', kind: 'script', src: 'https://w.example/c.js', async: true },
+      ],
+    });
+    expect(root().hasAttribute('data-open')).toBe(true); // the banner still asks
+    expect(injected('fa')!.getAttribute('data-site')).toBe('ABCD');
+    expect(injected('chat')).toBeNull();
+    btn('Reject all').click();
+    expect(injected('chat')).toBeNull();
+    expect(injected('fa')).not.toBeNull(); // rejecting does not unload a script that needs no consent
+  });
+
+  it('a Matomo that waits for consent keeps its cookies (no disableCookies)', () => {
+    delete (window as unknown as { _paq?: unknown })._paq;
+    run({ ...CONFIG, ints: [{ id: 'mt', cat: 'analytics', kind: 'matomo', mid: '7', src: 'https://s.example.com/matomo.js', track: 'https://s.example.com/matomo.php', async: true, ana: true }] });
+    expect(injected('mt')).toBeNull(); // waits
+    btn('Accept all').click();
+    const q = (window as unknown as { _paq: unknown[][] })._paq;
+    expect(q.map((c) => c[0])).toEqual(['trackPageView', 'enableLinkTracking', 'setTrackerUrl', 'setSiteId']);
+  });
+});
+

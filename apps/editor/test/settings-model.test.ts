@@ -114,6 +114,32 @@ describe('settings model', () => {
     expect(toBundle(form, withInts).website?.consent?.integrations?.map((i) => i.id)).toEqual(['ga']);
   });
 
+  it('★ keeps the non-Google analytics presets an agent set up when the owner saves settings', () => {
+    const integrations = [
+      { id: 'pl', name: 'Plausible', category: 'analytics' as const, preset: 'plausible' as const, siteId: 'pa-AbC123', requireConsent: false },
+      { id: 'um', name: 'Umami', category: 'analytics' as const, preset: 'umami' as const, siteId: '94db1cb1-74f4-4a40-ad6c-962362670409', host: 'https://u.example.com' },
+      { id: 'mt', name: 'Matomo', category: 'analytics' as const, preset: 'matomo' as const, siteId: '7', host: 'https://s.example.com/' },
+      { id: 'sa', name: 'Simple Analytics', category: 'analytics' as const, preset: 'simpleanalytics' as const }, // needs no id
+    ];
+    const bundle: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { consent: { enabled: true, integrations } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toBundle(toForm(bundle), bundle).website?.consent?.integrations).toEqual(integrations);
+    // …while half-filled rows of these presets are still dropped so the save validates.
+    const form = toForm(bundle);
+    form.consent = {
+      enabled: true,
+      integrations: [
+        { id: 'pl2', name: 'Plausible', category: 'analytics', preset: 'plausible' }, // no site id
+        { id: 'mt2', name: 'Matomo', category: 'analytics', preset: 'matomo', siteId: '7' }, // no host
+        ...integrations,
+      ],
+    };
+    expect(toBundle(form, bundle).website?.consent?.integrations?.map((i) => i.id)).toEqual(['pl', 'um', 'mt', 'sa']);
+  });
+
   it("newConsentIntegration produces a valid, uniquely-id'd GA4 row", () => {
     const a = newConsentIntegration();
     const b = newConsentIntegration();

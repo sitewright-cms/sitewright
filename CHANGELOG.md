@@ -29,7 +29,22 @@ The running version of an instance is reported at `GET /version` (baked into the
     Google's own guidance lists every `*.google.com` host, but that would also open the way to Google Apps Script
     and Forms, so only the host GA4 uses is added.
 
+- **An Analytics tile in Website Settings.** It lists the site's analytics tools and opens an editor for just
+  those, without the chat widgets and other integrations the Consent tile also holds.
+  - Every tool has its own fields: Google's measurement id, the site id from the tool's own snippet, the
+    address of a self-hosted Plausible, Umami or Matomo, and for cookieless tools a "Load without consent"
+    switch.
+  - When a tool waits for visitor consent but the consent banner is off, it can never load. The tile then reads
+    "Banner off", and the editor says so and offers to turn the banner on.
+  - The Consent tile's integration editor offers the same tools.
+
 ### Changed
+
+- **Head HTML is no longer suggested for analytics.** The Head HTML slot was labelled "analytics, meta", but a
+  tracker pasted there runs before any visitor consent, and on platform hosting the site's security policy
+  blocks it while the preview shows it working. The slot now says it is for meta and verification tags, and
+  the document map flags a known tracker in Head HTML or Scripts ("Google Analytics: move to Analytics"). The
+  agent guidance says the same.
 
 - **The agent design guide accepts the familiar website header.** The guide's generic-template check
   counted a header with the logo on the left, links on the right and one button far right as a sign

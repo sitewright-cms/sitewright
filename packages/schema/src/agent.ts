@@ -151,7 +151,8 @@ In \`source\`:
   <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src, or
   {{sw-image url editable="key"}} to stay responsive; link: data-sw-href; background: data-sw-bg).
   The override is stored on the page as page.data.<key>.
-- NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
+- NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. Analytics and other third-party
+  tools are website.consent.integrations entries, never a script (get_guide("consent")). For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{sw-url …}} helper.
 - NO SEMANTIC LANDMARK ELEMENTS: the page SKELETON already wraps every page body in
@@ -1149,7 +1150,11 @@ visitor's choice, updated live). The editor's draft preview never runs analytics
 owner's previews are not counted (embeds and functional widgets still render). Withdrawing a category deletes
 its known tracker cookies, and reloads the page when its code already ran there (not while a form holds unsaved
 input); cancel the \`sw:consentrevoked\` event to handle the reload yourself.
-The whole thing is also configurable no-code in Settings → Website → Consent.
+ANALYTICS: register the owner's tool as an integration (preset + the id from THEIR snippet; ask if you don't
+have it). NEVER paste a tracker (gtag, GTM, Plausible, Umami, Matomo…) into website.head or website.scripts:
+it skips consent, and on platform hosting the site's CSP blocks it while the preview shows it working.
+The whole thing is also configurable no-code in Settings → Website → Consent, and Settings → Website →
+Analytics lists just the analytics tools.
 `,
   },
   templates: {

@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
-import { type ConsentIntegration } from '@sitewright/schema';
+import { COOKIELESS_PRESETS, SELF_HOSTABLE_PRESETS, type ConsentIntegration } from '@sitewright/schema';
 import { glassInput, ghostButton } from '../../theme';
 import { newConsentIntegration } from './model';
 
@@ -8,11 +8,25 @@ import { newConsentIntegration } from './model';
 const glassSelectAuto =
   'sw-brand-focus shrink-0 rounded-lg border border-white/60 dark:border-white/10 bg-white/70 dark:bg-slate-900/70 px-2 py-2 text-sm text-slate-800 dark:text-slate-100 shadow-sm outline-none transition';
 
-const PRESETS: Array<{ value: NonNullable<ConsentIntegration['preset']>; label: string }> = [
+type Preset = NonNullable<ConsentIntegration['preset']>;
+const PRESETS: Array<{ value: Preset; label: string }> = [
   { value: 'ga4', label: 'Google Analytics 4' },
   { value: 'gtm', label: 'Google Tag Manager' },
+  { value: 'plausible', label: 'Plausible' },
+  { value: 'umami', label: 'Umami' },
+  { value: 'matomo', label: 'Matomo' },
+  { value: 'fathom', label: 'Fathom' },
+  { value: 'simpleanalytics', label: 'Simple Analytics' },
   { value: 'custom', label: 'Custom script' },
 ];
+/** Where each tool's identifier comes from: copied from the owner's own snippet, never guessed. */
+const SITE_ID_PLACEHOLDER: Partial<Record<Preset, string>> = {
+  plausible: 'pa-XXXXXXXX from your snippet (or the site domain)',
+  umami: 'Website ID from your snippet (a UUID)',
+  matomo: 'Site ID from your snippet, e.g. 1',
+  fathom: 'data-site code from your snippet',
+  simpleanalytics: 'Hostname to report as (optional)',
+};
 const CATEGORIES: Array<{ value: ConsentIntegration['category']; label: string }> = [
   { value: 'functional', label: 'Functional' },
   { value: 'analytics', label: 'Analytics' },
@@ -26,7 +40,18 @@ const MAX = 20;
  * `id` keys React, a "type" (preset) select drives which fields show (a measurement id for GA4/GTM, a script
  * url + optional extra origins for a custom script). The `id` is auto-generated and never edited.
  */
-export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentIntegration[]; onChange: (rows: ConsentIntegration[]) => void }) {
+export function ConsentIntegrationsEditor({
+  rows,
+  onChange,
+  addLabel = '+ Add integration',
+  max = MAX,
+}: {
+  rows: ConsentIntegration[];
+  onChange: (rows: ConsentIntegration[]) => void;
+  addLabel?: string;
+  /** How many rows THIS list may hold: a caller showing part of the registry passes what the shared cap leaves. */
+  max?: number;
+}) {
   const set = (id: string, patch: Partial<ConsentIntegration>): void => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   const splitHosts = (text: string): string[] => text.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
   const setOrigins = (id: string, text: string): void => {
@@ -50,9 +75,21 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
                   aria-label={`Integration ${i + 1} type`}
                   className={glassSelectAuto}
                   value={preset}
-                  // Clear the OTHER preset's identifying fields so a stale G-XXX / src doesn't fail the new
-                  // preset's validation on save (e.g. a ga4 measurementId left on a gtm row → 400).
-                  onChange={(e) => set(r.id, { preset: e.target.value as NonNullable<ConsentIntegration['preset']>, measurementId: undefined, src: undefined, origins: undefined, frameOrigins: undefined })}
+                  // Clear the OTHER preset's identifying fields so a stale G-XXX / src / host doesn't fail the new
+                  // preset's validation on save (e.g. a ga4 measurementId left on a gtm row → 400), and a
+                  // "load without consent" never carries over to a tool that sets cookies.
+                  onChange={(e) =>
+                    set(r.id, {
+                      preset: e.target.value as Preset,
+                      measurementId: undefined,
+                      siteId: undefined,
+                      host: undefined,
+                      requireConsent: undefined,
+                      src: undefined,
+                      origins: undefined,
+                      frameOrigins: undefined,
+                    })
+                  }
                 >
                   {PRESETS.map((p) => (
                     <option key={p.value} value={p.value}>
@@ -75,6 +112,27 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
                 {(preset === 'ga4' || preset === 'gtm') && (
                   <input aria-label={`Integration ${i + 1} measurement id`} className={glassInput} value={r.measurementId ?? ''} placeholder={preset === 'ga4' ? 'G-XXXXXXX' : 'GTM-XXXXXX'} onChange={(e) => set(r.id, { measurementId: e.target.value })} />
                 )}
+                {SITE_ID_PLACEHOLDER[preset] && (
+                  <input aria-label={`Integration ${i + 1} site id`} className={glassInput} value={r.siteId ?? ''} placeholder={SITE_ID_PLACEHOLDER[preset]} onChange={(e) => set(r.id, { siteId: e.target.value.trim() || undefined })} />
+                )}
+                {preset === 'matomo' ? (
+                  <input aria-label={`Integration ${i + 1} Matomo address`} className={glassInput} value={r.host ?? ''} placeholder="https://stats.example.com/ or https://name.matomo.cloud" onChange={(e) => set(r.id, { host: e.target.value.trim() || undefined })} />
+                ) : (
+                  SELF_HOSTABLE_PRESETS.includes(preset) && (
+                    <input aria-label={`Integration ${i + 1} self-hosted address`} className={glassInput} value={r.host ?? ''} placeholder="Self-hosted address (optional): https://…" onChange={(e) => set(r.id, { host: e.target.value.trim() || undefined })} />
+                  )
+                )}
+                {COOKIELESS_PRESETS.includes(preset) && (
+                  <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      className="checkbox checkbox-sm"
+                      checked={r.requireConsent === false}
+                      onChange={(e) => set(r.id, { requireConsent: e.target.checked ? false : undefined })}
+                    />
+                    {preset === 'matomo' ? 'Load without consent (Matomo then sets no cookies)' : 'Load without consent (it sets no cookies)'}
+                  </label>
+                )}
                 {preset === 'custom' && (
                   <>
                     <input aria-label={`Integration ${i + 1} script url`} className={glassInput} value={r.src ?? ''} placeholder="https://widget.example.com/c.js" onChange={(e) => set(r.id, { src: e.target.value.trim() || undefined })} />
@@ -87,9 +145,9 @@ export function ConsentIntegrationsEditor({ rows, onChange }: { rows: ConsentInt
           );
         })}
       </AnimatePresence>
-      {rows.length < MAX && (
+      {rows.length < max && (
         <button type="button" onClick={() => onChange([...rows, newConsentIntegration()])} className={`${ghostButton} self-start`}>
-          + Add integration
+          {addLabel}
         </button>
       )}
     </div>

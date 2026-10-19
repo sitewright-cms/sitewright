@@ -587,3 +587,48 @@ describe('★ analytics presets — hostile input (review hardening)', () => {
     expect(o.connect).toContain('gateway.umami.is');
   });
 });
+
+describe('analyticsLoaderIn — a tracker pasted into raw HTML', () => {
+  it('names the analytics tool a raw snippet loads, and nothing for ordinary markup', async () => {
+    const { analyticsLoaderIn } = await import('../src/consent-csp.js');
+    expect(analyticsLoaderIn('<script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>')).toBe('Google Analytics');
+    expect(analyticsLoaderIn("<script>(function(w,d,s,l,i){})(window,document,'script','dataLayer','GTM-X');</script><script src=\"https://www.googletagmanager.com/gtm.js?id=GTM-X\"></script>")).toBe('Google Tag Manager');
+    expect(analyticsLoaderIn('<script defer data-domain="x.com" src="https://plausible.io/js/script.js"></script>')).toBe('Plausible');
+    expect(analyticsLoaderIn('<script defer src="https://cloud.umami.is/script.js" data-website-id="abc"></script>')).toBe('Umami');
+    expect(analyticsLoaderIn("<script>var _paq = window._paq = window._paq || []; _paq.push(['trackPageView']);</script>")).toBe('Matomo');
+    expect(analyticsLoaderIn('<script src="https://cdn.usefathom.com/script.js" data-site="ABC" defer></script>')).toBe('Fathom');
+    expect(analyticsLoaderIn('<script async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>')).toBe('Simple Analytics');
+    expect(analyticsLoaderIn('<meta name="google-site-verification" content="x">')).toBeNull();
+    expect(analyticsLoaderIn(undefined)).toBeNull();
+    // A gated script is fine: the runtime only releases it after consent.
+    expect(analyticsLoaderIn('<script type="text/plain" data-sw-consent="analytics" src="https://plausible.io/js/script.js"></script>')).toBeNull();
+    expect(analyticsLoaderIn('<SCRIPT TYPE=text/plain data-sw-consent="analytics" src="https://plausible.io/js/script.js"></SCRIPT>')).toBeNull();
+  });
+
+  it('★ does not cry wolf over ordinary markup that merely mentions a tracker-like word', async () => {
+    const { analyticsLoaderIn } = await import('../src/consent-csp.js');
+    for (const html of [
+      '<a class="gtm-button" data-gtm-event="x">Buy</a>',
+      '<p>Ref GTM-2024 order, a plausible plan</p>',
+      '<div data-website-id="abc"></div>', // another widget's attribute, not on a script
+      '<p>The _paq queue is documented elsewhere.</p>',
+      '<!-- old: <script src="https://www.googletagmanager.com/gtag/js?id=G-1"></script> -->',
+    ])
+      expect(analyticsLoaderIn(html), html).toBeNull();
+  });
+
+  it('★ is not fooled by a data-type attribute or a malformed gated tag swallowing a real tracker', async () => {
+    const { analyticsLoaderIn } = await import('../src/consent-csp.js');
+    // data-type is not type: this script RUNS.
+    expect(analyticsLoaderIn('<script data-type="text/plain" src="https://plausible.io/js/script.js"></script>')).toBe('Plausible');
+    // An unclosed gated tag must not eat the live tracker that follows it.
+    expect(analyticsLoaderIn('<script type="text/plain" src="x"><script src="https://plausible.io/js/script.js"></script>')).toBe('Plausible');
+    // The common snippets the first version missed.
+    expect(analyticsLoaderIn("<script>ga('create', 'UA-1-1', 'auto');</script>")).toBe('Google Analytics');
+    expect(analyticsLoaderIn('<script defer data-domain="x.com" src="/js/script.js"></script>')).toBe('Plausible'); // a proxied Plausible
+    // Linear on pathological input (the old lazy scan was quadratic: ~0.4 s at this size).
+    const t = Date.now();
+    analyticsLoaderIn('<script type="text/plain">'.repeat(10_000));
+    expect(Date.now() - t).toBeLessThan(150);
+  });
+});

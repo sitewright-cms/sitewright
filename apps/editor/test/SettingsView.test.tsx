@@ -284,6 +284,19 @@ describe('SettingsView', () => {
     }
   });
 
+  it('★ flags an analytics tracker pasted into Head HTML and points at Analytics', async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Edit Raw HTML injected into <head>/ }));
+    const editor = await screen.findByRole('dialog', { name: 'Head HTML' });
+    // The editor says where analytics belongs before anything is pasted.
+    expect(within(editor).getByText(/Analytics tile/)).toBeInTheDocument();
+    fireEvent.change(within(editor).getByLabelText('code'), { target: { value: '<script async src="https://www.googletagmanager.com/gtag/js?id=G-1"></script>' } });
+    fireEvent.click(within(editor).getByRole('button', { name: 'Save changes' }));
+    const head = await screen.findByRole('button', { name: /Edit Raw HTML injected into <head>/ });
+    await waitFor(() => expect(head).toHaveTextContent('Google Analytics: move to Analytics'));
+  });
+
   it('discards unsaved edits, reverting fields and re-disabling the buttons', async () => {
     renderView();
     const sheet = await openTile('Identity');
@@ -418,6 +431,18 @@ describe('SettingsView — the boards', () => {
     const effects = screen.getByRole('group', { name: 'Nav, buttons & preloader tile' });
     const themes = screen.getByRole('group', { name: 'Light / dark themes tile' });
     expect(effects.compareDocumentPosition(themes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('★ the Analytics tile sits in Site behaviour and opens the analytics tools', async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    const tile = await screen.findByRole('group', { name: 'Analytics tile' });
+    const search = screen.getByRole('group', { name: 'Site search tile' });
+    expect(search.compareDocumentPosition(tile) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(tile).getByText('No analytics tool connected.')).toBeInTheDocument();
+    fireEvent.click(within(tile).getByRole('button', { name: 'Edit analytics tools' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Analytics' });
+    expect(within(dialog).getByRole('button', { name: '+ Add analytics tool' })).toBeInTheDocument();
   });
 
   it('a custom content width keeps the select at full size beside a narrow pixel field', async () => {

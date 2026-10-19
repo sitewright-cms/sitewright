@@ -572,3 +572,32 @@ export function siteCspHeaderFromHtml(html: string): string | undefined {
     .replace(/&amp;/g, '&'); // &amp; LAST so a literal "&amp;" isn't double-decoded
   return `${decoded}; frame-ancestors 'none'`;
 }
+
+// A TRACKER PASTED INTO RAW HTML (website.head / website.scripts) runs before any consent and, on platform
+// hosting, is blocked by the site's own CSP while working in the sandboxed preview. The editor and the agent
+// guidance point owners at the integration registry instead; this names what was pasted. A gated
+// `type="text/plain"` script is fine (the runtime releases it on consent), so those are skipped.
+// The gated tag must carry `type` as its OWN attribute (not inside data-type) and its body may not run into another
+// <script>: a malformed gated tag must never swallow a real tracker after it. The tempered body also keeps the scan
+// linear on pathological input.
+const GATED_SCRIPT_RE = /<script\b(?=[^>]*\stype\s*=\s*["']?text\/plain)[^>]*>(?:(?!<script\b)[\s\S])*?<\/script>/gi;
+const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
+// Signatures of LOADER CODE, not of words: a `gtm-button` class, a "GTM-2024" order number or a data-website-id on
+// some other widget must not make an owner think they pasted a tracker.
+const TRACKER_SIGNATURES: ReadonlyArray<[string, RegExp]> = [
+  ['Google Tag Manager', /googletagmanager\.com\/(gtm\.js|ns\.html)|['"]GTM-[A-Z0-9]+['"]/],
+  ['Google Analytics', /googletagmanager\.com\/gtag\/js|google-analytics\.com\/(analytics|ga)\.js|\bgtag\(\s*['"]config['"]|\bga\(\s*['"]create['"]/],
+  ['Plausible', /plausible\.io\/js\/|\/js\/pa-[A-Za-z0-9_-]+\.js|\bplausible\.init\(|window\.plausible\s*=|<script\b[^>]*\sdata-domain\s*=/i],
+  ['Umami', /cloud\.umami\.is|<script\b[^>]*\sdata-website-id\s*=/i],
+  ['Matomo', /\b_paq\.push\(|window\._paq\b|\/(matomo|piwik)\.js\b/i],
+  ['Fathom', /cdn\.usefathom\.com/i],
+  ['Simple Analytics', /simpleanalyticscdn\.com/i],
+];
+
+/** The analytics tool an UNGATED raw-HTML snippet loads ("Google Analytics", "Plausible"…), or null. */
+export function analyticsLoaderIn(html: string | undefined | null): string | null {
+  if (!html) return null;
+  const ungated = html.replace(HTML_COMMENT_RE, '').replace(GATED_SCRIPT_RE, '');
+  for (const [name, re] of TRACKER_SIGNATURES) if (re.test(ungated)) return name;
+  return null;
+}

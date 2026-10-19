@@ -1,6 +1,6 @@
 {
   "name": "@sitewright/core",
-  "version": "0.65.0",
+  "version": "0.66.0",
   "description": "Pure domain logic for Sitewright: immutable block-tree operations, partial resolution, binding resolution, and project validation.",
   "license": "Apache-2.0",
   "type": "module",

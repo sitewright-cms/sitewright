@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.66.0] — 2026-10-19
+
 ### Added
 
 - **Built-in statistics: the platform counts a site's visits itself.** No third-party tool, no cookie and nothing
@@ -5395,7 +5397,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.65.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.66.0...HEAD
+[0.66.0]: https://github.com/sitewright-cms/sitewright/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/sitewright-cms/sitewright/compare/v0.64.0...v0.65.0
 [0.64.0]: https://github.com/sitewright-cms/sitewright/compare/v0.63.0...v0.64.0
 [0.63.0]: https://github.com/sitewright-cms/sitewright/compare/v0.62.0...v0.63.0

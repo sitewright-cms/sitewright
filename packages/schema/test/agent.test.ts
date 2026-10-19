@@ -128,6 +128,21 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(AGENT_GUIDES.nav.body).toContain('MECHANICS, not the look');
   });
 
+  it('★ treats the familiar logo-left header as a usability convention, not a template hallmark', () => {
+    // Round 2 of the A/B (#1123) dropped every stock chrome option, and 4 of 5 sites went back to logo left /
+    // links right / button far right. That bar is where visitors look for the menu: counting it against a
+    // page pushed agents to restyle navigation instead of varying the page. The footer hallmark stays.
+    const body = AGENT_GUIDES.design.body;
+    const check = body.slice(body.indexOf('GENERIC-TEMPLATE CHECK'), body.indexOf('SECOND-WAVE TEMPLATE'));
+    expect(check).toContain('four-column footer');
+    for (const header of ['logo left', 'links right', 'button far right']) expect(check).not.toContain(header);
+    const chrome = body.slice(body.indexOf('HEADER + FOOTER'));
+    expect(chrome).toContain('a usability convention, not a template');
+    expect(chrome).not.toContain('is the first template');
+    // The second-wave chrome signature is still named.
+    expect(body).toContain('a thin utility strip above a centred wordmark');
+  });
+
   it('teaches CHROME SLOT authoring (website.mainNav/footer) so header/footer are not built as pages', () => {
     // The exact failure a weaker model hit: it made pages/templates named header/footer instead of
     // filling the site-wide slots. The core AND the nav guide must name the real mechanism.

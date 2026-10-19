@@ -299,17 +299,21 @@ export function buildSwImage(url: string, media: readonly RenderMedia[], opts: S
     return `<a href="${rungs.src}" data-full="${rungs.src}"${cap}>${markup}</a>`;
   };
 
+  // ONE responsive <img> for both deliveries. Under AVIF it is the <picture>'s fallback, and it keeps its own
+  // WebP srcset + sizes: it used to ship as a bare `src` at the TOP rung (up to 2400px) — what a browser that
+  // matches no <source> fetches, and exactly what the sizing audit (pagespeed_audit) flags as an oversized
+  // image with no srcset. So AVIF looked like a performance regression and agents stopped opting in.
+  const image =
+    `<img src="${rungs.src}" srcset="${rungs.webp}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
+    `loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>`;
   if (opts.format === 'avif') {
     return galleryWrap(
       '<picture>' +
         `<source type="image/avif" srcset="${rungs.avif}" sizes="${sizesAttr}">` +
         `<source type="image/webp" srcset="${rungs.webp}" sizes="${sizesAttr}">` +
-        `<img src="${rungs.src}" alt="${alt}" ${dims} loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>` +
+        image +
         '</picture>',
     );
   }
-  return galleryWrap(
-    `<img src="${rungs.src}" srcset="${rungs.webp}" sizes="${sizesAttr}" alt="${alt}" ${dims} ` +
-      `loading="${loading}" decoding="async"${fp}${edit}${cls}${lqip}>`,
-  );
+  return galleryWrap(image);
 }

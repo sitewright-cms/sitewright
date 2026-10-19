@@ -89,6 +89,7 @@ import {
 } from './chrome-runtimes.js';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
+import { relinkStylesheet, renderedClassHarvest, renderedStylesheetVersion } from './rendered-classes.js';
 import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import {
@@ -881,6 +882,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...richContentClassNames,
     ];
     const usesUtilities = classNames.length > 0;
+    // ★ …and every class the pages RENDER that this source scan missed — the preview's rule, so a class that
+    // only exists at render time (`bg-{{tone}}-600`, a helper's markup, a data value's HTML) ships too. Fed
+    // per page in the route loop below; see rendered-classes.ts for why, and for the stylesheet-token rule.
+    const renderedClasses = renderedClassHarvest(classNames);
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships
     // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
     // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
@@ -1314,6 +1319,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
+        // The classes THIS page rendered — its body + chrome slots, exactly the markup the editor preview
+        // compiles from. A RAW-HTML page is skipped: it links no utility sheet (and the editor compiles none
+        // for it), so its foreign classes must not reach the shared one.
+        const pageRendersClasses =
+          !page.rawHtml && renderedClasses.add([bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml]);
         // PRELOADER overlay (first body child). The logo resolves to a MATERIALIZED `lg` thumbnail
         // (`relImage` records the ref so it lands in the export — `copyMedia` skips images now that
         // they're generated on demand; a bare `rel()` would ship a dangling 404). Page-relative, so
@@ -1499,7 +1509,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared assets (under the site's asset tree, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
-          stylesheets: usesUtilities ? [`${siteRoot}${SCRIPT_DIR}/${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
+          // A page whose RENDERED markup carries a class links it even when the source scan found none.
+          stylesheets:
+            usesUtilities || pageRendersClasses ? [`${siteRoot}${SCRIPT_DIR}/${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
@@ -1687,9 +1699,21 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),
     // containing only the utilities actually used, with brand tokens in the theme.
-    if (usesUtilities) {
+    const renderedOnlyClassNames = renderedClasses.extras();
+    const utilityClassNames = renderedOnlyClassNames.length > 0 ? [...classNames, ...renderedOnlyClassNames] : classNames;
+    if (utilityClassNames.length > 0) {
       report({ phase: 'styles' });
-      const css = await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand));
+      const css = await compileUtilityCss([utilityClassNames.join(' ')], brandToTailwindTheme(brand));
+      // The pages link the sheet at `assetVer`, which only the SOURCE scan feeds. When the rendered pages added
+      // classes, the sheet's bytes depend on render-time content too, so its token must follow them — else a
+      // dataset edit that changes a rendered class leaves every cached `styles.css?v=` serving the old rule.
+      if (renderedOnlyClassNames.length > 0) {
+        await relinkStylesheet(
+          writtenPaths,
+          `${UTILITY_STYLESHEET}?v=${assetVer}`,
+          `${UTILITY_STYLESHEET}?v=${renderedStylesheetVersion(assetVer, css)}`,
+        );
+      }
       // The runtimes may not be written yet, and a site with no media has no `_assets/` at all, so the
       // directory cannot be assumed to exist.
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir

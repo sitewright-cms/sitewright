@@ -303,4 +303,32 @@ describe('code-first preview', () => {
       expect(author).toBeLessThan(utility);
     });
   });
+
+  // ★ THE EDITOR CANVAS AND THE BUILT SITE MUST COMPILE THE SAME UTILITIES FOR THE SAME MARKUP.
+  //
+  // The canvas compiles from the RENDERED page; the build used to compile from the SOURCE only. A class inside a
+  // conditional whose helper call is quoted — `{{#if (eq page.data.phase "dusk")}}bg-orange-500{{/if}}` — was
+  // invisible to the source scan (the `"` ended the attribute), and an interpolated one (`bg-{{tone}}-600`) has
+  // no source form at all: both were styled in the editor and unstyled once published.
+  describe('utility parity — classes inside Handlebars expressions', () => {
+    const page = {
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      data: { phase: 'dusk', tone: 'emerald' },
+      source:
+        '<section class="p-6 {{#if (eq page.data.phase "dusk")}}bg-orange-500{{/if}}">' +
+        '<p class="rounded bg-{{page.data.tone}}-600">Hi</p></section>',
+    };
+
+    it('★ both surfaces compile the conditional and the interpolated class', async () => {
+      expect((await client.project(projectId).putContent('page', 'home', page)).statusCode).toBe(200);
+      const preview = await previewHtml(page);
+      expect((await client.post(`${client.project(projectId).base}/publish`)).statusCode).toBe(200);
+      const sheet = await client.get('/sites/site/_assets/_sw/styles.css');
+      expect(sheet.statusCode).toBe(200);
+      for (const rule of ['.bg-orange-500{', '.bg-emerald-600{', '.p-6{']) {
+        expect(preview).toContain(rule); // the editor canvas…
+        expect(sheet.body).toContain(rule); // …and the published sheet agree
+      }
+    });
+  });
 });

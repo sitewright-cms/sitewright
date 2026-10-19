@@ -93,7 +93,16 @@ describe('extractClassNames — Handlebars expressions inside class attributes',
     extractClassNames('<a class="{{x "'.repeat(20_000));
     extractClassNames('class="{{'.repeat(28_000));
     extractClassNames(`<a class="${'{{'.repeat(130_000)}">`);
+    // A flood of unterminated comments: each used to search for `--}}` to the END of the input.
+    extractClassNames('<a class="x {{!--'.repeat(65_000));
+    extractClassNames(`<a class="${'{{! '.repeat(260_000)}`);
     // A quadratic reading of the first input runs for minutes; the bound is generous for a loaded CI box.
     expect(performance.now() - t0).toBeLessThan(5_000);
+  });
+
+  it('a comment that closes beyond the templated window is not read past it', () => {
+    const far = `<div class="a {{!-- ${'x'.repeat(5_000)} --}} b">x</div><p class="c">y</p>`;
+    const classes = extractClassNames(far);
+    expect(classes).toEqual(expect.arrayContaining(['a', 'c']));
   });
 });

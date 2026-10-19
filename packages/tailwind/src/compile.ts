@@ -38,6 +38,22 @@ const DAISY_ARIA_CURRENT = /\[aria-current\]:not\(\s*\[aria-current=(["']?)false
 // re-implementing daisyUI's hover and focus values. `compile.test.ts` fails if a bump respells it.
 const NEVER_CURRENT = '[aria-current]:not([aria-current])';
 
+/**
+ * The Tailwind input the utility sheet is compiled from. DaisyUI's component layer is included ONLY when
+ * the HTML actually uses a DaisyUI class — pure-Tailwind pages stay at their minimal size. DaisyUI runs
+ * with `themes:false` (no theme block of its own) and we supply the full var set, brand colors overriding
+ * the palette, so `btn-primary` etc. are brand-themed with no cascade fight.
+ * @internal shared with the utility probe (probe.ts), so both read candidates against the same input.
+ */
+export function utilityInput(theme: TailwindTheme, withDaisy: boolean): string {
+  return withDaisy
+    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n  exclude: ${DAISY_EXCLUDED.join(', ')};\n}${renderThemeBlock(daisyThemeVars(theme))}`
+    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}`;
+}
+
+/** Tailwind's own install directory — what `@import "tailwindcss/*"` resolves against. @internal */
+export const TAILWIND_INPUT_BASE = TAILWIND_BASE;
+
 export interface CompileOptions {
   /** Minify the output with Lightning CSS (default true). */
   minify?: boolean;
@@ -67,13 +83,7 @@ export async function compileUtilityCss(
     htmlStrings.map((content) => ({ content, extension: 'html' })),
   );
 
-  // Include the DaisyUI component layer ONLY when the HTML actually uses a DaisyUI class —
-  // pure-Tailwind pages stay at their minimal size. DaisyUI runs with `themes:false` (no
-  // theme block of its own) and we supply the full var set, brand colors overriding the
-  // palette, so `btn-primary` etc. are brand-themed with no cascade fight.
-  const input = usesDaisyComponents(candidates)
-    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n  exclude: ${DAISY_EXCLUDED.join(', ')};\n}${renderThemeBlock(daisyThemeVars(theme))}`
-    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}`;
+  const input = utilityInput(theme, usesDaisyComponents(candidates));
 
   // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).
   const compiler = await compile(input, { base, onDependency: () => {} });

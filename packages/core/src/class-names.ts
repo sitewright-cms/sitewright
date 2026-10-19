@@ -49,8 +49,10 @@ function readMustache(src: string, i: number, limit: number): Mustache | undefin
   if (src[j] === '~') j += 1;
   if (src[j] === '!') {
     const terminator = src.startsWith('--', j + 1) ? '--}}' : '}}';
-    const close = src.indexOf(terminator, j);
-    return close < 0 || close + terminator.length > limit ? undefined : { end: close + terminator.length, literals: [] };
+    // Searched within the WINDOW only: an unbounded indexOf ran to the end of the input before the limit
+    // check, so a page flooded with unterminated `{{!--` cost ~n²/4096 instead of linear time.
+    const close = src.slice(j, limit).indexOf(terminator);
+    return close < 0 ? undefined : { end: j + close + terminator.length, literals: [] };
   }
   const output = !isBlockTag(src, j);
   const literals: string[] = [];

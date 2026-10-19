@@ -136,12 +136,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   - Classes in every branch now count: `{{else}}`, `{{else if}}`, `{{#unless}}` and nested conditions,
     with single or double quotes.
   - Classes that only exist once the page is rendered are now styled too, as they already were in the
-    editor preview. Examples are a built name like `bg-{{tone}}-600` and classes in a helper's output.
-    When only such a class changes, the stylesheet's cache-busting `?v=` changes with it, so visitors
-    get the new rule.
+    editor preview. Examples are a built name like `bg-{{tone}}-600` and classes in a helper's output,
+    such as the default `h-5 w-5` of an `{{sw-icon}}` or the `rounded-sm` of a language flag. When only
+    such a class changes, the stylesheet's cache-busting `?v=` changes with it, so visitors get the new
+    rule.
+  - Only classes that produce CSS count. Rendered classes that produce none, like the platform's own
+    `sw-icon` or an imported page's `wp-image-12`, change nothing: a site without utility classes still
+    ships no stylesheet, and a site whose pages render no new utility builds exactly as before.
+  - If a site has so many classes that some had to be left out, the publish result now says so
+    (`utilityClassesCapped`) and the server logs a warning.
   - Raw-HTML pages still add nothing to the shared stylesheet.
-  - A class attribute full of unclosed `{{` no longer stalls a publish or a preview. One such 256 KB page
-    took about 19 seconds to scan; it now takes milliseconds.
+  - A class attribute full of unclosed `{{` or `{{!--` no longer stalls a publish or a preview. One such
+    256 KB page took about 19 seconds to scan; it now takes milliseconds.
 - **AVIF images no longer ship an oversized fallback.** With `{{sw-image … format="avif"}}` or site-wide
   AVIF delivery, the fallback image inside the `<picture>` got the largest file (up to 2400px wide), with
   no `srcset` or `sizes`. `pagespeed_audit` flagged every AVIF image as oversized. The fallback now gets

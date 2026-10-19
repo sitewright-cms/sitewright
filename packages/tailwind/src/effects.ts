@@ -571,6 +571,22 @@ export const EFFECT_UTILITIES = `
 }
 `;
 
+let effectNames: ReadonlySet<string> | undefined;
+
+/**
+ * Every effect scheme class `effectCss` can emit (`sw-nav-*`, `sw-btn-*`) — the classes that compile to a
+ * rule OUTSIDE Tailwind, so a Tailwind-only check of "does this class produce CSS" must count them too.
+ * Read with the same line-anchored `@utility` scan as `effectCss`, once.
+ */
+export function effectClassNames(): ReadonlySet<string> {
+  if (!effectNames) {
+    const names = new Set<string>();
+    for (const m of EFFECT_UTILITIES.matchAll(/(?:^|\n)[ \t]*@utility[ \t]+([\w-]+)[ \t]*\{/g)) names.add(m[1]!);
+    effectNames = names;
+  }
+  return effectNames;
+}
+
 /**
  * The effect schemes, tree-shaken to what the page uses and moved into `@layer sw-effects`.
  *

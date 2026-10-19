@@ -8878,7 +8878,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     let jsonData: unknown;
     const jsonDataUrl = bundle.project.website?.jsonDataUrl;
     if (jsonDataUrl) jsonData = await fetchJsonData(jsonDataUrl);
-    return buildRunner.run({
+    const manifest = await buildRunner.run({
       outDir,
       bundle,
       publishedAt: new Date().toISOString(),
@@ -8899,6 +8899,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ? (assetId, file, data) => mediaStorage.storeFile(project.slug, assetId, file, data)
         : undefined,
     });
+    warnCappedUtilities(project.id, manifest);
+    return manifest;
+  }
+
+  // ONE warning per build when the utility sheet's candidate set hit a ceiling (see ReleaseManifest
+  // `utilityClassesCapped`): classes past it are missing from styles.css, and nothing else would say so.
+  function warnCappedUtilities(projectId: string, manifest: ReleaseManifest): void {
+    if (manifest.utilityClassesCapped) {
+      app.log.warn({ projectId, ...manifest.utilityClassesCapped }, 'site build: utility class candidates capped — some classes may be missing from styles.css');
+    }
   }
 
   // The project's `local` deploy target (Local Hosting), or undefined when none is configured. Local
@@ -9473,6 +9483,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           : undefined,
       });
       await persistShopCatalog(project.id, 'draft', manifest);
+      warnCappedUtilities(project.id, manifest);
       previewBuiltVersion.set(project.id, version);
       // A draft build no longer aborts on a page it cannot render — it serves an error document at
       // that page's own route and carries on. Remember which pages those were, so the failure is

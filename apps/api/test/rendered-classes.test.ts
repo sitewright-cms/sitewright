@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createUtilityProbe, type UtilityProbe } from '@sitewright/tailwind';
 import {
   MAX_RENDERED_CLASS_TOKENS,
   relinkStylesheet,
@@ -9,26 +10,64 @@ import {
   renderedStylesheetVersion,
 } from '../src/publish/rendered-classes.js';
 
+/** The real probe, loaded once for the file, and a counter of how often the harvest asked for one. */
+let real: Promise<UtilityProbe> | undefined;
+function probeOpts(): { probe: () => Promise<UtilityProbe>; loads: () => number } {
+  let loads = 0;
+  return {
+    probe: () => {
+      loads += 1;
+      real ??= createUtilityProbe({});
+      return real;
+    },
+    loads: () => loads,
+  };
+}
+
 describe('renderedClassHarvest', () => {
-  it('keeps only the classes the source scan did not already find, sorted', () => {
-    const harvest = renderedClassHarvest(['p-6', 'flex']);
-    expect(harvest.add(['<div class="p-6 bg-rose-600 flex">x</div>', undefined, '<nav class="menu active"></nav>'])).toBe(true);
-    expect(harvest.extras()).toEqual(['active', 'bg-rose-600', 'menu']);
+  it('keeps only the render-only classes that compile to a rule, sorted', async () => {
+    const opts = probeOpts();
+    const harvest = renderedClassHarvest(['p-6', 'flex'], opts);
+    const page = await harvest.add(['<div class="p-6 bg-rose-600 flex wp-image-7">x</div>', undefined, '<ul class="menu aligncenter"></ul>']);
+    expect(page).toBe(true);
+    expect(harvest.utilities()).toEqual(['bg-rose-600', 'menu']);
+    expect(harvest.stats()).toEqual({ utilities: 2, droppedUtilities: 0, cappedScans: 0 });
   });
 
-  it('says whether the page carries ANY class — known ones included — and ignores empty markup', () => {
-    const harvest = renderedClassHarvest(['flex']);
-    expect(harvest.add(['<div class="flex">x</div>'])).toBe(true); // needs the sheet, adds nothing new
-    expect(harvest.add(['<p>plain</p>', '', undefined])).toBe(false);
-    expect(harvest.extras()).toEqual([]);
+  it('a page whose extra classes are all junk or already in the source needs no sheet', async () => {
+    const harvest = renderedClassHarvest(['flex'], probeOpts());
+    expect(await harvest.add(['<div class="flex wp-block-image aligncenter">x</div>'])).toBe(false);
+    expect(await harvest.add(['<p>plain</p>', '', undefined])).toBe(false);
+    expect(harvest.utilities()).toEqual([]);
   });
 
-  it('dedupes across pages and stops growing at the cap', () => {
-    const harvest = renderedClassHarvest([], 3);
-    harvest.add(['<i class="a b"></i>']);
-    harvest.add(['<i class="b c d e"></i>']);
-    expect(harvest.extras()).toEqual(['a', 'b', 'c']);
+  it('never loads the probe for platform classes alone — they are judged without a compiler', async () => {
+    const opts = probeOpts();
+    const harvest = renderedClassHarvest([], opts);
+    expect(await harvest.add(['<svg class="sw-icon sw-icon-caret-down"></svg><a class="sw-btn-fx-lift">x</a>'])).toBe(true);
+    expect(harvest.utilities()).toEqual(['sw-btn-fx-lift']); // an effect scheme compiles (outside Tailwind)
+    expect(opts.loads()).toBe(0);
+  });
+
+  it('★ junk can never crowd a utility out of the cap — only utilities count toward it', async () => {
+    const harvest = renderedClassHarvest([], { ...probeOpts(), max: 2 });
+    // An imported page full of per-image classes, BEFORE the page carrying the real utilities.
+    const junk = Array.from({ length: 500 }, (_, i) => `wp-image-${i}`).join(' ');
+    await harvest.add([`<div class="${junk}">x</div>`]);
+    await harvest.add(['<div class="bg-rose-600 grid">x</div>']);
+    expect(harvest.utilities()).toEqual(['bg-rose-600', 'grid']);
+    // A third utility is past the cap: dropped, and counted once however many pages carry it.
+    expect(await harvest.add(['<i class="p-4"></i>'])).toBe(true);
+    await harvest.add(['<i class="p-4"></i>']);
+    expect(harvest.stats()).toEqual({ utilities: 2, droppedUtilities: 1, cappedScans: 0 });
     expect(MAX_RENDERED_CLASS_TOKENS).toBeGreaterThanOrEqual(2048); // never tighter than one page's own cap
+  });
+
+  it('counts a scan that hit extractClassNames’ per-call cap', async () => {
+    const harvest = renderedClassHarvest([], probeOpts());
+    const many = Array.from({ length: 2100 }, (_, i) => `w-${i}`).join(' ');
+    await harvest.add([`<div class="${many}">x</div>`]);
+    expect(harvest.stats().cappedScans).toBe(1);
   });
 });
 

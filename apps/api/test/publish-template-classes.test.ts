@@ -121,6 +121,78 @@ describe('publish — classes inside Handlebars expressions and classes made at 
     expect(await sheet()).toContain('display:grid');
   });
 
+  it('★ a utility-free BLOCK-TREE site stays utility-free: rendered non-utility classes add no sheet and no link', async () => {
+    // The chrome and a code-first page render classes no source scan sees — platform and imported-content
+    // classes. None of them compiles to a rule, so the build must be the one it was: no styles.css, no <link>.
+    await buildSite({
+      publishedAt: PUBLISHED_AT,
+      outDir,
+      bundle: bundle(
+        [
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] } },
+          { id: 'old', path: 'old', title: 'Old', data: { cls: 'wp-image-12 aligncenter' }, source: '<p class="{{page.data.cls}}">x</p>' },
+        ],
+        { effects: { backToTop: false }, data: { chrome: 'sw-h2 wp-block-group' }, mainNav: '<div class="{{website.data.chrome}}">Menu</div>' },
+      ),
+    });
+    const html = await home();
+    expect(html).toContain('class="sw-h2 wp-block-group"'); // presence guard: the chrome rendered classes the scan missed
+    const old = await readFile(join(outDir, 'old', 'index.html'), 'utf8');
+    expect(old).toContain('class="wp-image-12 aligncenter"');
+    for (const page of [html, old]) expect(page).not.toContain('rel="stylesheet"');
+    await expect(sheet()).rejects.toThrow(/ENOENT/);
+  });
+
+  it('a default-sized {{sw-icon}} ships the h-5 w-5 it renders — a real render-only utility, so the sheet is linked', async () => {
+    // `{{sw-icon "list"}}` with no class argument sizes itself `h-5 w-5` at RENDER time; no source scan can see
+    // that, so a site using nothing else of the kind published its icons unsized (styled in the editor).
+    await buildSite({
+      publishedAt: PUBLISHED_AT,
+      outDir,
+      bundle: bundle([{ id: 'home', path: '', title: 'Home', source: '<p>{{sw-icon "list"}} Menu</p>' }], { effects: { backToTop: false } }),
+    });
+    const html = await home();
+    expect(html).toMatch(/<svg[^>]*class="[^"]*\bh-5 w-5\b/);
+    expect(html).toMatch(/<link rel="stylesheet" href="_assets\/_sw\/styles\.css\?v=[0-9a-f]{16}"/);
+    const css = await sheet();
+    expect(css).toContain('.h-5{');
+    expect(css).toContain('.w-5{');
+  });
+
+  it('render-only classes that compile to nothing leave the sheet AND its token exactly as the source scan made them', async () => {
+    const outB = await mkdtemp(join(tmpdir(), 'sw-publish-tplcls-junk-'));
+    try {
+      await buildSite({ publishedAt: PUBLISHED_AT, outDir, bundle: bundle([{ id: 'home', path: '', title: 'Home', source: '<div class="grid">x</div>' }]) });
+      await buildSite({
+        publishedAt: PUBLISHED_AT,
+        outDir: outB,
+        bundle: bundle([{ id: 'home', path: '', title: 'Home', data: { cls: 'wp-image-1 aligncenter' }, source: '<div class="grid {{page.data.cls}}">x</div>' }]),
+      });
+      expect(await home(outB)).toContain('class="grid wp-image-1 aligncenter"');
+      expect(await sheet(outB)).toBe(await sheet());
+      expect(sheetToken(await home(outB))).toBe(sheetToken(await home())); // no relink for junk
+    } finally {
+      await rm(outB, { recursive: true, force: true });
+    }
+  });
+
+  it('reports a capped class scan on the manifest (and nothing when no ceiling was hit)', async () => {
+    const many = Array.from({ length: 2100 }, (_, i) => `w-${i}`).join(' ');
+    const capped = await buildSite({
+      publishedAt: PUBLISHED_AT,
+      outDir,
+      bundle: bundle([{ id: 'home', path: '', title: 'Home', source: `<div class="${many}">x</div>` }]),
+    });
+    expect(capped.utilityClassesCapped?.cappedScans).toBeGreaterThanOrEqual(1);
+    const outB = await mkdtemp(join(tmpdir(), 'sw-publish-tplcls-ok-'));
+    try {
+      const clean = await buildSite({ publishedAt: PUBLISHED_AT, outDir: outB, bundle: bundle([{ id: 'home', path: '', title: 'Home', source: '<div class="grid">x</div>' }]) });
+      expect(clean.utilityClassesCapped).toBeUndefined();
+    } finally {
+      await rm(outB, { recursive: true, force: true });
+    }
+  });
+
   it('a site with no class anywhere — source or rendered — still ships no sheet and no link', async () => {
     await buildSite({
       publishedAt: PUBLISHED_AT,

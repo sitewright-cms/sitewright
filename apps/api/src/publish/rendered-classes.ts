@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
-import { extractClassNames } from '@sitewright/core';
+import { extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '@sitewright/core';
+import { knownUtilityVerdict, type UtilityProbe } from '@sitewright/tailwind';
 
 /**
  * ★ THE PUBLISHED UTILITY SHEET ALSO COMPILES WHAT THE PAGES RENDERED — the editor preview's own rule.
@@ -12,51 +13,114 @@ import { extractClassNames } from '@sitewright/core';
  * feed at a time, after it bit. Harvesting the rendered body + chrome slots of every page — the same markup
  * the preview scans — closes the class of bug instead: whatever a published page renders, its sheet compiles.
  *
- * The source scan stays the primary set (it also covers branches this publish did not render), and the
- * harvest only ADDS what it missed. A site whose pages render nothing beyond their sources builds
- * byte-identically to before.
+ * ★ Only classes that COMPILE TO A RULE count. Rendered markup is full of classes that are no utility — the
+ * platform's own `sw-icon-*`, an imported blog's `wp-image-1234` — and they must neither crowd genuine
+ * utilities out of the bounded set nor make a utility-free site start shipping (and linking) a stylesheet.
+ * Each class is judged once, by Tailwind's own design system (`createUtilityProbe`), which is loaded only
+ * when a class actually needs asking about. A site whose pages render no utility beyond their sources
+ * builds byte-identically to before.
  */
 
 /**
- * Site-wide ceiling on harvested render-only class tokens. The harvest reads author content (an imported
- * blog's per-image `wp-image-1234` classes are all distinct), and every token is a Tailwind candidate, so the
- * union is bounded like each scan is. Real sites add a few hundred; past the cap, further tokens are dropped.
+ * Site-wide ceiling on render-only UTILITIES (classes that compile to a rule — junk never counts). Bounds
+ * the compiler's work; real sites add a handful. Past it, further utilities are dropped and reported.
  */
 export const MAX_RENDERED_CLASS_TOKENS = 8192;
+
+/**
+ * How many classes the harvest remembers as junk (or as utilities refused by the cap) so later pages don't
+ * ask again. Memory only: past it, a class is simply judged again when it reappears.
+ */
+const VERDICT_MEMO = 65_536;
 
 /** Pages read + rewritten at once by {@link relinkStylesheet}. */
 const RELINK_CONCURRENCY = 8;
 
+/** What the harvest found, and what it had to leave out. */
+export interface RenderedClassStats {
+  /** Render-only classes that compile to a rule and are in the sheet. */
+  utilities: number;
+  /** Distinct render-only utilities left out because {@link MAX_RENDERED_CLASS_TOKENS} was reached. */
+  droppedUtilities: number;
+  /** Scans of one page's body or slot that hit extractClassNames' per-call cap (classes past it are unseen). */
+  cappedScans: number;
+}
+
 export interface RenderedClassHarvest {
   /**
-   * Record the classes in one page's rendered markup (body and chrome slots). Returns whether that markup
-   * carries any class at all — such a page needs the utility sheet even when the source scan found none.
+   * Record the classes in one page's rendered markup (body and chrome slots). Resolves whether that markup
+   * renders a class the source scan missed that compiles to a rule — such a page needs the utility sheet
+   * even when the source scan found nothing at all.
    */
-  add(markup: readonly (string | undefined)[]): boolean;
-  /** The harvested tokens the source scan did not find, SORTED so the sheet and its token are deterministic. */
-  extras(): string[];
+  add(markup: readonly (string | undefined)[]): Promise<boolean>;
+  /** The render-only utilities, SORTED so the sheet and its token are deterministic. */
+  utilities(): string[];
+  stats(): RenderedClassStats;
+}
+
+export interface RenderedClassHarvestOptions {
+  /** Loads the utility probe — called at most once, and only when a class needs a compiler's verdict. */
+  probe: () => Promise<UtilityProbe>;
+  /** Override {@link MAX_RENDERED_CLASS_TOKENS} (tests). */
+  max?: number;
 }
 
 /** A harvest seeded with the build's source-scan candidates (`sourceClasses`), which it never repeats. */
 export function renderedClassHarvest(
   sourceClasses: readonly string[],
-  max: number = MAX_RENDERED_CLASS_TOKENS,
+  opts: RenderedClassHarvestOptions,
 ): RenderedClassHarvest {
+  const max = opts.max ?? MAX_RENDERED_CLASS_TOKENS;
   const known = new Set(sourceClasses);
-  const extra = new Set<string>();
+  const kept = new Set<string>();
+  const overCap = new Set<string>();
+  const junk = new Set<string>();
+  let probe: Promise<UtilityProbe> | undefined;
+  let cappedScans = 0;
+  const remember = (set: Set<string>, token: string): void => {
+    if (set.size < VERDICT_MEMO) set.add(token);
+  };
+  const accept = (token: string): void => {
+    if (kept.size < max) kept.add(token);
+    else remember(overCap, token);
+  };
   return {
-    add(markup) {
-      let any = false;
+    async add(markup) {
+      let renders = false;
+      const unjudged = new Set<string>();
       for (const html of markup) {
         if (!html) continue;
-        for (const token of extractClassNames(html)) {
-          any = true;
-          if (extra.size < max && !known.has(token)) extra.add(token);
+        const classes = extractClassNames(html);
+        if (classes.length >= MAX_EXTRACTED_CLASS_TOKENS) cappedScans += 1;
+        for (const token of classes) {
+          if (known.has(token) || junk.has(token)) continue;
+          if (kept.has(token) || overCap.has(token)) {
+            renders = true;
+            continue;
+          }
+          const verdict = knownUtilityVerdict(token);
+          if (verdict === undefined) unjudged.add(token);
+          else if (verdict) {
+            accept(token);
+            renders = true;
+          } else remember(junk, token);
         }
       }
-      return any;
+      if (unjudged.size > 0) {
+        const tokens = [...unjudged];
+        probe ??= opts.probe();
+        const verdicts = (await probe).produces(tokens);
+        tokens.forEach((token, i) => {
+          if (verdicts.at(i)) {
+            accept(token);
+            renders = true;
+          } else remember(junk, token);
+        });
+      }
+      return renders;
     },
-    extras: () => [...extra].sort(),
+    utilities: () => [...kept].sort(),
+    stats: () => ({ utilities: kept.size, droppedUtilities: overCap.size, cappedScans }),
   };
 }
 

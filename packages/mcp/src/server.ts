@@ -371,19 +371,6 @@ async function readGlobalLibrary(client: SitewrightClient, kind: LibraryKind, id
   return { ...item, _global: { readOnly: true, note } };
 }
 
-/**
- * The global library's names of one kind, for list_content to say where they are — `[]` from a project
- * listing otherwise reads as "the recipes the guides name do not exist". Null when unreachable.
- */
-async function globalLibraryNames(client: SitewrightClient, kind: LibraryKind): Promise<string[] | null> {
-  try {
-    const rows = await client.listGlobalContent(kind);
-    return rows.flatMap((r) => (isPlainRecord(r) && typeof r.id === 'string' ? [r.id] : []));
-  } catch {
-    return null;
-  }
-}
-
 /** How to name the connection in a refusal. A member token has no single project or role to name. */
 function connectionLabel(scope: Scope): string {
   return isMemberScope(scope) ? 'Your member token' : `Your connection to project ${scope.projectId}`;
@@ -990,7 +977,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'list_content',
     {
       description:
-        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit. `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's values) and `limit`/`offset` page through the result with a `total`; all of these compose with `dataset`, so a collection of thousands of rows is reachable without ever pulling the whole kind. For 'snippet' / 'template' the result is { items: <this project's own>, global: { names } } — the built-in global library (nav-header, form-custom, …) is listed under `global`, read-only; get_content reads one.",
+        "List all entities of a content kind. For kind 'entry' pass `dataset` (a dataset slug) to list ONLY that dataset's entries — an entry id is unique only within its dataset, so an unscoped entry list returns EVERY dataset's rows mixed together. Pass summary:true to omit the heavy body fields (source / data / values) and get a `_summary` descriptor instead — do that when you only need to see WHAT exists, since a full list of source-bearing entities can exceed the output limit. `q` SEARCHES (case-insensitive substring over the id, title, path, description and an entry's values) and `limit`/`offset` page through the result with a `total`; all of these compose with `dataset`, so a collection of thousands of rows is reachable without ever pulling the whole kind. For 'snippet' / 'template' this lists only THIS project's own: the instance-wide built-in recipes are NOT listed here — snippets such as nav-header, nav-footer, navbar, form-embed, form-custom, slider-fullscreen, gallery-grid, modal-basic, and templates such as landing, blog-article — and are read with get_content(kind, id).",
       inputSchema: {
         kind: GENERIC_KIND,
         dataset: z.string().optional(),
@@ -1002,27 +989,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     },
     gate(
       null,
-      async ({ kind, dataset, summary, q, limit, offset }: { kind: string; dataset?: string; summary?: boolean; q?: string; limit?: number; offset?: number }) => {
-        const items = await client.listContent(kind, dataset, { summary, q, limit, offset });
-        if (!isLibraryKind(kind)) return items;
-        const all = await globalLibraryNames(client, kind);
-        if (all === null) return items;
-        // A search narrows the global names the same way it narrows the project's own (substring, any case).
-        const needle = q?.trim().toLowerCase();
-        const names = needle ? all.filter((n) => n.toLowerCase().includes(needle)) : all;
-        const how =
-          kind === 'snippet'
-            ? '{{> <name>}} renders one, get_content("snippet","<name>") reads it, and a project snippet of the same name takes precedence'
-            : 'a page uses one as template:"global:<name>", get_content("template","<name>") reads it, and a copy saved as a project template (with the page pointed at it) changes it';
-        return {
-          items,
-          global: {
-            readOnly: true,
-            names,
-            note: `\`items\` are this project's OWN ${kind}s. \`names\` are the built-in GLOBAL library (instance-wide, read-only): ${how}.`,
-          },
-        };
-      },
+      ({ kind, dataset, summary, q, limit, offset }: { kind: string; dataset?: string; summary?: boolean; q?: string; limit?: number; offset?: number }) =>
+        client.listContent(kind, dataset, { summary, q, limit, offset }),
     ),
   );
 
@@ -1030,7 +998,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_content',
     {
       description:
-        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id. A snippet/template this project does not have is read from the built-in global library (e.g. "nav-header"), marked `_global` (read-only, with how to override it).',
+        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id. A snippet/template this project does not have is read from the instance-wide built-in recipe library — e.g. get_content("snippet","nav-header"), "nav-footer", "form-custom", or get_content("template","landing") — and comes back marked `_global` (read-only, with how to override it). list_content does not list those recipes.',
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
     gate(null, async ({ kind, id, dataset }: { kind: string; id: string; dataset?: string }) => {

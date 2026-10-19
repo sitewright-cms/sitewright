@@ -73,11 +73,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   `form-custom` and the other built-in recipes returned 404, because they live in the instance-wide
   library rather than in the project. The MCP tool now falls back to that library for a snippet or
   template the project does not have. The result is marked read-only and says how to override it with
-  a project snippet of the same name. This works with project keys and member tokens. `list_content`
-  for snippets and templates lists the built-in names next to the project's own.
+  a project snippet of the same name. This works with project keys and member tokens. The
+  `list_content` and `get_content` tool descriptions name the built-in recipes and say to read them with
+  `get_content`; `list_content` itself still lists only the project's own.
 - **A Google Maps embed from `maps.google.com` loads.** That address redirects to `www.google.com`,
   which the site's content security policy did not allow, so the map frame stayed blank. The policy now
-  also allows the redirect target for Google Maps addresses.
+  also allows the redirect target for Google Maps addresses. This applies to any iframe on a
+  `maps.google.*` or `google.*` address, not only to map paths, so such an iframe also allows
+  `www.google.*`.
 - **A third font is easier to set up correctly.** The design guide now says how to add a third face
   beside the heading and body fonts. You select the font and reference it from a named slot
   (`font-<name>`).

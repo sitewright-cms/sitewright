@@ -532,26 +532,28 @@ describe('createSitewrightMcpServer — the global snippet/template library', ()
     expect(text(await (await connect(limited, readScope)).callTool({ name: 'get_content', arguments: { kind: 'snippet', id: 'x' } }))).toBe('Error 429: slow down');
   });
 
-  it('list_content for snippets/templates names the global library beside the project’s own', async () => {
-    const client = fakeClient({
-      listContent: vi.fn(async () => [{ id: 'mine' }]),
-      listGlobalContent: vi.fn(async () => [{ id: 'nav-header' }, { id: 'form-custom' }, 'junk']),
-    });
+  // list_content keeps ONE shape — a plain array — for every kind. Its snippet/template result briefly
+  // became `{ items, global }` whenever the extra library call succeeded and stayed an array when it
+  // failed (a 429 from the shared agent bucket), so a caller could not rely on either. The recipes are
+  // found through the tool DESCRIPTIONS instead, and read with get_content.
+  it('list_content returns the plain project array for every kind, and the descriptions point at get_content', async () => {
+    const client = fakeClient({ listContent: vi.fn(async () => [{ id: 'mine' }]), getGlobalContent: vi.fn() });
     const mcp = await connect(client, readScope);
-    const snippets = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'snippet' } })));
-    expect(snippets.items).toEqual([{ id: 'mine' }]);
-    expect(snippets.global).toMatchObject({ readOnly: true, names: ['nav-header', 'form-custom'] });
-    expect(snippets.global.note).toContain('get_content("snippet","<name>")');
-    const templates = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'template' } })));
-    expect(templates.global.note).toContain('template:"global:<name>"');
-    // A search narrows the global names as it narrows the project's own.
-    const searched = JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'snippet', q: ' NAV ' } })));
-    expect(searched.global.names).toEqual(['nav-header']);
-    expect(callsOf(client).listContent).toHaveBeenLastCalledWith('snippet', undefined, { summary: undefined, q: ' NAV ', limit: undefined, offset: undefined });
-    // Other kinds keep their plain array; an unreachable library leaves the list exactly as before.
-    expect(JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind: 'dataset' } })))).toEqual([{ id: 'mine' }]);
-    const old = fakeClient({ listContent: vi.fn(async () => []), listGlobalContent: vi.fn(notFound) });
+    for (const kind of ['snippet', 'template', 'dataset']) {
+      expect(JSON.parse(text(await mcp.callTool({ name: 'list_content', arguments: { kind } })))).toEqual([{ id: 'mine' }]);
+    }
+    expect(callsOf(client).getGlobalContent).not.toHaveBeenCalled(); // no hidden second request
+    const old = fakeClient({ listContent: vi.fn(async () => []), getGlobalContent: vi.fn(notFound) });
     expect(JSON.parse(text(await (await connect(old, readScope)).callTool({ name: 'list_content', arguments: { kind: 'snippet' } })))).toEqual([]);
+
+    const tools = (await mcp.listTools()).tools;
+    const descOf = (name: string) => tools.find((t) => t.name === name)?.description ?? '';
+    for (const recipe of ['nav-header', 'nav-footer', 'form-custom']) {
+      expect(descOf('list_content')).toContain(recipe);
+      expect(descOf('get_content')).toContain(recipe);
+    }
+    expect(descOf('list_content')).toContain('NOT listed here');
+    expect(descOf('list_content')).toContain('get_content(kind, id)');
   });
 });
 

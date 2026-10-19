@@ -122,6 +122,8 @@ function externalHttpsHost(src: string | null | undefined): string | null {
  * same registrable domain the author already allowed, so nothing here can widen the policy to a third
  * party. A look-alike (`maps.google.com.evil.test`) matches nothing. The grant is the whole www.google.*
  * host — CSP matches a redirect hop by host only (its path is ignored), so it cannot be narrowed to /maps.
+ * It also applies to ANY iframe on maps.google.<tld> or google.<tld>, not only a /maps path: the scan
+ * keys on the host, so a non-maps Google iframe on those hosts gets www.google.<tld> allowed as well.
  */
 const EMBED_REDIRECT_HOSTS: ReadonlyArray<{ from: RegExp; to: (m: RegExpExecArray) => string }> = [
   // maps.google.com / maps.google.de / maps.google.co.uk → www.google.<same tld>

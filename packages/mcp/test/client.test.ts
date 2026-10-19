@@ -226,18 +226,15 @@ describe('SitewrightClient', () => {
     expect(fake.calls.length).toBe(0);
   });
 
-  it('reads the GLOBAL library through the addressed project (one entry, and the summary list)', async () => {
+  it('reads one GLOBAL library entry through the addressed project', async () => {
     const { client, calls } = await introspected((input) => {
       if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
       if (input.endsWith('/global/snippet/nav-header')) return { status: 200, body: JSON.stringify({ item: { id: 'nav-header' }, scope: 'global' }) };
-      if (input.endsWith('/global/template?summary=1')) return { status: 200, body: JSON.stringify({ items: [{ id: 'landing' }] }) };
       return { status: 404 };
     });
     expect(await client.getGlobalContent('snippet', 'nav-header')).toEqual({ id: 'nav-header' });
-    expect(await client.listGlobalContent('template')).toEqual([{ id: 'landing' }]);
     expect(calls.slice(1).map((c) => `${c.init?.method} ${c.input.replace('https://cms.test', '')}`)).toEqual([
       'GET /projects/p1/global/snippet/nav-header',
-      'GET /projects/p1/global/template?summary=1',
     ]);
   });
 

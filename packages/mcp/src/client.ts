@@ -887,12 +887,6 @@ export class SitewrightClient {
     return res.item;
   }
 
-  /** The global library's entries of one kind, bodies omitted (the summary projection). */
-  async listGlobalContent(kind: 'snippet' | 'template'): Promise<unknown[]> {
-    const res = await this.request<{ items: unknown[] }>('GET', this.projectPath(`/global/${kind}?summary=1`));
-    return res.items;
-  }
-
   /** PARTIAL write of `website.criticalCss`. A NAMED block upserts (replace in place, else append);
    *  an unnamed write appends; an empty body with a name removes that block. Returns a receipt, never
    *  the sheet — echoing it back is the cost this exists to avoid. */

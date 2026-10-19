@@ -407,16 +407,30 @@ describe('the global library over MCP', () => {
     expect(page.text).toMatch(/^Error 404/);
   });
 
-  it('list_content for snippets says where the globals are (names, read-only, how to read one)', async () => {
+  it('list_content stays the project\'s own plain array; its description says where the recipes are', async () => {
     const { token } = await setup();
-    const listed = JSON.parse((await call(token, 'list_content', { kind: 'snippet' })).text) as {
-      items: unknown[];
-      global: { readOnly: boolean; names: string[]; note: string };
-    };
-    expect(listed.items).toEqual([]); // the project's OWN snippets — a new project has none
-    expect(listed.global.readOnly).toBe(true);
-    expect(listed.global.names).toEqual(expect.arrayContaining(['nav-header', 'form-custom', 'nav-footer']));
-    expect(listed.global.note).toContain('get_content("snippet"');
+    expect(JSON.parse((await call(token, 'list_content', { kind: 'snippet' })).text)).toEqual([]); // a new project has none of its own
+    const listed = await mcp(token, { jsonrpc: '2.0', id: (rpcId += 1), method: 'tools/list', params: {} });
+    const tools = (listed.json() as { result: { tools: Array<{ name: string; description?: string }> } }).result.tools;
+    const desc = tools.find((t) => t.name === 'list_content')?.description ?? '';
+    expect(desc).toContain('nav-header');
+    expect(desc).toContain('get_content(kind, id)');
+  });
+
+  it('a GLOBAL TEMPLATE written back whole as a project template does not keep the `_global` label', async () => {
+    const { token, projectId } = await setup();
+    const global = JSON.parse((await call(token, 'get_content', { kind: 'template', id: 'landing' })).text) as GlobalRead;
+    expect(global._global?.readOnly).toBe(true);
+    const put = await call(token, 'put_content', { kind: 'template', id: 'landing', data: { ...global, source: '<section>mine</section>' } });
+    expect(put.isError, put.text).toBe(false);
+    // Stored without the label (read straight from the REST API, not through the labelling tool)…
+    const stored = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/template/landing`, headers: { authorization: `Bearer ${token}` } });
+    expect(stored.statusCode).toBe(200);
+    const item = (stored.json() as { item: Record<string, unknown> }).item;
+    expect(item.source).toBe('<section>mine</section>');
+    expect(item).not.toHaveProperty('_global');
+    // …and the project copy is what get_content now returns, unlabelled.
+    expect((JSON.parse((await call(token, 'get_content', { kind: 'template', id: 'landing' })).text) as GlobalRead)._global).toBeUndefined();
   });
 
   it('the project-scoped REST reads take every credential kind; the session-only /global route is unchanged', async () => {

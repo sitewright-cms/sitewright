@@ -240,6 +240,141 @@ describe('the statistics engine', () => {
     expect((await engine.query('proj2', q(), true)).human.views).toBe(1);
   });
 
+  it('★ reaps the statistics of projects that no longer exist — and ONLY those (soft-deleted ones stay)', async () => {
+    engine.record(hit({ projectId: 'live' }));
+    engine.record(hit({ projectId: 'soft-deleted' }));
+    engine.record(hit({ projectId: 'gone' }));
+    engine.recordGoal('gone', 'form:x');
+    const asked: string[][] = [];
+    const gone = await engine.reapOrphans(async (ids) => {
+      asked.push([...ids].sort());
+      return new Set(['live', 'soft-deleted']);
+    });
+    expect(gone).toEqual(['gone']);
+    // It saw the in-memory counts too (they are flushed first), so a pending row cannot slip through.
+    expect(asked).toEqual([['gone', 'live', 'soft-deleted']]);
+    expect(await store.projectIds()).toEqual(expect.arrayContaining(['live', 'soft-deleted']));
+    expect(await store.projectIds()).not.toContain('gone');
+    // Nothing left to reap.
+    expect(await engine.reapOrphans(async () => new Set(['live', 'soft-deleted']))).toEqual([]);
+  });
+
+  it('★ deletes nothing when the existence check fails', async () => {
+    engine.record(hit());
+    await expect(engine.reapOrphans(async () => Promise.reject(new Error('db down')))).rejects.toThrow('db down');
+    expect(await store.projectIds()).toEqual([P]);
+  });
+
+  it('★ gives a reaped project’s disk space back (incremental vacuum)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
+    try {
+      const s = await StatsStore.open(`file:${join(dir, 'analytics.db')}`);
+      const e = await open(s, { pendingRowsPerSite: 100_000, pendingRows: 100_000 });
+      // A busy site: a few thousand page rows.
+      for (let i = 0; i < 5000; i++) e.record(hit({ projectId: 'big', route: `/a-long-route-name-for-page-number-${i}/` }));
+      e.record(hit({ projectId: 'small' }));
+      await e.flush();
+      const before = await s.pages();
+      expect(before.total).toBeGreaterThan(50);
+      await e.forget('big');
+      const after = await s.pages();
+      expect(after.free).toBe(0);
+      expect(after.total).toBeLessThan(before.total / 2);
+      expect(await s.projectIds()).toEqual(['small']);
+      await e.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  /** A WAL-mode statistics file made WITHOUT incremental vacuum, holding data and free pages from a delete. */
+  async function legacyFile(file: string): Promise<void> {
+    const { createClient } = await import('@libsql/client');
+    const legacy = createClient({ url: `file:${file}` });
+    await legacy.executeMultiple('PRAGMA journal_mode = WAL;');
+    await legacy.execute('CREATE TABLE meta (k TEXT PRIMARY KEY, v TEXT NOT NULL) WITHOUT ROWID');
+    await legacy.execute({ sql: 'INSERT INTO meta (k, v) VALUES (?, ?)', args: ['secret', 'kept'] });
+    await legacy.execute('CREATE TABLE filler (x TEXT)');
+    await legacy.batch(Array.from({ length: 200 }, () => ({ sql: 'INSERT INTO filler (x) VALUES (?)', args: ['x'.repeat(2000)] })), 'write');
+    await legacy.execute('DELETE FROM filler');
+    legacy.close();
+  }
+  async function vacuumMode(file: string): Promise<number> {
+    const { createClient } = await import('@libsql/client');
+    const c = createClient({ url: `file:${file}` });
+    const rs = await c.execute('PRAGMA auto_vacuum');
+    c.close();
+    return Number(rs.rows[0]?.[0]);
+  }
+
+  it('★ converts a (WAL-mode) file made without incremental vacuum, keeping its data and shrinking it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
+    try {
+      const file = join(dir, 'analytics.db');
+      await legacyFile(file);
+      expect(await vacuumMode(file)).toBe(0);
+      const s = await StatsStore.open(`file:${file}`);
+      expect((await s.secret()).secret).toBe('kept');
+      expect((await s.pages()).free).toBe(0); // the VACUUM dropped the delete's free pages
+      s.close();
+      expect(await vacuumMode(file)).toBe(2); // INCREMENTAL from now on
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('★ never blocks startup on the conversion: a file too large to rewrite opens unconverted, and says so', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
+    try {
+      const file = join(dir, 'analytics.db');
+      await legacyFile(file);
+      const logs: string[] = [];
+      const s = await StatsStore.open(`file:${file}`, { convertMaxBytes: 0, log: (m) => logs.push(m) });
+      expect((await s.secret()).secret).toBe('kept');
+      await expect(s.compact()).resolves.toBeUndefined(); // harmless without incremental vacuum
+      s.close();
+      expect(await vacuumMode(file)).toBe(0);
+      expect(logs.some((m) => m.includes('too large to convert'))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('★ refuses to wipe most sites at once (a main database restored from an old backup looks like that)', async () => {
+    const logs: string[] = [];
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await StatsEngine.open({ store, geo, now: () => now, log: (m) => logs.push(m) });
+    for (const p of ['a', 'b', 'c', 'd', 'e', 'f']) engine.record(hit({ projectId: p }));
+    expect(await engine.reapOrphans(async () => new Set(['a', 'b']))).toEqual([]);
+    expect((await store.projectIds()).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    expect(logs.some((m) => m.includes('NOT deleting'))).toBe(true);
+    // One site gone among many is the ordinary case, and is reaped.
+    expect(await engine.reapOrphans(async () => new Set(['a', 'b', 'c', 'd', 'e']))).toEqual(['f']);
+  });
+
+  it('a failure to give space back neither fails the flush nor repeats the prune', async () => {
+    const logs: string[] = [];
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await StatsEngine.open({ store, geo, now: () => now, log: (m) => logs.push(m) });
+    let prunes = 0;
+    const realPrune = store.prune.bind(store);
+    store.prune = async (...args) => {
+      prunes++;
+      return realPrune(...args);
+    };
+    store.compact = async () => {
+      throw new Error('disk busy');
+    };
+    engine.record(hit());
+    expect(await engine.flush()).toBe(true);
+    expect(await engine.flush()).toBe(true);
+    expect(prunes).toBe(1);
+    expect(logs.some((m) => m.includes('could not give freed space back'))).toBe(true);
+    expect((await engine.query(P, q(), true)).human.views).toBe(1);
+  });
+
   it('exports a table as rows with a header', async () => {
     engine.record(hit());
     const rows = await engine.rows(P, 'traffic', today(), today());

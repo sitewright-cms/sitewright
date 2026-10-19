@@ -89,4 +89,17 @@ another site its accuracy. It is a visit counter, not an audit log.
   [environment.md](environment.md)). The bundled DB-IP data is licensed CC BY 4.0, and the Statistics tab carries
   the attribution link the licence requires.
 - The Statistics tab and `GET /projects/:id/stats.csv?table=traffic|pages|sources|goals` export the daily totals.
-- A project that is permanently deleted has its statistics deleted with it.
+- **Lifecycle.**
+  - Switching statistics off stops the counting at once, and keeps the numbers so switching back on loses
+    nothing.
+  - A soft-deleted project stops counting too, even if a copy of its pages on another host still beacons,
+    and keeps its numbers for a restore.
+  - The permanent delete removes them.
+  - An hourly sweep, alongside the other maintenance sweeps, also removes statistics that no existing
+    project owns, such as a delete whose own cleanup failed, or a beacon that landed just after it.
+  - The sweep refuses to delete most sites at once and logs instead: statistics live in their own file, and a
+    main database restored from an old backup would otherwise make every newer site look deleted.
+  - Everything older than 25 months is pruned daily, along with the previous days' salts and visitor ids.
+  - Freed space goes back to the filesystem: the file uses incremental auto-vacuum, run in small steps after
+    every prune and delete. An older file converts once at startup if it is small; a large one keeps working
+    without shrinking, and the startup log says so.

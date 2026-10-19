@@ -33,6 +33,11 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Abuse-resistant:** every page's route is signed when it is published, so a stranger posting to the public
     collector cannot invent pages. A site with a site URL counts only pages running on its own host. Every
     in-memory structure is capped per site, so one site under attack cannot cost another its accuracy.
+  - **Lifecycle:**
+    - A soft-deleted project stops counting and keeps its numbers for a restore.
+    - Deleting a project for good removes its statistics.
+    - An hourly sweep removes any statistics no existing project owns.
+    - Freed space is returned to the filesystem.
   - **Sites on other hosts need a public URL** (`SW_PUBLIC_URL`) to report visits. Without one, builds for
     remote targets ship no counter and the Statistics tab says that only locally hosted visits are counted.
   - The tab shows visitors, pageviews, bot share and goals, a daily chart, devices, countries with a world map,

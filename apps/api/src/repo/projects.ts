@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { desc, eq, isNotNull } from 'drizzle-orm';
+import { desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   agentGrants,
@@ -227,5 +227,19 @@ export class ProjectRepository {
   /** Every soft-deleted project (the admin "deleted projects" list), most-recently-deleted first. */
   async listDeleted(): Promise<Project[]> {
     return this.db.select().from(projects).where(isNotNull(projects.deletedAt)).orderBy(desc(projects.deletedAt));
+  }
+
+  /**
+   * Which of `ids` still exist — soft-deleted ones INCLUDED (they can be restored, so what hangs off them must
+   * stay). For reconciling stores keyed by project id that live outside this database.
+   */
+  async existingIds(ids: readonly string[]): Promise<Set<string>> {
+    const found = new Set<string>();
+    // Chunked: SQLite caps the number of bound parameters in one statement.
+    for (let i = 0; i < ids.length; i += 500) {
+      const rows = await this.db.select({ id: projects.id }).from(projects).where(inArray(projects.id, ids.slice(i, i + 500)));
+      for (const r of rows) found.add(r.id);
+    }
+    return found;
   }
 }

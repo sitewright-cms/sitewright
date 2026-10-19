@@ -109,12 +109,24 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
   // Bumped by the project change-stream so an agent's snippet/template write shows up here instead of
   // leaving the rail on a pre-agent list until a full SPA reload.
   const [reloadNonce, setReloadNonce] = useState(0);
+  // Single-flight, like the other live lists (lib/single-flight.ts): an agent writing 40 snippets sends 40
+  // events, one SSE message each, and every bump would re-run the read below. While a read is out, an
+  // event only marks the list STALE; when the read settles, one more read covers all of them.
+  const reading = useRef(false);
+  const staleWhileReading = useRef(false);
   useProjectEvents(projectId, (c) => {
     if (c.kind !== noun) return;
     // Skip the echo of our OWN save (we already hold that version) — it would re-fetch what we wrote.
     // ★ This only recognises the TAB as the writer, not this panel: a write made by a SIBLING view
     // looks identical. Re-opening the rail revalidates (below), which is what covers that case.
     if (isOwnContentChange(projectId, c.kind, c.entityId, c.version, c.scope ?? '')) return;
+    if (reading.current) {
+      staleWhileReading.current = true;
+      return;
+    }
+    // Claimed now, not when the effect runs: an event arriving before then would bump again and send a
+    // second read only to cancel the first.
+    reading.current = true;
     setReloadNonce((n) => n + 1);
   });
 
@@ -138,6 +150,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
   const hydratedFor = useRef('');
   useEffect(() => {
     let alive = true;
+    reading.current = true;
     const listKey = `${projectId}:${noun}`;
     if (hydratedFor.current !== listKey) setLoading(true);
     setError(null);
@@ -149,7 +162,16 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
         hydratedFor.current = listKey;
         setLoading(false);
       })
-      .catch(() => alive && (setError(`Couldn’t load the ${noun}s.`), setLoading(false)));
+      .catch(() => alive && (setError(`Couldn’t load the ${noun}s.`), setLoading(false)))
+      .finally(() => {
+        // A superseded read leaves the flag to the read that replaced it.
+        if (!alive) return;
+        reading.current = false;
+        if (staleWhileReading.current) {
+          staleWhileReading.current = false;
+          setReloadNonce((n) => n + 1);
+        }
+      });
     return () => {
       alive = false;
     };

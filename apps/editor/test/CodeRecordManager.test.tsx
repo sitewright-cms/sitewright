@@ -1,8 +1,17 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { CodeRecordManager, type CodeRecord, type MakeId } from '../src/views/code/CodeRecordManager';
 import { SidePanelOpen } from '../src/views/ui/SidePanel';
 import { ApiError } from '../src/api';
+import type { ContentChange } from '../src/lib/use-project-events';
+
+// The live stream is pushed by hand: the module that owns the EventSource is replaced.
+const live = vi.hoisted(() => ({ emit: null as ((c: ContentChange) => void) | null }));
+vi.mock('../src/lib/use-project-events', () => ({
+  useProjectEvents: (_projectId: string, listener: (c: ContentChange) => void) => {
+    live.emit = listener;
+  },
+}));
 
 // Mock the CodeMirror-backed editor modal (CodeMirror doesn't render in jsdom). It exposes the
 // title as a dialog, an optional NAME field (uncontrolled — closure-tracked, no re-render), and a
@@ -240,5 +249,49 @@ describe('CodeRecordManager — revalidates when its side panel opens', () => {
       </SidePanelOpen.Provider>,
     );
     await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe('CodeRecordManager — live refresh', () => {
+  it('★ a burst of snippet events costs two reloads, never one per event', async () => {
+    let release: (v: CodeRecord[]) => void = () => {};
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce(recs)
+      // The first reload stays in flight while the rest of the burst arrives.
+      .mockImplementationOnce(() => new Promise<CodeRecord[]>((r) => (release = r)))
+      .mockResolvedValue([...recs, { id: 'footer', name: 'footer', source: '<footer/>' }]);
+    render(<CodeRecordManager projectId="p1" noun="snippet" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+
+    // An agent writing 40 snippets emits 40 events. Each arrives in its own task, as SSE messages do,
+    // so React renders between them instead of batching them into one update.
+    for (let i = 0; i < 40; i += 1) {
+      await act(async () => live.emit!({ kind: 'snippet', entityId: `s${i}`, op: 'put' }));
+    }
+    expect(load).toHaveBeenCalledTimes(2);
+
+    // When the in-flight read answers, ONE more read covers every event that arrived meanwhile.
+    await act(async () => release(recs));
+    expect(await screen.findByText('footer')).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(3);
+  });
+
+  it('keeps refreshing after a read fails', async () => {
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce(recs)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue([...recs, { id: 'footer', name: 'footer', source: '<footer/>' }]);
+    render(<CodeRecordManager projectId="p1" noun="snippet" load={load} save={vi.fn()} remove={vi.fn()} makeId={makeId} />);
+    expect(await screen.findByText('hero')).toBeInTheDocument();
+
+    await act(async () => live.emit!({ kind: 'snippet', entityId: 's1', op: 'put' }));
+    expect(await screen.findByText(/load the snippets/)).toBeInTheDocument();
+
+    // A failed read must not leave the list believing a read is still out, deaf to every later event.
+    await act(async () => live.emit!({ kind: 'snippet', entityId: 's2', op: 'put' }));
+    expect(await screen.findByText('footer')).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(3);
   });
 });

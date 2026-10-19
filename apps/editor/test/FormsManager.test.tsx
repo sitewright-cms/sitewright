@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Form } from '@sitewright/schema';
+import type { ContentChange } from '../src/lib/use-project-events';
 
 const listForms = vi.fn();
 const putForm = vi.fn();
@@ -29,6 +30,14 @@ vi.mock('../src/api', () => ({
 
 // The inbox has its own suite (SubmissionsInbox.test.tsx); here only WHERE it opens matters.
 vi.mock('../src/views/SubmissionsInbox', () => ({ SubmissionsInbox: ({ formId }: { formId?: string }) => <div>INBOX {formId}</div> }));
+
+// The live stream is pushed by hand: the module that owns the EventSource is replaced.
+const live = vi.hoisted(() => ({ emit: null as ((c: ContentChange) => void) | null }));
+vi.mock('../src/lib/use-project-events', () => ({
+  useProjectEvents: (_projectId: string, listener: (c: ContentChange) => void) => {
+    live.emit = listener;
+  },
+}));
 
 import { FormsManager } from '../src/views/FormsManager';
 import { tipOf } from './tooltip-helpers';
@@ -310,5 +319,40 @@ describe('proof-of-work toggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
     await waitFor(() => expect(putForm).toHaveBeenCalled());
     expect(putForm.mock.calls[0]![0]).toMatchObject({ pow: true });
+  });
+});
+
+describe('FormsManager — live refresh', () => {
+  it('★ a burst of form events costs two reloads, not one per event', async () => {
+    render(<FormsManager project={project} />);
+    await waitFor(() => expect(formModes).toHaveBeenCalledTimes(1));
+    await act(async () => {}); // let the opening load settle before counting
+    listForms.mockClear();
+    formModes.mockClear();
+
+    // An agent removing 50 forms emits 50 events; each reload here is FIVE requests.
+    await act(async () => {
+      for (let i = 0; i < 50; i += 1) live.emit!({ kind: 'form', entityId: `f${i}`, op: 'delete' });
+    });
+
+    await waitFor(() => expect(listForms).toHaveBeenCalledTimes(2));
+    expect(formModes).toHaveBeenCalledTimes(2);
+  });
+
+  it('★ keeps the NEWEST read when the opening read answers after a live one', async () => {
+    const contact = { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false };
+    let releaseOpening: (v: { items: unknown[] }) => void = () => {};
+    listForms
+      .mockReturnValueOnce(new Promise((r) => (releaseOpening = r)))
+      .mockResolvedValueOnce({ items: [contact] });
+    render(<FormsManager project={project} />);
+
+    // An agent adds a form while the opening read is still out; the live read answers first.
+    await act(async () => live.emit!({ kind: 'form', entityId: 'contact', op: 'put' }));
+    expect(await screen.findByRole('button', { name: 'Show submissions for contact' })).toBeInTheDocument();
+
+    // The opening read, taken before the form existed, answers last and must not hide it.
+    await act(async () => releaseOpening({ items: [] }));
+    expect(screen.getByRole('button', { name: 'Show submissions for contact' })).toBeInTheDocument();
   });
 });

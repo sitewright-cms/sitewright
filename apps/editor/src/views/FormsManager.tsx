@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { DEFAULT_FORM_MODES, type Form, type FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
+import { useSingleFlight } from '../lib/single-flight';
 import { slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { ProjectCaptcha } from './ProjectCaptcha';
@@ -63,7 +64,12 @@ export function FormsManager({ project }: { project: Project }) {
   // one who can fix it, so they have to be told.
   const [captchaReady, setCaptchaReady] = useState(true);
 
+  // Only the NEWEST read may set the list: a live re-read, the opening read and a reload after a write can
+  // all be out at once, and an older one answering last would overwrite a newer list.
+  const loadSeq = useRef(0);
   async function load(isActive: () => boolean = () => true) {
+    const seq = ++loadSeq.current;
+    const current = () => isActive() && seq === loadSeq.current;
     try {
       const [res, fm, undelivered, filtered, captcha] = await Promise.all([
         api.listForms(project.id),
@@ -76,16 +82,16 @@ export function FormsManager({ project }: { project: Project }) {
         api.getProjectCaptcha(project.id).catch(() => ({ captcha: { hasSecret: true } })),
       ]);
 
-      if (!isActive()) return;
+      if (!current()) return;
       setOwed(undelivered);
       setFiltered(filtered.items);
       setForms(res.items);
       setEnabledModes(fm.formModes);
       setCaptchaReady(Boolean(captcha.captcha?.hasSecret));
     } catch (err) {
-      if (isActive()) setError(err instanceof Error ? err.message : 'failed to load forms');
+      if (current()) setError(err instanceof Error ? err.message : 'failed to load forms');
     } finally {
-      if (isActive()) setLoading(false);
+      if (current()) setLoading(false);
     }
   }
   useEffect(() => {
@@ -96,9 +102,11 @@ export function FormsManager({ project }: { project: Project }) {
     };
   }, [project.id]);
 
-  // LIVE-REFRESH the forms list when an agent (or another tab) adds/edits/removes a form.
+  // LIVE-REFRESH the forms list when an agent (or another tab) adds/edits/removes a form. Single-flight:
+  // a reload is five requests, and a burst of events must not become five per event.
+  const reload = useSingleFlight(() => load());
   useProjectEvents(project.id, (c) => {
-    if (c.kind === 'form') void load();
+    if (c.kind === 'form') void reload();
   });
 
   function create(e: FormEvent) {

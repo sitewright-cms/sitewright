@@ -5,6 +5,7 @@ import { compareEntryOrder, reorderList } from '@sitewright/core';
 import { useVirtualRows } from '../lib/virtual-rows';
 import { api, type Project } from '../api';
 import { useProjectEvents } from '../lib/use-project-events';
+import { useSingleFlight } from '../lib/single-flight';
 import { datasetSlugify, defaultEntryValues, entryLabel, fieldReferenceDataset, identifierize, reorderByKey, reorderWithInsert, uniqueSlug } from '../lib/entry-form';
 import { dropTargetForEvent } from '../lib/drag-drop';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
@@ -191,6 +192,7 @@ export function DatasetManager({
     if (dragHeld.current) panelHold?.release();
   }, [panelHold]);
 
+  const loadSeq = useRef(0);
   /**
    * Loads the dataset list, plus the entries of the SELECTED dataset only.
    *
@@ -198,11 +200,17 @@ export function DatasetManager({
    * project with 886 rows, re-fetched on every reload and on every agent edit event. Nothing on this
    * screen reads another dataset's rows: the two operations that legitimately need them (duplicate,
    * delete-count) fetch what they need at the moment they run.
+   *
+   * ★ Only the NEWEST read may set the lists. A live re-read, the read for a newly selected dataset and a
+   * reload after a write can all be out at once: a read taken for dataset A that answered after the
+   * switch to B put A's rows under B's heading.
    */
   async function load(isActive: () => boolean = () => true, selectId: string | null = selIdRef.current) {
+    const seq = ++loadSeq.current;
+    const current = () => isActive() && seq === loadSeq.current;
     try {
       const ds = await api.listDatasets(project.id);
-      if (!isActive()) return;
+      if (!current()) return;
       setDatasets(ds.items);
       // ★ Resolve the SLUG from the freshly loaded list, never from the selection id. A dataset RENAME
       // keeps the id and changes the slug, so an id-as-slug fetch (or a slug captured before the
@@ -211,20 +219,22 @@ export function DatasetManager({
       // tells us which collection to read.
       const slug = ds.items.find((d) => d.id === selectId)?.slug ?? null;
       const en = slug ? await api.listEntries(project.id, slug) : { items: [] as Entry[] };
-      if (!isActive()) return;
+      if (!current()) return;
       // ★ The ref is updated HERE, not just on the next render. A reorder queued behind this one runs
       // in a `finally` that resumes before React re-renders, so a render-time assignment alone would
       // hand it the pre-reload list — the very staleness the ref exists to avoid.
       entriesRef.current = en.items;
       setEntries(en.items);
     } catch (err) {
-      if (isActive()) setError(err instanceof Error ? err.message : 'failed to load data');
+      if (current()) setError(err instanceof Error ? err.message : 'failed to load data');
     }
   }
 
+  // Single-flight: a bulk entry delete emits one event per row, and each reload is two requests.
+  const reload = useSingleFlight(() => load());
   useProjectEvents(project.id, (c) => {
     // Refresh the datasets + entries when an agent (or another tab) changes them.
-    if (c.kind === 'dataset' || c.kind === 'entry') void load();
+    if (c.kind === 'dataset' || c.kind === 'entry') void reload();
   });
 
   useEffect(() => {

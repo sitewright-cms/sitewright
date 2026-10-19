@@ -158,6 +158,19 @@ The running version of an instance is reported at `GET /version` (baked into the
   wrapper was stretched into a full-width bar. The cart style now gives these controls only their row
   layout, as the form style does since the fix above. The platform's own cart drawer looks exactly as
   before.
+- **A bulk change no longer floods the editor with reloads.** An editor list refreshes itself when an
+  agent or another tab changes its content, and a bulk operation reports one change per item. The list
+  used to re-read itself for every one of them.
+  - Moving 450 unused files to the Recycle Bin made the File Manager send about 900 requests, and the
+    session's rate limit refused hundreds of them.
+  - The same happened in the forms list (five requests per change), the datasets view, the page list
+    and the snippets and templates rails.
+  - Each list now reads at most once at a time. Changes that arrive during a read trigger one more read
+    when it finishes, so a burst of any size costs two reads and the list still ends up current.
+  - An older read that answers last no longer overwrites a newer list. In the datasets view, a read for
+    one dataset that answered after the author switched to another showed the first dataset's rows under
+    the second one's heading. The page list and the snippets and templates rails were already protected
+    against this; the forms list, the datasets view and the File Manager now are too.
 
 ## [0.64.0] — 2026-10-18
 

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type Dra
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { api } from '../../api';
 import { useProjectEvents } from '../../lib/use-project-events';
+import { useSingleFlight } from '../../lib/single-flight';
 import { useVirtualRows } from '../../lib/virtual-rows';
 import { uploadBatch } from '../../lib/upload-batch';
 import { StockPicker } from '../media/StockPicker';
@@ -230,14 +231,19 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   // Unique per instance — a FilePicker can render a second FileBrowser over the manager drawer.
   const uploadId = useId();
 
+  // Only the NEWEST read may set the list: a live re-read, the opening read and a reload after a write can
+  // all be out at once, and an older one answering last would overwrite a newer list.
+  const loadSeq = useRef(0);
   async function load(isActive: () => boolean = () => true) {
+    const seq = ++loadSeq.current;
+    const current = () => isActive() && seq === loadSeq.current;
     try {
       const [a, f] = await Promise.all([api.listMedia(projectId), api.listMediaFolders(projectId)]);
-      if (!isActive()) return;
+      if (!current()) return;
       setAssets(a.items);
       setFolderRecords(f.items);
     } catch (err) {
-      if (isActive()) setError(err instanceof Error ? err.message : 'failed to load assets');
+      if (current()) setError(err instanceof Error ? err.message : 'failed to load assets');
     }
   }
 
@@ -260,9 +266,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro,
   }, [assets]);
 
   // LIVE-REFRESH: when the agent (or another tab) adds/edits/deletes media or a folder, refetch so the
-  // File Manager reflects it without a full SPA reload.
+  // File Manager reflects it without a full SPA reload. A bulk operation emits one event PER FILE, so
+  // the re-read is single-flight: a 450-file delete costs two reads, not 900 rate-limited requests.
+  const reload = useSingleFlight(() => load());
   useProjectEvents(projectId, (c) => {
-    if (c.kind === 'media' || c.kind === 'mediafolder') void load();
+    if (c.kind === 'media' || c.kind === 'mediafolder') void reload();
   });
 
   const crumbs = folder === '' ? [] : folder.split('/');

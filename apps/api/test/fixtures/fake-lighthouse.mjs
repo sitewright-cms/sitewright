@@ -6,6 +6,10 @@ export default async function fakeLighthouse(url, flags) {
       return { lhr: { requestedUrl: url, formFactor: flags.formFactor, categories: { seo: { score: 1 } } } };
     case 'empty':
       return undefined;
+    case 'chatty':
+      // Lighthouse's own console output: must not reach the server's stdout, nor sit buffered unread.
+      for (let i = 0; i < 2_000; i += 1) globalThis.console.log(`lighthouse chatter ${i} ${'x'.repeat(200)}`);
+      return { lhr: { requestedUrl: url, chatty: true } };
     case 'lighthouse-error':
       throw Object.assign(new Error('NO_FCP'), { code: 'NO_FCP', friendlyMessage: { formattedDefault: 'The page did not paint any content.' } });
     case 'crash':

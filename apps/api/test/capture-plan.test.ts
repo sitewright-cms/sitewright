@@ -3,6 +3,7 @@ import { SCREENSHOT_VIEWPORTS } from '@sitewright/schema';
 import {
   COLUMN_GUTTER,
   ELEMENT_MAX_WIDTH,
+  MAX_COLUMNS,
   MAX_IMAGE_PIXELS,
   MAX_IMAGES_PER_VIEWPORT,
   MODEL_READ_EDGE,
@@ -110,6 +111,17 @@ describe('planSegments — one element', () => {
     expect(plan.images[0]!.segments[0]!.top).toBe(3100);
     expect(plan.images.flatMap((i) => i.segments).at(-1)!.bottom).toBe(5700);
     expectReadable(plan);
+  });
+});
+
+describe('planSegments — a hostile element', () => {
+  it('★ a 1px-wide element is never tiled into dozens of columns — every one of them a separate grab', () => {
+    // Without a cap, a 1px column fits ~93 times into the read edge: ~186 sequential captures for one
+    // viewport of one call, all inside a render slot.
+    const plan = planSegments({ left: 0, top: 0, width: 1, height: 1_000_000 }, { scale: elementScale(1), capHeight: 12_000, start: 1 });
+    expect(MAX_COLUMNS).toBe(8);
+    expect(Math.max(...plan.images.map((i) => i.segments.length))).toBe(MAX_COLUMNS);
+    expect(plan.images.flatMap((i) => i.segments).length).toBeLessThanOrEqual(MAX_COLUMNS * MAX_IMAGES_PER_VIEWPORT);
   });
 });
 

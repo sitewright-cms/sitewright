@@ -840,6 +840,21 @@ describe('runLighthouseIsolated — Lighthouse in its own heap', () => {
     expect(r?.lhr).toMatchObject({ requestedUrl: 'http://127.0.0.1:1/', formFactor: 'mobile', categories: { seo: { score: 1 } } });
   });
 
+  it('Lighthouse\'s console output is drained and dropped — it never reaches the server log', async () => {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    try {
+      const r = await runLighthouseIsolated('http://x/', flags('chatty'), { moduleUrl: fake });
+      expect(r?.lhr).toMatchObject({ chatty: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(writes.join('')).not.toContain('lighthouse chatter');
+  });
+
   it('no result is passed on as none (the caller reports NO_RESULT)', async () => {
     expect(await runLighthouseIsolated('http://x/', flags('empty'), { moduleUrl: fake })).toBeUndefined();
   });

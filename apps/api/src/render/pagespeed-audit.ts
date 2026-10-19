@@ -942,8 +942,12 @@ export function runLighthouseIsolated(
     eval: true,
     workerData: { moduleUrl: opts.moduleUrl ?? defaultLighthouseModuleUrl(), url, flags },
     resourceLimits: { maxOldGenerationSizeMb: heapMb },
-    stdout: true, // Lighthouse's own console output stays out of the server log
+    // Lighthouse's own console output stays out of the server log: captured, and DRAINED below — an
+    // unread stream would buffer every line of it in this process for the life of the run. stderr is
+    // left to the server's stderr: what Lighthouse reports there is worth keeping.
+    stdout: true,
   });
+  worker.stdout.resume();
   const work = new Promise<RunnerResult | undefined>((resolve, reject) => {
     worker.once('message', (reply: WorkerReply) => {
       if (reply.ok) resolve(reply.lhr === null ? undefined : ({ lhr: JSON.parse(reply.lhr) } as RunnerResult));

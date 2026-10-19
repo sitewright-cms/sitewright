@@ -289,6 +289,16 @@ function releaseQuietMs(): number {
   return ACQUIRE_TIMEOUT_MS + 3_000;
 }
 
+/**
+ * Test seam: install a stand-in browser (the idle logic touches only `contexts()` and `close()`) and the
+ * time it was last handed out, so the release rules can be pinned without a real Chromium.
+ */
+export function _setBrowserForTest(browser: Promise<Pick<Browser, 'contexts' | 'close'>> | null, lastUseAt: number): void {
+  browserPromise = browser as Promise<Browser> | null;
+  browserReservation = null;
+  lastBrowserUseAt = lastUseAt;
+}
+
 /** The shared headless Chromium singleton (reused by screenshots + the import SPA renderer). */
 export async function getBrowser(): Promise<Browser> {
   lastBrowserUseAt = Date.now();

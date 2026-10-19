@@ -7,7 +7,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ScreenshotModule from '../src/render/screenshot.js';
 import type * as PagespeedModule from '../src/render/pagespeed-audit.js';
-import { createApp, _setAdmissionFailingSinceForTest, _setMemoryBudgetForTest } from '../src/http/app.js';
+import {
+  createApp,
+  _admissionFailingForMs,
+  _lighthouseGateForTest,
+  _setAdmissionFailingSinceForTest,
+  _setMemoryBudgetForTest,
+} from '../src/http/app.js';
+import { sharedMemoryBudget } from '../src/runtime/memory-budget.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { RenderQueueBusyError } from '../src/render/render-slots.js';
@@ -405,6 +412,87 @@ describe('pagespeed-audit route — memory, deadlines, and the both-devices answ
     } finally {
       delete process.env.SW_PAGESPEED_RUN_TIMEOUT_MS;
     }
+  });
+});
+
+describe('pagespeed-audit route — callers that leave, and a full queue', () => {
+  /** An audit over a REAL socket (a hang-up is a closed socket), on a fresh session; abort to hang up. */
+  async function openAudit(): Promise<{ pending: Promise<unknown>; hangUp: () => void }> {
+    const session = await freshSession();
+    const ac = new AbortController();
+    const pending = settle(
+      fetch(`${address}/projects/${projectId}/pagespeed-audit/${homeId}?formFactor=mobile`, { headers: { cookie: `sw_session=${session}` }, signal: ac.signal }),
+    );
+    return { pending, hangUp: () => ac.abort() };
+  }
+  const gateIdle = () => vi.waitFor(() => expect(_lighthouseGateForTest()).toEqual({ active: 0, waiting: 0 }), { timeout: 10_000 });
+
+  it('★ a caller that hangs up while QUEUED for the audit gate leaves the queue — no audit, no browser closed for it', { timeout: 30_000 }, async () => {
+    const seen = hangingAudit();
+    const first = await openAudit();
+    await vi.waitFor(() => expect(seen).toHaveLength(1), { timeout: 20_000 });
+    const second = await openAudit();
+    await vi.waitFor(() => expect(_lighthouseGateForTest().waiting).toBe(1), { timeout: 20_000 });
+    const releasedBefore = seams.released;
+    second.hangUp();
+    expect(await second.pending).toMatchObject({ name: 'AbortError' });
+    await vi.waitFor(() => expect(_lighthouseGateForTest().waiting).toBe(0));
+    expect(seen, 'the queued audit never ran').toHaveLength(1);
+    expect(seams.released, 'nor closed anyone\'s browser on its way out').toBe(releasedBefore);
+    first.hangUp();
+    await first.pending;
+    await gateIdle();
+  });
+
+  it('★ a caller that hangs up while the audit WAITS FOR MEMORY frees the gate at once, and is not counted as a refusal', { timeout: 30_000 }, async () => {
+    _setMemoryBudgetForTest(768 * MB, 600 * MB); // admission would wait its full window, then refuse
+    let ran = false;
+    seams.audit = async (url, opts) => {
+      ran = true;
+      return fakeResult(url, opts.formFactor);
+    };
+    const caller = await openAudit();
+    await vi.waitFor(() => expect(_lighthouseGateForTest().active).toBe(1), { timeout: 20_000 });
+    await new Promise((r) => setTimeout(r, 200)); // inside the admission wait now
+    const t0 = Date.now();
+    caller.hangUp();
+    await caller.pending;
+    await gateIdle();
+    // Well inside the 3s admission window: the wait ended with the caller, not on its own.
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(ran).toBe(false);
+    expect(_admissionFailingForMs(), 'a caller leaving is not the instance refusing').toBe(0);
+  });
+
+  it('the memory reservation is given back when the audit FAILS', async () => {
+    let duringRun = -1;
+    seams.audit = async () => {
+      duringRun = (await sharedMemoryBudget.snapshot()).reservedBytes;
+      throw toPagespeedRunError(Object.assign(new Error('NO_FCP'), { code: 'NO_FCP', friendlyMessage: 'No paint.' }));
+    };
+    const res = await audit(await freshSession());
+    expect(res.statusCode).toBe(502);
+    const after = (await sharedMemoryBudget.snapshot()).reservedBytes;
+    // Exactly the audit's own reservation was held during the run, and none of it after.
+    expect(duringRun - after).toBe(sharedMemoryBudget.reservationForPeak(352 * MB, 32 * MB, 64 * MB));
+  });
+
+  it('★ with four audits already queued, a fifth is told "full, retry" AT ONCE — not after a minute behind them', { timeout: 60_000 }, async () => {
+    const seen = hangingAudit();
+    const callers = [await openAudit()];
+    await vi.waitFor(() => expect(seen).toHaveLength(1), { timeout: 20_000 });
+    for (let i = 0; i < 4; i += 1) callers.push(await openAudit());
+    await vi.waitFor(() => expect(_lighthouseGateForTest().waiting).toBe(4), { timeout: 20_000 });
+    const t0 = Date.now();
+    const res = await audit(await freshSession());
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['retry-after']).toBe('30');
+    expect(res.json()).toMatchObject({ code: 'capacity', transient: true, reason: 'busy' });
+    expect((res.json() as { error: string }).error).toMatch(/queue is full — 4 requests are already waiting/);
+    for (const c of callers) c.hangUp();
+    await Promise.all(callers.map((c) => c.pending));
+    await gateIdle();
   });
 });
 

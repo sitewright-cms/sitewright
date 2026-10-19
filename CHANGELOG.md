@@ -122,7 +122,8 @@ The running version of an instance is reported at `GET /version` (baked into the
     desktop it almost doubled the browser's memory. It is now turned off.
   - Each audit now checks that there is memory to spare before it starts. If there is not, it answers
     with a clear "try again shortly" message instead of taking the server down. An idle screenshot
-    browser is closed first to make room, and only one audit runs at a time; a second one waits.
+    browser is closed first to make room. Only one audit runs at a time: the next few wait their turn,
+    and beyond four waiting a new request is told right away to try again shortly.
   - A run that takes longer than 150 seconds is stopped and reported as a timeout that is worth
     retrying.
   - With "both", if one device fails, the other device's result is still returned, along with the

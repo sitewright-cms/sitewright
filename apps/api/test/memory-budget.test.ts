@@ -141,3 +141,24 @@ describe('MemoryBudget.reservationForPeak', () => {
     expect(budget(8192, 0).reservationForPeak(256 * MB, 32 * MB, 64 * MB)).toBe(64 * MB);
   });
 });
+
+describe('MemoryBudget.tryReserve — a caller that leaves', () => {
+  it('stops waiting the moment its signal aborts, and reserves nothing', async () => {
+    const b = budget(768, 760); // nothing free: the call would wait the whole window
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(new Error('client gone')), 50);
+    const t0 = Date.now();
+    expect(await b.tryReserve(64 * MB, 'audit', 5_000, ac.signal)).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect((await b.snapshot()).reservedBytes).toBe(0);
+  });
+
+  it('an already-aborted signal does not wait at all', async () => {
+    const b = budget(768, 760);
+    const ac = new AbortController();
+    ac.abort();
+    const t0 = Date.now();
+    expect(await b.tryReserve(64 * MB, 'audit', 5_000, ac.signal)).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+});

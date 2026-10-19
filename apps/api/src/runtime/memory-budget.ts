@@ -215,22 +215,24 @@ export class MemoryBudget {
    * makes them hold whatever else they already own (a concurrency slot, a connection) for the
    * duration, which is a latency change nobody asked for.
    */
-  async tryReserve(bytes: number, label: string, waitMs = 0): Promise<Reservation | null> {
+  async tryReserve(bytes: number, label: string, waitMs = 0, signal?: AbortSignal): Promise<Reservation | null> {
     // Refresh the sample FIRST, then decide and commit with no await in between. An `await` between
     // reading headroom and taking it re-creates the exact check-then-act race this ledger exists to
     // close: two callers await the same snapshot, both see the same free space, and both proceed.
     // JS is single-threaded, so a synchronous check-and-commit is atomic.
     await this.used();
     const immediate = this.tryReserveSync(bytes, label);
-    if (immediate || waitMs <= 0) return immediate;
+    if (immediate || waitMs <= 0 || signal?.aborted) return immediate;
 
     // No room right now. WAIT for a release rather than refusing outright — a transient spike is the
     // common case, and a slower success beats a 503. Bounded on both axes: at most `waitMs`, and at
-    // most MAX_WAITERS queued, because the queue is memory as surely as the work is.
+    // most MAX_WAITERS queued, because the queue is memory as surely as the work is. A caller that
+    // leaves (`signal`) stops waiting at once: there is no one left to reserve for.
     if (this.waiters.length >= MAX_WAITERS) return null;
     const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
-      const woke = await this.waitForRelease(deadline - Date.now());
+      const woke = await this.waitForRelease(deadline - Date.now(), signal);
+      if (signal?.aborted) return null;
       // Re-sample: a release may have been accompanied by the kernel reclaiming more.
       await this.used();
       const retry = this.tryReserveSync(bytes, label);
@@ -240,8 +242,8 @@ export class MemoryBudget {
     return null;
   }
 
-  /** Resolves true when a reservation was released, false on timeout. */
-  private waitForRelease(ms: number): Promise<boolean> {
+  /** Resolves true when a reservation was released, false on timeout (or when `signal` aborts). */
+  private waitForRelease(ms: number, signal?: AbortSignal): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       let settled = false;
       const done = (woken: boolean): void => {
@@ -249,12 +251,15 @@ export class MemoryBudget {
         settled = true;
         this.waiters = this.waiters.filter((w) => w !== wake);
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
         resolve(woken);
       };
       const wake = (): void => done(true);
+      const onAbort = (): void => done(false);
       const timer = setTimeout(() => done(false), Math.max(0, ms));
       timer.unref?.();
       this.waiters.push(wake);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   }
 

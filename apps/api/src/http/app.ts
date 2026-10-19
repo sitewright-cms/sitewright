@@ -601,9 +601,15 @@ const PAGESPEED_MIN_RESERVE_BYTES = 64 * 1024 * 1024;
  * judges by max(used, reserved), and while the first run's Chrome is still starting, `used` has not moved
  * — so a second audit arriving in that window reads the same free memory and is admitted too. Two
  * Lighthouse Chromes is the shape that OOM-kills a small container. Taken BEFORE the render slot, so a
- * queued audit holds nothing a screenshot needs; a wait past a minute is a retryable 503.
+ * queued audit holds nothing a screenshot needs; a wait past a minute is a retryable 503, and with four
+ * audits already queued a fifth gets that 503 at once rather than a minute's wait behind them.
  */
-const lighthouseGate = createSlotPool({ max: 1, acquireTimeoutMs: 60_000, retryAfterSeconds: 30 });
+const lighthouseGate = createSlotPool({ max: 1, acquireTimeoutMs: 60_000, retryAfterSeconds: 30, maxWaiting: 4 });
+
+/** Test seam: the audit gate's running/queued counts. */
+export function _lighthouseGateForTest(): { active: number; waiting: number } {
+  return { active: lighthouseGate.active, waiting: lighthouseGate.waiting };
+}
 
 /**
  * How long ONE Lighthouse run may take before it is stopped and reported as a retryable TIMEOUT. A
@@ -638,11 +644,18 @@ function pagespeedMemoryMessage(transient: boolean): string {
  * devices: they run one after the other, so the peak is one run's, and a second admission would read the
  * first run's memory before the kernel has taken it back and refuse a run that fits.
  */
-async function withAuditMemory<T>(fn: () => Promise<T>): Promise<T> {
+async function withAuditMemory<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  // A caller that has gone must not close anyone's browser or hold memory for nobody.
+  signal.throwIfAborted();
+  // Released BEFORE admission on purpose: the warm browser's memory is usually what lets the audit be
+  // admitted at all. If it is refused anyway, the next preview pays a browser relaunch (seconds) — the
+  // cheaper side of the trade, against refusing nearly every audit that follows a preview.
   await releaseIdleBrowser().catch(() => false);
+  signal.throwIfAborted();
   const reservation = await admitMemory(
     memoryBudget.reservationForPeak(PAGESPEED_PEAK_BYTES, PAGESPEED_SAFETY_BYTES, PAGESPEED_MIN_RESERVE_BYTES),
     'page-speed audit',
+    signal,
   );
   try {
     return await fn();
@@ -773,12 +786,19 @@ export function _setAdmissionFailingSinceForTest(at: number | null): void {
  * retries such a refusal forever. So: carry a retry interval, log the headroom at `warn`, and once
  * the refusals have run unbroken past ADMISSION_SUSTAINED_MS stop describing them as temporary.
  */
-async function admitMemory(bytes: number, label: string): Promise<Reservation> {
+async function admitMemory(bytes: number, label: string, signal?: AbortSignal): Promise<Reservation> {
+  signal?.throwIfAborted();
   if (!memoryBudgetReady) return memoryBudget.forceReserve(bytes, label);
   // Wait BRIEFLY for headroom before refusing: a transient spike is the common case, and a slower
   // success beats a 503. Bounded — the ledger caps both the wait and how many may queue, because a
   // queue is memory as surely as the work is, and a hang is worse for a caller than a retryable 503.
-  const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS);
+  const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS, signal);
+  // The caller left while we waited: there is no one to reserve for, and it was not a refusal — do not
+  // count it toward "this instance is out of memory".
+  if (signal?.aborted) {
+    held?.release();
+    throw signal.reason;
+  }
   if (held) {
     admissionFailingSince = null;
     return held;
@@ -10069,7 +10089,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
           // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion. One audit at a
           // time on top of that (lighthouseGate), taken first so a queued audit holds no render slot.
-          const result = await lighthouseGate.run(() => withRenderSlot(() => withAuditMemory(async () => {
+          const result = await lighthouseGate.run(() => withRenderSlot(() => withAuditMemory(signal, async () => {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;

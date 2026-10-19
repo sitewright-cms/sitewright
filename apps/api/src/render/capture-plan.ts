@@ -29,6 +29,12 @@ export const COLUMN_GUTTER = COLUMN_GUTTER_PX;
 export const MAX_IMAGES_PER_VIEWPORT = 2;
 /** An element capture is shown at full resolution up to this many image px wide. */
 export const ELEMENT_MAX_WIDTH = 1280;
+/**
+ * Columns per tiled image, at most. Every column is a separate capture inside a render slot; without a
+ * cap a 1px-wide `screenshotSelector` element would tile ~93 columns, ~186 sequential captures per
+ * viewport. Real viewports never reach it (a phone page is 4 columns).
+ */
+export const MAX_COLUMNS = 8;
 
 /** The region being paged through — the whole page, or one element's box — in CSS px, page coordinates. */
 export interface CaptureRegion {
@@ -77,12 +83,13 @@ export function elementScale(boxWidth: number): number {
 /** How many columns of `colWidth` x `colHeight` fit one image, by edge and by pixel count. */
 function columnsPerImage(colWidth: number, colHeight: number): number {
   let cols = 1;
-  for (;;) {
+  while (cols < MAX_COLUMNS) {
     const next = cols + 1;
     const width = next * colWidth + (next - 1) * COLUMN_GUTTER;
     if (width > MODEL_READ_EDGE || width * colHeight > MAX_IMAGE_PIXELS) return cols;
     cols = next;
   }
+  return cols;
 }
 
 /** Plan the segments of `region` at `scale`, returning at most {@link MAX_IMAGES_PER_VIEWPORT} images from `start` (1-based). */

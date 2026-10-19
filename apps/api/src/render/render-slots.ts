@@ -22,10 +22,14 @@ export class RenderQueueBusyError extends Error {
   readonly retryable = true;
   readonly retryAfterSeconds: number;
 
-  constructor(waitedMs: number, retryAfterSeconds: number = RENDER_BUSY_RETRY_AFTER_S) {
+  /** `queued`: refused without waiting, because that many callers were already queued. */
+  constructor(waitedMs: number, retryAfterSeconds: number = RENDER_BUSY_RETRY_AFTER_S, queued?: number) {
     super(
-      `the headless-render queue is busy — every render slot stayed in use for ${Math.round(waitedMs / 1000)}s ` +
-        `(other audits or screenshots are running); retry in about ${retryAfterSeconds}s`,
+      queued !== undefined
+        ? `the headless-render queue is full — ${queued} requests are already waiting ` +
+            `(other audits or screenshots are running); retry in about ${retryAfterSeconds}s`
+        : `the headless-render queue is busy — every render slot stayed in use for ${Math.round(waitedMs / 1000)}s ` +
+            `(other audits or screenshots are running); retry in about ${retryAfterSeconds}s`,
     );
     this.name = 'RenderQueueBusyError';
     this.retryAfterSeconds = retryAfterSeconds;
@@ -49,7 +53,12 @@ export interface SlotPool {
   readonly waiting: number;
 }
 
-export function createSlotPool(opts: { max: number; acquireTimeoutMs: number; retryAfterSeconds?: number }): SlotPool {
+/**
+ * `maxWaiting` caps the QUEUE: past it a caller is refused at once instead of joining. A waiter holds its
+ * request (and, for an audit, a minute of the caller's patience) for work that cannot start until every
+ * caller ahead of it has finished — past a few of those, "come back later" now is the better answer.
+ */
+export function createSlotPool(opts: { max: number; acquireTimeoutMs: number; retryAfterSeconds?: number; maxWaiting?: number }): SlotPool {
   let active = 0;
   const waiters: Array<() => void> = [];
 
@@ -59,6 +68,9 @@ export function createSlotPool(opts: { max: number; acquireTimeoutMs: number; re
     if (active < opts.max) {
       active++;
       return;
+    }
+    if (opts.maxWaiting !== undefined && waiters.length >= opts.maxWaiting) {
+      throw new RenderQueueBusyError(0, opts.retryAfterSeconds, waiters.length);
     }
     await new Promise<void>((resolve, reject) => {
       // Each way out disarms the other two (timer, abort listener, queue seat), so exactly one of

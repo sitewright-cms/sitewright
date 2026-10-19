@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Dataset, Entry } from '@sitewright/schema';
 import type { Project } from '../src/api';
+import type { ContentChange } from '../src/lib/use-project-events';
 
 const { listDatasets, listEntries, putDataset, putEntry, deleteDataset, deleteEntry, renameDataset, getSettings } = vi.hoisted(() => ({
   getSettings: vi.fn<(pid: string) => Promise<unknown>>(),
@@ -23,6 +24,14 @@ vi.mock('../src/api', () => ({
     deleteEntry: (pid: string, id: string, dataset: string) => deleteEntry(pid, id, dataset),
     renameDataset: (pid: string, id: string, slug: string, cascade: boolean) => renameDataset(pid, id, slug, cascade),
     getSettings: (pid: string) => getSettings(pid),
+  },
+}));
+
+// The live stream is pushed by hand: the module that owns the EventSource is replaced.
+const live = vi.hoisted(() => ({ emit: null as ((c: ContentChange) => void) | null }));
+vi.mock('../src/lib/use-project-events', () => ({
+  useProjectEvents: (_projectId: string, listener: (c: ContentChange) => void) => {
+    live.emit = listener;
   },
 }));
 
@@ -441,5 +450,52 @@ describe('DatasetManager — entry reorder', () => {
     settles.shift()!();
     await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(2)); // drained, not dropped
     settles.forEach((f) => f());
+  });
+});
+
+describe('DatasetManager — live refresh', () => {
+  it('★ a bulk entry delete’s burst of events costs two reloads, not one per entry', async () => {
+    await renderAndSelectAlpha();
+    expect(await screen.findByText('First post')).toBeInTheDocument();
+    listDatasets.mockClear();
+    listEntries.mockClear();
+
+    // Deleting 200 rows in bulk emits one `entry` event per row. The first read is taken mid-delete; the
+    // trailing one sees the end state.
+    listEntries.mockResolvedValueOnce({ items: entries }).mockResolvedValue({ items: entries.slice(1) });
+    await act(async () => {
+      for (let i = 0; i < 200; i += 1) live.emit!({ kind: 'entry', entityId: `e${i}`, op: 'delete', scope: 'alpha' });
+    });
+
+    await waitFor(() => expect(screen.queryByText('First post')).toBeNull());
+    expect(listDatasets).toHaveBeenCalledTimes(2);
+    expect(listEntries).toHaveBeenCalledTimes(2);
+  });
+
+  /** A response the test releases when it chooses — to make reads answer out of order. */
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('★ a live read for one dataset that answers after switching to another does not show its rows', async () => {
+    await renderAndSelectAlpha();
+    expect(await screen.findByText('First post')).toBeInTheDocument();
+
+    // An agent edits an Alpha row: the live re-read goes out, and its rows are slow to come back.
+    const alphaRows = deferred<{ items: Entry[] }>();
+    listEntries.mockReturnValueOnce(alphaRows.promise);
+    await act(async () => live.emit!({ kind: 'entry', entityId: 'e1', op: 'put', scope: 'alpha' }));
+
+    // Meanwhile the author opens Zeta, whose rows answer first.
+    listEntries.mockResolvedValueOnce({ items: [{ id: 'z1', dataset: 'zeta', status: 'draft', order: 0, values: { title: 'Zeta row' } }] });
+    fireEvent.click(screen.getByText('Zeta'));
+    expect(await screen.findByText('Zeta row')).toBeInTheDocument();
+
+    // The stale Alpha read answers last and must not put Alpha's rows under Zeta.
+    await act(async () => alphaRows.resolve({ items: entries }));
+    expect(screen.getByText('Zeta row')).toBeInTheDocument();
+    expect(screen.queryByText('First post')).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 import type { ContentChange } from '../src/lib/use-project-events';
 
@@ -49,23 +49,52 @@ beforeEach(() => {
 });
 
 describe('the pages list, refreshed live', () => {
-  it('★ keeps the NEWEST read when two answer out of order — an agent’s second page does not vanish', async () => {
+  it('★ an agent’s second page does not vanish: live reads never overlap, so an older one cannot land last', async () => {
     listPages.mockResolvedValueOnce({ items: [home] });
     render(<ProjectView project={{ id: 'p', name: 'Acme', slug: 'acme', role: 'owner' }} tab="pages" />);
     await screen.findByRole('button', { name: /^Home\s*\/$/ });
 
-    // An agent writes `services`, then `web`: two events, two reads. The FIRST read was taken before
-    // `web` existed, and it answers LAST.
+    // An agent writes `services`, then `web`: two events. The first read was taken before `web` existed.
     const first = deferred<{ items: Page[] }>();
     const second = deferred<{ items: Page[] }>();
     listPages.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
     act(() => emit!({ kind: 'page', entityId: 'services', op: 'put' }));
     act(() => emit!({ kind: 'page', entityId: 'web', op: 'put' }));
+    // The second read waits for the first instead of racing it.
+    expect(listPages).toHaveBeenCalledTimes(2);
 
+    await act(async () => first.resolve({ items: [home, services] }));
+    expect(listPages).toHaveBeenCalledTimes(3);
     await act(async () => second.resolve({ items: [home, services, web] }));
     expect(await screen.findByRole('button', { name: /^Web\s*\/services\/web\/$/ })).toBeInTheDocument();
-    await act(async () => first.resolve({ items: [home, services] }));
-    // The stale answer must not overwrite the newer list.
-    expect(screen.getByRole('button', { name: /^Web\s*\/services\/web\/$/ })).toBeInTheDocument();
+  });
+
+  it('★ keeps the NEWEST read when the opening read answers after a live one', async () => {
+    const opening = deferred<{ items: Page[] }>();
+    listPages.mockReturnValueOnce(opening.promise).mockResolvedValueOnce({ items: [home, services] });
+    render(<ProjectView project={{ id: 'p', name: 'Acme', slug: 'acme', role: 'owner' }} tab="pages" />);
+
+    // An agent writes `services` while the view's first read is still out; the live read answers first.
+    await act(async () => emit!({ kind: 'page', entityId: 'services', op: 'put' }));
+    expect(await screen.findByRole('button', { name: /^Services\s*\/services\/$/ })).toBeInTheDocument();
+    // The opening read, taken before `services` existed, answers last and must not overwrite the list.
+    await act(async () => opening.resolve({ items: [home] }));
+    expect(screen.getByRole('button', { name: /^Services\s*\/services\/$/ })).toBeInTheDocument();
+  });
+
+  it('★ a burst of page events costs two reads of each list, not one per page', async () => {
+    listPages.mockResolvedValue({ items: [home] });
+    render(<ProjectView project={{ id: 'p', name: 'Acme', slug: 'acme', role: 'owner' }} tab="pages" />);
+    await screen.findByRole('button', { name: /^Home\s*\/$/ });
+    listPages.mockClear();
+    getSettings.mockClear();
+
+    // Deleting 300 pages in bulk emits one `page` event per page.
+    await act(async () => {
+      for (let i = 0; i < 300; i += 1) emit!({ kind: 'page', entityId: `p${i}`, op: 'delete' });
+    });
+
+    await waitFor(() => expect(listPages).toHaveBeenCalledTimes(2));
+    expect(getSettings).toHaveBeenCalledTimes(2);
   });
 });

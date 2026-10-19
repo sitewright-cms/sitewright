@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { StockProviderName, MediaAsset, MediaFolderRecord } from '@sitewright/schema';
+import type { ContentChange } from '../src/lib/use-project-events';
 
 const listMedia = vi.fn();
 const listMediaFolders = vi.fn();
@@ -31,6 +32,14 @@ vi.mock('../src/api', () => ({
     stockProviders: () => stockProviders(),
     searchStock: vi.fn(),
     importStock: vi.fn(),
+  },
+}));
+
+// The live stream is pushed by hand: the module that owns the EventSource is replaced.
+const live = vi.hoisted(() => ({ emit: null as ((c: ContentChange) => void) | null }));
+vi.mock('../src/lib/use-project-events', () => ({
+  useProjectEvents: (_projectId: string, listener: (c: ContentChange) => void) => {
+    live.emit = listener;
   },
 }));
 
@@ -818,5 +827,48 @@ describe('FileBrowser — alt text for an image', () => {
     fireEvent.change(altField(dialog), { target: { value: 'A red bicycle' } });
     fireEvent.click(saveButton(dialog));
     await waitFor(() => expect(live).toHaveTextContent('Saved'));
+  });
+});
+
+describe('FileBrowser — live refresh', () => {
+  it('★ a bulk delete’s burst of events costs two list reads, not one per file', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    expect(await screen.findByRole('button', { name: 'hero.png' })).toBeInTheDocument();
+    listMedia.mockClear();
+    listMediaFolders.mockClear();
+
+    // Moving 450 files to the Recycle Bin emits one `media` event per file. Re-reading per event sent
+    // ~900 requests and the session's rate limit refused most of them.
+    // The first read is taken mid-delete; the trailing one sees the end state.
+    listMedia.mockResolvedValueOnce({ items: [image, file] }).mockResolvedValue({ items: [file] });
+    await act(async () => {
+      for (let i = 0; i < 450; i += 1) live.emit!({ kind: 'media', entityId: `u${i}`, op: 'delete' });
+    });
+
+    // One read in flight, plus ONE trailing read that sees the state after every change.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'hero.png' })).toBeNull());
+    expect(listMedia).toHaveBeenCalledTimes(2);
+    expect(listMediaFolders).toHaveBeenCalledTimes(2);
+  });
+
+  /** A response the test releases when it chooses — to make reads answer out of order. */
+  function deferred<T>() {
+    let resolve!: (v: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('★ keeps the NEWEST read when the opening read answers after a live one', async () => {
+    const opening = deferred<{ items: MediaAsset[] }>();
+    listMedia.mockReturnValueOnce(opening.promise).mockResolvedValueOnce({ items: [image, file] });
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+
+    // An agent uploads a file while the opening read is still out; the live read answers first.
+    await act(async () => live.emit!({ kind: 'media', entityId: 'file1', op: 'put' }));
+    expect(await screen.findByRole('button', { name: 'brochure.pdf' })).toBeInTheDocument();
+
+    // The opening read, taken before the upload, answers last and must not hide the new file.
+    await act(async () => opening.resolve({ items: [image] }));
+    expect(screen.getByRole('button', { name: 'brochure.pdf' })).toBeInTheDocument();
   });
 });

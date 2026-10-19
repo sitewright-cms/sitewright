@@ -10,6 +10,7 @@ import { useLongPress } from '../lib/use-long-press';
 import { useIsMobile } from '../lib/use-is-mobile';
 import { ContextMenu, type ContextMenuRow } from './ui/ContextMenu';
 import { useProjectEvents } from '../lib/use-project-events';
+import { useSingleFlight } from '../lib/single-flight';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
@@ -334,10 +335,10 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
 
-  // Every live event starts a fresh read, and reads can ANSWER OUT OF ORDER: an agent writing two pages
-  // back to back fires two reads, and when the first (taken before the second page existed) answers last
-  // it overwrote the newer list — the second page vanished until something else reloaded. Only the
-  // newest read may set the list.
+  // Reads can ANSWER OUT OF ORDER: when a read taken before an agent's page existed answered last, it
+  // overwrote the newer list and the page vanished until something else reloaded. Live events re-read
+  // through a single flight (below), so those reads never overlap; this guard covers the opening read
+  // and the Settings tab's, which can still answer after a live one. Only the newest read may set the list.
   const loadSeq = useRef(0);
   async function load() {
     const seq = ++loadSeq.current;
@@ -385,11 +386,20 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
 
   // LIVE-REFRESH: an agent (or another tab) that creates/edits/deletes a page — or changes the site
   // settings (e.g. locales) — updates the page list + locale set here, no full SPA reload needed.
+  // Each re-read is single-flight: a bulk page delete emits one event per page, and re-reading per event
+  // would send hundreds of requests into the session's rate limit.
+  const reloadPages = useSingleFlight(load);
+  const reloadLocales = useSingleFlight(refreshLocales);
+  const reloadTemplates = useSingleFlight(() =>
+    api
+      .listTemplates(project.id)
+      .then((r) => setTemplates(r.items))
+      .catch(() => {}),
+  );
   useProjectEvents(project.id, (c) => {
-    if (c.kind === 'page' || c.kind === 'template') void load();
-    if (c.kind === 'page') void refreshLocales();
-    if (c.kind === 'template') void api.listTemplates(project.id).then((r) => setTemplates(r.items)).catch(() => {});
-    if (c.kind === 'settings') void refreshLocales();
+    if (c.kind === 'page' || c.kind === 'template') void reloadPages();
+    if (c.kind === 'page' || c.kind === 'settings') void reloadLocales();
+    if (c.kind === 'template') void reloadTemplates();
   });
 
   // Keep the selected language valid: when the configured locales load/change (or one is

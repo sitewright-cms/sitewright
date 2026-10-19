@@ -1302,6 +1302,50 @@ describe('pagespeed_audit tool', () => {
     expect(both).toContain('· desktop ·');
   });
 
+  it('★ "both" with one device missing reports the one that ran AND why the other did not', async () => {
+    const partial = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        mobile: {
+          url: '/',
+          formFactor: 'mobile' as const,
+          scores: { performance: 61, accessibility: 100, bestPractices: 100, seo: 100 },
+          metrics: {},
+          findings: [],
+          lighthouseVersion: '13.5.0',
+          fetchedAt: '2026-10-16T00:00:00.000Z',
+        },
+        errors: {
+          desktop: { code: 'TARGET_CRASHED', retryable: true, error: 'Lighthouse could not audit this page: Browser tab has unexpectedly crashed. On this server that almost always means the browser ran out of memory on a heavy page: retry, auditing one device at a time.' },
+        },
+      })),
+    });
+    const out = text(await (await connect(partial, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'both' } }));
+    expect(out).toContain('· mobile ·');
+    expect(out).toContain('Performance    61');
+    expect(out).toContain('DESKTOP — NOT AUDITED (TARGET_CRASHED): Lighthouse could not audit this page: Browser tab has unexpectedly crashed.');
+    expect(out).toContain("call pagespeed_audit again with formFactor 'desktop'");
+  });
+
+  it('a missing device whose failure is about the PAGE says retrying will not help', async () => {
+    const partial = fakeClient({
+      pagespeedAudit: vi.fn(async () => ({
+        desktop: { url: '/', formFactor: 'desktop' as const, scores: { performance: 90, accessibility: 100, bestPractices: 100, seo: 100 }, metrics: {}, findings: [], lighthouseVersion: '13.5.0', fetchedAt: '2026-10-16T00:00:00.000Z' },
+        errors: { mobile: { code: 'NO_FCP', retryable: false, error: 'Lighthouse could not audit this page: no paint.' } },
+      })),
+    });
+    const out = text(await (await connect(partial, readScope)).callTool({ name: 'pagespeed_audit', arguments: { pageId: 'home', formFactor: 'both' } }));
+    expect(out).toContain('MOBILE — NOT AUDITED (NO_FCP)');
+    expect(out).toMatch(/Retrying will fail the same way/);
+  });
+
+  it('the description explains the partial answer and what 503 / 502 mean now', async () => {
+    const tools = await (await connect(fakeClient(), readScope)).listTools();
+    const d = tools.tools.find((t) => t.name === 'pagespeed_audit')!.description!;
+    expect(d).toMatch(/the other is still reported/);
+    expect(d).toMatch(/not enough free memory/);
+    expect(d).toMatch(/TARGET_CRASHED/);
+  });
+
   it('renders the MAIN-THREAD section: longest tasks, then the animations the compositor refused', async () => {
     const heavy = fakeClient({
       pagespeedAudit: vi.fn(async () => ({
@@ -1928,7 +1972,8 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
   it('preview_page requests a screenshot; with none it falls back to the HTML source', async () => {
     const client = fakeClient(); // fake preview returns { html, token } — no screenshots
     const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page } });
-    expect(calls(client).preview).toHaveBeenCalledWith(page, { screenshot: true });
+    // `segment` always rides along with a capture — it is what asks for the segmented contract.
+    expect(calls(client).preview).toHaveBeenCalledWith(page, { screenshot: true, segment: 1 });
     const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
     // No screenshots AND no reason from the server → the fallback is unchanged: say so, and hand
     // back the HTML, because there is nothing better to offer. (When the server DOES give a reason,
@@ -1955,6 +2000,64 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     // The HTML source is NOT dumped by default (the agent SEES it instead) — only on includeHtml.
     const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
     expect(texts).not.toContain('<html></html>');
+  });
+
+  it('★ preview_page forwards segment + screenshotSelector, and SAYS what each segmented image covers', async () => {
+    const seg = (index: number, top: number, bottom: number) => ({
+      viewport: 'fullhd' as const,
+      kind: 'page' as const,
+      base64: `S${index}`,
+      mimeType: 'image/jpeg',
+      width: 960,
+      height: 1354,
+      scale: 0.5,
+      segments: [{ index, top, bottom }],
+      segmentCount: 4,
+      totalHeight: 9450,
+    });
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: '<html>SRC</html>',
+        token: 'tok',
+        captures: [seg(3, 5416, 8124), seg(4, 8124, 9450)],
+        captureNotes: [{ viewport: 'mobile' as const, message: 'there is no segment 3: the page is 5,000px tall here — 2 segments of 3,136px.' }],
+      })),
+    });
+    const res = await (await connect(client, readScope)).callTool({
+      name: 'preview_page',
+      arguments: { page, segment: 3, viewports: ['desktop', 'phone'], screenshotSelector: 'main' },
+    });
+    expect(calls(client).preview).toHaveBeenCalledWith(page, { screenshot: true, viewports: 'fullhd,mobile', segment: 3, selector: 'main' });
+    const blocks = res.content as Array<{ type: string; text?: string; data?: string }>;
+    expect(blocks.filter((b) => b.type === 'image').map((b) => b.data)).toEqual(['S3', 'S4']);
+    const texts = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    expect(texts).toContain('segments 3–4 of 4, y 5,416–9,450');
+    expect(texts).toContain('— fullhd · segment 4 of 4 (y 8,124–9,450) —');
+    expect(texts).toContain('mobile: there is no segment 3');
+    expect(texts).not.toContain('<html>SRC</html>'); // not asked for
+  });
+
+  it('preview_page with only NOTES (a selector that matched nothing) explains, and does not dump the page', async () => {
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: `<html>${'<p>filler</p>'.repeat(5000)}</html>`,
+        token: 'tok',
+        captures: [],
+        captureNotes: [{ viewport: 'fullhd' as const, message: 'no element matches ".nope" at this width.' }],
+      })),
+    });
+    const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page, screenshotSelector: '.nope' } });
+    const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    expect(texts).toContain('nothing was captured');
+    expect(texts).toContain('fullhd: no element matches ".nope"');
+    expect(texts).not.toContain('<p>filler</p>');
+  });
+
+  it('preview_page refuses a segment below 1 before rendering', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page, segment: 0 } });
+    expect(res.isError).toBe(true);
+    expect(calls(client).preview).not.toHaveBeenCalled();
   });
 
   it('preview_page includes the HTML source when includeHtml is set (alongside the screenshots)', async () => {

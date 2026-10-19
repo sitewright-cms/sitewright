@@ -391,9 +391,18 @@ import {
   type ProjectContext,
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
-import { captureScreenshots, closeScreenshotBrowser, withRenderSlot, type ViewportName, type Shot } from '../render/screenshot.js';
-import { RenderQueueBusyError } from '../render/render-slots.js';
-import { clampShots } from '../render/mcp-image.js';
+import {
+  capturePreview,
+  captureScreenshots,
+  closeScreenshotBrowser,
+  releaseIdleBrowser,
+  screenshotReserveBytes,
+  withRenderSlot,
+  type ViewportName,
+  type Shot,
+} from '../render/screenshot.js';
+import type { CaptureNote, CaptureRequest, PreviewCapture } from '../render/preview-capture.js';
+import { RenderQueueBusyError, createSlotPool } from '../render/render-slots.js';
 import { captureUrlShots, captureUrlElements, captureUrlRegions, captureUrlInspect, captureBehaviour, measureHeaderAt, scoreFidelity, DEFAULT_COMPARE_REGIONS, compareTargets, type ComparePageInput, type RegionShot, captureIssue
 } from '../render/compare.js';
 import { INSPECT_LIMITS } from '../render/inspect-probe.js';
@@ -404,6 +413,7 @@ import {
   redactOrigin,
   rebaseFindingUrls,
   rebaseMainThread,
+  runWithDeadline,
   PagespeedUnavailableError,
   PagespeedRunError,
   type FormFactor,
@@ -563,13 +573,101 @@ const OPTIMIZE_RESERVE_BYTES = 12 * 1024 * 1024;
  */
 const CONTENT_PAGE_MAX = 500;
 
+// A preview capture's reservation is `screenshotReserveBytes()` (render/screenshot.ts): the launch-sized
+// figure only when the capture must LAUNCH the browser, the capture's own cost when it is already up.
+
+/** Longest `shotSelector` a preview accepts — the MCP tool's own bound on its selector arguments. */
+const SHOT_SELECTOR_MAX = 200;
+/** Highest `segment` a preview accepts; past the real end the capture SAYS so, this only bounds the input. */
+const SEGMENT_MAX = 1000;
+
 /**
- * Reserved per screenshot request. Measured: the first capture adds ~123MB (the browser launch plus
- * five Chrome processes), later concurrent captures ~24MB each. Reserving the launch-sized figure for
- * every capture is deliberately pessimistic — the alternative is admitting three, all of them
- * launching, and being OOM-killed, which is the behaviour this replaces.
+ * What an audit adds to the container at its peak, and the slack to keep under the hard limit. MEASURED
+ * on a 768MB container (a heavy 13,000px page, the cgroup's anonymous memory sampled through each run):
+ * +244-317MB per run — Lighthouse's Chrome plus the worker isolate Lighthouse runs in (pagespeed-audit.ts),
+ * all of it given back when the run ends. The one larger figure, +419MB, was the first audit after a
+ * restart, which also starts the on-demand render worker; it came from a ~215-250MB base, where it fits
+ * too. The ledger reservation is derived from these (`reservationForPeak`), so an audit is admitted only
+ * when its peak fits: at rest (~215-340MB) it is; beside a warm screenshot browser (~400MB+) it is not —
+ * one such pairing, admitted under a looser figure, peaked at 701MB anonymous, 732MB in all. With the
+ * full-page screenshot ON, desktop Chrome alone was 557-652MB: what OOM-killed the 768MB instance.
  */
-const SCREENSHOT_RESERVE_BYTES = 128 * 1024 * 1024;
+const PAGESPEED_PEAK_BYTES = 352 * 1024 * 1024;
+const PAGESPEED_SAFETY_BYTES = 32 * 1024 * 1024;
+const PAGESPEED_MIN_RESERVE_BYTES = 64 * 1024 * 1024;
+
+/**
+ * ONE Lighthouse audit at a time, instance-wide. The memory ledger cannot keep two apart on its own: it
+ * judges by max(used, reserved), and while the first run's Chrome is still starting, `used` has not moved
+ * — so a second audit arriving in that window reads the same free memory and is admitted too. Two
+ * Lighthouse Chromes is the shape that OOM-kills a small container. Taken BEFORE the render slot, so a
+ * queued audit holds nothing a screenshot needs; a wait past a minute is a retryable 503, and with four
+ * audits already queued a fifth gets that 503 at once rather than a minute's wait behind them.
+ */
+const lighthouseGate = createSlotPool({ max: 1, acquireTimeoutMs: 60_000, retryAfterSeconds: 30, maxWaiting: 4 });
+
+/** Test seam: the audit gate's running/queued counts. */
+export function _lighthouseGateForTest(): { active: number; waiting: number } {
+  return { active: lighthouseGate.active, waiting: lighthouseGate.waiting };
+}
+
+/**
+ * How long ONE Lighthouse run may take before it is stopped and reported as a retryable TIMEOUT. A
+ * backstop well above a normal run (~6-40s measured, the high end on a loaded host): a both-devices audit
+ * fits twice inside the MCP tool's own 420s budget, and the editor — whose request has no deadline of its
+ * own — gets an answer instead of a spinner. `SW_PAGESPEED_RUN_TIMEOUT_MS` overrides it (read per run).
+ */
+const PAGESPEED_RUN_TIMEOUT_MS = 150_000;
+function pagespeedRunTimeoutMs(): number {
+  const raw = Number(process.env.SW_PAGESPEED_RUN_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : PAGESPEED_RUN_TIMEOUT_MS;
+}
+
+/** A refusal from {@link admitMemory} (as opposed to any other 503). */
+function isMemoryRefusal(err: unknown): err is Error & { retryable?: boolean; retryAfterSeconds?: number } {
+  return err instanceof Error && (err as { capacityReason?: unknown }).capacityReason === 'memory';
+}
+
+/** What an author or agent is told when there is no memory for an audit: what it costs, and what to do. */
+function pagespeedMemoryMessage(transient: boolean): string {
+  return transient
+    ? 'not enough memory to run Lighthouse right now — an audit runs a browser of its own (~300MB on a heavy page). This is temporary: retry in about a minute, audit one device at a time, and not while previews or other audits are running.'
+    : 'not enough memory to run Lighthouse: this instance has been short of memory for a while, so retrying right away will not help — try again later.';
+}
+
+/**
+ * Run an audit under a memory reservation for its peak. Lighthouse launches a Chrome of its OWN, which
+ * nothing used to account for: MEASURED on a 768MB container, a preview followed by a both-devices audit
+ * was OOM-killed mid-desktop, taking every in-flight request with it — which the proxy in front answered
+ * as a bare 502. So: hand back the screenshot browser if it is idle, then reserve, and refuse with a
+ * retryable 503 rather than gamble on the kernel. ONE admission for the whole request, held across both
+ * devices: they run one after the other, so the peak is one run's, and a second admission would read the
+ * first run's memory before the kernel has taken it back and refuse a run that fits.
+ */
+async function withAuditMemory<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  // A caller that has gone must not close anyone's browser or hold memory for nobody.
+  signal.throwIfAborted();
+  // Released BEFORE admission on purpose: the warm browser's memory is usually what lets the audit be
+  // admitted at all. If it is refused anyway, the next preview pays a browser relaunch (seconds) — the
+  // cheaper side of the trade, against refusing nearly every audit that follows a preview.
+  await releaseIdleBrowser().catch(() => false);
+  signal.throwIfAborted();
+  const reservation = await admitMemory(
+    memoryBudget.reservationForPeak(PAGESPEED_PEAK_BYTES, PAGESPEED_SAFETY_BYTES, PAGESPEED_MIN_RESERVE_BYTES),
+    'page-speed audit',
+    signal,
+  );
+  try {
+    return await fn();
+  } finally {
+    reservation.release();
+  }
+}
+
+/** Why one device of a both-devices audit is missing — the same words a single-device answer would carry. */
+function deviceAuditFailure(err: PagespeedRunError): { code: string; error: string; retryable: boolean } {
+  return { code: err.code, error: `Lighthouse could not audit this page: ${err.message}`, retryable: err.retryable };
+}
 
 /** How long an admitted-or-refused decision may wait for memory to free up before shedding. */
 const ADMISSION_WAIT_MS = 3_000;
@@ -688,12 +786,19 @@ export function _setAdmissionFailingSinceForTest(at: number | null): void {
  * retries such a refusal forever. So: carry a retry interval, log the headroom at `warn`, and once
  * the refusals have run unbroken past ADMISSION_SUSTAINED_MS stop describing them as temporary.
  */
-async function admitMemory(bytes: number, label: string): Promise<Reservation> {
+async function admitMemory(bytes: number, label: string, signal?: AbortSignal): Promise<Reservation> {
+  signal?.throwIfAborted();
   if (!memoryBudgetReady) return memoryBudget.forceReserve(bytes, label);
   // Wait BRIEFLY for headroom before refusing: a transient spike is the common case, and a slower
   // success beats a 503. Bounded — the ledger caps both the wait and how many may queue, because a
   // queue is memory as surely as the work is, and a hang is worse for a caller than a retryable 503.
-  const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS);
+  const held = await memoryBudget.tryReserve(bytes, label, ADMISSION_WAIT_MS, signal);
+  // The caller left while we waited: there is no one to reserve for, and it was not a refusal — do not
+  // count it toward "this instance is out of memory".
+  if (signal?.aborted) {
+    held?.release();
+    throw signal.reason;
+  }
   if (held) {
     admissionFailingSince = null;
     return held;
@@ -1374,6 +1479,20 @@ export interface ScreenshotUnavailable {
 }
 
 /**
+ * The capture a preview request asks for. `segment` (1-based) or `shotSelector` on the query opts into
+ * the SEGMENTED contract (`captures`); a request with neither is an older client and gets the one
+ * whole-page image per viewport it always got (`screenshots`). Exported for its unit test.
+ */
+export function previewCaptureRequest(q: { segment?: string; shotSelector?: string } | undefined): CaptureRequest | undefined {
+  const rawSegment = q?.segment;
+  const selector = typeof q?.shotSelector === 'string' ? q.shotSelector.trim() : undefined;
+  if (rawSegment === undefined && !selector) return undefined;
+  const n = Number(rawSegment ?? 1);
+  const segment = Number.isInteger(n) && n >= 1 ? Math.min(n, SEGMENT_MAX) : 1;
+  return { segment, ...(selector ? { selector } : {}) };
+}
+
+/**
  * Best-effort server-side screenshots of a preview document, taken only when the caller passes
  * `?screenshot=1` (the MCP preview_page tool does). Renders against the API's OWN loopback origin so the
  * page's self-hosted media resolves.
@@ -1386,8 +1505,11 @@ export interface ScreenshotUnavailable {
 async function previewScreenshots(
   req: FastifyRequest,
   html: string,
-): Promise<{ shots?: Partial<Record<ViewportName, Shot>>; unavailable?: ScreenshotUnavailable } | undefined> {
-  const q = req.query as { screenshot?: string; viewports?: string } | undefined;
+): Promise<
+  | { shots?: Partial<Record<ViewportName, Shot>>; captures?: PreviewCapture[]; notes?: CaptureNote[]; unavailable?: ScreenshotUnavailable }
+  | undefined
+> {
+  const q = req.query as { screenshot?: string; viewports?: string; segment?: string; shotSelector?: string } | undefined;
   const want = String(q?.screenshot ?? '').toLowerCase();
   if (want !== '1' && want !== 'true') return undefined;
   const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
@@ -1395,12 +1517,16 @@ async function previewScreenshots(
     .split(',')
     .map((v) => v.trim())
     .filter((v): v is ViewportName => isScreenshotViewportName(v));
-  // A capture costs a browser context, and the FIRST one also pays the browser launch (measured
-  // +123MB, five Chrome processes). Reserve for it so three concurrent previews shed with a 503
-  // instead of taking the container out — which is exactly what happened under a 1GiB cap.
+  const request = previewCaptureRequest(q);
+  if (request?.selector && request.selector.length > SHOT_SELECTOR_MAX) {
+    return { unavailable: { reason: 'failed', retryable: false, message: `the screenshot selector is longer than ${SHOT_SELECTOR_MAX} characters` } };
+  }
+  // A capture costs a browser context, and one that must LAUNCH the browser also pays for that
+  // (measured +123MB, five Chrome processes). Reserve accordingly so concurrent previews shed with a
+  // retryable notice instead of taking the container out — which is exactly what happened under a 1GiB cap.
   let shotReservation: Reservation;
   try {
-    shotReservation = await admitMemory(SCREENSHOT_RESERVE_BYTES, 'preview screenshot');
+    shotReservation = await admitMemory(screenshotReserveBytes(), 'preview screenshot');
   } catch {
     // Still best-effort — the caller returns the HTML — but SAY that this one is worth retrying.
     return {
@@ -1412,14 +1538,16 @@ async function previewScreenshots(
     };
   }
   try {
-    const shots = await clampShots(await captureScreenshots(html, {
+    const opts = {
       originHostPort: `127.0.0.1:${port}`,
-      // Default a plain preview to desktop + mobile (2), and halve the raster (scale 0.5) — a big cut in
-      // the vision-token cost of design iteration. The agent can still request more viewports explicitly.
+      // Default a plain preview to desktop + mobile (2), at half raster scale — a big cut in the
+      // vision-token cost of design iteration. The agent can still request more viewports explicitly.
       viewports: viewports.length ? viewports : [...PREVIEW_DEFAULT_VIEWPORTS],
       scale: 0.5,
-    }));
-    return { shots };
+    };
+    if (!request) return { shots: await captureScreenshots(html, opts) };
+    const { captures, notes } = await capturePreview(html, { ...opts, request });
+    return { captures, ...(notes.length ? { notes } : {}) };
   } catch (err) {
     // Every render slot stayed busy for the whole wait — backpressure, like the memory refusal above,
     // so say it is worth retrying rather than filing it with the permanent failures below.
@@ -6018,6 +6146,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const shotResult = await previewScreenshots(req, sourceHtml);
         const screenshots = shotResult?.shots;
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
+        // `captures` (+ `captureNotes`) is the segmented contract a request with `segment` asked for;
+        // `screenshots` is the legacy one-image-per-viewport answer (see previewCaptureRequest).
         return reply.send({
           html: sourceHtml,
           token: sourceToken,
@@ -6026,6 +6156,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // missing instead of showing a page that is quietly wrong everywhere.
           ...(slotErrors.length ? { slotErrors } : {}),
           ...(screenshots ? { screenshots } : {}),
+          ...(shotResult?.captures ? { captures: shotResult.captures } : {}),
+          ...(shotResult?.notes ? { captureNotes: shotResult.notes } : {}),
           // Why the picture is missing, so the caller can say so rather than show a wordless gap.
           ...(shotResult?.unavailable ? { screenshotsUnavailable: shotResult.unavailable } : {}),
         });
@@ -9955,8 +10087,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const { signal } = abort;
         try {
           // Bound the ENTIRE cost (build + ephemeral server + Lighthouse) on the shared render semaphore so
-          // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion.
-          const result = await withRenderSlot(async () => {
+          // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion. One audit at a
+          // time on top of that (lighthouseGate), taken first so a queued audit holds no render slot.
+          const result = await lighthouseGate.run(() => withRenderSlot(() => withAuditMemory(signal, async () => {
             await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
@@ -9997,18 +10130,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               /* best-effort — outline + imageSizing stay undefined */
             }
 
-            const runs: Partial<Record<FormFactor, unknown>> = {};
-            for (const formFactor of wanted) {
-              // SEQUENTIAL, not concurrent: two Chrome instances at once is the shape that pushed this
-              // container into shedding in the first place. The build is shared; the browsers are not.
-              signal.throwIfAborted();
-              const audit = await runPagespeedAudit(pageUrl, { formFactor, signal });
+            // ONE device's audit, under its own deadline.
+            const auditDevice = async (formFactor: FormFactor): Promise<unknown> => {
+              const audit = await runWithDeadline(pagespeedRunTimeoutMs(), signal, (runSignal) =>
+                runPagespeedAudit(pageUrl, { formFactor, signal: runSignal }),
+              );
               // Scrub the loopback origin from every run-warning (a redirect warning interpolates the
               // navigated URL), per-resource finding URL and main-thread task before it leaves the server.
               const runWarnings = redactOrigin(audit.runWarnings, origin);
               const findings = rebaseFindingUrls(audit.findings, origin);
               const mainThread = rebaseMainThread(audit.mainThread, origin);
-              runs[formFactor] = {
+              return {
                 ...audit,
                 url: publicPath,
                 findings,
@@ -10017,11 +10149,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
                 ...(outline ? { outline } : {}),
                 ...(imageSizing && imageSizing.findings.length > 0 ? { imageSizing } : {}),
               };
+            };
+
+            const runs: Partial<Record<FormFactor, unknown>> = {};
+            const failed: Array<{ formFactor: FormFactor; err: PagespeedRunError }> = [];
+            for (const formFactor of wanted) {
+              // SEQUENTIAL, not concurrent: two Chrome instances at once is the shape that pushed this
+              // container into shedding in the first place. The build is shared; the browsers are not.
+              signal.throwIfAborted();
+              try {
+                runs[formFactor] = await auditDevice(formFactor);
+              } catch (err) {
+                // One device asked for: its failure IS the answer (unchanged). Both: a device Lighthouse
+                // could not audit must not throw away the one it could — "both" used to come back as
+                // nothing at all whenever desktop failed, which on a small instance was every time.
+                if (only || signal.aborted || !(err instanceof PagespeedRunError)) throw err;
+                failed.push({ formFactor, err });
+              }
             }
             // One device asked for ⇒ that result verbatim (unchanged shape for existing callers).
-            // Otherwise the pair, keyed by device.
-            return only ? runs[only] : runs;
-          }, { signal });
+            if (only) return runs[only];
+            // Neither device could be audited: answer as a single-device failure would.
+            if (Object.keys(runs).length === 0) throw failed[0]!.err;
+            // Otherwise the pair, keyed by device — plus WHY a missing device is missing.
+            return failed.length ? { ...runs, errors: Object.fromEntries(failed.map((f) => [f.formFactor, deviceAuditFailure(f.err)])) } : runs;
+          }), { signal }), { signal });
           if (signal.aborted) return reply; // client disconnected mid-run — the response is moot
           return reply.send(result);
         } catch (err) {
@@ -10044,7 +10196,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // before it was capped; anything else is a fixed sentence. The original goes to the log.
           if (err instanceof PagespeedRunError) {
             req.log.warn({ code: err.code, err: err.cause ?? err }, 'pagespeed audit: Lighthouse could not audit the page');
-            return reply.code(502).send({ code: err.code, error: `Lighthouse could not audit this page: ${err.message}` });
+            return reply.code(502).send({ code: err.code, retryable: err.retryable, error: `Lighthouse could not audit this page: ${err.message}` });
+          }
+          // The memory ledger refused the run. Said in the audit's own words (what it costs, what to do),
+          // not the generic capacity sentence — an agent told only "out of capacity" retries the same
+          // both-devices call into the same refusal.
+          if (isMemoryRefusal(err)) {
+            const transient = err.retryable !== false;
+            if (err.retryAfterSeconds) reply.header('retry-after', String(Math.ceil(err.retryAfterSeconds)));
+            return reply.code(503).send({ code: 'capacity', transient, reason: 'memory', error: pagespeedMemoryMessage(transient) });
           }
           // A busy render queue (RenderQueueBusyError) carries its own 503 + retry-after, which the global
           // handler sends; anything else is a genuine fault.

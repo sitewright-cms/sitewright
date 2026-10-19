@@ -477,6 +477,16 @@ describe('SitewrightClient — optional-argument branches', () => {
     expect(calls[1]!.input).toBe('https://cms.test/projects/p1/preview?screenshot=1');
   });
 
+  it('asks for the segmented capture with ?segment=, and encodes a selector so its spaces survive', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"html":"<x>","token":"t","captures":[]}' },
+    );
+    const res = await client.preview({ id: 'home' }, { screenshot: true, viewports: 'fullhd', segment: 3, selector: 'header nav > a' });
+    expect(res.captures).toEqual([]);
+    // `%20`, never `+`: a form-encoded `+` is not a space to every query parser.
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/preview?screenshot=1&viewports=fullhd&segment=3&shotSelector=header%20nav%20%3E%20a');
+  });
+
   it('forwards formFactor to the pagespeed audit only when supplied', async () => {
     const { client, calls } = await introspected(ok);
     await client.pagespeedAudit('home');

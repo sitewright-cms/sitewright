@@ -177,13 +177,48 @@ export interface ScreenshotUnavailable {
   message: string;
 }
 
-/** The /preview response: the rendered HTML + (when requested) per-viewport screenshots. */
+/**
+ * One SEGMENTED preview image: part of the page (or of one element), at a readable scale, with where on
+ * the page it came from. Several `segments` in one image are columns, left to right.
+ */
+export interface PreviewCapture {
+  viewport: ScreenshotViewportName;
+  kind: 'page' | 'element';
+  base64: string;
+  mimeType: string;
+  /** Image px. */
+  width: number;
+  height: number;
+  /** Image px per CSS px. */
+  scale: number;
+  /** 1-based segment index and its CSS px range on the page. */
+  segments: Array<{ index: number; top: number; bottom: number }>;
+  segmentCount: number;
+  /** CSS px of the page (or element) paged through, up to the capture limit. */
+  totalHeight: number;
+  /** The page runs past the capture limit. */
+  truncated?: boolean;
+  selector?: string;
+  matches?: number;
+}
+
+/** Why a viewport has no (or fewer) images — a selector that matched nothing, a segment past the end. */
+export interface PreviewCaptureNote {
+  viewport: ScreenshotViewportName;
+  message: string;
+}
+
+/** The /preview response: the rendered HTML + (when requested) the screenshots. */
 export interface PreviewResult {
   html: string;
   token: string;
   slug?: string;
+  /** LEGACY: one whole-page image per viewport — the answer to a request without `segment`. */
   screenshots?: Partial<Record<ScreenshotViewportName, PreviewShot>>;
-  /** Present INSTEAD of `screenshots` when the capture was refused or failed. */
+  /** SEGMENTED: the answer to a request with `segment` (an older server ignores it and sends `screenshots`). */
+  captures?: PreviewCapture[];
+  captureNotes?: PreviewCaptureNote[];
+  /** Present INSTEAD of the images when the capture was refused or failed. */
   screenshotsUnavailable?: ScreenshotUnavailable;
 }
 
@@ -554,6 +589,16 @@ export interface PagespeedAuditResult {
   imageSizing?: ImageSizingReport;
   lighthouseVersion: string;
   fetchedAt: string;
+}
+
+/**
+ * The both-devices answer of the audit route: each device that was audited, and — for one that could not
+ * be (a crashed tab, no memory for its browser, a timeout) — why, so the other result is not thrown away.
+ */
+export interface PagespeedAuditPair {
+  mobile?: PagespeedAuditResult;
+  desktop?: PagespeedAuditResult;
+  errors?: Partial<Record<'mobile' | 'desktop', { code: string; error: string; retryable: boolean }>>;
 }
 
 /** One page's outcome from an autonomous server-side clone run. */
@@ -975,10 +1020,23 @@ export class SitewrightClient {
     return res.item;
   }
 
-  async preview(page: unknown, opts?: { screenshot?: boolean; viewports?: string }): Promise<PreviewResult> {
+  /**
+   * Render a page (and, with `screenshot`, capture it). `segment` asks for the SEGMENTED captures from
+   * that segment on; `selector` captures only the first element it matches. Without either the server
+   * answers with the legacy one-image-per-viewport `screenshots`.
+   */
+  async preview(
+    page: unknown,
+    opts?: { screenshot?: boolean; viewports?: string; segment?: number; selector?: string },
+  ): Promise<PreviewResult> {
     let path = this.projectPath('/preview');
     if (opts?.screenshot) {
-      path += `?screenshot=1${opts.viewports ? `&viewports=${encodeURIComponent(opts.viewports)}` : ''}`;
+      // encodeURIComponent, not URLSearchParams: that writes a space as `+`, and a selector is full of them.
+      const qs = ['screenshot=1'];
+      if (opts.viewports) qs.push(`viewports=${encodeURIComponent(opts.viewports)}`);
+      if (opts.segment !== undefined) qs.push(`segment=${encodeURIComponent(String(opts.segment))}`);
+      if (opts.selector !== undefined) qs.push(`shotSelector=${encodeURIComponent(opts.selector)}`);
+      path += `?${qs.join('&')}`;
     }
     return this.request('POST', path, page);
   }

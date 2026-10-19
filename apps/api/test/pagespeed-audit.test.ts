@@ -11,6 +11,10 @@ import {
   scrubRunMessage,
   PagespeedRunError,
   GENERIC_RUN_FAILURE,
+  lighthouseFlags,
+  runWithDeadline,
+  runLighthouseIsolated,
+  toPagespeedRunError as toRunError,
   type PagespeedFinding,
 } from '../src/render/pagespeed-audit.js';
 
@@ -752,5 +756,138 @@ describe('what IS passed through is scrubbed of internals', () => {
 
   it('scrubRunMessage leaves an ordinary sentence alone', () => {
     expect(scrubRunMessage('The page did not paint any content.', origin)).toBe('The page did not paint any content.');
+  });
+});
+
+describe('lighthouseFlags', () => {
+  it('★ never collects the full-page screenshot — on both devices', () => {
+    // MEASURED on a 13,000px page: with it, desktop Chrome peaked at 557-652MB (Lighthouse resizes the
+    // emulated viewport to the whole page and rasterises it at 1350px wide); without, 334-371MB. That
+    // gap is what OOM-killed a 768MB container on every desktop / both-devices audit. Nothing we report
+    // reads that screenshot.
+    for (const ff of ['mobile', 'desktop'] as const) expect(lighthouseFlags(ff, 9222).disableFullPageScreenshot, ff).toBe(true);
+  });
+
+  it('desktop gets the desktop throttling preset and screen; mobile keeps Lighthouse\'s mobile defaults', () => {
+    const desktop = lighthouseFlags('desktop', 9222);
+    expect(desktop).toMatchObject({ port: 9222, formFactor: 'desktop', screenEmulation: { mobile: false, width: 1350 } });
+    expect(desktop.throttling).toMatchObject({ cpuSlowdownMultiplier: 1 });
+    const mobile = lighthouseFlags('mobile', 9222);
+    expect(mobile).toMatchObject({ formFactor: 'mobile', screenEmulation: { mobile: true, width: 412 } });
+    expect(mobile.throttling).toBeUndefined();
+    expect(mobile.onlyCategories).toEqual(['performance', 'accessibility', 'best-practices', 'seo']);
+  });
+});
+
+describe('PagespeedRunError — retryable, and what a crash means', () => {
+  it('marks a BROWSER failure retryable and a PAGE verdict not', () => {
+    for (const code of ['TARGET_CRASHED', 'LIGHTHOUSE_FAILED', 'PROTOCOL_TIMEOUT', 'TIMEOUT', 'NO_RESULT']) {
+      expect(new PagespeedRunError(code, 'x').retryable, code).toBe(true);
+    }
+    for (const code of ['NO_FCP', 'PAGE_HUNG', 'NOT_HTML', 'ERRORED_DOCUMENT_REQUEST']) {
+      expect(new PagespeedRunError(code, 'x').retryable, code).toBe(false);
+    }
+  });
+
+  it('a crashed tab says what that almost always is here, and what to do', () => {
+    const err = lighthouseRuntimeError({ lhr: { runtimeError: { code: 'TARGET_CRASHED', message: 'Browser tab has unexpectedly crashed.' } } } as unknown as RunnerResult)!;
+    expect(err.message).toMatch(/^Browser tab has unexpectedly crashed\. /);
+    expect(err.message).toMatch(/memory/);
+    expect(err.message).toMatch(/one device at a time/);
+  });
+});
+
+describe('runWithDeadline', () => {
+  it('passes a result through, and the run sees a signal that is not aborted', async () => {
+    const outer = new AbortController();
+    await expect(runWithDeadline(1_000, outer.signal, async (s) => (s.aborted ? 'aborted' : 'ok'))).resolves.toBe('ok');
+  });
+
+  it('★ at the deadline it aborts the run and reports a retryable TIMEOUT — not "the client left"', async () => {
+    let seen: AbortSignal | undefined;
+    const run = (s: AbortSignal) =>
+      new Promise<never>((_r, reject) => {
+        seen = s;
+        s.addEventListener('abort', () => reject(new Error('chrome killed')), { once: true });
+      });
+    const err = await runWithDeadline(20, new AbortController().signal, run).catch((e: unknown) => e);
+    expect(seen!.aborted).toBe(true);
+    expect(err).toBeInstanceOf(PagespeedRunError);
+    expect((err as PagespeedRunError).code).toBe('TIMEOUT');
+    expect((err as PagespeedRunError).retryable).toBe(true);
+    expect((err as Error).message).toMatch(/did not finish auditing this page within 0s/);
+  });
+
+  it('the CALLER leaving is passed through as it is (the route answers nobody)', async () => {
+    const outer = new AbortController();
+    const p = runWithDeadline(60_000, outer.signal, (s) => new Promise((_r, reject) => s.addEventListener('abort', () => reject(s.reason as Error), { once: true })));
+    outer.abort(new Error('client gone'));
+    await expect(p).rejects.toThrow('client gone');
+  });
+
+  it('a run that fails on its own is not dressed up as a timeout', async () => {
+    await expect(runWithDeadline(60_000, new AbortController().signal, async () => { throw new Error('boom'); })).rejects.toThrow('boom');
+  });
+});
+
+describe('runLighthouseIsolated — Lighthouse in its own heap', () => {
+  // The worker imports this stand-in instead of the real module; `mode` picks what it does.
+  const fake = new URL('./fixtures/fake-lighthouse.mjs', import.meta.url).href;
+  const flags = (mode: string) => ({ mode, formFactor: 'mobile' }) as unknown as Parameters<typeof runLighthouseIsolated>[1];
+
+  it('returns the result Lighthouse produced in the worker', async () => {
+    const r = await runLighthouseIsolated('http://127.0.0.1:1/', flags('result'), { moduleUrl: fake });
+    expect(r?.lhr).toMatchObject({ requestedUrl: 'http://127.0.0.1:1/', formFactor: 'mobile', categories: { seo: { score: 1 } } });
+  });
+
+  it('Lighthouse\'s console output is drained and dropped — it never reaches the server log', async () => {
+    const writes: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    try {
+      const r = await runLighthouseIsolated('http://x/', flags('chatty'), { moduleUrl: fake });
+      expect(r?.lhr).toMatchObject({ chatty: true });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(writes.join('')).not.toContain('lighthouse chatter');
+  });
+
+  it('no result is passed on as none (the caller reports NO_RESULT)', async () => {
+    expect(await runLighthouseIsolated('http://x/', flags('empty'), { moduleUrl: fake })).toBeUndefined();
+  });
+
+  it('a Lighthouse error keeps its code and friendly sentence across the thread boundary', async () => {
+    const err = await runLighthouseIsolated('http://x/', flags('lighthouse-error'), { moduleUrl: fake }).catch((e: unknown) => e);
+    const run = toRunError(err);
+    expect(run.code).toBe('NO_FCP');
+    expect(run.message).toBe('The page did not paint any content.');
+  });
+
+  it('any other failure stays generic (its text names internals)', async () => {
+    const err = await runLighthouseIsolated('http://x/', flags('crash'), { moduleUrl: fake }).catch((e: unknown) => e);
+    expect(toRunError(err).code).toBe('LIGHTHOUSE_FAILED');
+  });
+
+  it('★ a run that outgrows its heap fails ALONE — the server keeps running and says what happened', async () => {
+    // THE BUG: Lighthouse ran in the API's own heap (+100-240MB per run, measured), and the shared
+    // instance died with "JavaScript heap out of memory" mid-audit — taking every request with it.
+    const err = await runLighthouseIsolated('http://x/', flags('heap'), { moduleUrl: fake, heapMb: 32 }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PagespeedRunError);
+    expect((err as PagespeedRunError).code).toBe('OUT_OF_MEMORY');
+    expect((err as PagespeedRunError).retryable).toBe(false);
+    expect((err as Error).message).toMatch(/32MB/);
+    expect((err as Error).message).toMatch(/server is unaffected/);
+  }, 30_000);
+
+  it('an abort stops the worker and runs the teardown (kill Chrome) at once', async () => {
+    const ac = new AbortController();
+    const onAbort = vi.fn();
+    const p = runLighthouseIsolated('http://x/', flags('hang'), { moduleUrl: fake, signal: ac.signal, onAbort });
+    setTimeout(() => ac.abort(new Error('client gone')), 50);
+    await expect(p).rejects.toThrow('client gone');
+    expect(onAbort).toHaveBeenCalledOnce();
   });
 });

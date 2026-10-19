@@ -123,6 +123,24 @@ describe('createSlotPool', () => {
     expect(pool.waiting).toBe(0);
   });
 
+  it('★ with `maxWaiting`, a full queue refuses AT ONCE with a retryable "full" error — no wait', async () => {
+    const pool = createSlotPool({ max: 1, acquireTimeoutMs: 60_000, retryAfterSeconds: 30, maxWaiting: 2 });
+    await pool.acquire(); // the running one
+    const queued = [pool.acquire(), pool.acquire()];
+    expect(pool.waiting).toBe(2);
+    const t0 = Date.now();
+    const err = await pool.acquire().catch((e: unknown) => e);
+    expect(Date.now() - t0).toBeLessThan(100);
+    expect(err).toBeInstanceOf(RenderQueueBusyError);
+    expect((err as RenderQueueBusyError).retryAfterSeconds).toBe(30);
+    expect((err as Error).message).toMatch(/queue is full — 2 requests are already waiting/);
+    expect(pool.waiting).toBe(2); // the refused caller never joined
+    pool.release();
+    pool.release();
+    pool.release();
+    await Promise.all(queued);
+  });
+
   it('acquire/release can be driven directly (the screenshot loop holds a slot per viewport)', async () => {
     const pool = createSlotPool({ max: 1, acquireTimeoutMs: 1000 });
     await pool.acquire();

@@ -12,6 +12,7 @@ import {
 import {
   api,
   type PagespeedAuditPair,
+  type PagespeedDeviceFailure,
   type PagespeedAuditResult,
   type PagespeedFinding,
   type HeadingOutline,
@@ -585,6 +586,41 @@ function HeadingOutlineView({ outline }: { outline: HeadingOutline }) {
 }
 
 /** A generous, high-fidelity skeleton that mirrors the report layout while Lighthouse runs. */
+/**
+ * The selected device was not audited in this run (its tab crashed, the server had no memory for a
+ * second browser, it timed out) while the other device was — say why, instead of the empty "run an
+ * audit" placeholder, which reads as though nothing happened.
+ */
+export function DeviceNotAudited({
+  device,
+  failure,
+  onRetry,
+}: {
+  device: FormFactor;
+  failure: PagespeedDeviceFailure;
+  onRetry?: () => void;
+}) {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-xl border border-amber-300/70 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200"
+    >
+      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+      <div className="min-w-0">
+        <p className="font-semibold">
+          The {device} audit did not complete ({failure.code}).
+        </p>
+        <p className="mt-1">{failure.error}</p>
+        {failure.retryable && onRetry ? (
+          <button type="button" className="mt-2 font-semibold underline" onClick={onRetry}>
+            Run the audit again
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function AuditSkeleton() {
   return (
     <div className="flex flex-col gap-4" aria-hidden>
@@ -848,6 +884,12 @@ export function PageAuditPanel({
           <AuditSkeleton />
         ) : result ? (
           <AuditReport result={result} />
+        ) : pair?.errors?.[formFactor] ? (
+          <DeviceNotAudited
+            device={formFactor}
+            failure={pair.errors[formFactor]}
+            onRetry={() => void runAudit()}
+          />
         ) : !error ? (
           <p className="rounded-xl border border-dashed border-slate-300/70 p-6 text-center text-sm text-slate-500 dark:border-white/15 dark:text-slate-400">
             Run a Lighthouse speed + SEO audit of this page against a

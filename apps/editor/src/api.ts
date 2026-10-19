@@ -1240,6 +1240,17 @@ export interface HeadingOutline {
 export interface PagespeedAuditPair {
   mobile?: PagespeedAuditResult;
   desktop?: PagespeedAuditResult;
+  /** A device that could not be audited (a crashed tab, no memory for its browser, a timeout) and why —
+   *  present only then, so the other device's result is still shown. */
+  errors?: Partial<Record<"mobile" | "desktop", PagespeedDeviceFailure>>;
+}
+
+/** Why one device of a both-devices audit is missing. */
+export interface PagespeedDeviceFailure {
+  code: string;
+  error: string;
+  /** Running the audit again can succeed (the browser failed, not the page). */
+  retryable: boolean;
 }
 
 /** One image served larger than it can possibly need. */

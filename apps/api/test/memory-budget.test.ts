@@ -122,3 +122,43 @@ describe('MemoryBudget — waits for headroom before refusing', () => {
     expect(many.every((r) => r === null), 'none fit; all refused rather than queued forever').toBe(true);
   });
 })
+
+describe('MemoryBudget.reservationForPeak', () => {
+  it('★ admits work of a known PEAK exactly when used + peak (+ safety) fits under the HARD limit', async () => {
+    // Reserving the whole peak demands the ledger's own 20% margin twice over. MEASURED on a 768MB
+    // instance at rest (~392MB used): a 256MB reservation for a Lighthouse run that really adds ~250MB
+    // refused every audit, although the run fits with ~120MB to spare.
+    const b = budget(768, 392);
+    const r = b.reservationForPeak(256 * MB, 32 * MB);
+    expect(r).toBe(Math.ceil(288 * MB - 0.2 * 768 * MB));
+    expect(await b.tryReserve(r, 'audit')).not.toBeNull(); // 392 + 256 + 32 = 680 ≤ 768
+
+    const busy = budget(768, 500); // a warm screenshot browser still resident
+    expect(await busy.tryReserve(busy.reservationForPeak(256 * MB, 32 * MB), 'audit')).toBeNull(); // 788 > 768
+  });
+
+  it('never goes below the floor — on a roomy instance the work still blocks a little', () => {
+    expect(budget(8192, 0).reservationForPeak(256 * MB, 32 * MB, 64 * MB)).toBe(64 * MB);
+  });
+});
+
+describe('MemoryBudget.tryReserve — a caller that leaves', () => {
+  it('stops waiting the moment its signal aborts, and reserves nothing', async () => {
+    const b = budget(768, 760); // nothing free: the call would wait the whole window
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(new Error('client gone')), 50);
+    const t0 = Date.now();
+    expect(await b.tryReserve(64 * MB, 'audit', 5_000, ac.signal)).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect((await b.snapshot()).reservedBytes).toBe(0);
+  });
+
+  it('an already-aborted signal does not wait at all', async () => {
+    const b = budget(768, 760);
+    const ac = new AbortController();
+    ac.abort();
+    const t0 = Date.now();
+    expect(await b.tryReserve(64 * MB, 'audit', 5_000, ac.signal)).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+});

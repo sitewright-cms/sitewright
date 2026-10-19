@@ -102,6 +102,8 @@ describe('WorkerBuildRunner', () => {
       publishedAt: '2026-05-30T00:00:00.000Z',
       media: [asset],
       readMedia: async () => Buffer.from('img'),
+      publicBaseUrl: 'https://cms.example.com',
+      stats: { key: 'route-key' },
     });
 
     expect(manifest.routes).toBe(1);
@@ -109,8 +111,11 @@ describe('WorkerBuildRunner', () => {
     expect(capture.args).toEqual(expect.arrayContaining(['run', '--rm', '-i', '--network', 'none', '--security-opt', 'no-new-privileges', 'sitewright-api']));
     expect(capture.args?.slice(-2)).toEqual(['node', 'dist/publish/build-worker.js']);
     // Media inlined into the job stdin.
-    const job = JSON.parse(capture.stdin ?? '{}') as { media: Array<{ files: Record<string, string> }> };
+    const job = JSON.parse(capture.stdin ?? '{}') as { media: Array<{ files: Record<string, string> }>; publicBaseUrl?: string; stats?: { key: string } };
     expect(job.media[0]?.files['a1.jpg']).toBe(Buffer.from('img').toString('base64'));
+    // The public base URL and the statistics key reach the worker (they used to be dropped).
+    expect(job.publicBaseUrl).toBe('https://cms.example.com');
+    expect(job.stats).toEqual({ key: 'route-key' });
     // Artifact written to outDir.
     expect(await readFile(join(outDir, 'index.html'), 'utf8')).toBe('<h1>Hi</h1>');
     expect(await readFile(join(outDir, 'media', 'a1', 'a1.jpg'), 'utf8')).toBe('img');

@@ -35,6 +35,18 @@ type Listener = (change: ContentChange) => void;
  */
 export class ProjectEventBus {
   private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly everyProject = new Set<(projectId: string, change: ContentChange) => void>();
+
+  /**
+   * Subscribes to EVERY project's changes — for an in-process cache keyed by project (the statistics'
+   * per-site settings), which must hear about a project it has no open stream for. Returns an unsubscribe.
+   */
+  subscribeAll(listener: (projectId: string, change: ContentChange) => void): () => void {
+    this.everyProject.add(listener);
+    return () => {
+      this.everyProject.delete(listener);
+    };
+  }
 
   /** Subscribes to a project's changes; returns an unsubscribe function. */
   subscribe(projectId: string, listener: Listener): () => void {
@@ -54,6 +66,13 @@ export class ProjectEventBus {
 
   /** Notifies a project's subscribers. A throwing subscriber never breaks the writer. */
   emit(projectId: string, change: ContentChange): void {
+    for (const listener of [...this.everyProject]) {
+      try {
+        listener(projectId, change);
+      } catch {
+        /* a broken subscriber must not affect the write or other subscribers */
+      }
+    }
     const set = this.listeners.get(projectId);
     if (!set) return;
     // Iterate a copy so a listener that unsubscribes mid-emit can't corrupt the loop.

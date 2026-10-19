@@ -446,10 +446,13 @@ describe('member tokens — creation is rate-limited as well as capped', () => {
   it('a token asking faster than 30 times a minute is told to slow down; a session keeps its own ceiling', async () => {
     const { token } = await mint(dev, ['projects:create']);
     // Malformed on purpose: the limiter counts requests, so this needs no thirty real projects.
+    // A bearer only becomes its own bucket once it has PROVEN to be a live token — before that, a made-up
+    // `Authorization` header would buy a fresh bucket per request. So the token's FIRST call is measured against
+    // the caller's address, and the thirty after it against the token: the 32nd is the one refused.
     const statuses: number[] = [];
-    for (let i = 0; i < 31; i += 1) statuses.push((await withToken(token, 'POST', '/projects', { name: '' })).statusCode);
-    expect(statuses.slice(0, 30).every((s) => s === 400)).toBe(true);
-    expect(statuses[30]).toBe(429);
+    for (let i = 0; i < 32; i += 1) statuses.push((await withToken(token, 'POST', '/projects', { name: '' })).statusCode);
+    expect(statuses.slice(0, 31).every((s) => s === 400)).toBe(true);
+    expect(statuses[31]).toBe(429);
     // The member, signed in, is not sharing that bucket.
     expect((await dev.post('/projects', { name: 'By hand', slug: 'by-hand' })).statusCode).toBe(201);
   });

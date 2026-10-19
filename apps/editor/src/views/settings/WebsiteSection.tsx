@@ -24,7 +24,7 @@ import { SlotEditor, type ChromeSlotKey } from '../SlotEditor';
 import { ghostButton, glassInput, toggleInput } from '../../theme';
 import { cardStagger } from './motion';
 import { notifyPaymentsChanged } from '../../lib/payments-active';
-import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, Tile } from './board/Tile';
+import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, SwitchRow, Tile } from './board/Tile';
 import { SettingsSheet, type SheetSave } from './board/Sheet';
 import { useSheet } from './board/use-sheet';
 import { JsonDataStatus } from './website/JsonDataStatus';
@@ -93,7 +93,7 @@ const HELP = {
     'Scripts where marks carry meaning (Thai, Devanagari, Hebrew, Arabic) are never affected either way.',
   shop: "A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). The shop's wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels.",
   analytics:
-    'The analytics tool the site reports to: Google Analytics, Tag Manager, Plausible, Umami, Matomo, Fathom, Simple Analytics or your own script. Tools that set no cookies can load without asking; the rest wait for consent in the cookie banner. Never paste a tracker into Head HTML: it would skip consent, and the site’s security policy blocks it on platform hosting.',
+    'Built-in statistics count visits on the platform itself — human or bot, device, country, pages, sources and form submissions — with no cookies and no third party; the numbers are in the Statistics tab, and publishing adds the counter to every page. Analytics tools are what the site also reports to: Google Analytics, Tag Manager, Plausible, Umami, Matomo, Fathom, Simple Analytics or your own script. Tools that set no cookies can load without asking; the rest wait for consent in the cookie banner. Never paste a tracker into Head HTML: it would skip consent, and the site’s security policy blocks it on platform hosting.',
   consent:
     'A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled. Add a “Cookie settings” re-open link anywhere with <a href="#sw-consent">.',
   translations:
@@ -439,8 +439,14 @@ export function WebsiteSection({
         </Tile>
         <Tile title="Analytics" icon={<BarChart3 className="h-4 w-4" />} status={analyticsStatus(form)} span="c3" md={6} help={HELP.analytics}>
           <RowBlock n={4}>
+            <SwitchRow
+              label="Built-in statistics"
+              ariaLabel="Count visits with the built-in statistics"
+              checked={form.statisticsEnabled}
+              onChange={(on) => patch({ statisticsEnabled: on })}
+            />
             <BudgetRows
-              n={3}
+              n={2}
               items={analyticsTools(form.consent)}
               empty="No analytics tool connected."
               render={(i) => <Row key={i.id} label={i.name || 'Analytics tool'} value={waitsForConsent(i) ? 'after consent' : 'no consent needed'} />}

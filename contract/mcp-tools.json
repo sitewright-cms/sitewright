@@ -144,6 +144,10 @@
     "required": []
   },
   {
+    "name": "get_site_stats",
+    "required": []
+  },
+  {
     "name": "import_image",
     "required": [
       "url"

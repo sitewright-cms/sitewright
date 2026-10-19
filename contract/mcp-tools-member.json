@@ -186,6 +186,12 @@
     "required": []
   },
   {
+    "name": "get_site_stats",
+    "required": [
+      "project"
+    ]
+  },
+  {
     "name": "import_image",
     "required": [
       "project",

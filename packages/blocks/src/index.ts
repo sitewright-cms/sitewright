@@ -13,6 +13,7 @@ export * from './cart-catalog.js';
 export * from './cart-validate.js';
 export * from './order-status.js';
 export * from './consent.js';
+export * from './stats.js';
 export * from './preloader.js';
 export * from './back-to-top.js';
 export * from './sticky-header.js';

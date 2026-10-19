@@ -134,6 +134,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     createPreviewShare: vi.fn(async () => ({ id: 'sh1', label: 'Client', url: '/preview-site/site/sh1-mac/' })),
     revokePreviewShare: vi.fn(async () => ({ ok: true })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
+    siteStats: vi.fn(async () => ({ enabled: true, human: { views: 12, visitors: 5 }, botViews: 3 })),
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
@@ -1552,6 +1553,34 @@ describe('createSitewrightMcpServer — stock over MCP', () => {
     const res = await mcp.callTool({ name: 'search_stock_images', arguments: { provider: 'bogus', query: 'x' } });
     expect(res.isError).toBe(true);
     expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).stockSearch).not.toHaveBeenCalled();
+  });
+});
+
+describe('createSitewrightMcpServer — built-in statistics', () => {
+  it('get_site_stats defaults to the last 30 days', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_site_stats', arguments: {} });
+    const call = (client as unknown as Record<string, ReturnType<typeof vi.fn>>).siteStats!.mock.calls[0]![0] as { from: string; to: string };
+    expect(call.to).toBe(new Date().toISOString().slice(0, 10));
+    expect((Date.parse(call.to) - Date.parse(call.from)) / 86_400_000).toBe(29);
+    expect((res.content as Array<{ text: string }>)[0]!.text).toContain('"visitors": 5');
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('get_site_stats forwards a range and the filters', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    await mcp.callTool({ name: 'get_site_stats', arguments: { from: '2026-10-01', to: '2026-10-19', device: 'mobile', country: 'DE' } });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).siteStats).toHaveBeenCalledWith({ from: '2026-10-01', to: '2026-10-19', device: 'mobile', country: 'DE' });
+  });
+
+  it('get_site_stats rejects a malformed day or device before calling the platform', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    expect((await mcp.callTool({ name: 'get_site_stats', arguments: { from: 'last week' } })).isError).toBe(true);
+    expect((await mcp.callTool({ name: 'get_site_stats', arguments: { device: 'phone' } })).isError).toBe(true);
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).siteStats).not.toHaveBeenCalled();
   });
 });
 

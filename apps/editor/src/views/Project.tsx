@@ -22,6 +22,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
+import { StatsView } from './stats/StatsView';
 import { OrdersView } from './OrdersView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
@@ -54,12 +55,13 @@ export const MANAGE_TABS = [
   'website-settings',
   'pages',
   'forms',
+  'statistics',
   'history',
   'orders',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
 /** The tabs laid out as wide boards rather than a reading column. */
-const BOARD_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings', 'orders']);
+const BOARD_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings', 'statistics', 'orders']);
 /** The two tabs ONE SettingsView serves (see the render below). It animates between them itself. */
 const SETTINGS_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings']);
 const sameSettingsView = (prev: Tab, next: Tab): boolean => SETTINGS_TABS.has(prev) && SETTINGS_TABS.has(next);
@@ -68,6 +70,7 @@ export const TAB_LABELS: Record<Tab, string> = {
   'website-settings': 'Website Settings',
   pages: 'Pages',
   forms: 'Forms',
+  statistics: 'Statistics',
   history: 'History',
   orders: 'Orders',
 };
@@ -82,6 +85,7 @@ export const TAB_LABELS_SHORT: Record<Tab, string> = {
   ...TAB_LABELS,
   'corporate-identity': 'Identity',
   'website-settings': 'Website',
+  statistics: 'Stats',
 };
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
@@ -997,6 +1001,8 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
+      ) : tab === 'statistics' ? (
+        <StatsView key={project.id} project={project} onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined} />
       ) : tab === 'history' ? (
         <HistoryView key={project.id} project={project} />
       ) : (

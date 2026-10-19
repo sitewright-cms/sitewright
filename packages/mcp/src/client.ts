@@ -1142,6 +1142,14 @@ export class SitewrightClient {
     return this.request('DELETE', this.projectPath(`/preview-shares/${encodeURIComponent(shareId)}`));
   }
 
+  /** The built-in statistics for a range of UTC days (`GET /projects/:id/stats`). */
+  async siteStats(q: { from: string; to: string; device?: string; country?: string }): Promise<unknown> {
+    const params = new URLSearchParams({ from: q.from, to: q.to });
+    if (q.device) params.set('device', q.device);
+    if (q.country) params.set('country', q.country);
+    return this.request('GET', this.projectPath(`/stats?${params.toString()}`));
+  }
+
   async listSubmissions(opts: { formId?: string; limit?: number; offset?: number } = {}): Promise<unknown> {
     const params = new URLSearchParams();
     if (opts.formId) params.set('formId', opts.formId);

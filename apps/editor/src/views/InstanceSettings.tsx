@@ -235,7 +235,7 @@ export function InstanceSettings() {
   // Ops: server log verbosity + DB backup management (retention + live storage usage + purge).
   const [logLevel, setLogLevel] = useState<LogLevel>(DEFAULT_LOG_LEVEL);
   const [backupRetention, setBackupRetention] = useState(DEFAULT_BACKUP_RETENTION);
-  const [storage, setStorage] = useState<{ dbBytes: number; backups: { count: number; bytes: number } } | null>(null);
+  const [storage, setStorage] = useState<{ dbBytes: number; statsBytes?: number; backups: { count: number; bytes: number } } | null>(null);
   const [integrityOpen, setIntegrityOpen] = useState(false);
   const [purgeKeep, setPurgeKeep] = useState(1);
   const [purging, setPurging] = useState(false);
@@ -1677,6 +1677,8 @@ export function InstanceSettings() {
         <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt className="text-slate-500 dark:text-slate-400">Database size</dt>
           <dd className="text-right font-medium">{storage ? formatBytes(storage.dbBytes) : '—'}</dd>
+          <dt className="text-slate-500 dark:text-slate-400">Statistics</dt>
+          <dd className="text-right font-medium">{storage ? formatBytes(storage.statsBytes ?? 0) : '—'}</dd>
           <dt className="text-slate-500 dark:text-slate-400">Pre-migration snapshots</dt>
           <dd className="text-right font-medium">
             {storage ? `${storage.backups.count} · ${formatBytes(storage.backups.bytes)}` : '—'}

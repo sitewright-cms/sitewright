@@ -11,6 +11,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Built-in statistics: the platform counts a site's visits itself.** No third-party tool, no cookie and nothing
+  stored on the visitor's device. An owner switches it on per site in Website Settings → Analytics; the numbers
+  are in a new **Statistics** tab and, for agents, the new `get_site_stats` tool. It works for local hosting and
+  for sites uploaded by FTP, SFTP or git. See [docs/statistics.md](docs/statistics.md).
+  - **What it counts:**
+    - human (organic) and bot traffic, with bots split into search engines, AI crawlers and assistants, SEO
+      tools, uptime monitors, link previews and other bots;
+    - for humans, the device (desktop, mobile, tablet) and the country, counted together so the tab can filter
+      by either or both;
+    - top pages, traffic sources (direct, search, social, AI assistant, referral, campaign) and form submissions
+      as goals.
+  - **Bots on local hosting:** crawlers rarely run a page's script, so a page the platform serves to a bot is
+    counted as it is served. Sites hosted elsewhere only see bots that run JavaScript.
+  - **Privacy:** the IP address and user agent are never stored. A visitor is counted once a day by a hash with
+    a salt that rotates at midnight UTC and is deleted after two days. Only daily totals are kept, for 25 months.
+  - **Lightweight:** nothing is written per visit. Visits are classified and added up in memory, and the totals
+    are written once a minute to their own file, `analytics.db`. The page script is under 1 KB and sends one
+    request per pageview. The country database (DB-IP Country Lite, CC BY 4.0, attributed in the tab) loads only
+    once a site counts visits; `SW_GEOIP_DB` can replace it with another MaxMind-format country file.
+  - **Abuse-resistant:** every page's route is signed when it is published, so a stranger posting to the public
+    collector cannot invent pages. A site with a site URL counts only pages running on its own host. Every
+    in-memory structure is capped per site, so one site under attack cannot cost another its accuracy.
+  - **Sites on other hosts need a public URL** (`SW_PUBLIC_URL`) to report visits. Without one, builds for
+    remote targets ship no counter and the Statistics tab says that only locally hosted visits are counted.
+  - The tab shows visitors, pageviews, bot share and goals, a daily chart, devices, countries with a world map,
+    pages, sources and bots, and downloads each table as CSV.
+
 - **Plausible, Umami, Matomo, Fathom and Simple Analytics as built-in integrations.** Until now the consent
   manager knew only Google Analytics 4 and Tag Manager; any other analytics tool had to be added as a custom
   script, where it could not be identified correctly.
@@ -54,6 +81,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   list, and a thin utility strip over a centred wordmark still counts as the second-wave look.
 
 ### Fixed
+
+- **Security: a made-up `Authorization: Bearer` header no longer bypasses rate limits.** The rate limiter keyed a
+  request on its bearer token before checking that the token was real, so an anonymous client could send a
+  different random token with each request and get a fresh bucket every time. That defeated the per-IP limits
+  on every public route, including login, form submissions and the statistics collector. A bearer token now
+  selects its own bucket only once it has authenticated; until then the request is limited by its IP address.
+
+- **Sites built by the isolated build worker (`SW_BUILD_WORKER=true`) keep their form endpoints and captchas.**
+  The worker received neither the instance's public URL nor the project's captcha settings, so a site it built
+  posted its forms to a root-relative address — nothing, once uploaded to another host — and showed inert
+  captchas. Both are now passed to the worker, along with the statistics signing key.
+
+- **Saving Website Settings no longer deletes an agent's data files and extra CSP origins.** The editor
+  replaces `website.*` on every save, and `website.dataFiles` and `website.cspOrigins`, which only agents and
+  the API set, were not carried through, so any unrelated edit in the Website section removed them.
 
 - **Consent-gated analytics now behave as visitors and owners expect.**
   - **Vendor attributes are kept.** A gated script (`<script type="text/plain" data-sw-consent="analytics">`)

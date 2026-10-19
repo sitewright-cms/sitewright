@@ -48,7 +48,7 @@ export const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   // which is exactly how the security.txt block broke.
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopCurrencyCode', 'shopChannels',
   'shopShippingFlat', 'shopShippingFreeOver', 'shopTaxRate', 'shopTaxMode', 'shopPlatformCartStyles',
-  'consent', 'searchFoldDiacritics',
+  'consent', 'statisticsEnabled', 'searchFoldDiacritics',
   'defaultLocale', 'locales', 'translations',
 ]);
 

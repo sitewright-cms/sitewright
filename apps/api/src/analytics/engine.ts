@@ -1,0 +1,459 @@
+import { createHash, randomBytes } from 'node:crypto';
+import { isbot } from 'isbot';
+import {
+  shiftStatsDay,
+  statsDay,
+  statsRetentionStart,
+  STATS_DEVICES,
+  type SiteStats,
+  type StatsClass,
+  type StatsDevice,
+  type StatsQuery,
+  type StatsSource,
+} from '@sitewright/schema';
+import { deviceClass, trafficClass, trafficSource } from './classify.js';
+import type { GeoLookup } from './geo.js';
+import type { GoalRow, PageRow, SeenRow, SourceRow, StatsDelta, StatsStore, StatsTable, TrafficRow } from './store.js';
+import { statsProjectKey } from './token.js';
+
+/**
+ * The built-in statistics engine: counts in memory, writes daily totals once a minute.
+ *
+ * ★ Nothing touches the disk per visit. A pageview is classified (bot or human, device, country, source) and
+ * added to a few in-memory counters; every {@link FLUSH_MS} those counters are written to the store as one
+ * transaction of increments and cleared. A crash loses at most the last minute.
+ *
+ * VISITORS. A visitor is the 30-bit truncation of SHA-256(daily salt, project, IP, user agent). Only TODAY's
+ * ids are kept — in a per-project Set, and appended to the store with each flush so a restart (clean or not)
+ * does not count everyone twice — and they are dropped at midnight UTC; the salt itself is deleted two days
+ * later. The first pageview of a visitor's day counts the visitor — on that pageview's device/country row, and
+ * on its traffic source — so "visitors from Germany on mobile" needs no per-visitor storage at all. A truncated
+ * id can collide; at 100,000 visitors to one site in a day that undercounts by about five.
+ *
+ * Every in-memory structure is BOUNDED, per site as well as overall (see {@link StatsLimits}): a flood of junk
+ * — or one very busy site — can cost one site its accuracy, never another site's, and never unbounded memory.
+ */
+
+/** How often counters are written. */
+export const FLUSH_MS = 60_000;
+
+export interface StatsLimits {
+  /** Distinct counter rows held between flushes, across all sites. */
+  pendingRows: number;
+  /** …and for any one site, so one site's flood cannot crowd out the others' counts. */
+  pendingRowsPerSite: number;
+  /** Visitor ids remembered for today, across all sites (~30 bytes each in a Set). */
+  seenIds: number;
+  /** …and for any one site. Past it, that site's new visitors are counted but not remembered. */
+  seenIdsPerSite: number;
+  /** Distinct referring hosts / campaigns named per site per day; the rest are counted under their kind alone. */
+  sourceHosts: number;
+}
+
+export const DEFAULT_STATS_LIMITS: StatsLimits = {
+  pendingRows: 50_000,
+  pendingRowsPerSite: 10_000,
+  seenIds: 1_000_000,
+  seenIdsPerSite: 250_000,
+  sourceHosts: 500,
+};
+
+export interface StatsHit {
+  projectId: string;
+  /** The page's route as the publisher signed it (`/`, `/about/`). */
+  route: string;
+  ua: string;
+  ip: string;
+  chMobile?: boolean;
+  mobileHint?: boolean;
+  touch?: boolean;
+  webdriver?: boolean;
+  referrerHost?: string;
+  campaign?: string;
+  /** Whether a referring host is one of this site's own. */
+  isOwnHost?: (host: string) => boolean;
+}
+
+export interface StatsEngineOptions {
+  store: StatsStore;
+  geo: GeoLookup;
+  /**
+   * The secret route signatures derive from. Pass one derived from a key that outlives the statistics file
+   * (the instance encryption key): pages already deployed elsewhere carry signatures from it, so a secret that
+   * changed with a lost or restored `analytics.db` would silently stop counting every one of them. Without it,
+   * a random secret is created and kept in the store.
+   */
+  secret?: string;
+  now?: () => Date;
+  log?: (msg: string, err?: unknown) => void;
+  limits?: Partial<StatsLimits>;
+}
+
+interface Pending {
+  traffic: Map<string, TrafficRow>;
+  pages: Map<string, PageRow>;
+  sources: Map<string, SourceRow>;
+  goals: Map<string, GoalRow>;
+  /** Visitor ids first seen since the last flush, per site and day — appended to the store with the counts. */
+  seen: Map<string, SeenRow>;
+  /** Distinct counter rows per site (for the per-site cap). */
+  rowsBySite: Map<string, number>;
+  rows: number;
+}
+
+const emptyPending = (): Pending => ({ traffic: new Map(), pages: new Map(), sources: new Map(), goals: new Map(), seen: new Map(), rowsBySite: new Map(), rows: 0 });
+const K = '\u0000';
+
+export class StatsEngine {
+  private readonly store: StatsStore;
+  private readonly geo: GeoLookup;
+  private readonly now: () => Date;
+  private readonly log: (msg: string, err?: unknown) => void;
+  private readonly limits: StatsLimits;
+  private secret = '';
+  /**
+   * Whether opening CREATED the signing secret (none was stored and none was passed). The caller reports it:
+   * pages already published elsewhere stop counting until republished. Not logged from here, because the
+   * engine opens before its owner's logger exists.
+   */
+  createdSecret = false;
+  private pending: Pending = emptyPending();
+  private day = '';
+  private salt: Buffer = Buffer.alloc(0);
+  private saltSaved = false;
+  private seen = new Map<string, Set<number>>();
+  private seenCount = 0;
+  private sourceHosts = new Map<string, Set<string>>();
+  private prunedFor = '';
+  private dropped = 0;
+  private timer: ReturnType<typeof setInterval> | null = null;
+  private flushing: Promise<boolean> = Promise.resolve(true);
+  /** Set by close(): no more counting. The store stays open until the last flush is written. */
+  private closing = false;
+  private storeClosed = false;
+
+  private constructor(opts: StatsEngineOptions) {
+    this.store = opts.store;
+    this.geo = opts.geo;
+    this.now = opts.now ?? (() => new Date());
+    this.log = opts.log ?? (() => {});
+    this.limits = { ...DEFAULT_STATS_LIMITS, ...opts.limits };
+  }
+
+  /** Opens an engine over `store`: the signing secret, today's salt, and today's visitors so far. */
+  static async open(opts: StatsEngineOptions): Promise<StatsEngine> {
+    const engine = new StatsEngine(opts);
+    if (opts.secret) {
+      engine.secret = opts.secret;
+    } else {
+      const { secret, created } = await engine.store.secret();
+      engine.secret = secret;
+      engine.createdSecret = created;
+    }
+    const today = statsDay(engine.now());
+    const salt = await engine.store.salt(today);
+    engine.day = today;
+    engine.salt = salt ?? randomBytes(16);
+    engine.saltSaved = salt !== null;
+    for (const [project, ids] of await engine.store.loadSeen(today)) {
+      const set = new Set<number>();
+      for (const id of ids) {
+        if (engine.seenCount >= engine.limits.seenIds || set.size >= engine.limits.seenIdsPerSite) break;
+        if (set.has(id)) continue;
+        set.add(id);
+        engine.seenCount++;
+      }
+      engine.seen.set(project, set);
+    }
+    return engine;
+  }
+
+  /** Starts the once-a-minute flush. The timer never keeps the process alive. */
+  start(): void {
+    if (this.timer || this.closing) return;
+    this.timer = setInterval(() => void this.flush(), FLUSH_MS);
+    this.timer.unref?.();
+  }
+
+  /** Stops counting, writes what was counted, and closes the store. */
+  async close(): Promise<void> {
+    if (this.closing) return;
+    // Intake stops FIRST: a visit recorded while the last flush is in flight would otherwise land in a
+    // batch nothing will ever write.
+    this.closing = true;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    const written = await this.flush();
+    if (!written) this.log('statistics: the final write failed — the counts of the last minute are lost');
+    this.storeClosed = true;
+    this.store.close();
+  }
+
+  /** Whether a user agent is a known bot (no category lookup — the cheap check). */
+  isKnownBot(ua: string): boolean {
+    return ua.trim() !== '' && isbot(ua);
+  }
+
+  /** The key a project's builds sign their routes with (one HMAC — cheaper than any cache of it). */
+  projectKey(projectId: string): string {
+    return statsProjectKey(this.secret, projectId);
+  }
+
+  /** Rolls the day over at midnight UTC: a fresh salt, and yesterday's visitors forgotten. */
+  private today(): string {
+    const day = statsDay(this.now());
+    if (day !== this.day) {
+      this.day = day;
+      this.salt = randomBytes(16);
+      this.saltSaved = false;
+      this.seen = new Map();
+      this.seenCount = 0;
+      this.sourceHosts = new Map();
+    }
+    return day;
+  }
+
+  /** Whether `id` is a visitor not yet seen today on `projectId` (and remembers it). */
+  private firstVisit(projectId: string, ip: string, ua: string): boolean {
+    const id = createHash('sha256').update(this.salt).update(projectId).update(K).update(ip).update(K).update(ua).digest().readUInt32BE(0) >>> 2;
+    let set = this.seen.get(projectId);
+    if (set?.has(id)) return false;
+    // Past a cap a new visitor is still counted, just not remembered — a later pageview of theirs counts
+    // them again. The per-site cap is what keeps that overcount on the one site that reached it.
+    if (this.seenCount >= this.limits.seenIds || (set?.size ?? 0) >= this.limits.seenIdsPerSite) return true;
+    if (!set) this.seen.set(projectId, (set = new Set()));
+    set.add(id);
+    this.seenCount++;
+    const key = `${this.day}${K}${projectId}`;
+    const fresh = this.pending.seen.get(key);
+    if (fresh) fresh.ids.push(id);
+    else this.pending.seen.set(key, { project: projectId, day: this.day, ids: [id] });
+    return true;
+  }
+
+  private bump<R>(map: Map<string, R>, project: string, key: string, make: () => R, add: (row: R) => void): void {
+    let row = map.get(key);
+    if (!row) {
+      const p = this.pending;
+      const forSite = p.rowsBySite.get(project) ?? 0;
+      if (p.rows >= this.limits.pendingRows || forSite >= this.limits.pendingRowsPerSite) {
+        this.dropped++;
+        return;
+      }
+      row = make();
+      map.set(key, row);
+      p.rows++;
+      p.rowsBySite.set(project, forSite + 1);
+    }
+    add(row);
+  }
+
+  private countTraffic(project: string, day: string, cls: StatsClass, device: StatsDevice | '', country: string, visitor: boolean): void {
+    this.bump(
+      this.pending.traffic,
+      project,
+      [project, day, cls, device, country].join(K),
+      () => ({ project, day, cls, device, country, views: 0, visitors: 0 }),
+      (r) => {
+        r.views++;
+        if (visitor) r.visitors++;
+      },
+    );
+  }
+
+  private countPage(project: string, day: string, path: string, human: boolean): void {
+    this.bump(
+      this.pending.pages,
+      project,
+      [project, day, path].join(K),
+      () => ({ project, day, path, views: 0, botViews: 0 }),
+      (r) => {
+        if (human) r.views++;
+        else r.botViews++;
+      },
+    );
+  }
+
+  private countSource(project: string, day: string, source: StatsSource, rawHost: string): void {
+    let hosts = this.sourceHosts.get(project);
+    if (!hosts) this.sourceHosts.set(project, (hosts = new Set()));
+    const named = `${source}${K}${rawHost}`;
+    // A site's list of referrers is a long tail; past the cap the visit still counts, under its kind alone.
+    let host = rawHost;
+    if (rawHost && !hosts.has(named)) {
+      if (hosts.size >= this.limits.sourceHosts) host = '';
+      else hosts.add(named);
+    }
+    this.bump(
+      this.pending.sources,
+      project,
+      [project, day, source, host].join(K),
+      () => ({ project, day, source, host, visitors: 0 }),
+      (r) => {
+        r.visitors++;
+      },
+    );
+  }
+
+  /** Counts one pageview reported by a page's tracker. */
+  record(hit: StatsHit): void {
+    if (this.closing) return;
+    const day = this.today();
+    const cls = trafficClass({ ua: hit.ua, webdriver: hit.webdriver });
+    const human = cls === 'human';
+    const country = this.geo.country(hit.ip) ?? 'ZZ';
+    if (!human) {
+      // Bots have no visitors and no source: they are counted as views, by kind and by page.
+      this.countTraffic(hit.projectId, day, cls, '', country, false);
+      this.countPage(hit.projectId, day, hit.route, false);
+      return;
+    }
+    const device = deviceClass({ ua: hit.ua, chMobile: hit.chMobile, mobileHint: hit.mobileHint, touch: hit.touch });
+    const first = this.firstVisit(hit.projectId, hit.ip, hit.ua);
+    this.countTraffic(hit.projectId, day, 'human', device, country, first);
+    this.countPage(hit.projectId, day, hit.route, true);
+    if (first) {
+      const { source, host } = trafficSource({ referrerHost: hit.referrerHost, campaign: hit.campaign, isOwnHost: hit.isOwnHost ?? (() => false) });
+      this.countSource(hit.projectId, day, source, host);
+    }
+  }
+
+  /**
+   * Counts a page the platform SERVED to a bot (local hosting). Most crawlers never run a page's script, so
+   * without this a locally hosted site would see almost no bot traffic at all. Humans are left to the tracker:
+   * a browser that loads the page reports it, and counting it here as well would count it twice.
+   */
+  recordServedPage(projectId: string, route: string, ua: string, ip: string): void {
+    if (this.closing || !ua.trim() || !isbot(ua)) return;
+    const day = this.today();
+    const cls = trafficClass({ ua });
+    const country = this.geo.country(ip) ?? 'ZZ';
+    this.countTraffic(projectId, day, cls, '', country, false);
+    this.countPage(projectId, day, route, false);
+  }
+
+  /** Counts a goal completion (a form submission). */
+  recordGoal(projectId: string, goal: string): void {
+    if (this.closing) return;
+    const day = this.today();
+    this.bump(
+      this.pending.goals,
+      projectId,
+      [projectId, day, goal].join(K),
+      () => ({ project: projectId, day, goal, count: 0 }),
+      (r) => {
+        r.count++;
+      },
+    );
+  }
+
+  /**
+   * Writes the counters gathered since the last flush. Flushes never overlap. Resolves whether this flush's
+   * write succeeded (a failure is logged, and its counts are kept for the next one).
+   */
+  flush(): Promise<boolean> {
+    this.flushing = this.flushing.then(() =>
+      this.flushNow().then(
+        () => true,
+        (err: unknown) => {
+          this.log('statistics: flush failed', err);
+          return false;
+        },
+      ),
+    );
+    return this.flushing;
+  }
+
+  private async flushNow(): Promise<void> {
+    if (this.storeClosed) return;
+    const day = this.today();
+    if (!this.saltSaved) {
+      const salt = this.salt;
+      await this.store.saveSalt(day, salt);
+      // Midnight may have passed during that write; the NEW day's salt is then still unsaved.
+      if (this.salt === salt) this.saltSaved = true;
+    }
+    const batch = this.pending;
+    this.pending = emptyPending();
+    if (this.dropped > 0) {
+      this.log(`statistics: ${this.dropped} counts dropped — more distinct rows between flushes than the caps allow`);
+      this.dropped = 0;
+    }
+    const delta: StatsDelta = {
+      traffic: [...batch.traffic.values()],
+      pages: [...batch.pages.values()],
+      sources: [...batch.sources.values()],
+      goals: [...batch.goals.values()],
+      seen: [...batch.seen.values()],
+    };
+    try {
+      await this.store.apply(delta);
+    } catch (err) {
+      // Put the counts back so the next flush retries them — merged into whatever arrived meanwhile, and
+      // still under the same caps (bump drops what does not fit).
+      this.requeue(batch);
+      throw err;
+    }
+    if (this.prunedFor !== day) {
+      await this.store.prune(day, statsRetentionStart(day), shiftStatsDay(day, -1));
+      this.prunedFor = day;
+    }
+  }
+
+  private requeue(batch: Pending): void {
+    for (const r of batch.traffic.values()) {
+      this.bump(this.pending.traffic, r.project, [r.project, r.day, r.cls, r.device, r.country].join(K), () => ({ ...r, views: 0, visitors: 0 }), (x) => {
+        x.views += r.views;
+        x.visitors += r.visitors;
+      });
+    }
+    for (const r of batch.pages.values()) {
+      this.bump(this.pending.pages, r.project, [r.project, r.day, r.path].join(K), () => ({ ...r, views: 0, botViews: 0 }), (x) => {
+        x.views += r.views;
+        x.botViews += r.botViews;
+      });
+    }
+    for (const r of batch.sources.values()) {
+      this.bump(this.pending.sources, r.project, [r.project, r.day, r.source, r.host].join(K), () => ({ ...r, visitors: 0 }), (x) => {
+        x.visitors += r.visitors;
+      });
+    }
+    for (const r of batch.goals.values()) {
+      this.bump(this.pending.goals, r.project, [r.project, r.day, r.goal].join(K), () => ({ ...r, count: 0 }), (x) => {
+        x.count += r.count;
+      });
+    }
+    for (const [key, row] of batch.seen) {
+      const fresh = this.pending.seen.get(key);
+      this.pending.seen.set(key, fresh ? { ...row, ids: [...row.ids, ...fresh.ids] } : row);
+    }
+  }
+
+  /** A project's statistics for a range: flushed first, so the answer includes the last minute. */
+  async query(projectId: string, q: StatsQuery, enabled: boolean): Promise<SiteStats> {
+    await this.flush();
+    const res = await this.store.query(projectId, q);
+    const byDay = new Map(res.daily.map((d) => [d.day, d]));
+    const daily: SiteStats['daily'] = [];
+    for (let d = q.from; d <= q.to; d = shiftStatsDay(d, 1)) daily.push(byDay.get(d) ?? { day: d, views: 0, visitors: 0, botViews: 0 });
+    // Every device class is listed, zero or not, in a fixed order — a chart whose bars come and go is harder
+    // to read than one with an empty bar.
+    const devices = STATS_DEVICES.map((device) => res.devices.find((x) => x.device === device) ?? { device, views: 0, visitors: 0 });
+    return { ...res, enabled, daily, devices };
+  }
+
+  /** One table's raw daily rows for the CSV export. */
+  async rows(projectId: string, table: StatsTable, from: string, to: string): Promise<string[][]> {
+    await this.flush();
+    return this.store.rows(projectId, table, from, to);
+  }
+
+  /** Forgets a project entirely (it was deleted for good). */
+  async forget(projectId: string): Promise<void> {
+    await this.flush();
+    this.seenCount -= this.seen.get(projectId)?.size ?? 0;
+    this.seen.delete(projectId);
+    this.sourceHosts.delete(projectId);
+    await this.store.forget(projectId);
+  }
+}

@@ -200,6 +200,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   scripts?: readonly string[];
   /**
+   * The built-in statistics tracker's `<script>` tag (see `statsScriptTag`), emitted at body end. Unlike
+   * `scripts` it is kept on RAW-HTML pages too: a visit to an imported page is still a visit. First-party,
+   * built by the publisher; never tenant input.
+   */
+  statsTag?: string;
+  /**
    * JavaScript inlined in `<script>` blocks just before `</body>` — the preview's
    * self-contained equivalent of `scripts` (the preview document is served under
    * `Content-Security-Policy: sandbox`, an opaque isolated origin, so its inline
@@ -315,6 +321,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     head,
     customScripts,
     formApi,
+    statsTag,
     metaCsp,
     criticalCss,
     stylesheets,
@@ -512,6 +519,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // BEFORE the runtimes: both the form runtime and the cart call `window.__swf` to build their
     // submission URL, so the resolver has to be defined by the time they run.
     formApiScript(formApi) +
+    (statsTag ?? '') +
     (inlineScripts ?? [])
       // Neutralize any `</script` so trusted bundled JS can't close the tag early.
       .map((js) => `<script>${neutralizeInlineScript(js)}</script>`)

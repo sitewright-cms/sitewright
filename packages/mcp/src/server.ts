@@ -36,6 +36,9 @@ import {
   TransactionStatusSchema,
   FulfilmentStateSchema,
   GatewayIdSchema,
+  STATS_DEVICES,
+  statsDay,
+  shiftStatsDay,
   type GuideTopic,
   type ScreenshotViewportName,
 } from '@sitewright/schema';
@@ -1661,6 +1664,24 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       },
     },
     gate('content:read', ({ formId, limit, offset }) => client.listSubmissions({ formId, limit, offset })),
+  );
+
+  server.registerTool(
+    'get_site_stats',
+    {
+      description:
+        "Read the site's BUILT-IN STATISTICS — the platform's own cookieless visit counter — for a range of UTC days (default: the last 30). Returns human traffic (`human`: views + visitors) and `botViews`; `daily` totals; human visitors by `devices` (desktop/mobile/tablet) and `countries` (ISO codes, ZZ = unknown); `bots` by kind (search, ai, seo, monitor, social, bot); top `pages` (human + bot views); `sources` (direct/search/social/ai/referral/campaign + host); and `goals` (form submissions, labelled with the form name). `enabled:false` means the site is not counting: it is switched on in the editor (Website Settings → Analytics) or via website.statistics.enabled, and takes effect for visits after the next publish. `notice:\"no-public-url\"` means the site is also deployed to another host but the instance has no public URL, so only locally hosted visits are counted — tell the user rather than reporting zeros as no traffic. A visitor is counted once per day (no cookies — a daily-rotating hash), so visitors over a range are the sum of daily visitors. `device` / `country` narrow the human figures. Only daily totals exist: there are no per-visit records to drill into, and data older than 25 months is gone.",
+      inputSchema: {
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('First day, YYYY-MM-DD (UTC). Default: 29 days before `to`.'),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Last day, YYYY-MM-DD (UTC). Default: today.'),
+        device: z.enum(STATS_DEVICES).optional().describe('Only human visits on this device class.'),
+        country: z.string().regex(/^[A-Z]{2}$/).optional().describe('Only human visits from this country (ISO 3166-1 alpha-2).'),
+      },
+    },
+    gate('content:read', ({ from, to, device, country }) => {
+      const last = to ?? statsDay();
+      return client.siteStats({ from: from ?? shiftStatsDay(last, -29), to: last, ...(device ? { device } : {}), ...(country ? { country } : {}) });
+    }),
   );
 
   // ---------------------------------------------------------------- the shop: orders + payment providers

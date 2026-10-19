@@ -406,8 +406,10 @@ describe('admin settings API', () => {
         // No snapshots yet — the DB has a size; backups are empty.
         const s0 = await app.inject({ method: 'GET', url: '/admin/storage', cookies });
         expect(s0.statusCode).toBe(200);
-        const j0 = s0.json() as { dbBytes: number; backups: { count: number; bytes: number } };
+        const j0 = s0.json() as { dbBytes: number; statsBytes: number; backups: { count: number; bytes: number } };
         expect(j0.dbBytes).toBeGreaterThan(0);
+        // The built-in statistics' own file, created beside the database at boot.
+        expect(j0.statsBytes).toBeGreaterThan(0);
         expect(j0.backups).toEqual({ count: 0, bytes: 0 });
 
         // Drop in three fake snapshots (3 bytes each).

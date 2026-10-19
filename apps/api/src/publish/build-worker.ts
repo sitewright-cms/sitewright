@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
 import type { MediaAsset, Template } from '@sitewright/schema';
-import { buildSite, PublishError, type ReleaseManifest } from './build.js';
+import { buildSite, PublishError, type BuildSiteOptions, type ReleaseManifest } from './build.js';
 import { collectSiteFiles } from './adapters.js';
 
 /**
@@ -23,6 +23,15 @@ export interface WorkerJob {
   globalTemplates?: Template[];
   /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
   minifyHtml?: boolean;
+  /**
+   * The platform's public base URL, the project's captcha site config and its statistics route-signing key —
+   * the in-process build gets all three, and a worker build without them published root-relative form and
+   * statistics endpoints (dead on a remote host) and inert captchas. None is an instance secret: the URL and
+   * site key are public, and the statistics key only signs that one project's page routes.
+   */
+  publicBaseUrl?: string;
+  captcha?: BuildSiteOptions['captcha'];
+  stats?: BuildSiteOptions['stats'];
 }
 
 /** The worker's result: the release manifest + every built file as base64. */
@@ -56,6 +65,9 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
       snippets: job.snippets,
       globalTemplates: job.globalTemplates,
       minifyHtml: job.minifyHtml,
+      ...(job.publicBaseUrl ? { publicBaseUrl: job.publicBaseUrl } : {}),
+      ...(job.captcha ? { captcha: job.captcha } : {}),
+      ...(job.stats ? { stats: job.stats } : {}),
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });

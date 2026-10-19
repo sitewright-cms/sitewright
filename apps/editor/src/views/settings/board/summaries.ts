@@ -325,9 +325,10 @@ export function shopStatus(f: SettingsForm): TileStatus {
 
 export function analyticsStatus(f: SettingsForm): TileStatus {
   const n = analyticsTools(f.consent).length;
-  if (n === 0) return na('None');
   // A tool waiting for consent while the banner is off never loads: the one state the owner must hear about.
-  if (stalledAnalytics(f.consent).length > 0) return attention('Banner off');
+  if (n > 0 && stalledAnalytics(f.consent).length > 0) return attention('Banner off');
+  if (f.statisticsEnabled) return set(n ? `Built-in + ${plural(n, 'tool')}` : 'Built-in');
+  if (n === 0) return na('None');
   return set(plural(n, 'tool'));
 }
 

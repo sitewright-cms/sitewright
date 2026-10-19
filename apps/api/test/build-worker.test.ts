@@ -44,6 +44,27 @@ describe('runWorker', () => {
     expect(home).toMatch(/--sw-color-primary:\s*#0a7/); // CSS minified (space/`;` vary by minifier)
   });
 
+  it('★ ships the statistics tracker with an ABSOLUTE collector when the job carries the key and public URL', async () => {
+    // These fields used to be dropped on the way into the worker, so a worker-built site beaconed (and posted
+    // its forms) root-relative — to whatever host it was uploaded to.
+    const job: WorkerJob = {
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      media: [],
+      publicBaseUrl: 'https://cms.example.com',
+      stats: { key: 'k'.repeat(64) },
+      bundle: bundle({
+        project: { ...bundle().project, website: { statistics: { enabled: true } } },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section><h1>Welcome</h1></section>' }],
+      }),
+    };
+    const result = await runWorker(job);
+    const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
+    const m = /data-sw-stats="([^"]+)"/.exec(home);
+    expect(m).not.toBeNull();
+    expect(JSON.parse(Buffer.from(m![1]!, 'base64').toString('utf8'))).toMatchObject({ b: 'https://cms.example.com', p: 'p', r: '/' });
+    expect(result.files['_assets/_sw/stats.js']).toBeDefined();
+  });
+
   it('materializes referenced thumbnails from the inlined ORIGINAL and bundles them into the artifact', async () => {
     // The retained original (a real PNG) is inlined; the worker generates on demand exactly the
     // thumbnail the page references (`?size=sm` → `h-sm.webp`) FLAT into `_assets/<alias>-…`.

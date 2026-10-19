@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight } from 'lucide-react';
-import { accentChip } from '../../../theme';
+import { accentChip, toggleInput } from '../../../theme';
 import { cardVariants } from '../motion';
 import { SectionHelp } from '../../ui/SectionHelp';
 import { budget, type TileStatus } from './summaries';
@@ -200,6 +200,19 @@ export function PartRow({ label, value, onClick, ariaLabel, disabled = false }: 
       {value !== undefined && <span className="min-w-0 flex-1 truncate pr-1 text-right text-slate-500 dark:text-slate-400">{value}</span>}
       <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-indigo-500" />
     </button>
+  );
+}
+
+/** A row-height on/off switch, for a tile whose list shares its space with one setting. */
+export function SwitchRow({ label, checked, onChange, ariaLabel }: { label: string; checked: boolean; onChange: (on: boolean) => void; ariaLabel?: string }) {
+  return (
+    <label
+      className="flex shrink-0 cursor-pointer items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200"
+      style={{ height: ROW_H }}
+    >
+      <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+      <input type="checkbox" role="switch" aria-label={ariaLabel ?? label} className={`${toggleInput} shrink-0`} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
   );
 }
 

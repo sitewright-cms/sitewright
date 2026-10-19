@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, downloadProjectExport, eventsUrl, previewDocUrl, snippetPreviewUrl, setPasswordChangeRequiredHandler, setUnauthorizedHandler } from '../src/api';
+import { api, ApiError, downloadProjectExport, downloadStatsCsv, eventsUrl, previewDocUrl, snippetPreviewUrl, setPasswordChangeRequiredHandler, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -1440,6 +1440,27 @@ describe('project transfer api', () => {
     downloadProjectExport('p1');
     spy.mockRestore();
     expect(clicks.some((href) => href.endsWith('/projects/p1/export.zip'))).toBe(true);
+  });
+
+  it('getStats asks for a range of days, with the filters only when set', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { enabled: true }));
+    await api.getStats('p1', { from: '2026-10-01', to: '2026-10-19' });
+    await api.getStats('p1', { from: '2026-10-01', to: '2026-10-19', device: 'mobile', country: 'DE' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/stats?from=2026-10-01&to=2026-10-19');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/stats?from=2026-10-01&to=2026-10-19&device=mobile&country=DE');
+  });
+
+  it('downloadStatsCsv points a transient anchor at the CSV route for one table', async () => {
+    const clicks: string[] = [];
+    const realCreate = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+      const el = realCreate(tag) as HTMLAnchorElement;
+      if (tag === 'a') el.click = () => clicks.push(el.href);
+      return el;
+    });
+    downloadStatsCsv('p1', '2026-10-01', '2026-10-19', 'pages');
+    spy.mockRestore();
+    expect(clicks.some((href) => href.endsWith('/projects/p1/stats.csv?from=2026-10-01&to=2026-10-19&table=pages'))).toBe(true);
   });
 
   it('builds the SVG studio preview URL and overwrites an SVG media asset in place', async () => {

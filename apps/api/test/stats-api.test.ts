@@ -1,0 +1,354 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import JSZip from 'jszip';
+import type { GeoLookup } from '../src/analytics/geo.js';
+import { makeHarness, type Harness, type TestClient } from './harness.js';
+
+// The built-in statistics end to end: the publisher puts a signed tracker on every page, the page beacons to
+// the collector, and the totals come back from the stats routes. Everything goes through the real routes —
+// the beacon is the one a published page would send, decoded from the page itself.
+
+const DOMAIN = 'agency.site';
+const SLUG = 'example';
+const SITE_HOST = `${SLUG}.${DOMAIN}`;
+const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+const GOOGLEBOT = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+const geo: GeoLookup = { country: (ip) => (ip.startsWith('1.') ? 'DE' : ip.startsWith('2.') ? 'US' : null) };
+const today = (): string => new Date().toISOString().slice(0, 10);
+
+interface Tag {
+  b: string;
+  p: string;
+  r: string;
+  k: string;
+}
+
+/** The tracker payload a published page carries, or null when it has none. */
+function trackerOf(html: string): Tag | null {
+  const m = /<script defer src="([^"]*stats\.js[^"]*)" data-sw-stats="([^"]+)"><\/script>/.exec(html);
+  return m ? (JSON.parse(Buffer.from(m[2]!, 'base64').toString('utf8')) as Tag) : null;
+}
+
+describe('built-in statistics', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  let publishRoot: string;
+  let mediaRoot: string;
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-stats-pub-'));
+    mediaRoot = await mkdtemp(join(tmpdir(), 'sw-stats-media-'));
+    harness = await makeHarness({ publishRoot, mediaRoot, sitesDomain: DOMAIN, publicUrl: 'https://cms.agency.com', statsGeo: geo });
+    client = await harness.signup({ admin: true });
+    projectId = await client.createProject('Example', SLUG, { localHosting: false });
+  });
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+    await rm(mediaRoot, { recursive: true, force: true });
+  });
+
+  async function seed(website: Record<string, unknown> = { statistics: { enabled: true } }) {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Example', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+      website,
+    });
+    await proj.putContent('page', 'home', { kind: 'page', title: 'Home', path: '', source: '<h1>Home</h1>' });
+    await proj.putContent('page', 'about', { kind: 'page', title: 'About', path: 'about', source: '<h1>About</h1>' });
+  }
+  async function publish() {
+    await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local' });
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+  }
+  const page = (url: string, ua = CHROME, remoteAddress = '1.1.1.1') =>
+    harness.app.inject({ method: 'GET', url, headers: { host: SITE_HOST, 'user-agent': ua, 'x-forwarded-proto': 'https' }, remoteAddress });
+  const beacon = (body: unknown, opts: { ua?: string; ip?: string; host?: string; headers?: Record<string, string> } = {}) =>
+    harness.app.inject({
+      method: 'POST',
+      url: `/a/${projectId}`,
+      headers: { host: opts.host ?? 'cms.agency.com', 'content-type': 'text/plain;charset=UTF-8', 'user-agent': opts.ua ?? CHROME, ...opts.headers },
+      payload: typeof body === 'string' ? body : JSON.stringify(body),
+      remoteAddress: opts.ip ?? '1.1.1.1',
+    });
+  const stats = async (query = '') => {
+    const res = await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}${query}`);
+    expect(res.statusCode).toBe(200);
+    return res.json();
+  };
+
+  it('★ a published page carries a signed tracker that the collector counts', async () => {
+    await seed();
+    await publish();
+    const res = await page('/about/');
+    expect(res.statusCode).toBe(200);
+    const tag = trackerOf(res.body);
+    expect(tag).toEqual({ b: 'https://cms.agency.com', p: projectId, r: '/about/', k: expect.stringMatching(/^[A-Za-z0-9_-]{16}$/) });
+    // The collector is cross-origin from the site host, so the page's policy must let the beacon out.
+    expect(res.headers['content-security-policy']).toMatch(/connect-src 'self'[^;]* https:\/\/cms\.agency\.com/);
+    // The tracker itself is served from the site.
+    const js = await page(`/${res.body.match(/src="([^"]*stats\.js)/)![1]!.replace(/^(\.\.\/)+/, '')}`);
+    expect(js.statusCode).toBe(200);
+    expect(js.body).toContain('sendBeacon');
+
+    expect((await beacon({ r: tag!.r, k: tag!.k, h: SITE_HOST })).statusCode).toBe(204);
+    const s = await stats();
+    expect(s.human).toEqual({ views: 1, visitors: 1 });
+    expect(s.countries).toEqual([{ country: 'DE', views: 1, visitors: 1 }]);
+    expect(s.pages).toEqual([{ path: '/about/', views: 1, botViews: 0 }]);
+    expect(s.enabled).toBe(true);
+  });
+
+  it('counts devices, visitors and sources from what the page reports', async () => {
+    await seed();
+    await publish();
+    const home = trackerOf((await page('/')).body)!;
+    const about = trackerOf((await page('/about/')).body)!;
+    await beacon({ r: home.r, k: home.k, h: SITE_HOST, f: 'www.google.com' });
+    await beacon({ r: about.r, k: about.k, h: SITE_HOST });
+    await beacon({ r: home.r, k: home.k, h: SITE_HOST, m: 1 }, { ua: IPHONE, ip: '2.2.2.2' });
+    await beacon({ r: home.r, k: home.k, h: SITE_HOST, u: 'newsletter' }, { ip: '2.2.2.3', headers: { 'sec-ch-ua-mobile': '?1' } });
+    const s = await stats();
+    expect(s.human).toEqual({ views: 4, visitors: 3 });
+    expect(s.devices).toEqual([
+      { device: 'desktop', views: 2, visitors: 1 },
+      { device: 'mobile', views: 2, visitors: 2 },
+      { device: 'tablet', views: 0, visitors: 0 },
+    ]);
+    expect(s.sources.map((x: { source: string; host: string }) => `${x.source}:${x.host}`).sort()).toEqual(['campaign:newsletter', 'direct:', 'search:google.com']);
+    const mobile = await stats('&device=mobile');
+    expect(mobile.human).toEqual({ views: 2, visitors: 2 });
+    expect(mobile.countries).toEqual([{ country: 'US', views: 2, visitors: 2 }]);
+  });
+
+  it('★ a forged route, an unknown project or a foreign host is answered 204 and NOT counted', async () => {
+    await seed({ statistics: { enabled: true }, siteUrl: 'https://www.example.com' });
+    await publish();
+    const tag = trackerOf((await page('/')).body)!;
+    // A path the publisher never signed, and a real path with a borrowed signature.
+    expect((await beacon({ r: '/made-up/', k: tag.k, h: SITE_HOST })).statusCode).toBe(204);
+    expect((await beacon({ r: '/about/', k: tag.k, h: SITE_HOST })).statusCode).toBe(204);
+    // A copy of the page on somebody else's host, and a page opened from a file (no host).
+    expect((await beacon({ r: tag.r, k: tag.k, h: 'evil.example.net' })).statusCode).toBe(204);
+    expect((await beacon({ r: tag.r, k: tag.k })).statusCode).toBe(204);
+    // Another (unknown) project's endpoint.
+    const other = await harness.app.inject({ method: 'POST', url: '/a/nope', headers: { 'content-type': 'text/plain' }, payload: JSON.stringify({ r: tag.r, k: tag.k, h: SITE_HOST }) });
+    expect(other.statusCode).toBe(204);
+    expect((await stats()).human.views).toBe(0);
+    // The site's own address (www or not) and its platform host both count.
+    await beacon({ r: tag.r, k: tag.k, h: 'example.com' });
+    await beacon({ r: tag.r, k: tag.k, h: SITE_HOST });
+    expect((await stats()).human.views).toBe(2);
+  });
+
+  it('rejects a body that is not a beacon with 400', async () => {
+    await seed();
+    expect((await beacon('not json')).statusCode).toBe(400);
+    expect((await beacon({ r: 'no-slash', k: 'x' })).statusCode).toBe(400);
+    expect((await beacon({ r: '/', k: 'x', m: 'yes' })).statusCode).toBe(400);
+    expect((await beacon([1, 2])).statusCode).toBe(400);
+    // Over the 1 KB body cap (the app reports an oversized body as a 400).
+    const big = await beacon({ r: '/', k: 'x', f: 'a'.repeat(2000) });
+    expect(big.statusCode).toBe(400);
+    expect(big.json()).toEqual({ error: 'input too large' });
+  });
+
+  it('★ with statistics OFF there is no tracker and nothing is counted', async () => {
+    await seed({ statistics: { enabled: true } });
+    await publish();
+    const tag = trackerOf((await page('/')).body)!;
+    // Switch it off: the next publish drops the tracker, and a cached page's beacon is ignored AT ONCE.
+    await seed({});
+    expect((await beacon({ r: tag.r, k: tag.k, h: SITE_HOST })).statusCode).toBe(204);
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+    expect(trackerOf((await page('/')).body)).toBeNull();
+    const s = await stats();
+    expect(s.human.views).toBe(0);
+    expect(s.enabled).toBe(false);
+  });
+
+  it('★ the draft preview never carries the tracker', async () => {
+    // The `/preview-site/*` routes exist only with a preview root, so this needs its own harness.
+    const previewRoot = await mkdtemp(join(tmpdir(), 'sw-stats-preview-'));
+    const h2 = await makeHarness({ previewRoot, statsGeo: geo });
+    try {
+      const c2 = await h2.signup({ admin: true });
+      const pid = await c2.createProject('Preview', 'preview-stats');
+      await c2.project(pid).putContent('settings', 'settings', {
+        brand: { name: 'Example', colors: { primary: '#e11' } },
+        settings: { defaultLocale: 'en', locales: ['en'] },
+        website: { statistics: { enabled: true } },
+      });
+      await c2.project(pid).putContent('page', 'home', { kind: 'page', title: 'Home', path: '', source: '<h1>Home</h1>' });
+      const base = (await c2.get(`/projects/${pid}/preview-url`)).json() as { base: string };
+      const doc = await c2.get(base.base);
+      expect(doc.statusCode).toBe(200);
+      expect(doc.body).toContain('<h1>Home</h1>');
+      expect(doc.body).not.toContain('data-sw-stats');
+      expect(doc.body).not.toContain('stats.js');
+    } finally {
+      await h2.close();
+      await rm(previewRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('★ counts a BOT the platform serves, and does not count its beacon a second time', async () => {
+    await seed();
+    await publish();
+    const res = await page('/about/', GOOGLEBOT, '2.2.2.2');
+    expect(res.statusCode).toBe(200);
+    // A crawler that DOES run the script beacons from the platform host: already counted above.
+    const tag = trackerOf(res.body)!;
+    await beacon({ r: tag.r, k: tag.k, h: SITE_HOST }, { ua: GOOGLEBOT, ip: '2.2.2.2' });
+    // A human page load is not counted as served (the tracker counts it).
+    await page('/');
+    const s = await stats();
+    expect(s.botViews).toBe(1);
+    expect(s.bots).toEqual([{ class: 'search', views: 1 }]);
+    expect(s.human.views).toBe(0);
+    expect(s.pages).toEqual([{ path: '/about/', views: 0, botViews: 1 }]);
+  });
+
+  it('★ reaches the collector on a SITE host too (a root-relative beacon from a locally hosted page)', async () => {
+    await seed();
+    await publish();
+    const tag = trackerOf((await page('/')).body)!;
+    expect((await beacon({ r: tag.r, k: tag.k, h: SITE_HOST }, { host: SITE_HOST })).statusCode).toBe(204);
+    expect((await stats()).human.views).toBe(1);
+  });
+
+  it('counts a stored form submission as a goal, labelled with the form name', async () => {
+    await seed();
+    const proj = client.project(projectId);
+    await proj.putContent('form', 'contact', {
+      id: 'contact',
+      name: 'Contact us',
+      mode: 'globalSmtp',
+      recipient: 'owner@example.com',
+      fields: [{ name: 'message', label: 'Message', type: 'textarea' }],
+    });
+    const res = await harness.app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      headers: { 'content-type': 'application/json' },
+      // The time-trap and interaction evidence a real form runtime sends.
+      payload: { message: 'Hello there', _elapsed: '5000', _ix: '3.12.1' },
+    });
+    expect(res.statusCode).toBe(200);
+    const s = await stats();
+    expect(s.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 1 }]);
+  });
+
+  it('exports a table as CSV', async () => {
+    await seed();
+    await publish();
+    const tag = trackerOf((await page('/')).body)!;
+    await beacon({ r: tag.r, k: tag.k, h: SITE_HOST });
+    const res = await client.get(`/projects/${projectId}/stats.csv?from=${today()}&to=${today()}&table=pages`);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toBe(`attachment; filename="statistics-${SLUG}-pages-${today()}-${today()}.csv"`);
+    expect(res.body).toBe(`day,path,views,bot_views\r\n${today()},/,1,0\r\n`);
+    expect((await client.get(`/projects/${projectId}/stats.csv?from=${today()}&to=${today()}&table=users`)).statusCode).toBe(400);
+  });
+
+  it('validates the range', async () => {
+    await seed();
+    expect((await client.get(`/projects/${projectId}/stats?from=2026-10-20&to=2026-10-19`)).statusCode).toBe(400);
+    expect((await client.get(`/projects/${projectId}/stats?from=2020-01-01&to=2026-10-19`)).statusCode).toBe(400);
+    expect((await client.get(`/projects/${projectId}/stats?from=yesterday&to=today`)).statusCode).toBe(400);
+    expect((await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}&device=phone`)).statusCode).toBe(400);
+  });
+
+  it('★ a made-up Bearer header does NOT buy a fresh rate-limit bucket per request', async () => {
+    await seed();
+    await publish();
+    const tag = trackerOf((await page('/')).body)!;
+    // The limiter used to key on ANY bearer, so a random token per request walked past every per-IP limit.
+    const codes: number[] = [];
+    for (let i = 0; i < 125; i++) {
+      codes.push((await beacon({ r: tag.r, k: tag.k, h: SITE_HOST }, { headers: { authorization: `Bearer junk-${i}` } })).statusCode);
+    }
+    expect(codes).toContain(429);
+  });
+
+  it('★ does not count a HEAD request as a bot page view', async () => {
+    await seed();
+    await publish();
+    await harness.app.inject({ method: 'HEAD', url: '/about/', headers: { host: SITE_HOST, 'user-agent': GOOGLEBOT, 'x-forwarded-proto': 'https' } });
+    expect((await stats()).botViews).toBe(0);
+  });
+
+  it('★ is readable by project members only', async () => {
+    await seed();
+    const anon = await harness.app.inject({ method: 'GET', url: `/projects/${projectId}/stats?from=${today()}&to=${today()}` });
+    expect(anon.statusCode).toBe(401);
+    const stranger = await harness.signup();
+    expect((await stranger.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).statusCode).toBe(403);
+  });
+});
+
+describe('built-in statistics without a public URL', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  let publishRoot: string;
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-stats-nourl-'));
+    // Neither a public URL nor a sites domain: locally hosted pages are served in the path form on the app host.
+    harness = await makeHarness({ publishRoot, statsGeo: geo, deployAllowedHosts: ['allowed.example.com'] });
+    client = await harness.signup({ admin: true });
+    projectId = await client.createProject('Example', SLUG, { localHosting: false });
+    await client.project(projectId).putContent('settings', 'settings', {
+      brand: { name: 'Example', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+      website: { statistics: { enabled: true } },
+    });
+    await client.project(projectId).putContent('page', 'home', { kind: 'page', title: 'Home', path: '', source: '<h1>Home</h1>' });
+  });
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+  });
+
+  it('★ a build for ANOTHER host ships no tracker (it would beacon into the void), and the tab says why', async () => {
+    // Before any remote target: nothing to explain.
+    const before = (await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).json();
+    expect(before.notice).toBeUndefined();
+    const created = await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Webspace', protocol: 'sftp', host: 'allowed.example.com', user: 'u', password: 'p', remoteDir: '/www' });
+    expect(created.statusCode).toBe(201);
+    expect((await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).json().notice).toBe('no-public-url');
+    // The downloadable site (built fresh, as a remote deploy is) carries no counter.
+    const res = await client.inject({ method: 'GET', url: `/projects/${projectId}/publish/archive` });
+    expect(res.statusCode).toBe(200);
+    const zip = await JSZip.loadAsync(res.rawPayload);
+    const names = Object.keys(zip.files);
+    expect(names).toContain('index.html');
+    expect(names.some((n) => n.endsWith('stats.js'))).toBe(false);
+    expect(await zip.file('index.html')!.async('string')).not.toContain('data-sw-stats');
+  });
+
+  it('★ a locally hosted page beacons same-origin, and a script-running crawler there is not counted twice', async () => {
+    await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local' });
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+    // Served on the APP host (path form): no sites-domain host for this project is involved.
+    const served = await harness.app.inject({ method: 'GET', url: `/sites/${SLUG}/`, headers: { host: 'cms.local', 'user-agent': GOOGLEBOT } });
+    const tag = trackerOf(served.body)!;
+    expect(tag.b).toBe('');
+    await harness.app.inject({
+      method: 'POST',
+      url: `/a/${projectId}`,
+      headers: { host: 'cms.local', 'content-type': 'text/plain', 'user-agent': GOOGLEBOT },
+      payload: JSON.stringify({ r: tag.r, k: tag.k, h: 'cms.local' }),
+    });
+    const s = (await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).json();
+    expect(s.botViews).toBe(1);
+  });
+});

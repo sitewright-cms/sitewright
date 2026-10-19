@@ -297,6 +297,30 @@ describe('SettingsView', () => {
     await waitFor(() => expect(head).toHaveTextContent('Google Analytics: move to Analytics'));
   });
 
+  it('★ the Analytics tile switches the built-in statistics on, and the save writes website.statistics', async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    const sw = await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' });
+    expect(sw).not.toBeChecked();
+    fireEvent.click(sw);
+    fireEvent.click(floatingSave());
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    expect((putSettings.mock.calls[0]![1] as SettingsBundle).website?.statistics).toEqual({ enabled: true });
+  });
+
+  it('★ a Website save keeps the fields only an agent sets (data files, extra CSP origins)', async () => {
+    // The save REPLACES website.*: these used to be wiped by any unrelated edit in the editor.
+    const dataFiles = [{ path: 'team.json', source: { dataset: 'team' } }];
+    const cspOrigins = { connect: ['api.example.com'] };
+    getSettings.mockResolvedValue({ item: { ...bundle, website: { dataFiles, cspOrigins } } });
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    fireEvent.click(await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' }));
+    fireEvent.click(floatingSave());
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    expect((putSettings.mock.calls[0]![1] as SettingsBundle).website).toMatchObject({ dataFiles, cspOrigins, statistics: { enabled: true } });
+  });
+
   it('discards unsaved edits, reverting fields and re-disabling the buttons', async () => {
     renderView();
     const sheet = await openTile('Identity');

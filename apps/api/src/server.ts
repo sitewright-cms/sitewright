@@ -297,6 +297,8 @@ const app = await createApp({
   // Subdomain routing for locally-hosted sites: `<slug>.<SW_SITES_DOMAIN>` serves that site at root
   // (needs wildcard DNS `*.<domain>` → this host). Unset → off; the `/sites/<slug>/` path form always works.
   sitesDomain: cfg.sitesDomain,
+  // The built-in statistics' country database (`SW_GEOIP_DB`); unset → the bundled DB-IP Lite file.
+  geoipDb: cfg.geoipDb,
   buildRunner,
   aiProvider,
   agentProvider,

@@ -1155,6 +1155,12 @@ have it). NEVER paste a tracker (gtag, GTM, Plausible, Umami, Matomo…) into we
 it skips consent, and on platform hosting the site's CSP blocks it while the preview shows it working.
 The whole thing is also configurable no-code in Settings → Website → Consent, and Settings → Website →
 Analytics lists just the analytics tools.
+BUILT-IN STATISTICS: \`website.statistics: { enabled: true }\` makes the platform count visits itself — human vs
+bot (and which kind of bot), device, country, pages, traffic sources and form submissions — with no third party,
+no cookie and nothing stored on the visitor's device. It needs no integration entry and no consent category; the
+site's privacy policy should still mention it (whether visitors must also be asked depends on where they are).
+Publishing adds the counter to every page (never to the draft preview), so it counts from the next publish. Read
+the numbers with get_site_stats. Only daily totals exist, kept 25 months. It can run beside an external tool.
 `,
   },
   templates: {
@@ -2270,6 +2276,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'create_preview_share', description: "Create a preview SHARE link — a no-login url to the DRAFT site for a client or reviewer. Expires after the instance default unless `expiryDays` says otherwise (0 = never).", capability: 'content:write' },
   { name: 'revoke_preview_share', description: "Revoke a preview share link by id — the only way to withdraw one before it expires.", capability: 'content:write' },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
+  { name: 'get_site_stats', description: "The site's built-in statistics for a range of days: human vs bot traffic, devices, countries, pages, sources, goals.", capability: 'content:read' },
   { name: 'list_orders', description: "List the shop's orders, newest first: payment status, fulfilment, market, ship-to country, lines, amounts, buyer fields — plus how many paid orders still owe a mail. Buyer data: never publish it.", capability: 'content:read' },
   { name: 'get_order', description: "Read one shop order by id.", capability: 'content:read' },
   { name: 'set_order_fulfilment', description: "Move a paid order's fulfilment state (new → packed → shipped → done, or cancelled), with an optional note. Never refunds.", capability: 'content:write' },

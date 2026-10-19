@@ -118,6 +118,8 @@ import {
   type ShopCatalog,
 } from '@sitewright/blocks';
 import { buildDataFiles } from './data-files.js';
+import { STATS_JS, STATS_SCRIPT, statsScriptTag } from '@sitewright/blocks';
+import { statsRouteToken } from '../analytics/token.js';
 import { MANIFEST_FILENAME } from './deploy/manifest.js';
 import {
   toPublicForm,
@@ -388,6 +390,13 @@ export interface BuildSiteOptions {
   publicBaseUrl?: string;
   /** The PROJECT's captcha provider + site key (public); absent → captcha forms render inert. */
   captcha?: CaptchaRenderConfig;
+  /**
+   * BUILT-IN STATISTICS: the project's route-signing key (see analytics/token.ts). With it, and with
+   * `website.statistics.enabled` on, every page links the tracker and carries its signed route; without it
+   * (the draft preview, the page-speed audit's throwaway build) no page does. The collector is
+   * `<publicBaseUrl>/a/<projectId>` — root-relative when no public URL is configured, like the form endpoint.
+   */
+  stats?: { key: string };
   /**
    * The publish-time JSON snapshot fetched from `website.jsonDataUrl` (already SSRF-guarded,
    * fetched + parsed in the main process). Exposed to templates as `{{ website.json_data }}`.
@@ -944,6 +953,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // consumes — so preview + deploy can NEVER ship a different set (the drift that motivated this). Every
     // entry is pure only-used-ships via its marker, EXCEPT consent (its settings-aware gate above).
     const usedBodyEffects = BODY_EFFECT_RUNTIMES.filter((r) => (r.key === 'consent' ? usesConsentRuntime : usesMarker(r.uses)));
+    // BUILT-IN STATISTICS: the tracker ships on every page when the site counts visits — never into the
+    // draft preview (an author browsing their own draft is not a visitor), and never without a signing key.
+    const statsOn = !previewMode && opts.stats !== undefined && website?.statistics?.enabled === true;
     // Cache-bust token (`?v=`) for the shared, fixed-name runtime assets. Derived from the CONTENT
     // that determines those assets — the utility classes + brand theme (→ styles.css), and the
     // component bundle + used effect runtimes + standalone runtime scripts (→ the platform *.js) —
@@ -966,7 +978,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       .update('\x00')
       .update(usedBodyEffects.map((r) => r.js ?? '').join('\x00'))
       .update('\x00')
-      .update([THEME_TOGGLE_JS, ...CHROME_RUNTIME_SOURCES].join('\x00'))
+      // The tracker joins the digest only when it ships, so a site without statistics keeps its token.
+      .update([THEME_TOGGLE_JS, ...CHROME_RUNTIME_SOURCES, ...(statsOn ? [STATS_JS] : [])].join('\x00'))
       .digest('hex')
       .slice(0, 16);
     // No-JS un-hide for the runtimes a page ships that hide content from first paint (svg-anim's no-FOUC
@@ -1030,6 +1043,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const formEndpoint = (formId: string): string =>
       `${formBase}/f/${bundle.project.id}/${formId}${previewMode ? '/preview' : ''}`;
     const resolvedForms = resolveFormEndpoints(forms, formEndpoint);
+    // The statistics collector lives beside the form endpoint, so it widens the page's `connect-src` the same
+    // way: only when the base is ABSOLUTE (a root-relative collector is 'self') and only to an https host.
+    let statsConnectHost: string | null = null;
+    if (statsOn && formBase) {
+      try {
+        const u = new URL(formBase);
+        statsConnectHost = u.protocol === 'https:' && /^[a-z0-9.-]+(:\d+)?$/i.test(u.host) ? u.host : null;
+      } catch {
+        statsConnectHost = null;
+      }
+    }
     // Stored image maps, keyed by entity id — consumed by {{sw-imagemap}} and the
     // data-sw-imagemap pass. Built once (same for every page); the config's authored-markup
     // values are sanitized inside that pass, not here.
@@ -1439,7 +1463,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageCspOrigins = {
           frame: [...authorCspOrigins.frame, ...platformCspOrigins.frame],
           script: [...authorCspOrigins.script, ...platformCspOrigins.script],
-          connect: [...authorCspOrigins.connect, ...platformCspOrigins.connect],
+          connect: [...authorCspOrigins.connect, ...platformCspOrigins.connect, ...(statsConnectHost ? [statsConnectHost] : [])],
           media: authorCspOrigins.media,
           style: platformCspOrigins.style,
         };
@@ -1526,6 +1550,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // ready-to-POST address sitting in the HTML. Only meaningful with an absolute base — a
           // same-origin deployment keeps its relative endpoints.
           formApi: { base: formBase, project: bundle.project.id, preview: previewMode },
+          // BUILT-IN STATISTICS: the tracker, with this page's route signed so the collector counts only real
+          // pages. The route is the URL path the page is served at, relative to the site root.
+          statsTag:
+            statsOn && opts.stats
+              ? statsScriptTag({
+                  src: `${siteRoot}${SCRIPT_DIR}/${STATS_SCRIPT}?v=${assetVer}`,
+                  base: formBase,
+                  project: bundle.project.id,
+                  route: outSlug ? `/${outSlug}/` : '/',
+                  token: statsRouteToken(opts.stats.key, outSlug ? `/${outSlug}/` : '/'),
+                })
+              : undefined,
           // Site-wide content width → --sw-container (the .sw-container helper consumes it).
           containerWidth: website?.containerWidth,
           // A RAW-HTML page renders free-form: omit the platform's own CSS + JS (the explicit page setting).
@@ -1784,6 +1820,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       if (!r.script || !r.js) continue;
       await writeJs(r.script, r.js);
     }
+    // The built-in statistics tracker, when the site counts visits.
+    if (statsOn) await writeJs(STATS_SCRIPT, STATS_JS);
     // The color-scheme toggle + no-flash runtime (first-party behavior; only-used-ships).
     if (usesThemeToggleRuntime) {
       await writeJs(THEME_SCRIPT, THEME_TOGGLE_JS);

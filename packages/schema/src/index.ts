@@ -30,6 +30,7 @@ export * from './stock.js';
 export * from './template.js';
 export * from './translation.js';
 export * from './website.js';
+export * from './statistics.js';
 export * from './countries.js';
 export * from './consent-csp.js';
 export * from './font-stack.js';

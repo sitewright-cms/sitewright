@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type ShopMarket, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, ConsentIntegrationSchema, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type StickyHeaderMode, normalizeStickyHeader, type WebsiteEffects, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType, type ShopMarket, SHOP_CHOICE_FIELD_TYPES, SHOP_OPTIONS_KEY_SUFFIX, type Consent, type ConsentIntegration, ConsentIntegrationSchema, type WebsiteStatistics, DEFAULT_SECURITY_TXT_EXPIRY_YEARS, type SecurityTxtExpiryYears } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -258,6 +258,8 @@ export interface SettingsForm {
   // it. PR2 ships the engine; the dedicated config panel + enable toggle land in a later PR (set via API/MCP
   // until then). The reserved consent_* translation rows surface when `consent.enabled` is true.
   consent?: Consent;
+  /** BUILT-IN STATISTICS (website.statistics) — switched from the Analytics tile. Off when unset. */
+  statisticsEnabled: boolean;
   /** website.search.foldDiacritics — default true when unset. */
   searchFoldDiacritics: boolean;
   // localization
@@ -415,6 +417,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     preloaderBackdrop: w?.effects?.preloaderBackdrop ?? false,
     enableThemes: w?.enableThemes === true,
     consent: w?.consent,
+    statisticsEnabled: w?.statistics?.enabled === true,
     searchFoldDiacritics: w?.search?.foldDiacritics !== false,
     defaultTheme: w?.defaultTheme ?? 'auto',
     containerWidth: w?.containerWidth ?? '',
@@ -572,6 +575,17 @@ function cleanConsent(c: Consent): Consent {
   const ok = (it: ConsentIntegration): boolean => !!it.name && ConsentIntegrationSchema.safeParse(it).success;
   const ints = (c.integrations ?? []).filter(ok);
   return { ...c, integrations: ints.length ? ints : undefined };
+}
+
+/** `website.*` fields with no editor surface (set via MCP/API), carried through a save untouched. */
+const UNEDITED_WEBSITE_FIELDS = ['dataFiles', 'cspOrigins'] as const satisfies readonly (keyof WebsiteSettings)[];
+function carriedWebsiteFields(website: WebsiteSettings | undefined): Partial<WebsiteSettings> {
+  const out: Partial<WebsiteSettings> = {};
+  for (const key of UNEDITED_WEBSITE_FIELDS) {
+    // eslint-disable-next-line security/detect-object-injection -- key is from a constant list
+    if (website?.[key] !== undefined) Object.assign(out, { [key]: website[key] });
+  }
+  return out;
 }
 
 /**
@@ -794,8 +808,15 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // server's z.number() with an opaque 400 and no inline form error).
   const capNum = form.imageUploadCap.trim() ? Number(form.imageUploadCap) : NaN;
   const imageUploadCap = Number.isFinite(capNum) ? capNum : undefined;
+  const statistics: WebsiteStatistics | undefined = form.statisticsEnabled ? { enabled: true } : undefined;
+  // ★ Website fields the form does not edit — set by an agent or the API — ride through from `base`. The
+  // whole `website` object is REPLACED on save, so a field nobody carries is deleted by an unrelated edit:
+  // that is how a GUI save used to wipe an agent's data files and extra CSP origins.
+  const carried = carriedWebsiteFields(base?.website);
   if (
     w ||
+    statistics ||
+    Object.keys(carried).length > 0 ||
     redirects.length ||
     security ||
     shop ||
@@ -813,6 +834,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(security ? { security } : {}),
       ...(shop ? { shop } : {}),
       ...(form.consent ? { consent: cleanConsent(form.consent) } : {}),
+      ...(statistics ? { statistics } : {}),
+      ...carried,
       // Only persisted when turned OFF: the default (fold) stays absent, so an untouched project
       // writes nothing new into website.*.
       ...(form.searchFoldDiacritics ? {} : { search: { foldDiacritics: false } }),

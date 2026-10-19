@@ -142,6 +142,9 @@ export class WorkerBuildRunner implements BuildRunner {
       snippets: job.snippets,
       globalTemplates: job.globalTemplates,
       minifyHtml: job.minifyHtml,
+      ...(job.publicBaseUrl ? { publicBaseUrl: job.publicBaseUrl } : {}),
+      ...(job.captcha ? { captcha: job.captcha } : {}),
+      ...(job.stats ? { stats: job.stats } : {}),
     };
   }
 

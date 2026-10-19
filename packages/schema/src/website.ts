@@ -3,6 +3,7 @@ import { CurrencyCodeSchema, ShopPricingSchema } from './payments.js';
 import { COUNTRY_CODES, CountryCodeSchema } from './countries.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 import { targetsPrivateHost, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
+import { WebsiteStatisticsSchema } from './statistics.js';
 
 // Bounded to limit build-output amplification: these fields are injected into every page of a publish
 // (up to MAX_BUNDLE.pages). That is a real concern, but it applies EQUALLY to the chrome slots below —
@@ -1597,6 +1598,11 @@ const WebsiteSettingsObject = z.object({
    * first-party consent.js runtime. Copy is translatable (reserved `consent_*` keys). See {@link ConsentSchema}.
    */
   consent: ConsentSchema.optional(),
+  /**
+   * BUILT-IN STATISTICS — the platform's own cookieless visit counter (see {@link WebsiteStatisticsSchema}).
+   * When on, publishing adds a small script to every page that reports the pageview to this platform.
+   */
+  statistics: WebsiteStatisticsSchema.optional(),
   /**
    * SITE SEARCH — how the `Search` component's index normalizes words (docs/site-search.md §4).
    * The index itself is emitted by every build; this only tunes matching.

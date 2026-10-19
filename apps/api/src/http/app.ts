@@ -423,6 +423,11 @@ import { extractImageRefs, analyzeImageSizing, type ImageSizingReport } from '..
 import { serveBuiltSite, mimeTypeForFilename } from '../render/serve-built-site.js';
 import { checkNativeMarkers } from '../ai/clone-orchestrator.js';
 import { SourceRefStore, captureSourceRefs, type ReferencePage } from '../render/source-ref.js';
+import { StatsStore } from '../analytics/store.js';
+import { StatsEngine } from '../analytics/engine.js';
+import { createGeoLookup, bundledGeoDbPath, type GeoLookup } from '../analytics/geo.js';
+import { registerStatsRoutes, bareHost, type StatsSiteConfig } from '../analytics/routes.js';
+import { statsRouteOf } from '../analytics/token.js';
 import {
   API_KEY_CAPABILITIES,
   MEMBER_TOKEN_CAPABILITIES,
@@ -1665,6 +1670,15 @@ export interface AppOptions {
   envLogLevel?: LogLevel;
   /** Data directory + DB URL — for storage introspection (DB / backups sizes) and the backup-purge action. */
   dataDir?: string;
+  /**
+   * BUILT-IN STATISTICS: the libsql URL of the statistics database. Defaults to `file:<dataDir>/analytics.db`,
+   * or an in-memory database when no data dir is given (tests).
+   */
+  statsDbUrl?: string;
+  /** A MaxMind-format country database for the statistics (`SW_GEOIP_DB`); default: the bundled DB-IP Lite. */
+  geoipDb?: string;
+  /** The statistics' IP → country lookup. Injectable for tests only; default: {@link geoipDb}. */
+  statsGeo?: GeoLookup;
   databaseUrl?: string;
   /** Isolated template render pool (child-process workers). Absent → /render-template 503s. */
   renderPool?: RenderPool;
@@ -1948,6 +1962,87 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const previewStore = new PreviewStore(
     opts.previewRoot ? { spillDir: join(opts.previewRoot, '_tokens') } : {},
   );
+  // ---- BUILT-IN STATISTICS ----
+  // Daily totals in their own SQLite file; counting happens in memory (see analytics/engine.ts). The country
+  // database loads on the first counted visit, so an instance whose sites never count pays nothing for it.
+  const statsDbUrl = opts.statsDbUrl ?? (opts.dataDir ? `file:${join(opts.dataDir, 'analytics.db')}` : ':memory:');
+  const statsEngine = await StatsEngine.open({
+    store: await StatsStore.open(statsDbUrl),
+    // Derived from the encryption key when there is one, so it outlives the statistics file: every page deployed
+    // to another host carries signatures made from it, and a secret that changed with a lost or restored
+    // `analytics.db` would silently stop counting all of them. (Remote deploy targets need the key anyway.)
+    ...(opts.encryptionKey ? { secret: createHmac('sha256', opts.encryptionKey).update('sitewright-statistics-route-secret').digest('hex') } : {}),
+    geo:
+      opts.statsGeo ??
+      createGeoLookup(opts.geoipDb ?? bundledGeoDbPath(), (err) =>
+        app.log.warn({ errMsg: err instanceof Error ? err.message : String(err) }, 'statistics: the country database could not be read — every visit counts as an unknown country'),
+      ),
+    log: (msg, err) => app.log.warn(err ? { errMsg: err instanceof Error ? err.message : String(err) } : {}, msg),
+  });
+  statsEngine.start();
+  /**
+   * What the collector needs to know about a site, cached for {@link STATS_CONFIG_TTL_MS}: a beacon arrives per
+   * pageview, a settings read per pageview would be the most expensive thing about counting it. Switching
+   * statistics off therefore takes up to that long to stop the counting.
+   */
+  const STATS_CONFIG_TTL_MS = 30_000;
+  const STATS_CONFIG_MAX = 2_000;
+  const statsConfigCache = new Map<string, { at: number; cfg: StatsSiteConfig | null }>();
+  /**
+   * Bumped by every invalidation. A lookup that started before one must not write its (now stale) answer back:
+   * switching statistics off would otherwise keep counting until that entry expired.
+   */
+  let statsConfigEpoch = 0;
+  const invalidateStatsConfig = (projectId?: string): void => {
+    statsConfigEpoch++;
+    if (projectId) statsConfigCache.delete(projectId);
+    else statsConfigCache.clear();
+  };
+  async function statsSiteConfig(projectId: string): Promise<StatsSiteConfig | null> {
+    const hit = statsConfigCache.get(projectId);
+    if (hit && Date.now() - hit.at < STATS_CONFIG_TTL_MS) return hit.cfg;
+    const epoch = statsConfigEpoch;
+    let cfg: StatsSiteConfig | null = null;
+    const project = projectId === GLOBAL_SCOPE_ID ? null : await projects.get(projectId).catch(() => null);
+    if (project && !project.deletedAt) {
+      const settings = (await contentRepo.get({ userId: 'system', projectId, role: 'owner' }, 'settings', 'settings').catch(() => null)) as Settings | null;
+      const website = settings?.website;
+      const platformHosts = new Set<string>();
+      if (sitesDomain) platformHosts.add(`${project.slug}.${sitesDomain}`);
+      for (const [host, route] of customDomainRoutes) if (route.projectId === projectId) platformHosts.add(bareHost(host));
+      if (opts.publicUrl) platformHosts.add(bareHost(new URL(opts.publicUrl).hostname));
+      const ownHosts = new Set(platformHosts);
+      let restrictToOwnHosts = false;
+      if (website?.siteUrl) {
+        try {
+          ownHosts.add(bareHost(new URL(website.siteUrl).hostname));
+          restrictToOwnHosts = true;
+        } catch {
+          /* an unparseable site URL restricts nothing */
+        }
+      }
+      cfg = { enabled: website?.statistics?.enabled === true, platformHosts, ownHosts, restrictToOwnHosts };
+    }
+    if (epoch !== statsConfigEpoch) return cfg;
+    // Bounded, oldest first (Map order is insertion order, and a refreshed entry is re-inserted).
+    statsConfigCache.delete(projectId);
+    while (statsConfigCache.size >= STATS_CONFIG_MAX) statsConfigCache.delete(statsConfigCache.keys().next().value!);
+    statsConfigCache.set(projectId, { at: Date.now(), cfg });
+    return cfg;
+  }
+  // A settings save (the statistics switch, the site URL) takes effect at once rather than when the entry
+  // expires; a domain claim/verify/release rebuilds the host map, so the whole cache goes with it (below).
+  events.subscribeAll((projectId, change) => {
+    if (change.kind === 'settings') invalidateStatsConfig(projectId);
+  });
+  /** Counts a page served to a bot (local hosting) — off the response path, and never failing it. */
+  function countServedBotPage(projectId: string, route: string, ua: string, req: FastifyRequest): void {
+    void statsSiteConfig(projectId)
+      .then((cfg) => {
+        if (cfg?.enabled) statsEngine.recordServedPage(projectId, route, ua, req.ip);
+      })
+      .catch((err: unknown) => app.log.warn({ errMsg: err instanceof Error ? err.message : String(err) }, 'statistics: could not count a served page'));
+  }
   // Short-lived, single-use tickets that let an AGENT hand a LOCAL file to the media library — see
   // UploadTicketStore for why the bytes cannot travel through the MCP tool call itself.
   const uploadTickets = new UploadTicketStore();
@@ -2049,6 +2144,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const rows = await projectDomainsRepo.listVerifiedRoutes();
     customDomainRoutes = new Map(rows.map((r) => [r.host, { projectId: r.projectId, slug: r.slug }]));
     primaryCustomHostBySlug = new Map(rows.filter((r) => r.isPrimary).map((r) => [r.slug, r.host]));
+    // The statistics' per-site host sets are derived from this map (and from slugs, which a rename moves).
+    invalidateStatsConfig();
   }
   await refreshCustomDomainRoutes();
   /** Hosts the INSTANCE answers on — what a project may never claim. Read live (settings can change). */
@@ -2122,6 +2219,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         (req.method === 'POST' || req.method === 'OPTIONS') &&
         /^\/f\/[^/]+\/[^/]+\/?$/.test(url.split('?')[0] ?? url)
       ) {
+        return url;
+      }
+      // The statistics collector, for the same reason: a locally hosted page built without a public URL
+      // beacons to the root-relative `/a/<projectId>`, which on a site host is this origin.
+      if ((req.method === 'POST' || req.method === 'OPTIONS') && /^\/a\/[^/]+$/.test(url.split('?')[0] ?? url)) {
         return url;
       }
       return `/sites/${slug}${url}`;
@@ -2542,7 +2644,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     max: (req) => (isVerifiedApiKey(req) ? API_KEY_RL_MAX : 200),
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
-    keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
+    // ★ A bearer is a bucket key only once it has PROVEN to be a live key (see isVerifiedApiKey). Keying on any
+    // `Authorization: Bearer <whatever>` let an anonymous client mint a fresh bucket per request — a random
+    // token on each call — and so walk straight past every per-IP limit on the public routes (the form
+    // endpoint, the statistics collector, login). A session cookie is HMAC-signed, so it cannot be minted.
+    keyGenerator: (req) => sessionToken(req) ?? (isVerifiedApiKey(req) ? bearerToken(req) : undefined) ?? req.ip,
     // Exempt the server-side agent loop's own scoped token: one "build the page in stages" turn fires
     // many rapid tool calls (each an in-process /mcp + content inject on the same bearer) and would
     // otherwise self-throttle into spurious 429s the model reads as hard failures. Only server-minted,
@@ -3701,7 +3807,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await requireInstanceAdmin(req);
     const dbBytes = await dbSizeBytes(opts.databaseUrl ? dbFilePath(opts.databaseUrl) : null);
     const backups = opts.dataDir ? await backupsSummary(backupsDir(opts.dataDir)) : { count: 0, bytes: 0 };
-    return reply.send({ dbBytes, backups });
+    // The built-in statistics live in their own file beside the database.
+    const statsBytes = await dbSizeBytes(dbFilePath(statsDbUrl));
+    return reply.send({ dbBytes, statsBytes, backups });
   });
 
   // Reap pre-migration snapshots on demand, keeping the newest `keepLast` (default 1). Admin-only; the DB
@@ -4507,6 +4615,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     jsonDataCache.delete(project.id);
     await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
     await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
+    invalidateStatsConfig(project.id);
+    await statsEngine.forget(project.id).catch(onCleanupError('statistics'));
   }
 
   // ---- Project content (tenant + project scoped) ----
@@ -8870,7 +8980,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     project: Awaited<ReturnType<ProjectRepository['get']>>,
     outDir: string,
     // `signal`: a build whose caller can go away (the page-speed audit) stops at its next step.
-    buildOpts: { minify?: boolean; signal?: AbortSignal } = {},
+    // `stats: false`: a throwaway build nobody visits (the audit) ships no statistics tracker.
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean } = {},
   ): Promise<ReleaseManifest> {
     const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
@@ -8891,6 +9002,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Minify is now a `local` deploy-target serve option (the caller passes it) — no longer a website field.
       ...(buildOpts.minify ? { minifyHtml: true } : {}),
       ...(buildOpts.signal ? { signal: buildOpts.signal } : {}),
+      // The route-signing key for the statistics tracker; the build adds the tracker only when the site's
+      // `website.statistics` is on.
+      ...(buildOpts.stats !== false ? { stats: { key: statsEngine.projectKey(project.id) } } : {}),
       // readStored accepts image variant / raw file / font face names (superset) — all copied in.
       readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
       // Generated thumbnails go back into the asset dir — the same cache `ensureThumb` fills — so a
@@ -8961,7 +9075,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // `minify` mirrors the saved target's `minifyHtml` serve option — available for ALL deploy
       // targets (the caller passes it). The legacy ad-hoc `/publish/deploy` route has no saved target,
       // so it omits this and builds unminified by design.
-      await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify });
+      // No statistics tracker without a public URL: the collector address would be root-relative, i.e. on the
+      // owner's own host, where nothing answers — the counter would ship dead and the tab would show zeros
+      // with no reason given. The Statistics tab says why instead (`notice: 'no-public-url'`).
+      await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl) });
       // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
       // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
       // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails
@@ -9374,6 +9491,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // never this branch), but the redirect target must never carry header-breaking bytes.
           const safePath = path.replace(/[\r\n\0]/g, '');
           return reply.redirect(`${siteBase}${safePath}/${query}`, 301);
+        }
+        // BUILT-IN STATISTICS: a crawler that fetches a page almost never runs its script, so on local hosting
+        // the page is counted as it is served. Humans are left to the tracker (counting them here too would
+        // count them twice), so only a known-bot user agent costs anything beyond one pattern test.
+        // GET only: Fastify answers HEAD on this route too, and a HEAD is not a page view.
+        const servedUa = req.headers['user-agent'];
+        if (req.method === 'GET' && typeof servedUa === 'string' && statsEngine.isKnownBot(servedUa)) {
+          const route = statsRouteOf(path);
+          if (route) countServedBotPage(gateProject.id, route, servedUa, req);
         }
         // Per-site CSP (PAGE responses only). The CSP is enforced HERE, as a response header, and ONLY on
         // platform-hosted origins — this is where the platform has something to protect (many tenants on one
@@ -10101,7 +10227,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // concurrent audits can't exhaust CPU/disk/ports — not just the Chrome portion. One audit at a
           // time on top of that (lighthouseGate), taken first so a queued audit holds no render slot.
           const result = await lighthouseGate.run(() => withRenderSlot(() => withAuditMemory(signal, async () => {
-            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal });
+            await buildToDir(ctx, project, dir, { minify: !!local?.minifyHtml, signal, stats: false });
             served = await serveBuiltSite(dir);
             const pageUrl = `${served.url}${route ? `${route}/` : ''}`;
             // Published asset sizes, read once from the build we just produced. Best-effort: a missing
@@ -10755,6 +10881,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     getFormModes: () => instanceSettingsRepo.getFormModes(),
     resolveProject,
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    rl,
+    // A stored submission is a GOAL for the built-in statistics (when the site counts visits).
+    onSubmitted: (projectId, formId) => {
+      void statsSiteConfig(projectId)
+        .then((cfg) => {
+          if (cfg?.enabled) statsEngine.recordGoal(projectId, `form:${formId}`);
+        })
+        .catch(() => {});
+    },
+  });
+
+  if (statsEngine.createdSecret) {
+    app.log.info('statistics: created a new route-signing secret — pages published before it on other hosts count again once republished (set SW_ENCRYPTION_KEY to make it survive the statistics file)');
+  }
+  registerStatsRoutes(app, {
+    engine: statsEngine,
+    siteConfig: statsSiteConfig,
+    resolveProject,
+    formNames: async (ctx) => {
+      const forms = (await contentRepo.list(ctx, 'form')) as Array<{ id?: unknown; name?: unknown }>;
+      return new Map(forms.flatMap((f) => (typeof f.id === 'string' ? [[f.id, typeof f.name === 'string' && f.name ? f.name : f.id] as const] : [])));
+    },
+    notice: async (ctx) => {
+      if (opts.publicUrl) return undefined;
+      const targets = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
+      return targets.some((t) => t.protocol !== 'local') ? 'no-public-url' : undefined;
+    },
+    trustProxy: Boolean(opts.trustProxy),
+    warn: (message) => app.log.warn(message),
     rl,
   });
 
@@ -11877,6 +12032,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // process open, but the class documents a shutdown contract and every other long-lived resource
   // here honours one.
   app.addHook('onClose', async () => previewStore.close());
+  // Write the last minute of statistics and remember today's visitors for the next start.
+  app.addHook('onClose', async () => statsEngine.close());
 
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close

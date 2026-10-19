@@ -1,5 +1,7 @@
 import type {
   CaptchaPublic,
+  SiteStats,
+  StatsQuery,
   CaptchaInput,
   CorporateIdentity,
   Dataset,
@@ -139,6 +141,19 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
 export function downloadProjectExport(projectId: string): void {
   const a = document.createElement('a');
   a.href = `${BASE}/projects/${encodeURIComponent(projectId)}/export.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/**
+ * Downloads one table of the built-in statistics as CSV (the route replies `Content-Disposition: attachment`),
+ * the same transient-anchor way as the project export.
+ */
+export function downloadStatsCsv(projectId: string, from: string, to: string, table: 'traffic' | 'pages' | 'sources' | 'goals'): void {
+  const q = new URLSearchParams({ from, to, table });
+  const a = document.createElement('a');
+  a.href = `${BASE}/projects/${encodeURIComponent(projectId)}/stats.csv?${q.toString()}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -1675,6 +1690,13 @@ export const api = {
       `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
     ),
   /** The project-wide activity feed (History view). Optional kind/op filters + a `before` ISO cursor. */
+  /** The built-in statistics for a range of UTC days, optionally narrowed to a device and/or country. */
+  getStats: (projectId: string, q: StatsQuery) => {
+    const params = new URLSearchParams({ from: q.from, to: q.to });
+    if (q.device) params.set('device', q.device);
+    if (q.country) params.set('country', q.country);
+    return request<SiteStats>('GET', `/projects/${projectId}/stats?${params.toString()}`);
+  },
   listProjectRevisions: (projectId: string, opts: { kind?: string; op?: string; limit?: number; before?: string } = {}) => {
     const q = new URLSearchParams();
     if (opts.kind) q.set('kind', opts.kind);
@@ -2154,7 +2176,7 @@ export const api = {
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),
   /** Live storage usage: the DB size (incl. WAL sidecars) + pre-migration snapshot count/size. */
   getStorage: () =>
-    request<{ dbBytes: number; backups: { count: number; bytes: number } }>('GET', '/admin/storage'),
+    request<{ dbBytes: number; statsBytes?: number; backups: { count: number; bytes: number } }>('GET', '/admin/storage'),
   /** Reap pre-migration DB snapshots, keeping the newest `keepLast` (≥1). Never touches the DB itself. */
   purgeBackups: (keepLast: number) =>
     request<{ removed: number; count: number; bytes: number }>('POST', '/admin/backups/purge', { keepLast }),

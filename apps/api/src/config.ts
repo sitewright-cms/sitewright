@@ -62,6 +62,11 @@ export interface RuntimeConfig {
   readonly seedAdminEmail: string;
   readonly seedAdminPassword?: string;
   readonly sitesDomain?: string;
+  /**
+   * `SW_GEOIP_DB` — a MaxMind-format COUNTRY database for the built-in statistics, replacing the bundled DB-IP
+   * Lite file (a fresher DB-IP download, or MaxMind GeoLite2-Country under its own licence).
+   */
+  readonly geoipDb?: string;
 
   readonly version: string;
   readonly disableUpdateCheck: boolean;
@@ -153,6 +158,7 @@ export function resolveRuntimeConfig(env: Env): RuntimeConfig {
     seedAdminEmail: env.SW_ADMIN_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL,
     seedAdminPassword: env.SW_ADMIN_PASSWORD,
     sitesDomain: env.SW_SITES_DOMAIN,
+    geoipDb: env.SW_GEOIP_DB?.trim() || undefined,
 
     version: env.SW_VERSION ?? '0.0.0',
     disableUpdateCheck: env.SW_DISABLE_UPDATE_CHECK === 'true',

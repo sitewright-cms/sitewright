@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The agent design guide accepts the familiar website header.** The guide's generic-template check
+  counted a header with the logo on the left, links on the right and one button far right as a sign
+  of the stock AI layout. In the v0.65.0 test builds, four of five sites still chose that header,
+  because it is where visitors expect the menu. The guide now calls it a usability convention: agents may
+  use it whenever it serves visitors, and vary the pages instead. The four-column footer stays on the
+  list, and a thin utility strip over a centred wordmark still counts as the second-wave look.
+
 ## [0.65.0] — 2026-10-19
 
 ### Changed

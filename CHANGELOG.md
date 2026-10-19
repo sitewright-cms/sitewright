@@ -129,6 +129,35 @@ The running version of an instance is reported at `GET /version` (baked into the
   - With "both", if one device fails, the other device's result is still returned, along with the
     reason the missing one failed. The editor's audit panel shows that reason too.
   - A crashed browser tab now says it is almost always a memory problem and is worth one retry.
+- **Tailwind classes inside a Handlebars condition are styled on the published site.** In markup like
+  `<div class="p-6 {{#if (eq phase "dusk")}}bg-orange-500{{/if}}">`, the quotes around `"dusk"` hid
+  `bg-orange-500` from the published and draft site's stylesheet. The editor preview looked right, but the
+  published block was unstyled.
+  - Classes in every branch now count: `{{else}}`, `{{else if}}`, `{{#unless}}` and nested conditions,
+    with single or double quotes.
+  - Classes that only exist once the page is rendered are now styled too, as they already were in the
+    editor preview. Examples are a built name like `bg-{{tone}}-600` and classes in a helper's output,
+    such as the default `h-5 w-5` of an `{{sw-icon}}` or the `rounded-sm` of a language flag. When only
+    such a class changes, the stylesheet's cache-busting `?v=` changes with it, so visitors get the new
+    rule.
+  - Only classes that produce CSS count. Rendered classes that produce none, like the platform's own
+    `sw-icon` or an imported page's `wp-image-12`, change nothing: a site without utility classes still
+    ships no stylesheet, and a site whose pages render no new utility builds exactly as before.
+  - If a site has so many classes that some had to be left out, the publish result now says so
+    (`utilityClassesCapped`) and the server logs a warning.
+  - Raw-HTML pages still add nothing to the shared stylesheet.
+  - A class attribute full of unclosed `{{` or `{{!--` no longer stalls a publish or a preview. One such
+    256 KB page took about 19 seconds to scan; it now takes milliseconds.
+- **AVIF images no longer ship an oversized fallback.** With `{{sw-image … format="avif"}}` or site-wide
+  AVIF delivery, the fallback image inside the `<picture>` got the largest file (up to 2400px wide), with
+  no `srcset` or `sizes`. `pagespeed_audit` flagged every AVIF image as oversized. The fallback now gets
+  the same responsive `srcset` and `sizes` as a WebP image, so the audit has nothing to flag.
+- **Checkboxes, radio buttons and toggles in a hand-written cart order form keep their size.** In an
+  authored cart drawer, daisyUI `toggle`, `checkbox` and `radio` controls shrank to thin 2px bars. Native
+  controls sized with classes like `w-5 h-5` lost their width. A checkbox placed in an `order-field`
+  wrapper was stretched into a full-width bar. The cart style now gives these controls only their row
+  layout, as the form style does since the fix above. The platform's own cart drawer looks exactly as
+  before.
 
 ## [0.64.0] — 2026-10-18
 

@@ -125,6 +125,34 @@ describe('buildSwImage', () => {
     expect(html).toContain('</picture>');
   });
 
+  it('★ gives the AVIF <picture>’s fallback <img> the SAME responsive srcset + sizes as the WebP path', () => {
+    // The fallback used to be a bare `src` at the largest rung (2400px here) with no srcset/sizes, so the
+    // sizing audit flagged every AVIF image as oversized and agents stopped opting into AVIF.
+    const opts = { sizes: '(min-width:768px) 50vw, 100vw', alt: 'Hero', className: 'w-full' } as const;
+    const avif = buildSwImage(img.url, [img], { ...opts, format: 'avif' });
+    const fallback = avif.match(/<img\b[^>]*>/)?.[0];
+    expect(fallback).toBeDefined();
+    expect(fallback).toContain(
+      'srcset="/media/acme/a1/photo.jpg?size=sm 500w, /media/acme/a1/photo.jpg?size=md 1000w, ' +
+        '/media/acme/a1/photo.jpg?size=lg 1600w, /media/acme/a1/photo.jpg?size=xl 2000w"',
+    );
+    expect(fallback).toContain('sizes="(min-width:768px) 50vw, 100vw"');
+    // Byte-identical to the image the WebP path emits — the <picture> only ADDS the sources around it.
+    expect(fallback).toBe(buildSwImage(img.url, [img], opts));
+    expect(avif).toBe(
+      '<picture>' +
+        `<source type="image/avif" srcset="${avif.match(/type="image\/avif" srcset="([^"]*)"/)![1]}" sizes="(min-width:768px) 50vw, 100vw">` +
+        `<source type="image/webp" srcset="${avif.match(/type="image\/webp" srcset="([^"]*)"/)![1]}" sizes="(min-width:768px) 50vw, 100vw">` +
+        `${fallback}</picture>`,
+    );
+  });
+
+  it('keeps the responsive fallback inside a lightbox anchor too (format=avif + lightbox)', () => {
+    const html = buildSwImage(img.url, [img], { format: 'avif', lightbox: true });
+    expect(html.startsWith('<a href="/media/acme/a1/photo.jpg?size=xl"')).toBe(true);
+    expect(html.match(/<img\b[^>]*>/)?.[0]).toContain('srcset="/media/acme/a1/photo.jpg?size=sm 500w');
+  });
+
   it('honours alt/class/sizes/loading overrides', () => {
     const html = buildSwImage(img.url, [img], { alt: 'Hero', className: 'w-full rounded', sizes: '(min-width:768px) 50vw, 100vw', loading: 'eager' });
     expect(html).toContain('alt="Hero"');

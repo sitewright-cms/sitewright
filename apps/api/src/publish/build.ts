@@ -21,6 +21,7 @@ import {
   publishedDatasetEntries,
   keyedDatasets,
   extractClassNames,
+  MAX_EXTRACTED_CLASS_TOKENS,
   isRichNavLabel,
   publishedPages,
   relativeRoot,
@@ -87,8 +88,9 @@ import {
   standaloneRuntimes,
   type ChromeContext,
 } from './chrome-runtimes.js';
-import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
+import { compileUtilityCss, brandToTailwindTheme, createUtilityProbe } from '@sitewright/tailwind';
 import { BODY_EFFECT_RUNTIMES } from './effect-runtimes.js';
+import { relinkStylesheet, renderedClassHarvest, renderedStylesheetVersion } from './rendered-classes.js';
 import { companyToOrganization } from './company-seo.js';
 import { emitFaviconSet, type IconSet } from './favicon-assets.js';
 import {
@@ -278,6 +280,13 @@ export interface ReleaseManifest {
    * are reported; a parent that never lists them lost nothing.
    */
   childrenTruncated?: Array<{ page: string; shown: number; total: number }>;
+  /**
+   * The utility sheet's candidate set hit a ceiling, so some classes the pages use may be missing from
+   * `styles.css`: `droppedUtilities` render-only utilities past MAX_RENDERED_CLASS_TOKENS (junk never
+   * counts toward it), and `cappedScans` scans of one source, body or slot that hit extractClassNames'
+   * per-call cap. Absent when nothing was left out. Logged once per build by the caller.
+   */
+  utilityClassesCapped?: { renderedUtilities: number; droppedUtilities: number; cappedScans: number };
 }
 
 /**
@@ -808,7 +817,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const effectiveSources = routes
       .map((r) => effectiveSource(r.page))
       .filter((s): s is string => Boolean(s));
-    const sourceClassNames = effectiveSources.flatMap((s) => extractClassNames(s));
+    // Every source scan below goes through here, so a scan that hit extractClassNames' per-call token cap
+    // (classes past it never reach the sheet) is counted and reported on the manifest, not silently lost.
+    let cappedSourceScans = 0;
+    const scanClasses = (html: string): string[] => {
+      const classes = extractClassNames(html);
+      if (classes.length >= MAX_EXTRACTED_CLASS_TOKENS) cappedSourceScans += 1;
+      return classes;
+    };
+    const sourceClassNames = effectiveSources.flatMap(scanClasses);
     // Project-wide skeleton slots feed the shared sheet too.
     const slotSources = [
       website?.mainNav,
@@ -817,13 +834,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       website?.footer,
       website?.bottom,
     ].filter((s): s is string => Boolean(s));
-    const slotClassNames = slotSources.flatMap((s) => extractClassNames(s));
+    const slotClassNames = slotSources.flatMap(scanClasses);
     // Only the snippets a page/template/slot actually composes (transitively) contribute — an
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
     // {{> snippet}} partials a source page composes contribute their classes too.
-    const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
+    const snippetClassNames = Object.values(usedSnippets).flatMap(scanClasses);
     // ★ Rich MENU LABELS (a page's `nav.title`, a link placeholder's name) render their own markup —
     // and their own utilities — into every menu, but they live in the CONTENT DB, so not one of the
     // SOURCE scans above can see them. Left out, a styled label is correct in the editor preview
@@ -833,7 +850,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // chars by the schema, so this is bounded by the page count.
     const navLabelClassNames = pubBundle.pages.flatMap((p) => {
       const label = p.nav?.title || (isLinkPage(p) ? p.title : '');
-      return isRichNavLabel(label) ? extractClassNames(label) : [];
+      return isRichNavLabel(label) ? scanClasses(label) : [];
     });
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
     // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
@@ -880,7 +897,17 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...consentClassNames,
       ...richContentClassNames,
     ];
+    // ★ A UTILITY-FREE SITE STAYS UTILITY-FREE: a site whose sources carry no class ships no sheet and links
+    // none — byte-identical to a build without the rendered-class harvest below — unless one of its pages
+    // RENDERS a class that compiles to a rule. Rendered classes that compile to nothing (the platform's own
+    // `sw-*`, an imported page's `wp-image-12`) never create a sheet, add a link or move the `?v=` token.
     const usesUtilities = classNames.length > 0;
+    const utilityTheme = brandToTailwindTheme(brand);
+    // ★ …and every class the pages RENDER that this source scan missed, the preview's rule, so a utility
+    // that only exists at render time (`bg-{{tone}}-600`, a helper's markup, a data value's HTML) ships too.
+    // Only classes that compile to a rule count (the probe is loaded lazily, on the first class that needs
+    // asking about). Fed per page in the route loop below; see rendered-classes.ts.
+    const renderedClasses = renderedClassHarvest(classNames, { probe: () => createUtilityProbe(utilityTheme) });
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / banner / form) ships
     // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
     // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
@@ -1314,6 +1341,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
+        // The classes THIS page rendered — its body + chrome slots, exactly the markup the editor preview
+        // compiles from. A RAW-HTML page is skipped: it links no utility sheet (and the editor compiles none
+        // for it), so its foreign classes must not reach the shared one.
+        const pageRendersUtilities =
+          !page.rawHtml &&
+          (await renderedClasses.add([bodyHtml, mainNavHtml, sidebarLeftHtml, sidebarRightHtml, footerHtml, bottomHtml]));
         // PRELOADER overlay (first body child). The logo resolves to a MATERIALIZED `lg` thumbnail
         // (`relImage` records the ref so it lands in the export — `copyMedia` skips images now that
         // they're generated on demand; a bare `rel()` would ship a dangling 404). Page-relative, so
@@ -1499,7 +1532,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Shared assets (under the site's asset tree, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.
-          stylesheets: usesUtilities ? [`${siteRoot}${SCRIPT_DIR}/${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
+          // A page that RENDERS a utility the source scan missed links it even when that scan found none.
+          stylesheets:
+            usesUtilities || pageRendersUtilities ? [`${siteRoot}${SCRIPT_DIR}/${UTILITY_STYLESHEET}?v=${assetVer}`] : undefined,
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts.map((s) => `${s}?v=${assetVer}`) : undefined,
@@ -1687,9 +1722,27 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),
     // containing only the utilities actually used, with brand tokens in the theme.
-    if (usesUtilities) {
+    const renderedUtilities = renderedClasses.utilities();
+    if (usesUtilities || renderedUtilities.length > 0) {
       report({ phase: 'styles' });
-      const css = await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand));
+      // What the source scan alone compiles — exactly the previous build's sheet — and, only when the pages
+      // rendered utilities beyond it, the sheet with those too.
+      const sourceCss = usesUtilities ? await compileUtilityCss([classNames.join(' ')], utilityTheme) : undefined;
+      const css =
+        renderedUtilities.length === 0
+          ? sourceCss!
+          : await compileUtilityCss([[...classNames, ...renderedUtilities].join(' ')], utilityTheme);
+      // The pages link the sheet at `assetVer`, which only the SOURCE scan feeds. When the rendered utilities
+      // really changed the sheet, its token must follow them — else a dataset edit that changes a rendered
+      // class leaves every cached `styles.css?v=` serving the old rule. When they changed nothing, the pages
+      // keep their token and stay byte-identical.
+      if (css !== sourceCss) {
+        await relinkStylesheet(
+          writtenPaths,
+          `${UTILITY_STYLESHEET}?v=${assetVer}`,
+          `${UTILITY_STYLESHEET}?v=${renderedStylesheetVersion(assetVer, css)}`,
+        );
+      }
       // The runtimes may not be written yet, and a site with no media has no `_assets/` at all, so the
       // directory cannot be assumed to exist.
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant path under the validated tmp dir
@@ -1949,6 +2002,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           );
     }
 
+    // A candidate ceiling that was hit means a class may be missing from the sheet — say so, never silently.
+    const classStats = renderedClasses.stats();
+    const cappedScans = cappedSourceScans + classStats.cappedScans;
+    const utilityClassesCapped =
+      classStats.droppedUtilities > 0 || cappedScans > 0
+        ? { renderedUtilities: classStats.utilities, droppedUtilities: classStats.droppedUtilities, cappedScans }
+        : undefined;
     // One emitted page per route (locale variants are their own routes/pages now).
     const manifest: ReleaseManifest = {
       publishedAt,
@@ -1962,6 +2022,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...(shopCatalogWarnings.length > 0 ? { shopCatalogWarnings } : {}),
       ...(shopCartWarnings.length > 0 ? { shopCartWarnings: [...new Set(shopCartWarnings)].slice(0, 50) } : {}),
       ...(childrenTruncated.size > 0 ? { childrenTruncated: [...childrenTruncated.values()] } : {}),
+      ...(utilityClassesCapped ? { utilityClassesCapped } : {}),
     };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

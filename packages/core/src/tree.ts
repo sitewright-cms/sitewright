@@ -69,52 +69,6 @@ export function referencesParentPage(source: string): boolean {
   return PARENT_PAGE_REF_RE.test(source);
 }
 
-/** Upper bound on distinct class tokens extracted from one HTML/source string. */
-export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
-
-/**
- * Extract the literal CSS class tokens from `class="…"` / `class='…'` attributes in an HTML
- * string or a Handlebars template source — the Tailwind JIT compiler's candidate set for
- * code-first pages. Used by both the publish build and the editor's live-preview endpoint, so the
- * extraction stays identical across the two paths.
- *
- * Handlebars `{{ … }}` expressions inside a class value are stripped first — a dynamic class
- * value can't be precompiled, so it must not leak a half-token into the candidate set. The
- * result is deduplicated and capped at `max` tokens: a rendered body can be up to ~1 MiB of
- * attacker-authored markup, and an uncapped synthetic class list would let an owner/admin
- * spike Tailwind's compiler. Real pages use far fewer than the cap.
- */
-export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLASS_TOKENS): string[] {
-  const attrRe = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
-  // {{sw-icon "name" "classes"}} (incl. "flag:<cc>"): the helper emits its second
-  // argument as the svg's class attribute at RENDER time. A source-level scan must read it
-  // here too, or icon utility classes (the catalog's own `{{sw-icon "caret-left" "size-6"}}`
-  // pattern) never reach the compiled sheet and icons render unsized.
-  // The FIRST arg may be a quoted literal ("mail") OR a BARE VARIABLE/PATH (`icon`, `this.icon`) — the
-  // latter is the common `{{#each company.social}} … {{sw-icon icon "size-7"}}` case, whose class arg
-  // would otherwise be missed (the footer social icons then render 0×0). The class is the second string.
-  // (Helpers with `class="…"` HASH args — sw-form, sw-add-to-cart — are already caught by
-  // attrRe's plain text scan. KNOWN GAP: classes inside pre-rendered DATA values, e.g. nav
-  // labelHtml from decorateNav, are invisible to any source scan; nav icons use stock
-  // classes referenced elsewhere, so this has no practical effect today.)
-  // The two loops run sequentially under ONE shared token cap — a cap-saturating page keeps
-  // the existing attr-first priority; the cap bounds compiler work, not completeness.
-  const helperRe = /\{\{\s*sw-(?:icon|flag)\s+(?:"[^"]*"|'[^']*'|[^\s"'{}]+)\s+(?:"([^"]*)"|'([^']*)')/g;
-  const tokens = new Set<string>();
-  const full = (value: string): boolean => {
-    for (const token of value.replace(/\{\{[^}]*\}\}/g, ' ').split(/\s+/)) {
-      if (!token) continue;
-      tokens.add(token);
-      if (tokens.size >= max) return true;
-    }
-    return false;
-  };
-  let m: RegExpExecArray | null;
-  while ((m = attrRe.exec(html)) !== null) {
-    if (full(m[1] ?? m[2] ?? '')) return [...tokens];
-  }
-  while ((m = helperRe.exec(html)) !== null) {
-    if (full(m[1] ?? m[2] ?? '')) return [...tokens];
-  }
-  return [...tokens];
-}
+// The class-name extractor lives in its own module (it reads Handlebars expressions inside class values);
+// re-exported here so its long-standing import path keeps working.
+export { extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from './class-names.js';

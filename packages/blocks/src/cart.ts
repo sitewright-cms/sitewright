@@ -270,17 +270,26 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="market"]{margin-left:auto;margin-right:.5rem;font-size:.8125rem}',
   '[data-sw-cart-add][data-sw-unavailable]{opacity:.55;cursor:not-allowed}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
-  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea,[data-sw-cart] [data-sw-part="order-field"] select{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
+  // The text-field look. ★ CHECKBOX / RADIO ARE NOT FIELDS and get none of it — an authored cart may put one in
+  // an order-field (the runtime reads every control in a wrapper), and width:100% + padding + border on a daisyUI
+  // `checkbox` / `toggle` is a stretched, padded bar. The exclusion sits in :where() so the rule keeps its
+  // (0,2,1) weight for the text controls it does style.
+  '[data-sw-cart] [data-sw-part="order-field"] input:where(:not([type=checkbox]):not([type=radio])),[data-sw-cart] [data-sw-part="order-field"] textarea,[data-sw-cart] [data-sw-part="order-field"] select{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
   // CHOICE + TOGGLE order fields. A radio group is a <fieldset> (its <legend> replaces the usual >span
-  // label, hence the reset), and a radio/checkbox input must NOT inherit the full-width text-input rule
-  // above — it sits inline next to its own label instead.
+  // label, hence the reset), and a radio/checkbox sits inline next to its own label.
   '[data-sw-cart] [data-sw-part="order-choice"]{display:block;margin-bottom:.5rem;font-size:.8125rem;border:0;padding:0;min-width:0}',
   '[data-sw-cart] [data-sw-part="order-choice"]>legend{padding:0;margin-bottom:.15rem}',
   '[data-sw-cart] [data-sw-part="order-option"]{display:flex;align-items:center;gap:.4rem;margin:.15rem 0;font-weight:400}',
-  '[data-sw-cart] [data-sw-part="order-option"] input,[data-sw-cart] [data-sw-part="order-toggle"] input[type="checkbox"]{width:auto;margin:0;padding:0;flex:none}',
   '[data-sw-cart] [data-sw-part="order-toggle"]{display:flex;align-items:center;gap:.4rem;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-toggle"]>span{margin:0}',
-  '[data-sw-cart] [data-sw-part="order-toggle"] input{width:auto;margin:0;flex:none}',
+  // ★ The control itself gets LAYOUT only — flush in its flex row (no UA margin) and never shrinking beside a
+  // long label — at zero weight, so an author's utility (m-1, shrink) still wins. It used to be a firm
+  // `width:auto;padding:0` at (0,3,1): a no-op on the native controls the runtime builds, but on an
+  // `appearance:none` control (every daisyUI checkbox / radio / toggle) `width:auto` is ZERO content width, so
+  // an authored cart's toggles rendered as 2px bars. Lowering the weight would not have helped: daisyUI ships
+  // its components in `@layer daisyui.*`, and an unlayered declaration beats a layered one whatever its
+  // specificity. Same fix as the form sheet (components.ts FORM_CSS); see cart-choice-controls.behavior.test.ts.
+  ':where([data-sw-cart] [data-sw-part="order-option"] input,[data-sw-cart] [data-sw-part="order-toggle"] input){margin:0;flex:none}',
   // order-submit / channel-submit are checkout CTAs — they render as .btn.btn-primary.btn-block; only
   // their stacking gap + the submitting cursor are kept (the face/hover come from .btn).
   '[data-sw-cart] [data-sw-part="order-submit"]{margin-top:.25rem}',

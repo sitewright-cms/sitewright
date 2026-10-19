@@ -1137,7 +1137,13 @@ It falls into \`defaultEmbedCategory\` (default "functional"); override one ifra
 customize the placeholder text with data-sw-consent-note="…", or skip gating with data-sw-consent-skip.
 (Consent off → iframes load normally.) A raw third-party <script> in
 website.head/scripts stays UNGATED by default — to gate it, write <script type="text/plain"
-data-sw-consent="analytics" src="…"></script> and the runtime activates it on consent.
+data-sw-consent="analytics" src="…"></script> and the runtime activates it on consent, keeping the vendor's
+own attributes (data-domain, data-website-id, integrity…).
+WHAT THE RUNTIME DOES FOR YOU: ga4/gtm get Google Consent Mode v2 signals (denied by default, then the
+visitor's choice, updated live). The editor's draft preview never runs analytics or marketing code, so the
+owner's previews are not counted (embeds and functional widgets still render). Withdrawing a category deletes
+its known tracker cookies, and reloads the page when its code already ran there (not while a form holds unsaved
+input); cancel the \`sw:consentrevoked\` event to handle the reload yourself.
 The whole thing is also configurable no-code in Settings → Website → Consent.
 `,
   },

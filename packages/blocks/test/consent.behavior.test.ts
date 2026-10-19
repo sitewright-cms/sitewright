@@ -409,3 +409,179 @@ describe('Consent author-content gating (jsdom)', () => {
     expect(heldIframe().getAttribute('src')).toBe('https://x.example/v'); // load-once still works
   });
 });
+
+describe('Consent runtime — analytics hygiene (jsdom)', () => {
+  type Win = { dataLayer?: unknown[]; gtag?: unknown; swConsent: { set: (c: Record<string, boolean>) => void } };
+  const win = (): Win => window as unknown as Win;
+  const GA = { id: 'ga', cat: 'analytics', kind: 'ga4', mid: 'G-X', src: 'https://www.googletagmanager.com/gtag/js?id=G-X', async: true };
+  const injected = (id: string): Element | null => document.querySelector(`script[data-sw-consent-loaded="${id}"]`);
+  function runWith(bodyHtml: string, cfg: object): void {
+    document.body.innerHTML = `<div data-sw-consent></div>${bodyHtml}`;
+    document.querySelector('[data-sw-consent]')!.setAttribute('data-sw-consent-config', JSON.stringify(cfg));
+    (0, eval)(CONSENT_JS);
+  }
+  /** The gtag consent commands pushed so far, as [command, params] pairs. */
+  const consentCalls = (): Array<[string, Record<string, string>]> =>
+    (win().dataLayer ?? [])
+      .map((a) => a as unknown as ArrayLike<unknown>)
+      .filter((a) => a && a[0] === 'consent')
+      .map((a) => [a[1] as string, a[2] as Record<string, string>]);
+  const clearCookies = (): void => {
+    for (const c of document.cookie.split(';')) {
+      const name = c.split('=')[0]!.trim();
+      if (name) document.cookie = `${name}=; Max-Age=0; path=/`;
+    }
+  };
+  type Revoked = { cats: string[]; reload: boolean; storedAtEvent: unknown };
+  let revoked: Revoked[] = [];
+  const onRevoked = (e: Event): void => {
+    const d = (e as CustomEvent).detail as { cats: string[]; reload: boolean };
+    revoked.push({ ...d, storedAtEvent: stored()?.cats });
+    e.preventDefault(); // jsdom cannot navigate; detail.reload says whether the runtime would have reloaded
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    clearCookies();
+    document.body.innerHTML = '';
+    Array.from(document.querySelectorAll('[data-sw-consent-loaded]')).forEach((s) => s.remove());
+    delete win().dataLayer;
+    delete win().gtag;
+    revoked = [];
+    window.removeEventListener('sw:consentrevoked', onRevoked);
+    window.addEventListener('sw:consentrevoked', onRevoked);
+  });
+
+  it('★ a gated script keeps the attributes its vendor reads (data-domain, data-website-id…), but not the gate', () => {
+    runWith(
+      '<script type="text/plain" data-sw-consent="analytics" defer async data-domain="example.com" data-website-id="abc" data-sw-note="x" integrity="sha384-x" referrerpolicy="no-referrer" src="https://plausible.io/js/script.js"></script>',
+      CONFIG,
+    );
+    btn('Accept all').click();
+    const live = Array.from(document.querySelectorAll('script')).find((s) => s.getAttribute('src') === 'https://plausible.io/js/script.js')!;
+    expect(live).toBeTruthy();
+    expect(live.getAttribute('data-domain')).toBe('example.com');
+    expect(live.getAttribute('data-website-id')).toBe('abc');
+    expect(live.getAttribute('integrity')).toBe('sha384-x');
+    expect(live.getAttribute('referrerpolicy')).toBe('no-referrer');
+    expect(live.hasAttribute('defer')).toBe(true);
+    expect(live.hasAttribute('async')).toBe(true);
+    // The gate's own markers and the inert type must not survive, or the script would never run.
+    expect(live.getAttribute('type')).toBeNull();
+    expect(live.getAttribute('data-sw-consent')).toBeNull();
+    expect(live.getAttribute('data-sw-note')).toBeNull();
+  });
+
+  it('★ GA4 gets Google Consent Mode v2: everything denied by default, then the visitor’s choice, before the tag runs', () => {
+    run({ ...CONFIG, ints: [GA] });
+    btn('Customize').click();
+    boxes()[2]!.checked = true; // analytics only
+    btn('Save preferences').click();
+    expect(injected('ga')).not.toBeNull();
+
+    const dl = (win().dataLayer ?? []) as unknown as Array<ArrayLike<unknown>>;
+    const idx = (cmd: string): number => dl.findIndex((a) => a && a[0] === cmd);
+    expect(idx('consent')).toBeGreaterThanOrEqual(0);
+    expect(idx('consent')).toBeLessThan(idx('js')); // consent state precedes gtag('js') and config
+    expect(idx('consent')).toBeLessThan(idx('config'));
+    const [[cmd0, def], [cmd1, upd]] = consentCalls() as [[string, Record<string, string>], [string, Record<string, string>]];
+    expect(cmd0).toBe('default');
+    for (const k of ['ad_storage', 'ad_user_data', 'ad_personalization', 'analytics_storage', 'functionality_storage', 'personalization_storage'])
+      expect(def[k], k).toBe('denied');
+    expect(cmd1).toBe('update');
+    expect(upd).toMatchObject({ analytics_storage: 'granted', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', functionality_storage: 'denied' });
+  });
+
+  it('Tag Manager gets the consent default BEFORE the container starts', () => {
+    run({ ...CONFIG, ints: [{ id: 'gtm', cat: 'analytics', kind: 'gtm', mid: 'GTM-XY', src: 'https://www.googletagmanager.com/gtm.js?id=GTM-XY', async: true }] });
+    btn('Accept all').click();
+    const dl = (win().dataLayer ?? []) as unknown as Array<Record<string, unknown> & ArrayLike<unknown>>;
+    const consentAt = dl.findIndex((a) => a && a[0] === 'consent');
+    const startAt = dl.findIndex((a) => a && a['gtm.start']);
+    expect(consentAt).toBeGreaterThanOrEqual(0);
+    expect(consentAt).toBeLessThan(startAt);
+    expect(consentCalls().at(-1)).toEqual(['update', expect.objectContaining({ analytics_storage: 'granted', ad_storage: 'granted' })]);
+  });
+
+  it('★ withdrawing analytics tells Google at once, deletes its cookies, and reloads the page', () => {
+    run({ ...CONFIG, ints: [GA] });
+    btn('Accept all').click();
+    document.cookie = '_ga=GA1.1.1; path=/';
+    document.cookie = '_ga_ABC123=GS1.1; path=/';
+    document.cookie = '_gid=GA1.1.2; path=/';
+    document.cookie = 'site_pref=dark; path=/';
+
+    win().swConsent.set({ functional: true, analytics: false, marketing: true });
+
+    expect(consentCalls().at(-1)).toEqual(['update', expect.objectContaining({ analytics_storage: 'denied', ad_storage: 'granted' })]);
+    expect(document.cookie).not.toMatch(/(^|; )_ga=/);
+    expect(document.cookie).not.toMatch(/_ga_ABC123=/);
+    expect(document.cookie).not.toMatch(/_gid=/);
+    expect(document.cookie).toMatch(/site_pref=dark/); // only the tracker's own cookies go
+    // The tag already ran on this page and cannot be unloaded, so the runtime reloads (cancelable for authors),
+    // and the withdrawal is already stored when it does: the reloaded page must not run the tag again.
+    expect(revoked).toEqual([{ cats: ['analytics'], reload: true, storedAtEvent: { functional: true, analytics: false, marketing: true } }]);
+  });
+
+  it('withdrawing a category that loaded nothing on this page does not reload', () => {
+    run({ ...CONFIG, ints: [GA] });
+    btn('Customize').click();
+    boxes()[1]!.checked = true; // functional only — nothing of ours runs
+    btn('Save preferences').click();
+    win().swConsent.set({ functional: false, analytics: false, marketing: false });
+    expect(revoked).toEqual([expect.objectContaining({ cats: ['functional'], reload: false })]);
+  });
+
+  it('★ deletes a withdrawn category’s tracker cookies even when nothing ran on this page, and only those', () => {
+    run(CONFIG);
+    btn('Accept all').click();
+    for (const c of ['_ga=1', '_ga_ABC=1', '_gat_UA-1=1', '__utma=1', '_gcl_au=1', '_gather_session=keep', '_gate=keep', '_gallery=keep'])
+      document.cookie = `${c}; path=/`;
+    win().swConsent.set({ functional: true, analytics: false, marketing: true });
+    // Cookies from an earlier page of the visit are as much the tracker's as this page's.
+    for (const gone of ['_ga=', '_ga_ABC=', '_gat_UA-1=', '__utma=']) expect(document.cookie).not.toContain(gone);
+    for (const kept of ['_gather_session=keep', '_gate=keep', '_gallery=keep', '_gcl_au=1']) expect(document.cookie).toContain(kept);
+    win().swConsent.set({ functional: true, analytics: false, marketing: false });
+    expect(document.cookie).not.toContain('_gcl_au=');
+  });
+
+  it('★ does not reload while a form on the page holds unsaved input', () => {
+    runWith('<form><input name="email" value=""></form>', { ...CONFIG, ints: [GA] });
+    btn('Accept all').click();
+    (document.querySelector('input[name="email"]') as HTMLInputElement).value = 'half typed';
+    win().swConsent.set({ functional: true, analytics: false, marketing: true });
+    expect(revoked).toEqual([expect.objectContaining({ cats: ['analytics'], reload: false })]);
+    // The banner's own toggles changing is not "unsaved input".
+  });
+
+  it('★ only allow-listed attributes are copied, and an attribute setAttribute rejects does not cost the script', () => {
+    runWith(
+      [
+        '<script type="text/plain" data-sw-consent="analytics" TYPE="module" onload="x()" ONERROR="y()" DATA-SW-X="1" @click="z" :class="w" data-ok="1" src="https://a.example/a.js"></script>',
+        '<script type="text/plain" data-sw-consent="analytics" src="https://b.example/b.js"></script>',
+      ].join(''),
+      CONFIG,
+    );
+    btn('Accept all').click();
+    const a = Array.from(document.querySelectorAll('script')).find((s) => s.getAttribute('src') === 'https://a.example/a.js')!;
+    const b = Array.from(document.querySelectorAll('script')).find((s) => s.getAttribute('src') === 'https://b.example/b.js')!;
+    expect(a && b).toBeTruthy(); // both released — the odd names did not abort anything
+    expect(a.getAttribute('data-ok')).toBe('1');
+    for (const n of ['type', 'onload', 'onerror', 'data-sw-x', '@click', ':class']) expect(a.hasAttribute(n), n).toBe(false);
+  });
+
+  it('GA4 and Tag Manager together get ONE consent default, and gtag(js) runs once', () => {
+    run({
+      ...CONFIG,
+      ints: [
+        GA,
+        { id: 'ga2', cat: 'analytics', kind: 'ga4', mid: 'G-Z', src: 'https://www.googletagmanager.com/gtag/js?id=G-Z', async: true },
+        { id: 'gtm', cat: 'marketing', kind: 'gtm', mid: 'GTM-XY', src: 'https://www.googletagmanager.com/gtm.js?id=GTM-XY', async: true },
+      ],
+    });
+    btn('Accept all').click();
+    expect(consentCalls().filter(([c]) => c === 'default')).toHaveLength(1);
+    const dl = (win().dataLayer ?? []) as unknown as Array<ArrayLike<unknown>>;
+    expect(dl.filter((a) => a && a[0] === 'js')).toHaveLength(1);
+  });
+});

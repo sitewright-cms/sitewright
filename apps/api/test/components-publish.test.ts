@@ -297,6 +297,42 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(index.body).toContain('ga4');
   });
 
+  it('★ a cookieless analytics tool set to load WITHOUT consent ships the runtime, no banner, and its CSP — with the manager OFF', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: {
+            consent: {
+              enabled: false,
+              integrations: [
+                { id: 'pl', name: 'Plausible', category: 'analytics', preset: 'plausible', siteId: 'pa-AbC123', requireConsent: false },
+                // Waits for consent, and there is no banner to give it: it ships nothing at all.
+                { id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-ABC123' },
+              ],
+            },
+          },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Home</h1></section>' };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    expect(index.body).toContain('<script defer src="_assets/_sw/consent.js?v=');
+    expect(index.body).toContain('data-sw-consent-config');
+    expect(index.body).toContain('pa-AbC123');
+    expect(index.body).not.toContain('id="sw-consent"'); // no banner
+    expect(index.body).not.toContain('G-ABC123');
+    const csp = index.headers['content-security-policy'] as string;
+    expect(csp).toContain('https://plausible.io');
+    expect(csp).not.toContain('googletagmanager');
+  });
+
   it('does NOT widen the CSP for a consent site with NO integrations (strict default stays)', async () => {
     const proj = client.project(projectId);
     expect(

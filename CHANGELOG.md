@@ -9,6 +9,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Plausible, Umami, Matomo, Fathom and Simple Analytics as built-in integrations.** Until now the consent
+  manager knew only Google Analytics 4 and Tag Manager; any other analytics tool had to be added as a custom
+  script, where it could not be identified correctly.
+  - Each preset takes the identifier from the tool's own snippet: Plausible's `pa-…` script id (or the site
+    domain for its older snippet), Umami's website id, Matomo's site id, Fathom's site code. Simple Analytics
+    needs none. Self-hosted Plausible and Umami take the instance address; Matomo always needs it.
+  - The platform loads each tool the way its vendor documents, including the start-up call Plausible's current
+    snippet needs and Matomo's command queue, and allows exactly the addresses each tool contacts in the site's
+    content security policy.
+  - **Cookieless tools can load without a consent banner.** Plausible, Umami, Fathom, Simple Analytics and
+    Matomo (with its cookies switched off) set nothing on the visitor's device, so the owner may let them load
+    on every page without waiting for consent (`requireConsent: false`), with the consent manager on or off.
+    Google Analytics, Tag Manager and custom scripts always wait for consent. Whether a site still needs consent
+    for a cookieless tool is the owner's legal decision.
+  - Google Analytics 4 and Tag Manager sites also allow `www.google.com`, where GA4 now sends some of its data.
+    Google's own guidance lists every `*.google.com` host, but that would also open the way to Google Apps Script
+    and Forms, so only the host GA4 uses is added.
+
 ### Changed
 
 - **The agent design guide accepts the familiar website header.** The guide's generic-template check

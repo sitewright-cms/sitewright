@@ -124,6 +124,7 @@ import {
   websiteEffectsClasses,
   websiteEffectsCustomCode,
   buildConsentMetaCsp,
+  consentRuntimeIntegrations,
   authorContentCspOrigins,
   platformInjectedCspOrigins,
   gateAuthorIframes,
@@ -934,8 +935,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       slotSources.some(strFn) ||
       Object.values(usedSnippets).some(strFn);
     // The consent runtime also hydrates HELD author iframes/scripts, which only exist when the manager is
-    // enabled — so ship it whenever consent is on, not only when a {{sw-consent}} marker is authored.
-    const usesConsentRuntime = website?.consent?.enabled === true || usesMarker(usesConsent);
+    // enabled — so ship it whenever consent is on, not only when a {{sw-consent}} marker is authored. It also
+    // loads a cookieless analytics tool the owner lets run WITHOUT consent, banner or not.
+    const usesConsentRuntime =
+      website?.consent?.enabled === true || consentRuntimeIntegrations(website?.consent).length > 0 || usesMarker(usesConsent);
     // The marker-gated BODY-effect runtimes (animation, parallax, svg-anim, marquee, lazyload, ripple,
     // cart, consent), resolved from the SHARED registry (effect-runtimes.ts) that the editor preview also
     // consumes — so preview + deploy can NEVER ship a different set (the drift that motivated this). Every

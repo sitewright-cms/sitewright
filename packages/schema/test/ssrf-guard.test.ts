@@ -87,3 +87,10 @@ describe('targetsPrivateHost', () => {
     expect(targetsPrivateHost('')).toBe(true);
   });
 });
+
+describe('targetsPrivateHost — a trailing dot is the same host', () => {
+  it('treats localhost. / foo.local. / db.internal. like their undotted forms', () => {
+    for (const u of ['https://localhost./', 'https://localhost../x', 'https://printer.local./', 'https://db.internal./']) expect(targetsPrivateHost(u), u).toBe(true);
+    expect(targetsPrivateHost('https://example.com./')).toBe(false);
+  });
+});

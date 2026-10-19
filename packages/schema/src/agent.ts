@@ -1119,9 +1119,14 @@ website.consent holds only STRUCTURE:
                             {id:"chat", name:"Support chat", category:"functional", preset:"custom",
                               src:"https://widget.example.com/c.js", frameOrigins:["*.example.com"]} ] }
 INTEGRATIONS = the third-party scripts to gate. Each loads ONLY after its category is consented. Presets:
-ga4 / gtm (need a measurementId G-…/GTM-…) or custom (an https src; add extra script/connect CSP hosts in
+ga4 / gtm (need a measurementId G-…/GTM-…); plausible (siteId = the pa-… id from its snippet, or the site
+domain), umami (siteId = the website UUID), matomo (siteId = the numeric id + host = the Matomo URL, required),
+fathom (siteId = the data-site code), simpleanalytics (no id); plausible/umami also take a \`host\` when
+self-hosted. Or custom (an https src; add extra script/connect CSP hosts in
 \`origins\`, and — if the SDK injects its OWN widget iframe like a chat bubble — its frame-src hosts in
-\`frameOrigins\`). On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
+\`frameOrigins\`). Copy ids from the owner's snippet; NEVER invent one. The cookieless presets (plausible, umami,
+matomo, fathom, simpleanalytics) may set \`requireConsent:false\`: they then load on every page with NO banner
+needed (Matomo with its cookies switched off). ga4/gtm/custom always wait for consent. On publish the per-site Content-Security-Policy is WIDENED automatically to EXACTLY these
 origins — no manual allow-listing. Bump \`version\` to re-ask everyone after adding a tracker.
 NOT a tracker? Do NOT enable the consent manager just to allow an origin, and NEVER plant a
 \`type="text/plain" data-sw-consent\` script or a commented-out <iframe> to get one past the scanner. Put it

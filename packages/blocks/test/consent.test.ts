@@ -152,3 +152,40 @@ describe('consent integration injection (CONSENT_JS)', () => {
     expect(CONSENT_JS).toContain('blockedURI');
   });
 });
+
+describe('★ consentMountMarkup — integrations that load WITHOUT consent', () => {
+  const PL = { id: 'pl', name: 'Plausible', category: 'analytics', preset: 'plausible', siteId: 'pa-AbC123', requireConsent: false };
+  const GA = { id: 'ga', name: 'GA', category: 'analytics', preset: 'ga4', measurementId: 'G-X' };
+  const cfgOf = (html: string): Record<string, unknown> => {
+    const m = /data-sw-consent-config="([^"]*)"/.exec(html);
+    return JSON.parse(m![1]!.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+  };
+
+  it('emits a banner-less mount carrying only the cookieless integrations when the manager is OFF', () => {
+    const out = consentMountMarkup({ enabled: false, integrations: [PL, GA] } as unknown as Consent, idTr);
+    expect(out).toContain('data-sw-consent');
+    expect(out).not.toContain('id="sw-consent"'); // no banner to open: #sw-consent links stay plain anchors
+    const cfg = cfgOf(out);
+    expect(cfg.nobanner).toBe(1);
+    expect((cfg.ints as Array<{ id: string }>).map((i) => i.id)).toEqual(['pl']);
+    expect(cfg).not.toHaveProperty('t'); // no banner copy shipped
+  });
+
+  it('still emits nothing when the manager is off and every integration waits for consent', () => {
+    expect(consentMountMarkup({ enabled: false, integrations: [GA] } as unknown as Consent, idTr)).toBe('');
+  });
+
+  it('carries grantAll on the banner-less mount too, so the preview can hold analytics', () => {
+    expect(cfgOf(consentMountMarkup({ enabled: false, integrations: [PL] } as unknown as Consent, idTr, { grantAll: true })).grantAll).toBe(true);
+  });
+
+  it('escapes a hostile value in the banner-less config (a schema-bypassing write)', () => {
+    const evil = { id: 'pl', name: 'P', category: 'analytics', preset: 'plausible', siteId: '"><script>alert(1)</script>&', requireConsent: false };
+    const out = consentMountMarkup({ enabled: false, integrations: [evil] } as unknown as Consent, idTr);
+    expect(out).not.toContain('<script>');
+    expect(out.match(/"/g)).toHaveLength(2); // the attribute's own quotes only: the value cannot break out
+    expect(/data-sw-consent-config="([^"]*)"/.exec(out)![1]).not.toMatch(/[<>]/);
+    expect(cfgOf(out).ints).toEqual([expect.objectContaining({ attrs: { 'data-domain': '"><script>alert(1)</script>&' } })]); // intact as DATA
+  });
+});
+

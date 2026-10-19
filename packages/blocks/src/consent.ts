@@ -54,7 +54,16 @@ export function consentMountMarkup(
   tr: (key: string) => string,
   opts: { grantAll?: boolean } = {},
 ): string {
-  if (!consent || consent.enabled !== true) return '';
+  if (!consent) return '';
+  if (consent.enabled !== true) {
+    // No banner, but a cookieless integration the owner lets load without consent still needs the runtime: a
+    // hidden mount carrying only those (no id, so a #sw-consent link stays a plain anchor; no banner copy).
+    const free = consentRuntimeIntegrations(consent);
+    if (!free.length) return '';
+    const cfg: Record<string, unknown> = { nobanner: 1, ints: free, ...(opts.grantAll ? { grantAll: true } : {}) };
+    const json = JSON.stringify(cfg).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+    return `<div data-sw-consent data-sw-consent-config="${escapeAttr(json)}"></div>`;
+  }
   const CAT_KEYS = ['functional', 'analytics', 'marketing'] as const;
   const want =
     Array.isArray(consent.categories) && consent.categories.length
@@ -176,6 +185,7 @@ export const CONSENT_JS = `(function(){
   // and the rest of the visit runs without it, unless a form on the page holds unsaved input. The cancelable
   // 'sw:consentrevoked' event (detail.cats, detail.reload) lets an author take over the reload.
   var GA_COOKIES=/^(_ga|_ga_[A-Za-z0-9]+|_gid|_gat(_[A-Za-z0-9_-]+)?|__utm[a-z]{1,3})$/,ADS_COOKIES=/^(_gcl_[a-z]{2,4}|_gac_[A-Za-z0-9_.-]+)$/;
+  var MATOMO_COOKIES=/^_pk_(id|ses|ref|cvar|testcookie)(\\..*)?$/;
   var TRACKER_COOKIES={analytics:[GA_COOKIES],marketing:[ADS_COOKIES],functional:[]};
   function dropCookies(re){try{
     var all=document.cookie?document.cookie.split(';'):[],parts=location.hostname.split('.'),doms=[''];
@@ -300,6 +310,35 @@ export const CONSENT_JS = `(function(){
     var cats=(cfg.cats&&cfg.cats.length)?cfg.cats:[];
     function txt(k,fb){return (typeof t[k]==='string'&&t[k])?t[k]:fb;}
 
+    // Managed third-party integrations the runtime injects when their category is consented (de-duped by id),
+    // or at once when the owner lets a cookieless one load without consent (\`free\`).
+    // Browsers don't un-run scripts: withdrawing a category whose code already ran here is handled by revoke()
+    // (tracker cookies deleted, page reloaded); a Google tag is also told at once through Consent Mode.
+    var ints=(cfg.ints&&cfg.ints.length)?cfg.ints:[];
+    var loaded={},gtagLoaded=0;
+    function injectScript(src,async,id,attrs){var s=document.createElement('script');s.src=src;s.async=!!async;s.setAttribute('data-sw-consent-loaded',id);
+      if(attrs)for(var a in attrs){if(Object.prototype.hasOwnProperty.call(attrs,a)&&/^data-[a-z0-9][a-z0-9._-]*$/.test(a)&&a.indexOf('data-sw-')!==0){try{s.setAttribute(a,String(attrs[a]));}catch(e){}}}
+      (document.head||document.documentElement).appendChild(s);} // async set EXPLICITLY — a dynamically-created script defaults to async=true, so async:false must be forced off
+    // ga4/gtm/plausible/matomo run a self-origin bootstrap (consent.js is 'self', so no inline-CSP issue) then load
+    // the external script; a plain 'script' just loads its src (+ the vendor's data-* attrs). CSP allows only the
+    // registered origins (derived at publish).
+    function loadConsented(){
+      for(var k=0;k<ints.length;k++){var it=ints[k];if(!it||loaded[it.id]||!(it.free||current[it.cat]))continue;
+        if(PREVIEW&&(PREVIEW_HOLD[it.cat]||it.ana||it.kind==='ga4'||it.kind==='gtm'))continue; // an analytics tool counts visits in any category
+        loaded[it.id]=1;if(!it.free)RAN[it.cat]=1; // a tool that needs no consent stays allowed: withdrawing the category must not reload for it
+        if((it.kind==='ga4'||it.kind==='gtm')&&TRACKER_COOKIES[it.cat].indexOf(GA_COOKIES)<0)TRACKER_COOKIES[it.cat].push(GA_COOKIES); // a Google tag sets _ga in whatever category it was filed under
+        if(it.kind==='ga4'){var g=gtagOf();if(!gcm)googleConsent();if(!gtagLoaded)g('js',new Date());if(it.mid)g('config',it.mid);if(!gtagLoaded){gtagLoaded=1;injectScript(it.src,true,it.id);}} // gtag.js (and gtag('js')) ONCE; extra GA4 ids just gtag('config',…)
+        else if(it.kind==='gtm'){gtagOf();if(!gcm)googleConsent();window.dataLayer.push({'gtm.start':+new Date(),event:'gtm.js'});injectScript(it.src,true,it.id);}
+        // Plausible's per-site script starts only once plausible.init() has run: its own stub, then the script.
+        else if(it.kind==='plausible'){var p=window.plausible=window.plausible||function(){(p.q=p.q||[]).push(arguments);};p.init=p.init||function(o){p.o=o||{};};p.init();injectScript(it.src,true,it.id);}
+        else if(it.kind==='matomo'){var q=window._paq=window._paq||[];if(it.nocookie)q.push(['disableCookies']);q.push(['trackPageView']);q.push(['enableLinkTracking']);q.push(['setTrackerUrl',it.track]);q.push(['setSiteId',it.mid]);
+          if(TRACKER_COOKIES[it.cat].indexOf(MATOMO_COOKIES)<0)TRACKER_COOKIES[it.cat].push(MATOMO_COOKIES);injectScript(it.src,true,it.id);}
+        else{injectScript(it.src,it.async!==false,it.id,it.attrs);}
+      }
+    }
+    // NO BANNER: the manager is off, and the mount exists only for integrations that need no consent.
+    if(cfg.nobanner){PREVIEW=!!cfg.grantAll;root.setAttribute('data-sw-enhanced','nobanner');loadConsented();return;}
+
     // Build the banner UI ONCE (idempotent). createElement + textContent only — no HTML-string sinks.
     // Title is a <div> (not a heading): the banner sits on every page and an <h1>/<h2> would pollute the
     // document outline / SEO. The region's aria-label carries the accessible name instead.
@@ -332,24 +371,6 @@ export const CONSENT_JS = `(function(){
     var btnSave=el('button',{cls:'btn btn-sm',text:txt('save','Save preferences'),attrs:{type:'button',style:'display:none'}});
     var btnAccept=el('button',{cls:'btn btn-sm btn-primary',text:txt('acceptAll','Accept all'),attrs:{type:'button'}});
 
-    // Managed third-party integrations the runtime injects when their category is consented (de-duped by id).
-    // Browsers don't un-run scripts: withdrawing a category whose code already ran here is handled by revoke()
-    // (tracker cookies deleted, page reloaded); a Google tag is also told at once through Consent Mode.
-    var ints=(cfg.ints&&cfg.ints.length)?cfg.ints:[];
-    var loaded={},gtagLoaded=0;
-    function injectScript(src,async,id){var s=document.createElement('script');s.src=src;s.async=!!async;s.setAttribute('data-sw-consent-loaded',id);(document.head||document.documentElement).appendChild(s);} // async set EXPLICITLY — a dynamically-created script defaults to async=true, so async:false must be forced off
-    // ga4/gtm run a self-origin bootstrap (consent.js is 'self', so no inline-CSP issue) then load the external
-    // gtag/gtm script; a plain 'script' just loads its src. CSP allows only the registered origins (derived at publish).
-    function loadConsented(){
-      for(var k=0;k<ints.length;k++){var it=ints[k];if(!it||loaded[it.id]||!current[it.cat])continue;
-        if(PREVIEW&&(PREVIEW_HOLD[it.cat]||it.kind==='ga4'||it.kind==='gtm'))continue; // a Google tag counts visits in any category
-        loaded[it.id]=1;RAN[it.cat]=1;
-        if((it.kind==='ga4'||it.kind==='gtm')&&TRACKER_COOKIES[it.cat].indexOf(GA_COOKIES)<0)TRACKER_COOKIES[it.cat].push(GA_COOKIES); // a Google tag sets _ga in whatever category it was filed under
-        if(it.kind==='ga4'){var g=gtagOf();if(!gcm)googleConsent();if(!gtagLoaded)g('js',new Date());if(it.mid)g('config',it.mid);if(!gtagLoaded){gtagLoaded=1;injectScript(it.src,true,it.id);}} // gtag.js (and gtag('js')) ONCE; extra GA4 ids just gtag('config',…)
-        else if(it.kind==='gtm'){gtagOf();if(!gcm)googleConsent();window.dataLayer.push({'gtm.start':+new Date(),event:'gtm.js'});injectScript(it.src,true,it.id);}
-        else{injectScript(it.src,it.async!==false,it.id);}
-      }
-    }
     function showBanner(){root.setAttribute('data-open','');}
     function hideBanner(){root.removeAttribute('data-open');}
     function syncBoxes(){for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}} // reflect current on the toggles
@@ -388,6 +409,7 @@ export const CONSENT_JS = `(function(){
       loadConsented(); // re-inject the integrations the visitor already consented to (on every page load)
     }else{
       showBanner(); // first visit → slide the banner up
+      loadConsented(); // nothing is granted yet: this loads only the integrations that need no consent
     }
 
     // Public API + the re-open trigger ([data-sw-consent-open] / {{sw-consent-settings}} / a[href="#sw-consent"]).

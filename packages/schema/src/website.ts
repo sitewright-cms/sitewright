@@ -548,7 +548,30 @@ export type Shop = z.infer<typeof ShopSchema>;
 export const CONSENT_CATEGORY_VALUES = ['functional', 'analytics', 'marketing'] as const;
 
 /** The third-party integration presets the registry understands. `custom` = an arbitrary external script. */
-export const CONSENT_INTEGRATION_PRESETS = ['ga4', 'gtm', 'custom'] as const;
+export const CONSENT_INTEGRATION_PRESETS = ['ga4', 'gtm', 'plausible', 'umami', 'matomo', 'fathom', 'simpleanalytics', 'custom'] as const;
+export type ConsentIntegrationPreset = (typeof CONSENT_INTEGRATION_PRESETS)[number];
+
+/**
+ * Presets that set no cookies and store nothing on the visitor's device (Matomo once its cookies are switched
+ * off), so an owner MAY load them without waiting for consent (`requireConsent: false`). Whether a site needs
+ * consent for them anyway is the owner's legal call; the platform only refuses the option for trackers that
+ * set cookies (GA4/GTM) or for an arbitrary script it cannot vouch for.
+ */
+export const COOKIELESS_PRESETS: readonly ConsentIntegrationPreset[] = ['plausible', 'umami', 'matomo', 'fathom', 'simpleanalytics'];
+
+/** Presets that can point at the owner's own instance (`host`); the others are cloud-only. Matomo has no default. */
+export const SELF_HOSTABLE_PRESETS: readonly ConsentIntegrationPreset[] = ['plausible', 'umami', 'matomo'];
+
+/** Each preset's site identifier (`siteId`). Simple Analytics needs none: the page hostname identifies the site. */
+const HOSTNAME_RE = /^([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+const SITE_ID_RULES: Partial<Record<ConsentIntegrationPreset, { re: RegExp; hint: string; optional?: boolean }>> = {
+  // `pa-…` is the current per-site script; a bare domain is the legacy `data-domain` snippet, still served.
+  plausible: { re: /^(pa-[A-Za-z0-9_-]{4,64}|([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,})$/i, hint: 'the pa-… script id from your Plausible snippet, or the site domain' },
+  umami: { re: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, hint: 'the website id (a UUID) from your Umami snippet' },
+  matomo: { re: /^[1-9][0-9]{0,8}$/, hint: 'the numeric site id from your Matomo snippet' },
+  fathom: { re: /^[A-Z0-9]{4,16}$/i, hint: 'the data-site code from your Fathom snippet' },
+  simpleanalytics: { re: HOSTNAME_RE, hint: 'a hostname to report as (optional)', optional: true },
+};
 
 /** A bare hostname, optionally one leading `*.` wildcard. NO scheme/path/port/bare-`*` (the CSP builder prepends https://). */
 const CSP_HOST_RE = /^(\*\.)?([a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
@@ -570,6 +593,23 @@ export const ConsentIntegrationSchema = z
     preset: z.enum(CONSENT_INTEGRATION_PRESETS).optional(),
     /** ga4: the `G-XXXX` measurement id. gtm: the `GTM-XXXX` container id. */
     measurementId: z.string().max(40).optional(),
+    /**
+     * The site identifier of a non-Google analytics preset: Plausible's `pa-…` script id (or the legacy site
+     * domain), Umami's website UUID, Matomo's numeric site id, Fathom's `data-site` code, Simple Analytics'
+     * optional hostname override.
+     */
+    siteId: z.string().max(100).optional(),
+    /**
+     * A SELF-HOSTED analytics instance (Plausible, Umami) or the Matomo instance (required for Matomo; a
+     * `https://<name>.matomo.cloud` address is Matomo Cloud). A bare https base URL, optionally with a path;
+     * the CSP gets its host.
+     */
+    host: z.string().max(2048).optional(),
+    /**
+     * `false` loads a COOKIELESS preset on every page without waiting for consent, with or without the consent
+     * banner (see {@link COOKIELESS_PRESETS}). Default: wait for the visitor's consent to the category.
+     */
+    requireConsent: z.boolean().optional(),
     /** custom: the external script URL to inject on consent (HTTPS only). */
     src: z.string().max(2048).optional(),
     /** custom: load the script async (default true). */
@@ -609,14 +649,63 @@ export const ConsentIntegrationSchema = z
         if (!httpsHost) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'src must be a valid https:// URL' });
         else if (targetsPrivateHost(v.src)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['src'], message: 'src must not point to a private/loopback host' });
       }
-    } else if (!v.measurementId) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} needs a measurementId` });
+    } else if (preset === 'ga4' || preset === 'gtm') {
+      if (!v.measurementId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} needs a measurementId` });
+      } else {
+        const re = preset === 'ga4' ? /^G-[A-Z0-9]+$/i : /^GTM-[A-Z0-9]+$/i;
+        if (!re.test(v.measurementId))
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} measurementId must look like ${preset === 'ga4' ? 'G-XXXXXXX' : 'GTM-XXXXXX'}` });
+      }
     } else {
-      const re = preset === 'ga4' ? /^G-[A-Z0-9]+$/i : /^GTM-[A-Z0-9]+$/i;
-      if (!re.test(v.measurementId))
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['measurementId'], message: `${preset} measurementId must look like ${preset === 'ga4' ? 'G-XXXXXXX' : 'GTM-XXXXXX'}` });
+      const rule = SITE_ID_RULES[preset];
+      if (rule && (v.siteId ? !rule.re.test(v.siteId) : !rule.optional))
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['siteId'], message: `${preset} needs ${rule.hint}` });
     }
+    if (v.host !== undefined) {
+      if (!SELF_HOSTABLE_PRESETS.includes(preset)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['host'], message: `${preset} is cloud-only: it takes no host` });
+      } else if (!isAnalyticsBaseUrl(v.host)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['host'], message: 'host must be an https:// base URL (an optional path, no query or fragment)' });
+      } else if (targetsPrivateHost(v.host)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['host'], message: 'host must not point to a private/loopback host' });
+      }
+    } else if (preset === 'matomo') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['host'], message: 'matomo needs the host of your Matomo instance (https://…)' });
+    }
+    if (v.requireConsent === false && !COOKIELESS_PRESETS.includes(preset))
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['requireConsent'], message: `${preset} sets cookies or runs arbitrary code, so it must wait for consent` });
   });
+
+/**
+ * A self-hosted analytics base URL: https, no credentials, no query or fragment (not even an empty `?` / `#`,
+ * which URL parsing reports as absent), and a plain multi-label hostname: no trailing dot, no empty label.
+ * A path is fine. Callers build URLs from {@link analyticsBase}, never from the raw string.
+ */
+export function isAnalyticsBaseUrl(raw: string): boolean {
+  if (/[?#\\\s]/.test(raw)) return false;
+  try {
+    const u = new URL(raw);
+    const labels = u.hostname.split('.');
+    return (
+      u.protocol === 'https:' &&
+      !u.username &&
+      !u.password &&
+      labels.length >= 2 &&
+      labels.every((l) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(l)) &&
+      !/(^|\/)\.\.?(\/|$)/.test(u.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** The parsed base of a valid {@link isAnalyticsBaseUrl}: origin + path with exactly one trailing slash. */
+export function analyticsBase(raw: string | undefined): string | null {
+  if (!raw || !isAnalyticsBaseUrl(raw)) return null;
+  const u = new URL(raw);
+  return `${u.origin}${u.pathname.replace(/\/*$/, '/')}`;
+}
 export type ConsentIntegration = z.infer<typeof ConsentIntegrationSchema>;
 
 /**

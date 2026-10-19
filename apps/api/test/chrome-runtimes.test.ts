@@ -115,6 +115,18 @@ describe('chrome-runtime registry — editor preview parity', () => {
     expect(keys).not.toContain('back-to-top');
   });
 
+  it('the mobile-drawer close ships wherever a drawer can be — with no gate to miss', () => {
+    // The stock drawer (#sw-nav-drawer) arrives via a slot, a snippet or a page source, and an in-page
+    // link must close it on every one of them. NAV_LINK_JS only ships for `#` placeholders / dialogs /
+    // scrollspy, so the close rides on the unconditional sticky-header runtime instead.
+    const closes = (js: string): boolean => js.includes("getElementById('sw-nav-drawer')");
+    expect(closes(coreBundleJs(ctx()))).toBe(true); // a bare site: no settings, no slots
+    expect(coreRuntimes(ctx()).some((r) => r.key === 'nav-link')).toBe(false); // …and no smooth-scroll runtime
+    const drawer = '<input type="checkbox" id="sw-nav-drawer" class="peer sr-only" />';
+    expect(previewChromeScripts(drawer).some(closes)).toBe(true);
+    expect(previewChromeScripts(drawer).filter(closes)).toHaveLength(1); // one copy, not one per runtime
+  });
+
   it('every preview-gated runtime is reachable from the publish path too', () => {
     // A runtime the canvas runs but no build ever ships would be preview-only drift — the exact class
     // of bug the body-effect registry was created to make impossible.
@@ -169,6 +181,20 @@ describe('core.js in a real build', () => {
     for (const name of ['sticky-header.js', 'back-to-top.js', 'button-effects.js', 'nav-active.js']) {
       await expect(readFile(join(outDir, '_assets/_sw', name), 'utf8')).rejects.toThrow();
     }
+  });
+
+  it('a site whose header has the stock drawer gets the drawer close in core.js, smooth-scroll or not', async () => {
+    const mainNav =
+      '<div class="navbar"><input type="checkbox" id="sw-nav-drawer" class="peer sr-only" />' +
+      '<label for="sw-nav-drawer">Menu</label><ul class="menu">{{#each nav.header}}<li><a href="{{sw-url path}}">{{sw-label}}</a></li>{{/each}}</ul></div>';
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle({ mainNav }) });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('id="sw-nav-drawer"');
+    const linked = Array.from(home.matchAll(/<script defer src="[^"]*\/_sw\/([^"?]+)/g)).map((m) => m[1]);
+    expect(linked).toEqual(['core.js']); // no nav-link.js: an in-page tap is a NATIVE jump here…
+    const core = await readFile(join(outDir, '_assets/_sw/core.js'), 'utf8');
+    expect(core).toMatch(/getElementById\(["']sw-nav-drawer["']\)/); // …and the close still ships (minified)
+    expect(core).not.toContain('scrollIntoView');
   });
 
   it('keeps a page-local runtime standalone next to the bundle', async () => {

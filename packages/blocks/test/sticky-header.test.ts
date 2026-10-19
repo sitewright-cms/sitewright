@@ -255,6 +255,7 @@ describe('STICKY_HEADER_JS', () => {
     expect(STICKY_HEADER_JS).toContain('getBoundingClientRect');
     // no raw backtick (would break the template literal when embedded) and no </script> breakout
     expect(STICKY_HEADER_JS).not.toContain('`');
+    expect(STICKY_HEADER_JS).not.toContain('${'); // the spliced-in in-page rule is resolved at build time
     expect(STICKY_HEADER_JS).not.toContain('</script');
   });
 });

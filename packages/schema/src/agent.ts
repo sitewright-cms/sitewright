@@ -1439,7 +1439,8 @@ peer-checked:translate-x-0. The hamburger and the drawer MUST be in the SAME slo
 Use <details>/<summary> accordions for child pages INSIDE the drawer; include the logo + a CLOSE <label
 for>. Loop {{#each nav.mobile}} (the "Mobile menu" pages), with an {{else}} fallback to {{#each nav.header}}
 until one is curated. Keep that id: while \`#sw-nav-drawer\` is checked the platform lifts the header above every
-float (back-to-top, cart, consent, a WhatsApp bubble); a drawer on any other toggle must do that itself — see
+float (back-to-top, cart, consent, a WhatsApp bubble), and a tap on an IN-PAGE link (#section, /#section, a
+#dialog) unchecks it (firing change) so the menu closes; a drawer on any other toggle must do both itself — see
 FLOATS + STACKING in get_guide("effects").
 
 AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}} (loop page.translations;

@@ -2,8 +2,17 @@
 // read the HTML). We render the exact HTML the preview endpoint already builds, in a headless Chromium
 // bundled into the API image. Best-effort: any failure leaves the caller to return HTML without images.
 import { sharedMemoryBudget, type Reservation } from '../runtime/memory-budget.js';
-import { createSlotPool } from './render-slots.js';
-import { chromium, type Browser, type Route, type Request as PwRequest, type Page } from 'playwright-core';
+import { unfixChromeForCapture } from './capture-chrome.js';
+import {
+  captureLegacyShot,
+  capturePreviewViewport,
+  cdpDriver,
+  type CaptureNote,
+  type CaptureRequest,
+  type PreviewCapture,
+} from './preview-capture.js';
+import { createSlotPool, RenderQueueBusyError } from './render-slots.js';
+import { chromium, type Browser, type CDPSession, type Route, type Request as PwRequest, type Page } from 'playwright-core';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import {
@@ -25,7 +34,6 @@ export interface Shot {
 export type ViewportName = ScreenshotViewportName;
 const VIEWPORTS = SCREENSHOT_VIEWPORTS;
 
-const JPEG_QUALITY = 78;
 const DEFAULT_TIMEOUT_MS = 8000;
 
 // ---------------------------------------------------------------- SSRF guard (pure, unit-tested)
@@ -201,33 +209,84 @@ const BROWSER_RESERVE_BYTES = 256 * 1024 * 1024;
 const IDLE_SWEEP_MS = 15_000;
 
 /**
- * Close the browser once it has been unused for long enough — but ONLY when it has no open
- * contexts. A context is an in-flight capture; closing under one would fail a live request. Sweeping
- * (rather than closing on the last context's close) also covers a caller that leaks a context and
- * then stops using the browser entirely.
+ * What a preview capture adds at its peak, by whether it has to LAUNCH the browser — turned into a
+ * ledger reservation by `reservationForPeak`, so a capture is admitted exactly when it fits under the
+ * hard limit.
+ *
+ * Launching: measured ~123MB for the launch plus its first capture. Reused: the browser's own memory is
+ * already in the ledger — in the cgroup reading, and in its own 256MB reservation — so only the capture
+ * needs room. MEASURED on a 13,000px page at 1920 wide, half scale: the two segments a call returns add
+ * ~46MB to Chromium, all five ~74MB. It used to reserve the launch figure, 128MB, against the ledger's
+ * 80% line every time — on a 768MB instance that refused any preview above ~486MB in use, where the
+ * shared instance sits whenever its browser is warm: "the screenshot was skipped because the instance is
+ * temporarily out of memory", on captures that fit with 100MB+ to spare.
+ */
+const LAUNCH_PEAK_BYTES = 128 * 1024 * 1024;
+const CAPTURE_PEAK_BYTES = 80 * 1024 * 1024;
+const SHOT_SAFETY_BYTES = 32 * 1024 * 1024;
+const SHOT_MIN_RESERVE_BYTES = 64 * 1024 * 1024;
+
+/** Bytes to reserve for one preview capture right now. */
+export function screenshotReserveBytes(): number {
+  // A warm browser that has sat unused for nearly the release window may be closed (by an audit making
+  // room) before this capture reaches it — reserve for the relaunch then, not for a capture alone.
+  const warm = browserPromise !== null && Date.now() - lastBrowserUseAt < releaseQuietMs() - 5_000;
+  return sharedMemoryBudget.reservationForPeak(warm ? CAPTURE_PEAK_BYTES : LAUNCH_PEAK_BYTES, SHOT_SAFETY_BYTES, SHOT_MIN_RESERVE_BYTES);
+}
+
+/**
+ * Close the browser if it has no open contexts and has not been handed out for `quietMs`. A context is
+ * an in-flight capture; closing under one would fail a live request. Returns whether it closed.
+ */
+async function closeIfIdle(quietMs: number): Promise<boolean> {
+  const p = browserPromise;
+  if (!p) return false;
+  if (Date.now() - lastBrowserUseAt < quietMs) return false;
+  let browser: Browser;
+  try {
+    browser = await p;
+  } catch {
+    return false; // a failed launch already cleared the singleton
+  }
+  if (browser.contexts().length > 0) return false; // busy
+  if (browserPromise !== p) return false; // replaced while we awaited
+  if (Date.now() - lastBrowserUseAt < quietMs) return false; // handed out while we awaited
+  browserPromise = null;
+  browserReservation?.release();
+  browserReservation = null;
+  await browser.close().catch(() => {});
+  return true;
+}
+
+/**
+ * Close the browser once it has been unused for long enough. Sweeping (rather than closing on the last
+ * context's close) also covers a caller that leaks a context and then stops using the browser entirely.
  */
 function startIdleSweep(): void {
   if (idleSweep || BROWSER_IDLE_MS <= 0) return;
   idleSweep = setInterval(() => {
-    void (async () => {
-      const p = browserPromise;
-      if (!p) return;
-      if (Date.now() - lastBrowserUseAt < BROWSER_IDLE_MS) return;
-      let browser: Browser;
-      try {
-        browser = await p;
-      } catch {
-        return; // a failed launch already cleared the singleton
-      }
-      if (browser.contexts().length > 0) return; // busy — try again next sweep
-      if (browserPromise !== p) return; // replaced while we awaited
-      browserPromise = null;
-      browserReservation?.release();
-      browserReservation = null;
-      await browser.close().catch(() => {});
-    })();
+    void closeIfIdle(BROWSER_IDLE_MS);
   }, IDLE_SWEEP_MS);
   idleSweep.unref?.();
+}
+
+/**
+ * Give the screenshot browser's memory back NOW, if nothing is using it — for work that launches a
+ * browser of its own (a Lighthouse audit). MEASURED on a 768MB container: a preview followed by a
+ * both-devices audit was OOM-killed, the warm screenshot browser (~150MB) still resident beside
+ * Lighthouse's Chrome; that browser would otherwise idle on for two minutes.
+ *
+ * "Not handed out recently" is not a nicety: a capture takes the browser BEFORE it queues for a render
+ * slot, and may wait up to the slot timeout holding it with no context open yet. Closing under it would
+ * fail that capture, so a browser handed out within that window is left alone.
+ */
+export function releaseIdleBrowser(): Promise<boolean> {
+  return closeIfIdle(releaseQuietMs());
+}
+
+/** How long the browser must have gone unused before {@link releaseIdleBrowser} may close it. */
+function releaseQuietMs(): number {
+  return ACQUIRE_TIMEOUT_MS + 3_000;
 }
 
 /** The shared headless Chromium singleton (reused by screenshots + the import SPA renderer). */
@@ -308,7 +367,16 @@ const release = (): void => renderSlots.release();
  * slot later for nobody.
  */
 export async function withRenderSlot<T>(fn: () => Promise<T>, opts?: { signal?: AbortSignal }): Promise<T> {
-  return renderSlots.run(fn, opts);
+  return renderSlots.run(async () => {
+    try {
+      return await fn();
+    } finally {
+      // A caller may hold the browser ACROSS slots with no context open in between (compare.ts takes it
+      // once, then one slot per viewport). Ending a slot counts as using the browser, so
+      // releaseIdleBrowser never closes it in that gap.
+      lastBrowserUseAt = Date.now();
+    }
+  }, opts);
 }
 
 // Fixed beat AFTER a child frame's own `load` for its async content to actually PAINT — Google-Maps tiles,
@@ -440,60 +508,18 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
           // The timer sweep above may have killed a still-pending #718 fallback-reveal timer — force the
           // carousel visible for the shot (its enhancement, when done, is already awaited in step 2b).
           '[data-sw-component="carousel"]{visibility:visible !important}' +
-          // UN-FIX THE FIXED CHROME. A fullPage capture stitches one tall image, so a position:fixed
-          // header paints ONCE, wherever the compositor left it — as an opaque band slicing through the
-          // MIDDLE of the page, hiding whatever section it lands on. Four agents hit this; two chased it
-          // as a layout bug in their own clone, and on the ORIGINAL side the nav vanished from its own
-          // capture entirely, making the header impossible to compare from that view.
-          // The page is already scrolled back to 0 by now, so pinning fixed elements to `absolute` puts
-          // the header exactly where a visitor sees it — at the top, once. `sticky` collapses the same
-          // way. Applied to BOTH sides of every comparison, so the diff stays fair.
-          // background-attachment:fixed gets the same treatment: it paints relative to the VIEWPORT, so
+          // Fixed/sticky ELEMENTS are handled by a computed-style pass right after this (see
+          // capture-chrome.ts). background-attachment:fixed paints relative to the VIEWPORT, so
           // in a stitched shot the image lands at a different offset on each side and reads as "the
           // background is missing" — one agent lost a diagnostic detour to exactly that.
           '*{background-attachment:scroll !important}';
         g.document.head?.appendChild(s);
       })
       .catch(() => {});
-    // UN-FIX THE FIXED CHROME — a COMPUTED-style pass, because a selector cannot express "whatever the
-    // stylesheet made fixed" and an imported site's header is fixed from its own CSS, not inline.
-    // A fullPage capture stitches one tall image, so a position:fixed header paints ONCE, wherever the
-    // compositor left it: an opaque band slicing through the MIDDLE of the page, hiding whatever section
-    // it lands on. Four agents hit this — two chased it as a layout bug in their own clone, and on the
-    // ORIGINAL side the nav vanished from its own capture, making the header impossible to compare.
-    // The page is scrolled back to 0 by now, so pinning each fixed element to `absolute` puts it exactly
-    // where a visitor sees it: at the top, once. Both sides of every comparison get the same treatment.
-    await page
-      .evaluate(() => {
-        // No DOM lib in this tsconfig (see the note in step 1) — describe only what we touch.
-        interface Fixable {
-          style: { setProperty(p: string, v: string, prio?: string): void };
-          getBoundingClientRect(): { top: number };
-        }
-        const g = globalThis as unknown as {
-          document: { querySelectorAll(s: string): ArrayLike<Fixable> };
-          getComputedStyle(el: Fixable): { position: string };
-          scrollY?: number;
-        };
-        const all = g.document.querySelectorAll('*');
-        const offset = g.scrollY ?? 0;
-        // Capped: a pathological DOM must not turn the freeze into the slow step of the capture.
-        const limit = Math.min(all.length, 4000);
-        for (let i = 0; i < limit; i++) {
-          const el = all[i];
-          if (!el) continue;
-          let pos: string;
-          try { pos = g.getComputedStyle(el).position; } catch { continue; }
-          if (pos !== 'fixed' && pos !== 'sticky') continue;
-          // Keep it where it is on screen RIGHT NOW (scroll is 0, so this is the visitor's top-of-page
-          // view) rather than letting it jump to the top of its containing block.
-          const top = Math.round(el.getBoundingClientRect().top + offset);
-          el.style.setProperty('position', 'absolute', 'important');
-          el.style.setProperty('top', `${top}px`, 'important');
-          el.style.setProperty('bottom', 'auto', 'important');
-        }
-      })
-      .catch(() => {});
+    // UN-FIX THE FIXED CHROME — fixed elements pinned `absolute` where a visitor sees them, sticky ones
+    // returned to the flow (never `absolute`: that moved sticky grid columns). The why, and the in-page
+    // code, live in capture-chrome.ts. Both sides of every comparison get the same treatment.
+    await page.evaluate(unfixChromeForCapture).catch(() => {});
     // BACK TO THE TOP — on whatever element ACTUALLY scrolls, and AFTER the two passes above.
     // Step 1 already scrolled back with `window.scrollTo(0, 0)`, but that is not enough here for two
     // compounding reasons. A preview page scrolls its BODY (`overflow:auto`), where `window.scrollTo` is a
@@ -522,72 +548,109 @@ export async function settlePage(page: Page, opts?: { freeze?: boolean }): Promi
 }
 
 /**
- * Capture `viewports` of the given preview HTML. Returns one Shot per viewport that rendered; throws
- * only if the browser itself is unavailable (the caller treats screenshots as best-effort).
+ * Open the preview document at one viewport, settle it, and hand the page to `fn` — inside a render
+ * slot, with the SSRF guard on every request, and with the context closed however `fn` ends.
+ * `deviceScaleFactor` is the raster scale the page lays out its images for (srcset picks by it).
+ */
+async function withPreviewPage<T>(
+  doc: string,
+  vp: (typeof VIEWPORTS)[ViewportName],
+  opts: { originHostPort: string; timeoutMs: number; deviceScaleFactor: number },
+  fn: (page: Page, cdp: CDPSession) => Promise<T>,
+): Promise<T> {
+  const browser = await getBrowser();
+  await acquire();
+  // newContext() is INSIDE the try so release() runs even if it throws (a crashed browser) — otherwise
+  // the slot would leak and, after MAX_CONCURRENT failures, deadlock every future render.
+  let context: Awaited<ReturnType<Browser['newContext']>> | undefined;
+  try {
+    context = await browser.newContext({
+      viewport: { width: vp.width, height: vp.height },
+      deviceScaleFactor: opts.deviceScaleFactor,
+      isMobile: vp.isMobile,
+      // Honour reduced-motion so reveal animations settle to their final state for the shot.
+      reducedMotion: 'reduce',
+    });
+    const page = await context.newPage();
+    page.setDefaultTimeout(opts.timeoutMs); // bound evaluate()/screenshot()/etc. — not Playwright's 30s default
+    await page.route('**/*', async (route: Route, request: PwRequest) => {
+      const allowed = await isRequestAllowed(request.url(), opts.originHostPort).catch(() => false);
+      if (allowed) await route.continue();
+      else await route.abort('blockedbyclient');
+    });
+    await page.setContent(doc, { waitUntil: 'load', timeout: opts.timeoutMs });
+    // Scroll-load + fonts + iframe/embed paint + animation freeze — shared with compare.ts so the agent's
+    // own preview and the fidelity side-by-sides settle identically (maps paint, lower sections load).
+    await settlePage(page, { freeze: true });
+    return await fn(page, await context.newCDPSession(page));
+  } finally {
+    await context?.close().catch(() => {});
+    lastBrowserUseAt = Date.now();
+    release();
+  }
+}
+
+function plannedViewports(wanted: readonly ViewportName[]): Array<[ViewportName, (typeof VIEWPORTS)[ViewportName]]> {
+  return (Object.entries(VIEWPORTS) as Array<[ViewportName, (typeof VIEWPORTS)[ViewportName]]>).filter(([name]) => wanted.includes(name));
+}
+
+/**
+ * The LEGACY capture: one whole-page image per viewport, fitted inside the model's many-image ceiling —
+ * what a request without `segment` (an older MCP client) has always received. Dimensions are reported
+ * in CSS px, as they always were. Throws only if the browser itself is unavailable (best-effort caller).
  */
 export async function captureScreenshots(
   html: string,
   opts: { originHostPort: string; viewports?: ViewportName[]; timeoutMs?: number; scale?: number },
 ): Promise<Partial<Record<ViewportName, Shot>>> {
-  const wanted = opts.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS;
   // `scale` = the raster deviceScaleFactor. The page still LAYS OUT at each viewport's CSS width (so the
   // desktop/mobile layout is unchanged), but the emitted image is scaled — preview_page passes < 1 to
   // roughly halve the pixel count (≈ half the vision tokens). compare_to_source doesn't use this path.
   const scale = opts.scale && opts.scale > 0 ? opts.scale : 1;
-  const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const doc = injectBaseHref(html, opts.originHostPort);
-  const browser = await getBrowser();
-  const plan = (Object.entries(VIEWPORTS) as Array<[ViewportName, (typeof VIEWPORTS)[ViewportName]]>).filter(
-    ([name]) => wanted.includes(name),
-  );
+  const settings = { originHostPort: opts.originHostPort, timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, deviceScaleFactor: scale };
   const out: Array<[ViewportName, Shot]> = [];
-
-  for (const [name, vp] of plan) {
-    await acquire();
-    // newContext() is INSIDE the try so release() runs even if it throws (a crashed browser) — otherwise
-    // the slot would leak and, after MAX_CONCURRENT failures, deadlock every future render.
-    let context: Awaited<ReturnType<Browser['newContext']>> | undefined;
-    try {
-      context = await browser.newContext({
-        viewport: { width: vp.width, height: vp.height },
-        deviceScaleFactor: scale,
-        isMobile: vp.isMobile,
-        // Honour reduced-motion so reveal animations settle to their final state for the shot.
-        reducedMotion: 'reduce',
-      });
-      const page = await context.newPage();
-      page.setDefaultTimeout(timeout); // bound evaluate()/screenshot()/etc. — not Playwright's 30s default
-      await page.route('**/*', async (route: Route, request: PwRequest) => {
-        const allowed = await isRequestAllowed(request.url(), opts.originHostPort).catch(() => false);
-        if (allowed) await route.continue();
-        else await route.abort('blockedbyclient');
-      });
-      await page.setContent(doc, { waitUntil: 'load', timeout });
-      // Scroll-load + fonts + iframe/embed paint + animation freeze — shared with compare.ts so the agent's
-      // own preview and the fidelity side-by-sides settle identically (maps paint, lower sections load).
-      await settlePage(page, { freeze: true });
-      const fullHeight = await page
-        .evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollHeight: number } } }).document.documentElement.scrollHeight)
-        .catch(() => vp.height);
-      // Capture the WHOLE page. Use Playwright `fullPage` (Chromium captures beyond the viewport WITHOUT
-      // resizing the layout viewport) so below-the-fold is included AND `vh`-based sections keep their real
-      // height — resizing the viewport would make a `100vh`/`80vh` hero grow with it, inflating the page
-      // toward the cap. Only a PATHOLOGICALLY tall page (over the DoS cap) falls back to a capped capture.
-      const height = Math.min(Math.max(fullHeight, vp.height), vp.capHeight);
-      let buf: Buffer;
-      if (fullHeight <= vp.capHeight) {
-        buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY, fullPage: true });
-      } else {
-        await page.setViewportSize({ width: vp.width, height: vp.capHeight }).catch(() => {});
-        await page.waitForTimeout(150).catch(() => {});
-        buf = await page.screenshot({ type: 'jpeg', quality: JPEG_QUALITY });
-      }
-      out.push([name, { base64: buf.toString('base64'), mimeType: 'image/jpeg', width: vp.width, height }]);
-    } finally {
-      await context?.close().catch(() => {});
-      release();
-    }
+  for (const [name, vp] of plannedViewports(opts.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS)) {
+    out.push([name, await withPreviewPage(doc, vp, settings, (page, cdp) => captureLegacyShot(cdpDriver(page, cdp, settings.timeoutMs), vp, scale))]);
   }
   return Object.fromEntries(out);
+}
+
+/**
+ * The SEGMENTED capture `preview_page` uses: per viewport, at most two readable images from
+ * `request.segment` on — the page, or the first element matching `request.selector`. See
+ * capture-plan.ts for the cutting rules. Throws only if the browser itself is unavailable.
+ */
+export async function capturePreview(
+  html: string,
+  opts: { originHostPort: string; viewports?: ViewportName[]; timeoutMs?: number; scale?: number; request: CaptureRequest },
+): Promise<{ captures: PreviewCapture[]; notes: CaptureNote[] }> {
+  const pageScale = opts.scale && opts.scale > 0 ? opts.scale : 1;
+  // An element is shown sharper than the page (up to full resolution), so its images are laid out for
+  // a full-resolution raster; a whole page keeps the preview's reduced one.
+  const deviceScaleFactor = opts.request.selector !== undefined ? 1 : pageScale;
+  const doc = injectBaseHref(html, opts.originHostPort);
+  const settings = { originHostPort: opts.originHostPort, timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, deviceScaleFactor };
+  const captures: PreviewCapture[] = [];
+  const notes: CaptureNote[] = [];
+  const failures: unknown[] = [];
+  const plan = plannedViewports(opts.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS);
+  for (const [name, vp] of plan) {
+    try {
+      const one = await withPreviewPage(doc, vp, settings, (page, cdp) =>
+        capturePreviewViewport(cdpDriver(page, cdp, settings.timeoutMs), name, vp, opts.request, pageScale),
+      );
+      captures.push(...one.captures);
+      notes.push(...one.notes);
+    } catch (err) {
+      // A full render queue is backpressure for the whole request — the caller says "retry". Anything
+      // else is THIS viewport: say so, and keep the ones that did render.
+      if (err instanceof RenderQueueBusyError) throw err;
+      failures.push(err);
+      notes.push({ viewport: name, message: `this viewport could not be captured: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+  if (plan.length > 0 && failures.length === plan.length) throw failures[0];
+  return { captures, notes };
 }
 /* v8 ignore stop */

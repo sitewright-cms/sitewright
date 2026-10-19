@@ -1,7 +1,11 @@
 import { existsSync, readdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { launch, type LaunchedChrome } from 'chrome-launcher';
-import lighthouse, { type Flags, type RunnerResult } from 'lighthouse';
+// TYPES only: Lighthouse itself runs in a worker thread (runLighthouseIsolated), never in this heap.
+import type { Flags, RunnerResult } from 'lighthouse';
 import { chromium } from 'playwright-core';
 import type { HeadingOutline } from './heading-outline.js';
 
@@ -629,19 +633,42 @@ export function scrubRunMessage(text: string, origin = ''): string {
 }
 
 /**
+ * Failures of the BROWSER rather than verdicts on the PAGE — a crashed tab, a stalled DevTools socket, our
+ * own run deadline, no result at all. Worth retrying as they are; a verdict (NO_FCP, NOT_HTML, …) is not.
+ */
+const RETRYABLE_RUN_CODES: ReadonlySet<string> = new Set(['TARGET_CRASHED', 'LIGHTHOUSE_FAILED', 'PROTOCOL_TIMEOUT', 'TIMEOUT', 'NO_RESULT']);
+
+/**
+ * What a code means HERE, appended to Lighthouse's own sentence. "Browser tab has unexpectedly crashed"
+ * is, on a memory-capped instance, the renderer being killed for memory — the shared 768MB instance's
+ * logs show it right next to the container's own OOM kills. Said plainly, so it is not read as a bug in
+ * the page.
+ */
+const RUN_ERROR_HINTS: Readonly<Record<string, string>> = {
+  TARGET_CRASHED:
+    'On this server that almost always means the browser ran out of memory on a heavy page: retry, auditing one device at a time.',
+};
+
+/**
  * Lighthouse ran but could not audit the page — a fatal `runtimeError` on the result (NO_FCP, PAGE_HUNG,
  * …) or a thrown error. The route answers 502 with `code` + `message` instead of the opaque global 500,
  * so the author learns WHAT failed — "the page never painted" is actionable; "internal error" is not.
  * Only a Lighthouse verdict's own sentence is ever passed on, scrubbed ({@link scrubRunMessage}) and
  * then bounded: both fields reach the client verbatim. `cause` keeps the original for the server log.
+ * `retryable` says whether running the same audit again can succeed (see RETRYABLE_RUN_CODES).
  */
 export class PagespeedRunError extends Error {
   readonly code: string;
+  readonly retryable: boolean;
   constructor(code: string, message: string, opts: { origin?: string; cause?: unknown } = {}) {
-    super(cap(scrubRunMessage(message, opts.origin), MAX_RUN_ERROR_LEN), { cause: opts.cause });
-    this.name = 'PagespeedRunError';
     // A machine-readable token, so normalised to Lighthouse's own SHOUTED_SNAKE shape and hard-capped.
-    this.code = code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, MAX_RUN_ERROR_CODE_LEN);
+    const normalised = code.toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, MAX_RUN_ERROR_CODE_LEN);
+    const hint = RUN_ERROR_HINTS[normalised];
+    const scrubbed = scrubRunMessage(message, opts.origin);
+    super(cap(hint ? `${scrubbed} ${hint}` : scrubbed, MAX_RUN_ERROR_LEN), { cause: opts.cause });
+    this.name = 'PagespeedRunError';
+    this.code = normalised;
+    this.retryable = RETRYABLE_RUN_CODES.has(normalised);
   }
 }
 
@@ -793,6 +820,159 @@ const DESKTOP_THROTTLING = {
 } as const;
 
 /**
+ * The Lighthouse settings for one run. Pure — unit-tested.
+ *
+ * ★ `disableFullPageScreenshot`. Lighthouse's full-page-screenshot gatherer resizes the emulated viewport
+ * to the WHOLE page (up to 16,383px) and rasterises it — at 1350px wide on desktop, every lazy image
+ * loading at once. MEASURED on a 13,000px page: desktop Chrome peaked at 557-652MB with it and 334-371MB
+ * without (mobile 387-401 vs 304-317). On a 768MB container that is the difference between an audit and
+ * an OOM kill: the shared instance's logs show 8 of 9 desktop and 14 of 19 both-devices audits dying
+ * with the whole API, which the reverse proxy then answered as a 502. It only feeds the HTML report's
+ * element thumbnails, which nothing here reads.
+ */
+export function lighthouseFlags(formFactor: FormFactor, port: number): Flags {
+  return {
+    port,
+    logLevel: 'error',
+    output: ['json'],
+    onlyCategories: [...CATEGORIES],
+    formFactor,
+    disableFullPageScreenshot: true,
+    screenEmulation:
+      formFactor === 'desktop'
+        ? { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }
+        : { mobile: true, width: 412, height: 823, deviceScaleFactor: 1.75, disabled: false },
+    // Desktop overrides the mobile-Slow-4G default (see DESKTOP_THROTTLING). Mobile keeps the
+    // Lighthouse default (mobile Slow 4G + 4× CPU), which is the correct, representative mobile profile.
+    ...(formFactor === 'desktop' ? { throttling: DESKTOP_THROTTLING } : {}),
+  };
+}
+
+/**
+ * Run `run` with a deadline: at `ms` its signal aborts (which kills the run's Chrome) and the failure is
+ * a retryable TIMEOUT — distinct from the CALLER leaving, which passes through untouched so the route can
+ * stay silent. Lighthouse bounds its own page load, but not its gatherers or a stalled browser, and the
+ * editor's request has no deadline of its own: without this an audit could hold a render slot forever.
+ */
+export async function runWithDeadline<T>(ms: number, signal: AbortSignal, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new Error('lighthouse run deadline')), ms);
+  timer.unref?.();
+  try {
+    return await run(AbortSignal.any([signal, deadline.signal]));
+  } catch (err) {
+    if (deadline.signal.aborted && !signal.aborted) {
+      throw new PagespeedRunError(
+        'TIMEOUT',
+        `Lighthouse did not finish auditing this page within ${Math.round(ms / 1000)}s, so the run was stopped. Retry once; if it times out again the page is likely too heavy to load (check its scripts and animated backgrounds).`,
+        { cause: err },
+      );
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Old-generation heap the Lighthouse worker may use. MEASURED on a heavy 13,000px page: a desktop run
+ * needs 96-128MB (it fails at 96, completes at 128); this is twice that, for script-heavy sites.
+ */
+export const LIGHTHOUSE_HEAP_MB = 256;
+
+/**
+ * The worker's whole program: import Lighthouse, run it, post back the result as JSON text — or the
+ * error as plain fields, because a LighthouseError (its code, its ICU `friendlyMessage`) does not survive
+ * a structured clone as itself. CommonJS, `eval`'d: no separate entry file to ship or to resolve from
+ * TypeScript sources under test.
+ */
+const LIGHTHOUSE_WORKER_SOURCE = `
+const { parentPort, workerData } = require('node:worker_threads');
+(async () => {
+  try {
+    const { default: lighthouse } = await import(workerData.moduleUrl);
+    const result = await lighthouse(workerData.url, workerData.flags);
+    parentPort.postMessage({ ok: true, lhr: result ? JSON.stringify(result.lhr) : null });
+  } catch (e) {
+    const fm = e && e.friendlyMessage;
+    parentPort.postMessage({
+      ok: false,
+      code: e && typeof e.code === 'string' ? e.code : undefined,
+      friendlyMessage: typeof fm === 'string' ? fm : fm && typeof fm.formattedDefault === 'string' ? fm.formattedDefault : undefined,
+      message: String((e && e.message) || e),
+    });
+  }
+})();
+`;
+
+type WorkerReply =
+  | { ok: true; lhr: string | null }
+  | { ok: false; code?: string; friendlyMessage?: string; message: string };
+
+let lighthouseModuleUrl: string | undefined;
+function defaultLighthouseModuleUrl(): string {
+  lighthouseModuleUrl ??= pathToFileURL(createRequire(import.meta.url).resolve('lighthouse')).href;
+  return lighthouseModuleUrl;
+}
+
+/**
+ * Run Lighthouse in a WORKER THREAD with a heap of its own, capped at {@link LIGHTHOUSE_HEAP_MB}.
+ *
+ * WHY. Lighthouse used to run in the API's own heap, and its trace processing is the heaviest thing the
+ * API ever did there: MEASURED +100-240MB of V8 heap per run, held until the next GC. The shared 768MB
+ * instance (heap ceiling ~491MB) died repeatedly with "JavaScript heap out of memory" mid-audit — the
+ * whole API, every in-flight request, and a bare 502 from the proxy while it restarted. A memory ledger
+ * that reads the cgroup cannot prevent that: the cgroup had room, the heap did not.
+ *
+ * In a worker the run's heap is its own isolate. MEASURED with the same page: the API's heap moved
+ * 8→12MB during a run (it was +100-240MB), the process gave the memory back when the worker ended, and a
+ * run pushed past its cap died ALONE with ERR_WORKER_OUT_OF_MEMORY — reported here as a typed
+ * OUT_OF_MEMORY failure while the server carried on. Chrome stays launched and killed by the caller; the
+ * worker only drives it over its DevTools port, so a terminated worker leaves no browser behind.
+ *
+ * `moduleUrl` (tests) substitutes the module the worker imports for `lighthouse`.
+ */
+export function runLighthouseIsolated(
+  url: string,
+  flags: Flags,
+  opts: { signal?: AbortSignal; onAbort?: () => void; heapMb?: number; moduleUrl?: string } = {},
+): Promise<RunnerResult | undefined> {
+  const heapMb = opts.heapMb ?? LIGHTHOUSE_HEAP_MB;
+  const worker = new Worker(LIGHTHOUSE_WORKER_SOURCE, {
+    eval: true,
+    workerData: { moduleUrl: opts.moduleUrl ?? defaultLighthouseModuleUrl(), url, flags },
+    resourceLimits: { maxOldGenerationSizeMb: heapMb },
+    stdout: true, // Lighthouse's own console output stays out of the server log
+  });
+  const work = new Promise<RunnerResult | undefined>((resolve, reject) => {
+    worker.once('message', (reply: WorkerReply) => {
+      if (reply.ok) resolve(reply.lhr === null ? undefined : ({ lhr: JSON.parse(reply.lhr) } as RunnerResult));
+      else reject(Object.assign(new Error(reply.message), { code: reply.code, friendlyMessage: reply.friendlyMessage }));
+    });
+    worker.once('error', (err: Error & { code?: string }) => {
+      if (err.code === 'ERR_WORKER_OUT_OF_MEMORY') {
+        reject(
+          new PagespeedRunError(
+            'OUT_OF_MEMORY',
+            `Lighthouse needed more than its ${heapMb}MB memory allowance to audit this page, so the run was stopped — the server is unaffected. A page this heavy to trace usually runs very large or very many scripts or long animations; slim those down and audit again.`,
+            { cause: err },
+          ),
+        );
+      } else {
+        reject(err);
+      }
+    });
+    worker.once('exit', (code) => reject(new Error(`the Lighthouse worker exited (${code}) before answering`)));
+  });
+  return abortable(work, opts.signal, () => {
+    opts.onAbort?.();
+    void worker.terminate();
+  }).finally(() => {
+    void worker.terminate();
+  });
+}
+
+/**
  * Run Lighthouse against an already-served URL. Concurrency is NOT bounded here — the caller (the route)
  * wraps the whole build → serve → audit sequence in a single `withRenderSlot`, so that the expensive site
  * build is bounded too and this never nests slot acquisitions (which would dead-lock the 2-slot cap).
@@ -831,27 +1011,14 @@ export async function runPagespeedAudit(
     }
     // The caller left while Chrome was starting: don't start an audit for nobody.
     signal?.throwIfAborted();
-    const flags: Flags = {
-      port: chrome.port,
-      logLevel: 'error',
-      output: ['json'],
-      onlyCategories: [...CATEGORIES],
-      formFactor,
-      screenEmulation:
-        formFactor === 'desktop'
-          ? { mobile: false, width: 1350, height: 940, deviceScaleFactor: 1, disabled: false }
-          : { mobile: true, width: 412, height: 823, deviceScaleFactor: 1.75, disabled: false },
-      // Desktop overrides the mobile-Slow-4G default (see DESKTOP_THROTTLING). Mobile keeps the
-      // Lighthouse default (mobile Slow 4G + 4× CPU), which is the correct, representative mobile profile.
-      ...(formFactor === 'desktop' ? { throttling: DESKTOP_THROTTLING } : {}),
-    };
+    const flags = lighthouseFlags(formFactor, chrome.port);
     // Kill Chrome the moment the caller leaves: Lighthouse otherwise runs its full ~30-90 s pass (and
     // the route holds its render slot) for a response nobody will read.
     // The served origin: removed from any Lighthouse sentence passed on, so its URLs read as site paths.
     const origin = new URL(url).origin;
     let result: RunnerResult | undefined;
     try {
-      result = await abortable(lighthouse(url, flags), signal, killChrome);
+      result = await runLighthouseIsolated(url, flags, { signal, onAbort: killChrome });
     } catch (err) {
       if (signal?.aborted) throw err;
       throw toPagespeedRunError(err, origin);

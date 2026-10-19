@@ -40,8 +40,9 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
-import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedMainThread, type TextEdit, type MediaUpdate } from './client.js';
+import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedAuditPair, type PagespeedMainThread, type TextEdit, type MediaUpdate } from './client.js';
 import { searchGoogleFonts, resolveGoogleFamily, suggestGoogleFamilies } from './google-fonts.js';
+import { captureImageBlocks, captureSummary } from './preview-captures.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** The `style` a font face declares. */
@@ -1044,7 +1045,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at reduced resolution (to save tokens — enough to judge layout); pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source. Works for DRAFT pages too (any status) — the way to inspect a draft, which has no previewUrl; never publish a throwaway page just to look at it. RENDERED HTML: includeHtml:true adds the markup with inline <style>/<script> bodies elided (the compiled stylesheet alone is 25k+ tokens); selector:"main" (or "#id", ".class", "section.hero", "header nav > a", "a, b" — tag/#id/.class/[attr]/[attr="v"]/[class~="md:flex"] with descendant and ">" combinators; escape a Tailwind ":" or "/" in a class, ".md\\:flex") returns only the matching elements; screenshot:false skips the images when you only need the HTML; fullHtml:true returns the untouched document. The <head> SEO tags (canonical, hreflang) are NOT rendered here — check those on the page's previewUrl.`,
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to desktop + mobile at HALF resolution (readable, and a quarter of the pixels). A LONG page is never shrunk to fit: it comes back in SEGMENTS (about 2,700px of page each on desktop), at most two images per viewport per call starting from the top, and a phone-width page is tiled into side-by-side COLUMNS in one image (read left to right; the left column is the top). The reply says which segments you got out of how many — pass segment:3 (with viewports:["fullhd"] to skip the others) for the next part of the page. To inspect ONE part in detail (type, spacing, hairlines, a card), pass screenshotSelector:"section#pricing": only the FIRST matching element is captured, at up to full resolution, instead of the page. Pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}; the everyday words "desktop" and "phone" also work) to check specific breakpoints — e.g. all five for a full responsive sweep. Screenshots are token-heavy: preview at milestones, not after every small edit. Does not save. To preview a page you have ALREADY SAVED, pass only its id as page:{id:"home"} — the stored page is loaded and rendered, so you never resend its source. Works for DRAFT pages too (any status) — the way to inspect a draft, which has no previewUrl; never publish a throwaway page just to look at it. RENDERED HTML: includeHtml:true adds the markup with inline <style>/<script> bodies elided (the compiled stylesheet alone is 25k+ tokens); selector:"main" (or "#id", ".class", "section.hero", "header nav > a", "a, b" — tag/#id/.class/[attr]/[attr="v"]/[class~="md:flex"] with descendant and ">" combinators; escape a Tailwind ":" or "/" in a class, ".md\\:flex") returns only the matching elements' HTML (it does not crop the screenshot — that is screenshotSelector); screenshot:false skips the images when you only need the HTML; fullHtml:true returns the untouched document. The <head> SEO tags (canonical, hreflang) are NOT rendered here — check those on the page's previewUrl.`,
       inputSchema: {
         // A SAVED page may be named by id alone — the route loads the stored page and renders it. The
         // description has promised that since the stored-page fallback landed; the schema still demanded
@@ -1057,6 +1058,19 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         screenshot: z.boolean().optional().describe('false = no screenshots, HTML only (implies includeHtml). Default true.'),
         fullHtml: z.boolean().optional().describe('Return the untouched document, stylesheet and scripts included (heavy).'),
         viewports: z.array(LenientScreenshotViewportNameSchema).optional(),
+        segment: z
+          .number()
+          .int()
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe('Which segment of a long page to start from (1 = the top, the default). Each reply says how many segments the page has.'),
+        screenshotSelector: z
+          .string()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe('Capture only the FIRST element matching this CSS selector, at up to full resolution, instead of the whole page.'),
       },
     },
     async ({
@@ -1066,7 +1080,18 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       screenshot,
       fullHtml,
       viewports,
-    }: { page: unknown; includeHtml?: boolean; selector?: string; screenshot?: boolean; fullHtml?: boolean; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
+      segment,
+      screenshotSelector,
+    }: {
+      page: unknown;
+      includeHtml?: boolean;
+      selector?: string;
+      screenshot?: boolean;
+      fullHtml?: boolean;
+      viewports?: ScreenshotViewportName[];
+      segment?: number;
+      screenshotSelector?: string;
+    }): Promise<ToolResult> => {
       if (!holder.scope) {
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
@@ -1093,21 +1118,29 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return head + scoped.html;
       };
       try {
+        // `segment` is always sent with a capture: it is what asks the server for the SEGMENTED contract.
+        // An older server ignores it and answers with the legacy `screenshots`, rendered below as before.
         const res = await client.preview(page, {
           screenshot: capture,
           ...(capture && viewports?.length ? { viewports: viewports.join(',') } : {}),
+          ...(capture ? { segment: segment ?? 1 } : {}),
+          ...(capture && screenshotSelector !== undefined ? { selector: screenshotSelector } : {}),
         });
         if (!capture) return { content: [{ type: 'text', text: htmlFor(res.html) }] };
         const shots = Object.entries(res.screenshots ?? {}).filter(([, s]) => s) as Array<
           [string, NonNullable<PreviewResult['screenshots']>[ScreenshotViewportName]]
         >;
+        const captures = res.captures ?? [];
+        const notes = res.captureNotes ?? [];
+        const judge = `Look at the screenshot(s) below and judge it like a designer: does it carry the art direction you chose, or could it be any business's template? Then type hierarchy, spacing, colour balance, real imagery and the mobile view — refine until it reads as finished work made for this client.${includeHtml ? '' : ' (Pass includeHtml:true to also get the HTML source.)'}`;
         const content: ContentBlock[] = [];
-        if (shots.length > 0) {
+        if (captures.length > 0 || notes.length > 0) {
+          const summary = captureSummary(captures, notes);
+          content.push({ type: 'text', text: `${captures.length > 0 ? 'Rendered' : 'Rendered, but nothing was captured'}:\n${summary.map((l) => `• ${l}`).join('\n')}${captures.length > 0 ? `\n\n${judge}` : ''}` });
+          content.push(...captureImageBlocks(captures));
+        } else if (shots.length > 0) {
           const dims = shots.map(([name, s]) => `${name} ${s!.width}×${s!.height}`).join(', ');
-          content.push({
-            type: 'text',
-            text: `Rendered (${dims}). Look at the screenshot(s) below and judge it like a designer: does it carry the art direction you chose, or could it be any business's template? Then type hierarchy, spacing, colour balance, real imagery and the mobile view — refine until it reads as finished work made for this client.${includeHtml ? '' : ' (Pass includeHtml:true to also get the HTML source.)'}`,
-          });
+          content.push({ type: 'text', text: `Rendered (${dims}). ${judge}` });
           for (const [, s] of shots) content.push({ type: 'image', data: s!.base64, mimeType: s!.mimeType });
         } else {
           // ★ SAY WHY, and do not bury it under the page source.
@@ -1146,7 +1179,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         }
         // Only when asked for — or when there is genuinely nothing else to offer (no browser, and no
         // reason given). A transient refusal must NOT drag 300 KB of markup along with it.
-        if (includeHtml || (shots.length === 0 && !res.screenshotsUnavailable)) {
+        if (includeHtml || (shots.length === 0 && captures.length === 0 && notes.length === 0 && !res.screenshotsUnavailable)) {
           content.push({ type: 'text', text: htmlFor(res.html) });
         }
         return { content };
@@ -1291,7 +1324,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'pagespeed_audit',
     {
       description:
-        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). When performance or Total Blocking Time is poor it adds a MAIN-THREAD section naming the longest tasks (script + duration) and every animation the compositor refused (element + the animated CSS properties) — that is where a CSS effect or an animated background that costs blocking time shows up. Lab-only — no real-user CrUX field data; the performance score is a throttled lab run on a server WITHOUT a GPU (directional), while SEO / accessibility / best-practices are deterministic. It also reports OVERSIZED IMAGES, which Lighthouse structurally cannot: its image audits read element boxes, so a CSS background served at the largest rung is invisible to it. RUN THIS ON EVERY PAGE YOU FINISH, before telling anyone the page is done — it is the only check that sees what you actually shipped. `formFactor` defaults to 'mobile' (one Lighthouse run, the stricter profile); pass 'desktop' for the desktop profile, or 'both' for both devices from ONE build, keyed `{ mobile, desktop }` (about twice as long — the build is shared, the two Lighthouse runs are not). A 503 means every render slot is busy with other audits/screenshots — wait the stated seconds and retry; a 502 means Lighthouse could not audit the page, and its code says why.",
+        "Lighthouse PAGE-SPEED + SEO audit of a page, run against a DEPLOY-EQUIVALENT build (minified like Publish, with production cache headers — not the sandboxed draft preview). Returns four category scores 0–100 (performance, accessibility, best-practices, seo), core lab metrics (FCP / LCP / TBT / CLS / Speed Index), and a ranked list of the specific, actionable failing audits (e.g. render-blocking requests, unused/unminified JavaScript, images without dimensions, low-contrast text, non-sequential headings, a missing meta description). Each finding lists the CONCRETE files/elements to fix and their estimated byte/time savings, and the report includes the page's H1–H6 heading-structure outline with recommendations (missing or duplicate H1, skipped heading levels, empty headings). When performance or Total Blocking Time is poor it adds a MAIN-THREAD section naming the longest tasks (script + duration) and every animation the compositor refused (element + the animated CSS properties) — that is where a CSS effect or an animated background that costs blocking time shows up. Lab-only — no real-user CrUX field data; the performance score is a throttled lab run on a server WITHOUT a GPU (directional), while SEO / accessibility / best-practices are deterministic. It also reports OVERSIZED IMAGES, which Lighthouse structurally cannot: its image audits read element boxes, so a CSS background served at the largest rung is invisible to it. RUN THIS ON EVERY PAGE YOU FINISH, before telling anyone the page is done — it is the only check that sees what you actually shipped. `formFactor` defaults to 'mobile' (one Lighthouse run, the stricter profile); pass 'desktop' for the desktop profile, or 'both' for both devices from ONE build, keyed `{ mobile, desktop }` (about twice as long — the build is shared, the two Lighthouse runs are not; they run one after the other). If one device of 'both' cannot be audited, the other is still reported, with the reason the missing one failed. A 503 means the server cannot take an audit right now — every render slot is busy, or there is not enough free memory for Lighthouse's own browser: wait the stated seconds and retry, one device at a time and not alongside previews. A 502 means Lighthouse could not audit the page, and its code says why: TARGET_CRASHED (on this server almost always memory) and TIMEOUT are worth one retry; a code like NO_FCP is about the page itself.",
       inputSchema: { pageId: z.string(), formFactor: z.enum(['mobile', 'desktop', 'both']).optional() },
     },
     async (
@@ -1319,12 +1352,14 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         const ms = (n?: number): string => (n === undefined ? '—' : `${Math.round(n)} ms`);
         const kib = (bytes: number): string => `${Math.round(bytes / 1024)} KiB`;
         // ONE audit run now returns BOTH devices (keyed) unless a formFactor was asked for. Normalise
-        // to a list so the report renders one section per device either way.
-        const asPair = raw as Partial<Record<'mobile' | 'desktop', PagespeedAuditResult>>;
+        // to a list so the report renders one section per device either way. A device the server could
+        // not audit is absent from the pair and explained under `errors` instead.
+        const asPair = raw as PagespeedAuditPair;
         const runs: PagespeedAuditResult[] =
           asPair && typeof asPair === 'object' && (asPair.mobile || asPair.desktop)
             ? ([asPair.mobile, asPair.desktop].filter(Boolean) as PagespeedAuditResult[])
             : [raw as PagespeedAuditResult];
+        const missing = Object.entries(asPair?.errors ?? {}) as Array<['mobile' | 'desktop', NonNullable<PagespeedAuditPair['errors']>['mobile']]>;
         const lines: string[] = [];
         for (const r of runs) {
         if (lines.length) lines.push('', '─────────────', '');
@@ -1400,6 +1435,18 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
           lines.push('', 'Lighthouse environment notices (may explain a host-constrained score):');
           for (const w of r.runWarnings) lines.push(`  • ${w}`);
         }
+        }
+        for (const [device, failure] of missing) {
+          if (!failure) continue;
+          lines.push(
+            '',
+            '─────────────',
+            '',
+            `${device.toUpperCase()} — NOT AUDITED (${failure.code}): ${failure.error}`,
+            failure.retryable
+              ? `  Worth one retry on its own: call pagespeed_audit again with formFactor '${device}'.`
+              : '  Retrying will fail the same way — this is about the page, not the server.',
+          );
         }
         lines.push('', 'Note: performance is a throttled LAB score (directional); SEO / accessibility / best-practices are deterministic. No real-user field data.');
         return { content: [{ type: 'text', text: lines.join('\n') }] };

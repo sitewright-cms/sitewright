@@ -7,7 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as ScreenshotModule from '../src/render/screenshot.js';
 import type * as PagespeedModule from '../src/render/pagespeed-audit.js';
-import { createApp } from '../src/http/app.js';
+import { createApp, _setAdmissionFailingSinceForTest, _setMemoryBudgetForTest } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { RenderQueueBusyError } from '../src/render/render-slots.js';
@@ -24,6 +24,7 @@ const seams = vi.hoisted(() => ({
   slot: null as null | ((fn: () => Promise<unknown>, opts?: { signal?: AbortSignal }) => Promise<unknown>),
   audit: null as null | ((url: string, opts: { formFactor?: string; signal?: AbortSignal }) => Promise<unknown>),
   capture: null as null | (() => Promise<unknown>),
+  released: 0,
 }));
 
 vi.mock('../src/render/screenshot.js', async (importOriginal) => {
@@ -34,6 +35,10 @@ vi.mock('../src/render/screenshot.js', async (importOriginal) => {
       seams.slot ? seams.slot(fn, opts) : orig.withRenderSlot(fn, opts),
     captureScreenshots: (...args: Parameters<typeof orig.captureScreenshots>) =>
       seams.capture ? seams.capture() : orig.captureScreenshots(...args),
+    releaseIdleBrowser: async () => {
+      seams.released += 1;
+      return false;
+    },
   };
 });
 vi.mock('../src/render/pagespeed-audit.js', async (importOriginal) => {
@@ -87,14 +92,22 @@ afterAll(async () => {
   await rm(base, { recursive: true, force: true });
 });
 
+const MB = 1024 * 1024;
 beforeEach(() => {
   seams.slot = null;
   seams.audit = null;
   seams.capture = null;
+  seams.released = 0;
+  // A roomy ledger unless a test starves it — the budget is a process-wide singleton.
+  _setMemoryBudgetForTest(8192 * MB, 0);
+  _setAdmissionFailingSinceForTest(null);
 });
 
 const audit = (session = cookie) =>
   app.inject({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/${homeId}?formFactor=mobile`, cookies: { sw_session: session } });
+/** No formFactor: BOTH devices from one build. */
+const auditBoth = (session: string) =>
+  app.inject({ method: 'GET', url: `/projects/${projectId}/pagespeed-audit/${homeId}`, cookies: { sw_session: session } });
 
 /** The route allows 3 audits a minute PER SESSION — a test that needs more starts its own session. */
 async function freshSession(): Promise<string> {
@@ -279,6 +292,121 @@ async function untilRunning(pending: Promise<unknown>, running: () => boolean): 
     { timeout: 20_000 },
   );
 }
+
+describe('pagespeed-audit route — memory, deadlines, and the both-devices answer', () => {
+  it('★ BOTH devices: a desktop that cannot be audited no longer throws away the mobile result', async () => {
+    // THE BUG ("both never completed"): one failing device failed the whole call, so on a small
+    // instance — where desktop was the one that died — the answer was always nothing.
+    seams.audit = async (url, opts) => {
+      if (opts.formFactor === 'desktop') {
+        throw toPagespeedRunError(Object.assign(new Error('TARGET_CRASHED'), { code: 'TARGET_CRASHED', friendlyMessage: 'Browser tab has unexpectedly crashed.' }));
+      }
+      return fakeResult(url, opts.formFactor);
+    };
+    const res = await auditBoth(await freshSession());
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { mobile?: PagespeedAuditResult; desktop?: unknown; errors?: Record<string, { code: string; error: string; retryable: boolean }> };
+    expect(body.mobile?.formFactor).toBe('mobile');
+    expect(body.desktop).toBeUndefined();
+    expect(body.errors?.desktop).toMatchObject({ code: 'TARGET_CRASHED', retryable: true });
+    expect(body.errors?.desktop?.error).toMatch(/ran out of memory on a heavy page/);
+  });
+
+  it('both devices failing answers like one failing device — the first failure', async () => {
+    seams.audit = async (_url, opts) => {
+      throw toPagespeedRunError(Object.assign(new Error('NO_FCP'), { code: 'NO_FCP', friendlyMessage: `No paint (${opts.formFactor}).` }));
+    };
+    const res = await auditBoth(await freshSession());
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ code: 'NO_FCP', retryable: false, error: 'Lighthouse could not audit this page: No paint (mobile).' });
+  });
+
+  it('★ no memory for Lighthouse → a retryable 503 that says what an audit costs and what to do — not an OOM kill', async () => {
+    _setMemoryBudgetForTest(768 * MB, 600 * MB); // 600MB in use + an audit's peak > the 768MB limit
+    let ran = false;
+    seams.audit = async (url, opts) => {
+      ran = true;
+      return fakeResult(url, opts.formFactor);
+    };
+    const res = await audit(await freshSession());
+    expect(res.statusCode).toBe(503);
+    expect(res.headers['retry-after']).toBe('5');
+    const body = res.json() as { code: string; transient: boolean; reason: string; error: string };
+    expect(body).toMatchObject({ code: 'capacity', transient: true, reason: 'memory' });
+    expect(body.error).toMatch(/not enough memory to run Lighthouse/);
+    expect(body.error).toMatch(/one device at a time/);
+    expect(ran, 'Lighthouse must not start without the memory for it').toBe(false);
+  });
+
+  it('one admission covers BOTH devices — the second run is not refused for memory the first one left behind', async () => {
+    // MEASURED: after a run the in-process heap stays grown (~+100MB) until the next GC, and the second
+    // run REUSES it. Re-admitting per device read that as used memory and refused a desktop run that
+    // fits — which made "both" come back half-empty every time on a 768MB instance.
+    seams.audit = async (url, opts) => {
+      _setMemoryBudgetForTest(768 * MB, 600 * MB); // what the ledger reads right after a run
+      return fakeResult(url, opts.formFactor);
+    };
+    const res = await auditBoth(await freshSession());
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { mobile?: PagespeedAuditResult; desktop?: PagespeedAuditResult; errors?: unknown };
+    expect([body.mobile?.formFactor, body.desktop?.formFactor]).toEqual(['mobile', 'desktop']);
+    expect(body.errors).toBeUndefined();
+    expect(seams.released, 'the idle screenshot browser is offered back once, before the audit').toBe(1);
+  });
+
+  it('an audit is admitted at rest on a 768MB instance, and refused beside a warm screenshot browser', async () => {
+    // The thresholds the measured peak implies: the ~215-340MB an idle instance sits at fits; the
+    // ~400MB+ a warm screenshot browser leaves does not (one such pairing, admitted under a looser
+    // figure, peaked at 701MB anonymous).
+    seams.audit = async (url, opts) => fakeResult(url, opts.formFactor);
+    _setMemoryBudgetForTest(768 * MB, 340 * MB);
+    expect((await audit(await freshSession())).statusCode).toBe(200);
+    _setMemoryBudgetForTest(768 * MB, 400 * MB);
+    expect((await audit(await freshSession())).statusCode).toBe(503);
+  }, 30_000);
+
+  it('★ two audits at once never run Lighthouse side by side — the second waits for the first', { timeout: 30_000 }, async () => {
+    // The memory ledger alone cannot keep them apart: while the first run's Chrome is still starting,
+    // the cgroup reading has not moved, so a second audit reads the same free memory and is admitted.
+    let running = 0;
+    let overlapped = false;
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((r) => (releaseFirst = r));
+    let calls = 0;
+    seams.audit = async (url, opts) => {
+      calls += 1;
+      running += 1;
+      if (running > 1) overlapped = true;
+      if (calls === 1) await firstHeld;
+      running -= 1;
+      return fakeResult(url, opts.formFactor);
+    };
+    const [a, b] = [await freshSession(), await freshSession()];
+    const first = audit(a);
+    await vi.waitFor(() => expect(calls).toBe(1));
+    const second = audit(b);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls, 'the second audit must not start while the first runs').toBe(1);
+    releaseFirst();
+    const [r1, r2] = await Promise.all([first, second]);
+    expect([r1.statusCode, r2.statusCode]).toEqual([200, 200]);
+    expect(calls).toBe(2);
+    expect(overlapped).toBe(false);
+  });
+
+  it('a run past its deadline is stopped and answered as a retryable TIMEOUT', { timeout: 30_000 }, async () => {
+    process.env.SW_PAGESPEED_RUN_TIMEOUT_MS = '300';
+    try {
+      const seen = hangingAudit();
+      const res = await audit(await freshSession());
+      expect(res.statusCode).toBe(502);
+      expect(res.json()).toMatchObject({ code: 'TIMEOUT', retryable: true });
+      expect(seen[0]!.aborted, 'the run (and its Chrome) was stopped').toBe(true);
+    } finally {
+      delete process.env.SW_PAGESPEED_RUN_TIMEOUT_MS;
+    }
+  });
+});
 
 describe('preview screenshots — a busy render queue', () => {
   it('reports a RETRYABLE "busy" skip, not a permanent failure', async () => {

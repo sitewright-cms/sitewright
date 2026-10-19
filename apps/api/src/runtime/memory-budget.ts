@@ -268,6 +268,20 @@ export class MemoryBudget {
   }
 
   /**
+   * The reservation that admits work whose PEAK cost is known exactly when `used + peak + safety` stays
+   * under the hard limit.
+   *
+   * Every admission is already checked against the limit LESS the headroom fraction, so reserving the
+   * whole peak demands that margin twice over. MEASURED on a 768MB instance at rest (~392MB used): a
+   * 256MB reservation for a Lighthouse run that really adds ~250MB refused every audit, although the run
+   * fits with ~120MB to spare. Subtracting the margin makes the check mean what it says. `floorBytes`
+   * keeps a token reservation on a roomy instance, where the formula goes to nothing.
+   */
+  reservationForPeak(peakBytes: number, safetyBytes = 0, floorBytes = 0): number {
+    return Math.max(floorBytes, Math.ceil(peakBytes + safetyBytes - this.limitBytes * this.headroomFraction));
+  }
+
+  /**
    * Reserve unconditionally — for work already committed elsewhere (a browser that is running, a
    * worker already forked). Keeps the ledger honest about memory we know is spoken for.
    */

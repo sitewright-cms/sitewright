@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
-import { MainThreadView } from '../src/views/pagespeed/PageAuditPanel';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { DeviceNotAudited, MainThreadView } from '../src/views/pagespeed/PageAuditPanel';
 import type { PagespeedMainThread } from '../src/api';
 
 /**
@@ -62,5 +62,28 @@ describe('MainThreadView', () => {
     render(<MainThreadView mainThread={{ longTasks: [{ url: '/a.js', durationMs: 80 }], nonCompositedAnimations: [] }} />);
     expect(screen.getByRole('list', { name: /longest main-thread tasks/i })).toBeInTheDocument();
     expect(screen.queryByRole('list', { name: /animations not on the compositor/i })).toBeNull();
+  });
+});
+
+describe('DeviceNotAudited', () => {
+  it('says which device did not complete and why, and offers a retry when one can succeed', () => {
+    let retried = 0;
+    render(
+      <DeviceNotAudited
+        device="desktop"
+        failure={{ code: 'TARGET_CRASHED', retryable: true, error: 'Lighthouse could not audit this page: Browser tab has unexpectedly crashed.' }}
+        onRetry={() => (retried += 1)}
+      />,
+    );
+    const note = screen.getByRole('status');
+    expect(within(note).getByText('The desktop audit did not complete (TARGET_CRASHED).')).toBeTruthy();
+    expect(within(note).getByText(/Browser tab has unexpectedly crashed/)).toBeTruthy();
+    fireEvent.click(within(note).getByRole('button', { name: 'Run the audit again' }));
+    expect(retried).toBe(1);
+  });
+
+  it('offers no retry for a failure that is about the page', () => {
+    render(<DeviceNotAudited device="mobile" failure={{ code: 'NO_FCP', retryable: false, error: 'no paint' }} onRetry={() => {}} />);
+    expect(screen.queryByRole('button')).toBeNull();
   });
 });

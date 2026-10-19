@@ -90,6 +90,44 @@ The running version of an instance is reported at `GET /version` (baked into the
     fix. The write still goes through.
   - A `fontFamilies` entry with no generic fallback now gets one (`JetBrains Mono` becomes
     `JetBrains Mono, monospace`). Before, a missing font showed in the browser's default serif.
+- **`preview_page` screenshots of long pages are readable now.** A long page used to be squeezed into a
+  single 2,000px-tall image, so a 1440px-wide page came back about 360px wide and the phone view about
+  65px wide: too small to judge type or detail. Agents gave up on the tool and drove their own browser.
+  - The page is now shown at half size. It is cut into parts of about 2,700px of page each, and a call
+    returns up to two parts per screen size, starting from the top. The reply says how many parts the
+    page has, and `segment: 3` asks for the next ones.
+  - A phone-width page is laid out as side-by-side columns in one image, so it usually fits whole.
+  - The new `screenshotSelector` argument shows one section on its own, at up to full size, for a
+    close look at type and spacing.
+  - Each part is taken separately, which needs about half the browser memory of one tall capture. A
+    preview now reserves memory according to what a capture really needs, so on a small server it is
+    skipped as "out of memory" far less often.
+  - Older clients that send none of the new arguments still get one image per screen size. It is now
+    taken at its final size, and a medium-length page is no longer blown up and blurred.
+- **Screenshots no longer move sticky elements.** A sticky sidebar column used to be captured squeezed
+  down to the width of its text, or pushed down the page when its parent was positioned. A sticky
+  header could also leave a gap that the content below slid into. Sticky elements now stay exactly where
+  the page lays them out. A fixed element inside a positioned parent also keeps the place it has on
+  screen. This applies to `preview_page` and to every comparison screenshot.
+- **`pagespeed_audit` no longer crashes the server, and "both" returns results.** On a server with
+  768MB of memory, an audit used to run the whole service out of memory and restart it. The caller then
+  saw a bare "502 Bad Gateway". Desktop audits almost never finished, and "both" (mobile and desktop)
+  never did.
+  - Lighthouse used to run inside the server's own JavaScript memory, and a single audit added up to
+    240MB to it. That is why the server kept failing with "JavaScript heap out of memory". Lighthouse
+    now runs in a separate worker with its own 256MB limit. A page too heavy for that fails on its own
+    with a clear message, and the server keeps running. The memory is also handed back as soon as the
+    audit ends.
+  - Lighthouse also takes a full-length screenshot for its own report. Nothing here uses it, and on
+    desktop it almost doubled the browser's memory. It is now turned off.
+  - Each audit now checks that there is memory to spare before it starts. If there is not, it answers
+    with a clear "try again shortly" message instead of taking the server down. An idle screenshot
+    browser is closed first to make room, and only one audit runs at a time; a second one waits.
+  - A run that takes longer than 150 seconds is stopped and reported as a timeout that is worth
+    retrying.
+  - With "both", if one device fails, the other device's result is still returned, along with the
+    reason the missing one failed. The editor's audit panel shows that reason too.
+  - A crashed browser tab now says it is almost always a memory problem and is worth one retry.
 
 ## [0.64.0] — 2026-10-18
 

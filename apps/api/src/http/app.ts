@@ -84,6 +84,8 @@ import {
   PREVIEW_SANDBOX_CSP,
   SLOT_MAX,
   StockKeyedProviderSchema,
+  declaredFontFamilies,
+  unservedFontWarnings,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -172,6 +174,7 @@ import {
   nextOrderAfter,
   spacedOrders,
   GLOBAL_SNIPPET_PARTIALS,
+  GLOBAL_TEMPLATE_PREFIX,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -4699,6 +4702,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  /**
+   * Advisory font warnings for a SETTINGS write that carries `identity.typography` — a face it names that
+   * no font file is served for (see unservedFontWarnings). The write has already landed; this only says
+   * why the text will not look as intended. Built for the "third font never loaded" report: an agent set
+   * `fontFamilies.mono` (a stack that only NAMES a face), saw a success, and shipped a site in the
+   * browser's default serif. Only a write that touches typography pays for the media read.
+   */
+  async function typographyWarnings(ctx: ProjectContext, body: unknown, stored: Settings): Promise<string[]> {
+    const identity = body && typeof body === 'object' ? (body as { identity?: unknown }).identity : undefined;
+    if (!identity || typeof identity !== 'object' || (identity as { typography?: unknown }).typography === undefined) return [];
+    const typography = stored.identity?.typography;
+    if (!typography) return [];
+    const library = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).flatMap((m) =>
+      m.kind === 'font' ? [{ id: m.id, family: m.family }] : [],
+    );
+    const declared = declaredFontFamilies([stored.website?.criticalCss, stored.website?.head].filter((s): s is string => typeof s === 'string').join('\n'));
+    return unservedFontWarnings(typography, { declared, library });
+  }
+
   app.put<{ Params: ContentParams; Querystring: { merge?: string; receipt?: string } }>(
     '/projects/:projectId/content/:kind/:entityId',
     { bodyLimit: CONTENT_BODY_LIMIT, config: rlAgent(60) },
@@ -4850,8 +4872,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // the editor's buffer stays armed with a current token after every save.
       const version = contentVersion(item);
       reply.header('etag', `"${version}"`);
-      if (wantReceipt) return reply.send({ ...writeReceipt(kind, req.params.entityId, prior, item), version });
-      return reply.send({ item, version });
+      const warnings = kind === 'settings' ? await typographyWarnings(ctx, req.body, item as Settings) : [];
+      const advisory = warnings.length > 0 ? { warnings } : {};
+      if (wantReceipt) return reply.send({ ...writeReceipt(kind, req.params.entityId, prior, item), version, ...advisory });
+      return reply.send({ item, version, ...advisory });
     },
   );
 
@@ -4986,6 +5010,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await requireUserId(req);
     return reply.send({ items: await contentRepo.list(globalCtx(), parseLibraryKind(req.params.kind)) });
   });
+
+  // The SAME library, read from inside a project — the way an AGENT reaches it. `/global/:kind` takes a
+  // browser session only (requireUserId), so neither MCP credential, a project key (`swk_…`) nor a member
+  // token (`swm_…`), could read it, while every guide sends agents to get_content("snippet","nav-header")
+  // for the recipes that live here. Going through resolveProject is the point: it is the one gate that
+  // understands all three credential kinds, and it 404s the reserved scope itself. Read-only — the library
+  // is still written only through /admin/global.
+  app.get<{ Params: { projectId: string; kind: string }; Querystring: { summary?: string } }>(
+    '/projects/:projectId/global/:kind',
+    { config: rlAgent(120) },
+    async (req, reply) => {
+      await resolveProject(req, 'content:read');
+      const kind = parseLibraryKind(req.params.kind);
+      const items = await contentRepo.list(globalCtx(), kind);
+      const wantSummary = req.query.summary === '1' || req.query.summary === 'true';
+      return reply.send({ items: wantSummary ? summarizeContentList(kind, items) : items });
+    },
+  );
+
+  app.get<{ Params: { projectId: string; kind: string; entityId: string } }>(
+    '/projects/:projectId/global/:kind/:entityId',
+    { config: rlAgent(120) },
+    async (req, reply) => {
+      await resolveProject(req, 'content:read');
+      const kind = parseLibraryKind(req.params.kind);
+      // A page names a global template `global:<id>`; the row is stored under the bare id.
+      const id = req.params.entityId.startsWith(GLOBAL_TEMPLATE_PREFIX)
+        ? req.params.entityId.slice(GLOBAL_TEMPLATE_PREFIX.length)
+        : req.params.entityId;
+      return reply.send({ item: await contentRepo.get(globalCtx(), kind, id), scope: 'global' });
+    },
+  );
 
   app.put<{ Params: { kind: string; entityId: string } }>(
     '/admin/global/:kind/:entityId',

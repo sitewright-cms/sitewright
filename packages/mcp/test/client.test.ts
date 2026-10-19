@@ -226,6 +226,18 @@ describe('SitewrightClient', () => {
     expect(fake.calls.length).toBe(0);
   });
 
+  it('reads one GLOBAL library entry through the addressed project', async () => {
+    const { client, calls } = await introspected((input) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      if (input.endsWith('/global/snippet/nav-header')) return { status: 200, body: JSON.stringify({ item: { id: 'nav-header' }, scope: 'global' }) };
+      return { status: 404 };
+    });
+    expect(await client.getGlobalContent('snippet', 'nav-header')).toEqual({ id: 'nav-header' });
+    expect(calls.slice(1).map((c) => `${c.init?.method} ${c.input.replace('https://cms.test', '')}`)).toEqual([
+      'GET /projects/p1/global/snippet/nav-header',
+    ]);
+  });
+
   it('reads, previews, publishes and reads publish status on scoped paths', async () => {
     const { client, calls } = await introspected((input) => {
       if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };

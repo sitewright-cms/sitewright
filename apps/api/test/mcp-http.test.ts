@@ -324,3 +324,135 @@ describe('remote MCP transport (/mcp)', () => {
     expect(body.error?.message).toMatch(/temporary|will succeed|retry/i);
   }, 120_000);
 });
+
+// ---- The GLOBAL snippet/template library, read over MCP ----
+// Every guide tells an agent to read a recipe with get_content("snippet","nav-header"). Those recipes
+// live in the instance-wide global library (the reserved `__global__` scope), and the only route that
+// served it — GET /global/:kind — takes a browser SESSION only. So the documented call 404'd for every
+// agent, whichever credential it held. These pin the fallback for BOTH MCP credential kinds.
+describe('the global library over MCP', () => {
+  let rpcId = 500;
+  const call = async (token: string, name: string, args: Record<string, unknown> = {}) => {
+    const res = await mcp(token, { jsonrpc: '2.0', id: (rpcId += 1), method: 'tools/call', params: { name, arguments: args } });
+    const result = (res.json() as { result?: { content: Array<{ text: string }>; isError?: boolean } }).result;
+    return { isError: result?.isError === true, text: result?.content[0]?.text ?? '' };
+  };
+  async function memberToken(): Promise<{ token: string; projectId: string }> {
+    const email = `mcp-glob-${Date.now()}-${Math.random().toString(36).slice(2)}@e2e.test`;
+    await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+    const cookie = sessionCookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
+    const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: cookie }, payload: { name: 'Glob', slug: `mcp-glob-${Date.now()}` } });
+    const minted = await app.inject({
+      method: 'POST',
+      url: '/account/member-tokens',
+      cookies: { sw_session: cookie },
+      payload: { name: 'agent', expiresInDays: 1, currentPassword: 'Pw-secret-1', capabilities: ['content:read', 'content:write'] },
+    });
+    expect(minted.statusCode).toBe(201);
+    return { token: (minted.json() as { token: string }).token, projectId: (proj.json() as { project: { id: string } }).project.id };
+  }
+
+  type GlobalRead = { id: string; name: string; source: string; _global?: { readOnly: boolean; note: string } };
+
+  it('★ get_content("snippet","nav-header") resolves from the global library with a PROJECT KEY', async () => {
+    const { token } = await setup();
+    expect(token.startsWith('swk_')).toBe(true);
+    for (const id of ['nav-header', 'form-custom']) {
+      const res = await call(token, 'get_content', { kind: 'snippet', id });
+      expect(res.isError, res.text).toBe(false);
+      const item = JSON.parse(res.text) as GlobalRead;
+      expect(item.name).toBe(id);
+      expect(item.source.length).toBeGreaterThan(100);
+      // Labelled for what it is, with the way to change it.
+      expect(item._global?.readOnly).toBe(true);
+      expect(item._global?.note).toContain(`put_content("snippet","${id}"`);
+    }
+  });
+
+  it('★ …and with a MEMBER TOKEN, naming the project', async () => {
+    const { token, projectId } = await memberToken();
+    expect(token.startsWith('swm_')).toBe(true);
+    const res = await call(token, 'get_content', { project: projectId, kind: 'snippet', id: 'nav-header' });
+    expect(res.isError, res.text).toBe(false);
+    expect((JSON.parse(res.text) as GlobalRead)._global?.readOnly).toBe(true);
+    // A global TEMPLATE too, by its bare id or by the `global:` reference a page uses.
+    for (const id of ['landing', 'global:landing']) {
+      const tpl = await call(token, 'get_content', { project: projectId, kind: 'template', id });
+      expect(tpl.isError, tpl.text).toBe(false);
+      const item = JSON.parse(tpl.text) as GlobalRead;
+      expect(item.id).toBe('landing');
+      expect(item._global?.note).toContain('template:"global:landing"');
+    }
+  });
+
+  it('a PROJECT snippet of the same name wins — read back unlabelled, exactly as render resolves it', async () => {
+    const { token } = await setup();
+    // The override an agent naturally writes: the global read, edited and written back WHOLE. The
+    // `_global` label must not be stored with it.
+    const global = JSON.parse((await call(token, 'get_content', { kind: 'snippet', id: 'nav-header' })).text) as GlobalRead;
+    const put = await call(token, 'put_content', { kind: 'snippet', id: 'nav-header', data: { ...global, source: '<div>mine</div>' } });
+    expect(put.isError, put.text).toBe(false);
+    const item = JSON.parse((await call(token, 'get_content', { kind: 'snippet', id: 'nav-header' })).text) as GlobalRead;
+    expect(item.source).toBe('<div>mine</div>');
+    expect(item._global).toBeUndefined();
+  });
+
+  it('an id in NEITHER scope is still a plain 404, and other kinds never fall back', async () => {
+    const { token } = await setup();
+    const missing = await call(token, 'get_content', { kind: 'snippet', id: 'no-such-recipe' });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toMatch(/^Error 404/);
+    const page = await call(token, 'get_content', { kind: 'page', id: 'nav-header' });
+    expect(page.isError).toBe(true);
+    expect(page.text).toMatch(/^Error 404/);
+  });
+
+  it('list_content stays the project\'s own plain array; its description says where the recipes are', async () => {
+    const { token } = await setup();
+    expect(JSON.parse((await call(token, 'list_content', { kind: 'snippet' })).text)).toEqual([]); // a new project has none of its own
+    const listed = await mcp(token, { jsonrpc: '2.0', id: (rpcId += 1), method: 'tools/list', params: {} });
+    const tools = (listed.json() as { result: { tools: Array<{ name: string; description?: string }> } }).result.tools;
+    const desc = tools.find((t) => t.name === 'list_content')?.description ?? '';
+    expect(desc).toContain('nav-header');
+    expect(desc).toContain('get_content(kind, id)');
+  });
+
+  it('a GLOBAL TEMPLATE written back whole as a project template does not keep the `_global` label', async () => {
+    const { token, projectId } = await setup();
+    const global = JSON.parse((await call(token, 'get_content', { kind: 'template', id: 'landing' })).text) as GlobalRead;
+    expect(global._global?.readOnly).toBe(true);
+    const put = await call(token, 'put_content', { kind: 'template', id: 'landing', data: { ...global, source: '<section>mine</section>' } });
+    expect(put.isError, put.text).toBe(false);
+    // Stored without the label (read straight from the REST API, not through the labelling tool)…
+    const stored = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/template/landing`, headers: { authorization: `Bearer ${token}` } });
+    expect(stored.statusCode).toBe(200);
+    const item = (stored.json() as { item: Record<string, unknown> }).item;
+    expect(item.source).toBe('<section>mine</section>');
+    expect(item).not.toHaveProperty('_global');
+    // …and the project copy is what get_content now returns, unlabelled.
+    expect((JSON.parse((await call(token, 'get_content', { kind: 'template', id: 'landing' })).text) as GlobalRead)._global).toBeUndefined();
+  });
+
+  it('the project-scoped REST reads take every credential kind; the session-only /global route is unchanged', async () => {
+    const { token, projectId } = await setup();
+    const bearer = { authorization: `Bearer ${token}` };
+    const one = await app.inject({ method: 'GET', url: `/projects/${projectId}/global/snippet/nav-header`, headers: bearer });
+    expect(one.statusCode).toBe(200);
+    expect((one.json() as { item: { name: string }; scope: string })).toMatchObject({ item: { name: 'nav-header' }, scope: 'global' });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/global/snippet?summary=1`, headers: bearer });
+    expect(list.statusCode).toBe(200);
+    const items = (list.json() as { items: Array<{ id: string; source?: string }> }).items;
+    expect(items.some((i) => i.id === 'nav-header')).toBe(true);
+    expect(items.every((i) => i.source === undefined)).toBe(true); // summary: bodies omitted
+    // Read-only, and only the two library kinds.
+    expect((await app.inject({ method: 'GET', url: `/projects/${projectId}/global/page/home`, headers: bearer })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: `/projects/${projectId}/global/snippet/nav-header`, headers: bearer, payload: { name: 'x', source: 'x' } })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: `/projects/${projectId}/global/snippet/nav-header` })).statusCode).toBe(401);
+    // The reserved scope is still not a project anyone can address, and a key reaches only its own project.
+    expect((await app.inject({ method: 'GET', url: '/projects/__global__/global/snippet/nav-header', headers: bearer })).statusCode).toBe(404);
+    const other = await setup();
+    expect((await app.inject({ method: 'GET', url: `/projects/${other.projectId}/global/snippet/nav-header`, headers: bearer })).statusCode).toBe(404);
+    // The instance-wide route keeps taking a browser session only.
+    expect((await app.inject({ method: 'GET', url: '/global/snippet', headers: bearer })).statusCode).toBe(401);
+  });
+});

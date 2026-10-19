@@ -143,6 +143,15 @@ describe('richCiCss', () => {
       );
       expect(css).toContain(`${RICH_CI_SCOPE} .font-heading{font-family:Georgia, serif}`);
     });
+
+    it('draws a bare legacy stack with the same generic fallback the site utility gets', () => {
+      const css = richCiCss(
+        identity({
+          typography: { fontFamilies: { heading: 'Georgia' }, heading: { source: 'system', family: 'serif', weight: 700 }, body: { source: 'system', family: 'sans-serif', weight: 400 } },
+        } as Partial<CorporateIdentity>),
+      );
+      expect(css).toContain(`${RICH_CI_SCOPE} .font-heading{font-family:Georgia, serif}`);
+    });
   });
 
   it('is empty without an identity — the standard palettes still come from the compiled sheet', () => {

@@ -289,6 +289,19 @@ describe('buildSite preview options', () => {
     expect(published).toBe(preview!);
   });
 
+  it('a maps.google.com embed also allows www.google.com, the host it redirects to', async () => {
+    // CSP checks every hop of a frame navigation. maps.google.com/maps?…&output=embed redirects to
+    // www.google.com/maps?…, so a policy naming only the written host blocked the frame at the hop.
+    const mapPage = [
+      { id: 'home', path: '', title: 'Home', source: '<iframe src="https://maps.google.com/maps?q=Berlin&amp;output=embed" title="map"></iframe>' },
+    ] as unknown as ProjectBundle['pages'];
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(mapPage) });
+    const html = await readFile(join(outDir, 'index.html'), 'utf8');
+    const csp = html.match(/name="sw-csp" content="([^"]*)"/)?.[1]?.replace(/&#39;/g, "'") ?? '';
+    const frameSrc = csp.split('; ').find((d) => d.startsWith('frame-src')) ?? '';
+    expect(frameSrc).toBe("frame-src 'self' https://maps.google.com https://www.google.com");
+  });
+
   it('the inlined preview runtime neutralizes a </script in its bytes (no early tag close)', async () => {
     // renderDocument neutralizes `</script` → `<\/script` when it inlines a script, so a runtime carrying
     // that sequence can't close its own <script> tag early. (No CSP hash is involved anymore — the runtime

@@ -1,4 +1,4 @@
-import type { BrandTokens } from '@sitewright/schema';
+import { withGenericFallback, type BrandTokens } from '@sitewright/schema';
 
 /** Brand tokens mapped into the subset of the Tailwind theme we expose as utilities. */
 export interface TailwindTheme {
@@ -16,7 +16,9 @@ export interface TailwindTheme {
  *     `--sw-font-heading`/`--sw-font-body` vars (emitted by typographyCss), so the utility always
  *     tracks the current slot;
  *   - custom named slots → `font-<name>` (→ `var(--sw-font-<name>)`);
- *   - legacy `fontFamilies` raw stacks → `font-<key>` (kept as an escape hatch; wins on key clash).
+ *   - legacy `fontFamilies` raw stacks → `font-<key>` (kept as an escape hatch; wins on key clash). A stack
+ *     names a family but ships no file, so one without a generic gets one appended (`JetBrains Mono` →
+ *     `JetBrains Mono, monospace`): a bare stack fell back to the browser's default serif.
  */
 export function brandToTailwindTheme(brand: BrandTokens): TailwindTheme {
   const typo = brand.typography;
@@ -27,7 +29,7 @@ export function brandToTailwindTheme(brand: BrandTokens): TailwindTheme {
       heading: 'var(--sw-font-heading)',
       body: 'var(--sw-font-body)',
       ...Object.fromEntries(Object.keys(named).map((n) => [n, `var(--sw-font-${n})`])),
-      ...(typo?.fontFamilies ?? {}),
+      ...Object.fromEntries(Object.entries(typo?.fontFamilies ?? {}).map(([k, v]) => [k, withGenericFallback(k, v)])),
     },
   };
 }

@@ -113,6 +113,9 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
       '--radius-box', // what actually rounds daisyUI components (identity.radii does not)
       'measure_header', // a restyled bar of another height
       '--sw-header-offset:0', // a bar laid over the opening
+      // A third face is a NAMED slot; fontFamilies ships no file (agents reached for fontFamilies.mono).
+      'identity.typography.named.<name> → class font-<name>',
+      'typography.fontFamilies only NAMES a family and ships no file',
     ]) {
       expect(body, kept).toContain(kept);
     }

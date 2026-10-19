@@ -108,6 +108,42 @@ function externalHttpsHost(src: string | null | undefined): string | null {
   return HOST_TOKEN_RE.test(u.host) ? u.host : null;
 }
 
+/**
+ * Embed hosts that REDIRECT the frame to a different host before anything renders. CSP checks every hop
+ * of a frame navigation against frame-src, so allowing only the host the author wrote lets the first
+ * request through and blocks the frame at the redirect — an empty box where the map should be, with the
+ * violation reported only in the visitor's console.
+ *
+ * Hit by an agent building a client site: `https://maps.google.com/maps?…&output=embed` (the older,
+ * still widely copied embed form) answers with a redirect to `https://www.google.com/maps?…`. Every
+ * `maps.google.<tld>` does the same to its `www.google.<tld>`, and the bare `google.<tld>` apex to `www.`.
+ *
+ * Curated and anchored on the WHOLE host: only these exact shapes add a host, and the added host is the
+ * same registrable domain the author already allowed, so nothing here can widen the policy to a third
+ * party. A look-alike (`maps.google.com.evil.test`) matches nothing. The grant is the whole www.google.*
+ * host — CSP matches a redirect hop by host only (its path is ignored), so it cannot be narrowed to /maps.
+ * It also applies to ANY iframe on maps.google.<tld> or google.<tld>, not only a /maps path: the scan
+ * keys on the host, so a non-maps Google iframe on those hosts gets www.google.<tld> allowed as well.
+ */
+const EMBED_REDIRECT_HOSTS: ReadonlyArray<{ from: RegExp; to: (m: RegExpExecArray) => string }> = [
+  // maps.google.com / maps.google.de / maps.google.co.uk → www.google.<same tld>
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear: one optional fixed-width group, anchored, on a hostname
+  { from: /^maps\.google\.((?:com?\.)?[a-z]{2,3})$/i, to: (m) => `www.google.${m[1]!.toLowerCase()}` },
+  // google.com/maps/embed → www.google.com/maps/embed
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear: one optional fixed-width group, anchored, on a hostname
+  { from: /^google\.((?:com?\.)?[a-z]{2,3})$/i, to: (m) => `www.google.${m[1]!.toLowerCase()}` },
+];
+
+/** The host(s) a frame pointed at `host` will actually be served from: itself, plus any redirect target. */
+function frameHosts(host: string): string[] {
+  const out = [host];
+  for (const r of EMBED_REDIRECT_HOSTS) {
+    const m = r.from.exec(host);
+    if (m) out.push(r.to(m));
+  }
+  return out;
+}
+
 /** The explicit per-iframe override category from a `data-sw-consent="<category>"` marker (raw HTML only). */
 function markerCategory(attrs: string): ConsentCategory | null {
   const v = attrValue(attrs, 'data-sw-consent');
@@ -134,7 +170,8 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
       const attrs = m[1] ?? '';
       for (const v of [attrValue(attrs, 'src'), attrValue(attrs, 'data-sw-consent-src'), attrValue(attrs, 'data-src')]) {
         const h = externalHttpsHost(v);
-        if (h) frame.add(h);
+        // …plus the host the embed REDIRECTS to, or the frame is blocked at the hop (EMBED_REDIRECT_HOSTS).
+        if (h) for (const fh of frameHosts(h)) frame.add(fh);
       }
     }
     for (const m of html.matchAll(MEDIA_TAG_RE)) {

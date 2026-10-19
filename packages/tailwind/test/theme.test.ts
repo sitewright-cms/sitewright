@@ -18,6 +18,21 @@ describe('brandToTailwindTheme', () => {
     });
   });
 
+  // A fontFamilies stack NAMES a face and ships no file. A bare one (`mono: "JetBrains Mono"`) fell back to
+  // the browser's default SERIF wherever that face was missing — "the third font had no fallback".
+  it('gives a fontFamilies stack without a generic the fallback its face/key implies', () => {
+    const theme = brandToTailwindTheme({
+      colors: {},
+      typography: { fontFamilies: { mono: 'JetBrains Mono', quote: 'Georgia', display: "'Bebas Neue', sans-serif", brand: 'var(--x)' } },
+    } as unknown as Brand);
+    expect(theme.fonts).toMatchObject({
+      mono: 'JetBrains Mono, monospace',
+      quote: 'Georgia, serif',
+      display: "'Bebas Neue', sans-serif", // already lands somewhere — untouched
+      brand: 'var(--x)', // can't see into a var()
+    });
+  });
+
   it('exposes font-<name> for each custom named slot', () => {
     const theme = brandToTailwindTheme({
       colors: {},

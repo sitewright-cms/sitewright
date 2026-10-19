@@ -22,7 +22,8 @@ describe('brandToCss', () => {
         radii: { card: '0.5rem' },
       }),
     );
-    expect(css).toContain('--sw-font-heading: Inter;');
+    // A bare stack gets the generic it lacks — the same stack the font-<key> utility uses.
+    expect(css).toContain('--sw-font-heading: Inter, sans-serif;');
     expect(css).toContain('--sw-space-lg: 2rem;');
     expect(css).toContain('--sw-radius-card: 0.5rem;');
   });
@@ -108,7 +109,7 @@ describe('brandToCss', () => {
       expect(css).not.toContain('/*');
       expect(css).not.toContain('--sw-font-evil');
       // The declarations an open comment would have swallowed survive.
-      expect(css).toContain('--sw-font-good: Georgia;');
+      expect(css).toContain('--sw-font-good: Georgia, serif;');
       expect(css).toContain('--sw-space-md: 1rem;');
       expect(css.trimEnd().endsWith('}')).toBe(true); // the block still closes
     });
@@ -121,7 +122,7 @@ describe('brandToCss', () => {
 
     it('keeps an ordinary font stack that merely contains a slash', () => {
       const css = brandToCss(brand({ typography: { fontFamilies: { ok: 'Foo Bar' } } }));
-      expect(css).toContain('--sw-font-ok: Foo Bar;');
+      expect(css).toContain('--sw-font-ok: Foo Bar, sans-serif;');
     });
   });
 });

@@ -421,7 +421,9 @@ function MainApp({
           role="tab"
           aria-selected={tab === t}
           onClick={() => setTab(t)}
-          className={`waves-effect shrink-0 snap-start rounded-xl px-3 py-1.5 text-sm font-medium transition ${
+          // Tighter on a phone: six short labels then still fit a 412px strip without scrolling (the mobile
+          // E2E pins it), which `px-3` stopped doing when Statistics became the sixth tab.
+          className={`waves-effect shrink-0 snap-start rounded-xl ${isMobile ? 'px-2' : 'px-3'} py-1.5 text-sm font-medium transition ${
             tab === t ? gradientSurface : `text-slate-500 dark:text-slate-400 ${gradientHover}`
           }`}
         >

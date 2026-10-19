@@ -121,7 +121,7 @@ test('mobile: the tablist scrolls in its own row, and modals arrive as bottom sh
   await page.getByRole('button', { name: 'Create project' }).click();
   await expect(page.getByRole('button', { name: /^Home \// })).toBeVisible();
 
-  // The tablist sits BELOW the header's control row, not inside it — so five tabs never compete with
+  // The tablist sits BELOW the header's control row, not inside it — so the tabs never compete with
   // the brand, the project pill, Publish and two menus for one row's width.
   const tablist = page.getByRole('tablist', { name: 'Project sections' });
   // The Account button is the far-RIGHT end of the control row — an unambiguous anchor for "that row"
@@ -132,11 +132,12 @@ test('mobile: the tablist scrolls in its own row, and modals arrive as bottom sh
   expect(tabs!.y, 'the tab strip must start below the control row').toBeGreaterThanOrEqual(acct!.y + acct!.height - 2);
 
   // The strip is BUILT to scroll, but shortening the two long labels ("Corporate Identity" → "Identity",
-  // "Website Settings" → "Website") bought back enough width that all five now fit at 412px — the
+  // "Website Settings" → "Website") bought back enough width that all of them fit at 412px — the
   // better outcome, and worth pinning so a future long label does not quietly reintroduce the scroll.
+  // (It caught exactly that when Statistics became the sixth tab: 441px of tabs in a 412px strip.)
   const strip = page.locator('div.sw-scroll-none').filter({ has: tablist });
   const [content, visible] = await strip.evaluate((el) => [el.scrollWidth, el.clientWidth]);
-  expect(content, 'the five tabs should fit without scrolling at this width').toBeLessThanOrEqual(visible + 1);
+  expect(content, 'the six tabs should fit without scrolling at this width').toBeLessThanOrEqual(visible + 1);
   // And if a longer label ever does overflow it, scrolling the strip must still not drag the PAGE.
   await strip.evaluate((el) => el.scrollBy({ left: 400 }));
   await expectNoHorizontalOverflow(page, 'tab strip scrolled');

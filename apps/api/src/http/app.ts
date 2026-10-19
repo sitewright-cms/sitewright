@@ -1966,8 +1966,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Daily totals in their own SQLite file; counting happens in memory (see analytics/engine.ts). The country
   // database loads on the first counted visit, so an instance whose sites never count pays nothing for it.
   const statsDbUrl = opts.statsDbUrl ?? (opts.dataDir ? `file:${join(opts.dataDir, 'analytics.db')}` : ':memory:');
+  // The store opens before the logger exists (`app` is created below), so its notes wait for it.
+  const statsBootNotes: Array<{ message: string; err?: unknown }> = [];
   const statsEngine = await StatsEngine.open({
-    store: await StatsStore.open(statsDbUrl),
+    store: await StatsStore.open(statsDbUrl, { log: (message, err) => statsBootNotes.push({ message, err }) }),
     // Derived from the encryption key when there is one, so it outlives the statistics file: every page deployed
     // to another host carries signatures made from it, and a secret that changed with a lost or restored
     // `analytics.db` would silently stop counting all of them. (Remote deploy targets need the key anyway.)
@@ -10892,6 +10894,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   });
 
+  for (const note of statsBootNotes) app.log.warn(note.err ? { errMsg: note.err instanceof Error ? note.err.message : String(note.err) } : {}, note.message);
   if (statsEngine.createdSecret) {
     app.log.info('statistics: created a new route-signing secret — pages published before it on other hosts count again once republished (set SW_ENCRYPTION_KEY to make it survive the statistics file)');
   }
@@ -12094,6 +12097,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // an expired challenge fails verification before the spent-check is ever consulted.
     void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
     if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
+    // Statistics of projects that no longer exist (a reap whose own cleanup failed, a beacon that landed after it).
+    void statsEngine
+      .reapOrphans((ids) => projects.existingIds(ids))
+      .then((gone) => {
+        if (gone.length) app.log.info({ projects: gone.length }, 'reaped the statistics of deleted projects');
+      })
+      .catch((err) => app.log.warn(err, 'statistics orphan reap failed'));
     // ★ THE DERIVED-STORE REAPERS. `sites`, `preview` and `source-refs` had ONE removal path
     // between them (permanent project deletion), so anything ever published, previewed or imported
     // grew forever — 1.35 GB on a real instance, almost none of it reachable.

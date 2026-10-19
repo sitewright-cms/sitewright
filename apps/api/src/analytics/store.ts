@@ -43,6 +43,18 @@ const SCHEMA = [
 
 const DATA_TABLES = ['traffic', 'pages', 'sources', 'goals'] as const;
 
+/** Above this, an existing file is not rewritten at startup to switch on incremental vacuum. */
+const CONVERT_MAX_BYTES = 64 * 1024 * 1024;
+/** Pages handed back per step of compact() (4 KB pages: 2 MB a step). */
+const COMPACT_STEP_PAGES = 512;
+
+export interface StatsStoreOptions {
+  /** Hears about problems that are not worth failing over (an unconverted file). */
+  log?: (message: string, err?: unknown) => void;
+  /** Override for {@link CONVERT_MAX_BYTES} (tests). */
+  convertMaxBytes?: number;
+}
+
 export interface TrafficRow { project: string; day: string; cls: StatsClass; device: StatsDevice | ''; country: string; views: number; visitors: number }
 export interface PageRow { project: string; day: string; path: string; views: number; botViews: number }
 export interface SourceRow { project: string; day: string; source: StatsSource; host: string; visitors: number }
@@ -78,12 +90,63 @@ export class StatsStore {
   private constructor(private readonly client: Client) {}
 
   /** Opens (creating when absent) the statistics database at a libsql URL — `:memory:` for tests. */
-  static async open(url: string): Promise<StatsStore> {
+  static async open(url: string, opts: StatsStoreOptions = {}): Promise<StatsStore> {
     const client = createClient({ url });
     // Same posture as the main database (see db/client.ts); WAL is a no-op for `:memory:`.
+    // INCREMENTAL auto-vacuum lets compact() hand freed pages back to the filesystem; without it a SQLite file
+    // never shrinks, and a reaped site's rows would leave their space behind for good. It only takes effect
+    // before the first table exists, so it goes first — ahead of the WAL switch too.
+    await client.execute('PRAGMA auto_vacuum = INCREMENTAL');
     await client.executeMultiple('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
     await client.batch(SCHEMA, 'write');
+    // A file created without incremental vacuum converts once — a full VACUUM, which rewrites the file. Only a
+    // small one, and never fatally: statistics are optional, and the platform must boot even when a rewrite
+    // cannot (a full disk, a huge file). An unconverted file still works; it just does not shrink.
+    const mode = await client.execute('PRAGMA auto_vacuum');
+    if (Number(mode.rows[0]?.[0] ?? 0) !== 2) {
+      const size = await client.batch(['PRAGMA page_count', 'PRAGMA page_size'], 'read');
+      const bytes = num(size[0]!.rows[0]?.[0]) * num(size[1]!.rows[0]?.[0]);
+      if (bytes > (opts.convertMaxBytes ?? CONVERT_MAX_BYTES)) {
+        opts.log?.(`statistics: ${url} was made without incremental vacuum and is too large to convert at startup; it will not shrink after deletes`);
+      } else {
+        try {
+          await client.executeMultiple('PRAGMA auto_vacuum = INCREMENTAL; VACUUM;');
+        } catch (err) {
+          opts.log?.('statistics: could not convert the statistics file to incremental vacuum; it will not shrink after deletes', err);
+        }
+      }
+    }
     return new StatsStore(client);
+  }
+
+  /** Hands the pages freed by deletes back to the filesystem (a no-op when nothing was freed). */
+  async compact(): Promise<void> {
+    // In bounded steps, yielding between them: the driver is synchronous, so one pragma freeing every page of
+    // a large delete would hold the event loop — and every request with it — for the whole run.
+    // executeMultiple, not execute: the pragma frees one page per STEP, and a single-row query leaves it
+    // mid-flight ("cannot commit transaction - SQL statements in progress").
+    for (let i = 0; i < 10_000; i++) {
+      const { free } = await this.pages();
+      if (free === 0) return;
+      await this.client.executeMultiple(`PRAGMA incremental_vacuum(${COMPACT_STEP_PAGES});`);
+      if (free <= COMPACT_STEP_PAGES) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+
+  /** Database pages in use and free — what compact() can give back. */
+  async pages(): Promise<{ total: number; free: number }> {
+    const [total, free] = await this.client.batch(['PRAGMA page_count', 'PRAGMA freelist_count'], 'read');
+    return { total: num(total!.rows[0]?.[0]), free: num(free!.rows[0]?.[0]) };
+  }
+
+  /** Every project id that has statistics stored. */
+  async projectIds(): Promise<string[]> {
+    const rs = await this.client.execute(
+      `SELECT project FROM traffic UNION SELECT project FROM pages UNION SELECT project FROM sources
+       UNION SELECT project FROM goals UNION SELECT project FROM seen`,
+    );
+    return rs.rows.map((r) => str(r.project));
   }
 
   close(): void {

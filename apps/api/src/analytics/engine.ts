@@ -36,6 +36,8 @@ import { statsProjectKey } from './token.js';
 
 /** How often counters are written. */
 export const FLUSH_MS = 60_000;
+/** The orphan reap refuses to delete more sites than this AND more than half of them in one pass. */
+const MASS_REAP_FLOOR = 3;
 
 export interface StatsLimits {
   /** Distinct counter rows held between flushes, across all sites. */
@@ -397,6 +399,8 @@ export class StatsEngine {
     if (this.prunedFor !== day) {
       await this.store.prune(day, statsRetentionStart(day), shiftStatsDay(day, -1));
       this.prunedFor = day;
+      // Yesterday's visitor ids and the oldest day of totals just went: give their space back.
+      await this.compactQuietly();
     }
   }
 
@@ -448,12 +452,78 @@ export class StatsEngine {
     return this.store.rows(projectId, table, from, to);
   }
 
-  /** Forgets a project entirely (it was deleted for good). */
+  /**
+   * Gives freed space back. Best-effort: the counts are already written by the time this runs, so a failure here
+   * must not fail the flush (which would report lost counts) or repeat the prune.
+   */
+  private async compactQuietly(): Promise<void> {
+    try {
+      await this.store.compact();
+    } catch (err) {
+      this.log('statistics: could not give freed space back', err);
+    }
+  }
+
+  /**
+   * Runs `fn` on the flush chain, so it never interleaves with a flush (the minute timer included). The chain
+   * survives `fn` failing; the caller still sees the failure.
+   */
+  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.flushing.then(fn);
+    this.flushing = run.then(
+      () => true,
+      () => true,
+    );
+    return run;
+  }
+
+  /** Forgets a project entirely (it was deleted for good), and gives its space back. */
   async forget(projectId: string): Promise<void> {
-    await this.flush();
+    await this.exclusive(async () => {
+      await this.flushNow();
+      this.dropFromMemory(projectId);
+      await this.store.forget(projectId);
+      await this.compactQuietly();
+    });
+  }
+
+  private dropFromMemory(projectId: string): void {
     this.seenCount -= this.seen.get(projectId)?.size ?? 0;
     this.seen.delete(projectId);
     this.sourceHosts.delete(projectId);
-    await this.store.forget(projectId);
+  }
+
+  /**
+   * Deletes the statistics of every project that no longer exists — the reconciliation behind {@link forget}.
+   * A permanent delete forgets its project directly, but that cleanup can fail, and a beacon already past its
+   * checks when the project went can still land a row afterwards. Without this those rows would linger until the
+   * 25-month retention reached them. `exists` answers which ids still exist (soft-deleted ones included: they can
+   * be restored). Returns the ids it removed.
+   */
+  async reapOrphans(exists: (ids: string[]) => Promise<ReadonlySet<string>>): Promise<string[]> {
+    if (this.closing) return [];
+    return this.exclusive(async () => {
+      await this.flushNow();
+      const ids = await this.store.projectIds();
+      if (ids.length === 0) return [];
+      const live = await exists(ids);
+      const gone = ids.filter((id) => !live.has(id));
+      // ★ A sanity brake. Statistics live in their own file, so they can outlive the database they belong to: a
+      // main database restored from an old backup, or a data directory pointed at another one, would make most
+      // sites look deleted at once — and this would erase their history for good. A real deletion arrives one
+      // project at a time (and is forgotten directly); most of the set vanishing at once is the other thing.
+      if (gone.length > Math.max(MASS_REAP_FLOOR, ids.length / 2)) {
+        this.log(
+          `statistics: ${gone.length} of ${ids.length} sites with statistics are missing from the database — NOT deleting their statistics. If those projects really are gone, delete analytics.db or remove them one by one.`,
+        );
+        return [];
+      }
+      for (const id of gone) {
+        this.dropFromMemory(id);
+        await this.store.forget(id);
+      }
+      if (gone.length) await this.compactQuietly();
+      return gone;
+    });
   }
 }

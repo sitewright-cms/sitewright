@@ -1,9 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import type { GeoLookup } from '../src/analytics/geo.js';
+import { StatsStore } from '../src/analytics/store.js';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 // The built-in statistics end to end: the publisher puts a signed tracker on every page, the page beacons to
@@ -350,5 +351,125 @@ describe('built-in statistics without a public URL', () => {
     });
     const s = (await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).json();
     expect(s.botViews).toBe(1);
+  });
+});
+
+describe('statistics across the site lifecycle', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  let dir: string;
+  let statsUrl: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'sw-stats-life-'));
+    statsUrl = `file:${join(dir, 'analytics.db')}`;
+    // The maintenance sweeps run (every 100 ms), so the orphan reap gets its chance at a soft-deleted project.
+    harness = await makeHarness({ publishRoot: join(dir, 'sites'), sitesDomain: DOMAIN, publicUrl: 'https://cms.agency.com', statsGeo: geo, statsDbUrl: statsUrl, maintenanceSweepMs: 100 });
+    client = await harness.signup({ admin: true });
+    projectId = await client.createProject('Example', SLUG, { localHosting: false });
+    await client.project(projectId).putContent('settings', 'settings', {
+      brand: { name: 'Example', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+      website: { statistics: { enabled: true } },
+    });
+    await client.project(projectId).putContent('page', 'home', { kind: 'page', title: 'Home', path: '', source: '<h1>Home</h1>' });
+    await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local' });
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
+  });
+  afterEach(async () => {
+    await harness.close();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  /** The home page's tracker (a copy deployed elsewhere keeps beaconing whatever happens to the project). */
+  async function homeTracker() {
+    const html = (await harness.app.inject({ method: 'GET', url: '/', headers: { host: SITE_HOST, 'user-agent': CHROME, 'x-forwarded-proto': 'https' } })).body;
+    return trackerOf(html);
+  }
+  const beacon = (tag: { r: string; k: string }, ip: string) =>
+    harness.app.inject({
+      method: 'POST',
+      url: `/a/${projectId}`,
+      headers: { host: 'cms.agency.com', 'content-type': 'text/plain', 'user-agent': CHROME },
+      payload: JSON.stringify({ r: tag.r, k: tag.k, h: SITE_HOST }),
+      remoteAddress: ip,
+    });
+  /** What is actually stored for the project, read straight from the statistics file — every table. */
+  async function stored(): Promise<{ traffic: number; any: boolean }> {
+    const store = await StatsStore.open(statsUrl);
+    try {
+      const [, ...rows] = await store.rows(projectId, 'traffic', '2020-01-01', '2099-12-31');
+      return { traffic: rows.length, any: (await store.projectIds()).includes(projectId) };
+    } finally {
+      store.close();
+    }
+  }
+  const humanViews = async () => (await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}`)).json().human.views as number;
+
+  it('★ soft delete stops the counting but keeps the numbers; restore brings them back; the permanent reap deletes them', async () => {
+    const tag = (await homeTracker())!;
+    await beacon(tag, '1.1.1.1');
+    expect(await humanViews()).toBe(1);
+
+    // Soft delete: the site is gone, so a copy elsewhere still beaconing is no longer counted…
+    expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
+    expect((await beacon(tag, '1.1.1.2')).statusCode).toBe(204);
+    // …but what was counted is kept (a restore must find it) — including through the hourly orphan reap, which
+    // runs here (and flushes before it looks) and must treat a soft-deleted project as existing.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(await stored()).toEqual({ traffic: 1, any: true });
+
+    // Restore: the numbers are there — and only those: the beacon sent while it was deleted was not counted (the
+    // query flushes first, so a pending count would show here) — and counting resumes.
+    expect((await client.post(`/admin/deleted-projects/${projectId}/restore`)).statusCode).toBe(204);
+    expect(await humanViews()).toBe(1);
+    await beacon(tag, '1.1.1.3');
+    expect(await humanViews()).toBe(2);
+
+    // The permanent reap deletes the statistics with the project.
+    expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
+    expect((await client.del(`/admin/deleted-projects/${projectId}`)).statusCode).toBe(204);
+    expect(await stored()).toEqual({ traffic: 0, any: false });
+  });
+});
+
+describe('the statistics orphan sweep', () => {
+  it('★ runs with the maintenance sweeps and removes statistics no project owns', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-orphans-'));
+    const statsUrl = `file:${join(dir, 'analytics.db')}`;
+    const harness = await makeHarness({ statsDbUrl: statsUrl, statsGeo: geo, maintenanceSweepMs: 60 });
+    try {
+      const client = await harness.signup({ admin: true });
+      // A live project and a soft-deleted one, each with statistics — they must survive the sweep…
+      const live = await client.createProject('Live', 'live', { localHosting: false });
+      const parked = await client.createProject('Parked', 'parked', { localHosting: false });
+      expect((await client.del(`/projects/${parked}`)).statusCode).toBe(204);
+      // …and the leftovers of a project that is gone (as if its reap's own cleanup had failed) must not.
+      const row = (project: string) => ({ project, day: today(), cls: 'human' as const, device: 'desktop' as const, country: 'DE', views: 3, visitors: 1 });
+      const planted = await StatsStore.open(statsUrl);
+      await planted.apply({
+        traffic: [row('ghost'), row(live), row(parked)],
+        pages: [{ project: 'ghost', day: today(), path: '/', views: 3, botViews: 0 }],
+        sources: [],
+        goals: [{ project: 'ghost', day: today(), goal: 'form:x', count: 1 }],
+        seen: [{ project: 'ghost', day: today(), ids: [1, 2] }],
+      });
+      planted.close();
+      await vi.waitFor(
+        async () => {
+          const store = await StatsStore.open(statsUrl);
+          try {
+            expect((await store.projectIds()).sort()).toEqual([live, parked].sort());
+          } finally {
+            store.close();
+          }
+        },
+        { timeout: 5000, interval: 100 },
+      );
+    } finally {
+      await harness.close();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

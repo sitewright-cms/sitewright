@@ -160,6 +160,48 @@ export const CONSENT_JS = `(function(){
   // The live consent the page is operating under (necessary always true). Updated on store/apply.
   var current=withNecessary(emptyCats(false));
   function broadcast(){try{window.dispatchEvent(new CustomEvent('sw:consentchange',{detail:withNecessary(current)}));}catch(e){}}
+  // PREVIEW (grantAll) renders what a page LOOKS like — embeds, functional widgets — but never runs analytics
+  // or marketing code: the owner's own previews would count as visits. RAN records which categories' code
+  // actually ran on THIS page, so withdrawing one knows whether there is anything to undo.
+  var PREVIEW=false,PREVIEW_HOLD={analytics:1,marketing:1},RAN={};
+  // GOOGLE CONSENT MODE v2. A Google tag loads only once its category is granted, but it still needs the
+  // consent STATE: everything denied by default, then the visitor's choice, BEFORE gtag('js')/config or the
+  // GTM container start — and an update whenever the choice changes on the page.
+  var gcm=0;
+  function gtagOf(){window.dataLayer=window.dataLayer||[];if(!window.gtag)window.gtag=function(){window.dataLayer.push(arguments);};return window.gtag;}
+  function gstate(){var a=current.analytics?'granted':'denied',m=current.marketing?'granted':'denied',f=current.functional?'granted':'denied';return {ad_storage:m,ad_user_data:m,ad_personalization:m,analytics_storage:a,functionality_storage:f,personalization_storage:f,security_storage:'granted'};}
+  function googleConsent(){var g=gtagOf();if(!gcm){gcm=1;g('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'denied',functionality_storage:'denied',personalization_storage:'denied',security_storage:'granted'});}g('consent','update',gstate());}
+  // WITHDRAWAL. The known tracker cookies of a withdrawn category are deleted at once (they may date from earlier
+  // pages). A script cannot be unloaded, so when the category's code RAN on this page the runtime also reloads,
+  // and the rest of the visit runs without it, unless a form on the page holds unsaved input. The cancelable
+  // 'sw:consentrevoked' event (detail.cats, detail.reload) lets an author take over the reload.
+  var GA_COOKIES=/^(_ga|_ga_[A-Za-z0-9]+|_gid|_gat(_[A-Za-z0-9_-]+)?|__utm[a-z]{1,3})$/,ADS_COOKIES=/^(_gcl_[a-z]{2,4}|_gac_[A-Za-z0-9_.-]+)$/;
+  var TRACKER_COOKIES={analytics:[GA_COOKIES],marketing:[ADS_COOKIES],functional:[]};
+  function dropCookies(re){try{
+    var all=document.cookie?document.cookie.split(';'):[],parts=location.hostname.split('.'),doms=[''];
+    for(var i=0;i<parts.length-1;i++)doms.push(parts.slice(i).join('.')); // host-only, the host, and each parent domain
+    for(var j=0;j<all.length;j++){var nm=all[j].split('=')[0].replace(/^\\s+|\\s+$/g,'');if(!re.test(nm))continue;
+      for(var d=0;d<doms.length;d++)document.cookie=nm+'=; Max-Age=0; path=/'+(doms[d]?'; domain='+doms[d]:'');}
+  }catch(e){}} // document.cookie throws in an opaque-origin document
+  // Unsaved input anywhere on the page (the banner's own toggles excluded): a reload would throw it away.
+  function formDirty(){
+    var f=document.querySelectorAll('input,textarea,select');
+    for(var i=0;i<f.length;i++){var e=f[i],t=(e.type||'').toLowerCase();
+      if(e.closest&&e.closest('[data-sw-consent]'))continue;
+      if(t==='checkbox'||t==='radio'){if(e.checked!==e.defaultChecked)return true;}
+      else if(e.tagName==='SELECT'){for(var o=0;o<e.options.length;o++)if(e.options[o].selected!==e.options[o].defaultSelected)return true;}
+      else if(t!=='hidden'&&t!=='submit'&&t!=='button'&&t!=='reset'&&e.value!==e.defaultValue)return true;}
+    return false;
+  }
+  function revoke(cats){
+    if(PREVIEW)return;
+    var ran=false;
+    for(var i=0;i<cats.length;i++){var res=TRACKER_COOKIES[cats[i]]||[];for(var r=0;r<res.length;r++)dropCookies(res[r]);if(RAN[cats[i]])ran=true;}
+    var reload=ran&&!formDirty(),ev=null;
+    try{ev=new CustomEvent('sw:consentrevoked',{detail:{cats:cats,reload:reload},cancelable:true});}catch(e){}
+    if(ev&&!window.dispatchEvent(ev))return;
+    if(reload){try{location.reload();}catch(e){}}
+  }
 
   // ── AUTHOR-CONTENT GATING ───────────────────────────────────────────────────────────────────────
   // A held <iframe data-sw-consent-src> / inert <script type="text/plain" data-sw-consent> is loaded or
@@ -178,13 +220,22 @@ export const CONSENT_JS = `(function(){
     if(src)fr.setAttribute('src',src);
   }
   function activateGatedScript(sc){
+    var cat=gcat(sc);
+    if(PREVIEW&&PREVIEW_HOLD[cat])return;
     if(sc.getAttribute('data-sw-gate-done')==='1')return;sc.setAttribute('data-sw-gate-done','1');
-    var ns=document.createElement('script'),src=sc.getAttribute('src');
-    if(src){ns.src=src;if(sc.getAttribute('async')!==null)ns.async=true;if(sc.getAttribute('defer')!==null)ns.defer=true;var co=sc.getAttribute('crossorigin');if(co!==null)ns.setAttribute('crossorigin',co);}
-    else{ns.text=sc.textContent||'';}
-    var id=sc.getAttribute('id');if(id)ns.id=id;
-    if(sc.parentNode)sc.parentNode.replaceChild(ns,sc); // replacing a type=text/plain node with a typed one runs it
+    // The vendor's own attributes travel with it (Plausible's data-domain, Umami's data-website-id, integrity,
+    // referrerpolicy, async/defer…): an ALLOW-list, so the gate's data-sw-* markers, the inert type, on* handlers
+    // and framework attributes (@click, :class) stay behind. Each copy is guarded: one name setAttribute rejects
+    // must not cost the script, or the runtime's start-up.
+    var ns=document.createElement('script'),at=sc.attributes;
+    for(var i=0;i<at.length;i++){var n=at[i].name.toLowerCase();
+      if(!(KEEP_ATTR[n]||(/^data-[a-z0-9][a-z0-9._-]*$/.test(n)&&n.indexOf('data-sw-')!==0)))continue;
+      try{ns.setAttribute(n,at[i].value);}catch(e){}}
+    if(!sc.getAttribute('src'))ns.text=sc.textContent||'';
+    RAN[cat]=1;
+    try{if(sc.parentNode)sc.parentNode.replaceChild(ns,sc);}catch(e){} // replacing a type=text/plain node with a typed one runs it
   }
+  var KEEP_ATTR={src:1,async:1,defer:1,crossorigin:1,integrity:1,referrerpolicy:1,nonce:1,id:1,'class':1,charset:1,fetchpriority:1};
   function gatePlaceholder(fr,cat,labels){
     // The placeholder OVERLAYS the iframe at its exact dimensions: wrap the (held, empty) iframe in a
     // relative box — the iframe sizes the box — and lay an absolutely-positioned card over it. The
@@ -282,24 +333,32 @@ export const CONSENT_JS = `(function(){
     var btnAccept=el('button',{cls:'btn btn-sm btn-primary',text:txt('acceptAll','Accept all'),attrs:{type:'button'}});
 
     // Managed third-party integrations the runtime injects when their category is consented (de-duped by id).
-    // NOTE: once a script is in the DOM it can't be retracted — withdrawing a category is honored on the NEXT
-    // page load only (the banner re-prompt + version bump handle re-consent). Browsers don't un-run scripts.
+    // Browsers don't un-run scripts: withdrawing a category whose code already ran here is handled by revoke()
+    // (tracker cookies deleted, page reloaded); a Google tag is also told at once through Consent Mode.
     var ints=(cfg.ints&&cfg.ints.length)?cfg.ints:[];
     var loaded={},gtagLoaded=0;
     function injectScript(src,async,id){var s=document.createElement('script');s.src=src;s.async=!!async;s.setAttribute('data-sw-consent-loaded',id);(document.head||document.documentElement).appendChild(s);} // async set EXPLICITLY — a dynamically-created script defaults to async=true, so async:false must be forced off
     // ga4/gtm run a self-origin bootstrap (consent.js is 'self', so no inline-CSP issue) then load the external
     // gtag/gtm script; a plain 'script' just loads its src. CSP allows only the registered origins (derived at publish).
     function loadConsented(){
-      for(var k=0;k<ints.length;k++){var it=ints[k];if(!it||loaded[it.id]||!current[it.cat])continue;loaded[it.id]=1;
-        if(it.kind==='ga4'){window.dataLayer=window.dataLayer||[];if(!window.gtag)window.gtag=function(){window.dataLayer.push(arguments);};window.gtag('js',new Date());if(it.mid)window.gtag('config',it.mid);if(!gtagLoaded){gtagLoaded=1;injectScript(it.src,true,it.id);}} // gtag.js loads ONCE; extra GA4 ids just gtag('config',…)
-        else if(it.kind==='gtm'){window.dataLayer=window.dataLayer||[];window.dataLayer.push({'gtm.start':+new Date(),event:'gtm.js'});injectScript(it.src,true,it.id);}
+      for(var k=0;k<ints.length;k++){var it=ints[k];if(!it||loaded[it.id]||!current[it.cat])continue;
+        if(PREVIEW&&(PREVIEW_HOLD[it.cat]||it.kind==='ga4'||it.kind==='gtm'))continue; // a Google tag counts visits in any category
+        loaded[it.id]=1;RAN[it.cat]=1;
+        if((it.kind==='ga4'||it.kind==='gtm')&&TRACKER_COOKIES[it.cat].indexOf(GA_COOKIES)<0)TRACKER_COOKIES[it.cat].push(GA_COOKIES); // a Google tag sets _ga in whatever category it was filed under
+        if(it.kind==='ga4'){var g=gtagOf();if(!gcm)googleConsent();if(!gtagLoaded)g('js',new Date());if(it.mid)g('config',it.mid);if(!gtagLoaded){gtagLoaded=1;injectScript(it.src,true,it.id);}} // gtag.js (and gtag('js')) ONCE; extra GA4 ids just gtag('config',…)
+        else if(it.kind==='gtm'){gtagOf();if(!gcm)googleConsent();window.dataLayer.push({'gtm.start':+new Date(),event:'gtm.js'});injectScript(it.src,true,it.id);}
         else{injectScript(it.src,it.async!==false,it.id);}
       }
     }
     function showBanner(){root.setAttribute('data-open','');}
     function hideBanner(){root.removeAttribute('data-open');}
     function syncBoxes(){for(var id in boxes){if(boxes[id])boxes[id].checked=!!current[id];}} // reflect current on the toggles
-    function apply(catObj){current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});syncBoxes();hideBanner();broadcast();loadConsented();}
+    function apply(catObj){var before=current;current=withNecessary(catObj);writeStore({v:version,cats:{functional:current.functional,analytics:current.analytics,marketing:current.marketing},ts:+new Date()});syncBoxes();hideBanner();
+      if(gcm)gtagOf()('consent','update',gstate()); // a loaded Google tag honours the new choice at once
+      broadcast();loadConsented();
+      var gone=[];for(var c=0;c<CATS.length;c++){var id=CATS[c];if(before[id]&&!current[id])gone.push(id);}
+      if(gone.length)revoke(gone);
+    }
     // Open preferences: reveal the panel + Save, HIDE the now-redundant Customize button, sync the toggles.
     function openPrefs(){root.setAttribute('data-prefs','open');btnCustomize.style.display='none';btnSave.style.display='';syncBoxes();}
     btnCustomize.addEventListener('click',openPrefs);
@@ -321,6 +380,7 @@ export const CONSENT_JS = `(function(){
     // gated embeds + integrations WYSIWYG — never set on a real publish. Else honor the stored record.
     var rec=readStore();
     if(cfg.grantAll){
+      PREVIEW=true;
       apply(emptyCats(true)); // sets current, stays closed, broadcasts + loadConsented (gates read current in initGates)
     }else if(rec&&typeof rec.v==='number'&&rec.v>=version&&rec.cats){
       current=withNecessary(rec.cats); // already-consented → stays closed

@@ -18,6 +18,31 @@ The running version of an instance is reported at `GET /version` (baked into the
   use it whenever it serves visitors, and vary the pages instead. The four-column footer stays on the
   list, and a thin utility strip over a centred wordmark still counts as the second-wave look.
 
+### Fixed
+
+- **Consent-gated analytics now behave as visitors and owners expect.**
+  - **Vendor attributes are kept.** A gated script (`<script type="text/plain" data-sw-consent="analytics">`)
+    lost every attribute except `src`, `async`, `defer`, `crossorigin` and `id` when it was released. Plausible
+    (`data-domain`), Umami (`data-website-id`), Fathom (`data-site`) and others identify the site through such
+    attributes, so they loaded but recorded nothing. The released script now keeps its attributes, except the
+    gate's own markers: it copies `data-*` attributes plus `src`, `async`, `defer`, `crossorigin`, `integrity`,
+    `referrerpolicy`, `nonce`, `id`, `class`, `charset` and `fetchpriority`.
+  - **Google Consent Mode v2.** Google Analytics 4 and Tag Manager integrations now receive Google's consent
+    signals: everything denied by default, then the visitor's choice, before the tag starts, and an update
+    whenever the visitor changes it. Google expects these signals for visitors in the EU/EEA.
+  - **The owner's previews are no longer counted.** The editor's draft preview accepted every consent category
+    so embeds would render, which also loaded Google Analytics and any other analytics or marketing code. Those
+    now never run in the preview. Embeds and functional widgets still render there.
+  - **Withdrawing consent takes effect at once.** Withdrawn consent used to apply only from the next page load,
+    and the tracker's cookies stayed behind.
+    - The known tracker cookies of a withdrawn category (`_ga`, `_gid`, `_gcl_au` and the like) are now deleted
+      at once.
+    - If a script from that category already ran on the page, the page reloads so the rest of the visit runs
+      without it. It does not reload while a form on the page holds unsaved input.
+    - A Google tag is also told immediately through Consent Mode.
+    - Authors can take over the reload by cancelling the new `sw:consentrevoked` event; `detail.reload` says
+      whether the runtime would have reloaded.
+
 ## [0.65.0] — 2026-10-19
 
 ### Changed

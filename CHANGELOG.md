@@ -23,6 +23,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   - A "generic-template check" lists the stock layout's hallmarks. Four or more on one page means the
     layout gets reworked.
   - The header and footer recipes are described as mechanics to keep, not a look to copy.
+  - A before/after test on three briefs showed that the stock skeleton was gone. The three new sites had
+    converged on a second shared look: cream paper with a serif, monospace captions, a utility strip over a
+    centred wordmark, and a footer opening with one big statement. The guide had suggested those header
+    and footer options first, and all its examples were printed artefacts. Its second round:
+    - names that "second-wave template" in the check;
+    - drops the stock header and footer options;
+    - draws its example ideas from materials, light, motion, scale, colour, pattern and space;
+    - asks for a reason to use the fonts generated sites reach for by reflex.
   - The rules that keep sites working are unchanged: theme colours for dark mode, the shared content
     width, fonts, image sizing and editability.
 

@@ -54,6 +54,11 @@ The running version of an instance is reported at `GET /version` (baked into the
     in the editor preview.
   - The checkbox fires a `change` event when it closes, so a site's own listeners see it close.
   - Links to other pages, and every link with JavaScript off, behave as before.
+- **ScrollSpy no longer highlights two items in a header split either side of a centred logo.** Each
+  half was treated as its own menu, so each half kept one item lit.
+  - Now all spied lists in the same navigation share one active item. That includes the desktop halves
+    and the mobile menu. Wrapping both halves in `data-sw-scrollspy` is no longer needed.
+  - A separate spy elsewhere, such as a sidebar table of contents, still keeps its own active item.
 
 ## [0.64.0] — 2026-10-18
 

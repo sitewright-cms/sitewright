@@ -15,6 +15,18 @@
 // active link(s). A scope with NO resolvable section targets is DORMANT (left untouched) so ordinary
 // route highlighting survives on pages that have no in-page sections.
 //
+// GROUPS — ONE NAVIGATION, ONE ACTIVE ITEM. The active SECTION is chosen per GROUP, not per scope: every
+// governed scope inside the same landmark (its OUTERMOST `nav`/`aside`/`footer`/`header`/
+// `[role=navigation]` ancestor-or-self — for the platform chrome that is the skeleton slot, e.g.
+// `#main-nav`) shares one selection, and every link to that section lights, in every list of the group.
+// A per-`.menu` choice lit TWO items in a header split either side of a centred logo (two `.menu`s): in
+// the right half's section, the left half kept its own last-crossed section lit beside it — and at the
+// page bottom each half lit its own last item. Grouping also keeps the desktop bar and the mobile drawer
+// in step (both light the same section; a drawer that omits that section lights nothing rather than a
+// stale neighbour). A DORMANT list stays out of its group entirely, so a language menu in the header
+// keeps its own highlight. A scope with no landmark around it (an on-page TOC in the body) is its own
+// group, and a spy in ANOTHER landmark (a sidebar TOC in `#sidebar-left`) keeps its own active item.
+//
 // ANCHORS ONLY — a link is a spy target only when its URL fragment resolves to a section that EXISTS on
 // the current page (`getElementById`). This makes PATH-PREFIXED anchors (`/#about`, `/en/#about`) work
 // cleanly: they spy on the page that actually has `#about` and are inert elsewhere, with no fragile
@@ -68,12 +80,13 @@ export const SCROLLSPY_JS = `(function(){
   // A hashless link to the current page itself (e.g. a Home item) — the TOP sentinel.
   function samePage(a){return a.hash===''&&a.pathname===location.pathname&&a.search===location.search;}
   function domBefore(a,b){return (a.compareDocumentPosition(b)&4)?-1:1;}
+  // The GROUP a scope belongs to: its OUTERMOST landmark ancestor-or-self (see GROUPS in the header).
+  var LANDMARK='nav,aside,footer,header,[role="navigation"]';
+  function landmark(el){var r=null,p=el.closest(LANDMARK);while(p){r=p;p=p.parentElement?p.parentElement.closest(LANDMARK):null;}return r||el;}
   var governed=[];
   scopes.forEach(function(scope){
     var links=qsa('a[href]',scope);
-    // Object.create(null): a section id of "__proto__"/"constructor" must key cleanly (a bare {} would
-    // hit Object.prototype, so the !byId[id] guard misfires and the forEach throws — killing the runtime).
-    var byId=Object.create(null),order=[],sentinels=[];
+    var hits=[],sentinels=[];
     links.forEach(function(a){
       var h=a.hash;
       if(h&&h.length>1){
@@ -88,14 +101,23 @@ export const SCROLLSPY_JS = `(function(){
         //   • any element with no layout box right now (display:none: a closed dialog, an inactive tab
         //     panel, an off-canvas region). A below-the-fold section is still laid out (has client rects),
         //     so it is correctly kept — only genuinely unrendered targets are dropped.
-        if(el&&el.tagName!=='DIALOG'&&el.getClientRects().length){if(!byId[id]){byId[id]={el:el,links:[]};order.push(id);}byId[id].links.push(a);}
+        if(el&&el.tagName!=='DIALOG'&&el.getClientRects().length)hits.push({id:id,el:el,a:a});
       }else if(samePage(a)){sentinels.push(a);}
     });
-    if(order.length===0)return; // dormant: no in-page sections → leave route highlighting alone
-    var secs=order.map(function(id){return byId[id];}).sort(function(a,b){return domBefore(a.el,b.el);});
-    governed.push({links:links,secs:secs,sentinels:sentinels,key:undefined});
+    // Dormant: no in-page sections → leave this list's route highlighting alone, even when another list
+    // in the same landmark is governed (a language switcher keeps its current-locale highlight).
+    if(hits.length===0)return;
+    var root=landmark(scope),g=null,k;
+    for(k=0;k<governed.length;k++){if(governed[k].root===root){g=governed[k];break;}}
+    // Object.create(null): a section id of "__proto__"/"constructor" must key cleanly (a bare {} would
+    // hit Object.prototype, so the !byId[id] guard misfires and the forEach throws — killing the runtime).
+    if(!g){g={root:root,links:[],byId:Object.create(null),secs:[],sentinels:[],key:undefined};governed.push(g);}
+    g.links=g.links.concat(links);
+    g.sentinels=g.sentinels.concat(sentinels);
+    hits.forEach(function(h){var s=g.byId[h.id];if(!s){s=g.byId[h.id]={el:h.el,links:[]};g.secs.push(s);}s.links.push(h.a);});
   });
   if(governed.length===0)return;
+  governed.forEach(function(g){g.secs.sort(function(a,b){return domBefore(a.el,b.el);});});
   // The fixed-header offset in PX. The cached #main-nav element is re-MEASURED each frame (not re-queried)
   // so a shrinking / breakpoint-varying header stays correct — only while it is actually fixed/sticky.
   // Else resolve the --sw-header-h token (authored in rem, which parseFloat alone cannot resolve to px).

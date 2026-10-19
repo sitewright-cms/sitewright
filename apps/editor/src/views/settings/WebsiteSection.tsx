@@ -4,6 +4,7 @@ import { siteUrlIssue, type JsonValue, type PaymentBindingPublic } from '@sitewr
 import {
   Globe, Sparkles, PanelTop, Signpost, ShoppingCart, Languages, MoonStar, MoveHorizontal,
   ShieldAlert, ShieldCheck, Image as ImageIcon, Trash2, Search, BookOpenText,
+  BarChart3,
 } from 'lucide-react';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, Labelled } from './ui';
@@ -14,6 +15,8 @@ import { PaymentCredentialsModal } from './PaymentCredentialsModal';
 import { TransactionsInbox } from './TransactionsInbox';
 import type { AvailableGateway } from './ShopChannelsEditor';
 import { ConsentSettingsModal } from './ConsentSettingsModal';
+import { AnalyticsSettingsModal } from './AnalyticsSettingsModal';
+import { analyticsTools, waitsForConsent } from './analytics';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
@@ -30,6 +33,7 @@ import { SecuritySheet } from './website/SecuritySheet';
 import { SkeletonMap } from './website/SkeletonMap';
 import {
   consentStatus,
+  analyticsStatus,
   contentWidthLabel,
   contentWidthStatus,
   effectsStatus,
@@ -88,6 +92,8 @@ const HELP = {
   search:
     'Scripts where marks carry meaning (Thai, Devanagari, Hebrew, Arabic) are never affected either way.',
   shop: "A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). The shop's wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels.",
+  analytics:
+    'The analytics tool the site reports to: Google Analytics, Tag Manager, Plausible, Umami, Matomo, Fathom, Simple Analytics or your own script. Tools that set no cookies can load without asking; the rest wait for consent in the cookie banner. Never paste a tracker into Head HTML: it would skip consent, and the site’s security policy blocks it on platform hosting.',
   consent:
     'A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled. Add a “Cookie settings” re-open link anywhere with <a href="#sw-consent">.',
   translations:
@@ -137,6 +143,7 @@ export function WebsiteSection({
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [pruning, setPruning] = useState(false);
   const [pruneMsg, setPruneMsg] = useState('');
 
@@ -381,7 +388,7 @@ export function WebsiteSection({
       </Band>
 
       <Band title="Site behaviour">
-        <Tile title="Redirects" icon={<Signpost className="h-4 w-4" />} status={redirectsStatus(form)} span="c4" md={6} onOpen={() => setSheet('redirects')}>
+        <Tile title="Redirects" icon={<Signpost className="h-4 w-4" />} status={redirectsStatus(form)} span="c3" md={6} onOpen={() => setSheet('redirects')}>
           <BudgetRows
             n={3}
             items={form.redirects.filter((r) => r.from.trim())}
@@ -395,7 +402,7 @@ export function WebsiteSection({
           title="security.txt"
           icon={<ShieldAlert className="h-4 w-4" />}
           status={securityStatus(form)}
-          span="c4"
+          span="c3"
           md={3}
           off={!form.securityEnabled}
           control={<input type="checkbox" role="switch" className={toggleInput} aria-label="Publish security.txt" checked={form.securityEnabled} onChange={(e) => patch({ securityEnabled: e.target.checked })} />}
@@ -412,7 +419,7 @@ export function WebsiteSection({
           )}
         </Tile>
 
-        <Tile title="Site search" icon={<Search className="h-4 w-4" />} status={searchStatus(form)} span="c4" md={3} help={HELP.search}>
+        <Tile title="Site search" icon={<Search className="h-4 w-4" />} status={searchStatus(form)} span="c3" md={3} help={HELP.search}>
           <label className="flex items-start justify-between gap-3">
             <span className="min-w-0">
               <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Match accented letters loosely</span>
@@ -429,6 +436,17 @@ export function WebsiteSection({
               onChange={(e) => patch({ searchFoldDiacritics: e.target.checked })}
             />
           </label>
+        </Tile>
+        <Tile title="Analytics" icon={<BarChart3 className="h-4 w-4" />} status={analyticsStatus(form)} span="c3" md={6} help={HELP.analytics}>
+          <RowBlock n={4}>
+            <BudgetRows
+              n={3}
+              items={analyticsTools(form.consent)}
+              empty="No analytics tool connected."
+              render={(i) => <Row key={i.id} label={i.name || 'Analytics tool'} value={waitsForConsent(i) ? 'after consent' : 'no consent needed'} />}
+            />
+            <PartRow label="Analytics tools" ariaLabel="Edit analytics tools" onClick={() => setAnalyticsOpen(true)} />
+          </RowBlock>
         </Tile>
       </Band>
 
@@ -613,6 +631,7 @@ export function WebsiteSection({
         />
       )}
       {ordersOpen && <TransactionsInbox projectId={projectId} onClose={() => setOrdersOpen(false)} />}
+      {analyticsOpen && <AnalyticsSettingsModal form={form} patch={patch} onClose={() => setAnalyticsOpen(false)} />}
       {consentOpen && <ConsentSettingsModal form={form} patch={patch} onClose={() => setConsentOpen(false)} onEditLabels={editLabels} />}
       {/* The full slot editor, stacked over Settings — the same slot as the map's part, with the live
           preview, device widths and click-to-code the page editor has. Saves through `saveNow`. */}

@@ -143,6 +143,16 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(body).toContain('a thin utility strip above a centred wordmark');
   });
 
+  it('★ sends analytics to the integration registry, never into raw head/scripts HTML', () => {
+    // A tracker pasted into website.head skips consent and is CSP-blocked on platform hosting while the
+    // sandboxed preview shows it working — the exact "works in preview, broken live" trap.
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toMatch(/Analytics and other third-party\s+tools are website\.consent\.integrations entries/);
+    const consent = AGENT_GUIDES.consent.body;
+    expect(consent).toContain('NEVER paste a tracker');
+    expect(consent).toContain('the id from THEIR snippet');
+    for (const preset of ['plausible', 'umami', 'matomo', 'fathom', 'simpleanalytics', 'requireConsent:false']) expect(consent).toContain(preset);
+  });
+
   it('teaches CHROME SLOT authoring (website.mainNav/footer) so header/footer are not built as pages', () => {
     // The exact failure a weaker model hit: it made pages/templates named header/footer instead of
     // filling the site-wide slots. The core AND the nav guide must name the real mechanism.

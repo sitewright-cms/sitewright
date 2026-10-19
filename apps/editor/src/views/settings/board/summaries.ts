@@ -1,3 +1,4 @@
+import { analyticsTools, stalledAnalytics } from '../analytics';
 import {
   BUTTON_EFFECT_LABELS,
   BUTTON_SHAPE_LABELS,
@@ -320,6 +321,14 @@ export function shopStatus(f: SettingsForm): TileStatus {
   // The schema refuses a checkout channel without a settlement currency — the save would fail.
   if (f.shopChannels.some((c) => c.kind === 'checkout') && !f.shopCurrencyCode.trim()) return attention('Currency missing');
   return set(plural(channels, 'channel'));
+}
+
+export function analyticsStatus(f: SettingsForm): TileStatus {
+  const n = analyticsTools(f.consent).length;
+  if (n === 0) return na('None');
+  // A tool waiting for consent while the banner is off never loads: the one state the owner must hear about.
+  if (stalledAnalytics(f.consent).length > 0) return attention('Banner off');
+  return set(plural(n, 'tool'));
 }
 
 export function consentStatus(f: SettingsForm): TileStatus {

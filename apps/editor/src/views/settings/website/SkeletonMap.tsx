@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
-import { SLOT_MAX } from '@sitewright/schema';
+import { SLOT_MAX, analyticsLoaderIn } from '@sitewright/schema';
 import type { SettingsForm } from '../model';
 import { CodeEditorModal } from '../../ui/CodeEditorModal';
 import type { ChromeSlotKey } from '../../SlotEditor';
@@ -31,11 +31,14 @@ interface PartConfig {
 
 /** What the Scripts editor tells its author, because the answer is not guessable from the field. */
 const SCRIPTS_HINT =
-  'Raw HTML, inserted exactly as written at the end of <body> — after the bottom slot, before the platform’s own scripts. Nothing is wrapped for you: put JavaScript inside <script>…</script> tags, e.g. <script async src="https://…"></script>.';
+  'Raw HTML, inserted exactly as written at the end of <body> — after the bottom slot, before the platform’s own scripts. Nothing is wrapped for you: put JavaScript inside <script>…</script> tags, e.g. <script async src="https://…"></script>. Analytics belongs in the Analytics tile, not here: a tracker here skips visitor consent.';
+/** Raw <head> HTML is for meta and verification tags. A tracker pasted here skips consent and is CSP-blocked live. */
+const HEAD_HINT =
+  'Raw HTML inserted into <head>: meta and site-verification tags. Connect analytics in the Analytics tile instead: a tracker pasted here runs before any visitor consent, and on platform hosting the site’s security policy blocks it even though the preview shows it working.';
 
 const PARTS: readonly PartConfig[] = [
   { part: 'criticalCss', name: 'criticalCss', title: 'Critical CSS', label: 'Project-wide CSS inlined in <head> (after brand tokens)', language: 'css', placeholder: '.hero { ... }' },
-  { part: 'head', name: 'headHtml', title: 'Head HTML', label: 'Raw HTML injected into <head> (analytics, meta)', language: 'html', placeholder: '<meta ... />' },
+  { part: 'head', name: 'headHtml', title: 'Head HTML', label: 'Raw HTML injected into <head> (meta and verification tags)', language: 'html', hint: HEAD_HINT, placeholder: '<meta ... />' },
   {
     part: 'mainNav',
     name: 'mainNav',
@@ -66,7 +69,7 @@ const PARTS: readonly PartConfig[] = [
 const cfg = (part: SkeletonPart): PartConfig => PARTS.find((p) => p.part === part) as PartConfig;
 
 const HEAD_TIP =
-  'Critical CSS is inlined in <head> after the brand tokens (up to 256 KB); Head HTML is raw HTML for analytics and meta tags. Both open in the code editor.';
+  'Critical CSS is inlined in <head> after the brand tokens (up to 256 KB); Head HTML is raw HTML for meta and verification tags (analytics goes in the Analytics tile). Both open in the code editor.';
 const BODY_TIP =
   'Parts sit in render order. The nav, sidebars and footer open in the full editor with a live preview; bottom and Scripts open in the code editor.';
 
@@ -107,7 +110,15 @@ export function SkeletonMap({
     const c = cfg(p);
     const src = partSource(form, p);
     const lines = lineCount(src);
-    const status = lines === 0 ? 'empty' : p === 'criticalCss' ? kb(css.chars) : `${lines} line${lines === 1 ? '' : 's'}`;
+    // A tracker pasted into the raw head/scripts slots skips consent: say so on the map, where it is seen.
+    const tracker = p === 'head' || p === 'scripts' ? analyticsLoaderIn(src) : null;
+    const status = tracker
+      ? `${tracker}: move to Analytics`
+      : lines === 0
+        ? 'empty'
+        : p === 'criticalCss'
+          ? kb(css.chars)
+          : `${lines} line${lines === 1 ? '' : 's'}`;
     const filled = lines > 0;
     const full = c.fullEditor === true && onOpenFullEditor !== undefined;
     return (
@@ -126,7 +137,12 @@ export function SkeletonMap({
         }`}
       >
         <span className={`min-w-0 truncate pr-1 font-mono text-xs font-semibold ${filled ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400'}`}>{c.name}</span>
-        <span className={`shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400 ${opts.tall ? '' : 'ml-auto'}`}>{status}</span>
+        <span
+          className={`shrink-0 text-xs tabular-nums ${tracker ? 'font-medium text-amber-700 dark:text-amber-300' : 'text-slate-500 dark:text-slate-400'} ${opts.tall ? '' : 'ml-auto'}`}
+          title={tracker ? `A ${tracker} script here runs before visitor consent and is blocked by the site’s security policy on platform hosting. Connect it in the Analytics tile.` : undefined}
+        >
+          {status}
+        </span>
       </button>
     );
   };

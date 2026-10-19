@@ -63,7 +63,6 @@ const ALLOWED: ReadonlyArray<readonly [RegExp, string]> = [
       '"12 results" onto the page. Everything an author actually styles (the hits, the list, the ' +
       'empty state) is beatable.',
   ],
-  [/input\[type=checkbox\]|input\[type=radio\]/, 'the exception that must keep outranking the general field rule'],
 ];
 
 const specificity = (selector: string): number => {
@@ -111,7 +110,7 @@ describe('platform visual defaults stay beatable by author CSS', () => {
     // a wrong clone before it was softened.
     expect(css).toMatch(/:where\([^)]*data-kenburns[^)]*\.sw-caption\)\{[^}]*drop-shadow/);
     expect(css).toMatch(/:where\([^)]*\[data-sw-part="slide"\] img[^)]*\)/);
-    expect(css).toMatch(/:where\(\[data-sw-block="Form"\] input[^)]*\)\{width:100%/);
+    expect(css).toMatch(/:where\(\[data-sw-block="Form"\] input[^{]*\)\{width:100%/);
     expect(css).toMatch(/:where\([^)]*\[data-sw-part="tablist"\]\)\{[^}]*margin-bottom/);
   });
 });

@@ -233,11 +233,15 @@ function submitControl(el: Element): Element | undefined {
 }
 
 /**
- * The bot-bait honeypot block (the endpoint drops filled posts). Carries its OWN inline hiding style so
- * it stays invisible even on a HAND-AUTHORED `<form data-sw-form>` — that form gets the honeypot injected
- * but NOT the `data-sw-block="Form"` marker the FORM_CSS `[data-sw-part="hp"]` rule keys on (and FORM_CSS
- * may not ship at all for a non-component form), so a scoped rule alone would leave "Leave this field
- * empty" visible on the page. Platform-generated markup, so the inline style is safe.
+ * The bot-bait honeypot block (the endpoint drops filled posts). Carries its OWN inline hiding style so it
+ * never depends on the FORM_CSS `[data-sw-part="hp"]` rule, which is scoped to `data-sw-block="Form"`.
+ *
+ * A HAND-AUTHORED `<form data-sw-form>` normally DOES carry that marker, in preview AND on publish: this
+ * pass does not add it, but it stamps `data-sw-component="form"`, and renderTemplate's later
+ * `addComponentBlockMarkers` pass pairs that with `data-sw-block="Form"`. The pairing is skipped when the
+ * author already wrote a `data-sw-block` of their own (it is a free-text label, e.g. "Contact form"), and
+ * a caller of this pass alone gets no pairing at all; in both cases the scoped rule never matches and
+ * "Leave this field empty" would show on the page. Platform-generated markup, so the inline style is safe.
  */
 function honeypotBlock(): string {
   return (

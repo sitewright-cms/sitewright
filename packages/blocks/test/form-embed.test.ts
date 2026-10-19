@@ -180,8 +180,30 @@ describe('resolveFormEmbeds — the data-sw-form resolution pass', () => {
     expect(out).toContain('data-sw-component="form"');
     expect(out).toContain('name="_hpt"');
     expect(out).not.toContain('data-sw-form');
-    // The honeypot carries its OWN inline hiding style so it stays invisible even on a hand-authored
-    // <form data-sw-form> that never gets data-sw-block="Form" (FORM_CSS's scoped rule wouldn't apply).
+    // The honeypot carries its OWN inline hiding style, so it stays invisible wherever FORM_CSS's
+    // `[data-sw-block="Form"]`-scoped rule does not reach (see the marker tests below).
+    expect(out).toMatch(/data-sw-part="hp"[^>]*style="position:absolute;left:-9999px/);
+  });
+  // WHERE `data-sw-block="Form"` COMES FROM on a hand-authored form. This pass does not add it; renderTemplate's
+  // later addComponentBlockMarkers pass does, on BOTH surfaces (preview and publish both render through
+  // renderTemplate). FORM_CSS keys on it, so hand-authored forms get the platform form sheet everywhere.
+  it('does not stamp data-sw-block itself — only the component marker', () => {
+    const out = resolveFormEmbeds(authored, { forms: formsOf(pub()) });
+    expect(out).toContain('data-sw-component="form"');
+    expect(out).not.toContain('data-sw-block');
+  });
+  it.each([
+    ['preview', true],
+    ['publish', false],
+  ])('a hand-authored form rendered for %s DOES carry data-sw-block="Form"', (_surface, preview) => {
+    const out = renderTemplate(authored, { forms: formsOf(pub()), preview });
+    expect(out).toMatch(/<form [^>]*data-sw-component="form" data-sw-block="Form"/);
+  });
+  it('an author-written data-sw-block LABEL is kept, so only the inline style hides the honeypot there', () => {
+    const labelled = '<form data-sw-form="contact" data-sw-block="Contact form"><input name="name" /></form>';
+    const out = renderTemplate(labelled, { forms: formsOf(pub()) });
+    expect(out).toContain('data-sw-block="Contact form"');
+    expect(out).not.toContain('data-sw-block="Form"');
     expect(out).toMatch(/data-sw-part="hp"[^>]*style="position:absolute;left:-9999px/);
   });
   it('keeps the data-sw-form marker in preview', () => {

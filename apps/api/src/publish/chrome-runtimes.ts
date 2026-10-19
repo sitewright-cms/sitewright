@@ -160,7 +160,9 @@ export const CHROME_RUNTIMES: readonly ChromeRuntime[] = [
   },
   {
     // Scroll-state classes. ALWAYS site-wide: `html.sw-scrolled` is a universal authoring hook, not a
-    // private detail of the two named modes (see stickyHeaderUsesRuntime).
+    // private detail of the two named modes (see stickyHeaderUsesRuntime). Being the one unconditional
+    // runtime, it also closes the stock mobile drawer on an in-page link (sticky-header.ts DRAWER_CLOSE)
+    // — a drawer can sit on any page, and the nav-link gate above misses most of them.
     key: 'sticky-header',
     script: 'sticky-header.js',
     js: STICKY_HEADER_JS,

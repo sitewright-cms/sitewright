@@ -783,8 +783,10 @@ in-page section is currently scrolled into view. It toggles the SAME active stat
 + \`aria-current="true"\`), so pair it with a nav effect (or any \`.active\` styling) to actually SEE the
 highlight. Two ways to turn it on: (1) site-wide — set website.effects.scrollSpy: true → it governs the
 main + mobile nav (\`#main-nav\`); (2) per element — add the \`data-sw-scrollspy\` attribute to ANY nav
-container (e.g. a custom on-page table-of-contents \`<ul class="menu" data-sw-scrollspy>\`). Links point at
-sections by id: \`<a href="#about">\` → \`<section id="about">\`. PATH-PREFIXED anchors work too
+container (e.g. a custom on-page table-of-contents \`<ul class="menu" data-sw-scrollspy>\`). ONE active item per
+navigation: every spied list in the same landmark (\`#main-nav\` — a menu split either side of a centred logo, plus
+the mobile drawer) shares one selection, so do not wrap the halves; a spy elsewhere (a sidebar TOC) keeps its
+own. Links point at sections by id: \`<a href="#about">\` → \`<section id="about">\`. PATH-PREFIXED anchors work too
 (\`<a href="/#about">\`, \`<a href="/en/#about">\`) — they spy only on the page that actually has \`#about\`
 (so a global header can link to home sections from any page). RULES: a link is a target only if its
 section EXISTS on the current page (anchors only — plain route links are ignored). A nav that HAS in-page
@@ -1439,7 +1441,8 @@ peer-checked:translate-x-0. The hamburger and the drawer MUST be in the SAME slo
 Use <details>/<summary> accordions for child pages INSIDE the drawer; include the logo + a CLOSE <label
 for>. Loop {{#each nav.mobile}} (the "Mobile menu" pages), with an {{else}} fallback to {{#each nav.header}}
 until one is curated. Keep that id: while \`#sw-nav-drawer\` is checked the platform lifts the header above every
-float (back-to-top, cart, consent, a WhatsApp bubble); a drawer on any other toggle must do that itself — see
+float (back-to-top, cart, consent, a WhatsApp bubble), and a tap on an IN-PAGE link (#section, /#section, a
+#dialog) unchecks it (firing change) so the menu closes; a drawer on any other toggle must do both itself — see
 FLOATS + STACKING in get_guide("effects").
 
 AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}} (loop page.translations;

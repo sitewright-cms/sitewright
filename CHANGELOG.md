@@ -47,6 +47,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   working. All modes now open: range shows its two-month view and writes "start – end" into the field.
   This broke in v0.57.0, when the calendar library (vanilla-calendar-pro 3.4.0) began requiring its
   multi-month and time features to be switched on explicitly.
+- **The mobile menu now closes when a visitor taps a link to a section on the same page.** The page
+  scrolled to the section, but the stock slide-in menu (the `#sw-nav-drawer` checkbox) stayed open on top
+  of it.
+  - This covers `#section` and `/#section` links and links that open a dialog, on the published site and
+    in the editor preview.
+  - The checkbox fires a `change` event when it closes, so a site's own listeners see it close.
+  - Links to other pages, and every link with JavaScript off, behave as before.
+- **ScrollSpy no longer highlights two items in a header split either side of a centred logo.** Each
+  half was treated as its own menu, so each half kept one item lit.
+  - Now all spied lists in the same navigation share one active item. That includes the desktop halves
+    and the mobile menu. Wrapping both halves in `data-sw-scrollspy` is no longer needed.
+  - A separate spy elsewhere, such as a sidebar table of contents, still keeps its own active item.
 
 ## [0.64.0] — 2026-10-18
 

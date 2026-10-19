@@ -15,7 +15,8 @@
 //   • DRAWER_OPEN_STACKING (raise the landmark while the stock drawer is open) — EVERY site.
 //   • STICKY_HEADER_JS — EVERY site. It only toggles state classes on <html> (`sw-scrolled` always;
 //     `sw-nav-hidden` for the hide-on-scroll direction) and never touches the initial layout, so
-//     `sw-scrolled` is a universal authoring hook rather than a private detail of one mode.
+//     `sw-scrolled` is a universal authoring hook rather than a private detail of one mode. It also
+//     closes the stock mobile drawer on an in-page link (DRAWER_CLOSE, below the stacking notes).
 //   • `.sw-top-padding`, `scroll-padding-top`, `position:fixed` — FIXED MODES ONLY. Emitting the
 //     spacer for a header that scrolls away would give every page carrying the class a phantom gap.
 //
@@ -32,6 +33,7 @@
 // anchor-rest sync measure the real bar.
 
 import { normalizeStickyHeader, type StickyHeaderSetting } from '@sitewright/schema';
+import { IN_PAGE_FRAGMENT_FN } from './in-page-link.js';
 
 // The default `#main-nav` recipe (a DaisyUI `.navbar`) is taller than its 4rem min-height because the
 // logo is a `.btn` (an h-8/h-7 mark + button padding): MEASURED in headless Chromium at 74.59px desktop
@@ -70,6 +72,23 @@ const DRAWER_OPEN_STACKING = [
   ':where(#main-nav:has(#sw-nav-drawer:checked)){position:relative}',
   '#main-nav:has(#sw-nav-drawer:checked){z-index:99980}',
 ];
+
+// DRAWER_CLOSE — AN IN-PAGE LINK CLOSES THE STOCK DRAWER. The drawer is a pure-CSS peer checkbox, and a
+// tap on a link to a section of the SAME page (`#about`, `/#about`) does not unload the document — the
+// page scrolled (natively, or smoothly via NAV_LINK_JS, which also cancels the click) while the box
+// stayed checked, so the open menu sat over the very section the visitor had asked for. CSS cannot
+// uncheck a box, so the runtime does: it clears `#sw-nav-drawer` and fires a bubbling `change` (so an
+// author's own listener — a scroll lock, say — sees the menu close exactly as if they had tapped X).
+// WHY HERE: this is the one chrome runtime that ships on EVERY page of every site, publish AND editor
+// preview — the drawer arrives through a slot, a snippet or a page source, and NAV_LINK_JS (the obvious
+// home) only ships for `#` placeholders, dialogs and scrollspy, so most drawers run without it. Same
+// reason DRAWER_OPEN_STACKING ships everywhere. The handler is a CAPTURE listener on document, so it
+// runs before NAV_LINK_JS's bubble listener: the menu is shut before any smooth scroll starts (a scroll
+// lock released mid-animation could otherwise stall it), whatever order the scripts were linked in.
+// In-page is judged by the SAME rule NAV_LINK_JS uses (in-page-link.ts). It never cancels the click, so
+// the native jump — and every link without JS — behaves exactly as before; a link that leaves the page,
+// a bare `#` (a script hook), a new-tab/modifier click and `download` leave the drawer alone. A
+// `#dialog` link closes it too (the modal then opens over the page, not over the menu).
 
 /**
  * The sticky-header CSS for a mode (when off, only the `--sw-header-h` token + the drawer-open stacking).
@@ -270,6 +289,18 @@ export const STICKY_HEADER_JS = `(function(){
     window.requestAnimationFrame(function(){rzTicking=false;measure();syncAnchorRest();update();});
   }
   window.addEventListener('resize',onResize,{passive:true});
+  // THE STOCK MOBILE DRAWER CLOSES ON AN IN-PAGE LINK (see DRAWER_CLOSE above).
+  ${IN_PAGE_FRAGMENT_FN}
+  document.addEventListener('click',function(e){
+    var d=document.getElementById('sw-nav-drawer');
+    if(!d||d.type!=='checkbox'||!d.checked)return;
+    var t=e.target,a=t&&t.closest?t.closest('a[href]'):null;
+    if(!a||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return; // a new-tab click: we stay put
+    if((a.target&&a.target!=='_self')||a.hasAttribute('download'))return;
+    if(inPageFragment(a.getAttribute('href')||'').length<2)return; // leaves the page, or a bare '#' hook
+    d.checked=false;
+    d.dispatchEvent(new Event('change',{bubbles:true}));
+  },true);
   measure();
   syncAnchorRest();
   update();

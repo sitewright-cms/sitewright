@@ -9,6 +9,7 @@
 // The runtime opens a `<dialog>` when an in-page `#id` link targets one (a "global modal" placeholder)
 // and smooth-scrolls to a `#section` otherwise — so anchors/modals work from a plain `<a href="#id">`.
 import { escapeHtml } from './escape.js';
+import { IN_PAGE_FRAGMENT_FN } from './in-page-link.js';
 import { renderTemplate } from './template.js';
 
 /** Matches a native `<dialog>` OPENING tag (`<dialog`, `<dialog …`, `<dialog/`) — not `</dialog>`. */
@@ -91,6 +92,10 @@ export function decorateNav<T extends Record<string, NavItemLike[]>>(nav: T): T 
  * dialog/owner opts out with data-backdrop-close="false"), and on
  * load honors a `#hash` (open/scroll). Shipped only when a published link placeholder has a `#`
  * target. Self-contained IIFE, mirroring RIPPLE_JS / ANIMATION_JS.
+ *
+ * It does NOT close the stock mobile drawer (`#sw-nav-drawer`): that has to work on pages this runtime
+ * never reaches, so it lives in the unconditional STICKY_HEADER_JS (capture phase — the drawer is shut
+ * before the smooth scroll below starts).
  */
 export const NAV_LINK_JS = `(function(){
   var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -103,24 +108,14 @@ export const NAV_LINK_JS = `(function(){
     t.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
     return true;
   }
+  // The shared in-page rule (in-page-link.ts) — the drawer close in STICKY_HEADER_JS uses the same one.
+  // A genuine cross-page link keeps navigating; go() then scrolls only when the section is actually
+  // present here (else the browser navigates), so a same-page miss is safe.
+  ${IN_PAGE_FRAGMENT_FN}
   document.addEventListener('click', function(e){
     var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
     if (!a) return;
-    var href = a.getAttribute('href') || '';
-    var i = href.indexOf('#');
-    if (i < 0) return;
-    if (i > 0) {
-      // A PATH-PREFIXED anchor (e.g. /#features, /en/#features) is IN-PAGE when its path equals the current
-      // page, is root-relative-only, OR is a SUFFIX of the current path — so it still resolves under the
-      // /sites/<slug> (or /preview/<token>) base the editor preview + local hosting serve from. A genuine
-      // cross-page link (a different page, different last segment) keeps navigating. go() then scrolls only
-      // when the section is actually present here (else the browser navigates), so a same-page miss is safe.
-      var path = href.slice(0, i).replace(/\\/$/, '');
-      var here = location.pathname.replace(/\\/$/, '');
-      var samePath = path === '' || path === '.' || path === './' || path === here || here.endsWith(path);
-      if (!samePath) return;
-    }
-    if (go(href.slice(i))) e.preventDefault();
+    if (go(inPageFragment(a.getAttribute('href') || ''))) e.preventDefault();
   });
   document.addEventListener('click', function(e){
     var d = e.target;

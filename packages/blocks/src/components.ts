@@ -869,9 +869,17 @@ const FORM_CSS = [
   // previous (0,1,1) it could not — three fields carrying the SAME `w-[60%]` rendered 656/635/620px
   // wide, because each was really at width:100% and then shrunk by whatever its row's label left
   // over. A default an author cannot override is not a default.
-  ':where([data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select){width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
-  // checkbox / radio inputs must NOT stretch to 100% — they sit inline next to their option label.
-  '[data-sw-block="Form"] input[type=checkbox],[data-sw-block="Form"] input[type=radio]{width:auto;padding:0;border-radius:0;flex:none}',
+  //
+  // ★ CHECKBOX / RADIO ARE NOT FIELDS and get NONE of this. They used to receive it and then have it "undone" by
+  // a firm `width:auto;padding:0;border-radius:0` at (0,2,1) — which also undid every size the author gave
+  // them. On an `appearance:none` control (every daisyUI checkbox / radio / toggle) `width:auto` is ZERO content
+  // width, so code-first forms rendered them as 2px bars, and a native box sized `w-5 h-5` lost its width.
+  // Lowering the weight would not have helped: daisyUI ships its components in `@layer daisyui.*`, and an
+  // unlayered rule beats a layered one whatever its specificity. The only safe amount of platform box styling
+  // on these controls is none — they keep their intrinsic size, daisyUI's, or the author's.
+  ':where([data-sw-block="Form"] input:not([type=checkbox]):not([type=radio]),[data-sw-block="Form"] textarea,[data-sw-block="Form"] select){width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
+  // …beyond never shrinking beside a long option label (layout, not look, and zero-weight so `shrink` wins).
+  ':where([data-sw-block="Form"] input[type=checkbox],[data-sw-block="Form"] input[type=radio]){flex:none}',
   '[data-sw-block="Form"] fieldset[data-sw-part="field"]{min-inline-size:0}',
   ':where([data-sw-block="Form"] fieldset[data-sw-part="field"]){border:0;padding:0;margin:0 0 1rem}',
   ':where([data-sw-block="Form"] legend[data-sw-part="label"]){padding:0;margin-bottom:.35rem;font-size:.875rem}',

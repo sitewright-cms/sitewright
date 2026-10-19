@@ -34,6 +34,20 @@ The running version of an instance is reported at `GET /version` (baked into the
   - The rules that keep sites working are unchanged: theme colours for dark mode, the shared content
     width, fonts, image sizing and editability.
 
+### Fixed
+
+- **Checkboxes and radio buttons in hand-written forms keep their size.** Inside a
+  `<form data-sw-form>`, daisyUI `checkbox`, `radio` and `toggle` controls shrank to thin 2px bars. Native
+  controls sized with classes like `w-5 h-5` lost their width. The platform form style now leaves
+  checkboxes and radios alone, so they keep their normal, daisyUI or author-set size. Forms rendered with
+  `{{sw-form}}` look exactly as before.
+- **The date picker's range mode works again.** `data-mode="range"`, any `data-months` of 2 or more,
+  `data-mode="datetime"` and `data-mode="time"` all failed with an error, leaving a plain text box. The
+  error also stopped every picker after it on the same page from loading. Only the plain date picker was
+  working. All modes now open: range shows its two-month view and writes "start – end" into the field.
+  This broke in v0.57.0, when the calendar library (vanilla-calendar-pro 3.4.0) began requiring its
+  multi-month and time features to be switched on explicitly.
+
 ## [0.64.0] — 2026-10-18
 
 ### Fixed

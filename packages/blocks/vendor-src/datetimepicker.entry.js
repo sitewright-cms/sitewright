@@ -10,7 +10,15 @@
 //
 // With no JS the element stays a usable text <input> (type a value); the input's name/value still
 // submit inside a form. The runtime writes the chosen value back into the input itself.
-import { Calendar } from 'vanilla-calendar-pro';
+//
+// ★ EXTENSIONS. Since vanilla-calendar-pro 3.4.0 the multi-month view (`type: 'multiple'`) and the time
+// editor (`selectionTimeMode`) are opt-in extensions that must be REGISTERED at construction; using the
+// option without its extension throws on init ("The 'type' option requires months"). That arrived in a
+// MINOR bump and broke range mode, data-months >= 2, datetime and time while plain date kept working.
+// `extensionsFor` below derives the list from the options actually built, covering the two options this
+// entry sets that need one. Setting a motion / weeks / annotations option later (animation, week numbers,
+// popups…) means adding that extension there too. datetimepicker.behavior.test.ts constructs every mode.
+import { Calendar, months, time } from 'vanilla-calendar-pro';
 
 function attr(el, name, fallback) {
   var v = el.getAttribute(name);
@@ -132,6 +140,15 @@ function pinToInput(input, popup) {
   };
 }
 
+// The extensions the built options need (see the EXTENSIONS note at the top). Registered per picker,
+// not globally, so a plain date picker constructs exactly as it did before.
+function extensionsFor(opts) {
+  var list = [];
+  if (opts.type === 'multiple') list.push(months);
+  if (opts.selectionTimeMode) list.push(time);
+  return list;
+}
+
 function enhance(el) {
   if (el.getAttribute('data-sw-enhanced') === 'true') return;
   el.setAttribute('data-sw-enhanced', 'true');
@@ -218,6 +235,7 @@ function enhance(el) {
   // default is the identity function, so its innerHTML paths are only reachable through those
   // options — none of which carry tenant data here. Do NOT add any of them without also wiring a
   // real sanitizer (the published-site CSP blocks inline scripts, but stored HTML could still XSS).
+  opts.extensions = extensionsFor(opts);
   new Calendar(el, opts).init();
 }
 

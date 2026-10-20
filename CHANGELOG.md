@@ -15,11 +15,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   from when other edge tabs could sit over an open drawer. It now uses the editor's 16px gutter, matching its
   right side, so the dataset list and editor gain 24px of width.
 
-- **Statistics belong to the agency.** Only agency staff (an admin or a developer) can switch the built-in
-  statistics on; the server refuses anyone else, an agent acting for a client included, and anyone may still
-  switch them off. The Statistics tab is always there for staff and appears for clients only while the
-  statistics are on.
-
 ### Added
 
 - **Keyword rank tracking.** The platform can now record where a project's site appears in Google's results for

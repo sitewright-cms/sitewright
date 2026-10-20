@@ -53,15 +53,15 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63",
+    "@playwright/test": "^1.64",
     "@types/html-minifier-terser": "^7",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/yauzl": "^2.10.3",
-    "@vitest/coverage-v8": "^5.0.1",
+    "@vitest/coverage-v8": "^5.0.4",
     "drizzle-kit": "^0.31",
     "jose": "^6.2.12",
     "typescript": "^5.7.2",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.4"
   }
 }

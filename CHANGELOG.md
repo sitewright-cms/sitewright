@@ -9,6 +9,12 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The Datasets drawer has less space on its left.** Its content started 40px in (20px on a phone), room left over
+  from when other edge tabs could sit over an open drawer. It now uses the editor's 16px gutter, matching its
+  right side, so the dataset list and editor gain 24px of width.
+
 ### Added
 
 - **Keyword rank tracking (the platform side).** The platform can now record where a project's site appears in

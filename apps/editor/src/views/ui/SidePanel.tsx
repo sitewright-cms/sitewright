@@ -165,11 +165,15 @@ export function SidePanel({ side, label, icon, headerExtra, size, width, align =
   // Those insets are sized for a DESKTOP corner, and on a phone they are 40px of a ~400px panel spent
   // avoiding a tab that is no longer beside the content — mobile's two rails own a corner each, so
   // nothing overlaps the far edge. The right-hand one goes entirely (the File Manager's grid was
-  // losing a column to it); the left keeps half, because the Datasets rail's own tab does still sit
-  // over that corner.
+  // losing a column to it).
+  //
+  // The LEFT one (the Datasets drawer) is now only the editor's 16px gutter, the header's right padding
+  // mirrored. It was 40px (20px on a phone) from the hover-panel days, when the System Library edge tab
+  // could sit over the drawer's content; an open drawer now covers the other tabs with its backdrop and
+  // fades its own, so nothing reaches into that corner and the 40px was empty space before every list.
   const edgeInset =
     side !== 'bottom' ? ''
-    : align === 'start' ? (isMobile ? 'pl-5' : 'pl-10')
+    : align === 'start' ? 'pl-4'
     : align === 'end' ? (isMobile ? 'pr-0' : 'pr-10')
     : '';
 

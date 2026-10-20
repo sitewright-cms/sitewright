@@ -35,6 +35,13 @@ export type Capability =
  */
 export type AccountCapability = 'projects:create' | 'projects:rename' | 'projects:delete' | 'members:manage' | 'members:invite';
 
+/** A deploy target as the API lists it — the fields an agent needs, never the credentials. */
+export interface DeployTargetView {
+  id: string;
+  name: string;
+  protocol: string;
+}
+
 /** A PROJECT key's scope: one project, at a fixed role. */
 export interface ProjectScope {
   kind?: 'project';
@@ -1112,8 +1119,19 @@ export class SitewrightClient {
     );
   }
 
+  /** Build the site into Local Hosting — for a project with a Local Hosting target, that IS its deploy. */
   async publish(): Promise<unknown> {
     return this.request('POST', this.projectPath('/publish'));
+  }
+
+  /** The project's deploy targets, never their credentials. Needs `deploy` (they carry host metadata). */
+  async listDeployTargets(): Promise<{ items: DeployTargetView[] }> {
+    return this.request('GET', this.projectPath('/deploy-targets'));
+  }
+
+  /** Build the site fresh and upload it to one REMOTE target (FTP/SFTP/git). Needs `deploy`. */
+  async deployTarget(id: string): Promise<unknown> {
+    return this.request('POST', this.projectPath(`/deploy-targets/${encodeURIComponent(id)}/deploy`));
   }
 
   /** Kick off the AUTONOMOUS server-side clone orchestrator and run it to completion (non-streaming):

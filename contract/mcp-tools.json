@@ -88,6 +88,10 @@
     ]
   },
   {
+    "name": "deploy_project",
+    "required": []
+  },
+  {
     "name": "fidelity_check",
     "required": [
       "pageId"

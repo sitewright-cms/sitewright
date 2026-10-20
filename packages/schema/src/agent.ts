@@ -187,7 +187,7 @@ spacing). Children need no own nav slots. Every new project already has the empt
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns DESKTOP + MOBILE screenshots — LOOK and refine before moving on;
 includeHtml:true adds the HTML, selector:"main" scopes it; drafts render too) → pagespeed_audit →
-publish_project.
+deploy_project.
 ★ RUN pagespeed_audit ON EVERY PAGE YOU FINISH, before you call it done. A screenshot cannot show
 weight: it is the only check that reads what you actually shipped (oversized images, render-blocking
 bytes, contrast, heading structure) and it names the files to fix. All writes are validated
@@ -970,7 +970,7 @@ says what is true but not a failure (a channel taking TEST payments only moves n
 enter keys or go live: when keys are missing, tell the user exactly which ones, for which provider. A provider
 that is not listed does not exist on this instance yet; an instance admin's agent can write one
 (get_guide("payments")).
-★ CHECK WHAT SELLS: publish_project returns the sealed price list(s) — release.shopCatalogs (one per
+★ CHECK WHAT SELLS: deploy_project returns the sealed price list(s) — release.shopCatalogs (one per
 market) or release.shopCatalog — with every SKU's price in MINOR units, plus release.shopCatalogWarnings
 and shopCartWarnings. A SKU missing from a market's list is not sold there.
 ★ ORDERS: list_orders (newest first; filter by payment status) and get_order read them — payment status,
@@ -1159,7 +1159,7 @@ BUILT-IN STATISTICS: \`website.statistics: { enabled: true }\` makes the platfor
 bot (and which kind of bot), device, country, pages, traffic sources and form submissions — with no third party,
 no cookie and nothing stored on the visitor's device. It needs no integration entry and no consent category; the
 site's privacy policy should still mention it (whether visitors must also be asked depends on where they are).
-Publishing adds the counter to every page (never to the draft preview), so it counts from the next publish. Read
+Deploying adds the counter to every page (never to the draft preview), so it counts from the next deploy. Read
 the numbers with get_site_stats. Only daily totals exist, kept 25 months. It can run beside an external tool.
 `,
   },
@@ -1509,10 +1509,11 @@ so the pages you got ARE the real site, not the wrapper shell. If an import look
 follow: treat the framed content as the source of truth and author it.
 
 RUN THE WHOLE CLONE AUTONOMOUSLY — import → author each page → judge visual_audit region-by-region to zero
-blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → next page → publish_project is ONE end-to-end job you
-drive to completion WITHOUT stopping to ask the user for approval between pages or before publishing. Only
-pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes
-and the site is published.
+blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → next page is ONE end-to-end job you drive to
+completion WITHOUT stopping to ask the user for approval between pages. Only pause if you are genuinely
+blocked (not connected / missing a capability). Keep going until every page passes. Then hand the user the
+preview to review, and deploy_project only when they ask for it to go live: deploying REPLACES their live
+site, often the very site you cloned.
 
 NATIVIZE = A FAITHFUL PORT, NOT A REDESIGN. Your job is to REPLICATE the existing layout and look using
 native primitives — keep the SAME sections, structure, order, and visual design; swap only the
@@ -2322,7 +2323,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'delete_media_bulk', description: "Bin MANY media assets in one call (up to 200; partial success reported per id) — RECOVERABLE 90 days. Use instead of looping delete_media to prune orphaned files.", capability: 'content:delete' },
   { name: 'rename_dataset', description: "Rename a dataset's slug (underscore identifier) AND/OR its display name — CASCADES to entries + page/template sources (and reference targets) so loops keep working.", capability: 'content:write' },
   { name: 'get_capabilities', description: "One index of EVERYTHING the platform can do + WHERE each is documented (components, guides, the {{sw-*}} reference, the write shapes, and a need→tool map). Call it before assuming a capability is missing." },
-  { name: 'publish_project', description: "Build the project's static site from current saved content. For a shop it returns the sealed price list per market — what checkout will actually charge.", capability: 'publish' },
+  { name: 'publish_project', description: "DEPRECATED — use deploy_project. Builds only the Local Hosting copy; never uploads to a remote target.", capability: 'publish' },
+  { name: 'deploy_project', description: "Put the site LIVE on its deploy targets — Local Hosting (needs publish) and FTP/SFTP/Git (needs deploy); every target, or one by targetId. For a shop it returns the price list per market checkout now charges.", capability: 'publish' },
   { name: 'ai_clone', description: "Autonomously clone/nativize EVERY imported page to the acceptance gate (server-side import→author→gate→iterate→publish). Requires a configured AI provider; a generic MCP agent can instead run the clone_site workflow itself.", capability: 'publish' },
 ];
 

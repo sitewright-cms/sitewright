@@ -34,6 +34,12 @@ suite('@sitewright/mcp bridge — end to end', () => {
       body: JSON.stringify({ name: 'MCP Site', slug }),
     });
     projectId = ((await proj.json()) as { project: { id: string } }).project.id;
+    // Local Hosting, so deploy_project has somewhere to put the site (and /sites/<slug>/ serves it).
+    await fetch(`${url}/projects/${projectId}/deploy-targets`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ name: 'Local Hosting', protocol: 'local' }),
+    });
     const keyRes = await fetch(`${url}/projects/${projectId}/api-keys`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
@@ -64,7 +70,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
   it('exposes capability-appropriate tools, authors a code-first page, reads and previews it', async () => {
     const mcp = await connectBridge();
     const tools = (await mcp.listTools()).tools.map((t) => t.name);
-    expect(tools).toEqual(expect.arrayContaining(['get_scope', 'put_page', 'preview_page', 'publish_project']));
+    expect(tools).toEqual(expect.arrayContaining(['get_scope', 'put_page', 'preview_page', 'deploy_project']));
 
     // A code-first page: the design lives in `source` (Handlebars + Tailwind), root is a placeholder.
     const page = {
@@ -142,8 +148,8 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } })) as TextResult;
     expect(prev.content.some((c) => c.type === 'text' && c.text?.includes('Windhoek Plumbing Co'))).toBe(true);
 
-    // 4. Publish.
-    const pub = (await mcp.callTool({ name: 'publish_project', arguments: {} })) as TextResult;
+    // 4. Deploy (to Local Hosting).
+    const pub = (await mcp.callTool({ name: 'deploy_project', arguments: {} })) as TextResult;
     expect(pub.isError).toBeFalsy();
 
     // 5. The LIVE static site is the brand-themed DaisyUI page the agent built.
@@ -193,7 +199,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const mcp = await connectBridge(roToken);
     const tools = (await mcp.listTools()).tools.map((t) => t.name);
     expect(tools).not.toContain('put_page');
-    expect(tools).not.toContain('publish_project');
+    expect(tools).not.toContain('deploy_project');
     await mcp.close();
   });
 });

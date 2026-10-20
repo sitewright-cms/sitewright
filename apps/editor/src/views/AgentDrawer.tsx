@@ -657,7 +657,7 @@ function toolLabel(name: string): string {
     delete_page: 'Deleting a page',
     put_content: 'Editing content',
     delete_content: 'Deleting content',
-    publish_project: 'Publishing',
+    deploy_project: 'Deploying',
     list_pages: 'Reading pages',
     get_page: 'Reading a page',
   };

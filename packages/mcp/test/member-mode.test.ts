@@ -72,7 +72,7 @@ describe('member-token mode — the tool surface', () => {
     // A tool that already took arguments keeps them and gains `project`; one that took none gains it too.
     expect(required('put_page')).toEqual(expect.arrayContaining(['page', 'project']));
     expect(required('list_pages')).toEqual(['project']);
-    expect(required('publish_project')).toContain('project');
+    expect(required('deploy_project')).toContain('project');
     // Not about one project → no `project` argument at all.
     for (const free of ['get_scope', 'login', 'switch_project', 'get_guide', 'get_reference', 'get_components', 'get_capabilities', 'search_icons', 'search_textures', 'search_google_fonts', 'list_projects', 'create_project']) {
       expect(properties(free), free).not.toContain('project');

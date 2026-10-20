@@ -7,7 +7,9 @@ import type { AgentToolDef, ToolResultPart } from './agent-provider.js';
 const MCP_HEADERS = { accept: 'application/json, text/event-stream', 'content-type': 'application/json' } as const;
 
 /** Orientation/auth tools that make no sense server-side (the loop is pre-connected + pre-scoped). */
-const EXCLUDED_TOOLS = new Set(['login', 'switch_project', 'get_scope']);
+// `publish_project` is a deprecated alias kept for STORED prompts; the on-page assistant has none, so it
+// is offered only deploy_project.
+const EXCLUDED_TOOLS = new Set(['login', 'switch_project', 'get_scope', 'publish_project']);
 
 /** name → required capability, from the pinned catalog (tools/list doesn't carry it). */
 const TOOL_CAPABILITY = new Map<string, Capability | undefined>(

@@ -1193,6 +1193,127 @@ export const shopFiltered = sqliteTable(
   (t) => [primaryKey({ columns: [t.projectId, t.channelKey, t.reason] })],
 );
 
+/**
+ * KEYWORD RANK TRACKING — the instance's choice of provider and its monthly budget. A singleton row keyed by
+ * {@link RANK_TRACKING_CONFIG_ID}. Its own table rather than a section of `instance_settings`: that document is
+ * rebuilt section by section on every save, and a provider-agnostic part fits better beside its credentials.
+ */
+export const rankTrackingConfig = sqliteTable('rank_tracking_config', {
+  id: text('id').primaryKey(),
+  /** The provider new checks are sent to; NULL = tracking is off. Checks already sent are still collected. */
+  activeProvider: text('active_provider'),
+  /** USD × 1,000,000. Checks stop for the month once what was spent reaches it. */
+  monthlyBudgetMicros: integer('monthly_budget_micros').notNull(),
+  /** The provider's last refusal (bad credentials, no funds), cleared by the next success. Never a secret. */
+  lastError: text('last_error'),
+  lastErrorAt: integer('last_error_at', { mode: 'timestamp_ms' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** The fixed primary key of the rank-tracking config singleton. */
+export const RANK_TRACKING_CONFIG_ID = 'instance';
+
+/** A rank provider's credentials: its fields as one JSON object, encrypted with `SW_ENCRYPTION_KEY`. */
+export const rankProviderCredentials = sqliteTable('rank_provider_credentials', {
+  provider: text('provider').primaryKey(),
+  /** An `EncryptedSecret` ({iv, ct, tag}) of the JSON object of field → value. */
+  secret: text('secret', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>().notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** A project's tracking setup: the domain results are matched against, how often, and how deep. */
+export const rankProjects = sqliteTable('rank_projects', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id),
+  /** Lowercased host without `www.` (see `normalizeRankDomain`). */
+  domain: text('domain').notNull(),
+  includeSubdomains: integer('include_subdomains', { mode: 'boolean' }).notNull(),
+  schedule: text('schedule', { enum: ['daily', 'weekly'] }).notNull(),
+  /** How many results a check reads (10–100). */
+  depth: integer('depth').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** A keyword tracked for a project, with where and how it is searched. */
+export const rankKeywords = sqliteTable(
+  'rank_keywords',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** Normalized: lowercased, whitespace collapsed (see `normalizeRankKeyword`). */
+    keyword: text('keyword').notNull(),
+    engine: text('engine', { enum: ['google'] }).notNull(),
+    device: text('device', { enum: ['desktop', 'mobile'] }).notNull(),
+    /** A Google Ads geo-target canonical name (see `RankLocationSchema`). */
+    locationName: text('location_name').notNull(),
+    countryCode: text('country_code').notNull(),
+    languageCode: text('language_code').notNull(),
+    /** A paused keyword keeps its history and is not checked. */
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('rank_keywords_unique').on(t.projectId, t.keyword, t.engine, t.device, t.locationName, t.languageCode),
+    index('rank_keywords_project').on(t.projectId),
+  ],
+);
+
+/**
+ * One check of one keyword on one UTC day — and, finished, its result.
+ *
+ * ★ MONEY. The row is CLAIMED before the provider is called (status `posting`, unique per keyword and day), so a
+ * keyword is sent at most once a day however many passes overlap or restart. The claim books the ESTIMATED cost
+ * at once; the provider's own figure replaces it when it answers. A check whose outcome is uncertain (a reply
+ * lost after the request went out) keeps the estimate and is not sent again that day: the budget may count a
+ * check that was never charged, but never misses one that was.
+ */
+export const rankChecks = sqliteTable(
+  'rank_checks',
+  {
+    id: text('id').primaryKey(),
+    keywordId: text('keyword_id')
+      .notNull()
+      .references(() => rankKeywords.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** The UTC day the check is for (YYYY-MM-DD). */
+    day: text('day').notNull(),
+    /** Which provider ran it — results from different providers stay distinguishable. */
+    provider: text('provider').notNull(),
+    /** The provider's id for the queued search, used to collect the result. */
+    providerRef: text('provider_ref'),
+    /** `posting` (claimed, being sent) → `queued` (sent, result pending) → `done`, or `failed`. */
+    status: text('status', { enum: ['posting', 'queued', 'done', 'failed'] }).notNull(),
+    /** The site the check was sent for. Results are read against THIS, so a later domain change cannot mix sites. */
+    domain: text('domain').notNull(),
+    includeSubdomains: integer('include_subdomains', { mode: 'boolean' }).notNull(),
+    depth: integer('depth').notNull(),
+    /** The organic position, 1 = the first ordinary result; NULL when done = not in the top `depth`. */
+    position: integer('position'),
+    /** The position among every element of the results page (ads, maps, snippets included). */
+    absolutePosition: integer('absolute_position'),
+    /** The site's page that ranked. */
+    url: text('url'),
+    /** USD × 1,000,000: the estimate from the claim until the provider states the real charge. */
+    costMicros: integer('cost_micros').notNull().default(0),
+    /** Why it failed, in words safe to show an admin. */
+    error: text('error'),
+    postedAt: integer('posted_at', { mode: 'timestamp_ms' }).notNull(),
+    /** When the search engine was queried (from the provider), once done. */
+    checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [
+    uniqueIndex('rank_checks_keyword_day').on(t.keywordId, t.day),
+    index('rank_checks_status').on(t.status),
+    index('rank_checks_project_day').on(t.projectId, t.day),
+    index('rank_checks_posted').on(t.postedAt),
+  ],
+);
+
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */

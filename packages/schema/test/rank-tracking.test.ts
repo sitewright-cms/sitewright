@@ -63,5 +63,7 @@ describe('settings', () => {
     expect(RankTrackingAdminInputSchema.safeParse({ credentials: { dataforseo: { __proto__x: 'a' } } }).success).toBe(false);
     expect(RankTrackingAdminInputSchema.safeParse({ credentials: { other: { login: 'a' } } }).success).toBe(false);
     expect(RankTrackingAdminInputSchema.safeParse({ monthlyBudgetUsd: -1 }).success).toBe(false);
+    // Credentials for some providers, not every one.
+    expect(RankTrackingAdminInputSchema.safeParse({ credentials: {} }).success).toBe(true);
   });
 });

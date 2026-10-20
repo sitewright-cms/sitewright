@@ -299,8 +299,10 @@ export const RankTrackingAdminInputSchema = z.object({
    * Per provider: the fields to store, or null to delete that provider's credentials. A secret field left out
    * keeps its stored value, so the form need not ask for it again.
    */
+  // ★ partialRecord: zod 4's `record` over an enum demands EVERY provider, so saving one provider's credentials
+  // would be refused the moment a second provider exists.
   credentials: z
-    .record(RankProviderIdSchema, z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/), z.string().max(500)).nullable())
+    .partialRecord(RankProviderIdSchema, z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/), z.string().max(500)).nullable())
     .optional(),
 });
 export type RankTrackingAdminInput = z.input<typeof RankTrackingAdminInputSchema>;

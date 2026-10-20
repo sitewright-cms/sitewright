@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import { accentChip, toggleInput } from '../../../theme';
 import { cardVariants } from '../motion';
 import { SectionHelp } from '../../ui/SectionHelp';
+import { Tooltip } from '../../ui/Tooltip';
 import { budget, type TileStatus } from './summaries';
 
 /**
@@ -203,16 +204,56 @@ export function PartRow({ label, value, onClick, ariaLabel, disabled = false }: 
   );
 }
 
-/** A row-height on/off switch, for a tile whose list shares its space with one setting. */
-export function SwitchRow({ label, checked, onChange, ariaLabel }: { label: string; checked: boolean; onChange: (on: boolean) => void; ariaLabel?: string }) {
-  return (
+/**
+ * A row-height on/off switch, for a tile whose list shares its space with one setting. `disabledReason` locks
+ * it and says why, in the editor's tooltip and in the switch's accessible description.
+ */
+export function SwitchRow({
+  label,
+  checked,
+  onChange,
+  ariaLabel,
+  disabledReason,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  ariaLabel?: string;
+  disabledReason?: string;
+}) {
+  const reasonId = useId();
+  const row = (
     <label
-      className="flex shrink-0 cursor-pointer items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200"
+      className={`flex shrink-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200 ${
+        disabledReason ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
+      }`}
       style={{ height: ROW_H }}
     >
       <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
-      <input type="checkbox" role="switch" aria-label={ariaLabel ?? label} className={`${toggleInput} shrink-0`} checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {disabledReason && (
+        <span id={reasonId} className="sr-only">
+          {disabledReason}
+        </span>
+      )}
+      <input
+        type="checkbox"
+        role="switch"
+        aria-label={ariaLabel ?? label}
+        {...(disabledReason ? { 'aria-describedby': reasonId } : {})}
+        className={`${toggleInput} shrink-0`}
+        checked={checked}
+        disabled={Boolean(disabledReason)}
+        onChange={(e) => onChange(e.target.checked)}
+      />
     </label>
+  );
+  // The tooltip's host is inline by default; the row must keep its full width inside the tile's column.
+  return disabledReason ? (
+    <Tooltip tip={disabledReason} className="flex w-full shrink-0">
+      {row}
+    </Tooltip>
+  ) : (
+    row
   );
 }
 

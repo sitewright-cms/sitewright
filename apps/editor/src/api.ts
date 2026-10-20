@@ -2311,8 +2311,12 @@ export const api = {
     request<{ ok: boolean; error?: string; to?: string }>('POST', `/projects/${projectId}/smtp/send-test`, to ? { to } : {}),
 
   // --- per-project AI assistant config ("bring your own agent") ---
+  /** The project's own agent (secret masked), and whether THIS viewer may flip "Use Built-In Agent" (staff). */
   getAiConfig: (projectId: string) =>
-    request<{ aiConfig: AiConfigView | null }>('GET', `/projects/${projectId}/ai-config`),
+    request<{ aiConfig: AiConfigView | null; canSetBuiltIn?: boolean }>('GET', `/projects/${projectId}/ai-config`),
+  /** "Use Built-In Agent": the platform's assistant on this project. Agency staff only (the server refuses others). */
+  setAiBuiltIn: (projectId: string, useBuiltIn: boolean) =>
+    request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config/built-in`, { useBuiltIn }),
   putAiConfig: (projectId: string, body: AiConfigInput) =>
     request<{ aiConfig: AiConfigView }>('PUT', `/projects/${projectId}/ai-config`, body),
   deleteAiConfig: (projectId: string) =>

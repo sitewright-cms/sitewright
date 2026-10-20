@@ -31,6 +31,7 @@ import { JsonDataStatus } from './website/JsonDataStatus';
 import { EffectsControls, EFFECTS_HELP } from './website/EffectsControls';
 import { SecuritySheet } from './website/SecuritySheet';
 import { SkeletonMap } from './website/SkeletonMap';
+import { AiAgentTile } from './AiAgentTile';
 import {
   consentStatus,
   analyticsStatus,
@@ -437,6 +438,8 @@ export function WebsiteSection({
             />
           </label>
         </Tile>
+        {/* Every writer: a project's own agent is billed to the project; the built-in switch is staff-only. */}
+        <AiAgentTile projectId={projectId} />
         <Tile title="Analytics" icon={<BarChart3 className="h-4 w-4" />} status={analyticsStatus(form)} span="c3" md={6} help={HELP.analytics}>
           <RowBlock n={4}>
             <SwitchRow

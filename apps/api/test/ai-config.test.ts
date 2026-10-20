@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { registerAccount } from '../src/repo/accounts.js';
+import { addProjectMember, registerAccount } from '../src/repo/accounts.js';
 import type { StockProviderName } from '@sitewright/schema';
 
 let db: Database;
@@ -113,24 +113,30 @@ describe('resolveAiProvider precedence', () => {
     return /event: start\ndata: {[^}]*"model":"([^"]+)"/.exec(payload)?.[1];
   }
 
-  it('per-project BYO overrides the platform instance config', async () => {
+  it('★ a project member gets the project\'s own agent first; staff get the platform agent first', async () => {
     stubFetch401();
-    // Platform (admin) config: model inst-model.
     const admin = await adminSession();
     await app.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: admin }, payload: { ai: { enabled: true, provider: 'anthropic', model: 'inst-model', apiKey: 'sk-inst' } } });
     const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: admin }, payload: { name: 'S', slug: `pr-${Date.now()}` } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
+    const { userId } = await registerAccount(db, 'member@client.test', 'Pw-secret-1');
+    await addProjectMember(db, userId, projectId, 'member');
+    const member = cookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@client.test', password: 'Pw-secret-1' } }));
+    const ask = (c: string, agentSource?: string) =>
+      app.inject({ method: 'POST', url: `/projects/${projectId}/agent/messages`, cookies: { sw_session: c }, payload: { message: 'hi', ...(agentSource ? { agentSource } : {}) } });
 
-    // With only the instance config, the assistant uses inst-model.
-    const r1 = await app.inject({ method: 'POST', url: `/projects/${projectId}/agent/messages`, cookies: { sw_session: admin }, payload: { message: 'hi' } });
+    const r1 = await ask(admin);
     expect(r1.statusCode).toBe(200);
     expect(modelFromFrames(r1.payload)).toBe('inst-model');
     expect(r1.payload).toContain('event: error'); // 401 from the stubbed provider
 
-    // Add a per-project BYO config with proj-model → it overrides.
-    await app.inject({ method: 'PUT', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: admin }, payload: { enabled: true, provider: 'anthropic', model: 'proj-model', apiKey: 'sk-proj' } });
-    const r2 = await app.inject({ method: 'POST', url: `/projects/${projectId}/agent/messages`, cookies: { sw_session: admin }, payload: { message: 'hi' } });
-    expect(modelFromFrames(r2.payload)).toBe('proj-model');
+    // The member saves the project's own agent (members may: it is billed to the project).
+    const put = await app.inject({ method: 'PUT', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: member }, payload: { enabled: true, provider: 'anthropic', model: 'proj-model', apiKey: 'sk-proj' } });
+    expect(put.statusCode).toBe(200);
+    expect(modelFromFrames((await ask(member)).payload)).toBe('proj-model'); // members: their own agent first
+    expect(modelFromFrames((await ask(admin)).payload)).toBe('inst-model'); // staff: the platform agent first
+    expect(modelFromFrames((await ask(admin, 'project')).payload)).toBe('proj-model'); // …and may pick the project's
+    expect(modelFromFrames((await ask(member, 'instance')).payload)).toBe('proj-model'); // a member's pick is ignored
   });
 
   it('an enabled-but-keyless BYO config falls through to the platform config (not 501/broken)', async () => {

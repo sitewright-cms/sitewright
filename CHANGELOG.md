@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **The AI Agent is back in Website Settings, for everyone who edits the project.** A project's own agent (its
+  own provider and API key) had moved into Project Settings, which only owners can open, so clients lost it. It is
+  now an "AI Agent" tile on the Website Settings board again.
+  - **Use Built-In Agent** (agency staff only): switches the platform's own assistant on for one project, even
+    where it is switched off or limited to staff for the instance (the platform still needs a key).
+  - **Who gets which first:** a project's members are answered by its own agent first, agency staff by the
+    platform's agent first; either way the other is the fallback, and staff can still pick in the chat.
+
 ### Added
 
 - **Keyword rank tracking (the platform side).** The platform can now record where a project's site appears in

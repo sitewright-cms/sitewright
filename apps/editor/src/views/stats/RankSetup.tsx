@@ -147,43 +147,59 @@ function LocationPicker({
   const [options, setOptions] = useState<RankLocationOption[]>([]);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const seq = useRef(0);
+  const blurTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listId = useId();
 
-  // A new country starts at the country itself: the most common choice, and always valid.
+  useEffect(() => () => {
+    if (blurTimer.current) clearTimeout(blurTimer.current);
+  }, []);
+
+  // A new country starts at the country itself (the most common choice, and always valid) with the old
+  // country's places gone. Its own `alive` flag: the typed search below must never discard this answer.
   useEffect(() => {
-    if (!country) return;
-    const mine = ++seq.current;
+    let alive = true;
     onChange(null);
+    setOptions([]);
+    setQuery('');
+    setError(null);
+    if (!country) return;
     void api
       .searchRankLocations(country, '')
       .then((res) => {
-        if (mine !== seq.current) return;
-        setError(null);
-        onChange(res.locations.find((l) => l.type === 'Country') ?? null);
+        if (alive) onChange(res.locations.find((l) => l.type === 'Country') ?? null);
       })
       .catch((err: unknown) => {
-        if (mine === seq.current) setError(err instanceof Error ? err.message : 'Could not load the places');
+        if (alive) setError(err instanceof Error ? err.message : 'Could not load the places');
       });
+    return () => {
+      alive = false;
+    };
     // Re-run per country only: `onChange` is the parent's state setter.
   }, [country]);
 
   useEffect(() => {
     if (!country || !open) return;
-    const mine = ++seq.current;
+    let alive = true;
     const t = setTimeout(() => {
       void api
         .searchRankLocations(country, query)
         .then((res) => {
-          if (mine === seq.current) setOptions(res.locations);
+          if (!alive) return;
+          setOptions(res.locations);
+          setError(null);
         })
         .catch((err: unknown) => {
-          if (mine === seq.current) setError(err instanceof Error ? err.message : 'Could not search the places');
+          if (alive) setError(err instanceof Error ? err.message : 'Could not search the places');
         });
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
   }, [country, query, open]);
 
+  // Only places of the chosen country: a list still showing the previous country's answer offers nothing.
+  const shown = options.filter((o) => o.countryCode === country);
   return (
     <div className="relative flex flex-col">
       <span className={fieldLabel}>Searched from</span>
@@ -197,7 +213,9 @@ function LocationPicker({
         disabled={!country}
         value={query}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          blurTimer.current = setTimeout(() => setOpen(false), 150);
+        }}
         onChange={(e) => setQuery(e.target.value)}
       />
       {value && !open && (
@@ -206,9 +224,9 @@ function LocationPicker({
         </span>
       )}
       {error && <span className="mt-1 text-xs text-rose-700 dark:text-rose-300">{error}</span>}
-      {open && options.length > 0 && (
+      {open && shown.length > 0 && (
         <ul id={listId} role="listbox" className="absolute top-full z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-slate-900">
-          {options.map((o) => (
+          {shown.map((o) => (
             <li key={o.name} role="option" aria-selected={value?.name === o.name}>
               <button
                 type="button"

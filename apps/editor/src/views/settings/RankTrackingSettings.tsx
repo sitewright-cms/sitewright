@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
-import type { RankProviderId, RankTrackingAdminInput, RankTrackingAdminView } from '@sitewright/schema';
+import type { RankProviderId, RankProviderView, RankTrackingAdminInput, RankTrackingAdminView } from '@sitewright/schema';
 import { api } from '../../api';
 import { secretFieldProps } from '../../lib/secret-field';
 import { ghostButton, glassCard, glassInput } from '../../theme';
@@ -13,9 +13,15 @@ import { SectionHelp } from '../ui/SectionHelp';
  */
 
 export interface RankTrackingSettingsHandle {
+  /** What is wrong with the form, checked BEFORE the parent saves anything; null when it can be saved. */
+  validate: () => string | null;
   /** Saves what changed; resolves at once when nothing did. Throws with a message the parent shows. */
   save: () => Promise<void>;
 }
+
+/** What a field holds when nothing is stored: a select shows (and the server assumes) its first option. */
+const baselineOf = (f: RankProviderView['fields'][number], stored: Record<string, string>): string =>
+  stored[f.key] ?? (f.type === 'select' ? (f.options?.[0]?.value ?? '') : '');
 
 const usd = (n: number): string => `$${n.toFixed(n > 0 && n < 1 ? 3 : 2)}`;
 
@@ -33,7 +39,7 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
     setView(v);
     setActive(v.activeProvider ?? '');
     setBudget(String(v.monthlyBudgetUsd));
-    setDrafts(Object.fromEntries(v.providers.map((p) => [p.id, { ...p.values }])));
+    setDrafts(Object.fromEntries(v.providers.map((p) => [p.id, Object.fromEntries(p.fields.filter((f) => f.type !== 'secret').map((f) => [f.key, baselineOf(f, p.values)]))])));
   }
 
   useEffect(() => {
@@ -51,9 +57,17 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
     };
   }, []);
 
+  const budgetError = (): string | null => {
+    const n = Number(budget);
+    return budget.trim() === '' || !Number.isFinite(n) || n < 0 ? 'The rank-tracking budget must be a number of dollars, 0 or more.' : null;
+  };
+
   useImperativeHandle(ref, () => ({
+    validate: () => (view ? budgetError() : null),
     async save() {
       if (!view) return;
+      const invalid = budgetError();
+      if (invalid) throw new Error(invalid);
       const input: RankTrackingAdminInput = {};
       const credentials: NonNullable<RankTrackingAdminInput['credentials']> = {};
       for (const p of view.providers) {
@@ -61,13 +75,13 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
         const fields: Record<string, string> = {};
         let changed = false;
         for (const f of p.fields) {
-          const value = draft[f.key] ?? '';
+          const value = (draft[f.key] ?? '').trim();
           if (f.type === 'secret') {
             if (value) {
               fields[f.key] = value;
               changed = true;
             }
-          } else if (value !== (p.values[f.key] ?? '')) {
+          } else if (value !== baselineOf(f, p.values)) {
             fields[f.key] = value;
             changed = true;
           }
@@ -77,7 +91,6 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
       if (Object.keys(credentials).length > 0) input.credentials = credentials;
       if ((view.activeProvider ?? '') !== active) input.activeProvider = active || null;
       const budgetUsd = Number(budget);
-      if (!Number.isFinite(budgetUsd) || budgetUsd < 0) throw new Error('The rank-tracking budget must be a number of dollars, 0 or more.');
       if (budgetUsd !== view.monthlyBudgetUsd) input.monthlyBudgetUsd = budgetUsd;
       if (Object.keys(input).length === 0) return;
       hydrate(await api.putRankTracking(input));
@@ -143,7 +156,7 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
                   <label key={f.key} className="flex flex-col text-xs text-slate-500 dark:text-slate-400">
                     {f.label}
                     {f.type === 'select' ? (
-                      <select className={glassInput} aria-label={f.label} value={value || f.options?.[0]?.value || ''} onChange={(e) => set(e.target.value)}>
+                      <select className={glassInput} aria-label={f.label} value={value} onChange={(e) => set(e.target.value)}>
                         {f.options?.map((o) => (
                           <option key={o.value} value={o.value}>
                             {o.label}

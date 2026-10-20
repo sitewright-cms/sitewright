@@ -124,6 +124,8 @@ export function AgentDrawer({
   });
   /** The picked configuration, or undefined = let the server apply the normal precedence. */
   const [agentSource, setAgentSource] = useState<'project' | 'instance' | undefined>(undefined);
+  /** Which configuration the server's precedence picks for THIS user (staff: the platform's; members: their own). */
+  const [restingSource, setRestingSource] = useState<'project' | 'instance'>('project');
   const conversationId = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -197,7 +199,11 @@ export function AgentDrawer({
     let active = true;
     api
       .agentStatus(projectId)
-      .then((s) => active && setAgentSources(s.sources))
+      .then((s) => {
+        if (!active) return;
+        setAgentSources(s.sources);
+        setRestingSource(s.source === 'project' ? 'project' : 'instance');
+      })
       .catch(() => {});
     return () => {
       active = false;
@@ -413,11 +419,11 @@ export function AgentDrawer({
                 { key: 'project' as const, label: 'Project', tip: "This project's own configured agent, billed to the project" },
                 { key: 'instance' as const, label: 'System', tip: "The platform-wide agent, billed to the operator's key" },
               ]).map((opt) => {
-                // "Project" is the resting state, so it reads active while NOTHING has been picked
-                // — the default sends no preference at all and the server's precedence lands there
-                // anyway. Defaulting the STATE to 'project' instead would start sending an explicit
-                // "project only", which refuses rather than falls back.
-                const active = opt.key === 'project' ? agentSource !== 'instance' : agentSource === opt.key;
+                // While NOTHING has been picked, the configuration the server's precedence lands on reads
+                // active (for staff that is the platform's; see resolveAiProvider) — the default sends no
+                // preference at all. Defaulting the STATE instead would start sending an explicit choice,
+                // and an explicit "project" refuses rather than falls back.
+                const active = (agentSource ?? restingSource) === opt.key;
                 return (
                   <Tooltip key={opt.label} tip={opt.tip}>
                     <button

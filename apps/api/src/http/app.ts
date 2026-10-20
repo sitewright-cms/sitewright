@@ -81,6 +81,7 @@ import {
   DatasetSlugSchema,
   OrderSchema,
   AiConfigSchema,
+  type AiConfig,
   PREVIEW_SANDBOX_CSP,
   SLOT_MAX,
   StockKeyedProviderSchema,
@@ -10808,6 +10809,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       contentRepo,
       encryptionKey: opts.encryptionKey,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      isStaff,
       rl,
     });
   }
@@ -11223,18 +11225,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return (await getPlatformRole(db, userId)) !== null;
   }
 
-  /** The project's OWN configured assistant (BYO key), or null. */
-  async function projectAgent(ctx: ProjectContext): Promise<ResolvedAgent | null> {
-    if (!opts.encryptionKey) return null;
+  /** The project's stored AI config (its own agent and the staff's "Use Built-In Agent"), or null. */
+  async function projectAiConfig(ctx: ProjectContext): Promise<AiConfig | null> {
     const [row] = await contentRepo.list(ctx, 'ai_config');
     const parsed = row ? AiConfigSchema.safeParse(row) : null;
-    if (!parsed?.success || !parsed.data.enabled || !parsed.data.secret) return null;
-    const apiKey = decryptSecret(parsed.data.secret, opts.encryptionKey);
+    return parsed?.success ? parsed.data : null;
+  }
+
+  /** The project's OWN configured assistant (BYO key), or null. */
+  async function projectAgent(ctx: ProjectContext, config?: AiConfig | null): Promise<ResolvedAgent | null> {
+    if (!opts.encryptionKey) return null;
+    const own = config === undefined ? await projectAiConfig(ctx) : config;
+    if (!own?.enabled || !own.secret) return null;
+    const apiKey = decryptSecret(own.secret, opts.encryptionKey);
     return {
-      provider: buildAgentProvider({ provider: parsed.data.provider, apiKey, model: parsed.data.model, baseUrl: parsed.data.baseUrl }),
+      provider: buildAgentProvider({ provider: own.provider, apiKey, model: own.model, baseUrl: own.baseUrl }),
       source: 'project',
-      projectMonthlyTokens: parsed.data.monthlyTokenLimit || undefined,
-      maxOutputTokens: parsed.data.maxOutputTokens || undefined,
+      projectMonthlyTokens: own.monthlyTokenLimit || undefined,
+      maxOutputTokens: own.maxOutputTokens || undefined,
       adminsUnlimited: false, // a project's own budget applies to everyone on it
       platformFunded: false,
     };
@@ -11246,8 +11254,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * ★ The audience gate lives HERE, on the resolver, not on the UI that hides the button. The chat
    * route resolves through this same function, so a client who calls the endpoint directly gets the
    * same 501 as a client who never sees the button — the setting is an access rule, not a hint.
+   *
+   * `builtIn` is the project's "Use Built-In Agent", which agency staff switch on per project: it OVERRIDES
+   * both the audience gate and the instance's own on/off switch for that project — the agency has decided
+   * this project gets the platform's assistant. It still needs a key: the instance's stored one, else the
+   * deploy-time env provider.
    */
-  async function platformFundedAgent(userId: string): Promise<ResolvedAgent | null> {
+  async function platformFundedAgent(userId: string, builtIn = false): Promise<ResolvedAgent | null> {
     const inst = await instanceSettingsRepo.getAiConfig();
 
     // ★ THE AUDIENCE GATE IS EVALUATED ONCE, BEFORE EITHER SOURCE — deliberately, and this is the
@@ -11261,10 +11274,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     //
     // Both of these spend the OPERATOR's money, so "who may use the platform-funded assistant" is one
     // question with one answer. A project's own BYO key is never gated here: it is billed to that
-    // project, and an agency that wants its clients to have an assistant configures one.
-    if (inst?.audience === 'staff' && !(await isStaff(userId))) return null;
+    // project, and an agency that wants its clients to have an assistant configures one. A project the
+    // agency switched onto the built-in agent is the agency's answer to that question for that project.
+    if (!builtIn && inst?.audience === 'staff' && !(await isStaff(userId))) return null;
 
-    if (inst?.enabled && inst.apiKey) {
+    if ((inst?.enabled || builtIn) && inst?.apiKey) {
       return {
         provider: buildAgentProvider({ provider: inst.provider, apiKey: inst.apiKey, model: inst.model, baseUrl: inst.baseUrl }),
         source: 'instance',
@@ -11285,30 +11299,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
   }
 
-  // Resolve the EFFECTIVE on-page assistant for a project, per request: a project's own BYO key first
-  // (dedicated ai_config kind), then whatever platform-funded agent this user is allowed (the
-  // admin-set instance config, else the env fallback). Null when nothing is available to them.
+  // Resolve the EFFECTIVE on-page assistant for a project, per request.
+  //
+  // The default order depends on WHO asks (user decision, 2026-10-20): a project member gets the project's
+  // own agent (BYO key) first, then whatever platform agent they are allowed; agency staff get the platform
+  // agent first, then the project's own. Either way the other is the fallback, and nothing is available →
+  // null.
   //
   // `prefer` lets STAFF pick which one answers — an agency debugging a client's own key, or checking
   // how the house agent behaves on that project. It is honoured only for staff: for anyone else the
   // ordinary precedence stands, so a client cannot opt themselves onto the operator's budget.
   async function resolveAiProvider(ctx: ProjectContext, prefer?: AgentSource): Promise<ResolvedAgent | null> {
-    const mayChoose = prefer !== undefined && (await isStaff(ctx.userId));
-    // Explicitly the house agent: skip the project's own key.
-    if (mayChoose && prefer === 'instance') return platformFundedAgent(ctx.userId);
-    const own = await projectAgent(ctx);
-    if (own) return own;
+    const [staff, config] = await Promise.all([isStaff(ctx.userId), projectAiConfig(ctx)]);
+    const house = (): Promise<ResolvedAgent | null> => platformFundedAgent(ctx.userId, config?.useBuiltIn === true);
+    const own = (): Promise<ResolvedAgent | null> => projectAgent(ctx, config);
+    if (staff && prefer === 'instance') return house();
     // Asked for the project's agent and it has none — say so rather than quietly billing the
     // operator, which is the opposite of what "use the project agent" meant.
-    if (mayChoose && prefer === 'project') return null;
-    return platformFundedAgent(ctx.userId);
+    if (staff && prefer === 'project') return own();
+    if (staff) return (await house()) ?? (await own());
+    return (await own()) ?? (await house());
   }
 
   /** Which configurations exist for this project + whether this caller may switch between them. */
   async function agentSourcesFor(ctx: ProjectContext): Promise<{ project: boolean; instance: boolean; canChoose: boolean }> {
     // `house` is what THIS user can actually reach, so a client refused by the audience gate is told
     // there is no platform agent rather than being offered a switch to one that will not answer.
-    const [own, house, staff] = await Promise.all([projectAgent(ctx), platformFundedAgent(ctx.userId), isStaff(ctx.userId)]);
+    const config = await projectAiConfig(ctx);
+    const [own, house, staff] = await Promise.all([
+      projectAgent(ctx, config),
+      platformFundedAgent(ctx.userId, config?.useBuiltIn === true),
+      isStaff(ctx.userId),
+    ]);
     const instance = house !== null;
     // Only worth offering a switch when there are genuinely two to switch between.
     return { project: own !== null, instance, canChoose: staff && own !== null && instance };

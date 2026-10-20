@@ -77,6 +77,12 @@ export const AiConfigSchema = z.object({
   monthlyTokenLimit: z.number().int().min(0).optional(),
   /** Per-turn output-token ceiling override (absent → instance/default). */
   maxOutputTokens: MaxOutputTokensSchema.optional(),
+  /**
+   * "Use Built-In Agent": the platform's own assistant is offered on THIS project even where the instance
+   * would not offer it (switched off, or limited to agency staff), as long as the platform has a key. Set by
+   * agency staff only, through its own route; a project's own key still answers its members first.
+   */
+  useBuiltIn: z.boolean().optional(),
 });
 export type AiConfig = z.infer<typeof AiConfigSchema>;
 

@@ -275,6 +275,7 @@
   "PUT /media-upload/:token",
   "PUT /projects/:projectId/agent/grant",
   "PUT /projects/:projectId/ai-config",
+  "PUT /projects/:projectId/ai-config/built-in",
   "PUT /projects/:projectId/captcha",
   "PUT /projects/:projectId/content/:kind/:entityId",
   "PUT /projects/:projectId/deploy-targets/:id",

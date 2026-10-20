@@ -190,6 +190,15 @@ describe('AgentDrawer', () => {
     expect(screen.queryByRole('group', { name: 'Which agent answers' })).toBeNull();
   });
 
+  it('★ the switch starts on whichever agent the server picks for this user — the platform agent for staff', async () => {
+    getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
+    agentStatus.mockResolvedValue({ enabled: true, source: 'instance', sources: { project: true, instance: true, canChoose: true } });
+    render(<AgentDrawer projectId="p" open onClose={() => {}} getPath={() => '/'} />);
+    await screen.findByRole('group', { name: 'Which agent answers' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'System' })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByRole('button', { name: 'Project' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('★ staff with BOTH configured can switch, and the choice rides on the next turn', async () => {
     getAgentGrant.mockResolvedValue({ configured: true, capabilities: ['content:read'], autonomy: 'full' });
     agentStatus.mockResolvedValue({ enabled: true, source: 'project', sources: { project: true, instance: true, canChoose: true } });

@@ -1095,7 +1095,7 @@ export function InstanceSettings() {
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           AI Assistant
-          <SectionHelp tip="The on-page AI assistant edits sites on request. Set a provider + API key to enable it platform-wide; projects can override with their own key (Website settings → AI Assistant). The key is encrypted at rest and never leaves the server." />
+          <SectionHelp tip="The on-page AI assistant edits sites on request. Set a provider + API key to enable it platform-wide; projects can bring their own key (Website Settings → AI Agent), and staff can switch the platform agent on for one project even when it is off or staff-only here. The key is encrypted at rest and never leaves the server." />
         </legend>
         <label className="flex items-center gap-2 text-sm">
           <input

@@ -1442,6 +1442,15 @@ describe('project transfer api', () => {
     expect(clicks.some((href) => href.endsWith('/projects/p1/export.zip'))).toBe(true);
   });
 
+  it('"Use Built-In Agent" is its own PUT, separate from the project\'s own agent', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { aiConfig: { useBuiltIn: true } }));
+    await api.setAiBuiltIn('p1', true);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/ai-config/built-in');
+    expect((init as RequestInit).method).toBe('PUT');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ useBuiltIn: true });
+  });
+
   it('getStats asks for a range of days, with the filters only when set', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { enabled: true }));
     await api.getStats('p1', { from: '2026-10-01', to: '2026-10-19' });

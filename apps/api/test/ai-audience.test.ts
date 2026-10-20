@@ -234,7 +234,7 @@ describe('which agent answers', () => {
     expect(s.sources.canChoose).toBe(false);
   });
 
-  it("★ the project's OWN key wins over the platform one, and staff may then choose", async () => {
+  it("★ the project's OWN key answers its members first, the platform one answers staff first, and staff may choose", async () => {
     const { c, projectId } = await adminWithProject();
     await setInstanceAi(c, 'all');
     const put = await app.inject({
@@ -245,9 +245,12 @@ describe('which agent answers', () => {
     });
     expect(put.statusCode, `project ai-config write must succeed: ${put.body}`).toBeLessThan(300);
 
+    // Staff are answered by the platform agent first (and may choose); a member by the project's own key.
     const s = await status(projectId, c);
-    expect(s.source).toBe('project'); // precedence: the project's own budget, not the operator's
+    expect(s.source).toBe('instance');
     expect(s.sources).toEqual({ project: true, instance: true, canChoose: true });
+    const client = await clientOn(projectId);
+    expect((await status(projectId, client)).source).toBe('project');
   });
 
   it('★ a NON-STAFF caller asking for the platform agent is IGNORED, not obeyed', async () => {
@@ -298,5 +301,73 @@ describe('which agent answers', () => {
     expect(s.enabled).toBe(true); // the project's own agent still serves them
     expect(s.source).toBe('project');
     expect(s.sources.canChoose).toBe(false);
+  });
+});
+
+describe('★ "Use Built-In Agent" — the agency puts the platform assistant on one project', () => {
+  const builtIn = (projectId: string, c: string, useBuiltIn: unknown) =>
+    app.inject({ method: 'PUT', url: `/projects/${projectId}/ai-config/built-in`, cookies: { sw_session: c }, payload: { useBuiltIn } });
+
+  it('overrides "staff only" for that project alone: its client gets the platform agent', async () => {
+    const { c, projectId } = await adminWithProject();
+    await setInstanceAi(c, 'staff');
+    const client = await clientOn(projectId);
+    expect((await status(projectId, client)).enabled).toBe(false);
+
+    expect((await builtIn(projectId, c, true)).statusCode).toBe(200);
+    expect(await status(projectId, client)).toMatchObject({ enabled: true, source: 'instance' });
+
+    // Another project of the same instance is still "staff only".
+    const other = await adminWithProject();
+    const otherClient = await clientOn(other.projectId);
+    expect((await status(other.projectId, otherClient)).enabled).toBe(false);
+  });
+
+  it('overrides the instance switch being OFF (the key is still there), and needs a key to exist at all', async () => {
+    const { c, projectId } = await adminWithProject();
+    const client = await clientOn(projectId);
+    expect((await status(projectId, client)).enabled).toBe(false); // no platform key at all
+    await builtIn(projectId, c, true);
+    expect((await status(projectId, client)).enabled).toBe(false); // switched on, but nothing to switch on
+
+    await setInstanceAi(c, 'all');
+    const off = await app.inject({
+      method: 'PUT',
+      url: '/admin/settings',
+      cookies: { sw_session: c },
+      payload: { ai: { enabled: false, provider: 'anthropic', adminsUnlimited: true, audience: 'all' } },
+    });
+    expect(off.statusCode).toBe(200);
+    expect(await status(projectId, client)).toMatchObject({ enabled: true, source: 'instance' });
+    await builtIn(projectId, c, false);
+    expect((await status(projectId, client)).enabled).toBe(false);
+  });
+
+  it("is the agency's switch: refused to a client and to any token; kept when the client saves or deletes their own agent", async () => {
+    const { c, projectId } = await adminWithProject();
+    await setInstanceAi(c, 'staff');
+    const client = await clientOn(projectId);
+    const read = (cookieValue: string) =>
+      app.inject({ method: 'GET', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: cookieValue } }).then((r) => r.json() as { canSetBuiltIn: boolean });
+    expect((await read(c)).canSetBuiltIn).toBe(true);
+    expect((await read(client)).canSetBuiltIn).toBe(false);
+    const refused = await builtIn(projectId, client, true);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'only agency staff (an admin or a developer) can switch the built-in agent on or off' });
+    const token = await app.inject({ method: 'PUT', url: `/projects/${projectId}/ai-config/built-in`, headers: { authorization: 'Bearer swk_x' }, payload: { useBuiltIn: true } });
+    expect([401, 403]).toContain(token.statusCode);
+    expect((await builtIn(projectId, c, 'yes')).statusCode).toBe(400);
+
+    await builtIn(projectId, c, true);
+    const own = { enabled: true, provider: 'anthropic', apiKey: 'sk-client-key' };
+    expect((await app.inject({ method: 'PUT', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: client }, payload: own })).json()).toMatchObject({
+      aiConfig: { enabled: true, hasKey: true, useBuiltIn: true },
+    });
+    // The client's own agent answers the client; the platform agent stays switched on behind it.
+    expect((await status(projectId, client)).source).toBe('project');
+    expect((await app.inject({ method: 'DELETE', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: client } })).statusCode).toBe(204);
+    const after = (await app.inject({ method: 'GET', url: `/projects/${projectId}/ai-config`, cookies: { sw_session: c } })).json() as { aiConfig: Record<string, unknown> };
+    expect(after.aiConfig).toMatchObject({ useBuiltIn: true, hasKey: false, enabled: false });
+    expect(await status(projectId, client)).toMatchObject({ enabled: true, source: 'instance' });
   });
 });

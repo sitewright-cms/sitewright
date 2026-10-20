@@ -22,6 +22,9 @@ import {
   shopTransactions,
   shopFiltered,
   projectDomains,
+  rankChecks,
+  rankKeywords,
+  rankProjects,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError } from './context.js';
 
@@ -204,6 +207,10 @@ export class ProjectRepository {
       await tx.delete(shopStock).where(eq(shopStock.projectId, id));
       await tx.delete(shopTransactions).where(eq(shopTransactions.projectId, id));
       await tx.delete(shopFiltered).where(eq(shopFiltered.projectId, id));
+      // Rank tracking: checks reference keywords, so they go first.
+      await tx.delete(rankChecks).where(eq(rankChecks.projectId, id));
+      await tx.delete(rankKeywords).where(eq(rankKeywords.projectId, id));
+      await tx.delete(rankProjects).where(eq(rankProjects.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });
   }

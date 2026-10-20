@@ -9,6 +9,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Keyword rank tracking (the platform side).** The platform can now record where a project's site appears in
+  Google's results for chosen keywords, on a schedule, and keep the history. The editor screens follow in a
+  separate change.
+  - **Who does what:** an instance admin picks the provider, enters its credentials and sets a monthly budget.
+    Agency staff (admins, and developers on their own projects) choose each project's domain and keywords. Clients
+    can only read the results, and no API key or token can change what is tracked or spent.
+  - **Providers are exchangeable.** DataForSEO is the first, including its free sandbox for testing. A provider
+    only runs the search; where the site appears is worked out by the platform, the same way for every provider,
+    and each check records which provider ran it.
+  - **Cost control:** each keyword is checked at most once a day, daily or weekly per project, to a depth of 10 to
+    100 results. Checks stop for the month at the budget (10 USD until an admin changes it). If the provider
+    refuses the credentials or the balance, nothing is charged, and the reason is kept for the admin.
+  - Credentials are stored encrypted with `SW_ENCRYPTION_KEY` and are never sent back to the browser.
+
 ## [0.67.0] — 2026-10-20
 
 ### Added

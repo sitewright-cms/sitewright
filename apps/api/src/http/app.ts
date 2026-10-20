@@ -261,7 +261,7 @@ import { shopCatalog as shopCatalogTable } from '../db/schema.js';
 import { projectsHoldingKeys } from '../payments/gateway-usage.js';
 import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus, type FetchLike } from '../payments/executor.js';
-import { providerFetch } from '../payments/provider-fetch.js';
+import { makeProviderFetch, providerFetch } from '../payments/provider-fetch.js';
 import { runOrderMail } from '../payments/notify-runner.js';
 import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
@@ -427,6 +427,10 @@ import { StatsStore } from '../analytics/store.js';
 import { StatsEngine } from '../analytics/engine.js';
 import { createGeoLookup, bundledGeoDbPath, type GeoLookup } from '../analytics/geo.js';
 import { registerStatsRoutes, bareHost, type StatsSiteConfig } from '../analytics/routes.js';
+import { RANK_PROVIDERS } from '../rank/providers/index.js';
+import { RankRepository } from '../rank/repo.js';
+import { registerRankRoutes } from '../rank/routes.js';
+import { RankTracker } from '../rank/tracker.js';
 import { statsRouteOf } from '../analytics/token.js';
 import {
   API_KEY_CAPABILITIES,
@@ -1741,6 +1745,13 @@ export interface AppOptions {
    * periodic pass.
    */
   maintenanceSweepMs?: number;
+  /**
+   * How often (ms) the keyword rank tracker sends due checks and collects results. Default 10 minutes; 0 disables
+   * the timer (a "check now" still runs). The pass is a couple of queries when nothing is due.
+   */
+  rankTickMs?: number;
+  /** @internal test seam — the transport rank providers are called through. */
+  rankFetch?: import('../payments/executor.js').FetchLike;
   /** How long an untouched preview build / source reference survives. Default 30 days; 0 disables. */
   derivedRetentionMs?: number;
   /**
@@ -10924,6 +10935,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     rl,
   });
 
+  // ---- Keyword rank tracking (platform-admin managed; see rank/routes.ts) ----
+  // Larger responses than a payment call (a country's location list runs to megabytes), same guards otherwise.
+  const rankIo = { fetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 32 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000 };
+  const rankRepo = new RankRepository(db, opts.encryptionKey);
+  const rankTracker = new RankTracker({
+    repo: rankRepo,
+    providers: RANK_PROVIDERS,
+    io: rankIo,
+    log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
+  });
+  registerRankRoutes(app, {
+    repo: rankRepo,
+    tracker: rankTracker,
+    providers: RANK_PROVIDERS,
+    io: rankIo,
+    resolveProject,
+    requireInstanceAdmin,
+    requirePlatformStaff,
+    sessionPlatformRole: async (req) => {
+      if (bearerToken(req) !== undefined || sessionToken(req) === undefined) return null;
+      const userId = await requireUserId(req);
+      const role = await getPlatformRole(db, userId);
+      return role === 'admin' || role === 'developer' ? role : null;
+    },
+    rl,
+  });
+
   // ---- PAYMENTS -------------------------------------------------------------------------------
   //
   // ★ Registered only when an encryption key is configured: a project's gateway credentials are
@@ -12243,6 +12281,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
   }
+
+  const rankTickMs = opts.rankTickMs ?? 10 * 60 * 1000;
+  if (rankTickMs > 0) {
+    const tick = (): void => {
+      void rankTracker.tick().catch((err) => app.log.warn(err, 'rank tracking pass failed'));
+    };
+    // A first pass shortly after boot collects what was queued before a restart.
+    const firstRankRun = setTimeout(tick, Math.min(60_000, Math.floor(rankTickMs / 2)));
+    const rankTimer = setInterval(tick, rankTickMs);
+    firstRankRun.unref();
+    rankTimer.unref();
+    app.addHook('onClose', async () => {
+      clearTimeout(firstRankRun);
+      clearInterval(rankTimer);
+    });
+  }
+  app.addHook('onClose', async () => rankTracker.close());
 
   if (sweepMs > 0) {
     // Well inside the shortest interval any caller sets, so the two never overlap on the first pass.

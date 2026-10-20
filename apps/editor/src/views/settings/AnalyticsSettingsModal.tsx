@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Consent, ConsentIntegration } from '@sitewright/schema';
+import { ghostButton } from '../../theme';
 import { Modal } from '../ui/Modal';
 import { ConsentIntegrationsEditor } from './ConsentIntegrationsEditor';
 import { isAnalyticsIntegration, stalledAnalytics } from './analytics';
@@ -52,7 +53,7 @@ export function AnalyticsSettingsModal({ form, patch, onClose }: { form: Setting
             </span>
             <button
               type="button"
-              className="btn btn-sm"
+              className={ghostButton}
               onClick={() => {
                 patch({ consent: { ...c, enabled: true } });
                 setBannerTurnedOn(true);

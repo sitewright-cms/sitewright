@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-type Side = 'top' | 'bottom' | 'left' | 'right';
+export type Side = 'top' | 'bottom' | 'left' | 'right';
 
 // Literal class strings so DaisyUI/Tailwind's content scan emits each placement variant. The classes
 // are kept even though the bubble is a PORTAL now: they carry the host's layout (`.tooltip` is
@@ -17,7 +17,7 @@ const SIDE_CLASS: Record<Side, string> = {
 const GAP = 8;
 const EDGE = 8;
 
-interface Placed {
+export interface Placed {
   left: number;
   top: number;
   /** The transform that anchors the bubble's own box to that point. */
@@ -31,7 +31,7 @@ interface Placed {
  * ★ Measured from the trigger at SHOW time, not tracked. The bubble hides again on any scroll or
  * resize (see the effect below), so a one-shot rect cannot go stale while it is visible.
  */
-function place(r: DOMRect, side: Side, vw: number, vh: number): Placed {
+export function place(r: DOMRect, side: Side, vw: number, vh: number): Placed {
   const clampX = (x: number): number => Math.min(Math.max(x, EDGE), vw - EDGE);
   const clampY = (y: number): number => Math.min(Math.max(y, EDGE), vh - EDGE);
   // Flip when the preferred side has no room for a bubble of a plausible size.
@@ -51,6 +51,25 @@ function place(r: DOMRect, side: Side, vw: number, vh: number): Placed {
     default:
       return { left: clampX(r.right + GAP), top: clampY(r.top + r.height / 2), transform: 'translate(0, -50%)' };
   }
+}
+
+/**
+ * The bubble itself, portalled to `document.body` at a {@link place}d point — the ONE look every editor
+ * tooltip shares. {@link Tooltip} renders it for a wrapped control; a surface that cannot be wrapped (an
+ * SVG chart's bars, a map's countries) renders it directly. Several `children` lines stack one per row.
+ */
+export function TooltipBubble({ id, placed, children }: { id?: string; placed: Placed; children: ReactNode }) {
+  return createPortal(
+    <span
+      id={id}
+      role="tooltip"
+      style={{ position: 'fixed', left: placed.left, top: placed.top, transform: placed.transform }}
+      className="pointer-events-none z-[100] max-w-xs whitespace-normal rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-white shadow-xl dark:bg-slate-700/95"
+    >
+      {children}
+    </span>,
+    document.body,
+  );
 }
 
 /**
@@ -138,18 +157,11 @@ export function Tooltip({
       onBlur={hide}
     >
       {children}
-      {placed &&
-        createPortal(
-          <span
-            id={tipId}
-            role="tooltip"
-            style={{ position: 'fixed', left: placed.left, top: placed.top, transform: placed.transform }}
-            className="pointer-events-none z-[100] max-w-xs whitespace-normal rounded-lg bg-slate-900/95 px-2.5 py-1.5 text-center text-xs font-medium leading-snug text-white shadow-xl dark:bg-slate-700/95"
-          >
-            {tip}
-          </span>,
-          document.body,
-        )}
+      {placed && (
+        <TooltipBubble id={tipId} placed={placed}>
+          {tip}
+        </TooltipBubble>
+      )}
     </span>
   );
 }

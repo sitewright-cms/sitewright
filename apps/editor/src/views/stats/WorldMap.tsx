@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { SiteStats } from '@sitewright/schema';
 import { Panel } from './Breakdowns';
-import { countryName, fmt } from './format';
+import { useChartTip } from './ChartTip';
+import { counted, countryName, fmt } from './format';
 
 type Paths = typeof import('./world-paths');
 
@@ -23,10 +24,22 @@ export function shadeOf(v: number, max: number): number {
 /**
  * Visitors by country on a world map, shaded on a log scale. Clicking a country filters by it, like the
  * Countries list beside it — which stays the accessible way to do the same (the map is not a tab stop per
- * country). The outlines (~76 KB) load on first use, so the editor bundle does not carry them.
+ * country). Hovering one shows the editor's tooltip at the pointer. The outlines (~76 KB) load on first
+ * use, so the editor bundle does not carry them. `filter` is the active country filter's pill.
  */
-export function WorldMap({ countries, selected, onSelect }: { countries: SiteStats['countries']; selected?: string; onSelect: (c: string | undefined) => void }) {
+export function WorldMap({
+  countries,
+  selected,
+  onSelect,
+  filter,
+}: {
+  countries: SiteStats['countries'];
+  selected?: string;
+  onSelect: (c: string | undefined) => void;
+  filter?: ReactNode;
+}) {
   const [paths, setPaths] = useState<Paths | null>(null);
+  const tip = useChartTip();
   useEffect(() => {
     let live = true;
     void import('./world-paths').then((m) => {
@@ -42,7 +55,7 @@ export function WorldMap({ countries, selected, onSelect }: { countries: SiteSta
   const max = Math.max(...known.map((c) => c.visitors));
   const top = known.slice(0, 3).map((c) => `${countryName(c.country)} ${fmt(c.visitors)}`).join(', ');
   return (
-    <Panel title="Map">
+    <Panel title="Map" action={filter}>
       {paths ? (
         <svg viewBox={paths.WORLD_VIEWBOX} className="h-auto w-full" role="img" aria-label={`Visitors by country — busiest: ${top}`}>
           {Object.entries(paths.WORLD_PATHS).map(([cc, d]) => {
@@ -57,15 +70,22 @@ export function WorldMap({ countries, selected, onSelect }: { countries: SiteSta
                 className={`${shade < 0 ? 'fill-slate-200 dark:fill-slate-700' : SHADES[shade]} stroke-white dark:stroke-slate-900 ${selected === cc ? 'stroke-indigo-700 dark:stroke-indigo-200' : ''} ${v ? 'cursor-pointer hover:opacity-80' : ''}`}
                 strokeWidth={selected === cc ? 1.5 : 0.5}
                 onClick={v ? () => onSelect(selected === cc ? undefined : cc) : undefined}
-              >
-                <title>{`${countryName(cc)}: ${fmt(v)} visitors`}</title>
-              </path>
+                onMouseMove={(e) =>
+                  tip.showAtPointer(e.clientX, e.clientY, [
+                    countryName(cc),
+                    v ? counted(v, 'visitor') : 'No visitors',
+                    ...(v ? [selected === cc ? 'Click to clear the filter' : 'Click to filter by it'] : []),
+                  ])
+                }
+                onMouseLeave={tip.hide}
+              />
             );
           })}
         </svg>
       ) : (
         <div className="aspect-[96/47] w-full animate-pulse rounded-lg bg-slate-100 dark:bg-white/5" />
       )}
+      {tip.bubble}
     </Panel>
   );
 }

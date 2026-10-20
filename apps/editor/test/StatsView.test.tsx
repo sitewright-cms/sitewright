@@ -91,8 +91,57 @@ describe('StatsView', () => {
     await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), device: 'mobile', country: 'DE' }));
     // A filtered view has no meaningful conversion rate: goals are not split by device or country.
     await waitFor(() => expect(screen.getByRole('group', { name: 'Goals' })).not.toHaveTextContent('of visitors'));
-    fireEvent.click(screen.getByRole('button', { name: 'Clear Device: mobile' }));
+    fireEvent.click(within(devices).getByRole('button', { name: 'Clear Device: Mobile' }));
     await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), country: 'DE' }));
+  });
+
+  it('★ shows each filter at the top AND in its own section, and either copy clears it', async () => {
+    render(<StatsView project={project} />);
+    const devices = await screen.findByRole('region', { name: 'Devices' });
+    const countries = screen.getByRole('region', { name: 'Countries' });
+    // Presence guard: no pill anywhere before a filter is set.
+    expect(screen.queryAllByRole('button', { name: /^Clear / })).toHaveLength(0);
+    fireEvent.click(within(devices).getByRole('button', { name: /Mobile/ }));
+    await waitFor(() => expect(within(devices).getByRole('button', { name: 'Clear Device: Mobile' })).toBeInTheDocument());
+    expect(screen.getAllByRole('button', { name: 'Clear Device: Mobile' })).toHaveLength(2); // the top row + Devices
+    expect(within(countries).queryByRole('button', { name: /^Clear / })).toBeNull(); // not in a section it isn't about
+
+    fireEvent.click(within(countries).getByRole('button', { name: /Germany/ }));
+    await waitFor(() => expect(within(countries).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument());
+    const map = await screen.findByRole('region', { name: 'Map' });
+    expect(within(map).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Clear Country: Germany' })).toHaveLength(3); // top, Countries, Map
+
+    // Cleared from the MAP section, it goes everywhere.
+    fireEvent.click(within(map).getByRole('button', { name: 'Clear Country: Germany' }));
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Clear Country: Germany' })).toHaveLength(0));
+    expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), device: 'mobile' });
+  });
+
+  it('★ a day in the chart shows the editor tooltip, one figure per line', async () => {
+    const { container } = render(<StatsView project={project} />);
+    await screen.findByRole('group', { name: 'Visitors' });
+    const day = container.querySelector('[data-day="2026-10-18"]')!;
+    // No native SVG <title> left: it would show a second, browser-styled tooltip over this one.
+    expect(container.querySelector('svg title')).toBeNull();
+    fireEvent.mouseEnter(day);
+    const tip = screen.getByRole('tooltip');
+    expect([...tip.children].map((line) => line.textContent)).toEqual(['Sun, 18 Oct 2026', '70 pageviews', '25 visitors', '50 bot pageviews']);
+    fireEvent.mouseLeave(day);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('★ a country on the map shows the editor tooltip at the pointer, saying a click filters', async () => {
+    const { container } = render(<StatsView project={project} />);
+    await screen.findByRole('img', { name: /Visitors by country/ });
+    const de = container.querySelector('path[data-country="DE"]')!;
+    fireEvent.mouseMove(de, { clientX: 200, clientY: 120 });
+    expect([...screen.getByRole('tooltip').children].map((l) => l.textContent)).toEqual(['Germany', '30 visitors', 'Click to filter by it']);
+    fireEvent.mouseLeave(de);
+    const fr = container.querySelector('path[data-country="FR"]')!;
+    fireEvent.mouseMove(fr, { clientX: 150, clientY: 120 });
+    // Nothing to filter by, so no promise of one.
+    expect([...screen.getByRole('tooltip').children].map((l) => l.textContent)).toEqual(['France', 'No visitors']);
   });
 
   it('names countries, and the unknown ones', async () => {
@@ -120,7 +169,11 @@ describe('StatsView', () => {
     render(<StatsView project={project} onOpenSettings={onOpenSettings} />);
     const status = await screen.findByRole('status');
     expect(status).toHaveTextContent('Statistics are off for this site');
-    fireEvent.click(within(status).getByRole('button', { name: 'Open Website Settings' }));
+    const open = within(status).getByRole('button', { name: 'Open Website Settings' });
+    // The editor's primary button, not an unstyled DaisyUI `btn`.
+    expect(open).toHaveClass('sw-brand-gradient');
+    expect(open).not.toHaveClass('btn');
+    fireEvent.click(open);
     expect(onOpenSettings).toHaveBeenCalled();
   });
 
@@ -130,10 +183,10 @@ describe('StatsView', () => {
     expect(await screen.findByRole('note')).toHaveTextContent('no public address (SW_PUBLIC_URL)');
   });
 
-  it('says a publish is needed when statistics are on but nothing was counted yet', async () => {
+  it('says a deploy is needed when statistics are on but nothing was counted yet', async () => {
     getStats.mockResolvedValue(stats({ human: { views: 0, visitors: 0 }, botViews: 0, goals: [] }));
     render(<StatsView project={project} />);
-    expect(await screen.findByRole('note')).toHaveTextContent('publish once after switching statistics on');
+    expect(await screen.findByRole('note')).toHaveTextContent('deploy once after switching statistics on');
   });
 
   it('shows a load error', async () => {

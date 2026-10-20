@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import type { SiteStats, StatsDevice } from '@sitewright/schema';
 import { BOT_LABELS, countryFlag, countryName, fmt, pct, SOURCE_LABELS } from './format';
 
-/** A titled panel inside the Statistics tab. */
+/** A titled panel inside the Statistics tab. `action` sits at the right of its heading. */
 export function Panel({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="min-w-0 rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5" aria-label={title}>
-      <header className="mb-3 flex items-center justify-between gap-2">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</h3>
-        {action}
+        {action && <span className="flex flex-wrap items-center gap-2">{action}</span>}
       </header>
       {children}
     </section>
@@ -38,12 +39,29 @@ function BarRow({ label, value, share, detail, onClick, active }: { label: React
 
 const Empty = ({ children }: { children: ReactNode }) => <p className="py-3 text-center text-sm text-slate-500 dark:text-slate-400">{children}</p>;
 
-const DEVICE_LABELS: Record<StatsDevice, string> = { desktop: 'Desktop', mobile: 'Mobile', tablet: 'Tablet' };
+export const DEVICE_LABELS: Record<StatsDevice, string> = { desktop: 'Desktop', mobile: 'Mobile', tablet: 'Tablet' };
+
+/**
+ * An active filter, with the button that clears it. Shown above the figures AND in the section the filter
+ * belongs to, so a filter set in one panel is visible from the others. The two copies carry the same name
+ * and do the same thing; each sits in its own labelled region.
+ */
+export function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-300/70 bg-indigo-50 py-0.5 pl-3 pr-1 text-sm text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200">
+      {label}
+      <button type="button" className="rounded-full p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/20" aria-label={`Clear ${label}`} onClick={onClear}>
+        <X className="h-3.5 w-3.5" aria-hidden />
+      </button>
+    </span>
+  );
+}
 
 export function DevicesPanel({ stats, device, onDevice }: { stats: SiteStats; device?: StatsDevice; onDevice: (d: StatsDevice | undefined) => void }) {
   const total = stats.devices.reduce((n, d) => n + d.visitors, 0);
   return (
-    <Panel title="Devices">
+    // eslint-disable-next-line security/detect-object-injection -- device is a typed StatsDevice
+    <Panel title="Devices" action={device && <FilterChip label={`Device: ${DEVICE_LABELS[device]}`} onClear={() => onDevice(undefined)} />}>
       <div className="flex flex-col gap-1">
         {stats.devices.map((d) => (
           <BarRow
@@ -71,11 +89,16 @@ export function CountriesPanel({ stats, country, onCountry }: { stats: SiteStats
     <Panel
       title="Countries"
       action={
-        stats.countries.length > COUNTRIES_SHOWN ? (
-          <button type="button" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setAll(!all)}>
-            {all ? 'Show fewer' : `Show all ${stats.countries.length}`}
-          </button>
-        ) : undefined
+        (country || stats.countries.length > COUNTRIES_SHOWN) && (
+          <>
+            {country && <FilterChip label={`Country: ${countryName(country)}`} onClear={() => onCountry(undefined)} />}
+            {stats.countries.length > COUNTRIES_SHOWN && (
+              <button type="button" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setAll(!all)}>
+                {all ? 'Show fewer' : `Show all ${stats.countries.length}`}
+              </button>
+            )}
+          </>
+        )
       }
     >
       {rows.length === 0 ? (

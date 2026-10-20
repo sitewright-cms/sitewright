@@ -24,9 +24,7 @@ import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 
 /** The monthly budget until an admin sets one: small enough that a mistake is cheap. */
 export const DEFAULT_RANK_BUDGET_MICROS = 10_000_000;
-/** How often a failed check is tried again on the same day. */
-export const RANK_MAX_ATTEMPTS = 3;
-/** A check still `posting` after this died mid-request (a restart): it is failed, and may be tried again. */
+/** A check still `posting` after this died mid-request (a restart): failed, its estimated cost kept. */
 const POSTING_STALE_MS = 60 * 60 * 1000;
 /** A queued check whose result never came. A queue answers within the hour; DataForSEO keeps results 30 days. */
 const QUEUED_STALE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -53,6 +51,8 @@ export interface RankKeywordRow {
 /** A keyword that is due a check, with what the check needs from its project. */
 export interface DueKeyword extends RankKeywordRow {
   depth: number;
+  domain: string;
+  includeSubdomains: boolean;
 }
 
 export interface QueuedCheck {
@@ -62,7 +62,8 @@ export interface QueuedCheck {
   provider: string;
   ref: string;
   depth: number;
-  domain: string | null;
+  /** The site the check was sent for (not the project's current setup). */
+  domain: string;
   includeSubdomains: boolean;
 }
 
@@ -126,13 +127,16 @@ export class RankRepository {
       });
   }
 
-  /** Records (or, with null, clears) the provider's last refusal for the admin view. */
+  /**
+   * Records (or, with null, clears) the provider's last refusal for the admin view. Writes ONLY those columns:
+   * the tracker calls this mid-pass, and must never write back a provider or budget an admin just changed.
+   */
   async setLastError(message: string | null, now = new Date()): Promise<void> {
-    await this.putConfig({});
+    const lastErrorAt = message ? now : null;
     await this.db
-      .update(rankTrackingConfig)
-      .set({ lastError: message, lastErrorAt: message ? now : null })
-      .where(eq(rankTrackingConfig.id, RANK_TRACKING_CONFIG_ID));
+      .insert(rankTrackingConfig)
+      .values({ id: RANK_TRACKING_CONFIG_ID, activeProvider: null, monthlyBudgetMicros: DEFAULT_RANK_BUDGET_MICROS, lastError: message, lastErrorAt, updatedAt: now })
+      .onConflictDoUpdate({ target: rankTrackingConfig.id, set: { lastError: message, lastErrorAt } });
   }
 
   // ---- Provider credentials (admin) ----
@@ -252,20 +256,20 @@ export class RankRepository {
   // ---- Checks (the tracker) ----
 
   /**
-   * Keywords due a check on `today`: not paused, in a live project with a setup, and with no check recent
-   * enough for the project's schedule. A failed check does not count while it has attempts left.
+   * Keywords due a check on `today`: not paused, in a live project with a setup, not checked today, and with no
+   * finished or running check recent enough for the project's schedule (a FAILED check does not count, so a
+   * weekly keyword whose check failed is tried again the next day rather than the next week).
+   * Longest-unchecked first, so a tight budget rotates through every project instead of always serving the same.
    * `projectId` limits it to one project; `force` treats every keyword as daily (a "check now").
    */
   async dueKeywords(today: string, limit: number, opts: { projectId?: string; force?: boolean } = {}): Promise<DueKeyword[]> {
-    const dailyCutoff = today;
     const weeklyCutoff = shiftDay(today, -(SCHEDULE_DAYS.weekly - 1));
-    const cutoff = opts.force
-      ? sql`${dailyCutoff}`
-      : sql`CASE ${rankProjects.schedule} WHEN 'daily' THEN ${dailyCutoff} ELSE ${weeklyCutoff} END`;
-    const recent = sql`EXISTS (SELECT 1 FROM ${rankChecks} c WHERE c.keyword_id = ${rankKeywords.id} AND c.day >= ${cutoff}
-      AND (c.status <> 'failed' OR c.attempts >= ${RANK_MAX_ATTEMPTS}))`;
+    const cutoff = opts.force ? sql`${today}` : sql`CASE ${rankProjects.schedule} WHEN 'daily' THEN ${today} ELSE ${weeklyCutoff} END`;
+    const recent = sql`EXISTS (SELECT 1 FROM ${rankChecks} c WHERE c.keyword_id = ${rankKeywords.id}
+      AND (c.day = ${today} OR (c.day >= ${cutoff} AND c.status <> 'failed')))`;
+    const lastChecked = sql`(SELECT MAX(c.day) FROM ${rankChecks} c WHERE c.keyword_id = ${rankKeywords.id})`;
     const rows = await this.db
-      .select({ k: rankKeywords, depth: rankProjects.depth })
+      .select({ k: rankKeywords, depth: rankProjects.depth, domain: rankProjects.domain, includeSubdomains: rankProjects.includeSubdomains })
       .from(rankKeywords)
       .innerJoin(rankProjects, eq(rankProjects.projectId, rankKeywords.projectId))
       .innerJoin(projects, eq(projects.id, rankKeywords.projectId))
@@ -277,50 +281,50 @@ export class RankRepository {
           sql`NOT ${recent}`,
         ),
       )
-      .orderBy(asc(rankKeywords.projectId), asc(rankKeywords.createdAt))
+      // NULL (never checked) sorts first in SQLite's ascending order.
+      .orderBy(sql`${lastChecked} ASC`, asc(rankKeywords.createdAt))
       .limit(limit);
-    return rows.map((r) => ({ ...r.k, depth: r.depth }));
+    return rows.map((r) => ({ ...r.k, depth: r.depth, domain: r.domain, includeSubdomains: r.includeSubdomains }));
   }
 
   /**
-   * ★ CLAIMS the day's check for a keyword BEFORE the provider is called. Returns the check id, or null when the
-   * keyword already has a check that day that is queued, finished, or out of attempts — so two passes (or a pass
-   * and a "check now") can never pay for the same keyword twice in a day.
+   * ★ CLAIMS the day's check for a keyword BEFORE the provider is called, booking its estimated cost. Returns the
+   * check id, or null when the keyword already has a check that day — so two passes (or a pass and a "check now")
+   * can never send the same keyword twice in a day.
    */
-  async claim(k: { id: string; projectId: string }, day: string, provider: RankProviderId, depth: number, now: Date): Promise<string | null> {
-    const id = newId();
-    const rows = (await this.db.all(sql`
-      INSERT INTO ${rankChecks} (id, keyword_id, project_id, day, provider, status, attempts, depth, cost_micros, posted_at)
-      VALUES (${id}, ${k.id}, ${k.projectId}, ${day}, ${provider}, 'posting', 1, ${depth}, 0, ${now.getTime()})
-      ON CONFLICT (keyword_id, day) DO UPDATE SET
-        status = 'posting', attempts = ${rankChecks}.attempts + 1, provider = excluded.provider, depth = excluded.depth,
-        posted_at = excluded.posted_at, provider_ref = NULL, error = NULL
-      WHERE ${rankChecks}.status = 'failed' AND ${rankChecks}.attempts < ${RANK_MAX_ATTEMPTS}
-      RETURNING id
-    `)) as Array<{ id: string }>;
+  async claim(k: DueKeyword, day: string, provider: RankProviderId, estimateUsd: number, now: Date): Promise<string | null> {
+    const rows = await this.db
+      .insert(rankChecks)
+      .values({
+        id: newId(),
+        keywordId: k.id,
+        projectId: k.projectId,
+        day,
+        provider,
+        status: 'posting',
+        domain: k.domain,
+        includeSubdomains: k.includeSubdomains,
+        depth: k.depth,
+        costMicros: toMicros(estimateUsd),
+        postedAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: rankChecks.id });
     return rows[0]?.id ?? null;
   }
 
-  /**
-   * Gives a claim back when the provider certainly did not take the request (it refused it as a whole): a fresh
-   * claim is removed, a retry goes back to failed without using up an attempt.
-   */
-  async release(id: string, reason: string): Promise<void> {
-    await this.db.delete(rankChecks).where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'), eq(rankChecks.attempts, 1)));
-    await this.db
-      .update(rankChecks)
-      .set({ status: 'failed', attempts: sql`${rankChecks.attempts} - 1`, error: reason.slice(0, 300) })
-      .where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting')));
+  /** Takes back a claim the provider certainly did not act on (it refused the request as a whole). */
+  async release(id: string): Promise<void> {
+    await this.db.delete(rankChecks).where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting')));
   }
 
+  /** Sent: the provider's id for the search, and what it charged (replacing the estimate). */
   async markQueued(id: string, ref: string, costUsd: number): Promise<void> {
-    await this.db
-      .update(rankChecks)
-      .set({ status: 'queued', providerRef: ref, costMicros: sql`${rankChecks.costMicros} + ${toMicros(costUsd)}` })
-      .where(eq(rankChecks.id, id));
+    await this.db.update(rankChecks).set({ status: 'queued', providerRef: ref, costMicros: toMicros(costUsd) }).where(eq(rankChecks.id, id));
   }
 
-  async markDone(id: string, hit: { position: number; absolutePosition: number; url: string } | null, checkedAt: Date, costUsd = 0): Promise<void> {
+  /** Finished. `costUsd` replaces the booked cost when the provider stated one with the result (a live search). */
+  async markDone(id: string, hit: { position: number; absolutePosition: number; url: string } | null, checkedAt: Date, costUsd?: number): Promise<void> {
     await this.db
       .update(rankChecks)
       .set({
@@ -330,20 +334,24 @@ export class RankRepository {
         url: hit?.url ?? null,
         checkedAt,
         error: null,
-        costMicros: sql`${rankChecks.costMicros} + ${toMicros(costUsd)}`,
+        ...(costUsd !== undefined ? { costMicros: toMicros(costUsd) } : {}),
       })
       .where(eq(rankChecks.id, id));
   }
 
-  async markFailed(id: string, error: string, costUsd = 0): Promise<void> {
+  /**
+   * Failed, for the day. `costUsd` is the provider's stated charge when it gave one; without it the booked cost
+   * stays — the outcome is uncertain, so the budget assumes it was paid.
+   */
+  async markFailed(id: string, error: string, costUsd?: number): Promise<void> {
     await this.db
       .update(rankChecks)
-      .set({ status: 'failed', error: error.slice(0, 300), costMicros: sql`${rankChecks.costMicros} + ${toMicros(costUsd)}` })
+      .set({ status: 'failed', error: error.slice(0, 300), ...(costUsd !== undefined ? { costMicros: toMicros(costUsd) } : {}) })
       .where(eq(rankChecks.id, id));
   }
 
-  /** Queued checks to collect, oldest first, with the project's current target. */
-  async queuedChecks(limit: number): Promise<QueuedCheck[]> {
+  /** Queued checks to collect, oldest first — of one project, or all. */
+  async queuedChecks(limit: number, projectId?: string): Promise<QueuedCheck[]> {
     const rows = await this.db
       .select({
         id: rankChecks.id,
@@ -352,15 +360,14 @@ export class RankRepository {
         provider: rankChecks.provider,
         ref: rankChecks.providerRef,
         depth: rankChecks.depth,
-        domain: rankProjects.domain,
-        includeSubdomains: rankProjects.includeSubdomains,
+        domain: rankChecks.domain,
+        includeSubdomains: rankChecks.includeSubdomains,
       })
       .from(rankChecks)
-      .leftJoin(rankProjects, eq(rankProjects.projectId, rankChecks.projectId))
-      .where(eq(rankChecks.status, 'queued'))
+      .where(and(eq(rankChecks.status, 'queued'), projectId ? eq(rankChecks.projectId, projectId) : undefined))
       .orderBy(asc(rankChecks.postedAt))
       .limit(limit);
-    return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref, domain: r.domain ?? null, includeSubdomains: r.includeSubdomains ?? true }] : []));
+    return rows.flatMap((r) => (r.ref ? [{ ...r, ref: r.ref }] : []));
   }
 
   /** Fails checks that can no longer finish: a send cut off by a restart, a result that never came. */
@@ -387,8 +394,8 @@ export class RankRepository {
     return Number(row?.total ?? 0);
   }
 
-  /** Finished checks of a project's keywords between two days (inclusive), oldest first. */
-  async history(projectId: string, from: string, to: string): Promise<DoneCheck[]> {
+  /** Finished checks of a project's keywords for `domain` between two days (inclusive), oldest first. */
+  async history(projectId: string, domain: string, from: string, to: string): Promise<DoneCheck[]> {
     const rows = await this.db
       .select({
         keywordId: rankChecks.keywordId,
@@ -399,17 +406,25 @@ export class RankRepository {
         checkedAt: rankChecks.checkedAt,
       })
       .from(rankChecks)
-      .where(and(eq(rankChecks.projectId, projectId), eq(rankChecks.status, 'done'), gte(rankChecks.day, from), lte(rankChecks.day, to)))
+      .where(
+        and(
+          eq(rankChecks.projectId, projectId),
+          eq(rankChecks.domain, domain),
+          eq(rankChecks.status, 'done'),
+          gte(rankChecks.day, from),
+          lte(rankChecks.day, to),
+        ),
+      )
       .orderBy(asc(rankChecks.day));
     return rows.map((r) => ({ ...r, checkedAt: r.checkedAt ?? new Date(`${r.day}T00:00:00Z`) }));
   }
 
-  /** Each keyword's two newest finished checks, whatever the range (for "latest" and "change"). */
-  async latestTwo(projectId: string): Promise<Map<string, DoneCheck[]>> {
+  /** Each keyword's two newest finished checks for `domain`, whatever the range (for "latest" and "change"). */
+  async latestTwo(projectId: string, domain: string): Promise<Map<string, DoneCheck[]>> {
     const rows = (await this.db.all(sql`
       SELECT keyword_id AS keywordId, day, position, url, depth, checked_at AS checkedAt FROM (
         SELECT c.*, ROW_NUMBER() OVER (PARTITION BY c.keyword_id ORDER BY c.day DESC) AS rn
-        FROM ${rankChecks} c WHERE c.project_id = ${projectId} AND c.status = 'done'
+        FROM ${rankChecks} c WHERE c.project_id = ${projectId} AND c.domain = ${domain} AND c.status = 'done'
       ) WHERE rn <= 2 ORDER BY keyword_id, day DESC
     `)) as Array<{ keywordId: string; day: string; position: number | null; url: string | null; depth: number; checkedAt: number | null }>;
     const out = new Map<string, DoneCheck[]>();

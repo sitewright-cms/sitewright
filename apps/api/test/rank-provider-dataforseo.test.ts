@@ -109,6 +109,8 @@ describe('DataForSEO submit', () => {
     [{ body: { status_code: 40202, status_message: 'Rate limit.' } }, 'rate'],
     [{ body: { status_code: 50000, status_message: 'Internal Error.' } }, 'unavailable'],
     [{ status: 502, body: '<html>bad gateway</html>' }, 'unavailable'],
+    [{ status: 500, body: { message: 'oops' } }, 'unavailable'],
+    [{ body: { tasks: [] } }, 'unavailable'],
     [new Error('the payment provider could not be reached'), 'unavailable'],
   ] as const)('a refused request (%j) is a %s error that never echoes the transport or a credential', async (answer, kind) => {
     const { fetch } = fakeFetch({ '/v3/serp': () => answer as never });
@@ -116,6 +118,26 @@ describe('DataForSEO submit', () => {
     expect(err).toBeInstanceOf(RankProviderError);
     expect((err as RankProviderError).kind).toBe(kind);
     expect((err as Error).message).not.toMatch(/payment|s3cret|api@agency/);
+  });
+
+  it('reads every task refused for one account reason, with nothing charged, as the whole request refused', async () => {
+    const { fetch } = fakeFetch({
+      '/v3/serp': (call) => ({
+        body: envelope(
+          (call.body as Array<{ tag: string }>).map((t) => ({ id: null, status_code: 40210, status_message: 'Insufficient Funds.', cost: 0, data: { tag: t.tag } })),
+        ),
+      }),
+    });
+    await expect(dataForSeo.submit(CREDS, [search('a'), search('b')], { fetch })).rejects.toMatchObject({ kind: 'funds' });
+  });
+
+  it('survives nulls and junk in an answer it was charged for, and reads it as possibly paid', async () => {
+    const { fetch } = fakeFetch({
+      '/v3/serp': () => ({ body: envelope([null, 'junk', { id: TASK_A, status_code: 20100, cost: 0.006, data: { tag: 'c1' } }]) }),
+    });
+    await expect(dataForSeo.submit(CREDS, [search('c1')], { fetch })).resolves.toEqual([
+      { checkId: 'c1', state: 'queued', ref: TASK_A, costUsd: 0.006 },
+    ]);
   });
 
   it('refuses more searches than one request may carry', async () => {
@@ -138,6 +160,8 @@ describe('DataForSEO collect', () => {
           { type: 'organic', rank_group: 1, rank_absolute: 3, url: 'https://other.test/', domain: 'other.test' },
           { type: 'organic', rank_group: 2, rank_absolute: 4, url: 'https://www.plumbers.na/', domain: 'www.plumbers.na' },
           { type: 'organic', rank_group: 'x', url: 'https://broken.test/' },
+          null,
+          { type: 'organic', rank_group: 3, rank_absolute: 5, url: 'javascript://plumbers.na/%0aalert(1)', domain: 'plumbers.na' },
         ]),
       }),
     });
@@ -209,13 +233,23 @@ describe('DataForSEO account and locations', () => {
       { location_name: 'Stray,Somewhere,Elsewhere', location_type: 'City', country_iso_code: 'ZA' },
     ];
     const { fetch, calls } = fakeFetch({ '/v3/serp/google/locations/na': () => ({ body: envelope([{ status_code: 20000, result: list }]) }) });
-    const wind = await dataForSeo.searchLocations(CREDS, 'NA', 'wind', { fetch });
-    expect(wind.map((l) => l.name)).toEqual(['Windhoek,Khomas Region,Namibia', 'Windhoek East,Khomas Region,Namibia']);
-    expect(wind[0]).toEqual({ name: 'Windhoek,Khomas Region,Namibia', type: 'City', countryCode: 'NA' });
+    // Two pickers at once share one download.
+    const [wind] = await Promise.all([dataForSeo.searchLocations(CREDS, 'NA', 'wind', { fetch }), dataForSeo.searchLocations(CREDS, 'NA', 'kho', { fetch })]);
+    expect(wind!.map((l) => l.name)).toEqual(['Windhoek,Khomas Region,Namibia', 'Windhoek East,Khomas Region,Namibia']);
+    expect(wind![0]).toEqual({ name: 'Windhoek,Khomas Region,Namibia', type: 'City', countryCode: 'NA' });
     const all = await dataForSeo.searchLocations(CREDS, 'NA', '', { fetch });
     expect(all.map((l) => l.type)).toEqual(['City', 'Country', 'Region', 'Neighborhood']);
     expect(calls).toHaveLength(1);
     await expect(dataForSeo.searchLocations(CREDS, 'na', 'x', { fetch })).rejects.toThrow(/ISO code/);
+  });
+
+  it('fetches a location list through the large transport, and does not keep an empty one', async () => {
+    const small = fakeFetch({});
+    const large = fakeFetch({ '/v3/serp/google/locations/za': () => ({ body: envelope([{ status_code: 20000, result: [] }]) }) });
+    await dataForSeo.searchLocations(CREDS, 'ZA', '', { fetch: small.fetch, largeFetch: large.fetch });
+    await dataForSeo.searchLocations(CREDS, 'ZA', '', { fetch: small.fetch, largeFetch: large.fetch });
+    expect(small.calls).toHaveLength(0);
+    expect(large.calls).toHaveLength(2);
   });
 });
 

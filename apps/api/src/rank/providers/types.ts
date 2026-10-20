@@ -82,7 +82,10 @@ export class RankProviderError extends Error {
 }
 
 export interface RankProviderIo {
+  /** Every request: its answer is capped small (a results page, a balance). */
   fetch: FetchLike;
+  /** The few requests whose answer runs to megabytes (a country's location list); `fetch` when absent. */
+  largeFetch?: FetchLike;
   /** The deadline for one request to the provider. */
   timeoutMs?: number;
 }

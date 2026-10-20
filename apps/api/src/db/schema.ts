@@ -1264,9 +1264,11 @@ export const rankKeywords = sqliteTable(
 /**
  * One check of one keyword on one UTC day — and, finished, its result.
  *
- * ★ The row is CLAIMED before the provider is called (status `posting`), and `(keyword_id, day)` is unique, so a
- * keyword is paid for at most once a day however many passes overlap or restart. A failed check may be claimed
- * again (a few attempts), never a queued or finished one.
+ * ★ MONEY. The row is CLAIMED before the provider is called (status `posting`, unique per keyword and day), so a
+ * keyword is sent at most once a day however many passes overlap or restart. The claim books the ESTIMATED cost
+ * at once; the provider's own figure replaces it when it answers. A check whose outcome is uncertain (a reply
+ * lost after the request went out) keeps the estimate and is not sent again that day: the budget may count a
+ * check that was never charged, but never misses one that was.
  */
 export const rankChecks = sqliteTable(
   'rank_checks',
@@ -1286,7 +1288,9 @@ export const rankChecks = sqliteTable(
     providerRef: text('provider_ref'),
     /** `posting` (claimed, being sent) → `queued` (sent, result pending) → `done`, or `failed`. */
     status: text('status', { enum: ['posting', 'queued', 'done', 'failed'] }).notNull(),
-    attempts: integer('attempts').notNull().default(1),
+    /** The site the check was sent for. Results are read against THIS, so a later domain change cannot mix sites. */
+    domain: text('domain').notNull(),
+    includeSubdomains: integer('include_subdomains', { mode: 'boolean' }).notNull(),
     depth: integer('depth').notNull(),
     /** The organic position, 1 = the first ordinary result; NULL when done = not in the top `depth`. */
     position: integer('position'),
@@ -1294,7 +1298,7 @@ export const rankChecks = sqliteTable(
     absolutePosition: integer('absolute_position'),
     /** The site's page that ranked. */
     url: text('url'),
-    /** What the provider charged for every attempt, USD × 1,000,000. */
+    /** USD × 1,000,000: the estimate from the claim until the provider states the real charge. */
     costMicros: integer('cost_micros').notNull().default(0),
     /** Why it failed, in words safe to show an admin. */
     error: text('error'),

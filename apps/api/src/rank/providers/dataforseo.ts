@@ -6,7 +6,6 @@ import {
   type RankCredentials,
   type RankProvider,
   type RankProviderIo,
-  type RankSearch,
   type SerpEntry,
   type SerpPage,
   type SubmitOutcome,
@@ -20,6 +19,9 @@ import {
  *   charged, so collecting again costs nothing.
  * - The price is per page of ten results ($0.0006 on the 2026 price list), so a depth of 100 costs ten pages.
  * - The sandbox host answers in the same format with dummy results, free, with the same credentials.
+ *
+ * ★ Every answer is read defensively: a `null` in an array, a missing field or a body that is not JSON must
+ * never throw halfway through reading an answer the account was already charged for.
  *
  * https://docs.dataforseo.com/v3/serp/google/organic/task_post/
  */
@@ -45,6 +47,9 @@ const STILL_RUNNING = new Set([40601, 40602]);
 
 /** A task id, as DataForSEO issues them. Checked before it goes into a URL path. */
 const TASK_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A result link the editor may show: an ordinary web address, nothing else. */
+const WEB_URL_RE = /^https?:\/\//i;
+const UNREADABLE = 'DataForSEO sent a reply the platform could not read';
 
 /** A provider message, cut down to something safe to store and show: one line, bounded. */
 function cleanMessage(raw: unknown): string {
@@ -53,7 +58,7 @@ function cleanMessage(raw: unknown): string {
   return text.slice(0, 200);
 }
 
-/** What a request-level status code means for the tracker. */
+/** What a status code means for the tracker. */
 function errorFor(code: number, message: unknown): RankProviderError {
   const said = cleanMessage(message);
   const detail = said ? ` (${code}: ${said})` : ` (${code})`;
@@ -68,36 +73,20 @@ function errorFor(code: number, message: unknown): RankProviderError {
   return new RankProviderError(`DataForSEO refused the request${detail}`, 'invalid');
 }
 
-interface Envelope {
-  status_code?: unknown;
-  status_message?: unknown;
-  tasks?: unknown;
-}
-interface Task {
-  id?: unknown;
-  status_code?: unknown;
-  status_message?: unknown;
-  cost?: unknown;
-  data?: { tag?: unknown } | null;
-  result?: unknown;
-}
-
+type Json = Record<string, unknown>;
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
-const tasksOf = (env: Envelope): Task[] => (Array.isArray(env.tasks) ? (env.tasks as Task[]) : []);
-const costOf = (t: Task): number => Math.max(0, num(t.cost) ?? 0);
+const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
+/** Only the objects of an array: a `null` or a string in a provider's list is skipped, never read. */
+const records = (v: unknown): Json[] => (Array.isArray(v) ? v.filter(isRecord) : []);
+const tasksOf = (env: Json): Json[] => records(env.tasks);
+const costOf = (task: Json): number => Math.max(0, num(task.cost) ?? 0);
 
 function environmentOf(creds: RankCredentials): Environment {
   return creds.environment === 'sandbox' ? 'sandbox' : 'production';
 }
 
-async function call(
-  creds: RankCredentials,
-  method: 'GET' | 'POST',
-  path: string,
-  io: RankProviderIo,
-  body?: unknown,
-): Promise<Envelope> {
+async function call(creds: RankCredentials, method: 'GET' | 'POST', path: string, io: RankProviderIo, body?: unknown): Promise<Json> {
   const url = `${HOSTS[environmentOf(creds)]}${path}`;
   const authorization = `Basic ${Buffer.from(`${creds.login}:${creds.password}`).toString('base64')}`;
   const controller = new AbortController();
@@ -121,15 +110,18 @@ async function call(
   if (res.status === 401) throw errorFor(40100, undefined);
   if (res.status === 402) throw errorFor(40200, undefined);
   if (res.status === 429) throw errorFor(40202, undefined);
-  let env: Envelope;
+  // A server error may come after the request was acted on: never read as a clean refusal.
+  if (res.status >= 500) throw new RankProviderError(`DataForSEO is unavailable (HTTP ${res.status})`, 'unavailable');
+  let env: unknown;
   try {
-    env = secureJsonParse(text, undefined, { protoAction: 'remove', constructorAction: 'remove' }) as Envelope;
+    env = secureJsonParse(text, undefined, { protoAction: 'remove', constructorAction: 'remove' });
   } catch {
-    throw new RankProviderError(`DataForSEO answered ${res.status} with something that is not JSON`, 'unavailable');
+    throw new RankProviderError(`${UNREADABLE} (HTTP ${res.status})`, 'unavailable');
   }
-  if (!env || typeof env !== 'object') throw new RankProviderError('DataForSEO answered with an empty response', 'unavailable');
+  if (!isRecord(env)) throw new RankProviderError(UNREADABLE, 'unavailable');
   const code = num(env.status_code);
-  if (code !== OK) throw errorFor(code ?? res.status, env.status_message);
+  if (code === undefined) throw new RankProviderError(`${UNREADABLE} (HTTP ${res.status})`, 'unavailable');
+  if (code !== OK) throw errorFor(code, env.status_message);
   return env;
 }
 
@@ -149,25 +141,58 @@ function parseDatetime(raw: unknown): Date {
   return new Date();
 }
 
-function pageFrom(task: Task): SerpPage {
-  const result = Array.isArray(task.result) ? (task.result[0] as { datetime?: unknown; items?: unknown } | undefined) : undefined;
-  const items = Array.isArray(result?.items) ? (result.items as Array<Record<string, unknown>>) : [];
+function pageFrom(task: Json): SerpPage {
+  const result = records(task.result)[0];
   const entries: SerpEntry[] = [];
-  for (const item of items) {
+  for (const item of records(result?.items)) {
     const kind = item.type === 'organic' || item.type === 'featured_snippet' ? item.type : undefined;
     const position = num(item.rank_group);
     const absolutePosition = num(item.rank_absolute);
     const url = str(item.url);
-    if (!kind || position === undefined || absolutePosition === undefined || !url) continue;
-    entries.push({ kind, position, absolutePosition, url, domain: str(item.domain) ?? '' });
+    if (!kind || position === undefined || absolutePosition === undefined || !url || !WEB_URL_RE.test(url)) continue;
+    entries.push({ kind, position, absolutePosition, url: url.slice(0, 2048), domain: str(item.domain) ?? '' });
   }
   return { checkedAt: parseDatetime(result?.datetime), entries };
+}
+
+/** Each search's task in a `task_post` answer, matched by the tag the search was sent with. */
+function readSubmitted(env: Json, searches: ReadonlyArray<{ checkId: string }>): SubmitOutcome[] {
+  const tasks = tasksOf(env);
+  const byTag = new Map<string, Json>();
+  for (const task of tasks) {
+    const tag = isRecord(task.data) ? str(task.data.tag) : undefined;
+    if (tag) byTag.set(tag, task);
+  }
+  // Every task refused for one ACCOUNT reason (credentials, funds) and nothing charged is the whole request
+  // refused: thrown, so the tracker gives the claims back instead of spending the day on a cause no retry fixes.
+  const refusals = tasks.map((t) => errorFor(num(t.status_code) ?? 0, t.status_message));
+  const first = refusals[0];
+  if (
+    first &&
+    (first.kind === 'auth' || first.kind === 'funds') &&
+    refusals.every((e) => e.message === first.message) &&
+    tasks.every((t) => costOf(t) === 0 && num(t.status_code) !== TASK_CREATED)
+  ) {
+    throw first;
+  }
+  return searches.map((s): SubmitOutcome => {
+    const task = byTag.get(s.checkId);
+    if (!task) return { checkId: s.checkId, state: 'failed', error: 'DataForSEO returned no task for this search', costUsd: 0 };
+    const code = num(task.status_code);
+    const id = str(task.id);
+    if (code === TASK_CREATED && id && TASK_ID_RE.test(id)) return { checkId: s.checkId, state: 'queued', ref: id, costUsd: costOf(task) };
+    return { checkId: s.checkId, state: 'failed', error: errorFor(code ?? 0, task.status_message).message, costUsd: costOf(task) };
+  });
 }
 
 /** Per-country location lists, kept for a day: they are large and change rarely. */
 const LOCATION_TTL_MS = 24 * 60 * 60 * 1000;
 const LOCATION_CACHE_MAX = 8;
 const locationCache = new Map<string, { at: number; list: ReadonlyArray<readonly [name: string, type: string]> }>();
+/** Lists being fetched, so concurrent pickers for one country share one download. */
+const locationInFlight = new Map<string, Promise<ReadonlyArray<readonly [string, string]>>>();
+/** One list download at a time: each is megabytes, held twice (text, then parsed) until it is compacted. */
+let locationQueue: Promise<unknown> = Promise.resolve();
 
 /** Places people search from first, then larger areas; postal codes and the like last. */
 const TYPE_ORDER = ['City', 'Country', 'Municipality', 'State', 'Province', 'Region', 'County', 'District', 'Neighborhood'];
@@ -176,29 +201,38 @@ const typeRank = (type: string): number => {
   return i < 0 ? TYPE_ORDER.length : i;
 };
 
-async function locationList(
-  creds: RankCredentials,
-  countryCode: string,
-  io: RankProviderIo,
-): Promise<ReadonlyArray<readonly [string, string]>> {
+async function locationList(creds: RankCredentials, countryCode: string, io: RankProviderIo): Promise<ReadonlyArray<readonly [string, string]>> {
   const key = `${environmentOf(creds)}:${countryCode}`;
   const cached = locationCache.get(key);
   if (cached && Date.now() - cached.at < LOCATION_TTL_MS) return cached.list;
-  const env = await call(creds, 'GET', `/v3/serp/google/locations/${countryCode.toLowerCase()}`, io);
-  const rows = (tasksOf(env)[0]?.result ?? []) as Array<Record<string, unknown>>;
-  const list: Array<readonly [string, string]> = [];
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const name = str(row.location_name);
-    if (name && str(row.country_iso_code)?.toUpperCase() === countryCode) list.push([name, str(row.location_type) ?? '']);
+  const running = locationInFlight.get(key);
+  if (running) return running;
+  const load = locationQueue.then(async () => {
+    const env = await call(creds, 'GET', `/v3/serp/google/locations/${countryCode.toLowerCase()}`, { ...io, fetch: io.largeFetch ?? io.fetch });
+    const list: Array<readonly [string, string]> = [];
+    for (const row of records(tasksOf(env)[0]?.result)) {
+      const name = str(row.location_name);
+      if (name && name.length <= 200 && str(row.country_iso_code)?.toUpperCase() === countryCode) list.push([name, str(row.location_type) ?? '']);
+    }
+    // An empty list is not kept: more likely a passing fault than a country without places.
+    if (list.length > 0) {
+      locationCache.delete(key);
+      locationCache.set(key, { at: Date.now(), list });
+      while (locationCache.size > LOCATION_CACHE_MAX) {
+        const oldest = locationCache.keys().next().value;
+        if (oldest === undefined) break;
+        locationCache.delete(oldest);
+      }
+    }
+    return list;
+  });
+  locationQueue = load.catch(() => undefined);
+  locationInFlight.set(key, load);
+  try {
+    return await load;
+  } finally {
+    locationInFlight.delete(key);
   }
-  locationCache.delete(key);
-  locationCache.set(key, { at: Date.now(), list });
-  while (locationCache.size > LOCATION_CACHE_MAX) {
-    const oldest = locationCache.keys().next().value;
-    if (oldest === undefined) break;
-    locationCache.delete(oldest);
-  }
-  return list;
 }
 
 /** @internal tests */
@@ -211,13 +245,7 @@ export const dataForSeo: RankProvider = {
   label: 'DataForSEO',
   signupUrl: 'https://app.dataforseo.com/register',
   fields: [
-    {
-      key: 'login',
-      label: 'API login',
-      type: 'text',
-      required: true,
-      help: 'On app.dataforseo.com/api-access — usually the account email.',
-    },
+    { key: 'login', label: 'API login', type: 'text', required: true, help: 'On app.dataforseo.com/api-access — usually the account email.' },
     {
       key: 'password',
       label: 'API password',
@@ -244,9 +272,7 @@ export const dataForSeo: RankProvider = {
     const environment = (raw.environment ?? 'production').trim() || 'production';
     if (!login || login.length > 200) throw new RankProviderError('Enter the DataForSEO API login', 'invalid');
     if (!password || password.length > 200) throw new RankProviderError('Enter the DataForSEO API password', 'invalid');
-    if (environment !== 'production' && environment !== 'sandbox') {
-      throw new RankProviderError('Choose live searches or the sandbox', 'invalid');
-    }
+    if (environment !== 'production' && environment !== 'sandbox') throw new RankProviderError('Choose live searches or the sandbox', 'invalid');
     return { login, password, environment };
   },
 
@@ -267,25 +293,18 @@ export const dataForSeo: RankProvider = {
       tag: s.checkId,
     }));
     const env = await call(creds, 'POST', '/v3/serp/google/organic/task_post', io, body);
-    const byTag = new Map<string, Task>();
-    for (const task of tasksOf(env)) {
-      const tag = str(task.data?.tag);
-      if (tag) byTag.set(tag, task);
+    try {
+      return readSubmitted(env, searches);
+    } catch (err) {
+      if (err instanceof RankProviderError) throw err;
+      // ★ The request WAS taken (status 20000) but its answer cannot be read: the tasks may exist and be
+      // charged, so this is `unavailable` — possibly paid — never a clean refusal.
+      throw new RankProviderError(UNREADABLE, 'unavailable');
     }
-    return searches.map((s): SubmitOutcome => {
-      const task = byTag.get(s.checkId);
-      if (!task) return { checkId: s.checkId, state: 'failed', error: 'DataForSEO returned no task for this search', costUsd: 0 };
-      const code = num(task.status_code);
-      const id = str(task.id);
-      if (code === TASK_CREATED && id && TASK_ID_RE.test(id)) {
-        return { checkId: s.checkId, state: 'queued', ref: id, costUsd: costOf(task) };
-      }
-      return { checkId: s.checkId, state: 'failed', error: errorFor(code ?? 0, task.status_message).message, costUsd: costOf(task) };
-    });
   },
 
   async collect(creds, queued, io) {
-    const out: CollectOutcome[] = new Array(queued.length);
+    const out: Array<CollectOutcome | undefined> = new Array(queued.length);
     let next = 0;
     let stop: RankProviderError | undefined;
     const worker = async (): Promise<void> => {
@@ -299,31 +318,31 @@ export const dataForSeo: RankProvider = {
         try {
           const env = await call(creds, 'GET', `/v3/serp/google/organic/task_get/regular/${q.ref}`, io);
           const task = tasksOf(env)[0];
-          const code = num(task?.status_code);
+          const code = task ? num(task.status_code) : undefined;
           if (task && code === OK) out[i] = { checkId: q.checkId, state: 'done', page: pageFrom(task) };
           else if (code !== undefined && STILL_RUNNING.has(code)) out[i] = { checkId: q.checkId, state: 'pending' };
           else out[i] = { checkId: q.checkId, state: 'failed', error: errorFor(code ?? 0, task?.status_message).message };
         } catch (err) {
           if (err instanceof RankProviderError && err.kind !== 'invalid') {
-            // The whole account is affected (credentials, funds, rate, outage): stop asking; what is left stays queued.
+            // The whole account is affected (credentials, funds, rate, outage): stop asking; the rest stays queued.
             stop = err;
             out[i] = { checkId: q.checkId, state: 'pending' };
           } else {
-            out[i] = { checkId: q.checkId, state: 'failed', error: err instanceof Error ? err.message : 'the result could not be read' };
+            // Not the provider refusing: an answer that could not be read. Its own message is no admin's business.
+            out[i] = { checkId: q.checkId, state: 'failed', error: err instanceof RankProviderError ? err.message : UNREADABLE };
           }
         }
       }
     };
     await Promise.all(Array.from({ length: Math.min(COLLECT_CONCURRENCY, queued.length) }, worker));
     if (stop && (stop.kind === 'auth' || stop.kind === 'funds')) throw stop;
-    return queued.map((q, i) => out[i] ?? { checkId: q.checkId, state: 'pending' });
+    return queued.map((q, i): CollectOutcome => out[i] ?? { checkId: q.checkId, state: 'pending' });
   },
 
   async account(creds, io) {
     const env = await call(creds, 'GET', '/v3/appendix/user_data', io);
-    const result = tasksOf(env)[0]?.result;
-    const first = Array.isArray(result) ? (result[0] as { money?: { balance?: unknown } } | undefined) : undefined;
-    return { balanceUsd: num(first?.money?.balance) ?? null };
+    const first = records(tasksOf(env)[0]?.result)[0];
+    return { balanceUsd: isRecord(first?.money) ? (num(first.money.balance) ?? null) : null };
   },
 
   async searchLocations(creds, countryCode, query, io) {
@@ -339,6 +358,6 @@ export const dataForSeo: RankProvider = {
       hits.push({ name, type, countryCode, score });
     }
     hits.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
-    return hits.slice(0, 25).map(({ score: _score, ...rest }) => rest);
+    return hits.slice(0, 25).map((h) => ({ name: h.name, type: h.type, countryCode: h.countryCode }));
   },
 };

@@ -219,6 +219,7 @@ describe('agency staff manage a project; clients only read', () => {
     const { dev, pid } = await cast();
     expect((await app.inject({ method: 'GET', url: `/projects/${pid}/rankings?from=2026-10-20&to=2026-10-01`, ...as(dev.t) })).json()).toEqual({ error: 'from is after to' });
     expect((await app.inject({ method: 'GET', url: `/projects/${pid}/rankings?from=2020-01-01&to=2026-10-01`, ...as(dev.t) })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: `/projects/${pid}/rankings?from=2026-02-01&to=2026-02-31`, ...as(dev.t) })).statusCode).toBe(400);
     const bad = await app.inject({ method: 'PUT', url: `/projects/${pid}/rankings/settings`, ...as(dev.t), payload: { domain: 'localhost' } });
     expect(bad.json()).toEqual({ error: 'domain: enter the domain the site is published at, e.g. example.com' });
     expect((await app.inject({ method: 'PUT', url: `/projects/${pid}/rankings/settings`, ...as(dev.t), payload: { domain: 'a.test', depth: 15 } })).statusCode).toBe(400);
@@ -247,6 +248,15 @@ describe('one full run', () => {
       { type: 'organic', rank_group: 1, rank_absolute: 1, url: 'https://competitor.test/', domain: 'competitor.test' },
       { type: 'organic', rank_group: 2, rank_absolute: 3, url: 'https://www.plumbers.na/emergency/', domain: 'www.plumbers.na' },
     ];
+    // A place the provider does not know is refused while someone is looking, not failed every day after.
+    const unknown = await app.inject({
+      method: 'POST',
+      url: `/projects/${pid}/rankings/keywords`,
+      ...as(dev.t),
+      payload: { keywords: ['x'], location: { name: 'Atlantis,Khomas Region,Namibia', countryCode: 'NA' }, languageCode: 'en' },
+    });
+    expect(unknown.json()).toEqual({ error: 'DataForSEO does not know the location "Atlantis,Khomas Region,Namibia"; choose one from the list' });
+
     const first = await app.inject({ method: 'POST', url: `/projects/${pid}/rankings/check`, ...as(dev.t) });
     expect(first.json()).toMatchObject({ status: 'ok', sent: 1 });
     const posted = calls.find((c) => c.url.endsWith('/task_post'))!.body as Array<Record<string, unknown>>;
@@ -274,5 +284,10 @@ describe('one full run', () => {
 
     const adminView = (await app.inject({ method: 'GET', url: '/admin/rank-tracking', ...as(admin.t) })).json() as RankTrackingAdminView;
     expect(adminView).toMatchObject({ spentThisMonthUsd: 0.006, projectsTracked: 1, keywordsTracked: 1 });
+
+    // A new domain is another site: its history starts empty rather than comparing against the old one.
+    await app.inject({ method: 'PUT', url: `/projects/${pid}/rankings/settings`, ...as(dev.t), payload: { domain: 'plumbers-windhoek.na', schedule: 'weekly', depth: 100 } });
+    const moved = (await app.inject({ method: 'GET', url: `/projects/${pid}/rankings`, ...as(client.t) })).json() as ProjectRankings;
+    expect(moved.keywords[0]).toMatchObject({ latest: null, series: [], best: null });
   });
 });

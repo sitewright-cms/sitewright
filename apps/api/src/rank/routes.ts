@@ -16,7 +16,7 @@ import {
 import type { z } from 'zod';
 import type { ProjectContext } from '../repo/context.js';
 import { RankProviderError, type RankProvider, type RankProviderIo } from './providers/index.js';
-import { shiftDay, utcDay, type RankRepository } from './repo.js';
+import { shiftDay, utcDay, type DoneCheck, type RankRepository } from './repo.js';
 import type { RankTracker } from './tracker.js';
 
 /**
@@ -54,9 +54,11 @@ export interface RankRouteDeps {
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
-/** The longest range a read may ask for. */
-const MAX_RANGE_DAYS = 800;
+/** The longest range a read may ask for: a year, plus slack for month lengths. */
+const MAX_RANGE_DAYS = 400;
 const DEFAULT_RANGE_DAYS = 90;
+/** Past this many days, a keyword's series is thinned to one point a week, so a year of 500 keywords stays small. */
+const WEEKLY_AFTER_DAYS = 120;
 
 const firstIssue = (err: z.ZodError): string => {
   const issue = err.issues[0];
@@ -65,29 +67,40 @@ const firstIssue = (err: z.ZodError): string => {
 
 const daysBetween = (from: string, to: string): number => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
 
-/** A project's rankings for a range, as every reader sees them. Shared with the agent tool. */
+/** The last point of each 7-day bucket counted from `from` — the shape of a long range, not every day of it. */
+function weekly(series: RankKeywordView['series'], from: string): RankKeywordView['series'] {
+  const buckets = new Map<number, RankKeywordView['series'][number]>();
+  for (const p of series) buckets.set(Math.floor(daysBetween(from, p.day) / 7), p);
+  return [...buckets.values()];
+}
+
+/**
+ * A project's rankings for a range, as every reader sees them. Shared with the agent tool.
+ *
+ * Only checks made for the project's CURRENT domain count: after a domain change, the old site's positions are
+ * another site's history, and comparing them would show a move that never happened.
+ */
 export async function projectRankings(
   repo: RankRepository,
   projectId: string,
   range: { from: string; to: string },
 ): Promise<Omit<ProjectRankings, 'canManage' | 'status'>> {
-  const [tracking, keywords, history, latest, inFlight] = await Promise.all([
-    repo.getProject(projectId),
-    repo.listKeywords(projectId),
-    repo.history(projectId, range.from, range.to),
-    repo.latestTwo(projectId),
-    repo.inFlight(projectId),
-  ]);
+  const [tracking, keywords, inFlight] = await Promise.all([repo.getProject(projectId), repo.listKeywords(projectId), repo.inFlight(projectId)]);
+  const domain = tracking?.domain ?? '';
+  const [history, latest] = tracking
+    ? await Promise.all([repo.history(projectId, domain, range.from, range.to), repo.latestTwo(projectId, domain)])
+    : [[], new Map<string, DoneCheck[]>()];
   const seriesOf = new Map<string, Array<{ day: string; position: number | null }>>();
   for (const h of history) {
     const list = seriesOf.get(h.keywordId) ?? [];
     list.push({ day: h.day, position: h.position });
     seriesOf.set(h.keywordId, list);
   }
+  const thin = daysBetween(range.from, range.to) > WEEKLY_AFTER_DAYS;
   const views = keywords.map((k): RankKeywordView => {
-    const series = seriesOf.get(k.id) ?? [];
+    const full = seriesOf.get(k.id) ?? [];
     const [last, before] = latest.get(k.id) ?? [];
-    const positions = series.map((p) => p.position).filter((p): p is number => p !== null);
+    const positions = full.map((p) => p.position).filter((p): p is number => p !== null);
     return {
       id: k.id,
       keyword: k.keyword,
@@ -101,12 +114,18 @@ export async function projectRankings(
         : null,
       change: last?.position != null && before?.position != null ? before.position - last.position : null,
       best: positions.length ? Math.min(...positions) : null,
-      series,
+      series: thin ? weekly(full, range.from) : full,
       pending: inFlight.has(k.id),
     };
   });
   return { from: range.from, to: range.to, tracking, keywords: views };
 }
+
+/** A real calendar day: `2026-02-31` is refused rather than read as March. */
+const isDay = (day: string): boolean => {
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === day;
+};
 
 /** The range of a read: `from`/`to` as given, defaulting to the last 90 days. A string is the refusal. */
 export function rankingsRange(query: unknown, today: string): { from: string; to: string } | string {
@@ -114,7 +133,7 @@ export function rankingsRange(query: unknown, today: string): { from: string; to
   if (!parsed.success) return 'from and to are days, YYYY-MM-DD';
   const to = parsed.data.to ?? today;
   const from = parsed.data.from ?? shiftDay(to, -(DEFAULT_RANGE_DAYS - 1));
-  if (Number.isNaN(Date.parse(`${from}T00:00:00Z`)) || Number.isNaN(Date.parse(`${to}T00:00:00Z`))) return 'from and to are days, YYYY-MM-DD';
+  if (!isDay(from) || !isDay(to)) return 'from and to are days, YYYY-MM-DD';
   if (from > to) return 'from is after to';
   if (daysBetween(from, to) > MAX_RANGE_DAYS) return `a range is at most ${MAX_RANGE_DAYS} days`;
   return { from, to };
@@ -123,7 +142,11 @@ export function rankingsRange(query: unknown, today: string): { from: string; to
 export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): void {
   const { repo, tracker, providers, io, resolveProject, requireInstanceAdmin, requirePlatformStaff, sessionPlatformRole, rl } = deps;
 
-  /** Agency staff with access to THIS project, in an interactive session. */
+  /**
+   * Agency staff with access to THIS project, in an interactive session. ★ Deliberately the PLATFORM role, not the
+   * project role: tracking is the agency's (admins, and developers on their projects), and a project role says only
+   * owner or member — a client can be an owner. A developer reaches only projects they belong to, in any role.
+   */
   const staffOnProject = async (req: FastifyRequest<{ Params: { projectId: string } }>): Promise<ProjectContext> => {
     await requirePlatformStaff(req, 'change keyword tracking');
     return (await resolveProject(req, 'session-only')).ctx;
@@ -154,19 +177,46 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
     return reply.send({ tracking: await repo.getProject(ctx.projectId) });
   });
 
+  // Additions to one project run one at a time, so two requests cannot both pass the keyword cap.
+  const keywordWrites = new Map<string, Promise<unknown>>();
+  const serializedFor = <T,>(projectId: string, fn: () => Promise<T>): Promise<T> => {
+    const run = (keywordWrites.get(projectId) ?? Promise.resolve()).then(fn);
+    const settled = run.catch(() => undefined);
+    keywordWrites.set(projectId, settled);
+    void settled.then(() => {
+      if (keywordWrites.get(projectId) === settled) keywordWrites.delete(projectId);
+    });
+    return run;
+  };
+
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/rankings/keywords', { config: rl(30) }, async (req, reply) => {
     const ctx = await staffOnProject(req);
     const parsed = RankKeywordsInputSchema.safeParse(req.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: firstIssue(parsed.error) });
+    const input = parsed.data;
     if (!(await repo.getProject(ctx.projectId))) {
       return reply.code(409).send({ error: 'set the domain to track first' });
     }
-    const existing = await repo.countKeywords(ctx.projectId);
-    if (existing + new Set(parsed.data.keywords).size > RANK_KEYWORDS_PER_PROJECT_MAX) {
-      return reply.code(400).send({ error: `a project tracks at most ${RANK_KEYWORDS_PER_PROJECT_MAX} keywords` });
+    // A location the provider does not know fails every check, every day: refuse it now, while someone is looking.
+    const usable = await usableProvider();
+    if (usable) {
+      try {
+        const found = await usable.provider.searchLocations(usable.creds, input.location.countryCode, input.location.name, io);
+        if (!found.some((l) => l.name === input.location.name)) {
+          return reply.code(400).send({ error: `${usable.provider.label} does not know the location "${input.location.name}"; choose one from the list` });
+        }
+      } catch (err) {
+        if (!(err instanceof RankProviderError)) throw err;
+        // The provider cannot be asked right now: accept the name; a wrong one shows up as a failed check.
+      }
     }
-    const result = await repo.addKeywords(ctx.projectId, parsed.data);
-    return reply.code(201).send(result);
+    const outcome = await serializedFor(ctx.projectId, async () => {
+      const existing = await repo.countKeywords(ctx.projectId);
+      if (existing + new Set(input.keywords).size > RANK_KEYWORDS_PER_PROJECT_MAX) return null;
+      return repo.addKeywords(ctx.projectId, input);
+    });
+    if (!outcome) return reply.code(400).send({ error: `a project tracks at most ${RANK_KEYWORDS_PER_PROJECT_MAX} keywords` });
+    return reply.code(201).send(outcome);
   });
 
   app.patch<{ Params: { projectId: string; keywordId: string } }>(
@@ -197,6 +247,7 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/rankings/check', { config: rl(6) }, async (req, reply) => {
     const ctx = await staffOnProject(req);
     const report = await tracker.checkNow(ctx.projectId);
+    if (!report) return reply.code(409).send({ error: 'a check of this project is already running' });
     return reply.send(report);
   });
 
@@ -220,12 +271,11 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
     const config = await repo.getConfig();
     const order = [config.activeProvider, ...RankProviderIdSchema.options].filter((p): p is RankProviderId => p !== null);
     for (const id of order) {
-      const raw = await repo.getCredentials(id);
-      if (!raw) continue;
       try {
-        return { provider: providers[id], creds: providers[id].parseCredentials(raw) };
+        const raw = await repo.getCredentials(id);
+        if (raw) return { provider: providers[id], creds: providers[id].parseCredentials(raw) };
       } catch {
-        // unusable — try the next one
+        // unreadable or invalid — try the next one
       }
     }
     return null;
@@ -239,9 +289,11 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
       repo.totals(),
     ]);
     const views: RankProviderView[] = [];
+    const configured = await repo.listConfiguredProviders();
     for (const id of RankProviderIdSchema.options) {
       const provider = providers[id];
-      const stored = (await repo.getCredentials(id)) ?? {};
+      // Unreadable (the encryption key changed): shown as configured with nothing set, so the admin re-enters it.
+      const stored = await repo.getCredentials(id).catch(() => null) ?? {};
       const values: Record<string, string> = {};
       const secretsSet: Record<string, boolean> = {};
       for (const f of provider.fields) {
@@ -254,7 +306,7 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
         label: provider.label,
         signupUrl: provider.signupUrl,
         fields: [...provider.fields],
-        configured: Object.keys(stored).length > 0,
+        configured: configured.has(id),
         values,
         secretsSet,
       });

@@ -2,7 +2,8 @@
 --
 -- New tables only: the instance's provider + monthly budget, each provider's encrypted credentials, each project's
 -- tracking setup and keywords, and one row per keyword per day for every check (claimed before the provider is
--- called, so a keyword is paid for at most once a day).
+-- called, with its estimated cost booked at once, so a keyword is sent at most once a day and the budget never
+-- misses a charge).
 CREATE TABLE `rank_checks` (
 	`id` text PRIMARY KEY NOT NULL,
 	`keyword_id` text NOT NULL,
@@ -11,7 +12,8 @@ CREATE TABLE `rank_checks` (
 	`provider` text NOT NULL,
 	`provider_ref` text,
 	`status` text NOT NULL,
-	`attempts` integer DEFAULT 1 NOT NULL,
+	`domain` text NOT NULL,
+	`include_subdomains` integer NOT NULL,
 	`depth` integer NOT NULL,
 	`position` integer,
 	`absolute_position` integer,

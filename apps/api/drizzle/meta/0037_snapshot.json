@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "5feef97d-0a4d-4e12-9f59-b4ecaefe2453",
+  "id": "117be439-1abc-43a4-a42b-9ead55875e76",
   "prevId": "974f92e7-8344-4b2c-965b-12cafdcfabaa",
   "tables": {
     "agent_grants": {
@@ -2181,13 +2181,19 @@
           "notNull": true,
           "autoincrement": false
         },
-        "attempts": {
-          "name": "attempts",
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "include_subdomains": {
+          "name": "include_subdomains",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": 1
+          "autoincrement": false
         },
         "depth": {
           "name": "depth",

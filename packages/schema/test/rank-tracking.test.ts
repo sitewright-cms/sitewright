@@ -19,7 +19,7 @@ describe('normalizeRankDomain', () => {
     expect(normalizeRankDomain(raw)).toBe(host);
   });
 
-  it.each(['', 'localhost', 'not a domain', '-bad.test', 'bad-.test', 'ftp//x', 'a..b'])('refuses %j', (raw) => {
+  it.each(['', 'localhost', 'not a domain', '-bad.test', 'bad-.test', 'ftp//x', 'a..b', 'co.uk', 'www.com.na'])('refuses %j', (raw) => {
     expect(normalizeRankDomain(raw)).toBeUndefined();
   });
 });

@@ -10936,8 +10936,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // ---- Keyword rank tracking (platform-admin managed; see rank/routes.ts) ----
-  // Larger responses than a payment call (a country's location list runs to megabytes), same guards otherwise.
-  const rankIo = { fetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 32 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000 };
+  // The payments transport's guards (public addresses only, no redirects, a size cap). Most answers are small; only
+  // a country's location list runs to megabytes, and it is fetched one at a time (see dataforseo.ts).
+  const rankIo = {
+    fetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 4 * 1024 * 1024, timeoutMs: 30_000 }),
+    largeFetch: opts.rankFetch ?? makeProviderFetch({ maxBytes: 32 * 1024 * 1024, timeoutMs: 30_000 }),
+    timeoutMs: 30_000,
+  };
   const rankRepo = new RankRepository(db, opts.encryptionKey);
   const rankTracker = new RankTracker({
     repo: rankRepo,

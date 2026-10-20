@@ -70,6 +70,7 @@ export interface RankLocationOption extends RankLocation {
 }
 
 /** The search language. A BCP 47 primary tag, optionally with a region (`en`, `pt-BR`, `zh-TW`). */
+// eslint-disable-next-line security/detect-unsafe-regex -- two bounded classes and one optional group: linear
 export const RankLanguageSchema = z.string().regex(/^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/, 'a language code such as en or pt-BR');
 
 /** Common search languages for the picker. A provider may accept others; the code is what is stored. */
@@ -131,8 +132,13 @@ export function normalizeRankDomain(raw: string): string | undefined {
   if (host.length > 253) return undefined;
   const labels = host.split('.');
   if (labels.length < 2) return undefined;
+  // `co.uk`, `com.na`: a registry's second level, not a site — with subdomains counted it would match every site.
+  if (labels.length === 2 && SECOND_LEVEL_LABELS.has(labels[0]!)) return undefined;
   return labels.every((l) => /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(l)) ? host : undefined;
 }
+
+/** First labels that, in a two-label host, are a registry's second level rather than a site's name. */
+const SECOND_LEVEL_LABELS = new Set(['co', 'com', 'net', 'org', 'gov', 'edu', 'ac', 'or', 'ne', 'go', 'mil', 'nom', 'ltd', 'plc', 'sch']);
 
 const RankKeywordTextSchema = z
   .string()
@@ -222,6 +228,16 @@ export interface RankKeywordView {
  */
 export const RANK_STATUSES = ['ok', 'no-provider', 'budget-reached', 'provider-error'] as const;
 export type RankStatus = (typeof RANK_STATUSES)[number];
+
+/** `POST /projects/:id/rankings/check` — what one pass did. */
+export interface RankPassReport {
+  status: RankStatus;
+  /** Checks handed to the provider. */
+  sent: number;
+  /** Results that came back. */
+  collected: number;
+  failed: number;
+}
 
 /** `GET /projects/:id/rankings` */
 export interface ProjectRankings {

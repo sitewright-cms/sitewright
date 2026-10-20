@@ -50,6 +50,13 @@ The running version of an instance is reported at `GET /version` (baked into the
     instead of comparing two sites.
   - Credentials are stored encrypted with `SW_ENCRYPTION_KEY` and are never sent back to the browser.
 
+### Changed
+
+- **Statistics belong to the agency.** Only agency staff (an admin or a developer) can switch the built-in
+  statistics on; the server refuses anyone else, an agent acting for a client included, and anyone may still
+  switch them off. The Statistics tab is always there for staff and appears for clients only while the
+  statistics are on.
+
 ### Security
 
 - **vite 8.3.4** (editor build tooling) clears GHSA-698v-4r3x-3vcv: the dev server's open-in-editor helper did not

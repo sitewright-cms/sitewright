@@ -29,6 +29,11 @@ The running version of an instance is reported at `GET /version` (baked into the
     instead of comparing two sites.
   - Credentials are stored encrypted with `SW_ENCRYPTION_KEY` and are never sent back to the browser.
 
+### Security
+
+- **vite 8.3.4** (editor build tooling) clears GHSA-698v-4r3x-3vcv: the dev server's open-in-editor helper did not
+  escape `%` on Windows. Only the development server used it; the built editor and the runtime image never did.
+
 ## [0.67.0] — 2026-10-20
 
 ### Added

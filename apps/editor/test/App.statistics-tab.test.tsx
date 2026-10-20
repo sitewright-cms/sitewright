@@ -7,11 +7,12 @@ import type { Project } from '../src/api';
  * The Statistics tab: always there for agency staff (an admin or a developer), and for a client only while the
  * project's built-in statistics are switched on.
  */
-const { me, loginConfig, getSettings, getProjectPayment } = vi.hoisted(() => ({
+const { me, loginConfig, getSettings, getProjectPayment, getRankings } = vi.hoisted(() => ({
   me: vi.fn(),
   loginConfig: vi.fn(),
   getSettings: vi.fn(),
   getProjectPayment: vi.fn(),
+  getRankings: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -19,6 +20,7 @@ vi.mock('../src/api', () => ({
     loginConfig: () => loginConfig(),
     getSettings: (p: string) => getSettings(p),
     getProjectPayment: (p: string) => getProjectPayment(p),
+    getRankings: (p: string, q: unknown) => getRankings(p, q),
     listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: () => undefined,
@@ -29,13 +31,13 @@ vi.mock('../src/views/InstanceSettings', () => ({ InstanceSettings: () => <div /
 vi.mock('../src/views/UpdateBanner', () => ({ UpdateBanner: () => <div /> }));
 vi.mock('../src/views/Login', () => ({ Login: () => <div>LOGIN</div> }));
 vi.mock('../src/views/Project', () => ({
-  ProjectView: ({ project, tab, onLoaded, onSelectTab, isStaff }: { project: Project; tab: string; onLoaded?: () => void; onSelectTab?: (t: string) => void; isStaff?: boolean }) => {
+  ProjectView: ({ project, tab, onLoaded, onSelectTab, isStaff, visitsAvailable }: { project: Project; tab: string; onLoaded?: () => void; onSelectTab?: (t: string) => void; isStaff?: boolean; visitsAvailable?: boolean }) => {
     useEffect(() => {
       onLoaded?.();
     }, [onLoaded]);
     return (
       <div>
-        PROJECT {project.name} tab={tab} staff={String(isStaff)}
+        PROJECT {project.name} tab={tab} staff={String(isStaff)} visits={String(visitsAvailable)}
         <button type="button" onClick={() => onSelectTab?.('statistics')}>
           go to statistics
         </button>
@@ -72,6 +74,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   loginConfig.mockResolvedValue({ oidcProviders: [], branding: { name: 'SiteWright', primary: '#4f46e5', secondary: '#0ea5e9', logoUrl: null } });
   getProjectPayment.mockResolvedValue({ binding: null });
+  getRankings.mockResolvedValue({ tracking: null, keywords: [], canManage: false });
 });
 
 describe('the Statistics tab', () => {
@@ -90,6 +93,16 @@ describe('the Statistics tab', () => {
     statistics(true);
     await openAcme();
     expect(await screen.findByRole('tab', { name: 'Statistics' })).toBeInTheDocument();
+  });
+
+  it('shows for a client whose site\'s keywords are tracked, with the rankings only while statistics are off', async () => {
+    as(null);
+    statistics(false);
+    getRankings.mockResolvedValue({ tracking: { domain: 'acme.test' }, keywords: [{ id: 'k1' }], canManage: false });
+    await openAcme();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Statistics' }));
+    expect(await screen.findByText(/tab=statistics/)).toBeInTheDocument();
+    expect(screen.getByText(/visits=false/)).toBeInTheDocument();
   });
 
   it.each(['admin', 'developer'] as const)('is always there for staff (%s), statistics on or off', async (role) => {

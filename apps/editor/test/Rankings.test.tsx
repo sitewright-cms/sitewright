@@ -106,6 +106,14 @@ describe('the Statistics tab', () => {
     expect(api.getStats).toHaveBeenCalledTimes(1);
   });
 
+  it('without the visit counter (a client, statistics off) the rankings are the whole tab', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    render(<StatisticsTab project={project} visitsAvailable={false} />);
+    expect(await screen.findByRole('heading', { name: 'Search rankings' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Visits/ })).toBeNull();
+    expect(api.getStats).not.toHaveBeenCalled();
+  });
+
   it('offers staff the tab to set tracking up', async () => {
     api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider' }));
     render(<StatisticsTab project={project} />);

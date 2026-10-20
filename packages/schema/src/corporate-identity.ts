@@ -371,6 +371,23 @@ const CorporateIdentityObject = z.object({
   cssTokens: safeRecord(CssTokenValueSchema, ColorTokenKeySchema).optional(),
 });
 
+/**
+ * The schema.org type name a `businessType` stands for, or `undefined` when it can't be one. The
+ * value is emitted verbatim as the JSON-LD `@type`, and a type name is one PascalCase word: a spaced
+ * form ("Educational Organization", which the website importer used to store, or a typed label) is
+ * joined back into the identifier, and a schema.org IRI (`https://schema.org/Restaurant`,
+ * `schema:Restaurant`) is reduced to its name. Anything else (punctuation, a list) is no type at all.
+ */
+export function schemaOrgTypeName(value: string): string | undefined {
+  const name = value
+    .trim()
+    .replace(/^(?:https?:\/\/schema\.org\/|schema:)/i, '')
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('');
+  return /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(name) ? name : undefined;
+}
+
 export const CorporateIdentitySchema = CorporateIdentityObject;
 export type CorporateIdentity = z.infer<typeof CorporateIdentitySchema>;
 

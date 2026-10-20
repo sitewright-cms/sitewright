@@ -1,4 +1,4 @@
-import type { CorporateIdentity } from '@sitewright/schema';
+import { schemaOrgTypeName, type CorporateIdentity } from '@sitewright/schema';
 import type { SchemaOrgInfo } from '@sitewright/blocks';
 
 // The company-derived fields of a Corporate Identity (i.e. NOT the brand tokens or
@@ -46,7 +46,10 @@ export function companyToOrganization(
   if (!name) return undefined;
 
   const org: SchemaOrgInfo = { name };
-  if (identity.businessType) org.type = identity.businessType;
+  // Emitted verbatim as `@type`, so it must be a type NAME: an unusable value gets the renderer's
+  // `Organization` default rather than invalid structured data.
+  const type = identity.businessType ? schemaOrgTypeName(identity.businessType) : undefined;
+  if (type) org.type = type;
   if (identity.logo) org.logo = identity.logo;
   if (identity.image) org.image = identity.image;
   if (identity.telephone) org.telephone = identity.telephone;

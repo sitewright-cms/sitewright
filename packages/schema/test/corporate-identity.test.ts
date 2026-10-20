@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CorporateIdentitySchema, DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, FontSlotSchema, detectSocial } from '../src/corporate-identity.js';
+import { CorporateIdentitySchema, DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, FontSlotSchema, detectSocial, schemaOrgTypeName } from '../src/corporate-identity.js';
 import { legacyToIdentity, mergeLegacyIdentity } from '../src/migrate-identity.js';
 import { BrandSchema } from '../src/brand.js';
 import { CompanySchema } from '../src/company.js';
@@ -286,5 +286,35 @@ describe('typography.named (custom font slots)', () => {
     // and a prototype-pollution key (JSON.parse, so it is a real OWN key — an object literal's
     // `__proto__` would just set the prototype and never reach the record).
     expect(() => CorporateIdentitySchema.parse({ name: 'A', cssTokens: JSON.parse('{"__proto__":"1px"}') })).toThrow();
+  });
+});
+
+describe('schemaOrgTypeName', () => {
+  it('keeps an exact schema.org identifier, trimmed', () => {
+    expect(schemaOrgTypeName('EducationalOrganization')).toBe('EducationalOrganization');
+    expect(schemaOrgTypeName('  LocalBusiness ')).toBe('LocalBusiness');
+    expect(schemaOrgTypeName('NGO')).toBe('NGO');
+  });
+
+  it('joins a spaced or label-cased type back into the identifier (what the importer used to store)', () => {
+    expect(schemaOrgTypeName('Educational Organization')).toBe('EducationalOrganization');
+    expect(schemaOrgTypeName('Home And Construction Business')).toBe('HomeAndConstructionBusiness');
+    expect(schemaOrgTypeName('local business')).toBe('LocalBusiness');
+  });
+
+  it('reduces a type written as a schema.org IRI to its name', () => {
+    expect(schemaOrgTypeName('https://schema.org/Restaurant')).toBe('Restaurant');
+    expect(schemaOrgTypeName('http://schema.org/Restaurant')).toBe('Restaurant');
+    expect(schemaOrgTypeName('schema:Restaurant')).toBe('Restaurant');
+    // Another vocabulary is not ours to rename.
+    expect(schemaOrgTypeName('https://example.com/Restaurant')).toBeUndefined();
+  });
+
+  it('refuses what can never be a schema.org type name', () => {
+    expect(schemaOrgTypeName('')).toBeUndefined();
+    expect(schemaOrgTypeName('   ')).toBeUndefined();
+    expect(schemaOrgTypeName('Café & Bar')).toBeUndefined();
+    expect(schemaOrgTypeName('Organization,LocalBusiness')).toBeUndefined();
+    expect(schemaOrgTypeName('3DPrinting')).toBeUndefined();
   });
 });

@@ -522,6 +522,54 @@ describe('buildSite', () => {
     expect(web).not.toContain('/services/web/_assets/');
   });
 
+  it('emits ABSOLUTE schema.org logo/image + the site url when a site URL is configured', async () => {
+    // Regression: og:image was absolutized but the JSON-LD logo/image shipped page-relative
+    // (`_assets/…`, `../_assets/…` deeper down), which search engines can't resolve, and `url` was never set.
+    const ldOf = (html: string): Record<string, unknown> => {
+      const m = /<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html);
+      expect(m, 'the page carries the schema.org JSON-LD').not.toBeNull();
+      return JSON.parse(m![1]!) as Record<string, unknown>;
+    };
+    const site = (website?: { siteUrl: string }) =>
+      bundle({
+        project: {
+          formatVersion: 2 as const,
+          id: 'p',
+          name: 'Acme',
+          slug: 'acme',
+          identity: {
+            name: 'Acme Inc',
+            colors: { primary: '#0a7' },
+            legalName: 'Acme Inc',
+            logo: '/media/acme/lg/logo.png',
+            image: '/media/acme/og/og-1200.jpg',
+          },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          ...(website ? { website } : {}),
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<div>Home</div>' },
+          { id: 'svc', path: 'services', parent: 'home', title: 'Services', source: '<div>Services</div>' },
+          { id: 'web', path: 'web', parent: 'svc', title: 'Web', source: '<div>Web</div>' },
+        ],
+      });
+    const lg = assetAlias('lg'), og = assetAlias('og');
+    await buildSite({ publishedAt: '2026-05-30T00:00:00.000Z', outDir, bundle: site({ siteUrl: 'https://acme.example' }) });
+    for (const file of ['index.html', join('services', 'index.html'), join('services', 'web', 'index.html')]) {
+      const ld = ldOf(await readFile(join(outDir, file), 'utf8'));
+      expect(ld.logo, file).toBe(`https://acme.example/_assets/${lg}-logo-lg.webp`);
+      expect(ld.image, file).toBe(`https://acme.example/_assets/${og}-og-1200-lg.webp`);
+      expect(ld.url, file).toBe('https://acme.example/');
+    }
+
+    // No site URL: there is no absolute base, so the portable page-relative form stays and no `url`.
+    await rm(outDir, { recursive: true, force: true });
+    await buildSite({ publishedAt: '2026-05-30T00:00:00.000Z', outDir, bundle: site() });
+    const nested = ldOf(await readFile(join(outDir, 'services', 'web', 'index.html'), 'utf8'));
+    expect(nested.logo).toBe(`../../_assets/${lg}-logo-lg.webp`);
+    expect(nested.url).toBeUndefined();
+  });
+
   it('leaves an already-absolute og:image URL untouched (external CDN)', async () => {
     await buildSite({
       publishedAt: '2026-05-30T00:00:00.000Z',

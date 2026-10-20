@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **The schema.org `logo` and `image` are absolute URLs again.** A site with a site URL already had an absolute
+  `og:image`, but the logo and image in its JSON-LD were page-relative (`_assets/…`, `../_assets/…` deeper down),
+  which search engines can't resolve. They now resolve against the site URL the same way `og:image` does, and the
+  record carries the site's `url`. Without a site URL they stay relative, as before. Republish a site to pick it
+  up.
+- **The schema.org `@type` of an imported site is a real type name.** The website importer stored the type in
+  spaced form ("Educational Organization"), which was emitted as the `@type` and isn't valid. It now keeps the
+  exact type. Types already stored with spaces are joined back into the name when the page is built, and a value
+  that can't be a type name falls back to `Organization`.
+
 ## [0.66.0] — 2026-10-19
 
 ### Added

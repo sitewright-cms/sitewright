@@ -49,4 +49,14 @@ describe('companyToOrganization', () => {
     expect(org?.type).toBeUndefined();
     expect(org?.sameAs).toBeUndefined();
   });
+
+  it('emits the schema.org identifier for a spaced businessType, and the default for an impossible one', () => {
+    const typeOf = (businessType: string) =>
+      companyToOrganization({ name: 'X', colors: {}, legalName: 'X', businessType }, 'F')?.type;
+    // The website importer stored the humanized form ("Educational Organization"), which is not a type.
+    expect(typeOf('Educational Organization')).toBe('EducationalOrganization');
+    expect(typeOf('Restaurant')).toBe('Restaurant');
+    // Not a type name at all: no @type of ours, so the renderer's `Organization` default applies.
+    expect(typeOf('Café & Bar')).toBeUndefined();
+  });
 });

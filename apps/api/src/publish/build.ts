@@ -1186,8 +1186,29 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // A non-media url falls back to the generic `rel` rebase.
         const relImage = (src: string | undefined, size: SizeToken): string | undefined =>
           !src ? undefined : (resolveThumbForHead(src, mediaPrefix, assetRoot, size, 'webp', thumbRefs, alias) ?? rel(src));
+        // Social crawlers and search engines won't resolve a page-relative URL in og:image or the
+        // schema.org JSON-LD, so resolve the page-relative form (kept in lockstep with the body rewrite
+        // via `rel()`) against THIS page's own absolute URL. Without a configured site URL there's no
+        // absolute base, so only the relative form can ship (portable static export). A non-URL value
+        // can't reach `new URL()`'s first arg given the AssetRef schema, but fall back to the relative
+        // form rather than throwing a raw TypeError out of the publish loop.
+        const absolute = (relUrl: string | undefined): string | undefined => {
+          if (!siteUrl || !relUrl) return relUrl;
+          try {
+            return new URL(relUrl, siteUrlFor(siteUrl, outSlug)).href;
+          } catch {
+            return relUrl;
+          }
+        };
+        // schema.org logo/image point at MATERIALIZED `lg` thumbnails (relImage records the refs for
+        // build-time generation), and `url` is the site's home page.
         const organization = baseOrg
-          ? { ...baseOrg, logo: relImage(baseOrg.logo, 'lg'), image: relImage(baseOrg.image, 'lg') }
+          ? {
+              ...baseOrg,
+              logo: absolute(relImage(baseOrg.logo, 'lg')),
+              image: absolute(relImage(baseOrg.image, 'lg')),
+              ...(siteUrl ? { url: siteUrlFor(siteUrl, undefined) } : {}),
+            }
           : undefined;
         // hreflang alternates from the page's translation group (its locale variants),
         // as absolute URLs (Google requires absolute hreflang hrefs); x-default points
@@ -1201,24 +1222,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                 ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
               ]
             : undefined;
-        // og:image MUST be an absolute URL — social crawlers (Facebook/LinkedIn/X) won't fetch a
-        // page-relative one. Resolve the page-relative asset URL (kept in lockstep with the body
-        // rewrite via `rel()`) against THIS page's own absolute URL. Without a configured site URL
-        // there's no absolute base, so we can only ship the relative form (portable static export).
-        // og:image points at a MATERIALIZED `lg` thumbnail (relImage records the ref for build-time
-        // generation), not the uncapped original; absolutized below when a site URL is configured.
-        const relOgImage = relImage(page.image ?? identity.image, 'lg');
-        // A non-URL image value can't reach `new URL()`'s first arg given the AssetRef schema, but
-        // fall back to the page-relative form rather than throwing a raw TypeError out of the publish
-        // loop (every other tenant-influenced op in here is guarded the same way).
-        let ogImage = relOgImage;
-        if (siteUrl && relOgImage) {
-          try {
-            ogImage = new URL(relOgImage, siteUrlFor(siteUrl, outSlug)).href;
-          } catch {
-            ogImage = relOgImage;
-          }
-        }
+        // og:image MUST be an absolute URL (see `absolute`), and points at a MATERIALIZED `lg`
+        // thumbnail, not the uncapped original.
+        const ogImage = absolute(relImage(page.image ?? identity.image, 'lg'));
         // og:url + canonical: an author-set canonical always wins; otherwise default to this page's
         // OWN absolute URL when a site URL is configured (previously nothing was emitted without an
         // explicit canonical, so most pages shipped no og:url and no canonical link).

@@ -48,7 +48,7 @@ describe('extractIdentity', () => {
       </head><body><iframe src="https://www.google.com/maps/embed?pb=!1m14!2d17.0977039!3d-22.5920485!2sBP"></iframe></body></html>`;
     const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
     expect(id.address).toEqual({ street: 'Cnr X & Y', locality: 'Windhoek', region: 'Khomas', country: 'Namibia' }); // subtype no longer dropped
-    expect(id.businessType).toBe('Home And Construction Business');
+    expect(id.businessType).toBe('HomeAndConstructionBusiness'); // the exact @type: it is emitted as JSON-LD `@type`
     expect(id.legalName).toBe('Burmeister & Partners (PTY) Ltd'); // name carries a legal suffix → it IS the legal name
     expect(id.shortName).toBe('Burmeister & Partners'); // suffix stripped
     expect(id.geo).toEqual({ latitude: '-22.5920485', longitude: '17.0977039' }); // from the map embed (!3d=lat, !2d=lon)

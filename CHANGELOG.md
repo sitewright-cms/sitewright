@@ -34,6 +34,12 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **vite 8.3.4** (editor build tooling) clears GHSA-698v-4r3x-3vcv: the dev server's open-in-editor helper did not
   escape `%` on Windows. Only the development server used it; the built editor and the runtime image never did.
 
+### Changed
+
+- **The Datasets drawer has less space on its left.** Its content started 40px in (20px on a phone), room left over
+  from when other edge tabs could sit over an open drawer. It now uses the editor's 16px gutter, matching its
+  right side, so the dataset list and editor gain 24px of width.
+
 ## [0.67.0] — 2026-10-20
 
 ### Added

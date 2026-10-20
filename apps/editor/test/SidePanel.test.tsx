@@ -54,6 +54,21 @@ describe('SidePanel', () => {
     expect(region).toHaveAttribute('aria-hidden', 'false');
   });
 
+  it('the bottom-left drawer (Datasets) keeps only the 16px gutter on its left, not the old 40px tab clearance', () => {
+    const { container } = render(
+      <SidePanel side="bottom" align="start" label="Datasets" openSignal={1}>
+        <p>rows</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    const header = region.querySelector('header')!;
+    const body = header.nextElementSibling!;
+    for (const el of [header, body]) {
+      expect(el.classList.contains('pl-4')).toBe(true);
+      expect(el.classList.contains('pl-10')).toBe(false);
+    }
+  });
+
   it('opens when OS files are dragged over the collapsed tab (openOnFileDrag)', () => {
     const { container } = render(
       <SidePanel side="right" label="File Manager" openOnFileDrag>

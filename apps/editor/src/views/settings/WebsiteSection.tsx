@@ -118,6 +118,7 @@ export function WebsiteSection({
   onLocalesChanged,
   onReloadSettings,
   onOpenOrders,
+  isStaff = false,
 }: {
   form: SettingsForm;
   patch: Patch;
@@ -135,6 +136,8 @@ export function WebsiteSection({
   onReloadSettings?: () => Promise<void> | void;
   /** Switches to the project's Orders tab — passed exactly while that tab is showing (payments active). */
   onOpenOrders?: () => void;
+  /** The viewer is agency staff (an admin or a developer). Only staff may switch the built-in statistics ON. */
+  isStaff?: boolean;
 }) {
   const { sheet, openKey, setSheet, close } = useSheet<SheetKey>();
   const [dataOpen, setDataOpen] = useState(false);
@@ -442,11 +445,13 @@ export function WebsiteSection({
         <AiAgentTile projectId={projectId} />
         <Tile title="Analytics" icon={<BarChart3 className="h-4 w-4" />} status={analyticsStatus(form)} span="c3" md={6} help={HELP.analytics}>
           <RowBlock n={4}>
+            {/* Staff switch it on (the server refuses anyone else); anyone may switch it off. */}
             <SwitchRow
               label="Built-in statistics"
               ariaLabel="Count visits with the built-in statistics"
               checked={form.statisticsEnabled}
               onChange={(on) => patch({ statisticsEnabled: on })}
+              disabledReason={!isStaff && !form.statisticsEnabled ? 'Your agency (an admin or a developer) turns the built-in statistics on.' : undefined}
             />
             <BudgetRows
               n={2}

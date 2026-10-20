@@ -286,6 +286,32 @@ describe('built-in statistics', () => {
     expect((await stats()).botViews).toBe(0);
   });
 
+  it('★ only agency staff turn the statistics ON; a client may turn them off, by a full save or a merge', async () => {
+    await seed({});
+    const { addProjectMember } = await import('../src/repo/accounts.js');
+    const owner = await harness.signup();
+    await addProjectMember(harness.db, owner.userId, projectId, 'owner'); // a client OWNER: still not staff
+    const settingsUrl = `/projects/${projectId}/content/settings/settings`;
+    const current = ((await client.get(settingsUrl)).json() as { item: Record<string, unknown> & { website?: Record<string, unknown> } }).item;
+    const withStats = (on: boolean) => ({ ...current, website: { ...(current.website ?? {}), statistics: { enabled: on } } });
+
+    // The same full body saves with statistics off (so it is a valid body), and is refused with them on.
+    expect((await owner.put(settingsUrl, withStats(false))).statusCode).toBe(200);
+    const refused = await owner.put(settingsUrl, withStats(true));
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toEqual({ error: 'only agency staff (an admin or a developer) can turn the built-in statistics on' });
+    expect((await owner.put(`${settingsUrl}?merge=1`, { website: { statistics: { enabled: true } } })).statusCode).toBe(403);
+    // Saving other settings while they stay off is untouched by the rule.
+    expect((await owner.put(`${settingsUrl}?merge=1`, { website: { siteUrl: 'https://www.example.com' } })).statusCode).toBe(200);
+
+    // Staff turn them on; the client may then save anything, and may turn them off.
+    expect((await client.put(`${settingsUrl}?merge=1`, { website: { statistics: { enabled: true } } })).statusCode).toBe(200);
+    expect((await owner.put(`${settingsUrl}?merge=1`, { website: { siteUrl: 'https://example.com' } })).statusCode).toBe(200);
+    expect((await owner.put(`${settingsUrl}?merge=1`, { website: { statistics: { enabled: false } } })).statusCode).toBe(200);
+    const after = (await client.get(settingsUrl)).json() as { website?: { statistics?: { enabled?: boolean } } };
+    expect(after.website?.statistics?.enabled ?? false).toBe(false);
+  });
+
   it('★ is readable by project members only', async () => {
     await seed();
     const anon = await harness.app.inject({ method: 'GET', url: `/projects/${projectId}/stats?from=${today()}&to=${today()}` });

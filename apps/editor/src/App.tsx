@@ -38,6 +38,7 @@ import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } 
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 import { usePaymentsActive } from './lib/payments-active';
+import { useStatisticsAccess } from './lib/statistics-enabled';
 import { Tooltip } from './views/ui/Tooltip';
 
 /**
@@ -288,10 +289,17 @@ function MainApp({
   // The Orders tab exists only while the open project's payments are actually active. Called up here,
   // with the other hooks, because the render below has early returns.
   const paymentsActive = usePaymentsActive(stage.name === 'project' ? stage.project.id : null);
-  // A tab that disappears (payments switched off, or a different project) must not stay selected.
+  // The Statistics tab: always for agency staff (they decide whether the site counts visits, and which keywords
+  // are tracked); for a client only while there is something in it — the built-in statistics switched on, or
+  // search rankings the agency tracks for the site. A client sees the visits only while statistics are on.
+  const statisticsAccess = useStatisticsAccess(stage.name === 'project' ? stage.project.id : null);
+  const visitsVisible = canCreateProjects || statisticsAccess.statistics;
+  const statisticsVisible = visitsVisible || statisticsAccess.rankings;
+  // A tab that disappears (payments or statistics switched off, or a different project) must not stay selected.
   useEffect(() => {
     if (tab === 'orders' && !paymentsActive) setTab('website-settings');
-  }, [tab, paymentsActive]);
+    if (tab === 'statistics' && !statisticsVisible) setTab('website-settings');
+  }, [tab, paymentsActive, statisticsVisible]);
 
   // Strip the OIDC callback artifacts from the URL once captured, so a refresh doesn't resubmit
   // them and the ticket doesn't linger in history.
@@ -415,7 +423,7 @@ function MainApp({
         isMobile ? 'mx-auto w-max flex-nowrap snap-x snap-mandatory' : 'flex-wrap justify-center'
       }`}
     >
-      {MANAGE_TABS.filter((t) => t !== 'orders' || paymentsActive).map((t) => (
+      {MANAGE_TABS.filter((t) => (t !== 'orders' || paymentsActive) && (t !== 'statistics' || statisticsVisible)).map((t) => (
         <button
           key={t}
           role="tab"
@@ -573,6 +581,9 @@ function MainApp({
           tab={tab}
           onSelectTab={setTab}
           ordersAvailable={paymentsActive}
+          statisticsAvailable={statisticsVisible}
+          visitsAvailable={visitsVisible}
+          isStaff={canCreateProjects}
           onLoaded={() => finishOpening(stage.project.id)}
         />
       )}

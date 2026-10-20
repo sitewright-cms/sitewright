@@ -13,8 +13,17 @@ type View = 'visits' | 'rankings';
  * The project's STATISTICS tab: the visit counter, and — when the agency tracks keywords for the site, or the
  * viewer is agency staff who could — the search rankings beside it.
  */
-export function StatisticsTab({ project, onOpenSettings }: { project: Project; onOpenSettings?: () => void }) {
-  const [view, setView] = useState<View>('visits');
+export function StatisticsTab({
+  project,
+  onOpenSettings,
+  visitsAvailable = true,
+}: {
+  project: Project;
+  onOpenSettings?: () => void;
+  /** Whether the visit counter is shown. False for a client while the built-in statistics are off. */
+  visitsAvailable?: boolean;
+}) {
+  const [view, setView] = useState<View>(visitsAvailable ? 'visits' : 'rankings');
   // One read decides whether the rankings are worth a tab; the view reuses it as its first answer and keeps it
   // current, so coming back to the tab starts from the newest list.
   const [rankings, setRankings] = useState<ProjectRankings | null | undefined>(undefined);
@@ -42,13 +51,14 @@ export function StatisticsTab({ project, onOpenSettings }: { project: Project; o
   }, [project.id]);
 
   const showRankings = Boolean(rankings && (rankings.canManage || rankings.tracking));
-  const visits = !showRankings || view === 'visits';
+  // Without the visit counter there is nothing to switch between: the rankings are the whole tab.
+  const visits = visitsAvailable && (!showRankings || view === 'visits');
 
   // ★ One stable shape: the tab strip APPEARS above an unmoved Visits view when the read answers, so the counter
   // (its range, its filters) is not torn down and fetched again because a second tab became available.
   return (
     <div className="flex flex-col gap-3">
-      {showRankings && (
+      {showRankings && visitsAvailable && (
         <Tabs<View>
           ariaLabel="Statistics"
           active={view}

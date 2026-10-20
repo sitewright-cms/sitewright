@@ -1843,6 +1843,13 @@ function captchaRenderConfig(stored: { provider: CaptchaProvider; siteKey: strin
   return { provider: stored.provider, siteKey: stored.siteKey };
 }
 
+/** Whether a settings write turns the built-in statistics on (they were not on before, and are after). */
+function statisticsSwitchedOn(prior: unknown, next: unknown): boolean {
+  const on = (v: unknown): boolean =>
+    (v as { website?: { statistics?: { enabled?: unknown } } } | null)?.website?.statistics?.enabled === true;
+  return on(next) && !on(prior);
+}
+
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
   // `__Host-` prefix (HTTPS/production only — the prefix REQUIRES `Secure`, which a dev/http instance
@@ -5092,6 +5099,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
         // A receipt reports what actually CHANGED, so the prior value must be read before the write.
         if (wantReceipt) await loadPrior();
+        // ★ The built-in statistics are switched ON by agency staff only (an admin or a developer); anyone who
+        // may write the settings can still switch them OFF. Judged on the merged body against what is stored,
+        // so a full save, a `?merge=1` patch and an agent's write are held to the same rule — and behind an
+        // agent token `ctx.userId` is still the human, so a client's agent cannot do what its client cannot.
+        if (kind === 'settings' && statisticsSwitchedOn((await loadPrior()) ?? null, body) && (await getPlatformRole(db, ctx.userId)) === null) {
+          throw new ForbiddenError('only agency staff (an admin or a developer) can turn the built-in statistics on');
+        }
         const expectedVersion = pinnedVersion ?? (guardMerge ? priorVersion : undefined);
         try {
           item = await contentRepo.put(ctx, kind, req.params.entityId, body, {

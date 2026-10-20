@@ -38,6 +38,12 @@ interface ProjectViewProps {
   onSelectTab?: (tab: Tab) => void;
   /** Whether the Orders tab is showing (the project's payments are active). */
   ordersAvailable?: boolean;
+  /** Whether the Statistics tab is showing (always for staff; for a client while it has something to show). */
+  statisticsAvailable?: boolean;
+  /** Whether the tab shows the visit counter (always for staff; for a client while statistics are on). */
+  visitsAvailable?: boolean;
+  /** The viewer is agency staff (an admin or a developer) — some settings are theirs alone to switch on. */
+  isStaff?: boolean;
   /** Fired ONCE when this project's opening data (pages, locales, templates) has settled — success
    *  or failure. The selector modal holds a spinner until then, so picking a project no longer drops
    *  the author into a visibly empty editor that fills in piece by piece. */
@@ -181,7 +187,7 @@ const LINK_ICON = rowIcon(
 const ROW_ACTION =
   'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
-export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false, onLoaded }: ProjectViewProps) {
+export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false, statisticsAvailable = true, visitsAvailable = true, isStaff = false, onLoaded }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
   // A new tab starts at the top. Most tabs swap their content in one commit, so the jump lands before
   // paint; between the two settings tabs SettingsView fades the old board out first and jumps then.
@@ -993,6 +999,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
           section={tab === 'corporate-identity' ? 'identity' : 'website'}
           onLocalesChanged={() => void onLocalesChangedInSettings()}
           onOpenOrders={ordersAvailable && onSelectTab ? () => onSelectTab('orders') : undefined}
+          isStaff={isStaff}
         />
       ) : tab === 'orders' && ordersAvailable ? (
         // Guarded HERE too, not only in the tab list: the content must assert the same invariant the
@@ -1001,8 +1008,13 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
-      ) : tab === 'statistics' ? (
-        <StatisticsTab key={project.id} project={project} onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined} />
+      ) : tab === 'statistics' && statisticsAvailable ? (
+        <StatisticsTab
+          key={project.id}
+          project={project}
+          visitsAvailable={visitsAvailable}
+          onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined}
+        />
       ) : tab === 'history' ? (
         <HistoryView key={project.id} project={project} />
       ) : (

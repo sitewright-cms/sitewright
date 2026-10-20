@@ -11,9 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
-- **Keyword rank tracking (the platform side).** The platform can now record where a project's site appears in
-  Google's results for chosen keywords, on a schedule, and keep the history. The editor screens follow in a
-  separate change.
+- **Keyword rank tracking.** The platform can now record where a project's site appears in Google's results for
+  chosen keywords, on a schedule, and keep the history.
+  - **Statistics → Search rankings** lists each keyword with its position, the change since the check before,
+    the best position in the period, a trend line and the page that ranked; opening a keyword shows its position
+    over time (up is better, the editor's tooltip on each check). On a phone the table keeps the keyword, its
+    position and the change, and the rest moves into the opened row. Clients see the tab once their site is
+    tracked.
+  - **Agency staff** also see the setup (domain, weekly or daily, how many results to read), a form to add
+    keywords searched from a place chosen from the provider's list, a device and a language, "Check now", pause
+    and remove, and a note when checks are not running (no provider, budget used up, or the provider refused).
+  - **System Settings → Integrations → Keyword rank tracking** (instance admins): the provider, its credentials
+    (a saved secret is never shown again), the monthly budget with this month's spend, a test of the saved
+    credentials that shows the account balance, and the provider's last refusal.
   - **Who does what:** an instance admin picks the provider, enters its credentials and sets a monthly budget.
     Agency staff (admins, and developers on their own projects) choose each project's domain and keywords. Clients
     can only read the results, and no API key or token can change what is tracked or spent.

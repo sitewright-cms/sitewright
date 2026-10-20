@@ -65,6 +65,7 @@ import { Tabs } from './ui/Tabs';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
+import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
 import { secretFieldProps } from '../lib/secret-field';
 import { Tooltip } from './ui/Tooltip';
 
@@ -507,6 +508,8 @@ export function InstanceSettings() {
     };
   }, []);
 
+  const rankRef = useRef<RankTrackingSettingsHandle>(null);
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -644,6 +647,8 @@ export function InstanceSettings() {
     if (logoDraft !== undefined) input.platformLogo = logoDraft; // {mime,data} to set, null to remove
     try {
       const res = await api.putInstanceSettings(input);
+      // Rank tracking keeps its own store (and its own route); it saves after the rest succeeded.
+      await rankRef.current?.save();
       hydrate(res.settings);
       // Re-skin the live chrome immediately so the admin sees the change without a reload.
       const bust = logoBust + 1;
@@ -1088,6 +1093,8 @@ export function InstanceSettings() {
           </div>
         )}
       </fieldset>
+
+      <RankTrackingSettings ref={rankRef} />
 
       </div>
 

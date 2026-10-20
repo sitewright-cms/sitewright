@@ -1,5 +1,14 @@
 import type {
   CaptchaPublic,
+  ProjectRankings,
+  RankingsQuery,
+  RankKeywordsInput,
+  RankLocationOption,
+  RankPassReport,
+  RankProjectSettingsInput,
+  RankProviderId,
+  RankTrackingAdminInput,
+  RankTrackingAdminView,
   SiteStats,
   StatsQuery,
   CaptchaInput,
@@ -1697,6 +1706,28 @@ export const api = {
     if (q.country) params.set('country', q.country);
     return request<SiteStats>('GET', `/projects/${projectId}/stats?${params.toString()}`);
   },
+  // --- keyword rank tracking: anyone on the project reads; agency staff manage (the server enforces it) ---
+  getRankings: (projectId: string, q: RankingsQuery = {}) => {
+    const params = new URLSearchParams();
+    if (q.from) params.set('from', q.from);
+    if (q.to) params.set('to', q.to);
+    const qs = params.toString();
+    return request<ProjectRankings>('GET', `/projects/${projectId}/rankings${qs ? `?${qs}` : ''}`);
+  },
+  putRankSettings: (projectId: string, body: RankProjectSettingsInput) =>
+    request<{ tracking: ProjectRankings['tracking'] }>('PUT', `/projects/${projectId}/rankings/settings`, body),
+  addRankKeywords: (projectId: string, body: RankKeywordsInput) =>
+    request<{ added: number; existing: number }>('POST', `/projects/${projectId}/rankings/keywords`, body),
+  setRankKeywordPaused: (projectId: string, keywordId: string, paused: boolean) =>
+    request<{ ok: true }>('PATCH', `/projects/${projectId}/rankings/keywords/${encodeURIComponent(keywordId)}`, { paused }),
+  removeRankKeyword: (projectId: string, keywordId: string) =>
+    request<{ ok: true }>('DELETE', `/projects/${projectId}/rankings/keywords/${encodeURIComponent(keywordId)}`),
+  checkRankingsNow: (projectId: string) => request<RankPassReport>('POST', `/projects/${projectId}/rankings/check`),
+  searchRankLocations: (country: string, q: string) =>
+    request<{ locations: RankLocationOption[] }>(
+      'GET',
+      `/rank-tracking/locations?${new URLSearchParams({ country, q }).toString()}`,
+    ),
   listProjectRevisions: (projectId: string, opts: { kind?: string; op?: string; limit?: number; before?: string } = {}) => {
     const q = new URLSearchParams();
     if (opts.kind) q.set('kind', opts.kind);
@@ -2171,6 +2202,12 @@ export const api = {
   /** Verify a stock-image provider key with a minimal search. A blank key tests the stored one. */
   testStockKey: (body: { provider: StockKeyedProvider; key?: string }) =>
     request<{ ok: boolean; error?: string }>('POST', '/admin/settings/stock/test', body),
+  /** Keyword rank tracking: the provider, its credentials (secrets reported as set/unset only) and the budget. */
+  getRankTracking: () => request<RankTrackingAdminView>('GET', '/admin/rank-tracking'),
+  putRankTracking: (body: RankTrackingAdminInput) => request<RankTrackingAdminView>('PUT', '/admin/rank-tracking', body),
+  /** Try a provider's STORED credentials; the balance when the provider reports one. */
+  testRankProvider: (provider: RankProviderId) =>
+    request<{ ok: boolean; balanceUsd?: number | null; error?: string }>('POST', '/admin/rank-tracking/test', { provider }),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),

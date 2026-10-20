@@ -308,8 +308,22 @@ describe('built-in statistics', () => {
     expect((await client.put(`${settingsUrl}?merge=1`, { website: { statistics: { enabled: true } } })).statusCode).toBe(200);
     expect((await owner.put(`${settingsUrl}?merge=1`, { website: { siteUrl: 'https://example.com' } })).statusCode).toBe(200);
     expect((await owner.put(`${settingsUrl}?merge=1`, { website: { statistics: { enabled: false } } })).statusCode).toBe(200);
-    const after = (await client.get(settingsUrl)).json() as { website?: { statistics?: { enabled?: boolean } } };
+    const after = ((await client.get(settingsUrl)).json() as { item: { website?: { statistics?: { enabled?: boolean } } } }).item;
     expect(after.website?.statistics?.enabled ?? false).toBe(false);
+
+    // ★ Restoring the revision in which staff switched them on is the same switch, through another door.
+    const revs = (await owner.get(`/projects/${projectId}/content/settings/settings/revisions`)).json() as { items: Array<{ id: string }> };
+    const onRev = await (async () => {
+      for (const r of revs.items) {
+        const one = (await owner.get(`/projects/${projectId}/content/settings/settings/revisions/${r.id}`)).json() as { revision?: { data?: { website?: { statistics?: { enabled?: boolean } } } } };
+        if (one.revision?.data?.website?.statistics?.enabled === true) return r.id;
+      }
+      return null;
+    })();
+    expect(onRev).not.toBeNull();
+    const restore = await owner.post(`/projects/${projectId}/content/settings/settings/revisions/${onRev}/restore`);
+    expect(restore.statusCode).toBe(403);
+    expect((await client.post(`/projects/${projectId}/content/settings/settings/revisions/${onRev}/restore`)).statusCode).toBe(200);
   });
 
   it('★ is readable by project members only', async () => {

@@ -1,0 +1,274 @@
+import { createRef } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ProjectRankings, RankKeywordView, RankTrackingAdminView } from '@sitewright/schema';
+
+const api = vi.hoisted(() => ({
+  getStats: vi.fn(),
+  getRankings: vi.fn(),
+  putRankSettings: vi.fn(),
+  addRankKeywords: vi.fn(),
+  setRankKeywordPaused: vi.fn(),
+  removeRankKeyword: vi.fn(),
+  checkRankingsNow: vi.fn(),
+  searchRankLocations: vi.fn(),
+  getRankTracking: vi.fn(),
+  putRankTracking: vi.fn(),
+  testRankProvider: vi.fn(),
+}));
+vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
+
+import { StatisticsTab } from '../src/views/stats/StatisticsTab';
+import { RankingsView } from '../src/views/stats/RankingsView';
+import { RankChart } from '../src/views/stats/RankChart';
+import { RankTrackingSettings, type RankTrackingSettingsHandle } from '../src/views/settings/RankTrackingSettings';
+
+const project = { id: 'p1', name: 'Plumbers', slug: 'plumbers', role: 'owner' as const, siteUrl: 'https://www.plumbers.na/' };
+
+function keyword(over: Partial<RankKeywordView> = {}): RankKeywordView {
+  return {
+    id: 'k1',
+    keyword: 'plumber windhoek',
+    engine: 'google',
+    device: 'desktop',
+    location: { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' },
+    languageCode: 'en',
+    paused: false,
+    latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: 3, url: 'https://www.plumbers.na/emergency/', depth: 100 },
+    change: 2,
+    best: 3,
+    series: [
+      { day: '2026-10-13', position: 5 },
+      { day: '2026-10-20', position: 3 },
+    ],
+    pending: false,
+    ...over,
+  };
+}
+
+function rankings(over: Partial<ProjectRankings> = {}): ProjectRankings {
+  return {
+    from: '2026-07-23',
+    to: '2026-10-20',
+    tracking: { domain: 'plumbers.na', includeSubdomains: true, schedule: 'weekly', depth: 100 },
+    keywords: [keyword(), keyword({ id: 'k2', keyword: 'geyser repair', latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: null, url: null, depth: 100 }, change: null, best: null, series: [{ day: '2026-10-20', position: null }] })],
+    canManage: false,
+    ...over,
+  };
+}
+
+const minimalStats = {
+  from: '2026-09-21',
+  to: '2026-10-20',
+  enabled: true,
+  human: { views: 0, visitors: 0 },
+  botViews: 0,
+  daily: [{ day: '2026-10-20', views: 0, visitors: 0, botViews: 0 }],
+  devices: [],
+  countries: [],
+  bots: [],
+  pages: [],
+  sources: [],
+  goals: [],
+};
+
+beforeEach(() => {
+  for (const fn of Object.values(api)) fn.mockReset();
+  api.getStats.mockResolvedValue(minimalStats);
+  api.searchRankLocations.mockResolvedValue({ locations: [] });
+});
+
+describe('the Statistics tab', () => {
+  it('shows no rankings tab to a client whose site is not tracked', async () => {
+    api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [] }));
+    render(<StatisticsTab project={project} />);
+    await waitFor(() => expect(api.getRankings).toHaveBeenCalled());
+    await screen.findByRole('group', { name: 'Visitors' });
+    expect(screen.queryByRole('tab', { name: /Search rankings/ })).toBeNull();
+  });
+
+  it('offers the rankings next to the visits when the site is tracked', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    render(<StatisticsTab project={project} />);
+    fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
+    expect(await screen.findByRole('heading', { name: 'Search rankings' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
+  });
+
+  it('offers staff the tab to set tracking up', async () => {
+    api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider' }));
+    render(<StatisticsTab project={project} />);
+    fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
+    expect(await screen.findByRole('form', { name: 'Rank tracking setup' })).toBeInTheDocument();
+    // The site URL is the suggested domain.
+    expect(screen.getByLabelText('Domain the site is published at')).toHaveValue('www.plumbers.na');
+  });
+});
+
+describe('what a client reads', () => {
+  it('lists each keyword with its position, change, best and ranking page — and nothing to manage', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    render(<RankingsView project={project} />);
+    const table = await screen.findByRole('table', { name: /Tracked keywords/ });
+    const rows = within(table).getAllByRole('row');
+    expect(rows[1]).toHaveTextContent('plumber windhoek');
+    expect(rows[1]).toHaveTextContent('Windhoek, Khomas Region, Namibia · Desktop · en');
+    expect(rows[1]).toHaveTextContent('up2');
+    expect(within(rows[1]!).getByRole('link', { name: '/emergency/' })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
+    expect(rows[2]).toHaveTextContent('Not in top 100');
+    expect(screen.getByText(/plumbers\.na/, { selector: 'span.font-medium' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Pause|Remove|Check now|Setup/ })).toBeNull();
+    expect(screen.queryByRole('form', { name: 'Add keywords' })).toBeNull();
+    expect(screen.queryByText(/provider/)).toBeNull();
+  });
+
+  it('opens a keyword into a chart of its position, with the editor tooltip and no native one', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    const { container } = render(<RankingsView project={project} />);
+    fireEvent.click(await screen.findByRole('button', { name: /plumber windhoek/ }));
+    const chart = await screen.findByRole('img', { name: /plumber windhoek: 2 checks, best position 3/ });
+    expect(container.querySelector('svg title')).toBeNull();
+    fireEvent.mouseEnter(chart.querySelector('circle[data-day="2026-10-13"]')!);
+    const tip = await screen.findByRole('tooltip');
+    expect([...tip.children].map((c) => c.textContent)).toEqual(['Tue, 13 Oct 2026', 'Position 5']);
+  });
+});
+
+describe('what staff manage', () => {
+  it('says why nothing is checked', async () => {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'budget-reached' }));
+    render(<RankingsView project={project} />);
+    expect(await screen.findByRole('status')).toHaveTextContent("This month's rank-tracking budget is used up");
+  });
+
+  it('checks now, pauses and removes', async () => {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok' }));
+    api.checkRankingsNow.mockResolvedValue({ status: 'ok', sent: 2, collected: 0, failed: 0 });
+    api.setRankKeywordPaused.mockResolvedValue({ ok: true });
+    api.removeRankKeyword.mockResolvedValue({ ok: true });
+    render(<RankingsView project={project} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Check now' }));
+    expect(await screen.findByText(/Sent 2 checks/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause plumber windhoek' }));
+    await waitFor(() => expect(api.setRankKeywordPaused).toHaveBeenCalledWith('p1', 'k1', true));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove geyser repair' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(api.removeRankKeyword).toHaveBeenCalledWith('p1', 'k2'));
+  });
+
+  it('adds keywords searched from a place chosen from the provider’s list', async () => {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: [] }));
+    api.searchRankLocations.mockImplementation(async (_country: string, q: string) => ({
+      locations: q
+        ? [{ name: 'Windhoek,Khomas Region,Namibia', type: 'City', countryCode: 'NA' }]
+        : [{ name: 'Namibia', type: 'Country', countryCode: 'NA' }],
+    }));
+    api.addRankKeywords.mockResolvedValue({ added: 2, existing: 0 });
+    render(<RankingsView project={project} />);
+    const form = await screen.findByRole('form', { name: 'Add keywords' });
+    fireEvent.change(within(form).getByLabelText('Keywords, one per line'), { target: { value: 'plumber windhoek\n\nemergency plumber\n' } });
+    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
+    // The country itself is the starting place.
+    await within(form).findByText('Namibia · Country');
+    const place = within(form).getByRole('combobox', { name: 'Searched from' });
+    fireEvent.focus(place);
+    fireEvent.change(place, { target: { value: 'wind' } });
+    fireEvent.click(await within(form).findByRole('button', { name: /Windhoek, Khomas Region, Namibia/ }));
+    fireEvent.click(within(form).getByRole('radio', { name: 'Mobile' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Add 2 keywords' }));
+    await waitFor(() =>
+      expect(api.addRankKeywords).toHaveBeenCalledWith('p1', {
+        keywords: ['plumber windhoek', 'emergency plumber'],
+        location: { name: 'Windhoek,Khomas Region,Namibia', countryCode: 'NA' },
+        languageCode: 'en',
+        device: 'mobile',
+      }),
+    );
+    expect(await screen.findByText(/Added 2 keywords\./)).toBeInTheDocument();
+  });
+});
+
+describe('RankChart', () => {
+  it('marks a check outside the results on the bottom line and breaks the line there', () => {
+    const { container } = render(
+      <RankChart
+        keyword="k"
+        from="2026-10-01"
+        to="2026-10-31"
+        depth={100}
+        series={[
+          { day: '2026-10-01', position: 10 },
+          { day: '2026-10-08', position: 8 },
+          { day: '2026-10-15', position: null },
+          { day: '2026-10-22', position: 4 },
+        ]}
+      />,
+    );
+    expect(container.querySelectorAll('polyline')).toHaveLength(1); // only the 10→8 run has two points
+    const missing = container.querySelector('circle[data-day="2026-10-15"]')!;
+    expect(Number(missing.getAttribute('cy'))).toBe(180 - 22);
+    expect(screen.getByRole('img')).toHaveAccessibleName('k: 4 checks, best position 4, latest position 4');
+  });
+});
+
+describe('System Settings: rank tracking', () => {
+  const view: RankTrackingAdminView = {
+    activeProvider: null,
+    monthlyBudgetUsd: 10,
+    spentThisMonthUsd: 0.006,
+    projectsTracked: 1,
+    keywordsTracked: 3,
+    lastError: { message: 'The DataForSEO balance is too low; add funds to the account', at: '2026-10-20T06:00:00.000Z' },
+    providers: [
+      {
+        id: 'dataforseo',
+        label: 'DataForSEO',
+        signupUrl: 'https://app.dataforseo.com/register',
+        configured: true,
+        values: { login: 'api@agency.test' },
+        secretsSet: { password: true },
+        fields: [
+          { key: 'login', label: 'API login', type: 'text', required: true },
+          { key: 'password', label: 'API password', type: 'secret', required: true },
+          { key: 'environment', label: 'Searches', type: 'select', required: false, options: [{ value: 'production', label: 'Live' }, { value: 'sandbox', label: 'Sandbox' }] },
+        ],
+      },
+    ],
+  };
+
+  it('shows the spend and the last refusal, never a secret, and saves only what changed', async () => {
+    api.getRankTracking.mockResolvedValue(view);
+    api.putRankTracking.mockResolvedValue({ ...view, activeProvider: 'dataforseo', monthlyBudgetUsd: 25 });
+    const ref = createRef<RankTrackingSettingsHandle>();
+    render(<RankTrackingSettings ref={ref} />);
+    expect(await screen.findByText(/\$0\.006 spent this month · 3 keywords in 1 project$/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('balance is too low');
+
+    // Nothing changed: nothing sent.
+    await act(async () => ref.current!.save());
+    expect(api.putRankTracking).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Rank tracking provider'), { target: { value: 'dataforseo' } });
+    expect(screen.getByLabelText('API password')).toHaveValue('');
+    expect(screen.getByLabelText('API password')).toHaveAttribute('placeholder', '•••••• (leave blank to keep)');
+    fireEvent.change(screen.getByLabelText('Monthly budget in US dollars'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('Searches'), { target: { value: 'sandbox' } });
+    await act(async () => ref.current!.save());
+    expect(api.putRankTracking).toHaveBeenCalledWith({
+      activeProvider: 'dataforseo',
+      monthlyBudgetUsd: 25,
+      credentials: { dataforseo: { environment: 'sandbox' } },
+    });
+  });
+
+  it('tests the saved credentials and shows the balance', async () => {
+    api.getRankTracking.mockResolvedValue({ ...view, activeProvider: 'dataforseo', lastError: null });
+    api.testRankProvider.mockResolvedValue({ ok: true, balanceUsd: 48.25 });
+    render(<RankTrackingSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test saved credentials' }));
+    expect(await screen.findByText('✓ Connected · balance $48.25')).toBeInTheDocument();
+  });
+});

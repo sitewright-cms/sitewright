@@ -24,6 +24,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **The clone workflow no longer deploys on its own.** It used to publish when every page passed. Deploying can now
   upload to a remote target, where it would replace the client's live site, often the very site being cloned. So
   the agent now hands over the preview to review and deploys only when asked.
+- **Statistics tab:**
+  - **Tooltips:** hovering a day in the chart or a country on the map shows the editor's own tooltip, with one
+    figure per line, instead of the browser's plain one-line tooltip. The chart's tooltip sits above that
+    day's bar, and the map's says whether a click filters.
+  - **Filter pills:** an active device or country filter now also shows in its own section (Devices,
+    Countries, Map), as well as above the figures. Either copy clears it.
+  - **Buttons:** the "Open Website Settings" button uses the editor's primary button, as does the Analytics
+    window's "Turn on the consent banner" (as a secondary button).
+  - **Wording:** the tab's hints now say "deploy" rather than "publish".
 
 ### Deprecated
 
@@ -48,8 +57,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **The schema.org `logo` and `image` are absolute URLs again.** A site with a site URL already had an absolute
   `og:image`, but the logo and image in its JSON-LD were page-relative (`_assets/…`, `../_assets/…` deeper down),
   which search engines can't resolve. They now resolve against the site URL the same way `og:image` does, and the
-  record carries the site's `url`. Without a site URL they stay relative, as before. Republish a site to pick it
-  up.
+  record carries the site's `url`. Without a site URL they stay relative, as before. Deploy a site again to pick
+  it up.
 - **The schema.org `@type` of an imported site is a real type name.** The website importer stored the type in
   spaced form ("Educational Organization"), which was emitted as the `@type` and isn't valid. It now keeps the
   exact type. Types already stored with spaces are joined back into the name when the page is built, and a value

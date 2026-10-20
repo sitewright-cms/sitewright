@@ -1,12 +1,19 @@
+import { useEffect } from 'react';
 import type { SiteStats } from '@sitewright/schema';
-import { fmt, shortDay } from './format';
+import { useChartTip } from './ChartTip';
+import { counted, fmt, longDay, shortDay } from './format';
 
 /**
  * Pageviews per day: human views as solid bars, bot views stacked above them in a lighter tone. Plain SVG —
- * one rect per day — so a year of days is 365 small rects and no charting library. Each bar carries a
- * `<title>` (the hover tooltip and what a screen reader reads), and the chart itself has a one-line summary.
+ * one rect per day — so a year of days is 365 small rects and no charting library. Hovering a day shows the
+ * editor's tooltip with that day's figures, one per line; the chart itself has a one-line summary for a
+ * screen reader.
  */
 export function DailyChart({ daily }: { daily: SiteStats['daily'] }) {
+  const tip = useChartTip();
+  const { hide } = tip;
+  // The bubble quotes THESE figures: the minute refresh, bringing new ones, closes it rather than leave it stale.
+  useEffect(() => hide(), [daily, hide]);
   const W = 720;
   const H = 160;
   const max = Math.max(1, ...daily.map((d) => d.views + d.botViews));
@@ -30,8 +37,21 @@ export function DailyChart({ daily }: { daily: SiteStats['daily'] }) {
           const bots = y(d.botViews);
           const x = i * slot + gap / 2;
           return (
-            <g key={d.day}>
-              <title>{`${shortDay(d.day)}: ${fmt(d.views)} pageviews, ${fmt(d.visitors)} visitors, ${fmt(d.botViews)} bot pageviews`}</title>
+            <g
+              key={d.day}
+              data-day={d.day}
+              // Anchored to the day's TOP bar (the last child: bots stack on the human bar), so the bubble
+              // points at the data instead of floating at the chart's top edge.
+              onMouseEnter={(e) =>
+                tip.showAt(e.currentTarget.lastElementChild ?? e.currentTarget, [
+                  longDay(d.day),
+                  counted(d.views, 'pageview'),
+                  counted(d.visitors, 'visitor'),
+                  counted(d.botViews, 'bot pageview'),
+                ])
+              }
+              onMouseLeave={tip.hide}
+            >
               {/* A transparent full-height hit area, so a hover finds the day even when it had no traffic. */}
               <rect x={x} y={0} width={bar} height={H} fill="transparent" />
               <rect x={x} y={H - human} width={bar} height={human} rx={bar > 4 ? 2 : 0} className="fill-indigo-500 dark:fill-indigo-400" />
@@ -40,6 +60,7 @@ export function DailyChart({ daily }: { daily: SiteStats['daily'] }) {
           );
         })}
       </svg>
+      {tip.bubble}
       <figcaption className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span className="relative h-4 flex-1">
           {ticks.map((i, n) => (

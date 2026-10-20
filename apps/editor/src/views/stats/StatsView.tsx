@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BarChart3, Download, RefreshCw, X } from 'lucide-react';
+import { BarChart3, Download, RefreshCw, Settings } from 'lucide-react';
 import type { SiteStats, StatsDevice } from '@sitewright/schema';
 import { api, downloadStatsCsv, type Project } from '../../api';
-import { accentChip, ghostButton, glassCard, gradientHover, gradientSurface } from '../../theme';
+import { accentChip, ghostButton, glassCard, gradientHover, gradientSurface, primaryButton } from '../../theme';
 import { DailyChart } from './DailyChart';
-import { BotsPanel, CountriesPanel, DevicesPanel, GoalsPanel, PagesPanel, Panel, SourcesPanel } from './Breakdowns';
+import { BotsPanel, CountriesPanel, DEVICE_LABELS, DevicesPanel, FilterChip, GoalsPanel, PagesPanel, Panel, SourcesPanel } from './Breakdowns';
 import { WorldMap } from './WorldMap';
 import { countryName, fmt, pct, rangeDays, STATS_RANGES, type StatsRangeId } from './format';
 
@@ -124,18 +124,19 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
               </button>
             ))}
           </div>
-          {device && <FilterChip label={`Device: ${device}`} onClear={() => setDevice(undefined)} />}
+          {/* eslint-disable-next-line security/detect-object-injection -- device is a typed StatsDevice */}
+          {device && <FilterChip label={`Device: ${DEVICE_LABELS[device]}`} onClear={() => setDevice(undefined)} />}
           {country && <FilterChip label={`Country: ${countryName(country)}`} onClear={() => setCountry(undefined)} />}
         </div>
 
         {stats && !stats.enabled && (
           <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-300/70 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <span className="min-w-0 flex-1">
-              Statistics are off for this site. Turn them on in Website Settings → Analytics, then publish: the next publish adds the counter to every page.
+              Statistics are off for this site. Turn them on in Website Settings → Analytics, then deploy: the next deploy adds the counter to every page.
             </span>
             {onOpenSettings && (
-              <button type="button" className="btn btn-sm" onClick={onOpenSettings}>
-                Open Website Settings
+              <button type="button" className={primaryButton} onClick={onOpenSettings}>
+                <Settings className="h-4 w-4" aria-hidden /> Open Website Settings
               </button>
             )}
           </div>
@@ -149,7 +150,7 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
         )}
         {stats?.enabled && stats.human.views === 0 && stats.botViews === 0 && goals === 0 && (
           <p role="note" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-            No visits in this period yet. The counter goes onto the pages when the site is published, so publish once after
+            No visits in this period yet. The counter goes onto the pages when the site is deployed, so deploy once after
             switching statistics on.
           </p>
         )}
@@ -174,7 +175,12 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
               <DevicesPanel stats={stats} device={device} onDevice={setDevice} />
               <CountriesPanel stats={stats} country={country} onCountry={setCountry} />
             </div>
-            <WorldMap countries={stats.countries} selected={country} onSelect={setCountry} />
+            <WorldMap
+              countries={stats.countries}
+              selected={country}
+              onSelect={setCountry}
+              filter={country && <FilterChip label={`Country: ${countryName(country)}`} onClear={() => setCountry(undefined)} />}
+            />
             <div className="grid gap-4 lg:grid-cols-2">
               <PagesPanel stats={stats} />
               <SourcesPanel stats={stats} />
@@ -208,16 +214,5 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
       <div className="mt-1 text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</div>}
     </div>
-  );
-}
-
-function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-300/70 bg-indigo-50 py-0.5 pl-3 pr-1 text-sm text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200">
-      {label}
-      <button type="button" className="rounded-full p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/20" aria-label={`Clear ${label}`} onClick={onClear}>
-        <X className="h-3.5 w-3.5" aria-hidden />
-      </button>
-    </span>
   );
 }

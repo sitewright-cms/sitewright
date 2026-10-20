@@ -15,6 +15,7 @@ import { SkeletonList } from '../ui/Skeleton';
 import { useToast } from '../ui/Toast';
 import { saveSurface } from '../../theme';
 import { notifyPaymentsChanged } from '../../lib/payments-active';
+import { notifyStatisticsChanged } from '../../lib/statistics-enabled';
 
 type Section = 'identity' | 'website';
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -111,9 +112,12 @@ export function SettingsView({
   section: fixedSection,
   onLocalesChanged,
   onOpenOrders,
+  isStaff = false,
 }: {
   project: Project;
   section?: Section;
+  /** The viewer is agency staff — passed on to the sections whose switches only staff may turn on. */
+  isStaff?: boolean;
   /** Notifies the parent (the pages list) when a language is added/removed here, so it can refresh. */
   onLocalesChanged?: () => void;
   /** Switches to the project's Orders tab — offered on the Shop tile while payments are active. */
@@ -253,7 +257,10 @@ export function SettingsView({
       // Clear ONLY this section's dirty state; the other section's pending edits remain dirty.
       setBaseline((b) => (b ? mergeSection(b, snapshot, section) : toForm(res.item)));
       // The shop switch is a Website field, and it is half of whether the Orders tab shows.
-      if (section === 'website') notifyPaymentsChanged(project.id);
+      if (section === 'website') {
+        notifyPaymentsChanged(project.id);
+        notifyStatisticsChanged(project.id);
+      }
       toast.show('Settings saved', 'success');
       return true;
     } catch (err) {
@@ -407,6 +414,7 @@ export function SettingsView({
                   form={form}
                   patch={patch}
                   project={project}
+                  isStaff={isStaff}
                   // Saving inside a code editor SAVES. Without this the modal's Save button only
                   // staged the change into the form and the author had to find the tab's own Save —
                   // which reads, correctly, as "I saved and it didn't save".

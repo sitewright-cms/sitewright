@@ -1843,6 +1843,13 @@ function captchaRenderConfig(stored: { provider: CaptchaProvider; siteKey: strin
   return { provider: stored.provider, siteKey: stored.siteKey };
 }
 
+/** Whether a settings write turns the built-in statistics on (they were not on before, and are after). */
+function statisticsSwitchedOn(prior: unknown, next: unknown): boolean {
+  const on = (v: unknown): boolean =>
+    (v as { website?: { statistics?: { enabled?: unknown } } } | null)?.website?.statistics?.enabled === true;
+  return on(next) && !on(prior);
+}
+
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
   // `__Host-` prefix (HTTPS/production only — the prefix REQUIRES `Secure`, which a dev/http instance
@@ -2828,6 +2835,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // instance admins — admin config is session-only.
   async function isInstanceAdmin(userId: string): Promise<boolean> {
     return (await getPlatformRole(db, userId)) === 'admin';
+  }
+
+  /**
+   * Rules a content write must pass WHATEVER route makes it — the content save, a revision restore — so a
+   * user cannot reach by one door what another refuses. Throws ForbiddenError to refuse.
+   *
+   * ★ Built-in statistics are switched ON by agency staff only (an admin or a developer); any writer may switch
+   * them OFF. Judged against what is STORED (read here, under the one settings id, whatever id the URL names),
+   * so a full save, a `?merge=1` patch, a restore and an agent's write (`ctx.userId` is the human behind the
+   * token) are held to the same rule.
+   */
+  async function guardContentWrite(ctx: ProjectContext, kind: string, next: unknown): Promise<void> {
+    if (kind !== 'settings') return;
+    const stored = await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch((err: unknown) => {
+      if (err instanceof NotFoundError) return null;
+      throw err;
+    });
+    if (statisticsSwitchedOn(stored, next) && (await getPlatformRole(db, ctx.userId)) === null) {
+      throw new ForbiddenError('only agency staff (an admin or a developer) can turn the built-in statistics on');
+    }
   }
 
   async function requireInstanceAdmin(req: FastifyRequest): Promise<string> {
@@ -5092,6 +5119,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (kind === 'entry') body = await assignEntryOrder(ctx, req.params.entityId, body);
         // A receipt reports what actually CHANGED, so the prior value must be read before the write.
         if (wantReceipt) await loadPrior();
+        // ★ The built-in statistics are switched ON by agency staff only (an admin or a developer); anyone who
+        // may write the settings can still switch them OFF. Judged on the merged body against what is stored,
+        // so a full save, a `?merge=1` patch and an agent's write are held to the same rule — and behind an
+        // agent token `ctx.userId` is still the human, so a client's agent cannot do what its client cannot.
+        await guardContentWrite(ctx, kind, body);
         const expectedVersion = pinnedVersion ?? (guardMerge ? priorVersion : undefined);
         try {
           item = await contentRepo.put(ctx, kind, req.params.entityId, body, {
@@ -10744,6 +10776,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     contentRepo,
     revisionsRepo,
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    guardWrite: guardContentWrite,
     db,
     rl,
   });

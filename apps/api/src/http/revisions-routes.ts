@@ -22,6 +22,12 @@ export interface RevisionsDeps {
   revisionsRepo: RevisionsRepository;
   /** True when the role may write (owner/member) — defense-in-depth on restore. */
   isWriter: (ctx: ProjectContext) => boolean;
+  /**
+   * The rules a write of this kind must pass whatever route makes it (throws to refuse). A restore writes
+   * content as surely as a save does — restoring an old settings revision must not switch on what the
+   * user could not switch on by saving.
+   */
+  guardWrite?: (ctx: ProjectContext, kind: ContentKind, next: unknown) => Promise<void>;
   db: Database;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
@@ -160,6 +166,7 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
       if (!rev || rev.kind !== kind || rev.entityId !== req.params.entityId || rev.scope !== scope) {
         return reply.code(404).send({ error: 'revision not found' });
       }
+      await deps.guardWrite?.(ctx, kind, rev.data);
       const note = `Restored from ${new Date(rev.revisionAt).toISOString()}`;
       const item = await contentRepo.put(ctx, kind, req.params.entityId, rev.data, { op: 'restore', note });
       return reply.send({ item });

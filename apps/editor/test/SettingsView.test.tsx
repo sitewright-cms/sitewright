@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { SettingsBundle } from '../src/api';
 import { ToastProvider } from '../src/views/ui/Toast';
 
@@ -298,7 +298,7 @@ describe('SettingsView', () => {
   });
 
   it('★ the Analytics tile switches the built-in statistics on, and the save writes website.statistics', async () => {
-    renderView();
+    renderView({ isStaff: true });
     fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
     const sw = await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' });
     expect(sw).not.toBeChecked();
@@ -308,12 +308,31 @@ describe('SettingsView', () => {
     expect((putSettings.mock.calls[0]![1] as SettingsBundle).website?.statistics).toEqual({ enabled: true });
   });
 
+  it('★ a client cannot switch the built-in statistics on — the switch says who can — but can switch them off', async () => {
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    const off = await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' });
+    expect(off).toBeDisabled();
+    expect(off).toHaveAccessibleDescription('Your agency (an admin or a developer) turns the built-in statistics on.');
+    cleanup();
+
+    getSettings.mockResolvedValue({ item: { ...bundle, website: { statistics: { enabled: true } } } });
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
+    const on = await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' });
+    expect(on).toBeEnabled();
+    fireEvent.click(on);
+    fireEvent.click(floatingSave());
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    expect((putSettings.mock.calls[0]![1] as SettingsBundle).website?.statistics).toBeUndefined(); // off drops the key
+  });
+
   it('★ a Website save keeps the fields only an agent sets (data files, extra CSP origins)', async () => {
     // The save REPLACES website.*: these used to be wiped by any unrelated edit in the editor.
     const dataFiles = [{ path: 'team.json', source: { dataset: 'team' } }];
     const cspOrigins = { connect: ['api.example.com'] };
     getSettings.mockResolvedValue({ item: { ...bundle, website: { dataFiles, cspOrigins } } });
-    renderView();
+    renderView({ isStaff: true });
     fireEvent.click(await screen.findByRole('tab', { name: 'Website' }));
     fireEvent.click(await screen.findByRole('switch', { name: 'Count visits with the built-in statistics' }));
     fireEvent.click(floatingSave());

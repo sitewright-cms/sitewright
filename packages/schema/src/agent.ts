@@ -1161,6 +1161,8 @@ no cookie and nothing stored on the visitor's device. It needs no integration en
 site's privacy policy should still mention it (whether visitors must also be asked depends on where they are).
 Deploying adds the counter to every page (never to the draft preview), so it counts from the next deploy. Read
 the numbers with get_site_stats. Only daily totals exist, kept 25 months. It can run beside an external tool.
+Only agency staff (an admin or a developer) can switch it ON — for anyone else the save is refused (403), so tell
+a client to ask their agency. Anyone may switch it off.
 `,
   },
   templates: {

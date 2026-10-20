@@ -22,7 +22,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
-import { StatsView } from './stats/StatsView';
+import { StatisticsTab } from './stats/StatisticsTab';
 import { OrdersView } from './OrdersView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
@@ -1002,7 +1002,7 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
       ) : tab === 'statistics' ? (
-        <StatsView key={project.id} project={project} onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined} />
+        <StatisticsTab key={project.id} project={project} onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined} />
       ) : tab === 'history' ? (
         <HistoryView key={project.id} project={project} />
       ) : (

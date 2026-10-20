@@ -65,6 +65,7 @@ import { Tabs } from './ui/Tabs';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
+import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
 import { secretFieldProps } from '../lib/secret-field';
 import { Tooltip } from './ui/Tooltip';
 
@@ -507,6 +508,8 @@ export function InstanceSettings() {
     };
   }, []);
 
+  const rankRef = useRef<RankTrackingSettingsHandle>(null);
+
   async function save(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -642,8 +645,22 @@ export function InstanceSettings() {
       input.brandSecondary = brandSecondary === DEFAULT_BRAND_SECONDARY ? null : brandSecondary;
     }
     if (logoDraft !== undefined) input.platformLogo = logoDraft; // {mime,data} to set, null to remove
+    // Rank tracking keeps its own store and route. Its form is checked FIRST, so a mistake there stops the save
+    // before anything is stored rather than after the rest already was.
+    const rankInvalid = rankRef.current?.validate() ?? null;
+    if (rankInvalid) {
+      setError(rankInvalid);
+      return;
+    }
     try {
       const res = await api.putInstanceSettings(input);
+      try {
+        await rankRef.current?.save();
+      } catch (err) {
+        hydrate(res.settings);
+        setError(`The other settings were saved, but rank tracking was not: ${err instanceof Error ? err.message : 'failed to save'}`);
+        return;
+      }
       hydrate(res.settings);
       // Re-skin the live chrome immediately so the admin sees the change without a reload.
       const bust = logoBust + 1;
@@ -1088,6 +1105,8 @@ export function InstanceSettings() {
           </div>
         )}
       </fieldset>
+
+      <RankTrackingSettings ref={rankRef} />
 
       </div>
 

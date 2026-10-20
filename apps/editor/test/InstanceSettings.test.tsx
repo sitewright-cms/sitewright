@@ -10,6 +10,18 @@ const testInstanceSmtp = vi.fn();
 const sendInstanceSmtpTest = vi.fn();
 const undeliveredInstanceSubmissions = vi.fn();
 const testStockKey = vi.fn();
+// Rank tracking has its own tests (Rankings.test.tsx); here only its save is wired into this one.
+const rankSave = vi.hoisted(() => vi.fn());
+const rankValidate = vi.hoisted(() => vi.fn());
+vi.mock('../src/views/settings/RankTrackingSettings', async () => {
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return {
+    RankTrackingSettings: forwardRef(function RankStub(_p, ref) {
+      useImperativeHandle(ref, () => ({ save: () => rankSave(), validate: () => rankValidate() }));
+      return <fieldset aria-label="Keyword rank tracking" />;
+    }),
+  };
+});
 // The instance-wide token list has its own tests; here it only has to open and close.
 vi.mock('../src/views/settings/MemberTokensAdminModal', () => ({
   MemberTokensAdminModal: ({ onClose }: { onClose: () => void }) => (
@@ -42,6 +54,10 @@ beforeEach(() => {
   testStockKey.mockReset();
   undeliveredInstanceSubmissions.mockResolvedValue({ count: 0, lastError: null }); // nothing owed by default
   putInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+  rankSave.mockReset();
+  rankSave.mockResolvedValue(undefined);
+  rankValidate.mockReset();
+  rankValidate.mockReturnValue(null);
 });
 
 describe('InstanceSettings', () => {
@@ -151,6 +167,30 @@ describe('InstanceSettings', () => {
     expect(body.smtp).toBeNull();
     expect(body).not.toHaveProperty('hcaptcha');
     expect(body).not.toHaveProperty('captcha');
+  });
+
+  it('saves rank tracking after the rest, and reports its refusal like any other', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    await screen.findByLabelText('Global SMTP');
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(rankSave).toHaveBeenCalledTimes(1));
+    expect(putInstanceSettings.mock.invocationCallOrder[0]!).toBeLessThan(rankSave.mock.invocationCallOrder[0]!);
+
+    rankSave.mockRejectedValueOnce(new Error('Enter the DataForSEO API password'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText('The other settings were saved, but rank tracking was not: Enter the DataForSEO API password')).toBeInTheDocument();
+  });
+
+  it('a mistake in the rank-tracking form stops the save before anything is stored', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    rankValidate.mockReturnValue('The rank-tracking budget must be a number of dollars, 0 or more.');
+    render(<InstanceSettings />);
+    await screen.findByLabelText('Global SMTP');
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText('The rank-tracking budget must be a number of dollars, 0 or more.')).toBeInTheDocument();
+    expect(putInstanceSettings).not.toHaveBeenCalled();
+    expect(rankSave).not.toHaveBeenCalled();
   });
 
   it('omits the password when an SMTP edit leaves it blank, but sends it when filled', async () => {

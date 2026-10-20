@@ -118,6 +118,12 @@
     ]
   },
   {
+    "name": "deploy_project",
+    "required": [
+      "project"
+    ]
+  },
+  {
     "name": "duplicate_project",
     "required": [
       "project"

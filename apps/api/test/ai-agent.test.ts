@@ -515,7 +515,7 @@ describe('the in-editor assistant is offered delete_media but not delete_media_b
         method: 'POST',
         url: `/projects/${projectId}/agent/messages`,
         cookies: { sw_session: cookie },
-        payload: { message: 'tidy the media library', capabilities: ['content:read', 'content:write', 'content:delete'], context: { path: '/' } },
+        payload: { message: 'tidy the media library', capabilities: ['content:read', 'content:write', 'content:delete', 'publish'], context: { path: '/' } },
       });
       expect(res.statusCode).toBe(200);
       // Presence guard: with content:delete granted the single delete IS offered, so the absence below
@@ -523,6 +523,10 @@ describe('the in-editor assistant is offered delete_media but not delete_media_b
       expect(provider.offered).toContain('delete_media');
       expect(provider.offered).not.toContain('delete_media_bulk');
       expect(provider.offered).not.toContain('ai_clone');
+      // With `publish` granted the assistant deploys through deploy_project; the deprecated alias,
+      // kept for stored prompts, is not offered alongside it.
+      expect(provider.offered).toContain('deploy_project');
+      expect(provider.offered).not.toContain('publish_project');
     } finally {
       await app.close();
       await rm(publishRoot, { recursive: true, force: true });

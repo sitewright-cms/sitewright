@@ -9070,7 +9070,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     ctx: ProjectContext,
     projectId: string,
     deployOpts: { minify?: boolean; protocol?: string } = {},
-  ): Promise<string> {
+  ): Promise<{ dir: string; release: ReleaseManifest }> {
     const project = await projects.get(projectId);
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
     try {
@@ -9080,7 +9080,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // No statistics tracker without a public URL: the collector address would be root-relative, i.e. on the
       // owner's own host, where nothing answers — the counter would ship dead and the tab would show zeros
       // with no reason given. The Statistics tab says why instead (`notice: 'no-public-url'`).
-      await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl) });
+      const release = await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl) });
       // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
       // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
       // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails
@@ -9101,7 +9101,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         smtp: await loadProjectSmtp(db, projectId),
         ...(opts.encryptionKey ? { encryptionKey: opts.encryptionKey } : {}),
       });
-      return dir;
+      return { dir, release };
     } catch (err) {
       await rm(dir, { recursive: true, force: true });
       throw err;
@@ -9239,7 +9239,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // remote deploy does. A project WITH unpublished changes still gets its published build; the
         // dirty indicator beside this menu is what says so.
         const retained = (await store.readRelease(project.slug)) !== null;
-        const dir = retained ? store.dirFor(project.slug) : await buildForDeploy(ctx, project.id);
+        const dir = retained ? store.dirFor(project.slug) : (await buildForDeploy(ctx, project.id)).dir;
         // ★ STREAMED, not buffered. The archive lands in a temp file and goes out as a read stream,
         // so a 1.25 GB site downloads on an instance with a fraction of that in RAM. Cleanup is tied
         // to the socket closing — the same contract the project export uses.
@@ -9290,9 +9290,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         activeDeploys.add(project.id);
         // Build the site FRESH, then upload it (build-at-deploy-time — no prior publish needed). A
         // build failure (bad route graph / json_data URL) is author-correctable → 409.
-        let dir: string;
+        let built: { dir: string; release: ReleaseManifest };
         try {
-          dir = await buildForDeploy(ctx, project.id, { protocol: config.protocol });
+          built = await buildForDeploy(ctx, project.id, { protocol: config.protocol });
         } catch (err) {
           activeDeploys.delete(project.id);
           if (err instanceof PublishError || err instanceof JsonDataError) {
@@ -9300,9 +9300,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           throw err;
         }
+        // Answered only once the temp build is gone and the lock released (as the saved-target route),
+        // so a deploy started the moment this one answers is not refused as "already in progress".
+        let outcome: { code: number; body: unknown };
         try {
-          const result = config.useRsync ? await deployRsync(dir, config) : await deploySite(dir, config);
-          return reply.send({ deployed: result });
+          const result = config.useRsync ? await deployRsync(built.dir, config) : await deploySite(built.dir, config);
+          // This build is now the live site, so its price lists are what checkout charges.
+          await persistShopCatalog(project.id, 'live', built.release);
+          outcome = { code: 200, body: { deployed: result } };
         } catch (err) {
           // Connection/auth/transfer failure against the operator's target server.
           // Log the detail server-side; return a generic message so the response
@@ -9311,11 +9316,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             { host: config.host, protocol: config.protocol, errMsg: err instanceof Error ? err.message : String(err) },
             'deploy failed',
           );
-          return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
+          outcome = { code: 502, body: { error: 'deploy failed: could not connect or transfer to the target' } };
         } finally {
-          await rm(dir, { recursive: true, force: true });
+          await rm(built.dir, { recursive: true, force: true });
           activeDeploys.delete(project.id);
         }
+        return reply.code(outcome.code).send(outcome.body);
       },
     );
 
@@ -10741,6 +10747,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       // Build the site fresh into a temp dir at deploy time; the route uploads it then removes it.
       buildForDeploy,
+      // A remote deploy just made its build the live site: checkout charges that build's price lists.
+      onDeployed: (projectId, release) => persistShopCatalog(projectId, 'live', release),
       // Drop the locally-served build when its Local Hosting target is deleted (see that route).
       // No publish root configured → nothing was ever served locally, so there is nothing to remove.
       removeLocalSite: async (slug) => {

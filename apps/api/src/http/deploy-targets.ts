@@ -12,7 +12,7 @@ import { describeDeployError, type DeployEndpoint } from '../publish/deploy-erro
 import { deployRsync } from '../publish/rsync-deploy.js';
 import { deployGit, type GitDeployConfig } from '../publish/git-deploy.js';
 import { deployGitSsh, type GitSshDeployConfig } from '../publish/git-ssh-deploy.js';
-import { PublishError } from '../publish/build.js';
+import { PublishError, type ReleaseManifest } from '../publish/build.js';
 import { JsonDataError } from '../publish/json-data.js';
 import type { ContentRepository } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
@@ -244,9 +244,24 @@ export interface DeployTargetDeps {
   activeDeploys: Set<string>;
   assertDeployHostAllowed: (host: string) => void;
   isWriter: (ctx: ProjectContext) => boolean;
-  /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it).
-   *  `minify` mirrors the target's `minifyHtml` serve option (available for all target types). */
-  buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean; protocol?: string }) => Promise<string>;
+  /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it) and
+   *  the build's manifest. `minify` mirrors the target's `minifyHtml` serve option (all target types). */
+  buildForDeploy: (
+    ctx: ProjectContext,
+    projectId: string,
+    opts?: { minify?: boolean; protocol?: string },
+  ) => Promise<{ dir: string; release: ReleaseManifest }>;
+  /**
+   * A deploy SUCCEEDED, so its build is now the live site. ★ Saves that build's shop price lists —
+   * what checkout charges, which used to be written only by a Local Hosting publish: a shop deployed
+   * only by FTP/SFTP/git had no price list at all, or charged the ones from its last publish.
+   *
+   * A project has ONE live price list, so the most recently deployed build sets it. A project that is
+   * BOTH locally hosted and deployed elsewhere stays consistent when every target is deployed together
+   * (deploy_project's default); deploying only one of them leaves the other copy showing prices that
+   * checkout no longer charges until it is deployed too.
+   */
+  onDeployed: (projectId: string, release: ReleaseManifest) => Promise<void>;
   /** Delete the LOCALLY-SERVED build for a slug. Called when a `local` target is removed — see the
    *  DELETE route. Remote protocols never write here (they build into a throwaway temp dir). */
   removeLocalSite: (slug: string) => Promise<void>;
@@ -798,15 +813,20 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         assertDeployHostAllowed(deployHostOf(target));
         // Build the site FRESH (build-at-deploy-time — no prior publish needed); a build failure
         // (bad route graph / json_data URL) is author-correctable → 409.
-        let dir: string;
+        let built: { dir: string; release: ReleaseManifest };
         try {
-          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
           }
           throw err;
         }
+        const { dir } = built;
+        // ★ The answer is SENT only after the temp build is removed. Sending first left the lock held
+        // for as long as that removal took, so a deploy started the moment this one answered — an
+        // agent deploying to its next target — was refused as "already in progress".
+        let outcome: { code: number; body: unknown };
         try {
           const result =
             target.protocol === 'git'
@@ -816,12 +836,18 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               : target.useRsync
                 ? await deployRsync(dir, targetToConfig(target, encryptionKey))
                 : await deploySite(dir, targetToConfig(target, encryptionKey));
-          // Same stamp as the streaming route — an agent deploying through this path must leave the
-          // project in the same state a UI deploy does.
+          // Same bookkeeping as the streaming route — an agent deploying through this path must leave
+          // the project in the same state a UI deploy does.
+          // Bookkeeping after the files are up: a failure here must not report the upload as failed.
+          await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
+            app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
+          });
           await recordDeployed(contentRepo, ctx, target).catch((err: unknown) => {
             app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'recording the deploy failed');
           });
-          return reply.send({ deployed: result });
+          // The manifest goes back as a publish's does: for a shop it names the price lists checkout
+          // now charges and every buy button that won't work.
+          outcome = { code: 200, body: { deployed: result, release: built.release } };
         } catch (err) {
           // Same reasoning as the streaming route: report the cause, not a placeholder for it.
           const failure = describeDeployError(err, deployEndpointOf(target));
@@ -829,10 +855,13 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             { ...deployEndpointOf(target), kind: failure.kind, errMsg: err instanceof Error ? err.message : String(err) },
             'saved-target deploy failed',
           );
-          return reply.code(502).send({ error: failure.message, failure });
+          outcome = { code: 502, body: { error: failure.message, failure } };
         } finally {
           await rm(dir, { recursive: true, force: true });
         }
+        // Released before the answer goes out (the outer `finally` would run only after it).
+        activeDeploys.delete(project.id);
+        return reply.code(outcome.code).send(outcome.body);
       } finally {
         activeDeploys.delete(project.id);
       }
@@ -859,15 +888,16 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         }
         assertDeployHostAllowed(deployHostOf(target));
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
-        let dir: string;
+        let built: { dir: string; release: ReleaseManifest };
         try {
-          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
           }
           throw err;
         }
+        const { dir } = built;
         // Stream the transport: a git push (over SSH or HTTPS), or an FTP/SFTP upload. Each forwards its
         // progress events.
         const run =
@@ -885,8 +915,15 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             run,
             deployEndpointOf(target),
             app.log,
-            // Only on success — a failed upload must not mark the target current.
-            () => recordDeployed(contentRepo, ctx, target),
+            // Only on success — a failed upload must not mark the target current, nor change what
+            // checkout charges.
+            async () => {
+              // Each on its own: a failed price-list save must not leave the target marked undeployed.
+              await deps.onDeployed(project.id, built.release).catch((err: unknown) => {
+                app.log.error({ errMsg: err instanceof Error ? err.message : String(err) }, 'saving the deployed price lists failed');
+              });
+              await recordDeployed(contentRepo, ctx, target);
+            },
           );
         } finally {
           await rm(dir, { recursive: true, force: true });

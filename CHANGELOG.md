@@ -9,8 +9,42 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Agents deploy the site: `deploy_project`.** One MCP tool puts the site live wherever it is hosted. It deploys
+  to every deploy target, or one by `targetId`. For Local Hosting it builds the copy the platform serves. For FTP,
+  SFTP or git it builds fresh and uploads. Before this, agents could only publish: on a site hosted elsewhere that
+  built a copy nothing served. Each target needs its own permission, as before: `publish` for Local Hosting,
+  `deploy` for a remote target. A connection holding only one of them is told which targets it left alone. The
+  result reports every target, and one failing doesn't stop the rest. For a shop it carries the price lists
+  checkout now charges, as publishing did.
+
+### Changed
+
+- **The clone workflow no longer deploys on its own.** It used to publish when every page passed. Deploying can now
+  upload to a remote target, where it would replace the client's live site, often the very site being cloned. So
+  the agent now hands over the preview to review and deploys only when asked.
+
+### Deprecated
+
+- **`publish_project`** (MCP): use `deploy_project`. It still works as before: it builds the Local Hosting copy
+  and never uploads to a remote target. It is no longer offered to the on-page assistant.
+
 ### Fixed
 
+- **A remote deploy now sets the prices checkout charges.** Only a Local Hosting publish used to write a shop's
+  price lists.
+  - A shop deployed only by FTP, SFTP or git refused every checkout ("no published price list yet").
+  - A shop published once and later deployed remotely charged the prices from that publish, while its pages
+    showed the new ones.
+
+  Every successful deploy now saves its build's price lists, and a failed upload leaves them unchanged. A project
+  has one price list, so the most recently deployed build sets it. A shop both locally hosted and deployed
+  elsewhere should deploy both together, which `deploy_project` does by default.
+- **A deploy started right after another one answered is no longer refused as "already in progress".** The
+  deploy routes that answer in one response (not the editor's streaming one) replied before deleting their
+  temporary build, and released their lock only after the deletion. An agent deploying several targets in a row
+  hit this.
 - **The schema.org `logo` and `image` are absolute URLs again.** A site with a site URL already had an absolute
   `og:image`, but the logo and image in its JSON-LD were page-relative (`_assets/…`, `../_assets/…` deeper down),
   which search engines can't resolve. They now resolve against the site URL the same way `og:image` does, and the

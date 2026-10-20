@@ -43,6 +43,7 @@ import {
   type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { searchIcons, searchTextures, textureCss, scopeHtml, parseSelector } from '@sitewright/blocks';
+import { deployProject } from './deploy.js';
 import { SitewrightApiError, isMemberScope, MCP_INLINE_UPLOAD_MAX_BYTES, MCP_INLINE_UPLOAD_MAX_B64_CHARS, type AccountCapability, type Capability, type Scope, type SitewrightClient, type PreviewResult, type CloneRunResult, type ImportWebsiteResult, type ImportJobView, type PagespeedAuditResult, type PagespeedAuditPair, type PagespeedMainThread, type TextEdit, type MediaUpdate } from './client.js';
 import { searchGoogleFonts, resolveGoogleFamily, suggestGoogleFamilies } from './google-fonts.js';
 import { captureImageBlocks, captureSummary } from './preview-captures.js';
@@ -511,7 +512,7 @@ function summarizeImport(r: ImportWebsiteResult): string {
     scaffolded
       ? 'CHROME: the slots hold a GENERIC platform nav + footer, NOT the original\'s. Author website.mainNav/footer from the source yourself.'
       : '',
-    'These are RAW imported scaffolds (each page carries `data.swImport`). NOW NATIVIZE them: read get_guide("import") once, then rebuild each page with native primitives, judging against visual_audit region-by-region, and publish_project when clone_audit + visual_audit pass. Do NOT ask the user to paste HTML — the import already captured the live page.',
+    'These are RAW imported scaffolds (each page carries `data.swImport`). NOW NATIVIZE them: read get_guide("import") once, then rebuild each page with native primitives, judging against visual_audit region-by-region, until clone_audit + visual_audit pass; deploy_project only when the user wants it live. Do NOT ask the user to paste HTML — the import already captured the live page.',
     warnings.length ? `Importer notes (${warnings.length}): ${warnings.slice(0, 8).join(' | ')}` : '',
   ]
     .filter(Boolean)
@@ -581,19 +582,22 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   const memberMode = holder.scope !== null && isMemberScope(holder.scope);
   if (memberMode) requireProjectArgument(server, client);
 
-  /** Gate a content tool on (connected ∧ capability); returns an actionable message otherwise. */
+  /** Gate a content tool on (connected ∧ capability — any one of them, given a list); returns an
+   *  actionable message otherwise. */
   const gate =
-    <A>(cap: Capability | AccountCapability | null, fn: (args: A) => Promise<unknown>) =>
+    <A>(cap: Capability | AccountCapability | readonly Capability[] | null, fn: (args: A) => Promise<unknown>) =>
     async (args: A): Promise<ToolResult> => {
       const scope = holder.scope;
       if (!scope) {
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
-      if (cap && !(scope.capabilities as string[]).includes(cap)) {
+      const anyOf: readonly string[] = cap === null ? [] : typeof cap === 'string' ? [cap] : cap;
+      if (anyOf.length > 0 && !anyOf.some((c) => (scope.capabilities as string[]).includes(c))) {
+        const named = anyOf.map((c) => `“${c}”`).join(' or ');
         return toolError(
           isMemberScope(scope)
-            ? `Your member token lacks the “${cap}” capability — it has to be minted with it (Account → Access keys).`
-            : `Your connection to project ${scope.projectId} (role ${scope.role}) lacks the “${cap}” capability — re-connect with the right scope via the \`login\` tool.`,
+            ? `Your member token lacks the ${named} capability — it has to be minted with it (Account → Access keys).`
+            : `Your connection to project ${scope.projectId} (role ${scope.role}) lacks the ${named} capability — re-connect with the right scope via the \`login\` tool.`,
         );
       }
       return run(async () => absolutizeInstanceUrls(await fn(args), client.publicOrigin));
@@ -1670,7 +1674,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_site_stats',
     {
       description:
-        "Read the site's BUILT-IN STATISTICS — the platform's own cookieless visit counter — for a range of UTC days (default: the last 30). Returns human traffic (`human`: views + visitors) and `botViews`; `daily` totals; human visitors by `devices` (desktop/mobile/tablet) and `countries` (ISO codes, ZZ = unknown); `bots` by kind (search, ai, seo, monitor, social, bot); top `pages` (human + bot views); `sources` (direct/search/social/ai/referral/campaign + host); and `goals` (form submissions, labelled with the form name). `enabled:false` means the site is not counting: it is switched on in the editor (Website Settings → Analytics) or via website.statistics.enabled, and takes effect for visits after the next publish. `notice:\"no-public-url\"` means the site is also deployed to another host but the instance has no public URL, so only locally hosted visits are counted — tell the user rather than reporting zeros as no traffic. A visitor is counted once per day (no cookies — a daily-rotating hash), so visitors over a range are the sum of daily visitors. `device` / `country` narrow the human figures. Only daily totals exist: there are no per-visit records to drill into, and data older than 25 months is gone.",
+        "Read the site's BUILT-IN STATISTICS — the platform's own cookieless visit counter — for a range of UTC days (default: the last 30). Returns human traffic (`human`: views + visitors) and `botViews`; `daily` totals; human visitors by `devices` (desktop/mobile/tablet) and `countries` (ISO codes, ZZ = unknown); `bots` by kind (search, ai, seo, monitor, social, bot); top `pages` (human + bot views); `sources` (direct/search/social/ai/referral/campaign + host); and `goals` (form submissions, labelled with the form name). `enabled:false` means the site is not counting: it is switched on in the editor (Website Settings → Analytics) or via website.statistics.enabled, and takes effect for visits after the next deploy. `notice:\"no-public-url\"` means the site is also deployed to another host but the instance has no public URL, so only locally hosted visits are counted — tell the user rather than reporting zeros as no traffic. A visitor is counted once per day (no cookies — a daily-rotating hash), so visitors over a range are the sum of daily visitors. `device` / `country` narrow the human figures. Only daily totals exist: there are no per-visit records to drill into, and data older than 25 months is gone.",
       inputSchema: {
         from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('First day, YYYY-MM-DD (UTC). Default: 29 days before `to`.'),
         to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Last day, YYYY-MM-DD (UTC). Default: today.'),
@@ -2090,7 +2094,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'import_website',
     {
       description:
-        'Crawl + IMPORT a public https website URL into THIS project — the FIRST step of cloning/nativizing a site. The server fetches and RENDERS the live page(s) itself (executing JS, following an embed/preview wrapper to the real framed site), self-hosts the images + fonts, and creates the imported `swImport` scaffold pages. Call this FIRST whenever you are asked to clone/nativize/reproduce a URL and the project has no imported pages yet; then nativize (get_guide("import") → author → visual_audit → publish_project). NEVER tell the user you cannot fetch websites or ask them to paste HTML — this tool imports the live page for you. Foundation (native scaffold) is on by default.',
+        'Crawl + IMPORT a public https website URL into THIS project — the FIRST step of cloning/nativizing a site. The server fetches and RENDERS the live page(s) itself (executing JS, following an embed/preview wrapper to the real framed site), self-hosts the images + fonts, and creates the imported `swImport` scaffold pages. Call this FIRST whenever you are asked to clone/nativize/reproduce a URL and the project has no imported pages yet; then nativize (get_guide("import") → author → visual_audit → clone_audit). NEVER tell the user you cannot fetch websites or ask them to paste HTML — this tool imports the live page for you. Foundation (native scaffold) is on by default.',
       inputSchema: {
         url: z.string().url().max(2048),
         foundation: z.boolean().optional(),
@@ -2431,16 +2435,34 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:write', ({ id, slug, name }) => client.renameDataset(id, slug, name, true)),
   );
 
-  // ---------------------------------------------------------------- publish (publish)
-  // NB: `deploy` is intentionally NOT exposed as a tool — pushing to a customer's external webspace
-  // (FTP/SFTP credentials) from an autonomous agent is out of scope; deploy stays human-driven.
+  // ---------------------------------------------------------------- deploy (publish / deploy)
+  // ONE action, as in the editor: put the site live wherever the project is hosted. A Local Hosting
+  // publish and a remote upload each keep their own capability (see deployProject).
+  server.registerTool(
+    'deploy_project',
+    {
+      description:
+        'Put the site LIVE: build it from the current saved content and deploy it to the project’s deploy targets — Local Hosting (the platform serves it) and FTP/SFTP/Git (uploaded to the owner’s webspace). With no `targetId` it deploys to EVERY target; pass a target `id` from the result to deploy only there. Local Hosting needs the `publish` capability, a remote target `deploy`. ★ Deploying REPLACES the live site: deploy when the user wants the change live, not as a routine step after each edit (preview_page and the previewUrl show your work without it). With no deploy target it refuses — the user adds one in the editor. The result lists each target’s outcome; one failing does not stop the rest. For a shop, `release.shopCatalog` (one list) or `release.shopCatalogs` (one per market id, each in its market\'s currency) are the price lists checkout NOW charges: every SKU with its name and price in MINOR units. A product missing from a market\'s list is not sold there. `release.shopCatalogWarnings` and `release.shopCartWarnings` name a buy button or an authored cart drawer that will not work — fix every one.',
+      inputSchema: { targetId: z.string().min(1).max(200).optional() },
+    },
+    gate(['publish', 'deploy'], ({ targetId }: { targetId?: string }) =>
+      deployProject(client, (holder.scope?.capabilities ?? []) as string[], targetId),
+    ),
+  );
+
+  // DEPRECATED alias, kept working for the deprecation window (docs/compatibility.md): stored prompts
+  // and workflows name it. It does exactly what it always did — the Local Hosting build, never a remote
+  // upload — because an old prompt that says "publish" must not start pushing to the owner's webspace.
   server.registerTool(
     'publish_project',
     {
       description:
-        'Build the project’s static site from current saved content. For a shop it also SEALS the price lists checkout charges from — the result carries `release.shopCatalog` (one list) or `release.shopCatalogs` (one per market id, each in its market\'s currency): every SKU with its name and price in MINOR units. Read it to confirm what each market actually sells; a product missing from a market\'s list is not sold there. `release.shopCatalogWarnings` and `release.shopCartWarnings` name a buy button or an authored cart drawer that will not work — fix every one.',
+        'DEPRECATED — use deploy_project, which puts the site live on every deploy target. This builds only the Local Hosting copy and never uploads to a remote (FTP/SFTP/Git) target.',
     },
-    gate('publish', () => client.publish()),
+    gate('publish', async () => ({
+      deprecated: 'publish_project is deprecated: use deploy_project, which also deploys remote (FTP/SFTP/Git) targets.',
+      ...((await client.publish()) as Record<string, unknown>),
+    })),
   );
 
   // The AUTONOMOUS whole-site clone: kicks off the SERVER-SIDE orchestrator (import → author each page →
@@ -2475,7 +2497,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
 /** The canonical clone workflow — the pre-defined `clone_site` prompt body. Kept self-contained so any
  *  MCP client (or a human) can run the exact same steps without a hand-written brief. */
-export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages. Run this WHOLE flow END-TO-END YOURSELF — import → author EVERY page → judge visual_audit region-by-region to zero blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass → publish_project — WITHOUT stopping to ask the user for approval between pages or before publishing. Only pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes and the site is published.
+export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, native Sitewright pages. Run this WHOLE flow END-TO-END YOURSELF — import → author EVERY page → judge visual_audit region-by-region to zero blocker+major → clone_audit STRUCTURE/BEHAVIOUR pass — WITHOUT stopping to ask the user for approval between pages. Only pause if you are genuinely blocked (not connected / missing a capability). Keep going until every page passes.
 
 1. If you were given a URL to clone and list_pages shows NO \`swImport\` pages (an un-imported/blank project), call import_website(url) FIRST — the server crawls + RENDERS the live site (following an embed/preview wrapper to the real page) and creates the scaffold. NEVER say you can't fetch the URL or ask the user to paste HTML. Then call list_pages: every page whose data carries \`swImport\` is an imported RAW scaffold (foreign Materialize/Bootstrap/FontAwesome markup) that must be rebuilt in native primitives. Read the full rules ONCE: get_guide("import").
 2. Work ONE page at a time, home first, so theme tokens / datasets / chrome carry across the site. For each imported page:
@@ -2491,7 +2513,7 @@ export const CLONE_SITE_WORKFLOW = `Clone this imported website into faithful, n
        Re-verify each fix in a SETTLED clone render (not an unsettled/first-paint capture).
    e. clone_audit(pageId) — the OBJECTIVE prerequisite: fix every STRUCTURE/BEHAVIOUR failure it reports (datasets deduped + named, media out of the imported/ tree, sliders enhance, modals present, fonts actually load, mobile menu reachable at phone width, content editable). Its computed-style number is ADVISORY — do NOT chase it: coverage is blind to casing/dividers/icon-style/section-height, so a green number with visible differences is STILL a fail.
    f. Repeat d–e until your written visual_audit region list reaches ZERO blocker + major AND clone_audit passes. Only THEN set page.data.swImport.rewritten:true and status "published".
-3. When every page passes, publish_project.
+3. When every page passes, tell the user the clone is ready to review (create_preview_share gives them a link). Deploy (deploy_project) only when they ask for it to go live: deploying REPLACES their live site — often the very site you cloned.
 
 PACING: tool calls are rate-limited PER TOKEN, and the render-heavy audits are the tightest (a few per
 minute each) — space them out, and treat a 429 or a transient "mcp_unavailable"/RPC error as BACKPRESSURE,

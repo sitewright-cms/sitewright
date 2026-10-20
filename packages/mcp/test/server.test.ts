@@ -129,7 +129,9 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
       },
     })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
-    publishStatus: vi.fn(async () => ({ release: null })),
+    publishStatus: vi.fn(async () => ({ release: null, deployTargets: 1, localHosting: true })),
+    listDeployTargets: vi.fn(async () => ({ items: [{ id: 'loc', name: 'Local Hosting', protocol: 'local' }] })),
+    deployTarget: vi.fn(async () => ({ deployed: { uploaded: 1 }, release: { routes: 1 } })),
     listPreviewShares: vi.fn(async () => ({ defaultExpiryDays: 30, items: [] })),
     createPreviewShare: vi.fn(async () => ({ id: 'sh1', label: 'Client', url: '/preview-site/site/sh1-mac/' })),
     revokePreviewShare: vi.fn(async () => ({ ok: true })),
@@ -209,7 +211,7 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const reader = await toolNames(await connect(fakeClient(), readScope));
     expect(reader).toContain('get_page');
     expect(reader).toContain('put_page'); // listed even for a read token…
-    expect(reader).toContain('publish_project');
+    expect(reader).toContain('deploy_project');
     expect(reader).toContain('login');
   });
 
@@ -283,7 +285,7 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
     expect((await mcp.callTool({ name: 'put_page', arguments: { page } })).isError).toBeFalsy();
-    expect((await mcp.callTool({ name: 'publish_project', arguments: {} })).isError).toBeFalsy();
+    expect((await mcp.callTool({ name: 'deploy_project', arguments: {} })).isError).toBeFalsy();
   });
 
   it('import_stock_image is gated on content:write; list/search stay read-capable', async () => {
@@ -2310,10 +2312,122 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     }
   });
 
-  it('publish_project forwards to publish', async () => {
+  it('publish_project (deprecated) still builds Local Hosting only, and says what replaces it', async () => {
     const client = fakeClient();
-    await (await connect(client, writeScope)).callTool({ name: 'publish_project', arguments: {} });
+    const res = await (await connect(client, writeScope)).callTool({ name: 'publish_project', arguments: {} });
     expect(calls(client).publish).toHaveBeenCalled();
+    expect(calls(client).deployTarget).not.toHaveBeenCalled();
+    expect(JSON.parse(text(res))).toMatchObject({ deprecated: expect.stringMatching(/deploy_project/), url: '/sites/p/' });
+  });
+
+  describe('deploy_project', () => {
+    const deployScope: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'publish', 'deploy'] };
+    const twoTargets = () =>
+      fakeClient({
+        publishStatus: vi.fn(async () => ({ deployTargets: 2, localHosting: true })),
+        listDeployTargets: vi.fn(async () => ({
+          items: [
+            { id: 'ftp1', name: 'Webspace', protocol: 'sftp' },
+            { id: 'loc', name: 'Local Hosting', protocol: 'local' },
+          ],
+        })),
+      });
+    const report = (res: unknown) => JSON.parse(text(res as never)) as { deployed: Array<Record<string, unknown>>; notDeployed?: string; release?: unknown };
+
+    it('deploys to EVERY target — Local Hosting first, then the remote one — and reports each', async () => {
+      const client = twoTargets();
+      const res = await (await connect(client, deployScope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBeFalsy();
+      expect(calls(client).publish).toHaveBeenCalledTimes(1);
+      expect(calls(client).deployTarget).toHaveBeenCalledWith('ftp1');
+      expect(report(res).deployed.map((d) => [d.target, d.ok])).toEqual([['Local Hosting', true], ['Webspace', true]]);
+      expect(report(res).release).toEqual({ routes: 1 });
+    });
+
+    it('targetId deploys only that target', async () => {
+      const client = twoTargets();
+      await (await connect(client, deployScope)).callTool({ name: 'deploy_project', arguments: { targetId: 'ftp1' } });
+      expect(calls(client).deployTarget).toHaveBeenCalledWith('ftp1');
+      expect(calls(client).publish).not.toHaveBeenCalled();
+    });
+
+    it('an unknown targetId is refused, naming the targets there are', async () => {
+      const client = twoTargets();
+      const res = await (await connect(client, deployScope)).callTool({ name: 'deploy_project', arguments: { targetId: 'nope' } });
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/Webspace \(ftp1, sftp\)/);
+      expect(calls(client).deployTarget).not.toHaveBeenCalled();
+    });
+
+    it('one target failing does not stop the next, and the report says which', async () => {
+      const client = twoTargets();
+      (calls(client).publish as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('a build is already in progress'));
+      const res = await (await connect(client, deployScope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBeFalsy();
+      expect(report(res).deployed).toEqual([
+        { target: 'Local Hosting', protocol: 'local', id: 'loc', ok: false, error: 'a build is already in progress' },
+        { target: 'Webspace', protocol: 'sftp', id: 'ftp1', ok: true },
+      ]);
+    });
+
+    it('is an error when nothing at all was deployed', async () => {
+      const client = twoTargets();
+      (calls(client).publish as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('build failed'));
+      (calls(client).deployTarget as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('auth failed'));
+      const res = await (await connect(client, deployScope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/Nothing was deployed.*Local Hosting: build failed.*Webspace: auth failed/);
+    });
+
+    it('with only `publish` it deploys Local Hosting and says which remote targets it left alone', async () => {
+      const client = twoTargets();
+      const res = await (await connect(client, writeScope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBeFalsy();
+      expect(calls(client).listDeployTargets).not.toHaveBeenCalled(); // listing them needs `deploy`
+      expect(calls(client).deployTarget).not.toHaveBeenCalled();
+      expect(report(res).deployed).toEqual([{ target: 'Local Hosting', protocol: 'local', ok: true, url: '/sites/p/' }]);
+      expect(report(res).notDeployed).toMatch(/1 remote target was not deployed.*“deploy”/);
+    });
+
+    it('with only `deploy` it uploads the remote target and refuses Local Hosting by name', async () => {
+      const client = twoTargets();
+      const scope: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'deploy'] };
+      const res = await (await connect(client, scope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(calls(client).publish).not.toHaveBeenCalled();
+      expect(report(res).deployed.map((d) => [d.target, d.ok, d.error])).toEqual([
+        ['Local Hosting', false, 'Local Hosting needs the “publish” capability.'],
+        ['Webspace', true, undefined],
+      ]);
+    });
+
+    it('with no deploy target it refuses — there is nowhere to put the site', async () => {
+      const client = fakeClient({
+        publishStatus: vi.fn(async () => ({ deployTargets: 0, localHosting: false })),
+        listDeployTargets: vi.fn(async () => ({ items: [] })),
+      });
+      for (const scope of [deployScope, writeScope]) {
+        const res = await (await connect(client, scope)).callTool({ name: 'deploy_project', arguments: {} });
+        expect(res.isError).toBe(true);
+        expect(text(res)).toMatch(/no deploy target/);
+      }
+      expect(calls(client).publish).not.toHaveBeenCalled();
+    });
+
+    it('with `deploy` it lists the targets itself — no `content:read` needed for the publish status', async () => {
+      const client = twoTargets();
+      const scope: Scope = { projectId: 'p', role: 'admin', capabilities: ['publish', 'deploy'] };
+      const res = await (await connect(client, scope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBeFalsy();
+      expect(calls(client).publishStatus).not.toHaveBeenCalled();
+    });
+
+    it('a token with neither capability is refused naming both, without a client call', async () => {
+      const client = twoTargets();
+      const res = await (await connect(client, readScope)).callTool({ name: 'deploy_project', arguments: {} });
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/“publish” or “deploy”/);
+      expect(calls(client).publishStatus).not.toHaveBeenCalled();
+    });
   });
 
   it('maps a generic Error (not a SitewrightApiError) to an MCP tool error', async () => {

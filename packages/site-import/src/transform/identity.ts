@@ -1,7 +1,7 @@
 // Extract a CorporateIdentity from a site's home document, and flat SEO from each page. Best-effort:
 // every field is optional except `name`, which always resolves to something. Asset references prefer a
 // self-hosted ref (from the asset map) and fall back to an absolute https hotlink.
-import { CorporateIdentitySchema, detectSocial, type CorporateIdentity } from '@sitewright/schema';
+import { CorporateIdentitySchema, detectSocial, schemaOrgTypeName, type CorporateIdentity } from '@sitewright/schema';
 import { allByName, type Document, type Element } from '../dom.js';
 import { textContent, findAll } from 'domutils';
 import { assetKey, resolveUrl } from '../url-util.js';
@@ -121,11 +121,6 @@ const hasLegalSuffix = (s: string): boolean => LEGAL_SUFFIX_RE.test(s);
 function stripLegalSuffix(s: string): string | undefined {
   const out = s.replace(LEGAL_SUFFIX_RE, '').trim();
   return out && out !== s.trim() && out.length >= 2 ? out.slice(0, 120) : undefined;
-}
-/** Humanize a schema.org @type (HomeAndConstructionBusiness → "Home And Construction Business"). */
-function humanizeType(t: string): string | undefined {
-  const s = t.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim();
-  return s ? s.slice(0, 80) : undefined;
 }
 
 /** Pull Organization-ish fields (incl. postal address + geo) from JSON-LD `application/ld+json` blocks. */
@@ -307,7 +302,8 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
   const fullName = ld.legalName ?? ld.name ?? name;
   const legalName = (ld.legalName ?? (hasLegalSuffix(fullName) ? fullName : undefined))?.slice(0, 300);
   const shortName = (ld.shortName ?? stripLegalSuffix(fullName))?.slice(0, 120);
-  const businessType = ld.type ? humanizeType(ld.type) : undefined;
+  // The exact @type: businessType is emitted as the site's JSON-LD `@type`, so it is never humanized.
+  const businessType = ld.type ? schemaOrgTypeName(ld.type) : undefined;
 
   const input: Record<string, unknown> = {
     name: name.slice(0, 200),

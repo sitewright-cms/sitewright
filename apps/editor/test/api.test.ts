@@ -1450,6 +1450,37 @@ describe('project transfer api', () => {
     expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/stats?from=2026-10-01&to=2026-10-19&device=mobile&country=DE');
   });
 
+  it('rank tracking: reads with an optional range, and each staff and admin call hits its route and method', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    await api.getRankings('p1');
+    await api.getRankings('p1', { from: '2026-07-01', to: '2026-10-20' });
+    await api.putRankSettings('p1', { domain: 'plumbers.na', schedule: 'weekly', depth: 100 });
+    await api.addRankKeywords('p1', { keywords: ['a'], location: { name: 'Namibia', countryCode: 'NA' }, languageCode: 'en' });
+    await api.setRankKeywordPaused('p1', 'k/1', true);
+    await api.removeRankKeyword('p1', 'k/1');
+    await api.checkRankingsNow('p1');
+    await api.searchRankLocations('NA', 'wind hoek');
+    await api.getRankTracking();
+    await api.putRankTracking({ monthlyBudgetUsd: 25 });
+    await api.testRankProvider('dataforseo');
+    const calls = fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? 'GET'} ${url as string}`);
+    expect(calls).toEqual([
+      'GET /projects/p1/rankings',
+      'GET /projects/p1/rankings?from=2026-07-01&to=2026-10-20',
+      'PUT /projects/p1/rankings/settings',
+      'POST /projects/p1/rankings/keywords',
+      'PATCH /projects/p1/rankings/keywords/k%2F1',
+      'DELETE /projects/p1/rankings/keywords/k%2F1',
+      'POST /projects/p1/rankings/check',
+      'GET /rank-tracking/locations?country=NA&q=wind+hoek',
+      'GET /admin/rank-tracking',
+      'PUT /admin/rank-tracking',
+      'POST /admin/rank-tracking/test',
+    ]);
+    expect(JSON.parse((fetchMock.mock.calls[4]![1] as RequestInit).body as string)).toEqual({ paused: true });
+    expect(JSON.parse((fetchMock.mock.calls[10]![1] as RequestInit).body as string)).toEqual({ provider: 'dataforseo' });
+  });
+
   it('downloadStatsCsv points a transient anchor at the CSV route for one table', async () => {
     const clicks: string[] = [];
     const realCreate = document.createElement.bind(document);

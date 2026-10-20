@@ -59,7 +59,16 @@ function Position({ k }: { k: RankKeywordView }) {
   return <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100">{k.latest.position}</span>;
 }
 
-export function RankingsView({ project, initial }: { project: Project; initial?: ProjectRankings | null }) {
+export function RankingsView({
+  project,
+  initial,
+  onLoaded,
+}: {
+  project: Project;
+  initial?: ProjectRankings | null;
+  /** Each fresh answer, so the parent's copy (its first answer for the next visit) stays current. */
+  onLoaded?: (r: ProjectRankings) => void;
+}) {
   const { confirm, dialog } = useDialogs();
   const [range, setRange] = useState<StatsRangeId>('90d');
   const [data, setData] = useState<ProjectRankings | null>(initial ?? null);
@@ -79,11 +88,13 @@ export function RankingsView({ project, initial }: { project: Project; initial?:
       if (mine !== seq.current) return;
       setData(res);
       setError(null);
+      onLoaded?.(res);
     } catch (err) {
       if (mine === seq.current) setError(err instanceof Error ? err.message : 'Could not load the rankings');
     } finally {
       if (mine === seq.current) setLoading(false);
     }
+    // `onLoaded` is the parent's setter wrapper; a new identity must not refetch.
   }, [project.id, range]);
 
   useEffect(() => {
@@ -137,7 +148,8 @@ export function RankingsView({ project, initial }: { project: Project; initial?:
 
   const manage = data?.canManage ?? false;
   const tracking = data?.tracking ?? null;
-  const { from, to } = rangeDays(range);
+  // The range the DATA is for: while a new range loads, the old answer is still drawn on its own axis.
+  const { from, to } = data ? { from: data.from, to: data.to } : rangeDays(range);
   const lastChecked = data?.keywords.reduce<string | null>((max, k) => (k.latest && (!max || k.latest.checkedAt > max) ? k.latest.checkedAt : max), null);
   const suggested = project.siteUrl ? project.siteUrl.replace(/^https?:\/\//, '').split('/')[0] : undefined;
 
@@ -166,9 +178,11 @@ export function RankingsView({ project, initial }: { project: Project; initial?:
           </span>
         )}
         <span className="ml-auto flex flex-wrap items-center gap-2">
-          <button type="button" className={ghostButton} onClick={() => void load()} aria-label="Refresh rankings" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
-          </button>
+          <Tooltip tip="Refresh">
+            <button type="button" className={ghostButton} onClick={() => void load()} aria-label="Refresh rankings" disabled={loading}>
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
+            </button>
+          </Tooltip>
           {manage && tracking && (data?.keywords.length ?? 0) > 0 && (
             <button type="button" className={ghostButton} onClick={() => void checkNow()} disabled={checking}>
               {checking ? 'Checking…' : 'Check now'}

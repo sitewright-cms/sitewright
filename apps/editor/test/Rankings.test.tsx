@@ -95,6 +95,17 @@ describe('the Statistics tab', () => {
     expect(screen.getByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
   });
 
+  it('does not tear down and refetch the visits when the rankings tab appears', async () => {
+    let answer!: (r: ProjectRankings) => void;
+    api.getRankings.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    render(<StatisticsTab project={project} />);
+    await screen.findByRole('group', { name: 'Visitors' });
+    expect(api.getStats).toHaveBeenCalledTimes(1);
+    await act(async () => answer(rankings()));
+    expect(await screen.findByRole('tab', { name: /Search rankings/ })).toBeInTheDocument();
+    expect(api.getStats).toHaveBeenCalledTimes(1);
+  });
+
   it('offers staff the tab to set tracking up', async () => {
     api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider' }));
     render(<StatisticsTab project={project} />);
@@ -191,6 +202,43 @@ describe('what staff manage', () => {
   });
 });
 
+describe('the place picker', () => {
+  async function staffForm() {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: [] }));
+    render(<RankingsView project={project} />);
+    return screen.findByRole('form', { name: 'Add keywords' });
+  }
+
+  it('keeps the country as the place even when the field is focused before the list answers', async () => {
+    let answer!: (r: { locations: Array<{ name: string; type: string; countryCode: string }> }) => void;
+    api.searchRankLocations.mockImplementation((_c: string, q: string) =>
+      q === '' ? new Promise((resolve) => (answer = resolve)) : Promise.resolve({ locations: [] }),
+    );
+    const form = await staffForm();
+    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
+    const place = within(form).getByRole('combobox', { name: 'Searched from' });
+    fireEvent.focus(place);
+    await act(async () => answer({ locations: [{ name: 'Namibia', type: 'Country', countryCode: 'NA' }] }));
+    await waitFor(() => expect(place).toHaveAttribute('placeholder', 'Namibia'));
+    fireEvent.change(within(form).getByLabelText('Keywords, one per line'), { target: { value: 'plumber' } });
+    expect(within(form).getByRole('button', { name: 'Add keyword' })).toBeEnabled();
+  });
+
+  it('never offers the previous country\u2019s places after the country changes', async () => {
+    api.searchRankLocations.mockImplementation(async (country: string, q: string) => ({
+      locations: q ? [{ name: `${country}-place`, type: 'City', countryCode: country }] : [{ name: country, type: 'Country', countryCode: country }],
+    }));
+    const form = await staffForm();
+    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
+    const place = within(form).getByRole('combobox', { name: 'Searched from' });
+    fireEvent.focus(place);
+    fireEvent.change(place, { target: { value: 'p' } });
+    await within(form).findByRole('button', { name: /NA-place/ });
+    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'DE' } });
+    expect(within(form).queryByRole('button', { name: /NA-place/ })).toBeNull();
+  });
+});
+
 describe('RankChart', () => {
   it('marks a check outside the results on the bottom line and breaks the line there', () => {
     const { container } = render(
@@ -211,6 +259,16 @@ describe('RankChart', () => {
     const missing = container.querySelector('circle[data-day="2026-10-15"]')!;
     expect(Number(missing.getAttribute('cy'))).toBe(180 - 22);
     expect(screen.getByRole('img')).toHaveAccessibleName('k: 4 checks, best position 4, latest position 4');
+  });
+
+  it('keeps an older, deeper position on the chart rather than pinning it to the bottom', () => {
+    const { container } = render(
+      <RankChart keyword="k" from="2026-10-01" to="2026-10-31" depth={10} series={[{ day: '2026-10-01', position: 40 }, { day: '2026-10-08', position: null }, { day: '2026-10-15', position: 6 }]} />,
+    );
+    const deep = Number(container.querySelector('circle[data-day="2026-10-01"]')!.getAttribute('cy'));
+    const miss = Number(container.querySelector('circle[data-day="2026-10-08"]')!.getAttribute('cy'));
+    expect(deep).toBeLessThan(miss); // 40 sits above the "not in the results" line of a 50-deep axis
+    expect(screen.getByRole('img')).toHaveAccessibleName('k: 3 checks, best position 6, latest position 6');
   });
 });
 
@@ -251,7 +309,13 @@ describe('System Settings: rank tracking', () => {
     await act(async () => ref.current!.save());
     expect(api.putRankTracking).not.toHaveBeenCalled();
 
+    // An emptied budget is a mistake, caught before any save.
+    fireEvent.change(screen.getByLabelText('Monthly budget in US dollars'), { target: { value: '' } });
+    expect(ref.current!.validate()).toMatch(/budget must be a number/);
+
     fireEvent.change(screen.getByLabelText('Rank tracking provider'), { target: { value: 'dataforseo' } });
+    // The select shows the default the server assumes, and saving it untouched would not send it.
+    expect(screen.getByLabelText('Searches')).toHaveValue('production');
     expect(screen.getByLabelText('API password')).toHaveValue('');
     expect(screen.getByLabelText('API password')).toHaveAttribute('placeholder', '•••••• (leave blank to keep)');
     fireEvent.change(screen.getByLabelText('Monthly budget in US dollars'), { target: { value: '25' } });

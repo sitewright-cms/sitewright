@@ -29,16 +29,19 @@ function ticks(bottom: number): number[] {
  * so a move from 18 to 3 reads as one — unless a check was outside the results, which needs the full depth.
  */
 export function axisBottom(series: readonly RankPoint[], depth: number): number {
-  if (series.some((p) => p.position === null)) return depth;
   const worst = Math.max(0, ...series.map((p) => p.position ?? 0));
   const nice = worst <= 10 ? 10 : worst <= 20 ? 20 : worst <= 30 ? 30 : worst <= 50 ? 50 : 100;
-  return Math.min(depth, nice);
+  // A check outside the results needs the depth read — or more, when an older check read deeper and ranked lower.
+  return series.some((p) => p.position === null) ? Math.max(depth, nice) : nice;
 }
 
-/** "Position 4", or "Not in the top 100". */
-export function positionText(position: number | null, depth: number): string {
-  return position === null ? `Not in the top ${depth}` : `Position ${position}`;
+/** "Position 4", or "Not in the top 100" (without a depth: "Not in the results read"). */
+export function positionText(position: number | null, depth?: number): string {
+  if (position !== null) return `Position ${position}`;
+  return depth ? `Not in the top ${depth}` : 'Not in the results read';
 }
+
+const checks = (n: number): string => `${n} check${n === 1 ? '' : 's'}`;
 
 export function RankChart({
   keyword,
@@ -78,8 +81,8 @@ export function RankChart({
 
   const ranked = series.filter((p) => p.position !== null).map((p) => p.position as number);
   const summary = ranked.length
-    ? `${keyword}: ${series.length} checks, best position ${Math.min(...ranked)}, latest ${positionText(series.at(-1)?.position ?? null, depth).toLowerCase()}`
-    : `${keyword}: ${series.length} checks, not in the top ${depth} in this period`;
+    ? `${keyword}: ${checks(series.length)}, best position ${Math.min(...ranked)}, latest ${positionText(series.at(-1)?.position ?? null).toLowerCase()}`
+    : `${keyword}: ${checks(series.length)}, not in the results read in this period`;
 
   return (
     <div className="relative">
@@ -104,7 +107,8 @@ export function RankChart({
         {series.map((p) => {
           const cx = x(p.day);
           const cy = p.position === null ? bottom : y(p.position);
-          const lines = [longDay(p.day), positionText(p.position, depth)];
+          // A past check may have read a different depth than today's setup, so its miss is not given a number.
+          const lines = [longDay(p.day), positionText(p.position)];
           return (
             <circle
               key={p.day}

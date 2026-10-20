@@ -645,10 +645,22 @@ export function InstanceSettings() {
       input.brandSecondary = brandSecondary === DEFAULT_BRAND_SECONDARY ? null : brandSecondary;
     }
     if (logoDraft !== undefined) input.platformLogo = logoDraft; // {mime,data} to set, null to remove
+    // Rank tracking keeps its own store and route. Its form is checked FIRST, so a mistake there stops the save
+    // before anything is stored rather than after the rest already was.
+    const rankInvalid = rankRef.current?.validate() ?? null;
+    if (rankInvalid) {
+      setError(rankInvalid);
+      return;
+    }
     try {
       const res = await api.putInstanceSettings(input);
-      // Rank tracking keeps its own store (and its own route); it saves after the rest succeeded.
-      await rankRef.current?.save();
+      try {
+        await rankRef.current?.save();
+      } catch (err) {
+        hydrate(res.settings);
+        setError(`The other settings were saved, but rank tracking was not: ${err instanceof Error ? err.message : 'failed to save'}`);
+        return;
+      }
       hydrate(res.settings);
       // Re-skin the live chrome immediately so the admin sees the change without a reload.
       const bust = logoBust + 1;

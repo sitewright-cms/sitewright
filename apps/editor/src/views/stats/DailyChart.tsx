@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { SiteStats } from '@sitewright/schema';
 import { useChartTip } from './ChartTip';
 import { counted, fmt, longDay, shortDay } from './format';
@@ -10,6 +11,9 @@ import { counted, fmt, longDay, shortDay } from './format';
  */
 export function DailyChart({ daily }: { daily: SiteStats['daily'] }) {
   const tip = useChartTip();
+  const { hide } = tip;
+  // The bubble quotes THESE figures: the minute refresh, bringing new ones, closes it rather than leave it stale.
+  useEffect(() => hide(), [daily, hide]);
   const W = 720;
   const H = 160;
   const max = Math.max(1, ...daily.map((d) => d.views + d.botViews));

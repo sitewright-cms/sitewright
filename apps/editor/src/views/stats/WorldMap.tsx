@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SiteStats } from '@sitewright/schema';
 import { Panel } from './Breakdowns';
 import { useChartTip } from './ChartTip';
@@ -39,7 +39,7 @@ export function WorldMap({
   filter?: ReactNode;
 }) {
   const [paths, setPaths] = useState<Paths | null>(null);
-  const tip = useChartTip();
+  const { showAtPointer, hide, bubble } = useChartTip();
   useEffect(() => {
     let live = true;
     void import('./world-paths').then((m) => {
@@ -49,43 +49,61 @@ export function WorldMap({
       live = false;
     };
   }, []);
+  // The bubble quotes THESE figures: a refresh that brings new ones closes it rather than leave it stale.
+  useEffect(() => hide(), [countries, hide]);
+
+  // ★ Memoised: the bubble follows the pointer, so this component re-renders on every mouse move — and
+  // without this, every move would rebuild ~200 country paths and their handlers.
+  const shapes = useMemo(() => {
+    if (!paths) return null;
+    const visitors = new Map(countries.filter((c) => c.country !== 'ZZ').map((c) => [c.country, c.visitors]));
+    const max = Math.max(0, ...visitors.values());
+    return Object.entries(paths.WORLD_PATHS).map(([cc, d]) => {
+      const v = visitors.get(cc) ?? 0;
+      const shade = shadeOf(v, max);
+      return (
+        <path
+          key={cc}
+          d={d}
+          data-country={cc}
+          // eslint-disable-next-line security/detect-object-injection -- shade is an in-range index from shadeOf
+          className={`${shade < 0 ? 'fill-slate-200 dark:fill-slate-700' : SHADES[shade]} stroke-white dark:stroke-slate-900 ${selected === cc ? 'stroke-indigo-700 dark:stroke-indigo-200' : ''} ${v ? 'cursor-pointer hover:opacity-80' : ''}`}
+          strokeWidth={selected === cc ? 1.5 : 0.5}
+          // A click changes what the bubble would say (and moves the map as the filter pill appears): close it.
+          onClick={
+            v
+              ? () => {
+                  hide();
+                  onSelect(selected === cc ? undefined : cc);
+                }
+              : undefined
+          }
+          onMouseMove={(e) =>
+            showAtPointer(e.clientX, e.clientY, [
+              countryName(cc),
+              v ? counted(v, 'visitor') : 'No visitors',
+              ...(v ? [selected === cc ? 'Click to clear the filter' : 'Click to filter by it'] : []),
+            ])
+          }
+          onMouseLeave={hide}
+        />
+      );
+    });
+  }, [paths, countries, selected, onSelect, showAtPointer, hide]);
+
   const known = countries.filter((c) => c.country !== 'ZZ');
   if (known.length === 0) return null;
-  const visitors = new Map(known.map((c) => [c.country, c.visitors]));
-  const max = Math.max(...known.map((c) => c.visitors));
   const top = known.slice(0, 3).map((c) => `${countryName(c.country)} ${fmt(c.visitors)}`).join(', ');
   return (
     <Panel title="Map" action={filter}>
       {paths ? (
         <svg viewBox={paths.WORLD_VIEWBOX} className="h-auto w-full" role="img" aria-label={`Visitors by country — busiest: ${top}`}>
-          {Object.entries(paths.WORLD_PATHS).map(([cc, d]) => {
-            const v = visitors.get(cc) ?? 0;
-            const shade = shadeOf(v, max);
-            return (
-              <path
-                key={cc}
-                d={d}
-                data-country={cc}
-                // eslint-disable-next-line security/detect-object-injection -- shade is an in-range index from shadeOf
-                className={`${shade < 0 ? 'fill-slate-200 dark:fill-slate-700' : SHADES[shade]} stroke-white dark:stroke-slate-900 ${selected === cc ? 'stroke-indigo-700 dark:stroke-indigo-200' : ''} ${v ? 'cursor-pointer hover:opacity-80' : ''}`}
-                strokeWidth={selected === cc ? 1.5 : 0.5}
-                onClick={v ? () => onSelect(selected === cc ? undefined : cc) : undefined}
-                onMouseMove={(e) =>
-                  tip.showAtPointer(e.clientX, e.clientY, [
-                    countryName(cc),
-                    v ? counted(v, 'visitor') : 'No visitors',
-                    ...(v ? [selected === cc ? 'Click to clear the filter' : 'Click to filter by it'] : []),
-                  ])
-                }
-                onMouseLeave={tip.hide}
-              />
-            );
-          })}
+          {shapes}
         </svg>
       ) : (
         <div className="aspect-[96/47] w-full animate-pulse rounded-lg bg-slate-100 dark:bg-white/5" />
       )}
-      {tip.bubble}
+      {bubble}
     </Panel>
   );
 }

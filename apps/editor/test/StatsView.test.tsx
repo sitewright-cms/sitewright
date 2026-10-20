@@ -137,7 +137,10 @@ describe('StatsView', () => {
     const de = container.querySelector('path[data-country="DE"]')!;
     fireEvent.mouseMove(de, { clientX: 200, clientY: 120 });
     expect([...screen.getByRole('tooltip').children].map((l) => l.textContent)).toEqual(['Germany', '30 visitors', 'Click to filter by it']);
-    fireEvent.mouseLeave(de);
+    // A click filters — and closes the bubble, whose "Click to filter by it" would now be wrong.
+    fireEvent.click(de);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), country: 'DE' }));
     const fr = container.querySelector('path[data-country="FR"]')!;
     fireEvent.mouseMove(fr, { clientX: 150, clientY: 120 });
     // Nothing to filter by, so no promise of one.

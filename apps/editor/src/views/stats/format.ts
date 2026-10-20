@@ -64,7 +64,6 @@ export const SOURCE_LABELS: Record<StatsSource, string> = {
   campaign: 'Campaign',
 };
 
-/** A day for a chart label: `19 Oct`. */
 /** A day with its weekday and year, as a tooltip heads it: "Mon, 19 Oct 2026". */
 export function longDay(day: string): string {
   const d = new Date(`${day}T00:00:00Z`);
@@ -76,6 +75,7 @@ export function counted(n: number, noun: string): string {
   return `${fmt(n)} ${noun}${n === 1 ? '' : 's'}`;
 }
 
+/** A day for a chart label: `19 Oct`. */
 export function shortDay(day: string): string {
   const d = new Date(`${day}T00:00:00Z`);
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });

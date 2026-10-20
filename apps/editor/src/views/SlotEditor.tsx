@@ -515,7 +515,11 @@ export function SlotEditor({ project, slot, value, onSave, onSwitchSlot, locales
       <select
         value={slot}
         onChange={(e) => switchSlot(e.target.value as ChromeSlotKey)}
-        className="max-w-[16rem] cursor-pointer truncate rounded-lg border border-transparent bg-transparent py-0.5 pl-1.5 pr-6 text-sm font-bold text-slate-800 outline-none transition hover:border-slate-300 hover:bg-white/70 dark:text-slate-100 dark:hover:border-white/15 dark:hover:bg-white/10"
+        // ★ The OPEN list is painted from the options' own colours, falling back to the select's — and the select
+        // is transparent so the title reads as text. In dark mode that left near-white option text on the light
+        // list a transparent background falls back to: unreadable. The options carry their colours in both themes,
+        // and the current slot its own shade (an option's background would otherwise hide the selected state).
+        className="max-w-[16rem] cursor-pointer truncate rounded-lg border border-transparent bg-transparent py-0.5 pl-1.5 pr-6 text-sm font-bold text-slate-800 outline-none transition hover:border-slate-300 hover:bg-white/70 dark:text-slate-100 dark:hover:border-white/15 dark:hover:bg-white/10 [&>option]:bg-white [&>option]:font-normal [&>option]:text-slate-800 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100 [&>option:checked]:bg-slate-200 dark:[&>option:checked]:bg-slate-700"
       >
         {CHROME_SLOTS.map((c) => (
           <option key={c.key} value={c.key}>

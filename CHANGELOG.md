@@ -60,6 +60,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Who gets which first:** a project's members are answered by its own agent first, agency staff by the
     platform's agent first; either way the other is the fallback, and staff can still pick in the chat.
 
+### Fixed
+
+- **The slot picker in the skeleton editor is readable in dark mode.** The editor's title doubles as a dropdown
+  of the five chrome slots (main navigation, sidebars, footer, bottom). Its open list showed near-white names on a
+  light background in dark mode. The list now has its own colours in both themes, with the current slot shaded.
+
 ## [0.67.0] — 2026-10-20
 
 ### Added

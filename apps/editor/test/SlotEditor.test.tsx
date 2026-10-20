@@ -388,6 +388,15 @@ describe('SlotEditor — switching to another slot', () => {
     expect(screen.getByRole('dialog', { name: 'Main Navigation' })).toBeInTheDocument();
   });
 
+  it('the picker\'s open list carries its own colours in both themes (the select itself is transparent)', () => {
+    render(<SlotEditor project={project} slot="mainNav" value={SLOT_SOURCE} onSave={vi.fn()} onSwitchSlot={vi.fn()} onClose={vi.fn()} />);
+    const picker = screen.getByRole('combobox', { name: 'Chrome slot' });
+    // Without these, dark mode painted near-white option text on the light list a transparent select falls back to.
+    for (const cls of ['[&>option]:bg-white', '[&>option]:text-slate-800', 'dark:[&>option]:bg-slate-900', 'dark:[&>option]:text-slate-100', 'dark:[&>option:checked]:bg-slate-700']) {
+      expect(picker.classList.contains(cls)).toBe(true);
+    }
+  });
+
   it('the preview\u2019s "Edit <slot>" affordance switches THIS editor', () => {
     const onSwitchSlot = vi.fn();
     render(<SlotEditor project={project} slot="mainNav" value={SLOT_SOURCE} onSave={vi.fn()} onSwitchSlot={onSwitchSlot} onClose={vi.fn()} />);

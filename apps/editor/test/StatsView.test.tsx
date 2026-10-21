@@ -121,13 +121,17 @@ describe('StatsView', () => {
   it('★ a day in the chart shows the editor tooltip, one figure per line', async () => {
     const { container } = render(<StatsView project={project} />);
     await screen.findByRole('group', { name: 'Visitors' });
-    const day = container.querySelector('[data-day="2026-10-18"]')!;
     // No native SVG <title> left: it would show a second, browser-styled tooltip over this one.
     expect(container.querySelector('svg title')).toBeNull();
-    fireEvent.mouseEnter(day);
-    const tip = screen.getByRole('tooltip');
+    // ★ The bar is looked up again on every try: a re-render after the first paint (slow under CI load) replaces
+    // it, and a hover on the detached old node shows nothing — this test was red on main for that alone.
+    const day = (): Element => container.querySelector('[data-day="2026-10-18"]')!;
+    const tip = await waitFor(() => {
+      fireEvent.mouseEnter(day());
+      return screen.getByRole('tooltip');
+    });
     expect([...tip.children].map((line) => line.textContent)).toEqual(['Sun, 18 Oct 2026', '70 pageviews', '25 visitors', '50 bot pageviews']);
-    fireEvent.mouseLeave(day);
+    fireEvent.mouseLeave(day());
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
 

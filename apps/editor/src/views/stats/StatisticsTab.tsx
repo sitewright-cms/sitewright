@@ -59,15 +59,18 @@ export function StatisticsTab({
   return (
     <div className="flex flex-col gap-3">
       {showRankings && visitsAvailable && (
-        <Tabs<View>
-          ariaLabel="Statistics"
-          active={view}
-          onSelect={setView}
-          tabs={[
-            { id: 'visits', label: 'Visits', icon: <BarChart3 className="h-4 w-4" aria-hidden /> },
-            { id: 'rankings', label: 'Search rankings', icon: <TrendingUp className="h-4 w-4" aria-hidden /> },
-          ]}
-        />
+        <div className="flex justify-center">
+          <Tabs<View>
+            ariaLabel="Statistics"
+            variant="prominent"
+            active={view}
+            onSelect={setView}
+            tabs={[
+              { id: 'visits', label: 'Visits', icon: <BarChart3 className="h-5 w-5" aria-hidden /> },
+              { id: 'rankings', label: 'Search rankings', icon: <TrendingUp className="h-5 w-5" aria-hidden /> },
+            ]}
+          />
+        </div>
       )}
       {visits ? (
         <StatsView project={project} onOpenSettings={onOpenSettings} />

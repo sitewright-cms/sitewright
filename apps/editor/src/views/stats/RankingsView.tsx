@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Pause, Play, RefreshCw, Settings2, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, RefreshCw, Settings2 } from 'lucide-react';
 import type { ProjectRankings, RankKeywordView, RankStatus } from '@sitewright/schema';
 import { api, type Project } from '../../api';
-import { dangerButton, ghostButton, gradientHover, gradientSurface } from '../../theme';
-import { useDialogs } from '../ui/Dialogs';
+import { ghostButton, gradientHover, gradientSurface } from '../../theme';
 import { Tooltip } from '../ui/Tooltip';
 import { Panel } from './Breakdowns';
 import { RankChart, RankSparkline, positionText } from './RankChart';
-import { AddKeywordsForm, RankSettingsForm, placeLabel } from './RankSetup';
+import { ManageKeywords } from './ManageKeywords';
+import { RankSettingsForm, placeLabel } from './RankSetup';
 import { longDay, rangeDays, type StatsRangeId } from './format';
 
 /**
  * SEARCH RANKINGS — where the site appears in Google for the keywords the agency tracks.
  *
- * Everyone on the project reads it. Agency staff (the server says so with `canManage`) also see the setup, the
- * keyword form, "Check now", and why checks may not be running.
+ * Everyone on the project reads it, and the results are read-only for everyone. Agency staff (the server says so
+ * with `canManage`) also see the setup, why checks may not be running, and MANAGE KEYWORDS — the one place a
+ * keyword is added, paused, resumed, removed or checked now.
  */
 
 const RANGES: ReadonlyArray<{ id: StatsRangeId; label: string }> = [
@@ -69,7 +70,6 @@ export function RankingsView({
   /** Each fresh answer, so the parent's copy (its first answer for the next visit) stays current. */
   onLoaded?: (r: ProjectRankings) => void;
 }) {
-  const { confirm, dialog } = useDialogs();
   const [range, setRange] = useState<StatsRangeId>('90d');
   const [data, setData] = useState<ProjectRankings | null>(initial ?? null);
   const [error, setError] = useState<string | null>(null);
@@ -121,31 +121,6 @@ export function RankingsView({
     }
   }
 
-  async function togglePause(k: RankKeywordView): Promise<void> {
-    try {
-      await api.setRankKeywordPaused(project.id, k.id, !k.paused);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not change the keyword');
-    }
-  }
-
-  async function remove(k: RankKeywordView): Promise<void> {
-    const ok = await confirm({
-      title: 'Remove keyword',
-      message: `Stop tracking “${k.keyword}” and delete its history?`,
-      confirmLabel: 'Remove',
-      danger: true,
-    });
-    if (!ok) return;
-    try {
-      await api.removeRankKeyword(project.id, k.id);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not remove the keyword');
-    }
-  }
-
   const manage = data?.canManage ?? false;
   const tracking = data?.tracking ?? null;
   // The range the DATA is for: while a new range loads, the old answer is still drawn on its own axis.
@@ -155,7 +130,6 @@ export function RankingsView({
 
   return (
     <div className="flex flex-col gap-4">
-      {dialog}
       <div className="flex flex-wrap items-center gap-2">
         <div role="radiogroup" aria-label="Rankings period" className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/10">
           {RANGES.map((r) => (
@@ -183,11 +157,6 @@ export function RankingsView({
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden />
             </button>
           </Tooltip>
-          {manage && tracking && (data?.keywords.length ?? 0) > 0 && (
-            <button type="button" className={ghostButton} onClick={() => void checkNow()} disabled={checking}>
-              {checking ? 'Checking…' : 'Check now'}
-            </button>
-          )}
           {manage && tracking && (
             <button type="button" className={ghostButton} aria-expanded={setupOpen} onClick={() => setSetupOpen(!setupOpen)}>
               <Settings2 className="h-4 w-4" aria-hidden /> Setup
@@ -239,21 +208,14 @@ export function RankingsView({
       )}
 
       {data && manage && tracking && (
-        <details className="group rounded-xl border border-slate-200/70 bg-white/60 dark:border-white/10 dark:bg-white/5" open={data.keywords.length === 0}>
-          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-bold text-slate-700 dark:text-slate-200">
-            <ChevronRight className="h-4 w-4 transition group-open:rotate-90" aria-hidden /> Add keywords
-          </summary>
-          <div className="border-t border-slate-200/70 p-4 dark:border-white/10">
-            <AddKeywordsForm
-              projectId={project.id}
-              defaultCountry={data.keywords[0]?.location.countryCode}
-              onAdded={(message) => {
-                setNotice(`${message} They are checked on the next pass, or now with “Check now”.`);
-                void load();
-              }}
-            />
-          </div>
-        </details>
+        <ManageKeywords
+          projectId={project.id}
+          keywords={data.keywords}
+          checking={checking}
+          onCheckNow={() => void checkNow()}
+          onChanged={() => void load()}
+          onNotice={setNotice}
+        />
       )}
 
       {data && tracking && data.keywords.length === 0 && !manage && (
@@ -274,7 +236,6 @@ export function RankingsView({
                 <th scope="col" className="hidden px-3 py-2 md:table-cell">Best</th>
                 <th scope="col" className="hidden px-3 py-2 md:table-cell">Trend</th>
                 <th scope="col" className="hidden px-3 py-2 md:table-cell">Page</th>
-                {manage && <th scope="col" className="px-3 py-2"><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>
@@ -286,9 +247,6 @@ export function RankingsView({
                   depth={k.latest?.depth ?? tracking?.depth ?? 100}
                   open={open === k.id}
                   onToggle={() => setOpen(open === k.id ? null : k.id)}
-                  manage={manage}
-                  onPause={() => void togglePause(k)}
-                  onRemove={() => void remove(k)}
                   from={from}
                   to={to}
                 />
@@ -311,9 +269,6 @@ function KeywordRow({
   depth,
   open,
   onToggle,
-  manage,
-  onPause,
-  onRemove,
   from,
   to,
 }: {
@@ -322,13 +277,9 @@ function KeywordRow({
   depth: number;
   open: boolean;
   onToggle: () => void;
-  manage: boolean;
-  onPause: () => void;
-  onRemove: () => void;
   from: string;
   to: string;
 }) {
-  const cols = manage ? 7 : 6;
   // The place first; its region and country only where there is room for them.
   const [place, ...within] = placeLabel(k.location.name).split(', ');
   const region = within.join(', ');
@@ -367,26 +318,10 @@ function KeywordRow({
             <span className="text-slate-400 dark:text-slate-500">—</span>
           )}
         </td>
-        {manage && (
-          <td className="px-3 py-2">
-            <span className="flex justify-end gap-1">
-              <Tooltip tip={k.paused ? 'Resume checking' : 'Pause: keep the history, stop checking'}>
-                <button type="button" className={ghostButton} aria-label={k.paused ? `Resume ${k.keyword}` : `Pause ${k.keyword}`} onClick={onPause}>
-                  {k.paused ? <Play className="h-4 w-4" aria-hidden /> : <Pause className="h-4 w-4" aria-hidden />}
-                </button>
-              </Tooltip>
-              <Tooltip tip="Remove, with its history">
-                <button type="button" className={dangerButton} aria-label={`Remove ${k.keyword}`} onClick={onRemove}>
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                </button>
-              </Tooltip>
-            </span>
-          </td>
-        )}
       </tr>
       {open && (
         <tr className="border-t border-slate-200/40 dark:border-white/5">
-          <td colSpan={cols} className="px-3 py-3">
+          <td colSpan={6} className="px-3 py-3">
             {k.series.length > 0 ? (
               <RankChart keyword={k.keyword} series={k.series} from={from} to={to} depth={depth} />
             ) : (

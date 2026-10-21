@@ -90,6 +90,11 @@ describe('the Statistics tab', () => {
   it('offers the rankings next to the visits when the site is tracked', async () => {
     api.getRankings.mockResolvedValue(rankings());
     render(<StatisticsTab project={project} />);
+    // The switcher is the prominent, SOLID bar (not the frosted one other tab strips use), centred.
+    const bar = await screen.findByRole('tablist', { name: 'Statistics' });
+    expect(bar).toHaveClass('bg-white', 'dark:bg-slate-800');
+    expect(bar).not.toHaveClass('backdrop-blur-3xl');
+    expect(bar.parentElement).toHaveClass('justify-center');
     fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
     expect(await screen.findByRole('heading', { name: 'Search rankings' })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
@@ -136,7 +141,9 @@ describe('what a client reads', () => {
     expect(within(rows[1]!).getByRole('link', { name: '/emergency/' })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
     expect(rows[2]).toHaveTextContent('Not in top 100');
     expect(screen.getByText(/plumbers\.na/, { selector: 'span.font-medium' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Pause|Remove|Check now|Setup/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Pause|Resume|Remove|Check now|Setup/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Manage keywords/ })).toBeNull();
+    expect(screen.queryByRole('region', { name: /Manage keywords/ })).toBeNull();
     expect(screen.queryByRole('form', { name: 'Add keywords' })).toBeNull();
     expect(screen.queryByText(/provider/)).toBeNull();
   });
@@ -160,22 +167,73 @@ describe('what staff manage', () => {
     expect(await screen.findByRole('status')).toHaveTextContent("This month's rank-tracking budget is used up");
   });
 
-  it('checks now, pauses and removes', async () => {
+  it('keeps the results read-only for staff too: the keyword lifecycle lives in Manage keywords', async () => {
     api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok' }));
+    render(<RankingsView project={project} />);
+    const table = await screen.findByRole('table', { name: /Tracked keywords/ });
+    expect(within(table).queryByRole('button', { name: /Pause|Resume|Remove/ })).toBeNull();
+    expect(within(table).queryAllByRole('columnheader')).toHaveLength(6);
+    // With keywords tracked the section starts folded, its summary and "Check now" still in view.
+    const section = screen.getByRole('region', { name: /Manage keywords/ });
+    expect(within(section).getByRole('button', { name: /Manage keywords/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(within(section).getByText('2 tracked')).toBeInTheDocument();
+    expect(within(section).getByRole('button', { name: 'Check now' })).toBeInTheDocument();
+    expect(within(section).queryByRole('form', { name: 'Add keywords' })).toBeNull();
+  });
+
+  it('checks now, pauses, resumes and removes — all inside Manage keywords', async () => {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: [keyword(), keyword({ id: 'k2', keyword: 'geyser repair', paused: true })] }));
     api.checkRankingsNow.mockResolvedValue({ status: 'ok', sent: 2, collected: 0, failed: 0 });
     api.setRankKeywordPaused.mockResolvedValue({ ok: true });
     api.removeRankKeyword.mockResolvedValue({ ok: true });
     render(<RankingsView project={project} />);
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    expect(within(section).getByText('2 tracked, 1 paused')).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Check now' }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Check now' }));
     expect(await screen.findByText(/Sent 2 checks/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Pause plumber windhoek' }));
-    await waitFor(() => expect(api.setRankKeywordPaused).toHaveBeenCalledWith('p1', 'k1', true));
+    fireEvent.click(within(section).getByRole('button', { name: /Manage keywords/ }));
+    const list = within(section).getByRole('list', { name: 'Keywords to manage' });
+    expect(within(list).getAllByRole('listitem')[1]).toHaveTextContent('geyser repairWindhoek, Khomas Region, Namibia · Desktop · enPaused');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remove geyser repair' }));
+    fireEvent.click(within(list).getByRole('button', { name: 'Pause plumber windhoek' }));
+    await waitFor(() => expect(api.setRankKeywordPaused).toHaveBeenCalledWith('p1', 'k1', true));
+    fireEvent.click(within(list).getByRole('button', { name: 'Resume geyser repair' }));
+    await waitFor(() => expect(api.setRankKeywordPaused).toHaveBeenCalledWith('p1', 'k2', false));
+
+    fireEvent.click(within(list).getByRole('button', { name: 'Remove geyser repair' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(api.removeRankKeyword).toHaveBeenCalledWith('p1', 'k2'));
+    // Every change reads the rankings again (the first read, then pause, resume, remove, and the check).
+    await waitFor(() => expect(api.getRankings).toHaveBeenCalledTimes(5));
+  });
+
+  it('does not remove a keyword the confirmation was cancelled for, and shows a refused change', async () => {
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok' }));
+    api.setRankKeywordPaused.mockRejectedValue(new Error('only agency staff can change keyword tracking'));
+    render(<RankingsView project={project} />);
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    fireEvent.click(within(section).getByRole('button', { name: /Manage keywords/ }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Remove geyser repair' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    fireEvent.click(within(section).getByRole('button', { name: 'Pause plumber windhoek' }));
+    expect(await within(section).findByRole('alert')).toHaveTextContent('only agency staff can change keyword tracking');
+    expect(api.removeRankKeyword).not.toHaveBeenCalled();
+  });
+
+  it('filters a long keyword list', async () => {
+    const many = Array.from({ length: 9 }, (_, i) => keyword({ id: `k${i}`, keyword: i === 4 ? 'geyser repair' : `plumber ${i}` }));
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: many }));
+    render(<RankingsView project={project} />);
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    fireEvent.click(within(section).getByRole('button', { name: /Manage keywords/ }));
+    const list = within(section).getByRole('list', { name: 'Keywords to manage' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(9);
+    fireEvent.change(within(section).getByLabelText('Filter keywords'), { target: { value: 'GEYSER' } });
+    expect(within(list).getAllByRole('listitem').map((li) => li.textContent)).toEqual([expect.stringContaining('geyser repair')]);
+    fireEvent.change(within(section).getByLabelText('Filter keywords'), { target: { value: 'nothing' } });
+    expect(within(list).getByRole('listitem')).toHaveTextContent('No keyword matches “nothing”.');
   });
 
   it('adds keywords searched from a place chosen from the provider’s list', async () => {
@@ -187,7 +245,11 @@ describe('what staff manage', () => {
     }));
     api.addRankKeywords.mockResolvedValue({ added: 2, existing: 0 });
     render(<RankingsView project={project} />);
-    const form = await screen.findByRole('form', { name: 'Add keywords' });
+    // Nothing tracked yet: Manage keywords is open on the form.
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    expect(within(section).getByText('none tracked yet')).toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: 'Check now' })).toBeNull();
+    const form = within(section).getByRole('form', { name: 'Add keywords' });
     fireEvent.change(within(form).getByLabelText('Keywords, one per line'), { target: { value: 'plumber windhoek\n\nemergency plumber\n' } });
     fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
     // The country itself is the starting place.

@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Search rankings: one "Manage keywords" section for staff.** The former "Add keywords" section is now
+  **Manage keywords**, and it is the only place a keyword's lifecycle happens. You add keywords there, pause or
+  resume them, remove them with their history, and use **Check now**.
+  - It shows how many keywords are tracked and paused, and adds a filter once the list is long.
+  - It renders for agency staff (admins and developers) only. The server already refuses every keyword write
+    from a client or a token.
+  - The results table no longer carries pause or remove buttons, so it reads the same for everyone.
+- **Statistics: a bigger Visits / Search rankings switcher.** The two tabs sit centred on a solid bar with
+  larger buttons, instead of the small frosted strip.
+
 ## [0.68.0] — 2026-10-21
 
 ### Added

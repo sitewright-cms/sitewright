@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight } from 'lucide-react';
 import { accentChip, toggleInput } from '../../../theme';
@@ -269,10 +269,15 @@ export function SwitchRow({
   );
 }
 
-/** A fixed-height block of `n` rows; anything inside is laid out top-down and never grows the tile. */
+/**
+ * A fixed-height block of `n` rows; anything inside is laid out top-down and never grows the tile. On a touch screen
+ * a button row is 44px tall (the touch floor in styles.css), so there the height is a minimum instead (`sw-row-block`):
+ * a block holding a button would otherwise cut its first or last row off. The budgets are row COUNTS, so nothing
+ * else grows.
+ */
 export function RowBlock({ n, children }: { n: number; children: ReactNode }) {
   return (
-    <span className="flex min-w-0 flex-col overflow-hidden" style={{ height: rowsHeight(n), gap: ROW_GAP }}>
+    <span className="sw-row-block flex min-w-0 flex-col overflow-hidden" style={{ '--sw-rows-h': `${rowsHeight(n)}px`, gap: ROW_GAP } as CSSProperties}>
       {children}
     </span>
   );

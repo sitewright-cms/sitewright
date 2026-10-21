@@ -338,6 +338,19 @@ html.sw-platform-bg[data-theme='dark'] body {
   }
 }
 
+/* A settings-board tile's row block (board/Tile.tsx RowBlock): the height its rows were designed for, and on a touch
+   screen only a MINIMUM — the 44px floor above makes a button row taller than the 30px a block is budgeted for.
+   Unlayered, like the floor, so it beats the utilities. */
+.sw-row-block {
+  height: var(--sw-rows-h);
+}
+@media (pointer: coarse) {
+  .sw-row-block {
+    height: auto;
+    min-height: var(--sw-rows-h);
+  }
+}
+
 /* Hover-reveal is an empty affordance where there is no hover: on touch the control stays at
    `opacity-0`, so it is invisible AND undiscoverable — you cannot hover to find out it is there. Both
    current uses sit in rails a phone keeps (Duplicate dataset in the Datasets rail, Copy in the File

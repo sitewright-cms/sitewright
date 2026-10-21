@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Search engines: sitemap submission and Search Console owners.** The Search engines tile gets a **Sitemap & owners**
+  window beside **Verify now**.
+  - **Sitemap:** Verify now hands the site's `sitemap.xml` to each search engine right after it verifies the site.
+    A sitemap that is not taken never undoes the verification; the window can submit it again at any time (after new
+    pages, say), and shows when each search engine last took it and why one refused.
+  - **Owners (Google):** agency staff choose Google accounts that own the site in Search Console beside the
+    platform's service account, so they (or the client) can open its reports at search.google.com/search-console.
+    Only once Google verified the site; a later verification, after a new Production URL, gives them access again.
+    Removing someone takes that ownership away. Owners added at Google directly are never touched.
+  - **Switching Google off** takes those owners off before the platform gives the site up.
+
+### Fixed
+
+- **Search engines: giving up a site at Google no longer fails when Google never verified it.** The removal tried a
+  second, double-encoded address that Google answers with an error. Measured against Google: the address takes the
+  site encoded once, and a site the platform does not own answers "not an owner", which now counts as already removed.
+
 ## [0.69.0] — 2026-10-21
 
 ### Added

@@ -6,6 +6,7 @@ import { useDialogs } from '../ui/Dialogs';
 import { PartRow, Row, RowBlock, SwitchRow, Tile } from './board/Tile';
 import type { TileStatus } from './board/summaries';
 import { SearchEngineVerify } from './SearchEngineVerify';
+import { SitemapOwnersModal } from './SitemapOwnersModal';
 
 /**
  * SEARCH ENGINES — the site registered with the platform's Google and Bing accounts, so a client needs no Search
@@ -13,13 +14,15 @@ import { SearchEngineVerify } from './SearchEngineVerify';
  *
  *   - a switch per search engine, usable once the website has an https Production URL and the platform has that
  *     account; switching one OFF removes the site from it;
- *   - "Verify now", which deploys the site with the tags and then asks each switched-on search engine to confirm.
+ *   - "Verify now", which deploys the site with the tags, asks each switched-on search engine to confirm, then hands
+ *     each one that verified the sitemap;
+ *   - "Sitemap & owners": the sitemap again on demand, and who owns the site in Search Console besides the platform.
  *
  * Nothing is registered on its own: a deploy only keeps the tags of the switched-on search engines on the pages.
  */
 
 const HELP =
-  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag and asks it to confirm. The tag stays on every later deploy. Switching a search engine off removes the site from its account.';
+  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag, asks it to confirm, and submits the sitemap. The tag stays on every later deploy. Sitemap & owners submits the sitemap again, and makes Google accounts owners in Search Console. Switching a search engine off removes the site from its account.';
 
 const ENGINES: ReadonlyArray<{ key: WebmasterService; name: string; short: string }> = [
   { key: 'google', name: 'Google Search Console', short: 'Google' },
@@ -44,12 +47,18 @@ export function searchEnginesStatus(view: SiteRegistrationView | null): TileStat
   return { kind: 'attention', label: 'Not verified' };
 }
 
+/** Whether the tile's line reports something that went wrong. */
+const attention = (view: SiteRegistrationView): boolean =>
+  ENGINES.some((e) => view[e.key].enabled && (view[e.key].status === 'failed' || view[e.key].sitemap?.ok === false));
+
 /** The one line the tile has for words: what is wrong, else what was done, else what to do next. */
 function headline(view: SiteRegistrationView, error: string | null): string {
   if (error) return error;
   if (!view.siteUrl) return view.notice === 'not-https' ? 'The Production URL must be https' : 'Set an https Production URL first';
   const failed = ENGINES.find((e) => view[e.key].enabled && view[e.key].status === 'failed');
   if (failed) return `${failed.short}: ${view[failed.key].detail ?? 'not verified'}`;
+  const sitemap = ENGINES.find((e) => view[e.key].enabled && view[e.key].sitemap?.ok === false);
+  if (sitemap) return `${sitemap.short}: sitemap not taken: ${view[sitemap.key].sitemap?.detail ?? ''}`;
   const removed = ENGINES.find((e) => !view[e.key].enabled && view[e.key].detail);
   if (removed) return `${removed.short}: ${view[removed.key].detail}`;
   const on = ENGINES.filter((e) => view[e.key].enabled);
@@ -67,6 +76,7 @@ export function SearchEnginesTile({ projectId }: { projectId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [extras, setExtras] = useState(false);
   const { confirm, dialog } = useDialogs();
 
   const load = useCallback(async () => {
@@ -144,21 +154,36 @@ export function SearchEnginesTile({ projectId }: { projectId: string }) {
                   />
                 );
               })}
-              <Row
-                tip={line}
-                label={<span className={error || ENGINES.some((e) => view[e.key].enabled && view[e.key].status === 'failed') ? 'text-rose-700 dark:text-rose-300' : ''}>{line}</span>}
-              />
-              <PartRow
-                label="Verify now"
-                ariaLabel="Verify the site with the switched-on search engines"
-                value={anyOn ? 'deploys, then verifies' : undefined}
-                onClick={() => setVerifying(true)}
-                disabled={!view.siteUrl || !anyOn || busy || verifying}
-              />
+              <Row tip={line} label={<span className={error || attention(view) ? 'text-rose-700 dark:text-rose-300' : ''}>{line}</span>} />
+              {/* Two actions share the last row; a one-column grid makes each button fill its half. */}
+              <span className="flex min-w-0 shrink-0 gap-1.5">
+                <span className="grid min-w-0 flex-1">
+                  <PartRow
+                    label="Verify now"
+                    ariaLabel="Verify the site with the switched-on search engines"
+                    onClick={() => setVerifying(true)}
+                    disabled={!view.siteUrl || !anyOn || busy || verifying}
+                  />
+                </span>
+                <span className="grid min-w-0 flex-1">
+                  <PartRow label="Sitemap & owners" ariaLabel="Sitemap and Search Console owners" onClick={() => setExtras(true)} disabled={!anyOn || busy || verifying} />
+                </span>
+              </span>
             </>
           )}
         </RowBlock>
       </Tile>
+      {extras && view && (
+        <SitemapOwnersModal
+          projectId={projectId}
+          view={view}
+          onChange={setView}
+          onClose={() => {
+            setExtras(false);
+            void load();
+          }}
+        />
+      )}
       {verifying && view && (
         <SearchEngineVerify
           projectId={projectId}

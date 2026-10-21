@@ -111,6 +111,19 @@ export async function bingVerifySite(apiKey: string, siteUrl: string, io: Webmas
   if (r.d !== true) throw new WebmasterError(`Bing could not verify ${siteUrl}: it did not find the verification tag on the home page`, 'unverified');
 }
 
+/**
+ * Hands `sitemapUrl` to Bing for `siteUrl` (`SubmitFeed`). Bing reads it later, on its own schedule. Throws
+ * `unverified` when the site is not on the account.
+ */
+export async function bingSubmitSitemap(apiKey: string, siteUrl: string, sitemapUrl: string, io: WebmasterIo): Promise<void> {
+  const r = await bingCall(apiKey, 'SubmitFeed', io, { siteUrl, feedUrl: sitemapUrl });
+  if (r.ok) return;
+  const code = errorCodeOf(r.json);
+  if (code === NOT_FOUND) throw new WebmasterError(`${siteUrl} is not on the platform's Bing account: verify the site first`, 'unverified');
+  if (code === INVALID_URL) throw new WebmasterError(`Bing does not accept ${sitemapUrl} as a sitemap`, 'invalid');
+  bingFailure(r.status, r.json, apiKey);
+}
+
 /** Takes `siteUrl` off the account. A site that is not there counts as removed. */
 export async function bingRemoveSite(apiKey: string, siteUrl: string, io: WebmasterIo): Promise<string> {
   const r = await bingCall(apiKey, 'RemoveSite', io, { siteUrl });

@@ -281,6 +281,13 @@
       "when": 1792603837770,
       "tag": "0039_site_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1792624913824,
+      "tag": "0040_search_console_owners_sitemaps",
+      "breakpoints": true
     }
   ]
 }

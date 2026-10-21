@@ -1501,20 +1501,25 @@ describe('project transfer api', () => {
     expect(JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string)).toEqual({ service: 'google' });
   });
 
-  it('site registration: read, switch, get the tags and verify hit the project routes', async () => {
+  it('site registration: read, switch, get the tags, verify, the sitemap and the owners hit the project routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, {}));
     await api.getSiteRegistration('p1');
     await api.setSiteRegistration('p1', { google: true });
     await api.prepareSiteRegistration('p1');
     await api.verifySiteRegistration('p1', 'bing');
+    await api.submitSitemap('p1', 'google');
+    await api.setSearchConsoleOwners('p1', ['ana@agency.example']);
     const calls = fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? 'GET'} ${url as string}`);
     expect(calls).toEqual([
       'GET /projects/p1/search-engines',
       'PUT /projects/p1/search-engines',
       'POST /projects/p1/search-engines/prepare',
       'POST /projects/p1/search-engines/bing/verify',
+      'POST /projects/p1/search-engines/google/sitemap',
+      'PUT /projects/p1/search-engines/google/owners',
     ]);
     expect(JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string)).toEqual({ google: true });
+    expect(JSON.parse((fetchMock.mock.calls[5]![1] as RequestInit).body as string)).toEqual({ owners: ['ana@agency.example'] });
   });
 
   it('downloadStatsCsv points a transient anchor at the CSV route for one table', async () => {

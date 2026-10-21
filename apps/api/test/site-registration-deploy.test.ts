@@ -3,13 +3,13 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SiteRegistrationView } from '@sitewright/schema';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
 /**
- * SITE REGISTRATION through a REMOTE deploy (SFTP here): the uploaded build carries the tags, and only an upload
- * that succeeded is followed by verification. The upload is faked; the build and the bookkeeping are real.
+ * SITE REGISTRATION and a REMOTE deploy (SFTP here): once staff have switched a search engine on and its tag is ready,
+ * every uploaded build carries it — and the deploy itself asks Google and Bing nothing. The upload is faked; the build
+ * and the bookkeeping are real.
  */
 
 const upload = vi.hoisted(() => ({ fail: false, homes: [] as string[] }));
@@ -41,8 +41,10 @@ const GOOGLE_TAG = 'gOOgle-Tag_1234567890';
 const BING_CODE = '0A1B2C3D4E5F60718293A4B5C6D7E8F9';
 
 let verifies: string[];
+let calls: string[];
 const fakeEngines: FetchLike = async (url) => {
   const path = url.split('?')[0]!;
+  calls.push(path);
   const answer = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === '' ? '' : JSON.stringify(body)) });
   if (path === 'https://oauth2.googleapis.com/token') return answer(200, { access_token: 'ya29.token' });
   if (path.endsWith('/siteVerification/v1/token')) return answer(200, { method: 'META', token: `<meta name="google-site-verification" content="${GOOGLE_TAG}" />` });
@@ -69,6 +71,7 @@ beforeEach(async () => {
   upload.fail = false;
   upload.homes = [];
   verifies = [];
+  calls = [];
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-deploy-'));
   h = await makeHarness({ publicUrl: 'https://sw.test', publishRoot, deployAllowedHosts: ['allowed.example.com'], webmasterFetch: fakeEngines, rankTickMs: 0 });
   owner = await h.signup({ admin: true });
@@ -87,36 +90,25 @@ afterEach(async () => {
   await rm(publishRoot, { recursive: true, force: true });
 });
 
-async function settled(): Promise<SiteRegistrationView> {
-  for (let i = 0; i < 100; i++) {
-    const v = (await owner.get(`/projects/${projectId}/search-engines`)).json() as SiteRegistrationView;
-    if (v.google.status === 'verified' && v.bing.status === 'verified') return v;
-    await new Promise((r) => setTimeout(r, 20));
-  }
-  throw new Error('registration never settled');
-}
-
-describe('site registration through a remote deploy', () => {
-  it('uploads a build carrying both tags, then has the site verified', async () => {
+describe('site registration and a remote deploy', () => {
+  it('uploads a build carrying the switched-on tags, and asks the search engines nothing', async () => {
+    expect((await owner.put(`/projects/${projectId}/search-engines`, { google: true, bing: true })).statusCode).toBe(200);
+    expect((await owner.post(`/projects/${projectId}/search-engines/prepare`, {})).statusCode).toBe(200);
+    calls = [];
     expect((await owner.post(`/projects/${projectId}/deploy-targets/${targetId}/deploy`, {})).statusCode).toBe(200);
     expect(upload.homes[0]).toContain(`<meta name="google-site-verification" content="${GOOGLE_TAG}" />`);
     expect(upload.homes[0]).toContain(`<meta name="msvalidate.01" content="${BING_CODE}" />`);
-    await settled();
-    expect(verifies.sort()).toEqual(['bing', 'google']);
-  });
-
-  it('the streaming deploy (the editor’s) registers too', async () => {
     expect((await owner.post(`/projects/${projectId}/deploy-targets/${targetId}/deploy/stream`, {})).body).toContain('event: done');
-    await settled();
+    expect(upload.homes[1]).toContain(GOOGLE_TAG);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(calls).toEqual([]);
+    expect(verifies).toEqual([]);
   });
 
-  it('asks nobody to verify a site whose upload failed', async () => {
-    upload.fail = true;
-    expect((await owner.post(`/projects/${projectId}/deploy-targets/${targetId}/deploy`, {})).statusCode).toBe(502);
-    expect(upload.homes[0]).toContain(GOOGLE_TAG);
-    await new Promise((r) => setTimeout(r, 100));
-    expect(verifies).toEqual([]);
-    const v = (await owner.get(`/projects/${projectId}/search-engines`)).json() as SiteRegistrationView;
-    expect(v.google.status).toBe('pending');
+  it('uploads no tag for a search engine that is off', async () => {
+    expect((await owner.post(`/projects/${projectId}/deploy-targets/${targetId}/deploy`, {})).statusCode).toBe(200);
+    expect(upload.homes[0]).toContain('<h1>Hi</h1>');
+    expect(upload.homes[0]).not.toMatch(/google-site-verification|msvalidate/);
+    expect(calls).toEqual([]);
   });
 });

@@ -146,19 +146,27 @@ export function Tile({ title, icon, status, span, md = 6, tall = false, onOpen, 
   );
 }
 
-/** A plain text row. */
-export function Row({ label, value, mono = false, title }: { label: ReactNode; value?: ReactNode; mono?: boolean; title?: string }) {
-  return (
+/** A plain text row. `tip` shows its whole text in the editor tooltip, for a row whose text may be cut. */
+export function Row({ label, value, mono = false, title, tip }: { label: ReactNode; value?: ReactNode; mono?: boolean; title?: string; tip?: string }) {
+  const row = (
     <span
       title={title}
       className={`flex shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200 ${
         mono ? 'font-mono text-xs' : ''
-      }`}
+      } ${tip ? 'w-full min-w-0' : ''}`}
       style={{ height: ROW_H }}
     >
       <span className={value === undefined ? 'min-w-0 flex-1 truncate pr-1' : 'shrink-0'}>{label}</span>
       {value !== undefined && <span className="min-w-0 flex-1 truncate pr-1 text-right tabular-nums text-slate-500 dark:text-slate-400">{value}</span>}
     </span>
+  );
+  // The tooltip's host is inline by default; the row must keep its column's width, and truncate inside it.
+  return tip ? (
+    <Tooltip tip={tip} className="flex w-full min-w-0 shrink-0">
+      {row}
+    </Tooltip>
+  ) : (
+    row
   );
 }
 
@@ -214,12 +222,15 @@ export function SwitchRow({
   onChange,
   ariaLabel,
   disabledReason,
+  value,
 }: {
   label: string;
   checked: boolean;
   onChange: (on: boolean) => void;
   ariaLabel?: string;
   disabledReason?: string;
+  /** A short state beside the switch (e.g. "verified"); it never pushes the switch out of the row. */
+  value?: ReactNode;
 }) {
   const reasonId = useId();
   const row = (
@@ -230,6 +241,7 @@ export function SwitchRow({
       style={{ height: ROW_H }}
     >
       <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+      {value !== undefined && <span className="min-w-0 shrink truncate text-right text-xs text-slate-500 dark:text-slate-400">{value}</span>}
       {disabledReason && (
         <span id={reasonId} className="sr-only">
           {disabledReason}

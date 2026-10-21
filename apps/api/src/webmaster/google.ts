@@ -128,7 +128,7 @@ async function callApi(
   apiName: string,
   projectId: string,
   io: WebmasterIo,
-  init: { method: 'GET' | 'POST' | 'PUT'; body?: Json } = { method: 'GET' },
+  init: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: Json } = { method: 'GET' },
 ): Promise<Json> {
   const headers: Record<string, string> = { authorization: `Bearer ${token}`, accept: 'application/json' };
   if (init.body) headers['content-type'] = 'application/json';
@@ -139,8 +139,8 @@ async function callApi(
     io,
   );
   if (status === 200 && isRecord(json)) return json;
-  // Search Console answers an add with 204 and no body (and 200 with an empty one).
-  if (init.method === 'PUT' && (status === 204 || status === 200)) return {};
+  // Search Console answers an add or a removal with 204 and no body (and 200 with an empty one).
+  if ((init.method === 'PUT' || init.method === 'DELETE') && (status === 204 || status === 200)) return {};
   return apiFailure(status, json, apiName, projectId);
 }
 
@@ -215,4 +215,46 @@ export async function googleRegisterSite(key: GoogleServiceAccountKey, siteUrl: 
   }
   if (status !== 200) apiFailure(status, json, SITE_VERIFICATION, key.projectId);
   await callApi(`${SEARCH_CONSOLE_SITES}/${encodeURIComponent(siteUrl)}`, token, SEARCH_CONSOLE, key.projectId, io, { method: 'PUT' });
+}
+
+/**
+ * A DELETE that may find nothing to delete: true when it removed something, false when it was already gone. `absent`
+ * are the statuses that mean "not there" for this API.
+ */
+async function deleteIfThere(url: string, token: string, apiName: string, projectId: string, io: WebmasterIo, absent: readonly number[] = [404]): Promise<boolean> {
+  const { status, json } = await requestJson(SERVICE, url, { method: 'DELETE', headers: { authorization: `Bearer ${token}`, accept: 'application/json' } }, io);
+  if (status === 200 || status === 204) return true;
+  if (absent.includes(status) && !isApiDisabled(json)) return false;
+  return apiFailure(status, json, apiName, projectId);
+}
+
+/**
+ * Takes `siteUrl` out of the service account's Search Console, and gives up the service account's ownership of it —
+ * each step on its own, so one that finds nothing does not stop the other. Something already gone counts as
+ * removed. Returns what was done, for staff.
+ *
+ * ★ Search Console answers 403, not 404, for a property that is not in the account (a site whose verification
+ * failed before it was added): that is "not there" too, unless it says the API is switched off.
+ * ★ Google can keep a site verified while its tag is still on the live pages (it checks again): the tag goes with
+ * the next deploy, since builds carry it only while the search engine is switched on.
+ */
+export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl: string, io: WebmasterIo, now = new Date()): Promise<string> {
+  const token = await googleAccessToken(key, io, now);
+  let failure: unknown;
+  let listed = false;
+  try {
+    listed = await deleteIfThere(`${SEARCH_CONSOLE_SITES}/${encodeURIComponent(siteUrl)}`, token, SEARCH_CONSOLE, key.projectId, io, [403, 404]);
+  } catch (err) {
+    failure = err;
+  }
+  // The resource id is the URL-encoded site URL; the docs do not say whether the path wants it encoded once more,
+  // so the other form is tried before concluding there is nothing to remove.
+  const id = encodeURIComponent(siteUrl);
+  const owned =
+    (await deleteIfThere(`${SITE_VERIFICATION_LIST}/${id}`, token, SITE_VERIFICATION, key.projectId, io)) ||
+    (await deleteIfThere(`${SITE_VERIFICATION_LIST}/${encodeURIComponent(id)}`, token, SITE_VERIFICATION, key.projectId, io));
+  if (failure) throw failure;
+  if (listed && owned) return 'Removed from Search Console, and the ownership given up';
+  if (listed) return 'Removed from Search Console';
+  return owned ? 'Ownership given up (the site was not in Search Console)' : 'Nothing to remove at Google';
 }

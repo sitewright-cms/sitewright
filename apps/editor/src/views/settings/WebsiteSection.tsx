@@ -28,11 +28,11 @@ import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, SwitchRow, Tile } 
 import { SettingsSheet, type SheetSave } from './board/Sheet';
 import { useSheet } from './board/use-sheet';
 import { JsonDataStatus } from './website/JsonDataStatus';
-import { SearchEngineStatus } from './website/SearchEngineStatus';
 import { EffectsControls, EFFECTS_HELP } from './website/EffectsControls';
 import { SecuritySheet } from './website/SecuritySheet';
 import { SkeletonMap } from './website/SkeletonMap';
 import { AiAgentTile } from './AiAgentTile';
+import { SearchEnginesTile } from './SearchEnginesTile';
 import {
   consentStatus,
   analyticsStatus,
@@ -225,18 +225,15 @@ export function WebsiteSection({
     <motion.div variants={cardStagger} className="flex flex-col gap-8">
       <Band title="Delivery">
         <Tile title="Site" icon={<Globe className="h-4 w-4" />} status={siteStatus(form)} span="c6" md={6} help={HELP.site}>
-          <span className="flex flex-col">
-            <Field
-              label="Production URL (for sitemap.xml + robots.txt)"
-              value={form.siteUrl}
-              onChange={(v) => patch({ siteUrl: v })}
-              type="url"
-              placeholder="https://acme.com"
-              error={siteUrlError}
-              tip="An absolute URL, e.g. https://acme.com — a trailing slash is optional; no path, query or #fragment. Without it, publish skips sitemap.xml and robots.txt gets no Sitemap line."
-            />
-            {isStaff && <SearchEngineStatus projectId={projectId} siteUrl={form.siteUrl} />}
-          </span>
+          <Field
+            label="Production URL (for sitemap.xml + robots.txt)"
+            value={form.siteUrl}
+            onChange={(v) => patch({ siteUrl: v })}
+            type="url"
+            placeholder="https://acme.com"
+            error={siteUrlError}
+            tip="An absolute URL, e.g. https://acme.com — a trailing slash is optional; no path, query or #fragment. Without it, publish skips sitemap.xml and robots.txt gets no Sitemap line."
+          />
           <span className="flex flex-col">
             <Field
               label="JSON data URL → {{ website.json_data }}"
@@ -466,6 +463,8 @@ export function WebsiteSection({
             <PartRow label="Analytics tools" ariaLabel="Edit analytics tools" onClick={() => setAnalyticsOpen(true)} />
           </RowBlock>
         </Tile>
+        {/* Agency staff: the site registered with the platform's Google and Bing accounts. */}
+        {isStaff && <SearchEnginesTile projectId={projectId} />}
       </Band>
 
       <Band title="Modules">

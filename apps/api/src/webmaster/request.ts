@@ -49,7 +49,7 @@ export function cleanMessage(raw: unknown): string {
 export async function requestJson(
   service: string,
   url: string,
-  init: { method: 'GET' | 'POST' | 'PUT'; headers: Record<string, string>; body?: string },
+  init: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; headers: Record<string, string>; body?: string },
   io: WebmasterIo,
 ): Promise<{ status: number; json: unknown }> {
   const controller = new AbortController();

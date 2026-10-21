@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "7e04022c-c910-43d7-ad23-745f23a7bef2",
+  "id": "1ffae21b-7368-4a9b-8036-033d89349d73",
   "prevId": "8f21ef7b-092d-4781-8a3d-4925ce3ebc15",
   "tables": {
     "agent_grants": {
@@ -3702,6 +3702,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
         },
         "site_url": {
           "name": "site_url",

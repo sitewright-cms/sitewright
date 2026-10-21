@@ -249,8 +249,7 @@ export interface DeployTargetDeps {
   buildForDeploy: (
     ctx: ProjectContext,
     projectId: string,
-    // `register`: this build will be uploaded to the live site, so it carries the search engine verification tags.
-    opts?: { minify?: boolean; protocol?: string; register?: boolean },
+    opts?: { minify?: boolean; protocol?: string },
   ) => Promise<{ dir: string; release: ReleaseManifest }>;
   /**
    * A deploy SUCCEEDED, so its build is now the live site. ★ Saves that build's shop price lists —
@@ -816,7 +815,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // (bad route graph / json_data URL) is author-correctable → 409.
         let built: { dir: string; release: ReleaseManifest };
         try {
-          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol, register: true });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -891,7 +890,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let built: { dir: string; release: ReleaseManifest };
         try {
-          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol, register: true });
+          built = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml, protocol: target.protocol });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });

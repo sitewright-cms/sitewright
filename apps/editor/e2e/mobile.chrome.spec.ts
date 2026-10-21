@@ -127,7 +127,7 @@ test('mobile: the tablist scrolls in its own row, and modals arrive as bottom sh
   // The Account button is the far-RIGHT end of the control row — an unambiguous anchor for "that row"
   // (a /Deploy/ match would also catch "Choose a deploy target", since Playwright's name matching is
   // substring + case-insensitive).
-  const account = page.getByRole('button', { name: 'Account' }).first();
+  const account = page.getByRole('button', { name: 'Account', exact: true }).first();
   const [tabs, acct] = await Promise.all([tablist.boundingBox(), account.boundingBox()]);
   expect(tabs!.y, 'the tab strip must start below the control row').toBeGreaterThanOrEqual(acct!.y + acct!.height - 2);
 

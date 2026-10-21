@@ -12,7 +12,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
 
   // Open the account menu → Account Settings → Security → start enrolment.
   await dismissProjectSelector(page); // the first-load overlay covers the header
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await account.getByRole('button', { name: 'Security' }).click();
@@ -35,7 +35,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await expect(account).toBeHidden();
 
   // Sign out, then sign back in — the password now yields the second-factor step.
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await page.getByLabel('Email').fill(email);
   await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
@@ -49,5 +49,5 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await page.getByRole('button', { name: 'Verify' }).click();
 
   // Signed in: the account menu icon is back.
-  await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account', exact: true })).toBeVisible();
 });

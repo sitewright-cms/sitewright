@@ -39,7 +39,7 @@ test('admin configures an OIDC provider; the login screen offers it', async ({ p
 
   // Sign out → the login screen now shows the provider button pointing at the start route.
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   const ssoLink = page.getByRole('link', { name: 'Sign in with E2E SSO' });
   await expect(ssoLink).toBeVisible();

@@ -96,7 +96,7 @@ test('register a passkey and sign in with it', async ({ page }) => {
 
   // Security tab → add a passkey (the name prompt, then the virtual authenticator auto-approves).
   await dismissProjectSelector(page); // the first-load overlay covers the header
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await addPasskey(page, account, 'Virtual Key');
@@ -106,11 +106,11 @@ test('register a passkey and sign in with it', async ({ page }) => {
   // header button to become clickable, or the locator resolves to 2 elements and fails strict mode.
   await page.keyboard.press('Escape');
   await expect(account).toBeHidden();
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
 
-  await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account', exact: true })).toBeVisible();
 });
 
 // A member token can be confirmed with a passkey instead of the password. That is only sound because
@@ -124,7 +124,7 @@ test('a member token is created with a passkey, with no password typed', async (
 
   await signUp(page, `pk-token-${stamp}@e2e.test`);
   await dismissProjectSelector(page);
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
 

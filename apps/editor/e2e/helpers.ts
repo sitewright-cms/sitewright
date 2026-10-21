@@ -218,7 +218,7 @@ export async function seedApiUser(baseUrl: string, email: string, role: 'develop
  * Escape fires before it renders and does nothing.
  */
 export async function dismissProjectSelector(page: Page): Promise<void> {
-  const account = page.getByRole('button', { name: 'Account' });
+  const account = page.getByRole('button', { name: 'Account', exact: true });
   await expect(account).toBeVisible();
   for (let i = 0; i < 10; i++) {
     const covered = await account.evaluate((el) => {

@@ -16,7 +16,7 @@ test('a member token created in the editor creates and manages a project on its 
   await expect(selector).toBeVisible();
   await selector.getByRole('button', { name: 'Close' }).click();
   await expect(selector).toBeHidden();
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await account.getByRole('button', { name: 'Access keys' }).click();
@@ -80,7 +80,7 @@ test('a member token created in the editor creates and manages a project on its 
   await selector.getByRole('button', { name: 'Close' }).click();
   await expect(selector).toBeHidden();
 
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
 
   // ---- changing the password ASKS what should happen to the token ----

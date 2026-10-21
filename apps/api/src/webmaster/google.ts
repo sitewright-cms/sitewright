@@ -20,7 +20,10 @@ export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
  */
 export const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/siteverification', 'https://www.googleapis.com/auth/webmasters'] as const;
 const SITE_VERIFICATION_LIST = 'https://www.googleapis.com/siteVerification/v1/webResource';
+const SITE_VERIFICATION_TOKEN = 'https://www.googleapis.com/siteVerification/v1/token';
 const SEARCH_CONSOLE_SITES = 'https://www.googleapis.com/webmasters/v3/sites';
+const SITE_VERIFICATION = 'Site Verification API';
+const SEARCH_CONSOLE = 'Google Search Console API';
 const TOKEN_LIFETIME_S = 3600;
 const SERVICE = 'Google';
 
@@ -114,9 +117,35 @@ function isApiDisabled(json: unknown): boolean {
   return reasons.includes('accessNotConfigured') || reasons.includes('SERVICE_DISABLED');
 }
 
-async function getApi(url: string, token: string, apiName: string, projectId: string, io: WebmasterIo): Promise<Json> {
-  const { status, json } = await requestJson(SERVICE, url, { method: 'GET', headers: { authorization: `Bearer ${token}`, accept: 'application/json' } }, io);
+/** Google's own message from an error reply, cut down to something safe to show. */
+function googleMessage(json: unknown): string {
+  return isRecord(json) && isRecord(json.error) ? cleanMessage(json.error.message) : '';
+}
+
+async function callApi(
+  url: string,
+  token: string,
+  apiName: string,
+  projectId: string,
+  io: WebmasterIo,
+  init: { method: 'GET' | 'POST' | 'PUT'; body?: Json } = { method: 'GET' },
+): Promise<Json> {
+  const headers: Record<string, string> = { authorization: `Bearer ${token}`, accept: 'application/json' };
+  if (init.body) headers['content-type'] = 'application/json';
+  const { status, json } = await requestJson(
+    SERVICE,
+    url,
+    { method: init.method, headers, ...(init.body ? { body: JSON.stringify(init.body) } : {}) },
+    io,
+  );
   if (status === 200 && isRecord(json)) return json;
+  // Search Console answers an add with 204 and no body (and 200 with an empty one).
+  if (init.method === 'PUT' && (status === 204 || status === 200)) return {};
+  return apiFailure(status, json, apiName, projectId);
+}
+
+/** Words a refused Google API call. */
+function apiFailure(status: number, json: unknown, apiName: string, projectId: string): never {
   if (status === 403 && isApiDisabled(json)) {
     throw new WebmasterError(`The ${apiName} is not enabled in Google Cloud project ${projectId}: enable it, wait a minute, and test again`, 'disabled');
   }
@@ -134,9 +163,56 @@ const count = (v: unknown): number => (Array.isArray(v) ? v.filter(isRecord).len
  */
 export async function testGoogle(key: GoogleServiceAccountKey, io: WebmasterIo, now = new Date()): Promise<string> {
   const token = await googleAccessToken(key, io, now);
-  const verified = await getApi(SITE_VERIFICATION_LIST, token, 'Site Verification API', key.projectId, io);
-  const sites = await getApi(SEARCH_CONSOLE_SITES, token, 'Google Search Console API', key.projectId, io);
+  const verified = await callApi(SITE_VERIFICATION_LIST, token, SITE_VERIFICATION, key.projectId, io);
+  const sites = await callApi(SEARCH_CONSOLE_SITES, token, SEARCH_CONSOLE, key.projectId, io);
   const v = count(verified.items);
   const s = count(sites.siteEntry);
   return `Connected as ${key.clientEmail} · ${v} site${v === 1 ? '' : 's'} verified · ${s} in Search Console`;
+}
+
+/** The `content` of a `<meta name="google-site-verification">` tag: Google's token alphabet, bounded. */
+export const GOOGLE_SITE_TOKEN_RE = /^[A-Za-z0-9_-]{8,200}$/;
+
+/**
+ * The verification tag for `siteUrl` (an https URL-prefix property), as the `content` of
+ * `<meta name="google-site-verification">`. Changes nothing at Google: the same account and URL get the same token.
+ */
+export async function googleSiteToken(key: GoogleServiceAccountKey, siteUrl: string, io: WebmasterIo, now = new Date()): Promise<string> {
+  const token = await googleAccessToken(key, io, now);
+  const reply = await callApi(SITE_VERIFICATION_TOKEN, token, SITE_VERIFICATION, key.projectId, io, {
+    method: 'POST',
+    body: { site: { type: 'SITE', identifier: siteUrl }, verificationMethod: 'META' },
+  });
+  const tag = typeof reply.token === 'string' ? reply.token : '';
+  const content = /content="([^"]*)"/.exec(tag)?.[1] ?? '';
+  if (!GOOGLE_SITE_TOKEN_RE.test(content)) throw new WebmasterError('Google sent a verification tag the platform could not read', 'unavailable');
+  return content;
+}
+
+/**
+ * Asks Google to verify `siteUrl` by the tag its home page now carries, which makes the service account a verified
+ * owner, then adds the site to the service account's Search Console. Both steps are safe to repeat.
+ *
+ * Throws `unverified` when Google did not find the tag (the build without it is still live, or the page is not
+ * reachable from the internet).
+ */
+export async function googleRegisterSite(key: GoogleServiceAccountKey, siteUrl: string, io: WebmasterIo, now = new Date()): Promise<void> {
+  const token = await googleAccessToken(key, io, now);
+  const { status, json } = await requestJson(
+    SERVICE,
+    `${SITE_VERIFICATION_LIST}?verificationMethod=META`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify({ site: { type: 'SITE', identifier: siteUrl } }),
+    },
+    io,
+  );
+  if (status === 400) {
+    // Google's own reason ("The necessary verification token could not be found on your site.") is the useful part.
+    const said = googleMessage(json);
+    throw new WebmasterError(`Google could not verify ${siteUrl}${said ? `: ${said}` : ''}`, 'unverified');
+  }
+  if (status !== 200) apiFailure(status, json, SITE_VERIFICATION, key.projectId);
+  await callApi(`${SEARCH_CONSOLE_SITES}/${encodeURIComponent(siteUrl)}`, token, SEARCH_CONSOLE, key.projectId, io, { method: 'PUT' });
 }

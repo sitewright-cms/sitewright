@@ -13,6 +13,7 @@ import type {
   WebmasterAccountsView,
   WebmasterService,
   WebmasterTestResult,
+  SiteRegistrationView,
   SiteStats,
   StatsQuery,
   CaptchaInput,
@@ -2218,6 +2219,8 @@ export const api = {
   putWebmasterAccounts: (body: WebmasterAccountsInput) => request<WebmasterAccountsView>('PUT', '/admin/webmaster-accounts', body),
   /** Try a STORED account, reading only. */
   testWebmasterAccount: (service: WebmasterService) => request<WebmasterTestResult>('POST', '/admin/webmaster-accounts/test', { service }),
+  /** Whether a project's site is registered with the platform's Google and Bing accounts (agency staff). */
+  getSiteRegistration: (projectId: string) => request<SiteRegistrationView>('GET', `/projects/${projectId}/search-engines`),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),

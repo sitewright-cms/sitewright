@@ -32,6 +32,8 @@ export interface WorkerJob {
   publicBaseUrl?: string;
   captcha?: BuildSiteOptions['captcha'];
   stats?: BuildSiteOptions['stats'];
+  /** The platform's search engine verification tags (public: they are published in every page's head). */
+  siteVerification?: BuildSiteOptions['siteVerification'];
 }
 
 /** The worker's result: the release manifest + every built file as base64. */
@@ -68,6 +70,7 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
       ...(job.publicBaseUrl ? { publicBaseUrl: job.publicBaseUrl } : {}),
       ...(job.captcha ? { captcha: job.captcha } : {}),
       ...(job.stats ? { stats: job.stats } : {}),
+      ...(job.siteVerification ? { siteVerification: job.siteVerification } : {}),
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });

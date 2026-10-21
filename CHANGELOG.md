@@ -9,6 +9,25 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Sites register themselves with Google and Bing.** Once the platform's search engine accounts are stored, every
+  build that goes live registers the site under its https **Production URL**: a deploy to a target, or a publish
+  when Local Hosting on this instance serves that URL's host (its subdomain or a verified custom domain).
+  - The build puts both accounts' verification tags in every page's `<head>` (`google-site-verification`,
+    `msvalidate.01`). Each tag is fetched once per account and URL and kept, so later builds ask nobody anything.
+  - Once the build is live, Google is asked to verify the site, which makes the service account a verified owner,
+    and the site is added to its Search Console. Bing adds and verifies the site on its account. A verified site is
+    not asked about again.
+  - None of it can fail or slow a publish. A search engine that did not find the tag is asked once more two minutes
+    later (a cache in front of the host), then at the next deploy. A tag that could not be fetched is not asked for
+    again for ten minutes, and the build goes out without it. A failed upload, a download, or a publish that is not
+    served at the Production URL registers nothing.
+  - Agency staff see the outcome under **Website → Site → Production URL**: verified (and when), waiting for the
+    search engine to confirm, or not registered with the search engine's reason.
+  - A different key in System Settings starts registration over at each project's next deploy; saving the same key
+    again changes nothing.
+
 ### Changed
 
 - **Search rankings: one "Manage keywords" section for staff.** The former "Add keywords" section is now

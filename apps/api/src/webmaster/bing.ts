@@ -1,5 +1,5 @@
 import { BING_API_KEY_RE } from '@sitewright/schema';
-import { cleanMessage, isRecord, requestJson, WebmasterError, type WebmasterIo } from './request.js';
+import { cleanMessage, isRecord, requestJson, WebmasterError, type Json, type WebmasterIo } from './request.js';
 
 /**
  * BING WEBMASTER TOOLS, as ONE account for the whole platform, through its JSON API and an account API key.
@@ -25,16 +25,16 @@ export function parseBingKey(raw: string): string {
   return key;
 }
 
-/** Proves the key works: the sites on the account. Reads only. */
-export async function testBing(apiKey: string, io: WebmasterIo): Promise<string> {
-  const url = `${API}/GetUserSites?apikey=${encodeURIComponent(apiKey)}`;
-  const { status, json } = await requestJson(SERVICE, url, { method: 'GET', headers: { accept: 'application/json' } }, io);
-  if (status === 200 && isRecord(json) && (Array.isArray(json.d) || json.d === null)) {
-    const sites = Array.isArray(json.d) ? json.d.filter(isRecord) : [];
-    const verified = sites.filter((s) => s.IsVerified === true).length;
-    return `Connected · ${sites.length} site${sites.length === 1 ? '' : 's'} on the account, ${verified} verified`;
-  }
-  const code = isRecord(json) && typeof json.ErrorCode === 'number' ? json.ErrorCode : undefined;
+/** `TooManySites`, `InvalidUrl` and `AlreadyExists` — the answers to adding a site that are about the site. */
+const TOO_MANY_SITES = 9;
+const INVALID_URL = 7;
+const ALREADY_EXISTS = 12;
+
+const errorCodeOf = (json: unknown): number | undefined => (isRecord(json) && typeof json.ErrorCode === 'number' ? json.ErrorCode : undefined);
+
+/** Words a refused call. */
+function bingFailure(status: number, json: unknown, apiKey: string): never {
+  const code = errorCodeOf(json);
   if (code !== undefined && AUTH_CODES.has(code)) throw new WebmasterError('Bing refused the API key', 'auth');
   if (status === 429 || (code !== undefined && RATE_CODES.has(code))) throw new WebmasterError('Bing is limiting requests; try again in a minute', 'rate');
   if (status === 401 || status === 403) throw new WebmasterError('Bing refused the API key', 'auth');
@@ -42,4 +42,69 @@ export async function testBing(apiKey: string, io: WebmasterIo): Promise<string>
   // A service message could quote the request; the key never reaches an admin's screen that way.
   const said = isRecord(json) ? cleanMessage(json.Message).split(apiKey).join('…') : '';
   throw new WebmasterError(`Bing answered HTTP ${status}${said ? ` (${said})` : ''}`, 'unavailable');
+}
+
+/** One API method. A GET without a body, or a POST of its JSON arguments; the reply's `d` on success. */
+async function bingCall(apiKey: string, method: string, io: WebmasterIo, args?: Json): Promise<{ ok: true; d: unknown } | { ok: false; status: number; json: unknown }> {
+  const url = `${API}/${method}?apikey=${encodeURIComponent(apiKey)}`;
+  const { status, json } = await requestJson(
+    SERVICE,
+    url,
+    args
+      ? { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(args) }
+      : { method: 'GET', headers: { accept: 'application/json' } },
+    io,
+  );
+  if (status === 200 && isRecord(json) && 'd' in json && errorCodeOf(json) === undefined) return { ok: true, d: json.d };
+  return { ok: false, status, json };
+}
+
+async function userSites(apiKey: string, io: WebmasterIo): Promise<Json[]> {
+  const r = await bingCall(apiKey, 'GetUserSites', io);
+  if (!r.ok) bingFailure(r.status, r.json, apiKey);
+  if (r.d !== null && !Array.isArray(r.d)) throw new WebmasterError('Bing sent a site list the platform could not read', 'unavailable');
+  return Array.isArray(r.d) ? r.d.filter(isRecord) : [];
+}
+
+/** Proves the key works: the sites on the account. Reads only. */
+export async function testBing(apiKey: string, io: WebmasterIo): Promise<string> {
+  const sites = await userSites(apiKey, io);
+  const verified = sites.filter((s) => s.IsVerified === true).length;
+  return `Connected · ${sites.length} site${sites.length === 1 ? '' : 's'} on the account, ${verified} verified`;
+}
+
+/** Bing's site URLs compared as the property they name: case-insensitive, with or without the closing `/`. */
+const sameSite = (a: unknown, b: string): boolean =>
+  typeof a === 'string' && a.trim().toLowerCase().replace(/\/?$/, '/') === b.toLowerCase().replace(/\/?$/, '/');
+
+/** The `content` of a `<meta name="msvalidate.01">` tag. */
+export const BING_SITE_CODE_RE = /^[A-Za-z0-9]{8,128}$/;
+
+/**
+ * The verification tag for `siteUrl`, as the `content` of `<meta name="msvalidate.01">`. Adds the site to the
+ * account (unverified) when it is not there yet — Bing only issues a code for a site it has.
+ */
+export async function bingSiteCode(apiKey: string, siteUrl: string, io: WebmasterIo): Promise<string> {
+  let site = (await userSites(apiKey, io)).find((s) => sameSite(s.Url, siteUrl));
+  if (!site) {
+    const added = await bingCall(apiKey, 'AddSite', io, { siteUrl });
+    if (!added.ok) {
+      const code = errorCodeOf(added.json);
+      if (code === TOO_MANY_SITES) throw new WebmasterError('The Bing account has reached its limit of sites', 'invalid');
+      if (code === INVALID_URL) throw new WebmasterError(`Bing does not accept ${siteUrl} as a site`, 'invalid');
+      if (code !== ALREADY_EXISTS) bingFailure(added.status, added.json, apiKey);
+    }
+    site = (await userSites(apiKey, io)).find((s) => sameSite(s.Url, siteUrl));
+    if (!site) throw new WebmasterError(`Bing did not list ${siteUrl} after adding it`, 'unavailable');
+  }
+  const code = typeof site.AuthenticationCode === 'string' ? site.AuthenticationCode.trim() : '';
+  if (!BING_SITE_CODE_RE.test(code)) throw new WebmasterError('Bing sent a verification code the platform could not read', 'unavailable');
+  return code;
+}
+
+/** Asks Bing to verify `siteUrl` by the tag its home page now carries. Throws `unverified` when Bing did not find it. */
+export async function bingVerifySite(apiKey: string, siteUrl: string, io: WebmasterIo): Promise<void> {
+  const r = await bingCall(apiKey, 'VerifySite', io, { siteUrl });
+  if (!r.ok) bingFailure(r.status, r.json, apiKey);
+  if (r.d !== true) throw new WebmasterError(`Bing could not verify ${siteUrl}: it did not find the verification tag on the home page`, 'unverified');
 }

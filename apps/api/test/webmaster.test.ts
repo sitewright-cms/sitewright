@@ -1,7 +1,15 @@
 import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { parseBingKey, testBing } from '../src/webmaster/bing.js';
-import { GOOGLE_SCOPES, GOOGLE_TOKEN_URL, googleAccessToken, parseGoogleKey, testGoogle } from '../src/webmaster/google.js';
+import { bingSiteCode, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
+import {
+  GOOGLE_SCOPES,
+  GOOGLE_TOKEN_URL,
+  googleAccessToken,
+  googleRegisterSite,
+  googleSiteToken,
+  parseGoogleKey,
+  testGoogle,
+} from '../src/webmaster/google.js';
 import { WebmasterError, type WebmasterIo } from '../src/webmaster/request.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
@@ -230,5 +238,118 @@ describe('Bing', () => {
       },
     };
     await expectRefusal(testBing(KEY, io), 'unavailable', /^Bing could not be reached$/);
+  });
+});
+
+describe('Google site registration', () => {
+  const token = { status: 200, body: { access_token: 'ya29.token' } };
+  const SITE = 'https://www.example.com/';
+
+  it('gets the META token for the site and keeps only its content', async () => {
+    const { io, calls } = fake((call) =>
+      call.url === GOOGLE_TOKEN_URL ? token : { status: 200, body: { method: 'META', token: '<meta name="google-site-verification" content="AbC-123_xyz789" />' } },
+    );
+    expect(await googleSiteToken(parseGoogleKey(keyFile()), SITE, io)).toBe('AbC-123_xyz789');
+    expect(calls[1]!.url).toBe('https://www.googleapis.com/siteVerification/v1/token');
+    expect(calls[1]!.method).toBe('POST');
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ site: { type: 'SITE', identifier: SITE }, verificationMethod: 'META' });
+    expect(calls[1]!.headers.authorization).toBe('Bearer ya29.token');
+  });
+
+  it('refuses a tag whose content could carry markup', async () => {
+    for (const tag of ['<meta name="google-site-verification" content="a&quot;><script>" />', '<meta content="" />', 'nonsense']) {
+      const { io } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 200, body: { method: 'META', token: tag } }));
+      await expectRefusal(googleSiteToken(parseGoogleKey(keyFile()), SITE, io), 'unavailable', /could not read/);
+    }
+  });
+
+  it('verifies the site by its META tag, then adds it to Search Console', async () => {
+    const { io, calls } = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.url.includes('siteVerification')) return { status: 200, body: { id: 'https%3A%2F%2Fwww.example.com%2F', owners: [EMAIL] } };
+      return { status: 204, body: '' };
+    });
+    await googleRegisterSite(parseGoogleKey(keyFile()), SITE, io);
+    expect(calls.slice(1).map((c) => `${c.method} ${c.url}`)).toEqual([
+      'POST https://www.googleapis.com/siteVerification/v1/webResource?verificationMethod=META',
+      'PUT https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F',
+    ]);
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ site: { type: 'SITE', identifier: SITE } });
+  });
+
+  it('says when Google did not find the tag, and adds nothing to Search Console', async () => {
+    const { io, calls } = fake((call) =>
+      call.url === GOOGLE_TOKEN_URL
+        ? token
+        : { status: 400, body: { error: { code: 400, message: 'The necessary verification token could not be found on your site.' } } },
+    );
+    await expectRefusal(
+      googleRegisterSite(parseGoogleKey(keyFile()), SITE, io),
+      'unverified',
+      /^Google could not verify https:\/\/www\.example\.com\/: The necessary verification token could not be found on your site\.$/,
+    );
+    expect(calls).toHaveLength(2);
+  });
+
+  it('names a switched-off API on either step', async () => {
+    const disabled = { status: 403, body: { error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } } };
+    const first = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : disabled));
+    await expectRefusal(googleRegisterSite(parseGoogleKey(keyFile()), SITE, first.io), 'disabled', /^The Site Verification API is not enabled/);
+    const second = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('siteVerification') ? { status: 200, body: {} } : disabled));
+    await expectRefusal(googleRegisterSite(parseGoogleKey(keyFile()), SITE, second.io), 'disabled', /^The Google Search Console API is not enabled/);
+  });
+});
+
+describe('Bing site registration', () => {
+  const KEY = '0123456789abcdef0123456789ABCDEF';
+  const SITE = 'https://www.example.com/';
+  const CODE = '0A1B2C3D4E5F60718293A4B5C6D7E8F9';
+
+  it('reads the code of a site already on the account, without adding it again', async () => {
+    const { io, calls } = fake(() => ({ status: 200, body: { d: [{ Url: 'https://WWW.example.com', AuthenticationCode: CODE, IsVerified: false }] } }));
+    expect(await bingSiteCode(KEY, SITE, io)).toBe(CODE);
+    expect(calls.map((c) => c.url.split('?')[0]!.split('/').pop())).toEqual(['GetUserSites']);
+  });
+
+  it('adds a new site, then reads its code', async () => {
+    let added = false;
+    const { io, calls } = fake((call) => {
+      if (call.url.includes('/AddSite?')) {
+        added = true;
+        return { status: 200, body: { d: null } };
+      }
+      return { status: 200, body: { d: added ? [{ Url: SITE, AuthenticationCode: CODE }] : [] } };
+    });
+    expect(await bingSiteCode(KEY, SITE, io)).toBe(CODE);
+    expect(calls.map((c) => `${c.method} ${c.url.split('?')[0]!.split('/').pop()}`)).toEqual(['GET GetUserSites', 'POST AddSite', 'GET GetUserSites']);
+    expect(calls[1]!.url).toBe(`https://ssl.bing.com/webmaster/api.svc/json/AddSite?apikey=${KEY}`);
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ siteUrl: SITE });
+  });
+
+  it('takes "already exists" as added, and words the refusals that are about the site', async () => {
+    let lists = 0;
+    const exists = fake((call) =>
+      call.url.includes('/AddSite?') ? { status: 400, body: { ErrorCode: 12, Message: 'AlreadyExists' } } : { status: 200, body: { d: lists++ ? [{ Url: SITE, AuthenticationCode: CODE }] : [] } },
+    );
+    expect(await bingSiteCode(KEY, SITE, exists.io)).toBe(CODE);
+    const refusing = (code: number) => fake((call) => (call.url.includes('/AddSite?') ? { status: 400, body: { ErrorCode: code, Message: `x ${KEY}` } } : { status: 200, body: { d: [] } })).io;
+    await expectRefusal(bingSiteCode(KEY, SITE, refusing(9)), 'invalid', /^The Bing account has reached its limit of sites$/);
+    await expectRefusal(bingSiteCode(KEY, SITE, refusing(7)), 'invalid', /^Bing does not accept https:\/\/www\.example\.com\/ as a site$/);
+    await expectRefusal(bingSiteCode(KEY, SITE, refusing(3)), 'auth', /^Bing refused the API key$/);
+    await expectRefusal(bingSiteCode(KEY, SITE, refusing(8)), 'unavailable', /^Bing answered HTTP 400 \(x …\)$/);
+  });
+
+  it('refuses a code that could carry markup', async () => {
+    const { io } = fake(() => ({ status: 200, body: { d: [{ Url: SITE, AuthenticationCode: '"><script>' }] } }));
+    await expectRefusal(bingSiteCode(KEY, SITE, io), 'unavailable', /could not read/);
+  });
+
+  it('verifies the site, and says so when Bing did not find the tag', async () => {
+    const yes = fake(() => ({ status: 200, body: { d: true } }));
+    await bingVerifySite(KEY, SITE, yes.io);
+    expect(yes.calls[0]!.url).toBe(`https://ssl.bing.com/webmaster/api.svc/json/VerifySite?apikey=${KEY}`);
+    expect(JSON.parse(yes.calls[0]!.body!)).toEqual({ siteUrl: SITE });
+    await expectRefusal(bingVerifySite(KEY, SITE, fake(() => ({ status: 200, body: { d: false } })).io), 'unverified', /did not find the verification tag/);
+    await expectRefusal(bingVerifySite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 14 } })).io), 'auth', /refused the API key/);
   });
 });

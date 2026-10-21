@@ -52,6 +52,7 @@ describe('project reap', () => {
     'shop_filtered',
     'shop_stock',
     'shop_transactions',
+    'webmaster_sites',
   ].sort();
 
   it('remove() clears EVERY table that carries an FK to projects', async () => {

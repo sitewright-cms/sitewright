@@ -43,6 +43,11 @@ export interface SeoMeta {
    * Emitted only by the multilingual publish when a site URL is configured.
    */
   alternates?: ReadonlyArray<{ hreflang: string; href: string }>;
+  /**
+   * Search engine ownership tags: the `content` of Google's `google-site-verification` and Bing's `msvalidate.01`.
+   * Set by the platform at publish/deploy (its own accounts), never by an author.
+   */
+  verification?: { google?: string; bing?: string };
 }
 
 /** Inputs for the auto-generated schema.org Organization block (from company data). */
@@ -76,6 +81,8 @@ export function metaTags(seo: SeoMeta): string {
 
   if (seo.description) meta('name', 'description', seo.description);
   if (seo.noindex) meta('name', 'robots', 'noindex');
+  if (seo.verification?.google) meta('name', 'google-site-verification', seo.verification.google);
+  if (seo.verification?.bing) meta('name', 'msvalidate.01', seo.verification.bing);
   meta('property', 'og:type', seo.ogType ?? 'website');
   meta('property', 'og:title', seo.title);
   if (seo.description) meta('property', 'og:description', seo.description);

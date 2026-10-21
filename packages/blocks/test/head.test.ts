@@ -69,6 +69,15 @@ describe('metaTags', () => {
     expect(metaTags({ title: 'T' })).not.toContain('noindex');
   });
 
+  it('emits the search engine verification tags only when given, each on its own', () => {
+    const both = metaTags({ title: 'T', verification: { google: 'gTag_1', bing: 'B1NG' } });
+    expect(both).toContain('<meta name="google-site-verification" content="gTag_1" />');
+    expect(both).toContain('<meta name="msvalidate.01" content="B1NG" />');
+    expect(metaTags({ title: 'T', verification: { bing: 'B1NG' } })).not.toContain('google-site-verification');
+    expect(metaTags({ title: 'T' })).not.toMatch(/google-site-verification|msvalidate/);
+    expect(metaTags({ title: 'T', verification: { google: '"><x' } })).toContain('content="&quot;&gt;&lt;x"');
+  });
+
   it('escapes attribute values (no breakout)', () => {
     const html = metaTags({ title: '"><script>x', description: 'a "quote"' });
     expect(html).not.toContain('<script>x');

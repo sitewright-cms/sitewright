@@ -1326,6 +1326,31 @@ export const webmasterCredentials = sqliteTable('webmaster_credentials', {
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+/**
+ * A project's site registered with one of the platform's search engine accounts: the verification tag its builds
+ * carry, and how far the search engine got. The tag belongs to the ACCOUNT and the URL, so a new key or a new Site
+ * URL fetches a new one (`account` and `site_url` say which it was made for).
+ */
+export const webmasterSites = sqliteTable(
+  'webmaster_sites',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    service: text('service', { enum: ['google', 'bing'] }).notNull(),
+    siteUrl: text('site_url').notNull(),
+    /** Which account the tag was made for: the Google service account's email, or a fingerprint of the Bing key. */
+    account: text('account').notNull(),
+    /** The verification tag's `content`; null when getting it failed. */
+    token: text('token'),
+    status: text('status', { enum: ['pending', 'verified', 'failed'] }).notNull(),
+    detail: text('detail'),
+    verifiedAt: integer('verified_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.service] })],
+);
+
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */

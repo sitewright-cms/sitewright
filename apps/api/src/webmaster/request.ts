@@ -18,12 +18,13 @@ export interface WebmasterIo {
  * - `invalid`: what was entered is not a key of that kind (nothing was sent).
  * - `auth`: the service refused the key.
  * - `disabled`: the key works, but an API it needs is switched off for its project.
+ * - `unverified`: the service looked for the site's verification tag and did not find it.
  * - `rate`, `unavailable`: try again later.
  */
 export class WebmasterError extends Error {
   constructor(
     message: string,
-    readonly kind: 'invalid' | 'auth' | 'disabled' | 'rate' | 'unavailable',
+    readonly kind: 'invalid' | 'auth' | 'disabled' | 'unverified' | 'rate' | 'unavailable',
   ) {
     super(message);
     this.name = 'WebmasterError';
@@ -48,7 +49,7 @@ export function cleanMessage(raw: unknown): string {
 export async function requestJson(
   service: string,
   url: string,
-  init: { method: 'GET' | 'POST'; headers: Record<string, string>; body?: string },
+  init: { method: 'GET' | 'POST' | 'PUT'; headers: Record<string, string>; body?: string },
   io: WebmasterIo,
 ): Promise<{ status: number; json: unknown }> {
   const controller = new AbortController();

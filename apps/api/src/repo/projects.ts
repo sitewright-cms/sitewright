@@ -25,6 +25,7 @@ import {
   rankChecks,
   rankKeywords,
   rankProjects,
+  webmasterSites,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError } from './context.js';
 
@@ -211,6 +212,8 @@ export class ProjectRepository {
       await tx.delete(rankChecks).where(eq(rankChecks.projectId, id));
       await tx.delete(rankKeywords).where(eq(rankKeywords.projectId, id));
       await tx.delete(rankProjects).where(eq(rankProjects.projectId, id));
+      // Search engine registration (the platform account stays a verified owner at Google/Bing; only our record goes).
+      await tx.delete(webmasterSites).where(eq(webmasterSites.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });
   }

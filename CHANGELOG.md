@@ -21,6 +21,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 - **Statistics: a bigger Visits / Search rankings switcher.** The two tabs sit centred on a solid bar with
   larger buttons, instead of the small frosted strip.
 
+### Fixed
+
+- **Manage keywords: a filter can no longer get stuck, and a row waits for the list.** Removing keywords until the
+  list was short enough to hide the filter left the filter applied, hiding rows with no way to clear it. And a
+  row's buttons came back before the list was read again, so a second click repeated the change or tried to
+  remove a keyword that was already gone.
+
 ## [0.68.0] — 2026-10-21
 
 ### Added

@@ -213,7 +213,7 @@ export function RankingsView({
           keywords={data.keywords}
           checking={checking}
           onCheckNow={() => void checkNow()}
-          onChanged={() => void load()}
+          onChanged={load}
           onNotice={setNotice}
         />
       )}

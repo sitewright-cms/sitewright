@@ -1314,6 +1314,18 @@ export const rankChecks = sqliteTable(
   ],
 );
 
+/**
+ * The platform's search engine accounts (instance admins): one row per service (`google`, `bing`). The secret
+ * is an `EncryptedSecret` ({iv, ct, tag}) of a JSON object; `info` is what the admin view may show (the Google
+ * service account's email and project) and never holds a secret.
+ */
+export const webmasterCredentials = sqliteTable('webmaster_credentials', {
+  service: text('service').primaryKey(),
+  secret: text('secret', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>().notNull(),
+  info: text('info', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */

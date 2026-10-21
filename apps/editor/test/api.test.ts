@@ -1490,6 +1490,17 @@ describe('project transfer api', () => {
     expect(JSON.parse((fetchMock.mock.calls[10]![1] as RequestInit).body as string)).toEqual({ provider: 'dataforseo' });
   });
 
+  it('search engine accounts: read, save and test hit the admin routes', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    await api.getWebmasterAccounts();
+    await api.putWebmasterAccounts({ google: null, bing: { apiKey: '0123456789abcdef0123456789abcdef' } });
+    await api.testWebmasterAccount('google');
+    const calls = fetchMock.mock.calls.map(([url, init]) => `${(init as RequestInit | undefined)?.method ?? 'GET'} ${url as string}`);
+    expect(calls).toEqual(['GET /admin/webmaster-accounts', 'PUT /admin/webmaster-accounts', 'POST /admin/webmaster-accounts/test']);
+    expect(JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string)).toEqual({ google: null, bing: { apiKey: '0123456789abcdef0123456789abcdef' } });
+    expect(JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string)).toEqual({ service: 'google' });
+  });
+
   it('downloadStatsCsv points a transient anchor at the CSV route for one table', async () => {
     const clicks: string[] = [];
     const realCreate = document.createElement.bind(document);

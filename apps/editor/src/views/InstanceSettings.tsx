@@ -66,6 +66,7 @@ import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
+import { WebmasterAccountsSettings, type WebmasterAccountsSettingsHandle } from './settings/WebmasterAccountsSettings';
 import { secretFieldProps } from '../lib/secret-field';
 import { Tooltip } from './ui/Tooltip';
 
@@ -509,6 +510,7 @@ export function InstanceSettings() {
   }, []);
 
   const rankRef = useRef<RankTrackingSettingsHandle>(null);
+  const webmasterRef = useRef<WebmasterAccountsSettingsHandle>(null);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -645,20 +647,30 @@ export function InstanceSettings() {
       input.brandSecondary = brandSecondary === DEFAULT_BRAND_SECONDARY ? null : brandSecondary;
     }
     if (logoDraft !== undefined) input.platformLogo = logoDraft; // {mime,data} to set, null to remove
-    // Rank tracking keeps its own store and route. Its form is checked FIRST, so a mistake there stops the save
-    // before anything is stored rather than after the rest already was.
-    const rankInvalid = rankRef.current?.validate() ?? null;
-    if (rankInvalid) {
-      setError(rankInvalid);
+    // Rank tracking and the search engine accounts keep their own stores and routes. Their forms are checked
+    // FIRST, so a mistake there stops the save before anything is stored rather than after the rest already was.
+    const sectionInvalid = rankRef.current?.validate() ?? webmasterRef.current?.validate() ?? null;
+    if (sectionInvalid) {
+      setError(sectionInvalid);
       return;
     }
     try {
       const res = await api.putInstanceSettings(input);
-      try {
-        await rankRef.current?.save();
-      } catch (err) {
+      // Each section saves on its own, so one refusing does not stop the other.
+      const unsaved: string[] = [];
+      for (const [label, section] of [
+        ['rank tracking was not', rankRef],
+        ['the search engine accounts were not', webmasterRef],
+      ] as const) {
+        try {
+          await section.current?.save();
+        } catch (err) {
+          unsaved.push(`${label}: ${err instanceof Error ? err.message : 'failed to save'}`);
+        }
+      }
+      if (unsaved.length > 0) {
         hydrate(res.settings);
-        setError(`The other settings were saved, but rank tracking was not: ${err instanceof Error ? err.message : 'failed to save'}`);
+        setError(`The other settings were saved, but ${unsaved.join('; ')}`);
         return;
       }
       hydrate(res.settings);
@@ -1107,6 +1119,8 @@ export function InstanceSettings() {
       </fieldset>
 
       <RankTrackingSettings ref={rankRef} />
+
+      <WebmasterAccountsSettings ref={webmasterRef} />
 
       </div>
 

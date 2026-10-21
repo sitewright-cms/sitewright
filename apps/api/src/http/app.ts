@@ -430,6 +430,8 @@ import { createGeoLookup, bundledGeoDbPath, type GeoLookup } from '../analytics/
 import { registerStatsRoutes, bareHost, type StatsSiteConfig } from '../analytics/routes.js';
 import { RANK_PROVIDERS } from '../rank/providers/index.js';
 import { RankRepository } from '../rank/repo.js';
+import { WebmasterRepository } from '../webmaster/repo.js';
+import { registerWebmasterRoutes } from '../webmaster/routes.js';
 import { registerRankRoutes } from '../rank/routes.js';
 import { RankTracker } from '../rank/tracker.js';
 import { statsRouteOf } from '../analytics/token.js';
@@ -1753,6 +1755,8 @@ export interface AppOptions {
   rankTickMs?: number;
   /** @internal test seam — the transport rank providers are called through. */
   rankFetch?: import('../payments/executor.js').FetchLike;
+  /** @internal test seam — the transport Google and Bing (search engine accounts) are called through. */
+  webmasterFetch?: import('../payments/executor.js').FetchLike;
   /** How long an untouched preview build / source reference survives. Default 30 days; 0 disables. */
   derivedRetentionMs?: number;
   /**
@@ -10999,6 +11003,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const role = await getPlatformRole(db, userId);
       return role === 'admin' || role === 'developer' ? role : null;
     },
+    rl,
+  });
+
+  // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins).
+  registerWebmasterRoutes(app, {
+    repo: new WebmasterRepository(db, opts.encryptionKey),
+    io: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 1024 * 1024, timeoutMs: 20_000 }), timeoutMs: 20_000 },
+    requireInstanceAdmin,
     rl,
   });
 

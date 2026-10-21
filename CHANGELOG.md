@@ -11,22 +11,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
-- **Sites register themselves with Google and Bing.** Once the platform's search engine accounts are stored, every
-  build that goes live registers the site under its https **Production URL**: a deploy to a target, or a publish
-  when Local Hosting on this instance serves that URL's host (its subdomain or a verified custom domain).
-  - The build puts both accounts' verification tags in every page's `<head>` (`google-site-verification`,
-    `msvalidate.01`). Each tag is fetched once per account and URL and kept, so later builds ask nobody anything.
-  - Once the build is live, Google is asked to verify the site, which makes the service account a verified owner,
-    and the site is added to its Search Console. Bing adds and verifies the site on its account. A verified site is
-    not asked about again.
-  - None of it can fail or slow a publish. A search engine that did not find the tag is asked once more two minutes
-    later (a cache in front of the host), then at the next deploy. A tag that could not be fetched is not asked for
-    again for ten minutes, and the build goes out without it. A failed upload, a download, or a publish that is not
-    served at the Production URL registers nothing.
-  - Agency staff see the outcome under **Website → Site → Production URL**: verified (and when), waiting for the
-    search engine to confirm, or not registered with the search engine's reason.
-  - A different key in System Settings starts registration over at each project's next deploy; saving the same key
-    again changes nothing.
+- **Search engines tile: register a site with Google and Bing.** Agency staff now have a **Search engines** tile next
+  to Analytics (Website settings). It registers the site with the platform's Google Search Console and Bing Webmaster
+  Tools accounts, so the client needs no account of their own.
+  - **Switches:** one per search engine. Each works only once the site has an https **Production URL** and the
+    platform has that account. The tile shows each one's state and the reason when one failed.
+  - **Verify now** opens a step-by-step progress view:
+    1. finds the deploy target that serves the Production URL and tests its connection. That is Local Hosting when
+       its address is the Production URL, otherwise the project's remote target; with several, it asks which one.
+    2. gets each switched-on search engine's tag;
+    3. deploys to that one target only, showing upload progress;
+    4. asks each search engine to confirm the tag on the live site. Google then makes the platform's service account
+       a verified owner and adds the site to its Search Console.
+  - **Nothing happens on its own:** no publish or deploy contacts Google or Bing. Builds only keep the switched-on
+    tags in every page's `<head>`, because a search engine that finds its tag gone drops the site again.
+  - **Switching a search engine off** asks first. It then removes the site from that account (Search Console and the
+    ownership at Google; the site at Bing) and stops tagging it. If the search engine can't be reached, the switch
+    stays on so the removal can be tried again. An address another project also registers is kept.
+  - **Deleting a project** removes its site from both accounts. Anything that could not be removed then is removed
+    when the project is reaped.
+  - **A new Production URL:** the next verification removes the old address first, and stops if it can't.
 
 ### Changed
 

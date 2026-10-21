@@ -29,6 +29,8 @@ export function parseBingKey(raw: string): string {
 const TOO_MANY_SITES = 9;
 const INVALID_URL = 7;
 const ALREADY_EXISTS = 12;
+/** `NotFound`: the site is not on the account. */
+const NOT_FOUND = 11;
 
 const errorCodeOf = (json: unknown): number | undefined => (isRecord(json) && typeof json.ErrorCode === 'number' ? json.ErrorCode : undefined);
 
@@ -107,4 +109,11 @@ export async function bingVerifySite(apiKey: string, siteUrl: string, io: Webmas
   const r = await bingCall(apiKey, 'VerifySite', io, { siteUrl });
   if (!r.ok) bingFailure(r.status, r.json, apiKey);
   if (r.d !== true) throw new WebmasterError(`Bing could not verify ${siteUrl}: it did not find the verification tag on the home page`, 'unverified');
+}
+
+/** Takes `siteUrl` off the account. A site that is not there counts as removed. */
+export async function bingRemoveSite(apiKey: string, siteUrl: string, io: WebmasterIo): Promise<string> {
+  const r = await bingCall(apiKey, 'RemoveSite', io, { siteUrl });
+  if (!r.ok && errorCodeOf(r.json) !== NOT_FOUND) bingFailure(r.status, r.json, apiKey);
+  return 'Removed from Bing Webmaster Tools';
 }

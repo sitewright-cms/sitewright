@@ -1327,9 +1327,9 @@ export const webmasterCredentials = sqliteTable('webmaster_credentials', {
 });
 
 /**
- * A project's site registered with one of the platform's search engine accounts: the verification tag its builds
- * carry, and how far the search engine got. The tag belongs to the ACCOUNT and the URL, so a new key or a new Site
- * URL fetches a new one (`account` and `site_url` say which it was made for).
+ * A project's site registered with one of the platform's search engine accounts: whether staff switched it on, the
+ * verification tag its builds carry, and how far the search engine got. The tag belongs to the ACCOUNT and the URL,
+ * so a new key or a new Production URL needs a new one (`account` and `site_url` say which it was made for).
  */
 export const webmasterSites = sqliteTable(
   'webmaster_sites',
@@ -1338,12 +1338,15 @@ export const webmasterSites = sqliteTable(
       .notNull()
       .references(() => projects.id),
     service: text('service', { enum: ['google', 'bing'] }).notNull(),
+    /** Switched on for the project by agency staff. Off: no tag in builds, and the site was removed from the account. */
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+    /** The Production URL the tag and the verification are for ('' until a tag was first fetched). */
     siteUrl: text('site_url').notNull(),
     /** Which account the tag was made for: the Google service account's email, or a fingerprint of the Bing key. */
     account: text('account').notNull(),
     /** The verification tag's `content`; null when getting it failed. */
     token: text('token'),
-    status: text('status', { enum: ['pending', 'verified', 'failed'] }).notNull(),
+    status: text('status', { enum: ['none', 'pending', 'verified', 'failed'] }).notNull(),
     detail: text('detail'),
     verifiedAt: integer('verified_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),

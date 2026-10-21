@@ -56,20 +56,25 @@ export interface WebmasterTestResult {
 }
 
 /**
- * SITE REGISTRATION — every publish and deploy puts the platform accounts' verification tags in each page's
- * `<head>`, then asks the search engine to verify the site and, for Google, adds it to Search Console.
+ * SITE REGISTRATION — a project's site registered with the platform's Google and Bing accounts. Agency staff switch
+ * each search engine on per project and start the verification themselves (the Search engines tile); nothing is
+ * registered on its own. Verifying gets the account's tag, deploys the site carrying it, then asks the search engine
+ * to confirm. From then on every build keeps the tag, or the search engine would drop the site again.
  *
- * - `none`: nothing tried yet (no deploy since the account or the site URL was set).
- * - `pending`: the tag is in the build; the search engine has not confirmed it yet.
+ * - `off`: this search engine is switched off for the project (or the platform has no account for it).
+ * - `none`: switched on, never verified for the current Production URL.
+ * - `pending`: the tag is ready; the site has not been verified with it yet.
  * - `verified`: the platform account owns the site (Google: also in Search Console).
- * - `failed`: the last attempt was refused; `detail` says why, and the next deploy tries again.
+ * - `failed`: the last step was refused; `detail` says why.
  */
-export const SITE_REGISTRATION_STATUSES = ['none', 'pending', 'verified', 'failed'] as const;
+export const SITE_REGISTRATION_STATUSES = ['off', 'none', 'pending', 'verified', 'failed'] as const;
 export type SiteRegistrationStatus = (typeof SITE_REGISTRATION_STATUSES)[number];
 
 export interface SiteRegistrationEntry {
-  /** Whether the platform has an account for this search engine at all. */
+  /** Whether the platform has an account for this search engine at all (System Settings). */
   configured: boolean;
+  /** Switched on for this project. */
+  enabled: boolean;
   status: SiteRegistrationStatus;
   /** Why it failed, or what was done. Never a secret. */
   detail: string | null;
@@ -80,12 +85,43 @@ export interface SiteRegistrationEntry {
 
 /** A project's registration with the platform's search engine accounts (agency staff only). */
 export interface SiteRegistrationView {
-  /** The URL that is registered: the website's Site URL, when it is an https address. */
+  /** The URL that is registered: the website's Production URL, when it is an https address. */
   siteUrl: string | null;
-  /** Why nothing is registered, when `siteUrl` is null. */
+  /** Why nothing can be registered, when `siteUrl` is null. */
   notice: 'no-site-url' | 'not-https' | null;
   google: SiteRegistrationEntry;
   bing: SiteRegistrationEntry;
+}
+
+/** Switch search engines on or off for a project. Off removes the site from that search engine's account. */
+export const SiteRegistrationToggleSchema = z
+  .object({ google: z.boolean().optional(), bing: z.boolean().optional() })
+  .strict()
+  .refine((v) => v.google !== undefined || v.bing !== undefined, { message: 'name google or bing' });
+export type SiteRegistrationToggle = z.infer<typeof SiteRegistrationToggleSchema>;
+
+/** One step of a verification, for one search engine: done, or why not. */
+export interface SiteRegistrationStepResult {
+  ok: boolean;
+  detail: string;
+}
+
+/** The answer to getting the tags (before the deploy): per switched-on search engine, then the new state. */
+export interface SiteRegistrationPrepareResult {
+  results: Partial<Record<WebmasterService, SiteRegistrationStepResult>>;
+  view: SiteRegistrationView;
+}
+
+/** The answer to asking one search engine to verify (after the deploy). */
+export interface SiteRegistrationVerifyResult {
+  result: SiteRegistrationStepResult;
+  view: SiteRegistrationView;
+}
+
+/** The answer to a switch: the new state, and what removing the site from a search engine said. */
+export interface SiteRegistrationToggleResult {
+  removed: Partial<Record<WebmasterService, SiteRegistrationStepResult>>;
+  view: SiteRegistrationView;
 }
 
 /**

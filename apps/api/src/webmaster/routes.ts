@@ -2,6 +2,11 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   WebmasterAccountsInputSchema,
   WebmasterServiceSchema,
+  SiteRegistrationToggleSchema,
+  WEBMASTER_SERVICES,
+  type SiteRegistrationPrepareResult,
+  type SiteRegistrationToggleResult,
+  type SiteRegistrationVerifyResult,
   type SiteRegistrationView,
   type WebmasterAccountsView,
   type WebmasterService,
@@ -132,22 +137,62 @@ export interface SiteRegistrationRouteDeps {
   resolveProject: (req: FastifyRequest<{ Params: { projectId: string } }>, access: 'session-only') => Promise<{ ctx: ProjectContext }>;
   /** Session-only agency staff (admin or developer); `action` completes the refusal. */
   requirePlatformStaff: (req: FastifyRequest, action: string) => Promise<string>;
-  /** The website's Site URL as saved (`website.siteUrl`). */
+  /** The website's Production URL as saved (`website.siteUrl`). */
   siteUrlOf: (ctx: ProjectContext) => Promise<string | undefined>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
 /**
- *   GET /projects/:projectId/search-engines   whether the site is registered with the platform's Google and Bing
- *                                             accounts, and why not — agency staff (session-only)
+ * A project's registration with the platform's search engine accounts — agency staff only, in a session (no token):
  *
- * Registration itself has no route: every publish and deploy does it (see `SiteRegistrar`).
+ *   GET  /projects/:projectId/search-engines                    on/off, status and messages per search engine
+ *   PUT  /projects/:projectId/search-engines                    `{google?, bing?}` on/off; off removes the site there
+ *   POST /projects/:projectId/search-engines/prepare            the tags, before the verification deploy
+ *   POST /projects/:projectId/search-engines/:service/verify    one search engine confirms the tag on the live site
+ *
+ * The verification itself is run by the editor (the Search engines tile): prepare, deploy, then verify each.
  */
 export function registerSiteRegistrationRoutes(app: FastifyInstance, deps: SiteRegistrationRouteDeps): void {
   const { registrar, resolveProject, requirePlatformStaff, siteUrlOf, rl } = deps;
-  app.get<{ Params: { projectId: string } }>('/projects/:projectId/search-engines', { config: rl(60) }, async (req, reply) => {
-    await requirePlatformStaff(req, 'see search engine registration');
+
+  const staff = async (req: FastifyRequest<{ Params: { projectId: string } }>, action: string) => {
+    await requirePlatformStaff(req, action);
     const { ctx } = await resolveProject(req, 'session-only');
-    return reply.send((await registrar.view(ctx.projectId, await siteUrlOf(ctx))) satisfies SiteRegistrationView);
+    return { projectId: ctx.projectId, siteUrl: await siteUrlOf(ctx) };
+  };
+
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/search-engines', { config: rl(60) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'see search engine registration');
+    return reply.send((await registrar.view(projectId, siteUrl)) satisfies SiteRegistrationView);
+  });
+
+  app.put<{ Params: { projectId: string } }>('/projects/:projectId/search-engines', { config: rl(20) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'switch search engines on or off');
+    const body = SiteRegistrationToggleSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid request' });
+    const view = await registrar.view(projectId, siteUrl);
+    for (const service of WEBMASTER_SERVICES) {
+      // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+      if (body.data[service] !== true) continue;
+      // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+      if (!view[service].configured) return reply.code(409).send({ error: `The platform has no ${service === 'google' ? 'Google service account' : 'Bing Webmaster account'} yet` });
+      if (!view.siteUrl) return reply.code(409).send({ error: 'Set an https Production URL first' });
+    }
+    const removed = await registrar.setEnabled(projectId, body.data);
+    return reply.send({ removed, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationToggleResult);
+  });
+
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/search-engines/prepare', { config: rl(10) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'verify the site with search engines');
+    const results = await registrar.prepare(projectId, siteUrl);
+    return reply.send({ results, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationPrepareResult);
+  });
+
+  app.post<{ Params: { projectId: string; service: string } }>('/projects/:projectId/search-engines/:service/verify', { config: rl(20) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'verify the site with search engines');
+    const service = WebmasterServiceSchema.safeParse(req.params.service);
+    if (!service.success) return reply.code(404).send({ error: 'no such search engine' });
+    const result = await registrar.verify(projectId, service.data, siteUrl);
+    return reply.send({ result, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationVerifyResult);
   });
 }

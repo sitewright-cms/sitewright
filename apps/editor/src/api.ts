@@ -13,6 +13,10 @@ import type {
   WebmasterAccountsView,
   WebmasterService,
   WebmasterTestResult,
+  SiteRegistrationPrepareResult,
+  SiteRegistrationToggle,
+  SiteRegistrationToggleResult,
+  SiteRegistrationVerifyResult,
   SiteRegistrationView,
   SiteStats,
   StatsQuery,
@@ -2221,6 +2225,14 @@ export const api = {
   testWebmasterAccount: (service: WebmasterService) => request<WebmasterTestResult>('POST', '/admin/webmaster-accounts/test', { service }),
   /** Whether a project's site is registered with the platform's Google and Bing accounts (agency staff). */
   getSiteRegistration: (projectId: string) => request<SiteRegistrationView>('GET', `/projects/${projectId}/search-engines`),
+  /** Switch search engines on or off for the project; off removes the site from that account (agency staff). */
+  setSiteRegistration: (projectId: string, body: SiteRegistrationToggle) =>
+    request<SiteRegistrationToggleResult>('PUT', `/projects/${projectId}/search-engines`, body),
+  /** The verification's first step: each switched-on search engine's tag, before the deploy that carries it. */
+  prepareSiteRegistration: (projectId: string) => request<SiteRegistrationPrepareResult>('POST', `/projects/${projectId}/search-engines/prepare`),
+  /** The verification's last step: one search engine confirms the tag on the live site. */
+  verifySiteRegistration: (projectId: string, service: WebmasterService) =>
+    request<SiteRegistrationVerifyResult>('POST', `/projects/${projectId}/search-engines/${service}/verify`),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),

@@ -7,8 +7,8 @@ import { SiteRegistrar } from '../src/webmaster/sites.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
 /**
- * The registrar on its own: what it asks the search engines, when, and with which tag — the rules a publish or deploy
- * relies on but cannot show (concurrent builds, a build that is not the latest, a cache in front of the host).
+ * The registrar on its own: the rules the tile relies on but cannot show — two steps at once, a tag that is not the
+ * current one, a Bing site added without a code, and what a build carries.
  */
 
 const { privateKey: PEM } = generateKeyPairSync('rsa', {
@@ -19,27 +19,27 @@ const { privateKey: PEM } = generateKeyPairSync('rsa', {
 const SITE = 'https://www.example.com/';
 
 let calls: string[];
-let tokenAnswers: string[];
-let verifyAnswers: Array<'ok' | 'missing'>;
-const fetch: FetchLike = async (url) => {
+let bingCode: string;
+const fetch: FetchLike = async (url, init) => {
   const path = url.split('?')[0]!;
-  calls.push(path);
+  calls.push(`${init.method} ${path}`);
   const answer = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
   if (path === 'https://oauth2.googleapis.com/token') return answer(200, { access_token: 'ya29.token' });
   if (path.endsWith('/siteVerification/v1/token')) {
     await new Promise((r) => setTimeout(r, 20));
-    return answer(200, { method: 'META', token: `<meta name="google-site-verification" content="${tokenAnswers.shift() ?? 'gTag_default1'}" />` });
+    return answer(200, { method: 'META', token: '<meta name="google-site-verification" content="gTag_first111" />' });
   }
-  if (path.endsWith('/siteVerification/v1/webResource')) {
-    return (verifyAnswers.shift() ?? 'ok') === 'ok' ? answer(200, { id: 'x' }) : answer(400, { error: { message: 'The necessary verification token could not be found on your site.' } });
-  }
+  if (path.endsWith('/GetUserSites')) return answer(200, { d: calls.some((c) => c.endsWith('/AddSite')) ? [{ Url: SITE, AuthenticationCode: bingCode }] : [] });
+  if (path.endsWith('/AddSite') || path.endsWith('/RemoveSite')) return answer(200, { d: null });
   return answer(200, {});
 };
 
 let registrar: SiteRegistrar;
 let projectId: string;
 
-async function make(verifyRetryMs = 0): Promise<SiteRegistrar> {
+beforeEach(async () => {
+  calls = [];
+  bingCode = 'B1NGC0DE0001';
   const db = await makeTestDb();
   projectId = (await new ProjectRepository(db).create({ name: 'Reg', slug: `reg-${randomBytes(3).toString('hex')}` })).id;
   const accounts = new WebmasterRepository(db, randomBytes(32));
@@ -48,85 +48,51 @@ async function make(verifyRetryMs = 0): Promise<SiteRegistrar> {
       secret: { clientEmail: 'seo@p-123.iam.gserviceaccount.com', privateKey: PEM, privateKeyId: 'a1b2c3d4e5f6', projectId: 'p-123' },
       info: { clientEmail: 'seo@p-123.iam.gserviceaccount.com', projectId: 'p-123' },
     },
+    bing: { secret: { apiKey: '0123456789abcdef0123456789abcdef' }, info: {} },
   });
-  return new SiteRegistrar({ db, accounts, io: { fetch }, log: { info: () => {}, warn: () => {} }, verifyRetryMs });
-}
-
-const verifies = (): number => calls.filter((c) => c.endsWith('/webResource')).length;
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-beforeEach(async () => {
-  calls = [];
-  tokenAnswers = ['gTag_first111'];
-  verifyAnswers = [];
-  registrar = await make();
+  registrar = new SiteRegistrar({ db, accounts, io: { fetch }, log: { info: () => {}, warn: () => {} } });
 });
 
 describe('SiteRegistrar', () => {
-  it('two first builds at once ask Google for the tag once, and both carry it', async () => {
-    const [a, b] = await Promise.all([registrar.tagsFor(projectId, SITE), registrar.tagsFor(projectId, SITE)]);
-    expect(a).toEqual({ google: 'gTag_first111' });
-    expect(b).toEqual({ google: 'gTag_first111' });
+  it('two runs at once ask Google for the tag once', async () => {
+    await registrar.setEnabled(projectId, { google: true });
+    const [a, b] = await Promise.all([registrar.prepare(projectId, SITE), registrar.prepare(projectId, SITE)]);
+    expect(a.google).toEqual({ ok: true, detail: 'Tag ready' });
+    expect(b.google).toEqual({ ok: true, detail: 'Tag ready' });
     expect(calls.filter((c) => c.endsWith('/siteVerification/v1/token'))).toHaveLength(1);
   });
 
-  it('verifies only with the tag the live build carried', async () => {
-    const tags = await registrar.tagsFor(projectId, SITE);
-    // A build from before this tag existed (or for another URL) went live: nothing it carries can be verified.
-    registrar.afterDeploy(projectId, { google: 'gTag_stale999' });
-    registrar.afterDeploy(projectId, {});
-    registrar.afterDeploy(projectId, undefined);
-    await registrar.settled(projectId);
-    expect(verifies()).toBe(0);
-    expect((await registrar.view(projectId, SITE)).google.status).toBe('pending');
-
-    registrar.afterDeploy(projectId, tags);
-    await registrar.settled(projectId);
-    expect(verifies()).toBe(1);
-    expect((await registrar.view(projectId, SITE)).google).toMatchObject({ status: 'verified', detail: 'Verified and added to Search Console' });
-
-    // Verified stays verified: the next live build asks nothing.
-    registrar.afterDeploy(projectId, tags);
-    await registrar.settled(projectId);
-    expect(verifies()).toBe(1);
+  it('a build carries only switched-on tags for its own Production URL', async () => {
+    await registrar.setEnabled(projectId, { google: true, bing: true });
+    expect(await registrar.tagsForBuild(projectId, SITE)).toEqual({});
+    await registrar.prepare(projectId, SITE);
+    expect(await registrar.tagsForBuild(projectId, SITE)).toEqual({ google: 'gTag_first111', bing: 'B1NGC0DE0001' });
+    expect(await registrar.tagsForBuild(projectId, 'https://other.example.com/')).toEqual({});
+    expect(await registrar.tagsForBuild(projectId, undefined)).toEqual({});
   });
 
-  it('asks once more a little later when the search engine did not find the tag yet', async () => {
-    registrar = await make(30);
-    verifyAnswers = ['missing', 'ok'];
-    const tags = await registrar.tagsFor(projectId, SITE);
-    registrar.afterDeploy(projectId, tags);
-    await registrar.settled(projectId);
-    expect((await registrar.view(projectId, SITE)).google.status).toBe('failed');
-    await wait(80);
-    await registrar.settled(projectId);
-    expect(verifies()).toBe(2);
-    expect((await registrar.view(projectId, SITE)).google.status).toBe('verified');
+  it('a Bing site added without a readable code is still removed when Bing is switched off', async () => {
+    bingCode = '"><bad>';
+    await registrar.setEnabled(projectId, { bing: true });
+    expect((await registrar.prepare(projectId, SITE)).bing).toEqual({ ok: false, detail: 'Bing sent a verification code the platform could not read' });
+    expect(calls).toContain('POST https://ssl.bing.com/webmaster/api.svc/json/AddSite');
+    const removed = await registrar.setEnabled(projectId, { bing: false });
+    expect(removed.bing).toEqual({ ok: true, detail: 'Removed from Bing Webmaster Tools' });
+    expect(calls).toContain('POST https://ssl.bing.com/webmaster/api.svc/json/RemoveSite');
   });
 
-  it('asks only once more, and close() cancels the second ask', async () => {
-    registrar = await make(30);
-    verifyAnswers = ['missing', 'missing', 'missing'];
-    const tags = await registrar.tagsFor(projectId, SITE);
-    registrar.afterDeploy(projectId, tags);
-    await registrar.settled(projectId);
-    await wait(120);
-    await registrar.settled(projectId);
-    expect(verifies()).toBe(2);
-
-    registrar.afterDeploy(projectId, tags);
-    await registrar.settled(projectId);
-    registrar.close();
-    await wait(80);
-    expect(verifies()).toBe(3);
+  it('a search engine never set up has nothing to remove, and nothing is asked', async () => {
+    await registrar.setEnabled(projectId, { google: true });
+    calls = [];
+    expect(await registrar.setEnabled(projectId, { google: false })).toEqual({});
+    expect(calls).toEqual([]);
+    expect((await registrar.view(projectId, SITE)).google).toMatchObject({ enabled: false, status: 'off' });
   });
 
-  it('a new Site URL gets its own tag, and the old one is no longer shown', async () => {
-    tokenAnswers = ['gTag_first111', 'gTag_second22'];
-    expect(await registrar.tagsFor(projectId, SITE)).toEqual({ google: 'gTag_first111' });
-    expect(await registrar.tagsFor(projectId, 'https://shop.example.com')).toEqual({ google: 'gTag_second22' });
-    expect((await registrar.view(projectId, SITE)).google.status).toBe('none');
-    expect((await registrar.view(projectId, 'https://shop.example.com/')).google.status).toBe('pending');
-    expect(await registrar.tagsFor(projectId, 'http://shop.example.com')).toEqual({});
+  it('verify refuses a search engine that is off, or has no tag for the URL', async () => {
+    expect(await registrar.verify(projectId, 'google', SITE)).toEqual({ ok: false, detail: 'Google is switched off for this site' });
+    await registrar.setEnabled(projectId, { google: true });
+    expect(await registrar.verify(projectId, 'google', SITE)).toEqual({ ok: false, detail: 'No tag for this Production URL yet: start the verification again' });
+    expect(await registrar.verify(projectId, 'google', 'http://www.example.com/')).toEqual({ ok: false, detail: 'Set an https Production URL first' });
   });
 });

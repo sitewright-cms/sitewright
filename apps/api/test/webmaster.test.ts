@@ -1,12 +1,13 @@
 import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { bingSiteCode, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
+import { bingRemoveSite, bingSiteCode, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
 import {
   GOOGLE_SCOPES,
   GOOGLE_TOKEN_URL,
   googleAccessToken,
   googleRegisterSite,
   googleSiteToken,
+  googleUnregisterSite,
   parseGoogleKey,
   testGoogle,
 } from '../src/webmaster/google.js';
@@ -351,5 +352,51 @@ describe('Bing site registration', () => {
     expect(JSON.parse(yes.calls[0]!.body!)).toEqual({ siteUrl: SITE });
     await expectRefusal(bingVerifySite(KEY, SITE, fake(() => ({ status: 200, body: { d: false } })).io), 'unverified', /did not find the verification tag/);
     await expectRefusal(bingVerifySite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 14 } })).io), 'auth', /refused the API key/);
+  });
+});
+
+describe('removing a site', () => {
+  const token = { status: 200, body: { access_token: 'ya29.token' } };
+  const SITE = 'https://www.example.com/';
+  const ENC = 'https%3A%2F%2Fwww.example.com%2F';
+
+  it('Google: out of Search Console, then the ownership given up', async () => {
+    const { io, calls } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 204, body: '' }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, io)).toBe('Removed from Search Console, and the ownership given up');
+    expect(calls.slice(1).map((c) => `${c.method} ${c.url}`)).toEqual([
+      `DELETE https://www.googleapis.com/webmasters/v3/sites/${ENC}`,
+      `DELETE https://www.googleapis.com/siteVerification/v1/webResource/${ENC}`,
+    ]);
+  });
+
+  it('Google: tries the other id form, and takes "not there" as removed', async () => {
+    const twice = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.endsWith(`webResource/${ENC}`) ? { status: 404, body: {} } : { status: 204, body: '' }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, twice.io)).toBe('Removed from Search Console, and the ownership given up');
+    expect(twice.calls.at(-1)!.url).toBe(`https://www.googleapis.com/siteVerification/v1/webResource/${encodeURIComponent(ENC)}`);
+    const gone = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 404, body: {} }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, gone.io)).toBe('Nothing to remove at Google');
+  });
+
+  it('Google: a 403 from Search Console means "not in the account", and the ownership is still given up', async () => {
+    const notListed = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 403, body: { error: { code: 403 } } } : { status: 204, body: '' }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, notListed.io)).toBe('Ownership given up (the site was not in Search Console)');
+    // …unless it says the API is off: then that is the answer, after the ownership step still ran.
+    const off = fake((call) =>
+      call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 403, body: { error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } } } : { status: 204, body: '' },
+    );
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, off.io), 'disabled', /^The Google Search Console API is not enabled/);
+    expect(off.calls.some((c) => c.method === 'DELETE' && c.url.includes('siteVerification'))).toBe(true);
+    const refused = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403 } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, refused.io), 'auth', /Site Verification API \(HTTP 403\)/);
+  });
+
+  it('Bing: RemoveSite, with "not found" as removed', async () => {
+    const KEY = '0123456789abcdef0123456789ABCDEF';
+    const ok = fake(() => ({ status: 200, body: { d: null } }));
+    expect(await bingRemoveSite(KEY, SITE, ok.io)).toBe('Removed from Bing Webmaster Tools');
+    expect(ok.calls[0]!.url).toBe(`https://ssl.bing.com/webmaster/api.svc/json/RemoveSite?apikey=${KEY}`);
+    expect(JSON.parse(ok.calls[0]!.body!)).toEqual({ siteUrl: SITE });
+    expect(await bingRemoveSite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 11 } })).io)).toBe('Removed from Bing Webmaster Tools');
+    await expectRefusal(bingRemoveSite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 3 } })).io), 'auth', /refused the API key/);
   });
 });

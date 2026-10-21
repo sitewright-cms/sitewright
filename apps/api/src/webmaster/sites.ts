@@ -4,50 +4,44 @@ import {
   registrableSiteUrl,
   WEBMASTER_SERVICES,
   type SiteRegistrationEntry,
+  type SiteRegistrationStepResult,
   type SiteRegistrationView,
   type WebmasterService,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { webmasterSites } from '../db/schema.js';
-import { bingSiteCode, bingVerifySite } from './bing.js';
-import { googleRegisterSite, googleSiteToken, type GoogleServiceAccountKey } from './google.js';
+import { bingRemoveSite, bingSiteCode, bingVerifySite } from './bing.js';
+import { googleRegisterSite, googleSiteToken, googleUnregisterSite, type GoogleServiceAccountKey } from './google.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
 
 /**
- * SITE REGISTRATION — registers every published or deployed site with the platform's ONE Google and ONE Bing
- * account, so no project owner needs a Search Console or Bing account of their own.
+ * SITE REGISTRATION — a project's site registered with the platform's ONE Google and ONE Bing account, so no project
+ * owner needs a Search Console or Bing account of their own. Agency staff drive every step from the Search engines
+ * tile; nothing here runs on its own:
  *
- *   1. Before a build that goes LIVE (a deploy, or a publish served by Local Hosting at its Site URL), `tagsFor`
- *      returns each account's verification tag for the website's Site URL — fetched once and kept: the same account
- *      and URL always get the same tag — and the build puts them in every page's `<head>`.
- *   2. Once that build is live, `afterDeploy` gets the tags THAT build carried and asks each search engine to verify
- *      the site — Google then makes the service account a verified owner, and the site is added to its Search
- *      Console. A search engine that did not find the tag yet (a cache in front of the host) is asked once more,
- *      `retryMs` later.
+ *   - `setEnabled`: switch a search engine on or off for the project. Off REMOVES the site from that account
+ *     (Search Console and the ownership at Google; the site at Bing) before the switch goes off.
+ *   - `prepare`: before the verification deploy — each switched-on account's tag for the Production URL (Google
+ *     getToken; Bing adds the site, then reads its code). A registration for an older URL is removed first.
+ *   - the deploy (the editor runs the project's own deploys), whose builds carry the tags (`tagsForBuild`);
+ *   - `verify`: ask one search engine to confirm the tag on the live site (Google: then add it to Search Console).
+ *   - `removeAll`: the project is deleted — remove the site from every account it was registered with.
  *
- * ★ Nothing here may fail or stall a publish: every error is recorded on the project (and shown to staff), the
- * build goes out without that tag, and the next deploy tries again. Getting a tag is bounded in time; verifying runs
- * after the deploy has answered.
+ * ★ Every build keeps the tags of the switched-on search engines, not only the verification deploy: a search engine
+ * checks again later, and a site whose tag disappeared loses its verification.
  */
 
-export type SiteTags = Partial<Record<WebmasterService, string>>;
-
-/**
- * After a failed attempt to get a tag, how long builds go without asking again: every ask can delay a build by up to
- * `TAG_TIMEOUT_MS`. Short, because what fixes it (switching an API on in Google Cloud) changes nothing stored here.
- */
-export const TAG_RETRY_MS = 10 * 60 * 1000;
-/** How long a build waits for a search engine's tag (both are asked side by side). */
-const TAG_TIMEOUT_MS = 15_000;
-/** When a search engine did not find the tag right after a deploy, how long until it is asked once more. */
-const VERIFY_RETRY_MS = 2 * 60 * 1000;
+/** How long a step waits for a search engine (several requests each). */
+const STEP_TIMEOUT_MS = 30_000;
 
 interface Account {
-  /** Which account a tag was made for, so a different key gets a new one. */
+  /** Which account a tag was made for, so a different key needs a new one. */
   id: string;
+  name: string;
   tag: (siteUrl: string) => Promise<string>;
   register: (siteUrl: string) => Promise<void>;
+  unregister: (siteUrl: string) => Promise<string>;
   done: string;
 }
 
@@ -59,24 +53,28 @@ export interface SiteRegistrarDeps {
   io: WebmasterIo;
   log: { warn: (obj: object, msg: string) => void; info: (obj: object, msg: string) => void };
   now?: () => Date;
-  /** Overrides `VERIFY_RETRY_MS` (tests); 0 turns the second ask off. */
-  verifyRetryMs?: number;
 }
+
+const NAME: Record<WebmasterService, string> = { google: 'Google', bing: 'Bing' };
+const NO_ACCOUNT = (service: WebmasterService): string =>
+  `The platform has no ${service === 'google' ? 'Google service account' : 'Bing Webmaster account'}: an instance admin adds it in System Settings → Integrations`;
 
 const failureText = (err: unknown): string => (err instanceof WebmasterError ? err.message : 'the search engine could not be reached');
 
-function withTimeout<T>(work: Promise<T>, ms: number, service: string): Promise<T> {
+function withTimeout<T>(work: Promise<T>, ms: number, service: WebmasterService): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new WebmasterError(`${service} took too long to answer`, 'unavailable')), ms);
+    timer = setTimeout(() => reject(new WebmasterError(`${NAME[service]} took too long to answer`, 'unavailable')), ms);
   });
   return Promise.race([work, late]).finally(() => clearTimeout(timer));
 }
 
+/** A request that failed because the service could not be reached or was busy: the switch stays where it was. */
+const transient = (err: unknown): boolean => !(err instanceof WebmasterError) || err.kind === 'unavailable' || err.kind === 'rate';
+
 export class SiteRegistrar {
-  /** Per project, the work in flight — getting tags, or verifying. A second one waits for it instead of racing it. */
+  /** Per project, the step in flight: a second one waits for it instead of racing it on the same rows. */
   private readonly queues = new Map<string, Promise<unknown>>();
-  private readonly timers = new Set<NodeJS.Timeout>();
 
   constructor(private readonly deps: SiteRegistrarDeps) {}
 
@@ -84,7 +82,6 @@ export class SiteRegistrar {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** Runs `work` after whatever this project already has in flight (both reading and writing its rows). */
   private queued<T>(projectId: string, work: () => Promise<T>): Promise<T> {
     const run = (this.queues.get(projectId) ?? Promise.resolve()).then(work, work);
     const tail = run.catch(() => undefined);
@@ -115,8 +112,10 @@ export class SiteRegistrar {
       if (!key.clientEmail || !key.privateKey) return null;
       return {
         id: key.clientEmail,
+        name: 'Google Search Console',
         tag: (siteUrl) => googleSiteToken(key, siteUrl, io, this.now()),
         register: (siteUrl) => googleRegisterSite(key, siteUrl, io, this.now()),
+        unregister: (siteUrl) => googleUnregisterSite(key, siteUrl, io, this.now()),
         done: 'Verified and added to Search Console',
       };
     }
@@ -125,8 +124,10 @@ export class SiteRegistrar {
     return {
       // A fingerprint, not the key: the row is never a place a secret could be read back from.
       id: createHash('sha256').update(apiKey).digest('hex').slice(0, 16),
+      name: 'Bing Webmaster Tools',
       tag: (siteUrl) => bingSiteCode(apiKey, siteUrl, io),
       register: (siteUrl) => bingVerifySite(apiKey, siteUrl, io),
+      unregister: (siteUrl) => bingRemoveSite(apiKey, siteUrl, io),
       done: 'Verified in Bing Webmaster Tools',
     };
   }
@@ -135,148 +136,256 @@ export class SiteRegistrar {
     return this.deps.db.select().from(webmasterSites).where(eq(webmasterSites.projectId, projectId));
   }
 
+  private async row(projectId: string, service: WebmasterService): Promise<Row | undefined> {
+    const [row] = await this.deps.db
+      .select()
+      .from(webmasterSites)
+      .where(and(eq(webmasterSites.projectId, projectId), eq(webmasterSites.service, service)));
+    return row;
+  }
+
   private async save(row: Row): Promise<void> {
-    const { siteUrl, account, token, status, detail, verifiedAt, updatedAt } = row;
+    const { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt } = row;
     await this.deps.db
       .insert(webmasterSites)
       .values(row)
       .onConflictDoUpdate({
         target: [webmasterSites.projectId, webmasterSites.service],
-        set: { siteUrl, account, token, status, detail, verifiedAt, updatedAt },
+        set: { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt },
       });
   }
 
   /**
-   * The verification tags a live build of this project carries. Never throws, and waits at most `TAG_TIMEOUT_MS`
-   * (the search engines are asked side by side) — and only the first build for a URL asks at all.
+   * Whether `row` registered something at a search engine that a removal would have to undo: a tag was fetched — or,
+   * for Bing, asked for, since Bing adds the site to the account before it hands out the code.
    */
-  tagsFor(projectId: string, rawSiteUrl: string | null | undefined): Promise<SiteTags> {
-    const siteUrl = registrableSiteUrl(rawSiteUrl);
-    if (!siteUrl) return Promise.resolve({});
-    // Queued per project: two first builds at once must not both ask, nor the later failure overwrite the tag the
-    // earlier one saved.
-    return this.queued(projectId, async () => {
-      const rows = await this.rows(projectId).catch(() => [] as Row[]);
-      const found = await Promise.all(
-        WEBMASTER_SERVICES.map(async (service) => {
-          try {
-            return [service, await this.tagFor(projectId, service, siteUrl, rows.find((r) => r.service === service))] as const;
-          } catch (err) {
-            this.deps.log.warn({ projectId, service, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: no verification tag');
-            return [service, null] as const;
-          }
-        }),
-      );
-      const tags: SiteTags = {};
-      for (const [service, tag] of found) {
-        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
-        if (tag) tags[service] = tag;
-      }
-      return tags;
-    });
+  private static registered(row: Row | undefined): row is Row {
+    return Boolean(row?.siteUrl && (row.token || row.service === 'bing'));
   }
 
-  private async tagFor(projectId: string, service: WebmasterService, siteUrl: string, row: Row | undefined): Promise<string | null> {
-    const account = await this.account(service);
-    if (!account) return null;
-    const now = this.now();
-    if (row && row.siteUrl === siteUrl && row.account === account.id) {
-      if (row.token) return row.token;
-      if (now.getTime() - row.updatedAt.getTime() < TAG_RETRY_MS) return null;
+  /**
+   * Removes `row`'s site from its account. Something already gone counts as removed; with no account (removed in
+   * System Settings) there is nothing the platform can still do, and that is said.
+   */
+  private async unregister(row: Row): Promise<SiteRegistrationStepResult & { retry: boolean }> {
+    const account = await this.account(row.service);
+    if (!account) return { ok: true, retry: false, detail: `Not removed from ${NAME[row.service]}: the platform no longer has that account` };
+    // One account serves every project: an address another project still registers (a duplicate, an import of the
+    // same site) stays — removing it would take that project's registration with it.
+    const shared = await this.deps.db
+      .select({ projectId: webmasterSites.projectId })
+      .from(webmasterSites)
+      .where(and(eq(webmasterSites.service, row.service), eq(webmasterSites.siteUrl, row.siteUrl), eq(webmasterSites.account, row.account)));
+    if (shared.some((r) => r.projectId !== row.projectId)) {
+      return { ok: true, retry: false, detail: `Kept at ${NAME[row.service]}: another project registers ${row.siteUrl} too` };
     }
-    const base = { projectId, service, siteUrl, account: account.id, verifiedAt: null, updatedAt: now };
     try {
-      const token = await withTimeout(account.tag(siteUrl), TAG_TIMEOUT_MS, service === 'google' ? 'Google' : 'Bing');
-      await this.save({ ...base, token, status: 'pending', detail: null });
-      return token;
+      return { ok: true, retry: false, detail: await withTimeout(account.unregister(row.siteUrl), STEP_TIMEOUT_MS, row.service) };
     } catch (err) {
-      await this.save({ ...base, token: null, status: 'failed', detail: failureText(err) });
-      return null;
+      return { ok: false, retry: transient(err), detail: `Could not remove ${row.siteUrl} from ${NAME[row.service]}: ${failureText(err)}` };
+    }
+  }
+
+  /** The tags a build of this project carries: switched-on search engines with a tag for its Production URL. Never throws. */
+  async tagsForBuild(projectId: string, rawSiteUrl: string | null | undefined): Promise<Partial<Record<WebmasterService, string>>> {
+    const siteUrl = registrableSiteUrl(rawSiteUrl);
+    if (!siteUrl) return {};
+    try {
+      const tags: Partial<Record<WebmasterService, string>> = {};
+      for (const row of await this.rows(projectId)) {
+        if (!row.enabled || !row.token || row.siteUrl !== siteUrl) continue;
+        // A tag made for an account that has since been replaced proves nothing for the new one.
+        const account = await this.account(row.service);
+        if (account && account.id === row.account) tags[row.service] = row.token;
+      }
+      return tags;
+    } catch (err) {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: tags not read');
+      return {};
     }
   }
 
   /**
-   * A build is now live: ask each search engine whose tag it carried (`carried`, as `tagsFor` returned it for THAT
-   * build) to verify the site. Runs in the background — the deploy has already succeeded, whatever happens here.
+   * Switches search engines on or off. Off removes the site from that account first; when the search engine could
+   * not be reached the switch stays on (say so, try again), when it refused for good the switch goes off anyway.
    */
-  afterDeploy(projectId: string, carried: SiteTags | undefined): void {
-    if (!carried || (!carried.google && !carried.bing)) return;
-    void this.queued(projectId, () => this.register(projectId, carried, true)).catch((err: unknown) => {
-      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration failed');
+  setEnabled(projectId: string, changes: Partial<Record<WebmasterService, boolean>>): Promise<Partial<Record<WebmasterService, SiteRegistrationStepResult>>> {
+    return this.queued(projectId, async () => {
+      const removed: Partial<Record<WebmasterService, SiteRegistrationStepResult>> = {};
+      for (const service of WEBMASTER_SERVICES) {
+        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+        const on = changes[service];
+        if (on === undefined) continue;
+        const row = await this.row(projectId, service);
+        const now = this.now();
+        if (on) {
+          if (row?.enabled) continue;
+          await this.save({
+            projectId,
+            service,
+            enabled: true,
+            siteUrl: row?.siteUrl ?? '',
+            account: row?.account ?? '',
+            token: row?.token ?? null,
+            status: row?.token ? 'pending' : 'none',
+            detail: null,
+            verifiedAt: null,
+            updatedAt: now,
+          });
+          continue;
+        }
+        if (!row) continue;
+        let result: SiteRegistrationStepResult | undefined;
+        if (SiteRegistrar.registered(row)) {
+          const { retry, ...outcome } = await this.unregister(row);
+          result = outcome;
+          // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+          removed[service] = outcome;
+          // Not reached: the site is still registered, so the switch stays on until a removal gets through.
+          if (retry) continue;
+          // Refused for good: switched off (no more tags), but what it registered is kept for the delete or the
+          // reap to try again.
+          if (!outcome.ok) {
+            await this.save({ ...row, enabled: false, detail: outcome.detail, updatedAt: now });
+            continue;
+          }
+        }
+        await this.save({ ...row, enabled: false, siteUrl: '', account: '', token: null, status: 'none', detail: result?.detail ?? null, verifiedAt: null, updatedAt: now });
+      }
+      return removed;
     });
   }
 
-  /** Everything queued for a project has finished (tests). */
-  async settled(projectId: string): Promise<void> {
-    await this.queues.get(projectId);
+  /** Before the verification deploy: each switched-on search engine's tag for the Production URL. */
+  prepare(projectId: string, rawSiteUrl: string | null | undefined): Promise<Partial<Record<WebmasterService, SiteRegistrationStepResult>>> {
+    return this.queued(projectId, async () => {
+      const siteUrl = registrableSiteUrl(rawSiteUrl);
+      const results: Partial<Record<WebmasterService, SiteRegistrationStepResult>> = {};
+      for (const row of await this.rows(projectId)) {
+        if (!row.enabled) continue;
+        const service = row.service;
+        const set = (r: SiteRegistrationStepResult): void => {
+          // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+          results[service] = r;
+        };
+        if (!siteUrl) {
+          set({ ok: false, detail: 'Set an https Production URL first' });
+          continue;
+        }
+        const account = await this.account(service);
+        if (!account) {
+          set({ ok: false, detail: NO_ACCOUNT(service) });
+          continue;
+        }
+        if (row.token && row.siteUrl === siteUrl && row.account === account.id) {
+          set({ ok: true, detail: row.status === 'verified' ? 'Already verified: its tag stays on the site' : 'Tag ready' });
+          continue;
+        }
+        // The Production URL (or the account) changed since: the old registration goes before the new one starts.
+        let moved = '';
+        if (SiteRegistrar.registered(row) && row.siteUrl !== siteUrl && row.account === account.id) {
+          const old = await this.unregister(row);
+          // Not removed: stop here rather than forget the old address (the row is the only record of it).
+          if (!old.ok) {
+            set({ ok: false, detail: `${old.detail}. Try again.` });
+            continue;
+          }
+          moved = ` (${old.detail.startsWith('Kept') ? old.detail : `the old address ${row.siteUrl} was removed`})`;
+        }
+        const base = { projectId, service, enabled: true, siteUrl, account: account.id, verifiedAt: null };
+        try {
+          const token = await withTimeout(account.tag(siteUrl), STEP_TIMEOUT_MS, service);
+          await this.save({ ...base, token, status: 'pending', detail: null, updatedAt: this.now() });
+          set({ ok: true, detail: `Tag ready${moved}` });
+        } catch (err) {
+          const detail = failureText(err);
+          await this.save({ ...base, token: null, status: 'failed', detail, updatedAt: this.now() });
+          set({ ok: false, detail: `${detail}${moved}` });
+        }
+      }
+      return results;
+    });
   }
 
-  /** Stops the scheduled second asks (app shutdown). */
-  close(): void {
-    for (const t of this.timers) clearTimeout(t);
-    this.timers.clear();
-  }
-
-  private async register(projectId: string, carried: SiteTags, first: boolean): Promise<void> {
-    let missed = false;
-    for (const row of await this.rows(projectId)) {
-      // Only what the live build carries: a row whose tag differs (a new key or URL saved since) is not on the site.
-      if (!row.token || row.token !== carried[row.service] || row.status === 'verified') continue;
-      const account = await this.account(row.service);
-      if (!account || account.id !== row.account) continue;
+  /** After the verification deploy: ask one search engine to confirm the tag on the live site. */
+  verify(projectId: string, service: WebmasterService, rawSiteUrl: string | null | undefined): Promise<SiteRegistrationStepResult> {
+    return this.queued(projectId, async () => {
+      const siteUrl = registrableSiteUrl(rawSiteUrl);
+      const row = await this.row(projectId, service);
+      if (!row?.enabled) return { ok: false, detail: `${NAME[service]} is switched off for this site` };
+      if (!siteUrl) return { ok: false, detail: 'Set an https Production URL first' };
+      const account = await this.account(service);
+      if (!account) return { ok: false, detail: NO_ACCOUNT(service) };
+      if (!row.token || row.siteUrl !== siteUrl || row.account !== account.id) return { ok: false, detail: 'No tag for this Production URL yet: start the verification again' };
+      let result: SiteRegistrationStepResult;
       let update: Pick<Row, 'status' | 'detail' | 'verifiedAt'>;
       try {
-        await account.register(row.siteUrl);
+        await withTimeout(account.register(siteUrl), STEP_TIMEOUT_MS, service);
+        result = { ok: true, detail: account.done };
         update = { status: 'verified', detail: account.done, verifiedAt: this.now() };
-        this.deps.log.info({ projectId, service: row.service }, 'site registration: verified');
+        this.deps.log.info({ projectId, service }, 'site registration: verified');
       } catch (err) {
-        update = { status: 'failed', detail: failureText(err), verifiedAt: null };
-        if (err instanceof WebmasterError && err.kind === 'unverified') missed = true;
+        result = { ok: false, detail: failureText(err) };
+        update = { status: 'failed', detail: result.detail, verifiedAt: null };
       }
-      // Only the row this attempt was for: a new Site URL or key saved meanwhile has its own tag and its own turn.
       await this.deps.db
         .update(webmasterSites)
         .set({ ...update, updatedAt: this.now() })
-        .where(
-          and(
-            eq(webmasterSites.projectId, projectId),
-            eq(webmasterSites.service, row.service),
-            eq(webmasterSites.siteUrl, row.siteUrl),
-            eq(webmasterSites.account, row.account),
-            eq(webmasterSites.token, row.token),
-          ),
-        );
-    }
-    // A search engine that looked before a cache in front of the host had the new page gets one more look.
-    const retryMs = this.deps.verifyRetryMs ?? VERIFY_RETRY_MS;
-    if (first && missed && retryMs > 0) {
-      const t = setTimeout(() => {
-        this.timers.delete(t);
-        void this.queued(projectId, () => this.register(projectId, carried, false)).catch(() => undefined);
-      }, retryMs);
-      t.unref();
-      this.timers.add(t);
-    }
+        .where(and(eq(webmasterSites.projectId, projectId), eq(webmasterSites.service, service), eq(webmasterSites.token, row.token)));
+      return result;
+    });
   }
 
-  /** What staff see: per search engine, whether the site is registered, and why not. */
+  /**
+   * The project is being deleted: remove its site from every account it was registered with, and switch the search
+   * engines off (a restored project starts again from the tile). Never throws; what could not be removed is logged.
+   */
+  removeAll(projectId: string): Promise<void> {
+    return this.queued(projectId, async () => {
+      for (const row of await this.rows(projectId)) {
+        if (SiteRegistrar.registered(row)) {
+          const result = await this.unregister(row);
+          if (!result.ok) {
+            // Switched off, but what it registered is kept: the reap tries the removal again.
+            this.deps.log.warn({ projectId, service: row.service, detail: result.detail }, 'site registration: not removed on delete');
+            await this.save({ ...row, enabled: false, detail: result.detail, updatedAt: this.now() });
+            continue;
+          }
+        }
+        if (row.enabled || row.token) {
+          await this.save({ ...row, enabled: false, siteUrl: '', account: '', token: null, status: 'none', detail: null, verifiedAt: null, updatedAt: this.now() });
+        }
+      }
+    }).catch((err: unknown) => {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: removal on delete failed');
+    });
+  }
+
+  /** What staff see: per search engine, whether it is on, how far it got, and why not. */
   async view(projectId: string, rawSiteUrl: string | null | undefined): Promise<SiteRegistrationView> {
     const siteUrl = registrableSiteUrl(rawSiteUrl);
     const configured = new Set((await this.deps.accounts.list()).map((a) => a.service));
-    const rows = siteUrl ? await this.rows(projectId) : [];
+    const rows = await this.rows(projectId);
     const accountIds = new Map<WebmasterService, string | undefined>();
     for (const service of WEBMASTER_SERVICES) {
       if (configured.has(service)) accountIds.set(service, (await this.account(service))?.id);
     }
     const entry = (service: WebmasterService): SiteRegistrationEntry => {
-      // A row made for another account (the key was replaced) says nothing about this one.
-      const row = rows.find((r) => r.service === service && r.siteUrl === siteUrl && r.account === accountIds.get(service));
+      const row = rows.find((r) => r.service === service);
+      const enabled = Boolean(row?.enabled);
+      // Switched on, but the platform's account was removed since: staff can still switch it off.
+      if (enabled && !configured.has(service)) {
+        return { configured: false, enabled, status: 'failed', detail: NO_ACCOUNT(service), verifiedAt: null, checkedAt: row?.updatedAt.toISOString() ?? null };
+      }
+      // A record made for another URL or account says nothing about this one; a just-switched-on row is `none`.
+      const current = row && enabled && (row.status === 'none' || (row.siteUrl === siteUrl && row.account === accountIds.get(service))) ? row : undefined;
       return {
         configured: configured.has(service),
-        status: row?.status ?? 'none',
-        detail: row?.detail ?? null,
-        verifiedAt: row?.verifiedAt?.toISOString() ?? null,
-        checkedAt: row?.updatedAt.toISOString() ?? null,
+        enabled,
+        status: enabled ? (current?.status ?? 'none') : 'off',
+        detail: current?.detail ?? (!enabled ? (row?.detail ?? null) : null),
+        verifiedAt: current?.verifiedAt?.toISOString() ?? null,
+        checkedAt: current?.updatedAt.toISOString() ?? null,
       };
     };
     return {

@@ -125,15 +125,18 @@ function isApiDisabled(json: unknown): boolean {
 }
 
 /**
- * Whether a 403 is about THE SITE — the account does not own it, or it is not in its Search Console (measured:
- * reason `forbidden`, "You are not an owner of this site.") — rather than about the account: an API switched off, or
- * a token without the scope, which no site would fix.
+ * Whether a 403 is about THE SITE: the account does not own it, or it is not in its Search Console. Measured, both
+ * answer reason `forbidden` ("You are not an owner of this site.", "User does not have sufficient permission for
+ * site …"). Only that reason counts: Google also answers 403 for a switched-off API, a token without the scope, and
+ * quota or rate limits — none of which says the site is gone, and reading one as "not there" would let a removal
+ * report success while the site stays registered.
  */
 function isNotTheSitesOwner(status: number, json: unknown): boolean {
-  if (status !== 403 || isApiDisabled(json)) return false;
-  const reasons = errorReasons(json);
-  return !reasons.includes('insufficientPermissions') && !reasons.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT');
+  return status === 403 && errorReasons(json).includes('forbidden');
 }
+
+/** Google's quota and rate refusals, which it may answer with 403 as well as 429. */
+const RATE_REASONS = ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded', 'RATE_LIMIT_EXCEEDED'];
 
 /** Google's own message from an error reply, cut down to something safe to show. */
 function googleMessage(json: unknown): string {
@@ -166,6 +169,9 @@ async function callApi(
 function apiFailure(status: number, json: unknown, apiName: string, projectId: string): never {
   if (status === 403 && isApiDisabled(json)) {
     throw new WebmasterError(`The ${apiName} is not enabled in Google Cloud project ${projectId}: enable it, wait a minute, and test again`, 'disabled');
+  }
+  if (status === 429 || (status === 403 && errorReasons(json).some((r) => RATE_REASONS.includes(String(r))))) {
+    throw new WebmasterError('Google is limiting requests; try again in a minute', 'rate');
   }
   if (status === 401 || status === 403) throw new WebmasterError(`Google refused the service account access to the ${apiName} (HTTP ${status})`, 'auth');
   if (status === 429) throw new WebmasterError('Google is limiting requests; try again in a minute', 'rate');
@@ -268,7 +274,10 @@ export async function googleSetOwners(key: GoogleServiceAccountKey, siteUrl: str
   const token = await googleAccessToken(key, io, now);
   const headers = { authorization: `Bearer ${token}`, accept: 'application/json' };
   const read = await requestJson(SERVICE, siteResource(siteUrl), { method: 'GET', headers }, io);
-  if (isNotTheSitesOwner(read.status, read.json)) throw new WebmasterError(`The platform does not own ${siteUrl} at Google yet: verify the site first`, 'unverified');
+  // 404: Google no longer knows the site at all — not owned either.
+  if (isNotTheSitesOwner(read.status, read.json) || read.status === 404) {
+    throw new WebmasterError(`The platform does not own ${siteUrl} at Google yet: verify the site first`, 'unverified');
+  }
   if (read.status !== 200 || !isRecord(read.json)) return apiFailure(read.status, read.json, SITE_VERIFICATION, key.projectId);
   const resource = read.json;
   const current = Array.isArray(resource.owners) ? resource.owners.filter((o): o is string => typeof o === 'string') : [];
@@ -323,7 +332,9 @@ export async function googleSubmitSitemap(key: GoogleServiceAccountKey, siteUrl:
  * removed. Returns what was done, for staff.
  *
  * `owners` (the people the platform made owners) lose their ownership FIRST: once the service account gives the site
- * up it can no longer take them off. If that fails, nothing else is done, so the removal can be tried again whole.
+ * up it can no longer take them off. If Google cannot be reached for that, nothing else is done, so the removal can be
+ * tried again whole. If Google refuses it for good (an owner who also verified on their own keeps the site until
+ * their own tag is gone), the platform still gives the site up, and says the owners stayed.
  *
  * ★ Search Console answers 403, not 404, for a property that is not in the account (a site whose verification
  * failed before it was added), and Site Verification answers 403 for a site the account does not own: both are
@@ -333,13 +344,15 @@ export async function googleSubmitSitemap(key: GoogleServiceAccountKey, siteUrl:
  */
 export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl: string, owners: readonly string[], io: WebmasterIo, now = new Date()): Promise<string> {
   let ownersGone = 0;
+  let ownersKept = '';
   if (owners.length > 0) {
     try {
       const left = await googleSetOwners(key, siteUrl, { wanted: [], dropped: owners }, io, now);
       ownersGone = owners.filter((o) => !left.some((l) => sameEmail(l, o))).length;
     } catch (err) {
       // Not owned (any more): there is nobody the service account could take off.
-      if (!(err instanceof WebmasterError && err.kind === 'unverified')) throw err;
+      if (err instanceof WebmasterError && err.kind === 'invalid') ownersKept = `; the owners were not removed: ${err.message}`;
+      else if (!(err instanceof WebmasterError && err.kind === 'unverified')) throw err;
     }
   }
   const token = await googleAccessToken(key, io, now);
@@ -352,8 +365,8 @@ export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl
   }
   const owned = await deleteIfThere(siteResource(siteUrl), token, SITE_VERIFICATION, key.projectId, io, [403, 404]);
   if (failure) throw failure;
-  const people = ownersGone ? ` (${ownersGone} owner${ownersGone === 1 ? '' : 's'} removed)` : '';
+  const people = `${ownersGone ? ` (${ownersGone} owner${ownersGone === 1 ? '' : 's'} removed)` : ''}${ownersKept}`;
   if (listed && owned) return `Removed from Search Console, and the ownership given up${people}`;
   if (listed) return `Removed from Search Console${people}`;
-  return owned ? `Ownership given up (the site was not in Search Console)${people}` : 'Nothing to remove at Google';
+  return owned ? `Ownership given up (the site was not in Search Console)${people}` : `Nothing to remove at Google${ownersKept}`;
 }

@@ -380,7 +380,8 @@ describe('removing a site', () => {
   });
 
   it('Google: a 403 from Search Console means "not in the account", and the ownership is still given up', async () => {
-    const notListed = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 403, body: { error: { code: 403 } } } : { status: 204, body: '' }));
+    const forbidden = { status: 403, body: { error: { code: 403, message: "User does not have sufficient permission for site 'x'.", errors: [{ reason: 'forbidden' }] } } };
+    const notListed = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? forbidden : { status: 204, body: '' }));
     expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], notListed.io)).toBe('Ownership given up (the site was not in Search Console)');
     // …unless it says the API is off: then that is the answer, after the ownership step still ran.
     const off = fake((call) =>
@@ -388,6 +389,12 @@ describe('removing a site', () => {
     );
     await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], off.io), 'disabled', /^The Google Search Console API is not enabled/);
     expect(off.calls.some((c) => c.method === 'DELETE' && c.url.includes('siteVerification'))).toBe(true);
+    // A quota or rate refusal is NOT "already removed": it is retried, never reported as done.
+    const quota = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403, errors: [{ reason: 'rateLimitExceeded' }] } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], quota.io), 'rate', /limiting requests/);
+    // Nor is a 403 that gives no reason at all.
+    const bare = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403 } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], bare.io), 'auth', /\(HTTP 403\)/);
     // A token without the scope is about the account, not the site: never read as "already removed".
     const scope = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403, errors: [{ reason: 'insufficientPermissions' }] } } }));
     await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], scope.io), 'auth', /\(HTTP 403\)/);
@@ -410,6 +417,18 @@ describe('removing a site', () => {
     const down = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 503, body: {} }));
     await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], down.io), 'unavailable', /HTTP 503/);
     expect(down.calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+    // An owner Google will not take off (they verified on their own): the site is still given up, and that is said.
+    const stuck = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.method === 'GET') return { status: 200, body: resource };
+      if (call.method === 'PUT') return { status: 400, body: { error: { message: 'Delete the verification tokens of ana@agency.example first.' } } };
+      return { status: 204, body: '' };
+    });
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], stuck.io)).toBe(
+      'Removed from Search Console, and the ownership given up; the owners were not removed: Google did not change the owners: Delete the verification tokens of ana@agency.example first.',
+    );
+    expect(stuck.calls.filter((c) => c.method === 'DELETE')).toHaveLength(2);
 
     // Not owned any more: there is nobody to take off, and the rest still runs.
     const notOwned = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.method === 'GET' ? { status: 403, body: { error: { errors: [{ reason: 'forbidden' }] } } } : { status: 404, body: {} }));
@@ -457,6 +476,8 @@ describe('Search Console owners', () => {
   it('says the site must be verified first, and passes on why Google refused a list', async () => {
     const notOwned = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { message: 'You are not an owner of this site.', errors: [{ reason: 'forbidden' }] } } }));
     await expectRefusal(googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: ['a@b.example'], dropped: [] }, notOwned.io), 'unverified', /verify the site first/);
+    const unknown = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 404, body: { error: { code: 404 } } }));
+    await expectRefusal(googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: [], dropped: ['a@b.example'] }, unknown.io), 'unverified', /verify the site first/);
     const refused = fake((call) =>
       call.url === GOOGLE_TOKEN_URL
         ? token
@@ -495,6 +516,7 @@ describe('sitemap submission', () => {
       /^Google did not take the sitemap: Invalid sitemap URL\.$/,
     );
     await expectRefusal(googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(503, {})), 'unavailable', /HTTP 503/);
+    await expectRefusal(googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(403, { error: { errors: [{ reason: 'quotaExceeded' }] } })), 'rate', /limiting/);
   });
 
   it('Bing: SubmitFeed with the site and the sitemap, and its refusals', async () => {
@@ -507,5 +529,23 @@ describe('sitemap submission', () => {
     await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 11 } })).io), 'unverified', /verify the site first/);
     await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 7 } })).io), 'invalid', /does not accept/);
     await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 3, Message: `bad ${KEY}` } })).io), 'auth', /^Bing refused the API key$/);
+  });
+});
+
+describe('a step deadline', () => {
+  it('starts no request after it, and cuts a running one off at it', async () => {
+    const calls: string[] = [];
+    const slow: FetchLike = (url, init) =>
+      new Promise((resolve, reject) => {
+        calls.push(url);
+        init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        setTimeout(() => resolve({ ok: true, status: 200, text: async () => '{}' }), 5_000);
+      });
+    const late = { fetch: slow, deadline: Date.now() - 1 };
+    await expectRefusal(testBing('0123456789abcdef0123456789ABCDEF', late), 'unavailable', /^Bing took too long to answer$/);
+    expect(calls).toEqual([]);
+    const started = Date.now();
+    await expectRefusal(testBing('0123456789abcdef0123456789ABCDEF', { fetch: slow, deadline: Date.now() + 50 }), 'unavailable', /could not be reached/);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });

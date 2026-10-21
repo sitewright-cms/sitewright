@@ -20,13 +20,25 @@ The running version of an instance is reported at `GET /version` (baked into the
     platform's service account, so they (or the client) can open its reports at search.google.com/search-console.
     Only once Google verified the site; a later verification, after a new Production URL, gives them access again.
     Removing someone takes that ownership away. Owners added at Google directly are never touched.
-  - **Switching Google off** takes those owners off before the platform gives the site up.
+  - **Switching Google off** takes those owners off before the platform gives the site up. An owner Google will not
+    take off (one who also verified on their own) does not stop the site being given up; the tile says they stayed.
+  - **Owners that did not get access** at a verification (Google refused or could not be reached) are shown in the
+    window, and Save owners tries again with the same list.
+  - **Two projects with the same Production URL** share one Search Console property, so its owners can't be changed
+    from either; the window says why.
 
 ### Fixed
 
 - **Search engines: giving up a site at Google no longer fails when Google never verified it.** The removal tried a
   second, double-encoded address that Google answers with an error. Measured against Google: the address takes the
   site encoded once, and a site the platform does not own answers "not an owner", which now counts as already removed.
+  Only that answer does: Google's quota and rate refusals (also 403) are retried, never read as "already removed".
+- **Search engines: a step that times out stops.** Every request of a step ends at the step's deadline, so a slow
+  answer can no longer finish after the next step and undo it.
+- **Settings tiles on a phone or tablet: no row is cut off.** A touch screen makes every button 44px tall; a tile's
+  row block now grows to fit instead of hiding its first or last row (the Search engines and Shop tiles did).
+- **Settings tiles in dark mode: a disabled action has a dark border** instead of a bright one, and a locked switch row
+  fills its tile's width.
 
 ## [0.69.0] — 2026-10-21
 

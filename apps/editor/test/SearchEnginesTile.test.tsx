@@ -35,6 +35,7 @@ const entry = (over: Partial<SiteRegistrationEntry> = {}): SiteRegistrationEntry
   checkedAt: null,
   sitemap: null,
   owners: [],
+  ownersIssue: null,
   ...over,
 });
 const view = (over: Partial<SiteRegistrationView> = {}): SiteRegistrationView => ({
@@ -337,6 +338,30 @@ describe('Sitemap & owners', () => {
     fireEvent.click(save);
     expect(await within(dialog).findByText('1 owner in Search Console')).toBeInTheDocument();
     expect(save).toBeDisabled();
+  });
+
+  it('a sitemap that cannot reach one search engine still goes to the other', async () => {
+    api.submitSitemap.mockImplementation(async (_p: string, s: string) => {
+      if (s === 'google') throw new Error('Network error');
+      return { result: { ok: true, detail: 'Sitemap submitted' }, view: verified };
+    });
+    const dialog = await open(verified);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Submit again' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Google Search Console: Network error');
+    expect(api.submitSitemap.mock.calls.map((c) => c[1])).toEqual(['google', 'bing']);
+  });
+
+  it('says when the owners did not get access, and saves the same list again to retry', async () => {
+    const issue = view({ ...verified, google: { ...verified.google, ownersIssue: 'Not given access: Google could not be reached' } });
+    api.setSearchConsoleOwners.mockResolvedValue({ result: { ok: true, detail: '1 owner in Search Console' }, view: verified });
+    const dialog = await open(issue);
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Not given access: Google could not be reached. Save owners tries again.');
+    const save = within(dialog).getByRole('button', { name: 'Save owners' });
+    expect(save).toBeEnabled(); // the list is unchanged, but it never reached Google
+    fireEvent.click(save);
+    await waitFor(() => expect(api.setSearchConsoleOwners).toHaveBeenCalledWith('p1', ['ana@agency.example']));
+    expect(await within(dialog).findByText('1 owner in Search Console')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Save owners tries again/)).toBeNull();
   });
 
   it('offers the owners only once Google verified the site', async () => {

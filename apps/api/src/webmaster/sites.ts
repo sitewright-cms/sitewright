@@ -109,8 +109,16 @@ export class SiteRegistrar {
     return run;
   }
 
+  /**
+   * What one step's requests go out with: the step's own deadline, so a step that timed out stops for real and never
+   * finishes behind the next one (which could undo what that one did).
+   */
+  private stepIo(): WebmasterIo {
+    return { ...this.deps.io, deadline: Date.now() + STEP_TIMEOUT_MS };
+  }
+
   /** The platform's account for `service`, or null when there is none or it cannot be read. */
-  private async account(service: WebmasterService): Promise<Account | null> {
+  private async account(service: WebmasterService, stepIo?: WebmasterIo): Promise<Account | null> {
     let secret: Record<string, string> | null;
     try {
       secret = await this.deps.accounts.getSecret(service);
@@ -118,7 +126,7 @@ export class SiteRegistrar {
       return null; // sealed under another SW_ENCRYPTION_KEY: System Settings says so when it is tested
     }
     if (!secret) return null;
-    const { io } = this.deps;
+    const io = stepIo ?? this.deps.io;
     if (service === 'google') {
       const key: GoogleServiceAccountKey = {
         clientEmail: secret.clientEmail ?? '',
@@ -165,18 +173,18 @@ export class SiteRegistrar {
   }
 
   private async save(row: Row): Promise<void> {
-    const { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt, owners, sitemapAt, sitemapOk, sitemapDetail } = row;
+    const { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt, owners, ownersDetail, sitemapAt, sitemapOk, sitemapDetail } = row;
     await this.deps.db
       .insert(webmasterSites)
       .values(row)
       .onConflictDoUpdate({
         target: [webmasterSites.projectId, webmasterSites.service],
-        set: { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt, owners, sitemapAt, sitemapOk, sitemapDetail },
+        set: { enabled, siteUrl, account, token, status, detail, verifiedAt, updatedAt, owners, ownersDetail, sitemapAt, sitemapOk, sitemapDetail },
       });
   }
 
   /** No sitemap submission on record: a new registration starts without one. */
-  private static readonly NO_SITEMAP = { sitemapAt: null, sitemapOk: null, sitemapDetail: null } as const;
+  private static readonly NO_SITEMAP = { sitemapAt: null, sitemapOk: null, sitemapDetail: null, ownersDetail: null } as const;
 
   /**
    * Whether `row` registered something at a search engine that a removal would have to undo: a tag was fetched — or,
@@ -190,16 +198,25 @@ export class SiteRegistrar {
    * Removes `row`'s site from its account. Something already gone counts as removed; with no account (removed in
    * System Settings) there is nothing the platform can still do, and that is said.
    */
-  private async unregister(row: Row): Promise<SiteRegistrationStepResult & { retry: boolean }> {
-    const account = await this.account(row.service);
-    if (!account) return { ok: true, retry: false, detail: `Not removed from ${NAME[row.service]}: the platform no longer has that account` };
-    // One account serves every project: an address another project still registers (a duplicate, an import of the
-    // same site) stays — removing it would take that project's registration with it.
-    const shared = await this.deps.db
+  /**
+   * Whether another project registers the same address with the same account. One account serves every project, so
+   * both then share ONE registration at the search engine (one Search Console property): what either does to it —
+   * removing it, changing its owners — happens to the other's too.
+   */
+  private async shared(row: Pick<Row, 'projectId' | 'service' | 'siteUrl' | 'account'>): Promise<boolean> {
+    const rows = await this.deps.db
       .select({ projectId: webmasterSites.projectId })
       .from(webmasterSites)
       .where(and(eq(webmasterSites.service, row.service), eq(webmasterSites.siteUrl, row.siteUrl), eq(webmasterSites.account, row.account)));
-    if (shared.some((r) => r.projectId !== row.projectId)) {
+    return rows.some((r) => r.projectId !== row.projectId);
+  }
+
+  private async unregister(row: Row): Promise<SiteRegistrationStepResult & { retry: boolean }> {
+    const account = await this.account(row.service, this.stepIo());
+    if (!account) return { ok: true, retry: false, detail: `Not removed from ${NAME[row.service]}: the platform no longer has that account` };
+    // An address another project still registers (a duplicate, an import of the same site) stays — removing it would
+    // take that project's registration with it.
+    if (await this.shared(row)) {
       return { ok: true, retry: false, detail: `Kept at ${NAME[row.service]}: another project registers ${row.siteUrl} too` };
     }
     try {
@@ -297,7 +314,7 @@ export class SiteRegistrar {
           set({ ok: false, detail: 'Set an https Production URL first' });
           continue;
         }
-        const account = await this.account(service);
+        const account = await this.account(service, this.stepIo());
         if (!account) {
           set({ ok: false, detail: NO_ACCOUNT(service) });
           continue;
@@ -339,20 +356,21 @@ export class SiteRegistrar {
       const row = await this.row(projectId, service);
       if (!row?.enabled) return { ok: false, detail: `${NAME[service]} is switched off for this site` };
       if (!siteUrl) return { ok: false, detail: 'Set an https Production URL first' };
-      const account = await this.account(service);
+      const account = await this.account(service, this.stepIo());
       if (!account) return { ok: false, detail: NO_ACCOUNT(service) };
       if (!row.token || row.siteUrl !== siteUrl || row.account !== account.id) return { ok: false, detail: 'No tag for this Production URL yet: start the verification again' };
       let result: SiteRegistrationStepResult;
-      let update: Pick<Row, 'status' | 'detail' | 'verifiedAt'>;
+      let update: Pick<Row, 'status' | 'detail' | 'verifiedAt' | 'ownersDetail'>;
       try {
         await withTimeout(account.register(siteUrl), STEP_TIMEOUT_MS, service);
-        const done = `${account.done}${await this.shareWithOwners(account, row, siteUrl)}`;
+        const owners = await this.shareWithOwners(row, siteUrl);
+        const done = `${account.done}${owners.note}`;
         result = { ok: true, detail: done };
-        update = { status: 'verified', detail: done, verifiedAt: this.now() };
+        update = { status: 'verified', detail: done, verifiedAt: this.now(), ownersDetail: owners.issue };
         this.deps.log.info({ projectId, service }, 'site registration: verified');
       } catch (err) {
         result = { ok: false, detail: failureText(err) };
-        update = { status: 'failed', detail: result.detail, verifiedAt: null };
+        update = { status: 'failed', detail: result.detail, verifiedAt: null, ownersDetail: row.ownersDetail };
       }
       await this.deps.db
         .update(webmasterSites)
@@ -364,16 +382,26 @@ export class SiteRegistrar {
 
   /**
    * Right after Google verified: the owners staff chose get access to the site (again — a new Production URL is a new
-   * property). Never fails the verification; says what happened, as a suffix for its message.
+   * property). Never fails the verification. `note` is a suffix for its message; `issue` is kept on the row when the
+   * owners did NOT get access, so the Sitemap & owners window can say so and offer to try again.
    */
-  private async shareWithOwners(account: Account, row: Row, siteUrl: string): Promise<string> {
-    if (!account.setOwners || row.owners.length === 0) return '';
-    try {
-      await withTimeout(account.setOwners(siteUrl, { wanted: row.owners, dropped: [] }), STEP_TIMEOUT_MS, row.service);
-      return ` · ${row.owners.length} owner${row.owners.length === 1 ? '' : 's'} given access`;
-    } catch (err) {
-      return ` · the owners were not given access: ${failureText(err)}`;
+  private async shareWithOwners(row: Row, siteUrl: string): Promise<{ note: string; issue: string | null }> {
+    if (row.service !== 'google' || row.owners.length === 0) return { note: '', issue: null };
+    let issue: string;
+    if (await this.shared({ ...row, siteUrl })) {
+      issue = `another project registers ${siteUrl} too, and the two share one Search Console property: set its owners in one project only`;
+    } else {
+      // Its own deadline: the verification before it may have used most of the step's.
+      const account = await this.account('google', this.stepIo());
+      if (!account?.setOwners) return { note: '', issue: NO_ACCOUNT('google') };
+      try {
+        await withTimeout(account.setOwners(siteUrl, { wanted: row.owners, dropped: [] }), STEP_TIMEOUT_MS, row.service);
+        return { note: ` · ${row.owners.length} owner${row.owners.length === 1 ? '' : 's'} given access`, issue: null };
+      } catch (err) {
+        issue = failureText(err);
+      }
     }
+    return { note: ` · the owners were not given access: ${issue}`, issue: `Not given access: ${issue}` };
   }
 
   /**
@@ -387,7 +415,7 @@ export class SiteRegistrar {
       const row = await this.row(projectId, service);
       if (!row?.enabled) return { ok: false, detail: `${NAME[service]} is switched off for this site` };
       if (!siteUrl || !sitemapUrl) return { ok: false, detail: 'Set an https Production URL first' };
-      const account = await this.account(service);
+      const account = await this.account(service, this.stepIo());
       if (!account) return { ok: false, detail: NO_ACCOUNT(service) };
       if (row.status !== 'verified' || row.siteUrl !== siteUrl || row.account !== account.id) return { ok: false, detail: `Verify the site with ${NAME[service]} first` };
       let result: SiteRegistrationStepResult;
@@ -418,19 +446,30 @@ export class SiteRegistrar {
       const row = await this.row(projectId, 'google');
       if (!row?.enabled) return { ok: false, detail: 'Google is switched off for this site' };
       if (!siteUrl) return { ok: false, detail: 'Set an https Production URL first' };
-      const account = await this.account('google');
+      const account = await this.account('google', this.stepIo());
       if (!account?.setOwners) return { ok: false, detail: NO_ACCOUNT('google') };
       if (row.status !== 'verified' || row.siteUrl !== siteUrl || row.account !== account.id) return { ok: false, detail: 'Verify the site with Google first' };
+      // One property for two projects: owners set from one would silently change the other's.
+      if (await this.shared(row)) {
+        return { ok: false, detail: `Another project registers ${siteUrl} too, and the two share one Search Console property: set its owners in one project only` };
+      }
       const dropped = row.owners.filter((o) => !owners.includes(o));
       try {
         await withTimeout(account.setOwners(siteUrl, { wanted: owners, dropped }), STEP_TIMEOUT_MS, 'google');
       } catch (err) {
         return { ok: false, detail: failureText(err) };
       }
-      await this.deps.db
-        .update(webmasterSites)
-        .set({ owners: [...owners], updatedAt: this.now() })
-        .where(and(eq(webmasterSites.projectId, projectId), eq(webmasterSites.service, 'google')));
+      try {
+        // Onto the registration it was made for only (the queue keeps another step out; the token says it is this one).
+        await this.deps.db
+          .update(webmasterSites)
+          .set({ owners: [...owners], ownersDetail: null, updatedAt: this.now() })
+          .where(and(eq(webmasterSites.projectId, projectId), eq(webmasterSites.service, 'google'), eq(webmasterSites.token, row.token ?? '')));
+      } catch (err) {
+        // Google has the new owners but the row does not: a later removal would miss the ones added here.
+        this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: owners set at Google but not saved');
+        throw err;
+      }
       this.deps.log.info({ projectId, owners: owners.length }, 'site registration: owners set');
       return { ok: true, detail: owners.length ? `${owners.length} owner${owners.length === 1 ? '' : 's'} in Search Console` : 'Only the platform owns the site in Search Console' };
     });
@@ -476,7 +515,7 @@ export class SiteRegistrar {
       // Switched on, but the platform's account was removed since: staff can still switch it off.
       const owners = service === 'google' ? (row?.owners ?? []) : [];
       if (enabled && !configured.has(service)) {
-        return { configured: false, enabled, status: 'failed', detail: NO_ACCOUNT(service), verifiedAt: null, checkedAt: row?.updatedAt.toISOString() ?? null, sitemap: null, owners };
+        return { configured: false, enabled, status: 'failed', detail: NO_ACCOUNT(service), verifiedAt: null, checkedAt: row?.updatedAt.toISOString() ?? null, sitemap: null, owners, ownersIssue: null };
       }
       // A record made for another URL or account says nothing about this one; a just-switched-on row is `none`.
       const current = row && enabled && (row.status === 'none' || (row.siteUrl === siteUrl && row.account === accountIds.get(service))) ? row : undefined;
@@ -492,6 +531,7 @@ export class SiteRegistrar {
             ? { ok: current.sitemapOk, detail: current.sitemapDetail ?? '', at: current.sitemapAt.toISOString() }
             : null,
         owners,
+        ownersIssue: service === 'google' ? (current?.ownersDetail ?? null) : null,
       };
     };
     return {

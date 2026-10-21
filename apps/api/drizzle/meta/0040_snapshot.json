@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "fcc672d4-3de2-4cdb-a6be-aad02809dd9f",
+  "id": "a4615e69-5a08-4335-9f6b-72cdd8fb5315",
   "prevId": "1ffae21b-7368-4a9b-8036-033d89349d73",
   "tables": {
     "agent_grants": {
@@ -3767,6 +3767,13 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'[]'"
+        },
+        "owners_detail": {
+          "name": "owners_detail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "sitemap_at": {
           "name": "sitemap_at",

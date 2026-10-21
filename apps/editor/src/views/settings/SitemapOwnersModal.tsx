@@ -58,13 +58,17 @@ export function SitemapOwnersModal({
   async function submit(): Promise<void> {
     setSubmitting(true);
     setSitemapError(null);
-    try {
-      for (const e of verified) adopt((await api.submitSitemap(projectId, e.key)).view);
-    } catch (err) {
-      setSitemapError(message(err, 'Could not submit the sitemap'));
-    } finally {
-      setSubmitting(false);
+    const failed: string[] = [];
+    // Each search engine on its own: one that cannot be reached must not keep the sitemap from the other.
+    for (const e of verified) {
+      try {
+        adopt((await api.submitSitemap(projectId, e.key)).view);
+      } catch (err) {
+        failed.push(`${e.name}: ${message(err, 'could not submit the sitemap')}`);
+      }
     }
+    if (failed.length) setSitemapError(failed.join(' · '));
+    setSubmitting(false);
   }
 
   function add(): void {
@@ -93,7 +97,8 @@ export function SitemapOwnersModal({
     }
   }
 
-  const ownersChanged = !sameList(owners, view.google.owners);
+  // A list that did not get access at the last verification can be saved again as it is.
+  const ownersChanged = !sameList(owners, view.google.owners) || view.google.ownersIssue !== null;
   return (
     <Modal title="Sitemap and owners" size="md" onClose={onClose}>
       <div className="flex flex-col gap-6 p-5">
@@ -204,6 +209,11 @@ export function SitemapOwnersModal({
                   </span>
                 )}
               </form>
+              {view.google.ownersIssue && !ownersNote && (
+                <p role="alert" className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-800 dark:text-rose-300">
+                  {view.google.ownersIssue}. Save owners tries again.
+                </p>
+              )}
               {ownersNote && (
                 <p role="status" className={`text-xs ${ownersNote.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-300'}`}>
                   {ownersNote.text}

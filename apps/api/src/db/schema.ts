@@ -1356,6 +1356,8 @@ export const webmasterSites = sqliteTable(
      * so a later verification gives them access again.
      */
     owners: text('owners', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    /** Why those owners did not get access at the last verification; null when they did (or there are none). */
+    ownersDetail: text('owners_detail'),
     /** The last sitemap submission: when, whether the search engine took it, and what it said. */
     sitemapAt: integer('sitemap_at', { mode: 'timestamp_ms' }),
     sitemapOk: integer('sitemap_ok', { mode: 'boolean' }),

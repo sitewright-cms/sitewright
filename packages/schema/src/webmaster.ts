@@ -97,6 +97,8 @@ export interface SiteRegistrationEntry {
    * they can open its reports themselves. The platform's service account owns it too and is not listed.
    */
   owners: string[];
+  /** Google only: why `owners` did not get access at the last verification (a retry is offered); null when they did. */
+  ownersIssue: string | null;
 }
 
 /** A project's registration with the platform's search engine accounts (agency staff only). */

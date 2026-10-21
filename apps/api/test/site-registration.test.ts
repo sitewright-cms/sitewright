@@ -48,6 +48,8 @@ let engines: {
   bingSites: string[];
   googleOwned: boolean;
   googleOwners: string[];
+  /** Google refuses any owner list (as it does an address that is not a Google account). */
+  googleRefusesOwners: boolean;
   feeds: string[];
   calls: string[];
 };
@@ -69,6 +71,7 @@ const fakeEngines: FetchLike = async (url, init) => {
     if (init.method === 'GET') return engines.googleOwned ? answer(200, resource()) : notOwner;
     if (init.method === 'PUT') {
       if (!engines.googleOwned) return notOwner;
+      if (engines.googleRefusesOwners) return answer(400, { error: { code: 400, message: 'Invalid owner.' } });
       engines.googleOwners = (JSON.parse(String(init.body)) as { owners: string[] }).owners.filter((o) => o !== SERVICE_ACCOUNT);
       return answer(200, resource());
     }
@@ -103,7 +106,7 @@ let projectId: string;
 let publishRoot: string;
 
 beforeEach(async () => {
-  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], feeds: [], calls: [] };
+  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, feeds: [], calls: [] };
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-'));
   harness = await makeHarness({ publishRoot, sitesDomain: 'sites.test', webmasterFetch: fakeEngines, rankTickMs: 0 });
   admin = await harness.signup({ admin: true });
@@ -417,6 +420,41 @@ describe('Search Console owners', () => {
     expect(fewer.view.google.owners).toEqual(['ben@agency.example']);
     expect(engines.googleOwners).toEqual(['client@own.example', 'ben@agency.example']);
     expect((await view()).bing.owners).toEqual([]);
+  });
+
+  it('says when the owners did not get access at a verification, and gives them access on the next save', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    await setOwners(['ana@agency.example']);
+    // A new Production URL is a new property: its verification gives the owners access again — here, refused.
+    await seed('https://www.reg-site.test');
+    await prepare();
+    engines.googleRefusesOwners = true;
+    const done = await verify('google');
+    expect(done.result).toEqual({ ok: true, detail: 'Verified and added to Search Console · the owners were not given access: Google did not change the owners: Invalid owner.' });
+    expect(done.view.google).toMatchObject({ status: 'verified', owners: ['ana@agency.example'], ownersIssue: 'Not given access: Google did not change the owners: Invalid owner.' });
+
+    engines.googleRefusesOwners = false;
+    const saved = (await setOwners(['ana@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(saved.result.ok).toBe(true);
+    expect(saved.view.google.ownersIssue).toBeNull();
+    expect(engines.googleOwners).toEqual(['ana@agency.example']);
+  });
+
+  it('never changes the owners of a property two projects share', async () => {
+    const twin = await admin.createProject('Twin', 'twinsite');
+    await admin.project(twin).putContent('settings', 'settings', { brand: { name: 'Twin' }, settings: { defaultLocale: 'en', locales: ['en'] }, website: { siteUrl: SITE } });
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    expect((await admin.put(`/projects/${twin}/search-engines`, { google: true })).statusCode).toBe(200);
+    expect((await admin.post(`/projects/${twin}/search-engines/prepare`, {})).statusCode).toBe(200);
+    const refused = (await setOwners(['ana@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(refused.result).toEqual({ ok: false, detail: `Another project registers ${SITE} too, and the two share one Search Console property: set its owners in one project only` });
+    expect(engines.googleOwners).toEqual([]);
   });
 
   it('refuses what is not a list of email addresses, or too many', async () => {

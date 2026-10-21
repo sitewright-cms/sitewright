@@ -30,8 +30,8 @@ export function ManageKeywords({
   keywords: readonly RankKeywordView[];
   checking: boolean;
   onCheckNow: () => void;
-  /** A keyword was added, paused, resumed or removed: the rankings are read again. */
-  onChanged: () => void;
+  /** A keyword was added, paused, resumed or removed: the rankings are read again (resolves once they are). */
+  onChanged: () => void | Promise<void>;
   onNotice: (message: string) => void;
 }) {
   const { confirm, dialog } = useDialogs();
@@ -45,7 +45,10 @@ export function ManageKeywords({
   const headingId = useId();
 
   const paused = keywords.filter((k) => k.paused).length;
-  const needle = filter.trim().toLowerCase();
+  // Only while its input is shown: a filter left behind when the list shrinks below the threshold would hide rows
+  // with no way to clear it.
+  const filterable = keywords.length > FILTER_FROM;
+  const needle = filterable ? filter.trim().toLowerCase() : '';
   const shown = needle ? keywords.filter((k) => k.keyword.toLowerCase().includes(needle)) : keywords;
 
   async function togglePause(k: RankKeywordView): Promise<void> {
@@ -53,7 +56,9 @@ export function ManageKeywords({
     setError(null);
     try {
       await api.setRankKeywordPaused(projectId, k.id, !k.paused);
-      onChanged();
+      // The row stays busy until the list is read again: before that it still shows the old state, and a second
+      // click would send the same change (or remove a keyword that is already gone).
+      await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not change the keyword');
     } finally {
@@ -73,7 +78,7 @@ export function ManageKeywords({
     setError(null);
     try {
       await api.removeRankKeyword(projectId, k.id);
-      onChanged();
+      await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not remove the keyword');
     } finally {
@@ -112,7 +117,7 @@ export function ManageKeywords({
             <div className="flex flex-col gap-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Tracked keywords</h4>
-                {keywords.length > FILTER_FROM && (
+                {filterable && (
                   <label className="relative w-full sm:w-64">
                     <span className="sr-only">Filter keywords</span>
                     <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -168,7 +173,7 @@ export function ManageKeywords({
               defaultCountry={keywords[0]?.location.countryCode}
               onAdded={(message) => {
                 onNotice(`${message} They are checked on the next pass, or now with “Check now”.`);
-                onChanged();
+                void onChanged();
               }}
             />
           </div>

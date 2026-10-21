@@ -236,6 +236,41 @@ describe('what staff manage', () => {
     expect(within(list).getByRole('listitem')).toHaveTextContent('No keyword matches “nothing”.');
   });
 
+  it('drops the filter when the list shrinks below the length that shows it', async () => {
+    const many = Array.from({ length: 9 }, (_, i) => keyword({ id: `k${i}`, keyword: i === 4 ? 'geyser repair' : `plumber ${i}` }));
+    api.getRankings.mockResolvedValueOnce(rankings({ canManage: true, status: 'ok', keywords: many }));
+    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: many.filter((k) => k.id !== 'k4') }));
+    api.removeRankKeyword.mockResolvedValue({ ok: true });
+    render(<RankingsView project={project} />);
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    fireEvent.click(within(section).getByRole('button', { name: /Manage keywords/ }));
+    fireEvent.change(within(section).getByLabelText('Filter keywords'), { target: { value: 'geyser' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'Remove geyser repair' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove' }));
+    // Eight left: the filter input is gone, so its text no longer hides rows nobody could then clear.
+    await waitFor(() => expect(within(section).queryByLabelText('Filter keywords')).toBeNull());
+    expect(within(section).getAllByRole('listitem')).toHaveLength(8);
+  });
+
+  it('keeps a row busy until the list has been read again', async () => {
+    api.getRankings.mockResolvedValueOnce(rankings({ canManage: true, status: 'ok' }));
+    let reread: (v: ProjectRankings) => void = () => {};
+    api.getRankings.mockImplementation(() => new Promise<ProjectRankings>((r) => (reread = r)));
+    api.setRankKeywordPaused.mockResolvedValue({ ok: true });
+    render(<RankingsView project={project} />);
+    const section = await screen.findByRole('region', { name: /Manage keywords/ });
+    fireEvent.click(within(section).getByRole('button', { name: /Manage keywords/ }));
+    const pause = within(section).getByRole('button', { name: 'Pause plumber windhoek' });
+    fireEvent.click(pause);
+    await waitFor(() => expect(api.setRankKeywordPaused).toHaveBeenCalledTimes(1));
+    // The change is saved but the list still shows the old state: a second click must not send it again.
+    expect(pause).toBeDisabled();
+    fireEvent.click(pause);
+    expect(api.setRankKeywordPaused).toHaveBeenCalledTimes(1);
+    reread(rankings({ canManage: true, status: 'ok', keywords: [keyword({ paused: true }), keyword({ id: 'k2', keyword: 'geyser repair' })] }));
+    expect(await within(section).findByRole('button', { name: 'Resume plumber windhoek' })).toBeEnabled();
+  });
+
   it('adds keywords searched from a place chosen from the provider’s list', async () => {
     api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: [] }));
     api.searchRankLocations.mockImplementation(async (_country: string, q: string) => ({

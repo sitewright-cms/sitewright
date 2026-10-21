@@ -9,6 +9,10 @@ import type {
   RankProviderId,
   RankTrackingAdminInput,
   RankTrackingAdminView,
+  WebmasterAccountsInput,
+  WebmasterAccountsView,
+  WebmasterService,
+  WebmasterTestResult,
   SiteStats,
   StatsQuery,
   CaptchaInput,
@@ -2208,6 +2212,12 @@ export const api = {
   /** Try a provider's STORED credentials; the balance when the provider reports one. */
   testRankProvider: (provider: RankProviderId) =>
     request<{ ok: boolean; balanceUsd?: number | null; error?: string }>('POST', '/admin/rank-tracking/test', { provider }),
+  /** The platform's Google service account and Bing Webmaster account: who the key belongs to, never a secret. */
+  getWebmasterAccounts: () => request<WebmasterAccountsView>('GET', '/admin/webmaster-accounts'),
+  /** Store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null); a service left out is kept. */
+  putWebmasterAccounts: (body: WebmasterAccountsInput) => request<WebmasterAccountsView>('PUT', '/admin/webmaster-accounts', body),
+  /** Try a STORED account, reading only. */
+  testWebmasterAccount: (service: WebmasterService) => request<WebmasterTestResult>('POST', '/admin/webmaster-accounts/test', { service }),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),

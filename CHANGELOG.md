@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Search engine accounts in System Settings.** Instance admins store the platform's one Google service account
+  (by uploading its JSON key file) and its one Bing Webmaster Tools API key. Sites will be registered with Google
+  and Bing under these, so clients need no Search Console or Bing account of their own.
+  - Both are encrypted at rest with `SW_ENCRYPTION_KEY`, entered only in the UI (never env vars or files), and never
+    sent back to the browser: the card shows only which service account the Google key belongs to and its project.
+  - **Test saved credentials** reads only. For Google it signs in as the service account and counts the sites it has
+    verified and those in its Search Console, naming the API to switch on (and the project) when one is off. For
+    Bing it counts the account's sites.
+  - A wrong file (an OAuth client file, a user credential, something that is not JSON) is named as soon as it is
+    picked, and nothing in a save is stored unless all of it is valid.
+  - The key file's own token address is ignored: the platform signs in only at Google's fixed endpoint.
+
 ### Changed
 
 - **The Datasets drawer has less space on its left.** Its content started 40px in (20px on a phone), room left over

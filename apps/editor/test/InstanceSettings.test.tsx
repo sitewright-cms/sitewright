@@ -13,6 +13,18 @@ const testStockKey = vi.fn();
 // Rank tracking has its own tests (Rankings.test.tsx); here only its save is wired into this one.
 const rankSave = vi.hoisted(() => vi.fn());
 const rankValidate = vi.hoisted(() => vi.fn());
+// The search engine accounts have their own tests (WebmasterAccountsSettings.test.tsx); here only the save wiring.
+const webmasterSave = vi.hoisted(() => vi.fn());
+const webmasterValidate = vi.hoisted(() => vi.fn());
+vi.mock('../src/views/settings/WebmasterAccountsSettings', async () => {
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return {
+    WebmasterAccountsSettings: forwardRef(function WebmasterStub(_p, ref) {
+      useImperativeHandle(ref, () => ({ save: () => webmasterSave(), validate: () => webmasterValidate() }));
+      return <fieldset aria-label="Search engine accounts" />;
+    }),
+  };
+});
 vi.mock('../src/views/settings/RankTrackingSettings', async () => {
   const { forwardRef, useImperativeHandle } = await import('react');
   return {
@@ -58,6 +70,10 @@ beforeEach(() => {
   rankSave.mockResolvedValue(undefined);
   rankValidate.mockReset();
   rankValidate.mockReturnValue(null);
+  webmasterSave.mockReset();
+  webmasterSave.mockResolvedValue(undefined);
+  webmasterValidate.mockReset();
+  webmasterValidate.mockReturnValue(null);
 });
 
 describe('InstanceSettings', () => {
@@ -180,6 +196,32 @@ describe('InstanceSettings', () => {
     rankSave.mockRejectedValueOnce(new Error('Enter the DataForSEO API password'));
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     expect(await screen.findByText('The other settings were saved, but rank tracking was not: Enter the DataForSEO API password')).toBeInTheDocument();
+  });
+
+  it('saves the search engine accounts too, even when rank tracking refuses, and names each refusal', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    await screen.findByLabelText('Global SMTP');
+    rankSave.mockRejectedValueOnce(new Error('Enter the DataForSEO API password'));
+    webmasterSave.mockRejectedValueOnce(new Error('Bing refused'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(
+      await screen.findByText(
+        'The other settings were saved, but rank tracking was not: Enter the DataForSEO API password; the search engine accounts were not: Bing refused',
+      ),
+    ).toBeInTheDocument();
+    expect(putInstanceSettings.mock.invocationCallOrder[0]!).toBeLessThan(webmasterSave.mock.invocationCallOrder[0]!);
+  });
+
+  it('a mistake in the search engine accounts stops the save before anything is stored', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    webmasterValidate.mockReturnValue('That file is not a Google service-account key: it is not JSON.');
+    render(<InstanceSettings />);
+    await screen.findByLabelText('Global SMTP');
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText('That file is not a Google service-account key: it is not JSON.')).toBeInTheDocument();
+    expect(putInstanceSettings).not.toHaveBeenCalled();
+    expect(webmasterSave).not.toHaveBeenCalled();
   });
 
   it('a mistake in the rank-tracking form stops the save before anything is stored', async () => {

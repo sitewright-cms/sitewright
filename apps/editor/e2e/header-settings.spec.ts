@@ -18,7 +18,7 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await expect(page.getByRole('button', { name: 'Connect an agent' })).toBeVisible();
 
   // Account actions live under the person icon (a dropdown): "Account Settings" + "Logout".
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   const account = page.getByRole('menu', { name: 'Account' });
   await expect(account.getByRole('menuitem', { name: 'Account Settings' })).toBeVisible();
   await expect(account.getByRole('menuitem', { name: 'Logout' })).toBeVisible();

@@ -16,7 +16,7 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Open the account menu → Account Settings; the Account tab shows the current login email.
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await expect(account).toBeVisible();
@@ -39,7 +39,7 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   // Close, sign out, then sign back in with the NEW password.
   await page.keyboard.press('Escape');
   await expect(account).toBeHidden();
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
 
   await page.getByLabel('Email').fill(email);
@@ -47,5 +47,5 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   // Signed back in: the account menu icon is present again.
-  await expect(page.getByRole('button', { name: 'Account' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Account', exact: true })).toBeVisible();
 });

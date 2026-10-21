@@ -32,7 +32,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await expect(clientsModal).toBeHidden();
 
   // --- Owner signs out (Account → Logout); the client opens the link and registers ---
-  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('button', { name: 'Account', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await expect(page.getByText('Sign in to your account')).toBeVisible();
   await page.goto(link!);

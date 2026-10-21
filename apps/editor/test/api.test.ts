@@ -1501,6 +1501,13 @@ describe('project transfer api', () => {
     expect(JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string)).toEqual({ service: 'google' });
   });
 
+  it('getSiteRegistration reads the project’s search engine registration', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    await api.getSiteRegistration('p1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/search-engines');
+    expect((fetchMock.mock.calls[0]![1] as RequestInit | undefined)?.method ?? 'GET').toBe('GET');
+  });
+
   it('downloadStatsCsv points a transient anchor at the CSV route for one table', async () => {
     const clicks: string[] = [];
     const realCreate = document.createElement.bind(document);

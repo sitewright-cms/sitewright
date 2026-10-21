@@ -65,6 +65,18 @@ describe('runWorker', () => {
     expect(result.files['_assets/_sw/stats.js']).toBeDefined();
   });
 
+  it('★ puts the search engine verification tags the job carries in the page head', async () => {
+    const job: WorkerJob = {
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      media: [],
+      siteVerification: { google: 'gTag_1234567890', bing: 'B1NGC0DE' },
+      bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', source: '<section><h1>Welcome</h1></section>' }] }),
+    };
+    const home = Buffer.from((await runWorker(job)).files['index.html'] ?? '', 'base64').toString('utf8');
+    expect(home).toContain('<meta name="google-site-verification" content="gTag_1234567890" />');
+    expect(home).toContain('<meta name="msvalidate.01" content="B1NGC0DE" />');
+  });
+
   it('materializes referenced thumbnails from the inlined ORIGINAL and bundles them into the artifact', async () => {
     // The retained original (a real PNG) is inlined; the worker generates on demand exactly the
     // thumbnail the page references (`?size=sm` → `h-sm.webp`) FLAT into `_assets/<alias>-…`.

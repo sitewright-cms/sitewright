@@ -33,6 +33,14 @@ vi.mock('../src/api', () => ({
     // The security.txt drill-in lists pages for its contact picker.
     listPages: (p: string) => listPages(p),
     pruneThumbnails: () => Promise.resolve({ removed: 12 }),
+    // Staff see the site's search engine registration under the Production URL (none configured here).
+    getSiteRegistration: () =>
+      Promise.resolve({
+        siteUrl: null,
+        notice: 'no-site-url',
+        google: { configured: false, status: 'none', detail: null, verifiedAt: null, checkedAt: null },
+        bing: { configured: false, status: 'none', detail: null, verifiedAt: null, checkedAt: null },
+      }),
   },
 }));
 

@@ -87,6 +87,7 @@ import {
   StockKeyedProviderSchema,
   declaredFontFamilies,
   unservedFontWarnings,
+  registrableSiteUrl,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -431,7 +432,8 @@ import { registerStatsRoutes, bareHost, type StatsSiteConfig } from '../analytic
 import { RANK_PROVIDERS } from '../rank/providers/index.js';
 import { RankRepository } from '../rank/repo.js';
 import { WebmasterRepository } from '../webmaster/repo.js';
-import { registerWebmasterRoutes } from '../webmaster/routes.js';
+import { registerSiteRegistrationRoutes, registerWebmasterRoutes } from '../webmaster/routes.js';
+import { SiteRegistrar, type SiteTags } from '../webmaster/sites.js';
 import { registerRankRoutes } from '../rank/routes.js';
 import { RankTracker } from '../rank/tracker.js';
 import { statsRouteOf } from '../analytics/token.js';
@@ -9025,6 +9027,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { bundle, media, captcha, snippets, globalTemplates };
   }
 
+  // The platform's ONE Google service account and ONE Bing Webmaster account, and the SITE REGISTRATION that uses
+  // them: publish/deploy builds carry their verification tags, and a build that went live is verified with each
+  // search engine (webmaster/sites.ts). Declared before the builds that call it.
+  const webmasterRepo = new WebmasterRepository(db, opts.encryptionKey);
+  const webmasterIo = {
+    fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 1024 * 1024, timeoutMs: 20_000 }),
+    timeoutMs: 20_000,
+  };
+  const siteRegistrar = new SiteRegistrar({
+    db,
+    accounts: webmasterRepo,
+    io: webmasterIo,
+    log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
+  });
+  /** The tags each live build carried, by its manifest: what goes live is verified by exactly the tags it has. */
+  const buildTags = new WeakMap<ReleaseManifest, SiteTags>();
+  /** A build went live (served locally, or uploaded): have it verified with the search engines, in the background. */
+  const registerLive = (projectId: string, release: ReleaseManifest): void => siteRegistrar.afterDeploy(projectId, buildTags.get(release));
+  /** Whether THIS instance serves the Site URL's host for the project (its `<slug>.<sitesDomain>` or a verified custom domain). */
+  const servesSiteUrl = (slug: string, siteUrl: string | undefined): boolean => {
+    const url = registrableSiteUrl(siteUrl);
+    return url !== null && siteHostSlug(new URL(url).host) === slug;
+  };
+
   // Renders the project's full static site to `outDir` — the shared build for BOTH local publish and
   // (now) deploy, so a deploy always ships the latest content (build-at-deploy-time). Throws
   // PublishError (bad route graph) or JsonDataError (bad json_data URL) — both author-correctable (409).
@@ -9034,9 +9060,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     outDir: string,
     // `signal`: a build whose caller can go away (the page-speed audit) stops at its next step.
     // `stats: false`: a throwaway build nobody visits (the audit) ships no statistics tracker.
-    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean } = {},
+    // `register`: a build that goes LIVE carries the search engine verification tags — a deploy (`true`), or a Local
+    // Hosting publish when this instance serves the Site URL's host (`'served-here'`; elsewhere it is not live there).
+    buildOpts: { minify?: boolean; signal?: AbortSignal; stats?: boolean; register?: boolean | 'served-here' } = {},
   ): Promise<ReleaseManifest> {
     const { bundle, media, captcha, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
+    const siteUrl = bundle.project.website?.siteUrl;
+    const live = buildOpts.register === true || (buildOpts.register === 'served-here' && servesSiteUrl(project.slug, siteUrl));
+    // Never throws, and asks Google/Bing only the first time for a Site URL (the tag is kept).
+    const siteVerification = live ? await siteRegistrar.tagsFor(project.id, siteUrl) : {};
     // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
     // SSRF-guarded — then pass the parsed value into the build. A bad URL throws JsonDataError (→ 409).
     let jsonData: unknown;
@@ -9054,6 +9086,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       globalTemplates,
       // Minify is now a `local` deploy-target serve option (the caller passes it) — no longer a website field.
       ...(buildOpts.minify ? { minifyHtml: true } : {}),
+      ...(siteVerification.google || siteVerification.bing ? { siteVerification } : {}),
       ...(buildOpts.signal ? { signal: buildOpts.signal } : {}),
       // The route-signing key for the statistics tracker; the build adds the tracker only when the site's
       // `website.statistics` is on.
@@ -9067,6 +9100,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         : undefined,
     });
     warnCappedUtilities(project.id, manifest);
+    if (live) buildTags.set(manifest, siteVerification);
     return manifest;
   }
 
@@ -9120,7 +9154,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   async function buildForDeploy(
     ctx: ProjectContext,
     projectId: string,
-    deployOpts: { minify?: boolean; protocol?: string } = {},
+    // `register`: the build is uploaded to the live site (a deploy) — not for a download, which goes live nowhere.
+    deployOpts: { minify?: boolean; protocol?: string; register?: boolean } = {},
   ): Promise<{ dir: string; release: ReleaseManifest }> {
     const project = await projects.get(projectId);
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
@@ -9131,7 +9166,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // No statistics tracker without a public URL: the collector address would be root-relative, i.e. on the
       // owner's own host, where nothing answers — the counter would ship dead and the tab would show zeros
       // with no reason given. The Statistics tab says why instead (`notice: 'no-public-url'`).
-      const release = await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl) });
+      const release = await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify, stats: Boolean(opts.publicUrl), register: !!deployOpts.register });
       // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
       // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
       // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails
@@ -9182,6 +9217,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const hosting = await hostingState(ctx, project);
           const release = await buildToDir(ctx, project, store.dirFor(project.slug), {
             minify: !!hosting.local?.minifyHtml,
+            // Live only with Local Hosting, and only at a Site URL this instance serves: otherwise no tags (asking Bing
+            // for one adds the site to its account).
+            register: hosting.local ? 'served-here' : false,
           });
           // The DURABLE record of this publish. Kept in the database rather than read back out of the
           // build, so reaping the build (see the retention rule below) cannot destroy the answer to
@@ -9192,6 +9230,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // stock levels, and release.json is published output), so it rides back on the manifest and
           // is persisted here, in the process that has the database.
           await persistShopCatalog(project.id, 'live', release);
+          registerLive(project.id, release);
 
           // ★ For a LOCAL Hosting target this route IS the deploy — there is no separate upload step,
           // so nothing else was ever going to stamp it. Only the remote deploy path recorded
@@ -9343,7 +9382,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // build failure (bad route graph / json_data URL) is author-correctable → 409.
         let built: { dir: string; release: ReleaseManifest };
         try {
-          built = await buildForDeploy(ctx, project.id, { protocol: config.protocol });
+          built = await buildForDeploy(ctx, project.id, { protocol: config.protocol, register: true });
         } catch (err) {
           activeDeploys.delete(project.id);
           if (err instanceof PublishError || err instanceof JsonDataError) {
@@ -9358,6 +9397,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const result = config.useRsync ? await deployRsync(built.dir, config) : await deploySite(built.dir, config);
           // This build is now the live site, so its price lists are what checkout charges.
           await persistShopCatalog(project.id, 'live', built.release);
+          registerLive(project.id, built.release);
           outcome = { code: 200, body: { deployed: result } };
         } catch (err) {
           // Connection/auth/transfer failure against the operator's target server.
@@ -10800,7 +10840,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Build the site fresh into a temp dir at deploy time; the route uploads it then removes it.
       buildForDeploy,
       // A remote deploy just made its build the live site: checkout charges that build's price lists.
-      onDeployed: (projectId, release) => persistShopCatalog(projectId, 'live', release),
+      onDeployed: async (projectId, release) => {
+        try {
+          await persistShopCatalog(projectId, 'live', release);
+        } finally {
+          // The upload succeeded whatever the price lists did: the site is live, so it can be verified.
+          registerLive(projectId, release);
+        }
+      },
       // Drop the locally-served build when its Local Hosting target is deleted (see that route).
       // No publish root configured → nothing was ever served locally, so there is nothing to remove.
       removeLocalSite: async (slug) => {
@@ -10817,8 +10864,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // switched back on, where a 404 would otherwise be the only feedback.
         if ((await publishStore.readRelease(project.slug)) !== null) return;
         if ((await releasesRepo.get(project.id)) === null) return;
-        const release = await buildToDir(ctx, project as never, publishStore.dirFor(project.slug), { minify: false });
+        const release = await buildToDir(ctx, project as never, publishStore.dirFor(project.slug), { minify: false, register: 'served-here' });
         await releasesRepo.record(project.id, release);
+        registerLive(project.id, release);
       },
       // Shares the publish route's in-flight set so a delete can't `rm -rf` a directory mid-build.
       isPublishing: (projectId) => activePublishes.has(projectId),
@@ -11009,11 +11057,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     rl,
   });
 
-  // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins).
-  registerWebmasterRoutes(app, {
-    repo: new WebmasterRepository(db, opts.encryptionKey),
-    io: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 1024 * 1024, timeoutMs: 20_000 }), timeoutMs: 20_000 },
-    requireInstanceAdmin,
+  // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins), and each
+  // project's registration with them (agency staff).
+  registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, rl });
+  registerSiteRegistrationRoutes(app, {
+    registrar: siteRegistrar,
+    resolveProject,
+    requirePlatformStaff,
+    siteUrlOf: async (ctx) => ((await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null)?.website?.siteUrl,
     rl,
   });
 
@@ -12158,6 +12209,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.addHook('onClose', async () => previewStore.close());
   // Write the last minute of statistics and remember today's visitors for the next start.
   app.addHook('onClose', async () => statsEngine.close());
+  app.addHook('onClose', async () => siteRegistrar.close());
 
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close

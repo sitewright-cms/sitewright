@@ -131,6 +131,7 @@
   "GET /projects/:projectId/publish/archive",
   "GET /projects/:projectId/rankings",
   "GET /projects/:projectId/revisions",
+  "GET /projects/:projectId/search-engines",
   "GET /projects/:projectId/smtp",
   "GET /projects/:projectId/snippets/:id/preview",
   "GET /projects/:projectId/stats",

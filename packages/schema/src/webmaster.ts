@@ -54,3 +54,54 @@ export interface WebmasterTestResult {
   detail?: string;
   error?: string;
 }
+
+/**
+ * SITE REGISTRATION — every publish and deploy puts the platform accounts' verification tags in each page's
+ * `<head>`, then asks the search engine to verify the site and, for Google, adds it to Search Console.
+ *
+ * - `none`: nothing tried yet (no deploy since the account or the site URL was set).
+ * - `pending`: the tag is in the build; the search engine has not confirmed it yet.
+ * - `verified`: the platform account owns the site (Google: also in Search Console).
+ * - `failed`: the last attempt was refused; `detail` says why, and the next deploy tries again.
+ */
+export const SITE_REGISTRATION_STATUSES = ['none', 'pending', 'verified', 'failed'] as const;
+export type SiteRegistrationStatus = (typeof SITE_REGISTRATION_STATUSES)[number];
+
+export interface SiteRegistrationEntry {
+  /** Whether the platform has an account for this search engine at all. */
+  configured: boolean;
+  status: SiteRegistrationStatus;
+  /** Why it failed, or what was done. Never a secret. */
+  detail: string | null;
+  verifiedAt: string | null;
+  /** When the platform last asked the search engine. */
+  checkedAt: string | null;
+}
+
+/** A project's registration with the platform's search engine accounts (agency staff only). */
+export interface SiteRegistrationView {
+  /** The URL that is registered: the website's Site URL, when it is an https address. */
+  siteUrl: string | null;
+  /** Why nothing is registered, when `siteUrl` is null. */
+  notice: 'no-site-url' | 'not-https' | null;
+  google: SiteRegistrationEntry;
+  bing: SiteRegistrationEntry;
+}
+
+/**
+ * The address a site is registered under: the website's Site URL as an https URL-prefix property (origin and path,
+ * ending in `/`, no query or fragment). Null when it is missing or not https: neither search engine verifies a
+ * plain-http site for a platform account, and a registration under the wrong scheme is a different property.
+ */
+export function registrableSiteUrl(siteUrl: string | null | undefined): string | null {
+  if (!siteUrl) return null;
+  let url: URL;
+  try {
+    url = new URL(siteUrl.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || !url.hostname.includes('.')) return null;
+  const path = url.pathname.endsWith('/') ? url.pathname : `${url.pathname}/`;
+  return `${url.origin}${path}`;
+}

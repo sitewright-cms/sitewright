@@ -416,6 +416,11 @@ export interface BuildSiteOptions {
   /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
   minifyHtml?: boolean;
   /**
+   * The platform's search engine verification tags (`content` values), put in every page's `<head>` so Google and
+   * Bing can confirm the platform account owns the site. Publish and deploy builds only; see `SiteRegistrar`.
+   */
+  siteVerification?: { google?: string; bing?: string };
+  /**
    * First-party runtime injected INLINE into every rendered page (preview only). The live
    * preview's parent-bridge reports the iframe's location to the editor shell so it can
    * auto-reload / auto-navigate on a content change. Empty in a published build — the
@@ -1518,6 +1523,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           seo: {
             // The page title IS the document/og title (renderDocument resolves it from page.title).
             description: page.description,
+            // On every page, not only the home page: it costs two short tags, and the home page's route can change.
+            ...(opts.siteVerification ? { verification: opts.siteVerification } : {}),
             // og:image falls back to the company image (absolutized above); favicon/PWA icons derive from `icon`.
             image: ogImage,
             url: ogUrl,

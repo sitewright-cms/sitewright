@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   WebmasterAccountsInputSchema,
   WebmasterServiceSchema,
+  type SiteRegistrationView,
   type WebmasterAccountsView,
   type WebmasterService,
   type WebmasterTestResult,
@@ -9,8 +10,10 @@ import {
 import { parseBingKey, testBing } from './bing.js';
 import { parseGoogleKey, testGoogle, type GoogleServiceAccountKey } from './google.js';
 import { EncryptionUnavailableError } from '../repo/instance-settings.js';
+import type { ProjectContext } from '../repo/context.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
+import type { SiteRegistrar } from './sites.js';
 
 /**
  * The platform's search engine accounts, for instance admins only (session-only: no token reaches them).
@@ -121,5 +124,30 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       if (err instanceof WebmasterError) return reply.send({ ok: false, error: err.message } satisfies WebmasterTestResult);
       throw err;
     }
+  });
+}
+
+export interface SiteRegistrationRouteDeps {
+  registrar: SiteRegistrar;
+  resolveProject: (req: FastifyRequest<{ Params: { projectId: string } }>, access: 'session-only') => Promise<{ ctx: ProjectContext }>;
+  /** Session-only agency staff (admin or developer); `action` completes the refusal. */
+  requirePlatformStaff: (req: FastifyRequest, action: string) => Promise<string>;
+  /** The website's Site URL as saved (`website.siteUrl`). */
+  siteUrlOf: (ctx: ProjectContext) => Promise<string | undefined>;
+  rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+}
+
+/**
+ *   GET /projects/:projectId/search-engines   whether the site is registered with the platform's Google and Bing
+ *                                             accounts, and why not — agency staff (session-only)
+ *
+ * Registration itself has no route: every publish and deploy does it (see `SiteRegistrar`).
+ */
+export function registerSiteRegistrationRoutes(app: FastifyInstance, deps: SiteRegistrationRouteDeps): void {
+  const { registrar, resolveProject, requirePlatformStaff, siteUrlOf, rl } = deps;
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/search-engines', { config: rl(60) }, async (req, reply) => {
+    await requirePlatformStaff(req, 'see search engine registration');
+    const { ctx } = await resolveProject(req, 'session-only');
+    return reply.send((await registrar.view(ctx.projectId, await siteUrlOf(ctx))) satisfies SiteRegistrationView);
   });
 }

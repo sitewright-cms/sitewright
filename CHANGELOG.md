@@ -9,25 +9,7 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
-### Added
-
-- **Search engine accounts in System Settings.** Instance admins store the platform's one Google service account
-  (by uploading its JSON key file) and its one Bing Webmaster Tools API key. Sites will be registered with Google
-  and Bing under these, so clients need no Search Console or Bing account of their own.
-  - Both are encrypted at rest with `SW_ENCRYPTION_KEY`, entered only in the UI (never env vars or files), and never
-    sent back to the browser: the card shows only which service account the Google key belongs to and its project.
-  - **Test saved credentials** reads only. For Google it signs in as the service account and counts the sites it has
-    verified and those in its Search Console, naming the API to switch on (and the project) when one is off. For
-    Bing it counts the account's sites.
-  - A wrong file (an OAuth client file, a user credential, something that is not JSON) is named as soon as it is
-    picked, and nothing in a save is stored unless all of it is valid.
-  - The key file's own token address is ignored: the platform signs in only at Google's fixed endpoint.
-
-### Changed
-
-- **The Datasets drawer has less space on its left.** Its content started 40px in (20px on a phone), room left over
-  from when other edge tabs could sit over an open drawer. It now uses the editor's 16px gutter, matching its
-  right side, so the dataset list and editor gain 24px of width.
+## [0.68.0] — 2026-10-21
 
 ### Added
 
@@ -58,6 +40,17 @@ The running version of an instance is reported at `GET /version` (baked into the
   - Results are read against the domain a check was made for, so changing a project's domain starts a new history
     instead of comparing two sites.
   - Credentials are stored encrypted with `SW_ENCRYPTION_KEY` and are never sent back to the browser.
+- **Search engine accounts in System Settings.** Instance admins store the platform's one Google service account
+  (by uploading its JSON key file) and its one Bing Webmaster Tools API key. Sites will be registered with Google
+  and Bing under these, so clients need no Search Console or Bing account of their own.
+  - Both are encrypted at rest with `SW_ENCRYPTION_KEY`, entered only in the UI (never env vars or files), and never
+    sent back to the browser: the card shows only which service account the Google key belongs to and its project.
+  - **Test saved credentials** reads only. For Google it signs in as the service account and counts the sites it has
+    verified and those in its Search Console, naming the API to switch on (and the project) when one is off. For
+    Bing it counts the account's sites.
+  - A wrong file (an OAuth client file, a user credential, something that is not JSON) is named as soon as it is
+    picked, and nothing in a save is stored unless all of it is valid.
+  - The key file's own token address is ignored: the platform signs in only at Google's fixed endpoint.
 
 ### Changed
 
@@ -65,14 +58,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   statistics on; the server refuses anyone else, an agent acting for a client included, and anyone may still
   switch them off. The Statistics tab is always there for staff and appears for clients only while the
   statistics are on.
-
-### Security
-
-- **vite 8.3.4** (editor build tooling) clears GHSA-698v-4r3x-3vcv: the dev server's open-in-editor helper did not
-  escape `%` on Windows. Only the development server used it; the built editor and the runtime image never did.
-
-### Changed
-
 - **The AI Agent is back in Website Settings, for everyone who edits the project.** A project's own agent (its
   own provider and API key) had moved into Project Settings, which only owners can open, so clients lost it. It is
   now an "AI Agent" tile on the Website Settings board again.
@@ -80,12 +65,20 @@ The running version of an instance is reported at `GET /version` (baked into the
     where it is switched off or limited to staff for the instance (the platform still needs a key).
   - **Who gets which first:** a project's members are answered by its own agent first, agency staff by the
     platform's agent first; either way the other is the fallback, and staff can still pick in the chat.
+- **The Datasets drawer has less space on its left.** Its content started 40px in (20px on a phone), room left over
+  from when other edge tabs could sit over an open drawer. It now uses the editor's 16px gutter, matching its
+  right side, so the dataset list and editor gain 24px of width.
 
 ### Fixed
 
 - **The slot picker in the skeleton editor is readable in dark mode.** The editor's title doubles as a dropdown
   of the five chrome slots (main navigation, sidebars, footer, bottom). Its open list showed near-white names on a
   light background in dark mode. The list now has its own colours in both themes, with the current slot shaded.
+
+### Security
+
+- **vite 8.3.4** (editor build tooling) clears GHSA-698v-4r3x-3vcv: the dev server's open-in-editor helper did not
+  escape `%` on Windows. Only the development server used it; the built editor and the runtime image never did.
 
 ## [0.67.0] — 2026-10-20
 
@@ -5532,7 +5525,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.67.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.68.0...HEAD
+[0.68.0]: https://github.com/sitewright-cms/sitewright/compare/v0.67.0...v0.68.0
 [0.67.0]: https://github.com/sitewright-cms/sitewright/compare/v0.66.0...v0.67.0
 [0.66.0]: https://github.com/sitewright-cms/sitewright/compare/v0.65.0...v0.66.0
 [0.65.0]: https://github.com/sitewright-cms/sitewright/compare/v0.64.0...v0.65.0

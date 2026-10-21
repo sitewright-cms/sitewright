@@ -2288,6 +2288,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // the per-project BYO key on /projects/:id/ai-config.
             'req.body.ai.apiKey',
             'req.body.apiKey',
+            // Search engine accounts (System Settings): the Google key file and the Bing API key.
+            'req.body.google.keyFile',
+            'req.body.bing.apiKey',
             // Not a secret, but the base64 logo upload would otherwise bloat the log line.
             'req.body.platformLogo.data',
           ],

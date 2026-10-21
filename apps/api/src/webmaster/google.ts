@@ -14,6 +14,10 @@ import { cleanMessage, isRecord, requestJson, WebmasterError, type Json, type We
  */
 
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+/**
+ * Read AND write: registering a site (getToken, webResource.insert, sites.add) needs both. The test only reads, but
+ * asks for the same token the registration will, so a pass means registration is allowed too.
+ */
 export const GOOGLE_SCOPES = ['https://www.googleapis.com/auth/siteverification', 'https://www.googleapis.com/auth/webmasters'] as const;
 const SITE_VERIFICATION_LIST = 'https://www.googleapis.com/siteVerification/v1/webResource';
 const SEARCH_CONSOLE_SITES = 'https://www.googleapis.com/webmasters/v3/sites';

@@ -9,6 +9,8 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { webmasterCredentials } from '../src/db/schema.js';
+import { WebmasterRepository } from '../src/webmaster/repo.js';
+import { EncryptionUnavailableError } from '../src/repo/instance-settings.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
 /**
@@ -127,6 +129,37 @@ describe('search engine accounts', () => {
     expect(removed).toMatchObject({ google: { configured: false, clientEmail: null }, bing: { configured: true } });
     const test = await app.inject({ method: 'POST', url: '/admin/webmaster-accounts/test', ...as(admin), payload: { service: 'google' } });
     expect(test.json()).toEqual({ ok: false, error: 'No Google service-account key is stored' });
+  });
+
+  it('a key sealed under another SW_ENCRYPTION_KEY asks to be entered again instead of failing', async () => {
+    const admin = await session('admin@agency.test', 'admin');
+    await app.inject({ method: 'PUT', url: '/admin/webmaster-accounts', ...as(admin), payload: { bing: { apiKey: BING_KEY } } });
+    await app.close();
+    app = await createApp({ db, previewRoot, cookieSecret: 'webmaster-test-secret', encryptionKey: randomBytes(32), rankTickMs: 0, webmasterFetch: fakeEngines });
+    await app.ready();
+    const test = await app.inject({ method: 'POST', url: '/admin/webmaster-accounts/test', ...as(admin), payload: { service: 'bing' } });
+    expect(test.json()).toEqual({ ok: false, error: 'The stored Bing API key cannot be read; enter it again' });
+    expect(calls).toEqual([]);
+  });
+
+  it('a save lands whole or not at all: without an encryption key, a removal in it does not happen either', async () => {
+    const sealed = new WebmasterRepository(db, randomBytes(32));
+    await sealed.apply({ google: { secret: { privateKey: 'k' }, info: { clientEmail: EMAIL, projectId: 'p-1234' } } });
+    const keyless = new WebmasterRepository(db);
+    await expect(keyless.apply({ google: null, bing: { secret: { apiKey: BING_KEY }, info: {} } })).rejects.toBeInstanceOf(EncryptionUnavailableError);
+    expect((await keyless.list()).map((r) => r.service)).toEqual(['google']);
+    // A removal alone needs no key.
+    await keyless.apply({ google: null });
+    expect(await keyless.list()).toEqual([]);
+  });
+
+  it('refuses a body far larger than any key file before reading it', async () => {
+    const admin = await session('admin@agency.test', 'admin');
+    const r = await app.inject({ method: 'PUT', url: '/admin/webmaster-accounts', ...as(admin), payload: { google: { keyFile: 'x'.repeat(100 * 1024) } } });
+    // Fastify's body-too-large is a RangeError, which this app answers as 400 "input too large" — not the schema's
+    // 16 KB message, which would mean the whole body was read and parsed first.
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toEqual({ error: 'input too large' });
   });
 
   it('is for instance admins in a session only: not developers, clients, tokens or strangers', async () => {

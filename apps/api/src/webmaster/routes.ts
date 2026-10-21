@@ -8,6 +8,7 @@ import {
 } from '@sitewright/schema';
 import { parseBingKey, testBing } from './bing.js';
 import { parseGoogleKey, testGoogle, type GoogleServiceAccountKey } from './google.js';
+import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
 
@@ -29,6 +30,8 @@ export interface WebmasterRouteDeps {
 }
 
 const LABEL: Record<WebmasterService, string> = { google: 'Google service-account key', bing: 'Bing API key' };
+/** A key file is capped at 16 KB by the schema; the body never needs to be much more than that. */
+const PUT_BODY_LIMIT = 64 * 1024;
 
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
   const { repo, io, requireInstanceAdmin, rl } = deps;
@@ -53,7 +56,7 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
     return reply.send(await view());
   });
 
-  app.put('/admin/webmaster-accounts', { config: rl(30) }, async (req, reply) => {
+  app.put('/admin/webmaster-accounts', { config: rl(30), bodyLimit: PUT_BODY_LIMIT }, async (req, reply) => {
     await requireInstanceAdmin(req);
     const parsed = WebmasterAccountsInputSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -71,16 +74,19 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       if (err instanceof WebmasterError) return reply.code(400).send({ error: err.message });
       throw err;
     }
-    if (input.google === null) await repo.remove('google');
-    if (google) {
-      await repo.put(
-        'google',
-        { clientEmail: google.clientEmail, privateKey: google.privateKey, privateKeyId: google.privateKeyId, projectId: google.projectId },
-        { clientEmail: google.clientEmail, projectId: google.projectId },
-      );
-    }
-    if (input.bing === null) await repo.remove('bing');
-    if (bing) await repo.put('bing', { apiKey: bing }, {});
+    await repo.apply({
+      ...(input.google === null ? { google: null } : {}),
+      ...(google
+        ? {
+            google: {
+              secret: { clientEmail: google.clientEmail, privateKey: google.privateKey, privateKeyId: google.privateKeyId, projectId: google.projectId },
+              info: { clientEmail: google.clientEmail, projectId: google.projectId },
+            },
+          }
+        : {}),
+      ...(input.bing === null ? { bing: null } : {}),
+      ...(bing ? { bing: { secret: { apiKey: bing }, info: {} } } : {}),
+    });
     return reply.send(await view());
   });
 
@@ -88,7 +94,14 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
     await requireInstanceAdmin(req);
     const service = WebmasterServiceSchema.safeParse((req.body as { service?: unknown } | undefined)?.service);
     if (!service.success) return reply.code(400).send({ error: 'service is google or bing' });
-    const secret = await repo.getSecret(service.data);
+    let secret: Record<string, string> | null;
+    try {
+      secret = await repo.getSecret(service.data);
+    } catch (err) {
+      if (err instanceof EncryptionUnavailableError) throw err;
+      // Sealed under another SW_ENCRYPTION_KEY (or damaged): the admin can fix it by entering the key again.
+      return reply.send({ ok: false, error: `The stored ${LABEL[service.data]} cannot be read; enter it again` } satisfies WebmasterTestResult);
+    }
     if (!secret) return reply.send({ ok: false, error: `No ${LABEL[service.data]} is stored` } satisfies WebmasterTestResult);
     try {
       const detail =

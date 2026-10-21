@@ -37,16 +37,25 @@ export class WebmasterRepository {
     return Object.fromEntries(Object.entries(parsed).filter((e): e is [string, string] => typeof e[1] === 'string'));
   }
 
-  async put(service: WebmasterService, secret: Record<string, string>, info: Record<string, string>, now = new Date()): Promise<void> {
-    if (!this.encryptionKey) throw new EncryptionUnavailableError();
-    const sealed = encryptSecret(JSON.stringify(secret), this.encryptionKey);
-    await this.db
-      .insert(webmasterCredentials)
-      .values({ service, secret: sealed, info, updatedAt: now })
-      .onConflictDoUpdate({ target: webmasterCredentials.service, set: { secret: sealed, info, updatedAt: now } });
-  }
-
-  async remove(service: WebmasterService): Promise<void> {
-    await this.db.delete(webmasterCredentials).where(eq(webmasterCredentials.service, service));
+  /**
+   * Applies one save: per service, store (`{secret, info}`) or remove (null); a service left out is untouched.
+   * All of it in ONE transaction, and everything sealed before the first write, so a save lands whole or not at all.
+   */
+  async apply(changes: Partial<Record<WebmasterService, { secret: Record<string, string>; info: Record<string, string> } | null>>, now = new Date()): Promise<void> {
+    const entries = Object.entries(changes) as Array<[WebmasterService, { secret: Record<string, string>; info: Record<string, string> } | null]>;
+    const key = this.encryptionKey;
+    if (!key && entries.some(([, c]) => c !== null)) throw new EncryptionUnavailableError();
+    const sealed = entries.map(([service, c]) => [service, c && { secret: encryptSecret(JSON.stringify(c.secret), key!), info: c.info }] as const);
+    await this.db.transaction(async (tx) => {
+      for (const [service, c] of sealed) {
+        if (c === null) await tx.delete(webmasterCredentials).where(eq(webmasterCredentials.service, service));
+        else {
+          await tx
+            .insert(webmasterCredentials)
+            .values({ service, secret: c.secret, info: c.info, updatedAt: now })
+            .onConflictDoUpdate({ target: webmasterCredentials.service, set: { secret: c.secret, info: c.info, updatedAt: now } });
+        }
+      }
+    });
   }
 }

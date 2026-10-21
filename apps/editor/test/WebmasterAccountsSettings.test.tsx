@@ -62,7 +62,7 @@ describe('WebmasterAccountsSettings', () => {
     expect(api.putWebmasterAccounts).toHaveBeenCalledTimes(1);
   });
 
-  it('names a wrong file at once and refuses to save it', async () => {
+  it('names a wrong file at once, keeps nothing from it, and never blocks the rest of the save', async () => {
     api.getWebmasterAccounts.mockResolvedValue(EMPTY);
     const ref = createRef<WebmasterAccountsSettingsHandle>();
     render(<WebmasterAccountsSettings ref={ref} />);
@@ -70,22 +70,40 @@ describe('WebmasterAccountsSettings', () => {
 
     await pick(file('{"installed":{"client_id":"x"}}', 'client_secret.json'));
     const wrongKind = 'That file is not a Google service-account key: create a JSON key on the service account (Keys → Add key).';
-    expect(screen.getByText(wrongKind)).toBeInTheDocument();
-    expect(ref.current!.validate()).toBe(wrongKind);
-    await expect(ref.current!.save()).rejects.toThrow(wrongKind);
+    expect(screen.getByText(`${wrongKind} Nothing from it will be saved.`)).toBeInTheDocument();
+    // The file was never kept: the settings page can still save, and this card sends nothing.
+    expect(ref.current!.validate()).toBeNull();
+    await act(() => ref.current!.save());
+    expect(api.putWebmasterAccounts).not.toHaveBeenCalled();
 
     await pick(file('not json'));
-    expect(screen.getByText('That file is not a Google service-account key: it is not JSON.')).toBeInTheDocument();
+    expect(screen.getByText(/^That file is not a Google service-account key: it is not JSON\./)).toBeInTheDocument();
     await pick(file('x'.repeat(17 * 1024)));
-    expect(screen.getByText('That file is too large to be a Google service-account key.')).toBeInTheDocument();
+    expect(screen.getByText(/^That file is too large to be a Google service-account key\./)).toBeInTheDocument();
+    const unreadable = file(KEY_FILE);
+    unreadable.text = () => Promise.reject(new Error('NotReadableError'));
+    await pick(unreadable);
+    expect(screen.getByText(/^That file could not be read\./)).toBeInTheDocument();
 
-    // A good file clears the mistake.
+    // A good file clears the notice.
     await pick(file(KEY_FILE));
-    expect(ref.current!.validate()).toBeNull();
+    expect(screen.queryByText(/Nothing from it will be saved/)).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Bing Webmaster API key'), { target: { value: 'my bing key' } });
     expect(ref.current!.validate()).toMatch(/^The Bing API key is 16 to 128 letters and digits/);
+    await expect(ref.current!.save()).rejects.toThrow(/^The Bing API key is 16 to 128 letters and digits/);
     expect(api.putWebmasterAccounts).not.toHaveBeenCalled();
+  });
+
+  it('"Remove" also clears a notice about a refused file', async () => {
+    api.getWebmasterAccounts.mockResolvedValue(STORED);
+    render(<WebmasterAccountsSettings />);
+    const google = within(await screen.findByRole('region', { name: 'Google service account' }));
+    await pick(file('not json'));
+    expect(google.getByText(/Nothing from it will be saved/)).toBeInTheDocument();
+    fireEvent.click(google.getByRole('button', { name: 'Remove' }));
+    expect(google.queryByText(/Nothing from it will be saved/)).toBeNull();
+    expect(google.getByText('The stored key will be removed when you save.')).toBeInTheDocument();
   });
 
   it('removes a stored key on save, and "Keep it" takes the removal back', async () => {

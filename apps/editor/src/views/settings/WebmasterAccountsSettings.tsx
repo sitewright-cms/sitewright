@@ -94,7 +94,13 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
       setPickError('That file is too large to be a Google service-account key.');
       return;
     }
-    const text = await file.text();
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      setPickError('That file could not be read.');
+      return;
+    }
     const read = readKeyFile(text);
     if (typeof read === 'string') setPickError(read);
     else {
@@ -106,11 +112,13 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
   const bingError = (): string | null =>
     bingKey.trim() && !BING_API_KEY_RE.test(bingKey.trim()) ? 'The Bing API key is 16 to 128 letters and digits: copy it from Bing Webmaster Tools → Settings → API Access.' : null;
 
+  // ★ A refused key file is only a notice: it was never kept, so there is nothing wrong to save, and it must not
+  // block the rest of System Settings (cancelling a file dialog fires no event to clear it).
   useImperativeHandle(ref, () => ({
-    validate: () => (view ? (pickError ?? bingError()) : null),
+    validate: () => (view ? bingError() : null),
     async save() {
       if (!view) return;
-      const invalid = pickError ?? bingError();
+      const invalid = bingError();
       if (invalid) throw new Error(invalid);
       const input: WebmasterAccountsInput = {};
       if (picked) input.google = { keyFile: picked.text };
@@ -195,7 +203,11 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
                   type="button"
                   className={removeLink}
                   // Discarding a picked file goes back to what is stored; only "Remove" removes that.
-                  onClick={() => (picked ? setPicked(null) : setRemoveGoogle(true))}
+                  onClick={() => {
+                    setPickError(null);
+                    if (picked) setPicked(null);
+                    else setRemoveGoogle(true);
+                  }}
                 >
                   {picked ? 'Discard file' : 'Remove'}
                 </button>
@@ -206,7 +218,11 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
                 </button>
               )}
             </div>
-            {pickError && <p className="text-xs text-rose-600 dark:text-rose-400">{pickError}</p>}
+            {pickError && (
+              <p className="text-xs text-rose-600 dark:text-rose-400">
+                {pickError} Nothing from it will be saved.
+              </p>
+            )}
             {testRow('google', view.google.configured, { href: 'https://console.cloud.google.com/iam-admin/serviceaccounts', label: 'Google Cloud service accounts' })}
           </section>
 

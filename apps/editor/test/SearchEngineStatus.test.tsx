@@ -43,7 +43,7 @@ describe('SearchEngineStatus', () => {
     const list = await screen.findByRole('list', { name: 'Search engine registration' });
     expect(list).toHaveTextContent(/Google Search Console: verified on .*2026/);
     expect(list).toHaveTextContent(
-      'Bing Webmaster Tools: not registered. Bing could not verify https://www.example.com/: it did not find the verification tag on the home page The next publish or deploy tries again.',
+      'Bing Webmaster Tools: not registered. Bing could not verify https://www.example.com/: it did not find the verification tag on the home page. The next publish or deploy tries again.',
     );
     expect(getSiteRegistration).toHaveBeenCalledWith('p1');
   });

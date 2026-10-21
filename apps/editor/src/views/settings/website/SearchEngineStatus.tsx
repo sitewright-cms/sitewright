@@ -17,6 +17,9 @@ const ENGINES = [
 const RECHECK_MS = 3000;
 const RECHECKS = 10;
 
+/** A search engine's reason as a sentence: some end with a full stop (Google's own words), ours do not. */
+const sentence = (text: string): string => (/[.!?]$/.test(text) ? text : `${text}.`);
+
 const day = (iso: string | null): string => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
 
 function Line({ name, entry }: { name: string; entry: SiteRegistrationEntry }) {
@@ -35,7 +38,7 @@ function Line({ name, entry }: { name: string; entry: SiteRegistrationEntry }) {
       <li className="flex items-start gap-1.5 text-rose-700 dark:text-rose-400">
         <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden />
         <span>
-          {name}: not registered. {entry.detail ?? 'The search engine refused.'} The next publish or deploy tries again.
+          {name}: not registered. {sentence(entry.detail ?? 'The search engine refused')} The next publish or deploy tries again.
         </span>
       </li>
     );

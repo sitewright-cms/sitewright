@@ -51,6 +51,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   row's buttons came back before the list was read again, so a second click repeated the change or tried to
   remove a keyword that was already gone.
 
+### Security
+
+- **sanitize-html 2.18.1** (GHSA-c9rx-x947-fp3h, moderate). Rich text with a crafted iframe that the sanitizer drops
+  could make it recurse without limit and overflow the stack. Rich text drops every iframe without an https address,
+  so anyone who can edit content could reach that path.
+
 ## [0.68.0] — 2026-10-21
 
 ### Added

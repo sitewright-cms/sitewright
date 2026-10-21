@@ -54,7 +54,7 @@
     "domutils": "^4.0.2",
     "handlebars": "^4.7.10",
     "htmlparser2": "^12.0.0",
-    "sanitize-html": "^2.18.0"
+    "sanitize-html": "^2.18.1"
   },
   "devDependencies": {
     "@phosphor-icons/core": "^2.1.1",

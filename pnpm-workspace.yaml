@@ -136,7 +136,9 @@ overrides:
   # reading fe80::/64 instead of fe80::/10 and no classifier for NAT64 64:ff9b:1::/48 (both
   # SSRF/trust-boundary bypasses), isInSubnet() comparing across address families, and an
   # unbounded parse diagnostic. It backs the SSRF guard, so these are reachable, not theoretical.
-  "ip-address@<10.7.1": ^10.7.1
+  # 10.7.4: GHSA-rxp7-6hxx-x8q5 — Address6 matched a zone identifier in quadratic time before its
+  # length limit, so one long string could stall the process (the rate limiters parse client IPs).
+  "ip-address@<10.7.4": ^10.7.4
   # GHSA-2883-xcg3-v3hh — maxTotalMergeKeys does not bound CPU for empty merge sources. Same
   # widened-range pattern: 4.3.1 was the fix for the previous advisory, 4.3.2 is the fix for this one.
   # Dev-only (eslint → @eslint/eslintrc), pinned rather than accepted because a fix exists.

@@ -9,6 +9,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **ip-address 10.7.4** (GHSA-rxp7-6hxx-x8q5): a long address string could make it match a zone identifier in
+  quadratic time and stall the process. It parses client addresses in the rate limiters and backs the SSRF guard.
+
 ## [0.71.0] — 2026-10-22
 
 ### Changed

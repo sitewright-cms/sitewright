@@ -5,7 +5,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
-import { projectMembers } from '../src/db/schema.js';
+import { contentRevisions, projectMembers } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
 
 // Fresh page ids (NOT the seeded `home`) so revision counts are exact.
@@ -141,6 +141,169 @@ describe('revision routes', () => {
     expect(feed.items.length).toBe(1);
     expect(feed.items[0].kind).toBe('imagemap');
     expect(feed.items[0].label).toBe('Ground floor');
+  });
+
+  it('the feed says CREATE for the write that made an item and PUT for its later saves', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'about', aboutPage('About us (first draft)'));
+    await proj.putContent('page', 'about', aboutPage('About us (second draft)'));
+    const rows = (await client.get(`/projects/${pid}/revisions?kind=page&q=${encodeURIComponent('About us (')}`)).json().items;
+    expect(rows.map((r: { op: string; label: string }) => `${r.op}:${r.label}`)).toEqual([
+      'put:About us (second draft)',
+      'create:About us (first draft)',
+    ]);
+    const created = (await client.get(`/projects/${pid}/revisions?op=create&kind=page`)).json().items;
+    expect(created.map((r: { entityId: string }) => r.entityId)).toContain('about');
+    expect(created.every((r: { op: string }) => r.op === 'create')).toBe(true);
+  });
+
+  it('searches by NAME across the whole feed, combined with the kind and op filters, and pages the result', async () => {
+    const proj = client.project(pid);
+    for (let i = 0; i < 5; i += 1) await proj.putContent('page', `team-${i}`, { id: `team-${i}`, path: `team-${i}`, title: `Team member ${i}` });
+    await proj.putContent('page', 'team-0', { id: 'team-0', path: 'team-0', title: 'Team member 0' }); // an update
+    await proj.putContent('template', 'team-card', { id: 'team-card', name: 'Team card', source: '<section>x</section>' });
+    await proj.putContent('page', 'contact', { id: 'contact', path: 'contact', title: 'Contact' });
+    const feed = async (qs: string) => (await client.get(`/projects/${pid}/revisions?${qs}`)).json() as { items: Array<{ id: string; kind: string; op: string; label: string }>; nextCursor: string | null };
+
+    const all = await feed('q=TEAM&limit=100');
+    expect(all.items.every((r) => /team/i.test(r.label))).toBe(true);
+    expect(all.items).toHaveLength(7); // 5 creates + 1 update + the template
+    expect(all.nextCursor).toBeNull();
+    expect((await feed('q=team&kind=template')).items.map((r) => r.label)).toEqual(['Team card']);
+    expect((await feed('q=team&kind=page&op=put')).items.map((r) => r.label)).toEqual(['Team member 0']);
+    expect((await feed('q=team&kind=page&op=create')).items).toHaveLength(5);
+    expect((await feed('q=nobody-has-this-name')).items).toEqual([]);
+
+    // The search pages with the cursor like the unfiltered feed: every match once, none outside it.
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const page = await feed(`q=team&limit=2${cursor ? `&cursor=${cursor}` : ''}`);
+      expect(page.items.length).toBeLessThanOrEqual(2);
+      seen.push(...page.items.map((r) => r.id));
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(seen).toEqual(all.items.map((r) => r.id));
+  });
+
+  it('pages through rows that TIE on revisionAt without repeating or skipping any', async () => {
+    // A bulk write records many revisions in one millisecond. The old `before=<time>` cursor dropped every
+    // row sharing the boundary row's timestamp; plant such a burst directly so the tie is certain.
+    const userId = client.userId;
+    const at = new Date(Date.UTC(2026, 5, 1, 10, 0, 0));
+    await h.db.insert(contentRevisions).values(
+      Array.from({ length: 9 }, (_, i) => ({
+        id: `tie${String(i).padStart(2, '0')}`,
+        projectId: pid,
+        kind: 'page' as const,
+        entityId: `bulk-${i}`,
+        scope: '',
+        data: { id: `bulk-${i}`, path: `bulk-${i}`, title: `Bulk ${i}` },
+        op: 'put' as const,
+        userId,
+        actor: 'user' as const,
+        note: null,
+        revisionAt: at,
+      })),
+    );
+    const ids: string[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const res = await client.get(`/projects/${pid}/revisions?q=Bulk&limit=4${cursor ? `&cursor=${cursor}` : ''}`);
+      expect(res.statusCode).toBe(200);
+      ids.push(...res.json().items.map((r: { id: string }) => r.id));
+      cursor = res.json().nextCursor;
+      pages += 1;
+    } while (cursor && pages < 10);
+    expect(pages).toBe(3); // 4 + 4 + 1 — and the last page says it is the last
+    expect(ids).toEqual(Array.from({ length: 9 }, (_, i) => `tie${String(8 - i).padStart(2, '0')}`));
+  });
+
+  it('searches for a literal BACKSLASH (it is LIKE’s escape character here)', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'win', { id: 'win', path: 'win', title: 'C:\\Sites\\new' });
+    await proj.putContent('page', 'nix', { id: 'nix', path: 'nix', title: 'C:/Sites/new' });
+    const labels = async (q: string) =>
+      ((await client.get(`/projects/${pid}/revisions?q=${encodeURIComponent(q)}`)).json().items as Array<{ label: string }>).map((r) => r.label);
+    expect(await labels('\\')).toEqual(['C:\\Sites\\new']);
+    expect(await labels(':\\S')).toEqual(['C:\\Sites\\new']);
+    expect(await labels('\\%')).toEqual([]); // backslash then a literal % — no title has that
+  });
+
+  it('a cursor from project A replayed on project B returns only B’s rows', async () => {
+    const pidB = await client.createProject('Other', 'other');
+    await client.project(pidB).putContent('page', 'b-only', { id: 'b-only', path: 'b-only', title: 'Only in B' });
+    await client.project(pid).putContent('page', 'a-only', { id: 'a-only', path: 'a-only', title: 'Only in A' });
+    // A's newest row is newer than all of B's, so the cursor positions B's whole history "after" it.
+    const cursorA = (await client.get(`/projects/${pid}/revisions?limit=1`)).json().nextCursor as string;
+    expect(cursorA).toBeTruthy();
+    const onB = await client.get(`/projects/${pidB}/revisions?limit=100&cursor=${cursorA}`);
+    expect(onB.statusCode).toBe(200);
+    const labels = (onB.json().items as Array<{ label: string }>).map((r) => r.label);
+    expect(labels).toContain('Only in B');
+    expect(labels).not.toContain('Only in A');
+    const allA = ((await client.get(`/projects/${pid}/revisions?limit=100`)).json().items as Array<{ id: string }>).map((r) => r.id);
+    expect((onB.json().items as Array<{ id: string }>).some((r) => allA.includes(r.id))).toBe(false);
+  });
+
+  it('says since when creations are marked — on a first page under the Created filter or a search only', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'about', aboutPage('About'));
+    // Every kind counts — creating the project already made its settings and home page.
+    const created = (await client.get(`/projects/${pid}/revisions?op=create&limit=100`)).json();
+    const firstCreate = Math.min(...created.items.map((r: { revisionAt: string }) => Date.parse(r.revisionAt)));
+    expect(Date.parse(created.createdSince)).toBe(firstCreate);
+    expect((await client.get(`/projects/${pid}/revisions?q=About`)).json().createdSince).toBe(created.createdSince);
+    // Not asked for, not sent: a plain page, another filter, or a later page.
+    expect((await client.get(`/projects/${pid}/revisions`)).json()).not.toHaveProperty('createdSince');
+    expect((await client.get(`/projects/${pid}/revisions?op=put`)).json()).not.toHaveProperty('createdSince');
+    const cursor = (await client.get(`/projects/${pid}/revisions?op=create&limit=1`)).json().nextCursor;
+    if (cursor) expect((await client.get(`/projects/${pid}/revisions?op=create&limit=1&cursor=${cursor}`)).json()).not.toHaveProperty('createdSince');
+  });
+
+  it('createdSince is null for a history recorded before creations were marked (all `put`)', async () => {
+    // A project whose history predates the `create` op: plant `put` rows directly, as old history is.
+    const pidOld = await client.createProject('Legacy', 'legacy');
+    await h.db.delete(contentRevisions).where(eq(contentRevisions.projectId, pidOld));
+    await h.db.insert(contentRevisions).values({
+      id: 'legacy01',
+      projectId: pidOld,
+      kind: 'page',
+      entityId: 'old',
+      scope: '',
+      data: { id: 'old', path: 'old', title: 'Made long ago' },
+      op: 'put',
+      userId: client.userId,
+      actor: 'user',
+      note: null,
+      revisionAt: new Date(Date.UTC(2026, 0, 1)),
+    });
+    const res = (await client.get(`/projects/${pidOld}/revisions?op=create`)).json();
+    expect(res.items).toEqual([]);
+    expect(res.createdSince).toBeNull();
+  });
+
+  it('rejects a feed query it cannot honour (400) instead of silently dropping the filter', async () => {
+    const bad = [
+      `q=${'x'.repeat(201)}`,
+      'q=a&q=b',
+      'kind=media',
+      'kind=nonsense',
+      'op=saved',
+      'limit=0',
+      'limit=101',
+      'limit=ten',
+      'cursor=not-a-cursor',
+      `cursor=${Buffer.from('12:../../etc').toString('base64url')}`,
+    ];
+    for (const qs of bad) {
+      const res = await client.get(`/projects/${pid}/revisions?${qs}`);
+      expect({ qs, status: res.statusCode }).toEqual({ qs, status: 400 });
+    }
+    // At the bound, and empty values meaning "no filter", are fine.
+    expect((await client.get(`/projects/${pid}/revisions?q=${'x'.repeat(200)}`)).statusCode).toBe(200);
+    expect((await client.get(`/projects/${pid}/revisions?q=&kind=&op=&cursor=`)).statusCode).toBe(200);
   });
 
   it('isolates history across tenants (a non-member is forbidden)', async () => {

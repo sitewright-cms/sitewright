@@ -6,8 +6,17 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { projectMembers, users, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
-import type { ContentRepository } from '../repo/content.js';
-import { REVISIONED_KINDS, type RevisionsRepository } from '../repo/revisions.js';
+import { MAX_SEARCH_QUERY, type ContentRepository } from '../repo/content.js';
+import {
+  MAX_FEED_PAGE,
+  REVISIONED_KINDS,
+  REVISION_OPS,
+  decodeFeedCursor,
+  encodeFeedCursor,
+  type ProjectFeedQuery,
+  type RevisionOp,
+  type RevisionsRepository,
+} from '../repo/revisions.js';
 import { entryScope } from './content-scope.js';
 import type { ProjectContext } from '../repo/context.js';
 
@@ -32,9 +41,49 @@ export interface RevisionsDeps {
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
-/** A `:kind` that is a real, revisioned content kind — else null (route 404s / filter ignored). */
+/** A `:kind` that is a real, revisioned content kind — else null (the route 404s / the feed 400s). */
 function revisionedKind(kind: string): ContentKind | null {
   return REVISIONED_KINDS.has(kind as ContentKind) ? (kind as ContentKind) : null;
+}
+
+type FeedQuerystring = { kind?: string; op?: string; q?: string; limit?: string; cursor?: string };
+
+/**
+ * The project feed's query string, validated. Every parameter is optional and an empty one means "no
+ * filter"; anything else that is not a value this route understands is a 400 rather than a silently
+ * dropped filter — an ignored `kind=` would answer with EVERY kind and look like a correct result.
+ */
+export function parseFeedQuery(query: FeedQuerystring): ProjectFeedQuery | { error: string } {
+  // A repeated parameter (`?q=a&q=b`) arrives as an array — never a value any branch below understands.
+  const given: ReadonlyArray<[string, unknown]> = [['kind', query.kind], ['op', query.op], ['q', query.q], ['limit', query.limit], ['cursor', query.cursor]];
+  for (const [key, value] of given) {
+    if (value !== undefined && typeof value !== 'string') return { error: `invalid \`${key}\` query parameter` };
+  }
+  const out: ProjectFeedQuery = {};
+  if (query.kind) {
+    const kind = revisionedKind(query.kind);
+    if (!kind) return { error: 'invalid `kind` query parameter' };
+    out.kind = kind;
+  }
+  if (query.op) {
+    if (!(REVISION_OPS as readonly string[]).includes(query.op)) return { error: 'invalid `op` query parameter' };
+    out.op = query.op as RevisionOp;
+  }
+  // A search term, not a document: bounded like the content list's `?q=`.
+  const q = typeof query.q === 'string' ? query.q.trim() : '';
+  if (q.length > MAX_SEARCH_QUERY) return { error: 'invalid `q` query parameter' };
+  if (q) out.q = q;
+  if (query.limit !== undefined && query.limit !== '') {
+    const limit = /^\d{1,3}$/.test(query.limit) ? Number(query.limit) : NaN;
+    if (!(limit >= 1 && limit <= MAX_FEED_PAGE)) return { error: `\`limit\` must be 1-${MAX_FEED_PAGE}` };
+    out.limit = limit;
+  }
+  if (query.cursor) {
+    const after = decodeFeedCursor(query.cursor);
+    if (!after) return { error: 'invalid `cursor` query parameter' };
+    out.after = after;
+  }
+  return out;
 }
 
 /** Emails for the given userIds, but ONLY for users who are CURRENT members of this project (an
@@ -66,22 +115,19 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
   const base = '/projects/:projectId/content/:kind/:entityId/revisions';
 
   // PROJECT-WIDE activity feed (the History view): all revisions across every entity, newest first,
-  // with a short label per row + the entity kind/id (so a row can restore + link to its entity). Optional
-  // `kind` / `op` filters + a `before` (ISO revisionAt) cursor; `nextBefore` paginates. content:read.
-  app.get<{ Params: { projectId: string }; Querystring: { kind?: string; op?: string; limit?: string; before?: string } }>(
+  // with a short label per row + the entity kind/id (so a row can restore + link to its entity).
+  // Optional `kind` / `op` / `q` (name search) filters, combined; `cursor` (from the previous page's
+  // `nextCursor`) continues the feed. content:read.
+  app.get<{ Params: { projectId: string }; Querystring: FeedQuerystring }>(
     '/projects/:projectId/revisions',
     { config: rl(120) },
     async (req, reply) => {
       // resolveProject only reads req.params.projectId (+ auth headers/cookies) — safe to widen.
       const { ctx } = await resolveProject(req as unknown as RevisionReq, 'content:read');
-      const q = req.query;
-      const beforeMs = q.before ? Date.parse(q.before) : NaN;
-      const items = await revisionsRepo.listProject(ctx, {
-        limit: q.limit ? Number(q.limit) : undefined,
-        kind: q.kind ? (revisionedKind(q.kind) ?? undefined) : undefined,
-        op: q.op === 'put' || q.op === 'delete' || q.op === 'restore' ? q.op : undefined,
-        before: Number.isNaN(beforeMs) ? undefined : new Date(beforeMs),
-      });
+      const parsed = parseFeedQuery(req.query);
+      if ('error' in parsed) return reply.code(400).send({ error: parsed.error });
+      const page = await revisionsRepo.listProject(ctx, parsed);
+      const items = page.items;
       const emailById = await memberEmails(db, ctx.projectId, items.filter((r) => r.actor === 'user').map((r) => r.userId));
       const rows = items.map((r) => ({
         id: r.id,
@@ -97,9 +143,16 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
         revisionAt: r.revisionAt,
         author: authorOf(r, emailById, ctx.userId),
       }));
-      // Cursor for the next page: only when this page was full (a short page is the end).
-      const nextBefore = rows.length > 0 && rows.length === (q.limit ? Number(q.limit) : 50) ? new Date(rows[rows.length - 1]!.revisionAt).toISOString() : null;
-      return reply.send({ items: rows, nextBefore });
+      // For a FIRST page that looks for creations (the Created filter, or a search), say since when this
+      // project's history has marked them: everything before is shown as Updated, creations included.
+      // Only then — it is one more query, and no other view says anything with it.
+      const wantsCreatedSince = !parsed.after && (parsed.op === 'create' || parsed.q !== undefined);
+      const createdSince = wantsCreatedSince ? ((await revisionsRepo.firstCreateAt(ctx))?.toISOString() ?? null) : undefined;
+      return reply.send({
+        items: rows,
+        nextCursor: page.next ? encodeFeedCursor(page.next) : null,
+        ...(createdSince === undefined ? {} : { createdSince }),
+      });
     },
   );
 

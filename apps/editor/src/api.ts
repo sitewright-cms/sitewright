@@ -785,7 +785,9 @@ export type Role = 'owner' | 'member' | 'admin' | 'developer';
 /** One entry in a content entity's revision history (metadata only — no snapshot blob). */
 export interface RevisionMeta {
   id: string;
-  op: 'put' | 'delete' | 'restore';
+  /** `create` = the write that made the item, `put` = an update of it. Rows recorded before `create`
+   *  existed stay `put`. */
+  op: 'create' | 'put' | 'delete' | 'restore';
   actor: 'user' | 'agent';
   note: string | null;
   /** ISO timestamp. */
@@ -801,6 +803,27 @@ export interface ProjectRevisionRow extends RevisionMeta {
   dataset: string;
   /** A short title for the entity (from the snapshot: title → name → id). */
   label: string;
+}
+/** Filters + position for one page of the project-wide History feed. */
+export interface ProjectRevisionQuery {
+  kind?: string;
+  op?: string;
+  /** Substring of the row's name (its `label`); the server caps it at 200 characters. */
+  q?: string;
+  limit?: number;
+  /** The previous page's `nextCursor`. */
+  cursor?: string;
+}
+export interface ProjectRevisionPage {
+  items: ProjectRevisionRow[];
+  /** Where the next page starts, or null when this page reached the end of the filtered feed. */
+  nextCursor: string | null;
+  /**
+   * Sent with a FIRST page under the Created filter or a search: when this project's history first
+   * marked a creation (ISO), or null if it never has. Every change before it shows as Updated —
+   * creations included, because history recorded before then did not tell them apart.
+   */
+  createdSince?: string | null;
 }
 /**
  * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —
@@ -1711,7 +1734,6 @@ export const api = {
       'POST',
       `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore${dataset ? `?dataset=${encodeURIComponent(dataset)}` : ''}`,
     ),
-  /** The project-wide activity feed (History view). Optional kind/op filters + a `before` ISO cursor. */
   /** The built-in statistics for a range of UTC days, optionally narrowed to a device and/or country. */
   getStats: (projectId: string, q: StatsQuery) => {
     const params = new URLSearchParams({ from: q.from, to: q.to });
@@ -1746,14 +1768,19 @@ export const api = {
       'GET',
       `/rank-tracking/locations?${new URLSearchParams({ country, q }).toString()}`,
     ),
-  listProjectRevisions: (projectId: string, opts: { kind?: string; op?: string; limit?: number; before?: string } = {}) => {
+  /**
+   * The project-wide activity feed (History view), newest first. `kind` / `op` / `q` (a search of the
+   * row's name) filter it together; `cursor` is the previous page's `nextCursor` (null = the end).
+   */
+  listProjectRevisions: (projectId: string, opts: ProjectRevisionQuery = {}) => {
     const q = new URLSearchParams();
     if (opts.kind) q.set('kind', opts.kind);
     if (opts.op) q.set('op', opts.op);
+    if (opts.q) q.set('q', opts.q);
     if (opts.limit) q.set('limit', String(opts.limit));
-    if (opts.before) q.set('before', opts.before);
+    if (opts.cursor) q.set('cursor', opts.cursor);
     const qs = q.toString();
-    return request<{ items: ProjectRevisionRow[]; nextBefore: string | null }>(
+    return request<ProjectRevisionPage>(
       'GET',
       `/projects/${projectId}/revisions${qs ? `?${qs}` : ''}`,
     );

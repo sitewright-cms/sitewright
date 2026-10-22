@@ -62,6 +62,7 @@ import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } fro
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
 import { GLOBAL_SCOPE_ID } from './global-library.js';
+import { escapeLike } from './sql-like.js';
 
 /**
  * The optimistic-concurrency token for one stored entity: a short hash of its persisted JSON.
@@ -268,15 +269,6 @@ export interface ListFilter {
 
 /** Longest accepted `?q=` — a search term, not a document. Bounds the scan a caller can ask for. */
 export const MAX_SEARCH_QUERY = 200;
-
-/**
- * `%` and `_` are LIKE wildcards. A query containing them must match them LITERALLY, or searching for
- * "100%" silently matches every row (trailing wildcard) and "cotton_shirt" matches "cottonXshirt".
- * Backslash is escaped first so it cannot escape the escape character.
- */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
 
 /**
  * The `?q=` predicate: a case-insensitive substring match over the entity id plus the fields a human
@@ -610,7 +602,11 @@ export class ContentRepository {
     entityId: string,
     raw: unknown,
     opts?: {
-      op?: RevisionOp;
+      /**
+       * Tag the revision as a `restore`. A plain write leaves it out: whether that write CREATED the
+       * entity or UPDATED it is decided here from the stored row, never by the caller.
+       */
+      op?: 'put' | 'restore';
       note?: string;
       /**
        * This write is a `?merge=1` PATCH of the stored entity, not a full replace. It changes what an
@@ -740,10 +736,21 @@ export class ContentRepository {
           throw new VersionConflictError(kind, key, opts.expectedVersion as string, current);
         }
       }
-      return this.writeRow(this.db, ctx, kind, key, value);
+      const { data, created } = await this.writeRowReporting(this.db, ctx, kind, key, value);
+      // A restore tags its revision `restore` (+ a note). Otherwise the write itself says what happened:
+      // ★ `create` when there was NO stored row (a new entity, or one re-made after a delete), else `put`.
+      // Decided HERE, inside the write, rather than guessed later from "the entity's oldest revision" —
+      // history is pruned per entity and swept by age, so the oldest SURVIVING row is very often an edit.
+      const op: RevisionOp = opts?.op === 'restore' ? 'restore' : created ? 'create' : 'put';
+      // ★ Recorded INSIDE the lock, like `stripEntryLanguage` does, so an entity's revisions are written
+      // in the order its writes were. Outside it, a save right behind a create could record FIRST: its
+      // `put` found no row to coalesce into, and the `create` then landed on top of it, newer than the
+      // update and holding the older snapshot. The cost is one revision insert (+ prune) of extra lock
+      // time, which only delays the next write to this same entity; `recordRevision` never throws, so it
+      // cannot leave the lock held or fail the save.
+      await this.recordRevision(ctx, kind, key, scope, data, op, note);
+      return data;
     });
-    // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
-    await this.recordRevision(ctx, kind, key, scope, persisted, opts?.op ?? 'put', note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor, scope, version: contentVersion(persisted) });
     return persisted;
   }
@@ -1715,6 +1722,21 @@ export class ContentRepository {
     /** Returns what was ACTUALLY PERSISTED, which is not always `data` — see `clean` below. Callers
      *  that hash, echo or record the write must use this, or they describe bytes that were never stored. */
   ): Promise<unknown> {
+    return (await this.writeRowReporting(exec, ctx, kind, entityId, data, knownRow)).data;
+  }
+
+  /**
+   * {@link writeRow}, also reporting whether it INSERTED the row (`created`) rather than updating one —
+   * which is what lets a revision say "Created" instead of "Updated" without a second read.
+   */
+  private async writeRowReporting(
+    exec: Executor,
+    ctx: ProjectContext,
+    kind: ContentKind,
+    entityId: string,
+    data: unknown,
+    knownRow?: Awaited<ReturnType<ContentRepository['row']>>,
+  ): Promise<{ data: unknown; created: boolean }> {
     const now = new Date();
     // AT-REST sanitizing for image maps. Three config values are authored MARKUP by design — a
     // tooltip block's `text`, a YouTube block's `embedCode`, and an SVG region's `svg.html` — and
@@ -1743,7 +1765,7 @@ export class ContentRepository {
         updatedAt: now,
       });
     }
-    return clean;
+    return { data: clean, created: !existing };
   }
 
   /**

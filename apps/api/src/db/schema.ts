@@ -804,7 +804,10 @@ export const contentRevisions = sqliteTable(
      *  history is keyed per-dataset — matching the live row it snapshots. */
     scope: text('scope').notNull().default(''),
     data: text('data', { mode: 'json' }).notNull(),
-    op: text('op', { enum: ['put', 'delete', 'restore'] }).notNull(),
+    // `create` = the write that made the entity (no stored row before it), `put` = an update of one.
+    // A text enum with no SQL CHECK (like `kind`), so a new value needs no migration; rows written
+    // before `create` existed simply stay `put`.
+    op: text('op', { enum: ['create', 'put', 'delete', 'restore'] }).notNull(),
     /** Who authored this revision (the session user, or the API-key creator for an agent write). */
     userId: text('user_id').notNull(),
     actor: text('actor', { enum: ['user', 'agent'] }).notNull(),

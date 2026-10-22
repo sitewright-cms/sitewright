@@ -1,8 +1,9 @@
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { contentRevisions, type ContentKind } from '../db/schema.js';
 import type { ProjectContext } from './context.js';
+import { escapeLike } from './sql-like.js';
 
 /**
  * Content kinds that get revision history — the user-editable, site-affecting set. Credentials
@@ -21,8 +22,61 @@ export const REVISIONED_KINDS: ReadonlySet<ContentKind> = new Set<ContentKind>([
   'settings',
 ]);
 
-export type RevisionOp = 'put' | 'delete' | 'restore';
+/**
+ * What a revision records: `create` (the write that made the entity — no stored row before it), `put`
+ * (an update), `delete` (the tombstone, holding the state AT deletion) or `restore`. Rows recorded before
+ * `create` existed stay `put`.
+ */
+export const REVISION_OPS = ['create', 'put', 'delete', 'restore'] as const;
+export type RevisionOp = (typeof REVISION_OPS)[number];
 export type RevisionActor = 'user' | 'agent';
+
+/** Largest page the project-wide feed returns — the History view asks for 50. */
+export const MAX_FEED_PAGE = 100;
+const DEFAULT_FEED_PAGE = 50;
+
+/**
+ * A position in the project-wide feed: the LAST row a page returned. The feed is ordered by
+ * (revisionAt DESC, id DESC), and the id is part of the key because timestamps TIE — a bulk write
+ * records many revisions in one millisecond, and a time-only cursor (`revisionAt < t`) skipped every
+ * row that shared the boundary row's timestamp.
+ */
+export interface FeedCursor {
+  at: Date;
+  id: string;
+}
+
+const CURSOR_PATTERN = /^(\d{1,15}):([A-Za-z0-9_-]{1,128})$/;
+
+/** The cursor as an opaque, URL-safe token. Clients pass it back verbatim; they never build one. */
+export function encodeFeedCursor(cursor: FeedCursor): string {
+  return Buffer.from(`${cursor.at.getTime()}:${cursor.id}`, 'utf8').toString('base64url');
+}
+
+/** The cursor a token stands for, or `null` when it is not one this server issued (a 400, not a guess). */
+export function decodeFeedCursor(token: string): FeedCursor | null {
+  if (token.length === 0 || token.length > 200 || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
+  const match = CURSOR_PATTERN.exec(Buffer.from(token, 'base64url').toString('utf8'));
+  if (!match) return null;
+  const ms = Number(match[1]);
+  return Number.isSafeInteger(ms) ? { at: new Date(ms), id: match[2]! } : null;
+}
+
+export interface ProjectFeedQuery {
+  limit?: number;
+  kind?: ContentKind;
+  op?: RevisionOp;
+  /** Case-insensitive substring of the row's NAME — the same `label` the History row shows. */
+  q?: string;
+  /** Continue strictly AFTER this row (exclusive keyset). Absent = from the newest. */
+  after?: FeedCursor;
+}
+
+export interface ProjectFeedPage {
+  items: ProjectRevisionMeta[];
+  /** Where the next page starts, or `null` when this page reached the end of the (filtered) feed. */
+  next: FeedCursor | null;
+}
 
 /** A revision without its (potentially large) `data` blob — for the history list. */
 export interface RevisionMeta {
@@ -131,6 +185,9 @@ export class RevisionsRepository {
     // best-effort and the per-entity cap trims any surplus; we don't pay a transaction on every save.
     // Only look for a coalescing candidate when coalescing is ON (window > 0) — the default (0) skips it.
     const { coalesceWindowMs } = await this.policyValues();
+    // Only an UPDATE coalesces, and into either kind of plain write: a quick tweak right after creating
+    // something folds into its `create` row (which stays `create`), exactly as it folded into the
+    // creation when that was recorded as a `put`. A `create` itself always inserts.
     if (op === 'put' && coalesceWindowMs > 0) {
       const [latest] = await this.db
         .select()
@@ -140,7 +197,7 @@ export class RevisionsRepository {
         .limit(1);
       if (
         latest &&
-        latest.op === 'put' &&
+        (latest.op === 'put' || latest.op === 'create') &&
         latest.userId === ctx.userId &&
         latest.actor === actor &&
         now.getTime() - new Date(latest.revisionAt).getTime() < coalesceWindowMs
@@ -185,29 +242,44 @@ export class RevisionsRepository {
   }
 
   /**
-   * The project-wide activity feed (newest first) for the History view — across ALL entities, with a
+   * The project-wide activity feed for the History view — across ALL entities, newest first, with a
    * short `label` per row pulled straight from the snapshot (title → name → id) via SQLite json_extract
-   * (no full-blob load). Optional kind/op filters + a `before` (revisionAt) cursor for pagination.
+   * (no blob reaches JS). Optional kind / op / name-search filters, all combined, and KEYSET paging.
+   *
+   * ★ Keyset, not offset: the feed grows at the TOP while someone scrolls it, so an offset would hand
+   * the next page rows it already returned (one per write since) — and a time-only cursor skipped rows
+   * that tie on the boundary timestamp. `(revisionAt, id)` is a total order, so every row is returned
+   * exactly once however much history arrives meanwhile.
    */
-  async listProject(
-    ctx: ProjectContext,
-    opts: { limit?: number; kind?: ContentKind; op?: RevisionOp; before?: Date } = {},
-  ): Promise<ProjectRevisionMeta[]> {
-    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  async listProject(ctx: ProjectContext, opts: ProjectFeedQuery = {}): Promise<ProjectFeedPage> {
+    const limit = Math.min(Math.max(Math.trunc(opts.limit ?? DEFAULT_FEED_PAGE), 1), MAX_FEED_PAGE);
     // `$.general.name` is how an IMAGE MAP carries its name — without it an imagemap row falls all
     // the way through to its raw id (`map-ixlvc4fa`), which tells a reader nothing about what changed.
-    const label = sql<string | null>`coalesce(json_extract(${contentRevisions.data}, '$.title'), json_extract(${contentRevisions.data}, '$.name'), json_extract(${contentRevisions.data}, '$.general.name'), json_extract(${contentRevisions.data}, '$.id'))`;
+    // The entity id is the last resort, so the label is never null and the search sees what the row shows.
+    const label = sql<string>`coalesce(json_extract(${contentRevisions.data}, '$.title'), json_extract(${contentRevisions.data}, '$.name'), json_extract(${contentRevisions.data}, '$.general.name'), json_extract(${contentRevisions.data}, '$.id'), ${contentRevisions.entityId})`;
     const conds = [eq(contentRevisions.projectId, ctx.projectId)];
     if (opts.kind) conds.push(eq(contentRevisions.kind, opts.kind));
     if (opts.op) conds.push(eq(contentRevisions.op, opts.op));
-    if (opts.before) conds.push(lt(contentRevisions.revisionAt, opts.before));
+    // The NAME search: a substring of the label, bound as a parameter, with LIKE's own wildcards escaped
+    // so "100%" means 100%. SQLite's LIKE folds ASCII case itself, so the term is passed as typed — a
+    // JS `toLowerCase()` would turn "Über" into "über" and then fail to match the stored "Über".
+    if (opts.q) conds.push(sql`${label} LIKE ${`%${escapeLike(opts.q)}%`} ESCAPE '\\'`);
+    if (opts.after) {
+      const { at, id } = opts.after;
+      conds.push(
+        or(lt(contentRevisions.revisionAt, at), and(eq(contentRevisions.revisionAt, at), lt(contentRevisions.id, id)))!,
+      );
+    }
+    // One row past the page says whether another page exists, without a COUNT over the whole history.
     const rows = await this.db
       .select({ ...META_COLUMNS, label })
       .from(contentRevisions)
       .where(and(...conds))
-      .orderBy(desc(contentRevisions.revisionAt))
-      .limit(limit);
-    return rows.map((r) => ({ ...r, label: (r.label as string | null) ?? r.entityId }) as ProjectRevisionMeta);
+      .orderBy(desc(contentRevisions.revisionAt), desc(contentRevisions.id))
+      .limit(limit + 1);
+    const items = rows.slice(0, limit).map((r) => ({ ...r, label: (r.label as string | null) ?? r.entityId }) as ProjectRevisionMeta);
+    const last = items[items.length - 1];
+    return { items, next: rows.length > limit && last ? { at: last.revisionAt, id: last.id } : null };
   }
 
   /** A single revision (incl. `data`), scoped to the caller's project. */

@@ -55,6 +55,24 @@ The running version of an instance is reported at `GET /version` (baked into the
   focus out of the form (the open list sits at the end of the page). Focus now goes back to the field the list
   belongs to, and the Tab moves on from there.
 - **Searchable lists: a list under a narrow field is at least 256px wide,** and every list stays inside the window.
+- **History: clearer words, a search by name, and a list that loads as you scroll.** The project's History tab
+  now says what each change did and finds any change by name, however long the history is.
+  - **Status:** a save is shown as **Updated**, and the change that made a page, dataset entry or other item is shown
+    as **Created**. The platform records which one it was at the moment of the save, from whether the item already
+    existed, so a page created again after a delete is Created too. Changes recorded before this release stay
+    Updated. Restored and Deleted are unchanged. The action filter offers the same words.
+  - **Dataset Entry:** entries are labelled "Dataset Entry" instead of "Entry", in the rows and in the content filter.
+  - **Search:** a search box finds changes by the name the row shows (a page's title, a dataset's or template's
+    name), together with the content and action filters. It searches the whole history on the server, not only the
+    rows already on screen, starts once typing pauses, and takes up to 200 characters.
+  - **Scrolling:** a long history renders only the rows on screen, like the Pages list, and the next 50 load by
+    themselves as the end of the list comes into view (the **Load more** button still works, and waits for a click
+    after a failed load). New changes that arrive while you scroll appear at the top without repeating or skipping
+    any row, and changing a filter or the search never mixes in rows from the one before.
+  - **API:** `GET /projects/:id/revisions` takes `q` (name search) and pages with an opaque `cursor`, returning
+    `nextCursor` (null at the end). This replaces `before` / `nextBefore`, which skipped changes saved in the same
+    millisecond. An unknown `kind` or `op`, a search over 200 characters or an invalid cursor is now a 400 instead
+    of being ignored. Revisions can carry the new `op` value `create`.
 
 ## [0.70.0] — 2026-10-22
 

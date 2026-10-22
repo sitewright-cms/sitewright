@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.72.0] — 2026-10-22
+
 ### Added
 
 - **Agents can read search rankings and search performance.** Two read-only tools join `get_site_stats`, so an
@@ -5824,7 +5826,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.71.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.72.0...HEAD
+[0.72.0]: https://github.com/sitewright-cms/sitewright/compare/v0.71.0...v0.72.0
 [0.71.0]: https://github.com/sitewright-cms/sitewright/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/sitewright-cms/sitewright/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/sitewright-cms/sitewright/compare/v0.68.0...v0.69.0

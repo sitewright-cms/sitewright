@@ -47,7 +47,8 @@ describe('AgentIndicator', () => {
 
     it.each(cases)('$state: the label stays VISIBLE outside compact (the desktop pill is unchanged)', ({ state, count, name }) => {
       render(<AgentIndicator state={state} count={count} onClick={() => {}} />);
-      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+      // The labelled pill exactly as before: one line that never shrinks.
+      expect(screen.getByRole('button', { name })).toHaveClass('inline-flex', 'shrink-0', 'whitespace-nowrap', 'rounded-full', 'border', 'px-2', 'py-0.5', 'text-[11px]');
       expect(screen.queryByText(name, { selector: '.sr-only' })).not.toBeInTheDocument();
     });
   });

@@ -27,6 +27,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   process now take turns: a write that meets a transaction in progress waits for it (at most 5 seconds), and plain
   reads never wait. Every connection now also gets `synchronous = NORMAL`. This covers the platform database and the
   statistics file, and among others the hourly clean-ups, which ran beside an open transaction.
+- **Phone header: the agent chip no longer covers the project switcher.** "Agent connected" and "Agent working…" kept
+  their full label on a phone and painted over the project pill, so a tap on the pill opened the agent window. On a
+  phone the chip is now its dot or spinner alone (a screen reader still hears the words, with the count), and on the
+  narrowest touch screens the pill steps aside: the brand mark beside it opens the same project switcher.
 
 ### Security
 

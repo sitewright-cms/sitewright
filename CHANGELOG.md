@@ -62,6 +62,8 @@ The running version of an instance is reported at `GET /version` (baked into the
       section; developers are told an instance admin does it.
     - Not enabled for the project: how to enable it, with a button that opens Website Settings at the Analytics or
       Search engines tile. For Search rankings the note sits above the existing keyword setup.
+  - Each view waits only on its own read, and a re-check that cannot read keeps the last answer: a passing failure
+    never hides a view or the tab, or tells staff to switch on what is already on.
   - The rankings read now tells every reader whether a rank-tracking provider is set up (`configured`); why checks
     may not run is still for staff only.
 

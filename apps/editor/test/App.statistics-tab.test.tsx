@@ -46,8 +46,7 @@ vi.mock('../src/views/Project', () => ({
     onLoaded,
     onSelectTab,
     isStaff,
-    visitsAvailable,
-    visitsEnabled,
+    statisticsAccess,
     onOpenSystemSettings,
   }: {
     project: Project;
@@ -55,16 +54,18 @@ vi.mock('../src/views/Project', () => ({
     onLoaded?: () => void;
     onSelectTab?: (t: string) => void;
     isStaff?: boolean;
-    visitsAvailable?: boolean;
-    visitsEnabled?: boolean;
+    statisticsAccess?: { statistics?: boolean | null; rankings?: boolean | null; search?: string[] | null };
     onOpenSystemSettings?: (target: { tab: string; section?: string }) => void;
   }) => {
+    const visitsAvailable = statisticsAccess?.statistics === true;
+    const visitsEnabled = statisticsAccess?.statistics;
     useEffect(() => {
       onLoaded?.();
     }, [onLoaded]);
     return (
       <div>
-        PROJECT {project.name} tab={tab} staff={String(isStaff)} visits={String(visitsAvailable)} enabled={String(visitsEnabled)} system-link=
+        PROJECT {project.name} tab={tab} staff={String(isStaff)} visits={String(visitsAvailable)} enabled={String(visitsEnabled)} rankings=
+        {String(statisticsAccess?.rankings)} search={String(statisticsAccess?.search)} system-link=
         {String(Boolean(onOpenSystemSettings))}
         <button type="button" onClick={() => onSelectTab?.('statistics')}>
           go to statistics
@@ -220,6 +221,53 @@ describe('the Statistics tab', () => {
     getSettings.mockRejectedValue(new Error('offline'));
     await openAcme();
     expect(await screen.findByText(/enabled=null/)).toBeInTheDocument();
+  });
+
+  it('★ each read answers on its own: a hung rankings read never keeps staff from the visits', async () => {
+    as('admin');
+    statistics(false);
+    getRankings.mockReturnValue(new Promise(() => undefined));
+    getSearchPerformanceAvailability.mockReturnValue(new Promise(() => undefined));
+    await openAcme();
+    expect(await screen.findByText(/enabled=false/)).toBeInTheDocument();
+    expect(screen.getByText(/rankings=\s*undefined/)).toBeInTheDocument();
+  });
+
+  it('★ a client is not moved off the tab when a re-check of the rankings fails — the last answer stands', async () => {
+    as(null);
+    statistics(false);
+    getRankings.mockResolvedValue({ tracking: { domain: 'acme.test' }, keywords: [{ id: 'k1' }], canManage: false, configured: true });
+    await openAcme();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Statistics' }));
+    await screen.findByText(/tab=statistics/);
+    const before = getRankings.mock.calls.length;
+    getRankings.mockRejectedValue(new Error('offline'));
+    act(() => notifyStatisticsChanged('p1'));
+    await waitFor(() => expect(getRankings.mock.calls.length).toBeGreaterThan(before));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByRole('tab', { name: 'Statistics' })).toBeInTheDocument();
+    expect(screen.getByText(/tab=statistics/)).toBeInTheDocument();
+    expect(screen.getByText(/rankings=\s*true/)).toBeInTheDocument();
+  });
+
+  it('★ … nor when a re-check of the search engines fails', async () => {
+    as(null);
+    statistics(false);
+    getSearchPerformanceAvailability.mockResolvedValue({ services: ['google'] });
+    await openAcme();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Statistics' }));
+    await screen.findByText(/tab=statistics/);
+    const before = getSearchPerformanceAvailability.mock.calls.length;
+    getSearchPerformanceAvailability.mockRejectedValue(new Error('offline'));
+    act(() => notifyStatisticsChanged('p1'));
+    await waitFor(() => expect(getSearchPerformanceAvailability.mock.calls.length).toBeGreaterThan(before));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.getByText(/tab=statistics/)).toBeInTheDocument();
+    expect(screen.getByText(/search=\s*google/)).toBeInTheDocument();
   });
 
   it('gives the System Settings link to an instance admin only — a developer cannot open System Settings', async () => {

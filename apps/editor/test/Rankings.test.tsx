@@ -22,6 +22,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
 
 import { StatisticsTab } from '../src/views/stats/StatisticsTab';
+import type { StatisticsAccess } from '../src/lib/statistics-enabled';
 import { RankingsView } from '../src/views/stats/RankingsView';
 import { RankChart } from '../src/views/stats/RankChart';
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from '../src/views/settings/RankTrackingSettings';
@@ -84,10 +85,13 @@ beforeEach(() => {
   api.getSiteRegistration.mockRejectedValue(new Error('not staff'));
 });
 
+/** App's answer (useStatisticsAccess): which views the project has. Visits on, the rest not live, unless told. */
+const access = (over: Partial<StatisticsAccess> = {}): StatisticsAccess => ({ statistics: true, rankings: false, search: [], ...over });
+
 describe('the Statistics tab', () => {
   it('shows no rankings tab to a client whose site is not tracked', async () => {
     api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} />);
+    render(<StatisticsTab project={project} access={access()} />);
     await waitFor(() => expect(api.getRankings).toHaveBeenCalled());
     await screen.findByRole('group', { name: 'Visitors' });
     expect(screen.queryByRole('tab', { name: /Search rankings/ })).toBeNull();
@@ -95,7 +99,7 @@ describe('the Statistics tab', () => {
 
   it('offers the rankings next to the visits when the site is tracked', async () => {
     api.getRankings.mockResolvedValue(rankings());
-    render(<StatisticsTab project={project} />);
+    render(<StatisticsTab project={project} access={access({ rankings: true })} />);
     // The switcher is the prominent, SOLID bar (not the frosted one other tab strips use), centred.
     const bar = await screen.findByRole('tablist', { name: 'Statistics' });
     expect(bar).toHaveClass('bg-white', 'dark:bg-slate-800');
@@ -103,23 +107,22 @@ describe('the Statistics tab', () => {
     expect(bar.parentElement).toHaveClass('justify-center');
     fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
     expect(await screen.findByRole('heading', { name: 'Search rankings' })).toBeInTheDocument();
-    expect(screen.getByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
   });
 
   it('does not tear down and refetch the visits when the rankings tab appears', async () => {
-    let answer!: (r: ProjectRankings) => void;
-    api.getRankings.mockReturnValue(new Promise((resolve) => (answer = resolve)));
-    render(<StatisticsTab project={project} />);
+    api.getRankings.mockResolvedValue(rankings());
+    const { rerender } = render(<StatisticsTab project={project} access={access({ rankings: undefined })} />);
     await screen.findByRole('group', { name: 'Visitors' });
     expect(api.getStats).toHaveBeenCalledTimes(1);
-    await act(async () => answer(rankings()));
+    rerender(<StatisticsTab project={project} access={access({ rankings: true })} />);
     expect(await screen.findByRole('tab', { name: /Search rankings/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Visitors' })).toBeInTheDocument();
     expect(api.getStats).toHaveBeenCalledTimes(1);
   });
 
   it('offers the search performance once a search engine verified the site, beside the others', async () => {
     api.getRankings.mockResolvedValue(rankings());
-    api.getSearchPerformanceAvailability.mockResolvedValue({ services: ['bing'] });
     api.getSearchPerformance.mockResolvedValue({
       service: 'bing',
       siteUrl: 'https://www.plumbers.na/',
@@ -131,7 +134,7 @@ describe('the Statistics tab', () => {
       pages: [],
       fetchedAt: '2026-10-21T10:00:00.000Z',
     });
-    render(<StatisticsTab project={project} />);
+    render(<StatisticsTab project={project} access={access({ rankings: true, search: ['bing'] })} />);
     const bar = await screen.findByRole('tablist', { name: 'Statistics' });
     await waitFor(() => expect(within(bar).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Visits', 'Search rankings', 'Search performance']));
     // Asked for ahead, while the visits show: the view it opens on is ready (or on its way) when it is opened.
@@ -144,9 +147,8 @@ describe('the Statistics tab', () => {
 
   it('a search engine that refuses the numbers asked ahead changes nothing until the view is opened', async () => {
     api.getRankings.mockResolvedValue(rankings());
-    api.getSearchPerformanceAvailability.mockResolvedValue({ services: ['google'] });
     api.getSearchPerformance.mockRejectedValue(new Error('Google is limiting requests; try again in a minute'));
-    render(<StatisticsTab project={project} />);
+    render(<StatisticsTab project={project} access={access({ rankings: true, search: ['google'] })} />);
     const bar = await screen.findByRole('tablist', { name: 'Statistics' });
     await waitFor(() => expect(api.getSearchPerformance).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole('alert')).toBeNull(); // the visits are not interrupted by it
@@ -156,7 +158,7 @@ describe('the Statistics tab', () => {
 
   it('without the visit counter (a client, statistics off) the rankings are the whole tab', async () => {
     api.getRankings.mockResolvedValue(rankings());
-    render(<StatisticsTab project={project} visitsAvailable={false} />);
+    render(<StatisticsTab project={project} access={access({ statistics: false, rankings: true })} />);
     expect(await screen.findByRole('heading', { name: 'Search rankings' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: /Visits/ })).toBeNull();
     expect(api.getStats).not.toHaveBeenCalled();
@@ -164,7 +166,7 @@ describe('the Statistics tab', () => {
 
   it('offers staff the tab to set tracking up', async () => {
     api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider', configured: false }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
     expect(await screen.findByRole('form', { name: 'Rank tracking setup' })).toBeInTheDocument();
     // The site URL is the suggested domain.

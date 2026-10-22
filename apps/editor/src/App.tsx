@@ -38,7 +38,7 @@ import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } 
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 import { usePaymentsActive } from './lib/payments-active';
-import { useStatisticsAccess } from './lib/statistics-enabled';
+import { clientSees, useStatisticsAccess } from './lib/statistics-enabled';
 import type { OpenSystemSettings, SystemSettingsTarget } from './lib/settings-links';
 import { Tooltip } from './views/ui/Tooltip';
 
@@ -301,8 +301,8 @@ function MainApp({
   // switched on, rank tracking set up with keywords, or a search engine account the site is verified with. A client
   // sees the visits only while statistics are on.
   const statisticsAccess = useStatisticsAccess(stage.name === 'project' ? stage.project.id : null);
-  const visitsVisible = canCreateProjects || statisticsAccess.statistics === true;
-  const statisticsVisible = visitsVisible || statisticsAccess.rankings || statisticsAccess.search;
+  const sees = clientSees(statisticsAccess);
+  const statisticsVisible = canCreateProjects || sees.visits || sees.rankings || sees.search;
   // A tab that disappears (payments or statistics switched off, or a different project) must not stay selected.
   useEffect(() => {
     if (tab === 'orders' && !paymentsActive) setTab('website-settings');
@@ -593,10 +593,8 @@ function MainApp({
           onSelectTab={setTab}
           ordersAvailable={paymentsActive}
           statisticsAvailable={statisticsVisible}
-          visitsAvailable={visitsVisible}
-          // Unknown (undefined) until the first answer, so staff never see "switched off" while it is asked; null when it
-          // could not be read, and the counter then speaks for itself.
-          visitsEnabled={statisticsAccess.loaded ? statisticsAccess.statistics : undefined}
+          // The one answer the tab's views go by too, so the strip and the views can never disagree.
+          statisticsAccess={statisticsAccess}
           // Only an instance admin can act in System Settings; the guides tell a developer who does it.
           onOpenSystemSettings={isInstanceAdmin ? openSystemSettings : undefined}
           isStaff={canCreateProjects}

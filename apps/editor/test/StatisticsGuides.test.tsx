@@ -25,6 +25,7 @@ vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
 
 import { StatisticsTab } from '../src/views/stats/StatisticsTab';
 import { GUIDE_URLS } from '../src/views/stats/FeatureGuides';
+import { rankingsLive, type StatisticsAccess } from '../src/lib/statistics-enabled';
 
 const project = { id: 'p1', name: 'Plumbers', slug: 'plumbers', role: 'owner' as const, siteUrl: 'https://www.plumbers.na/' };
 
@@ -88,6 +89,9 @@ const searchView = {
 };
 
 const NOTE = { name: 'Only visible to admins and developers' };
+
+/** App's answer (useStatisticsAccess) — the one source of which views a client sees. Visits on, the rest not live. */
+const access = (over: Partial<StatisticsAccess> = {}): StatisticsAccess => ({ statistics: true, rankings: false, search: [], ...over });
 const SYSTEM_BUTTON = { name: 'Open System Settings → Integrations' };
 
 beforeEach(() => {
@@ -103,7 +107,6 @@ beforeEach(() => {
 /** Every read the tab makes has answered. */
 async function settled(staff = false): Promise<void> {
   await waitFor(() => expect(api.getRankings).toHaveBeenCalled());
-  await waitFor(() => expect(api.getSearchPerformanceAvailability).toHaveBeenCalled());
   if (staff) await waitFor(() => expect(api.getSiteRegistration).toHaveBeenCalled());
   await act(async () => {
     await new Promise((r) => setTimeout(r, 0));
@@ -116,15 +119,21 @@ const linkTo = (name: RegExp | string): HTMLElement => screen.getByRole('link', 
 
 describe('a client: a view only while it is set up AND enabled, and never a holding message', () => {
   it.each([
-    { what: 'visits on; rankings tracked but no provider set up; no search engine', visits: true, rank: rankings({ configured: false }), search: [], tabs: null },
-    { what: 'visits on; a provider, but no keyword yet', visits: true, rank: rankings({ keywords: [] }), search: [], tabs: null },
-    { what: 'visits on; a provider, but no tracking set up', visits: true, rank: rankings({ tracking: null, keywords: [] }), search: [], tabs: null },
-    { what: 'everything live', visits: true, rank: rankings(), search: ['bing'], tabs: ['Visits', 'Search rankings', 'Search performance'] },
-    { what: 'visits off; rankings live', visits: false, rank: rankings(), search: ['google'], tabs: ['Search rankings', 'Search performance'] },
-  ])('$what', async ({ visits, rank, search, tabs }) => {
-    api.getRankings.mockResolvedValue(rank);
-    api.getSearchPerformanceAvailability.mockResolvedValue({ services: search });
-    render(<StatisticsTab project={project} visitsAvailable={visits} />);
+    { what: 'a provider, a tracked domain and a keyword', r: rankings(), live: true },
+    { what: 'tracked, but no provider set up', r: rankings({ configured: false }), live: false },
+    { what: 'a provider, but no keyword yet', r: rankings({ keywords: [] }), live: false },
+    { what: 'a provider, but no tracking set up', r: rankings({ tracking: null, keywords: [] }), live: false },
+  ])('search rankings are live only when set up AND enabled: $what', ({ r, live }) => {
+    expect(rankingsLive(r)).toBe(live);
+  });
+
+  it.each([
+    { what: 'visits only', a: access(), tabs: null },
+    { what: 'everything live', a: access({ rankings: true, search: ['bing'] }), tabs: ['Visits', 'Search rankings', 'Search performance'] },
+    { what: 'visits off; rankings and search live', a: access({ statistics: false, rankings: true, search: ['google'] }), tabs: ['Search rankings', 'Search performance'] },
+    { what: 'visits on; search live', a: access({ search: ['google'] }), tabs: ['Visits', 'Search performance'] },
+  ])('$what', async ({ a, tabs }) => {
+    render(<StatisticsTab project={project} access={a} />);
     await settled();
     if (tabs) expect(tabNames()).toEqual(tabs);
     else {
@@ -137,11 +146,37 @@ describe('a client: a view only while it is set up AND enabled, and never a hold
     expect(api.getSiteRegistration).not.toHaveBeenCalled();
   });
 
+  it('★ statistics off and only search live: never Search rankings while the rankings are still being read', async () => {
+    api.getRankings.mockReturnValue(new Promise(() => undefined));
+    render(<StatisticsTab project={project} access={access({ statistics: false, rankings: undefined, search: ['google'] })} />);
+    expect(await screen.findByRole('heading', { name: 'Search performance' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Search rankings' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Search rankings/ })).toBeNull();
+  });
+
+  it('★ never dropped onto Search rankings when nothing it may see is live (the search read failed)', async () => {
+    const { container } = render(<StatisticsTab project={project} access={access({ statistics: false, rankings: false, search: null })} />);
+    // Presence guard: the tab did mount and read.
+    await waitFor(() => expect(api.getRankings).toHaveBeenCalled());
+    expect(container.firstElementChild).toBeInTheDocument();
+    expect(container.querySelector('section')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Search rankings' })).toBeNull();
+    expect(screen.queryByRole('note', NOTE)).toBeNull();
+  });
+
+  it('★ a view on screen stays there when an earlier one answers later — no flick, nothing torn down', async () => {
+    const { rerender } = render(<StatisticsTab project={project} access={access({ statistics: undefined, rankings: undefined, search: ['google'] })} />);
+    expect(await screen.findByRole('heading', { name: 'Search performance' })).toBeInTheDocument();
+    rerender(<StatisticsTab project={project} access={access({ statistics: true, rankings: true, search: ['google'] })} />);
+    expect(await screen.findByRole('tab', { name: /Visits/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Search performance' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Search performance/ })).toHaveAttribute('aria-selected', 'true');
+    expect(api.getStats).not.toHaveBeenCalled();
+  });
+
   it('with nothing live at all (the tab is not offered, but if reached) shows no guide either', async () => {
-    api.getRankings.mockResolvedValue(rankings({ configured: false, tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} visitsAvailable={false} />);
+    render(<StatisticsTab project={project} access={access({ statistics: false })} />);
     await settled();
-    expect(await screen.findByText('Search rankings are not tracked for this site yet.')).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
     expect(screen.queryByRole('button', SYSTEM_BUTTON)).toBeNull();
   });
@@ -150,16 +185,15 @@ describe('a client: a view only while it is set up AND enabled, and never a hold
 describe('staff: all three views, always', () => {
   it('★ from the first render, before any read answers, with nothing set up', async () => {
     api.getRankings.mockReturnValue(new Promise(() => undefined));
-    api.getSearchPerformanceAvailability.mockReturnValue(new Promise(() => undefined));
     api.getSiteRegistration.mockReturnValue(new Promise(() => undefined));
-    render(<StatisticsTab project={project} isStaff visitsEnabled={false} />);
+    render(<StatisticsTab project={project} isStaff access={access({ statistics: false, rankings: undefined, search: undefined })} />);
     expect(tabNames()).toEqual(['Visits', 'Search rankings', 'Search performance']);
   });
 
   it('★ does not tear the visit counter down when the reads answer', async () => {
     let answer!: (r: ProjectRankings) => void;
     api.getRankings.mockReturnValue(new Promise((resolve) => (answer = resolve)));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await screen.findByRole('group', { name: 'Visitors' });
     await act(async () => answer(staffRankings()));
     await settled(true);
@@ -171,7 +205,7 @@ describe('staff: all three views, always', () => {
 describe('Visits: built-in statistics need no setup — (a) and (c) only', () => {
   it('while off: the staff-only note and how to switch them on, with a button to the Analytics tile; no counter', async () => {
     const openSettings = vi.fn();
-    render(<StatisticsTab project={project} isStaff visitsEnabled={false} onOpenSettings={openSettings} onOpenSystemSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access({ statistics: false })} onOpenSettings={openSettings} onOpenSystemSettings={vi.fn()} />);
     const note = screen.getByRole('note', NOTE);
     expect(note).toHaveTextContent('Only admins and developers see this view.');
     expect(note).toHaveTextContent('They need nothing set up in System Settings.');
@@ -187,25 +221,25 @@ describe('Visits: built-in statistics need no setup — (a) and (c) only', () =>
   });
 
   it('while on: the counter, and no guide', async () => {
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSettings={vi.fn()} />);
     expect(await screen.findByRole('group', { name: 'Visitors' })).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
   });
 
   it('★ while unreadable: the counter, which reads the setting for itself — never "switch them on"', async () => {
-    render(<StatisticsTab project={project} isStaff visitsEnabled={null} onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access({ statistics: null })} onOpenSettings={vi.fn()} />);
     expect(await screen.findByRole('group', { name: 'Visitors' })).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
   });
 
   it('staff start on the visits, whatever a client would have', async () => {
-    render(<StatisticsTab project={project} isStaff visitsAvailable={false} visitsEnabled={false} onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access({ statistics: false, rankings: false, search: [] })} onOpenSettings={vi.fn()} />);
     expect(screen.getByRole('tab', { name: /Visits/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('region', { name: 'Switch the built-in statistics on for this project' })).toBeInTheDocument();
   });
 
   it('while not yet known: neither the guide nor the counter flashes first', async () => {
-    render(<StatisticsTab project={project} isStaff onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access({ statistics: undefined })} onOpenSettings={vi.fn()} />);
     await settled(true);
     expect(screen.getByRole('tablist', { name: 'Statistics' })).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
@@ -222,7 +256,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
   it('no provider (an admin): (a) + DataForSEO setup with its links and the System Settings button + (c), then the setup form', async () => {
     const openSystem = vi.fn();
     api.getRankings.mockResolvedValue(staffRankings({ configured: false, tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSystemSettings={openSystem} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSystemSettings={openSystem} />);
     await openRankings();
     const note = await screen.findByRole('note', NOTE);
     expect(note).toHaveTextContent('keyword rank tracking is set up in System Settings and enabled for this project');
@@ -256,7 +290,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
 
   it('no provider (a developer): the same steps, no button — an instance admin does it', async () => {
     api.getRankings.mockResolvedValue(staffRankings({ configured: false, tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await openRankings();
     const setup = await screen.findByRole('region', { name: 'Step 1: Set up rank tracking in System Settings' });
     expect(setup).toHaveTextContent('An instance admin does this, once for the whole platform.');
@@ -268,7 +302,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
 
   it('a provider, no tracking yet: (a) + (c) only, starting with the setup', async () => {
     api.getRankings.mockResolvedValue(staffRankings({ tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSystemSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSystemSettings={vi.fn()} />);
     await openRankings();
     const enable = await screen.findByRole('region', { name: 'Enable it for this project' });
     expect(within(enable).getAllByRole('listitem')).toHaveLength(3);
@@ -281,7 +315,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
   it('tracking with no keyword: (c) points at Manage keywords, and the guide goes once a keyword is tracked', async () => {
     // The tab's first read has no keyword; the view's own read (after a keyword was added elsewhere) has one.
     api.getRankings.mockResolvedValueOnce(staffRankings({ keywords: [] })).mockResolvedValue(staffRankings());
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await settled(true);
     fireEvent.click(screen.getByRole('tab', { name: /Search rankings/ }));
     // Presence guard: the guide IS there on the first answer, before the view's own read replaces it.
@@ -292,7 +326,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
 
   it('with no keyword the steps skip the setup', async () => {
     api.getRankings.mockResolvedValue(staffRankings({ keywords: [] }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await openRankings();
     const enable = await screen.findByRole('region', { name: 'Enable it for this project' });
     expect(within(enable).getAllByRole('listitem')).toHaveLength(2);
@@ -302,7 +336,7 @@ describe('Search rankings: the holding note sits ABOVE the setup that adds keywo
 
   it('live: the rankings, and no guide', async () => {
     api.getRankings.mockResolvedValue(staffRankings());
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await openRankings();
     expect(await screen.findByRole('table', { name: /Tracked keywords/ })).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
@@ -318,7 +352,7 @@ describe('Search performance', () => {
   it('no account (an admin): (a) + Google and Bing steps with their links and the System Settings button + (c); no numbers', async () => {
     const openSystem = vi.fn();
     const openSettings = vi.fn();
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSystemSettings={openSystem} onOpenSettings={openSettings} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSystemSettings={openSystem} onOpenSettings={openSettings} />);
     await openSearch();
     expect(await screen.findByRole('note', NOTE)).toHaveTextContent('a search engine account (Google or Bing) is set up in System Settings');
     const setup = screen.getByRole('region', { name: 'Step 1: Set up a search engine account in System Settings' });
@@ -353,7 +387,7 @@ describe('Search performance', () => {
   });
 
   it('no account (a developer): the steps, no System Settings button, and still the Search engines tile', async () => {
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSettings={vi.fn()} />);
     await openSearch();
     const setup = await screen.findByRole('region', { name: 'Step 1: Set up a search engine account in System Settings' });
     expect(setup).toHaveTextContent('An instance admin does this');
@@ -365,7 +399,7 @@ describe('Search performance', () => {
 
   it('an account, not switched on: (a) + (c) only, with where each search engine stands', async () => {
     api.getSiteRegistration.mockResolvedValue(registration({ configured: true }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled onOpenSystemSettings={vi.fn()} onOpenSettings={vi.fn()} />);
+    render(<StatisticsTab project={project} isStaff access={access()} onOpenSystemSettings={vi.fn()} onOpenSettings={vi.fn()} />);
     await openSearch();
     const enable = await screen.findByRole('region', { name: 'Enable it for this project' });
     const engines = within(enable).getByRole('list', { name: 'Search engines for this site' });
@@ -378,14 +412,14 @@ describe('Search performance', () => {
 
   it('switched on but refused: says why', async () => {
     api.getSiteRegistration.mockResolvedValue(registration({ configured: true, enabled: true, status: 'failed', detail: 'the tag was not found' }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await openSearch();
     expect(await screen.findByRole('list', { name: 'Search engines for this site' })).toHaveTextContent('verification failed: the tag was not found');
   });
 
   it('★ an unreadable account state is not "no account": the setup shows, marked as not checked', async () => {
     api.getSiteRegistration.mockRejectedValue(new Error('offline'));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await openSearch();
     const setup = await screen.findByRole('region', { name: 'Step 1: Set up a search engine account in System Settings' });
     expect(setup).toHaveTextContent('Could not be checked');
@@ -393,9 +427,8 @@ describe('Search performance', () => {
   });
 
   it('★ availability unreadable: staff get the engines the registration says are verified, not "not verified yet"', async () => {
-    api.getSearchPerformanceAvailability.mockRejectedValue(new Error('offline'));
     api.getSiteRegistration.mockResolvedValue(registration({ configured: true, enabled: true, status: 'verified' }, { configured: true }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access({ search: null })} />);
     await openSearch();
     expect(await screen.findByRole('group', { name: 'Clicks' })).toBeInTheDocument();
     expect(api.getSearchPerformance).toHaveBeenCalledWith('p1', 'google', 28);
@@ -403,16 +436,14 @@ describe('Search performance', () => {
   });
 
   it('availability unreadable for a client: no search view (a failed read is "no")', async () => {
-    api.getSearchPerformanceAvailability.mockRejectedValue(new Error('offline'));
-    render(<StatisticsTab project={project} />);
+    render(<StatisticsTab project={project} access={access({ rankings: true, search: null })} />);
     await settled();
     expect(tabNames()).toEqual(['Visits', 'Search rankings']);
   });
 
   it('verified: the numbers, and no guide', async () => {
     api.getSiteRegistration.mockResolvedValue(registration({ configured: true, enabled: true, status: 'verified' }));
-    api.getSearchPerformanceAvailability.mockResolvedValue({ services: ['google'] });
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access({ search: ['google'] })} />);
     await openSearch();
     expect(await screen.findByRole('group', { name: 'Clicks' })).toBeInTheDocument();
     expect(screen.queryByRole('note', NOTE)).toBeNull();
@@ -423,7 +454,7 @@ describe('Search performance', () => {
 describe('outbound links', () => {
   it('every guide link opens in a new tab without handing over the editor', async () => {
     api.getRankings.mockResolvedValue(staffRankings({ configured: false, tracking: null, keywords: [] }));
-    render(<StatisticsTab project={project} isStaff visitsEnabled />);
+    render(<StatisticsTab project={project} isStaff access={access()} />);
     await settled(true);
     fireEvent.click(screen.getByRole('tab', { name: /Search performance/ }));
     await screen.findByRole('region', { name: /Set up a search engine account/ });

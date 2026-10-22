@@ -25,15 +25,15 @@ vi.mock('../src/views/stats/StatisticsTab', () => ({
     onOpenSettings,
     onOpenSystemSettings,
     isStaff,
-    visitsEnabled,
+    access,
   }: {
     onOpenSettings?: (tile?: string) => void;
     onOpenSystemSettings?: (t: { tab: string }) => void;
     isStaff?: boolean;
-    visitsEnabled?: boolean;
+    access: { statistics?: boolean | null; search?: string[] | null };
   }) => (
     <div>
-      STATS staff={String(isStaff)} enabled={String(visitsEnabled)}
+      STATS staff={String(isStaff)} enabled={String(access.statistics)} search={String(access.search)}
       <button type="button" onClick={() => onOpenSettings?.('analytics')}>
         open analytics
       </button>
@@ -69,10 +69,19 @@ beforeEach(() => {
 });
 
 describe('the Statistics tab’s links out of the project view', () => {
-  it('passes the staff state, the visits state and the System Settings link through', () => {
+  it('passes the staff state, App’s access answer and the System Settings link through', () => {
     const system = vi.fn();
-    render(<ProjectView project={project} tab="statistics" isStaff visitsEnabled={false} onOpenSystemSettings={system} onSelectTab={vi.fn()} />);
-    expect(screen.getByText(/STATS staff=true enabled=false/)).toBeInTheDocument();
+    render(
+      <ProjectView
+        project={project}
+        tab="statistics"
+        isStaff
+        statisticsAccess={{ statistics: false, rankings: true, search: ['bing'] }}
+        onOpenSystemSettings={system}
+        onSelectTab={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/STATS staff=true enabled=false search=bing/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'open system settings' }));
     expect(system).toHaveBeenCalledWith({ tab: 'integrations' });
   });

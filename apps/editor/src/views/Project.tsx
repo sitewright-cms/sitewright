@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useScrollTopOnChange } from '../lib/scroll-top';
 import { revealSettingsTile, type OpenSystemSettings, type WebsiteSettingsTile } from '../lib/settings-links';
+import { NO_STATISTICS_ACCESS, type StatisticsAccess } from '../lib/statistics-enabled';
 import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type JsonValue, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
@@ -41,10 +42,8 @@ interface ProjectViewProps {
   ordersAvailable?: boolean;
   /** Whether the Statistics tab is showing (always for staff; for a client while it has something to show). */
   statisticsAvailable?: boolean;
-  /** Whether the tab shows the visit counter (always for staff; for a client while statistics are on). */
-  visitsAvailable?: boolean;
-  /** Whether the built-in statistics are switched on; undefined until known, null when unreadable. Staff see how to switch them on while off. */
-  visitsEnabled?: boolean | null;
+  /** What the Statistics tab has (App's useStatisticsAccess): which views a client sees, and whether visits are on. */
+  statisticsAccess?: StatisticsAccess;
   /** Opens System Settings at a tab/section — given for instance admins only (the Statistics setup guides' button). */
   onOpenSystemSettings?: OpenSystemSettings;
   /** The viewer is agency staff (an admin or a developer) — some settings are theirs alone to switch on. */
@@ -198,8 +197,7 @@ export function ProjectView({
   onSelectTab,
   ordersAvailable = false,
   statisticsAvailable = true,
-  visitsAvailable = true,
-  visitsEnabled,
+  statisticsAccess = NO_STATISTICS_ACCESS,
   onOpenSystemSettings,
   isStaff = false,
   onLoaded,
@@ -1039,8 +1037,7 @@ export function ProjectView({
         <StatisticsTab
           key={project.id}
           project={project}
-          visitsAvailable={visitsAvailable}
-          visitsEnabled={visitsEnabled}
+          access={statisticsAccess}
           isStaff={isStaff}
           onOpenSystemSettings={onOpenSystemSettings}
           onOpenSettings={onSelectTab ? openWebsiteSettings : undefined}

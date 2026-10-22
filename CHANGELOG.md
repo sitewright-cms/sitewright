@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.71.0] — 2026-10-22
+
 ### Changed
 
 - **Search engines: the tile reads "Registered"** once every switched-on search engine verified the site (each row
@@ -86,6 +88,8 @@ The running version of an instance is reported at `GET /version` (baked into the
   - Agents: `get_site_stats` returns the same filtered lists and a `breakdown` of what they could not place.
 
 ### Fixed
+
+- **Statistics: "1 visitor"**, not "1 visitors", in the Devices tile.
 
 - **Searchable lists: Enter picks the first match of a new search.** Typing narrowed the list but kept the row
   highlighted before by its position, so typing `de` in a country list and pressing Enter could pick Sweden instead of
@@ -5778,7 +5782,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.70.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.71.0...HEAD
+[0.71.0]: https://github.com/sitewright-cms/sitewright/compare/v0.70.0...v0.71.0
 [0.70.0]: https://github.com/sitewright-cms/sitewright/compare/v0.69.0...v0.70.0
 [0.69.0]: https://github.com/sitewright-cms/sitewright/compare/v0.68.0...v0.69.0
 [0.68.0]: https://github.com/sitewright-cms/sitewright/compare/v0.67.0...v0.68.0

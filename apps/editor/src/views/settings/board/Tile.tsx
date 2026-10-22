@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { ChevronRight } from 'lucide-react';
 import { accentChip, toggleInput } from '../../../theme';
@@ -202,7 +202,7 @@ export function PartRow({ label, value, onClick, ariaLabel, disabled = false }: 
       onClick={onClick}
       disabled={disabled}
       aria-label={ariaLabel}
-      className="waves-effect flex shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-indigo-300/70 bg-indigo-50/70 px-2.5 text-left text-sm text-slate-800 transition hover:border-indigo-500 disabled:pointer-events-none disabled:border-slate-200 disabled:bg-transparent disabled:text-slate-400 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-slate-100 dark:hover:border-indigo-400"
+      className="waves-effect flex shrink-0 items-center gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-indigo-300/70 bg-indigo-50/70 px-2.5 text-left text-sm text-slate-800 transition hover:border-indigo-500 disabled:pointer-events-none disabled:border-slate-200 disabled:bg-transparent disabled:text-slate-400 dark:border-indigo-400/40 dark:disabled:border-slate-700/70 dark:bg-indigo-500/10 dark:text-slate-100 dark:hover:border-indigo-400"
       style={{ height: ROW_H }}
     >
       <span className="shrink-0 font-medium">{label}</span>
@@ -235,7 +235,7 @@ export function SwitchRow({
   const reasonId = useId();
   const row = (
     <label
-      className={`flex shrink-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200 ${
+      className={`flex w-full min-w-0 shrink-0 items-center justify-between gap-2 overflow-hidden whitespace-nowrap rounded-lg border border-slate-200/80 bg-slate-50/80 px-2.5 text-sm text-slate-700 dark:border-slate-700/70 dark:bg-white/5 dark:text-slate-200 ${
         disabledReason ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'
       }`}
       style={{ height: ROW_H }}
@@ -269,10 +269,15 @@ export function SwitchRow({
   );
 }
 
-/** A fixed-height block of `n` rows; anything inside is laid out top-down and never grows the tile. */
+/**
+ * A fixed-height block of `n` rows; anything inside is laid out top-down and never grows the tile. On a touch screen
+ * a button row is 44px tall (the touch floor in styles.css), so there the height is a minimum instead (`sw-row-block`):
+ * a block holding a button would otherwise cut its first or last row off. The budgets are row COUNTS, so nothing
+ * else grows.
+ */
 export function RowBlock({ n, children }: { n: number; children: ReactNode }) {
   return (
-    <span className="flex min-w-0 flex-col overflow-hidden" style={{ height: rowsHeight(n), gap: ROW_GAP }}>
+    <span className="sw-row-block flex min-w-0 flex-col overflow-hidden" style={{ '--sw-rows-h': `${rowsHeight(n)}px`, gap: ROW_GAP } as CSSProperties}>
       {children}
     </span>
   );

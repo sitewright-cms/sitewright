@@ -13,6 +13,7 @@ import type {
   WebmasterAccountsView,
   WebmasterService,
   WebmasterTestResult,
+  SiteRegistrationActionResult,
   SiteRegistrationPrepareResult,
   SiteRegistrationToggle,
   SiteRegistrationToggleResult,
@@ -2233,6 +2234,12 @@ export const api = {
   /** The verification's last step: one search engine confirms the tag on the live site. */
   verifySiteRegistration: (projectId: string, service: WebmasterService) =>
     request<SiteRegistrationVerifyResult>('POST', `/projects/${projectId}/search-engines/${service}/verify`),
+  /** Hand the site's sitemap to a search engine that verified it (after a verification, and again on demand). */
+  submitSitemap: (projectId: string, service: WebmasterService) =>
+    request<SiteRegistrationActionResult>('POST', `/projects/${projectId}/search-engines/${service}/sitemap`),
+  /** The Google accounts that own the site in Search Console beside the platform's service account (the whole list). */
+  setSearchConsoleOwners: (projectId: string, owners: string[]) =>
+    request<SiteRegistrationActionResult>('PUT', `/projects/${projectId}/search-engines/google/owners`, { owners }),
   /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
   rotateCookieSecret: () =>
     request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),

@@ -11,6 +11,11 @@ export interface WebmasterIo {
   fetch: FetchLike;
   /** The deadline for one request. */
   timeoutMs?: number;
+  /**
+   * When the whole step must be over (epoch ms): no request starts after it, and none runs past it. A step that
+   * timed out therefore stops for real, rather than finishing behind the next one.
+   */
+  deadline?: number;
 }
 
 /**
@@ -52,8 +57,10 @@ export async function requestJson(
   init: { method: 'GET' | 'POST' | 'PUT' | 'DELETE'; headers: Record<string, string>; body?: string },
   io: WebmasterIo,
 ): Promise<{ status: number; json: unknown }> {
+  const left = io.deadline === undefined ? Infinity : io.deadline - Date.now();
+  if (left <= 0) throw new WebmasterError(`${service} took too long to answer`, 'unavailable');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), io.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Math.min(io.timeoutMs ?? DEFAULT_TIMEOUT_MS, left));
   let status: number;
   let text: string;
   try {

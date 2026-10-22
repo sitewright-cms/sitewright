@@ -2,8 +2,10 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   WebmasterAccountsInputSchema,
   WebmasterServiceSchema,
+  SiteOwnersInputSchema,
   SiteRegistrationToggleSchema,
   WEBMASTER_SERVICES,
+  type SiteRegistrationActionResult,
   type SiteRegistrationPrepareResult,
   type SiteRegistrationToggleResult,
   type SiteRegistrationVerifyResult,
@@ -149,6 +151,8 @@ export interface SiteRegistrationRouteDeps {
  *   PUT  /projects/:projectId/search-engines                    `{google?, bing?}` on/off; off removes the site there
  *   POST /projects/:projectId/search-engines/prepare            the tags, before the verification deploy
  *   POST /projects/:projectId/search-engines/:service/verify    one search engine confirms the tag on the live site
+ *   POST /projects/:projectId/search-engines/:service/sitemap   hand the sitemap to a search engine that verified it
+ *   PUT  /projects/:projectId/search-engines/google/owners      `{owners}`: who owns the site in Search Console
  *
  * The verification itself is run by the editor (the Search engines tile): prepare, deploy, then verify each.
  */
@@ -194,5 +198,21 @@ export function registerSiteRegistrationRoutes(app: FastifyInstance, deps: SiteR
     if (!service.success) return reply.code(404).send({ error: 'no such search engine' });
     const result = await registrar.verify(projectId, service.data, siteUrl);
     return reply.send({ result, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationVerifyResult);
+  });
+
+  app.post<{ Params: { projectId: string; service: string } }>('/projects/:projectId/search-engines/:service/sitemap', { config: rl(20) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'submit the sitemap to search engines');
+    const service = WebmasterServiceSchema.safeParse(req.params.service);
+    if (!service.success) return reply.code(404).send({ error: 'no such search engine' });
+    const result = await registrar.submitSitemap(projectId, service.data, siteUrl);
+    return reply.send({ result, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationActionResult);
+  });
+
+  app.put<{ Params: { projectId: string } }>('/projects/:projectId/search-engines/google/owners', { config: rl(20) }, async (req, reply) => {
+    const { projectId, siteUrl } = await staff(req, 'choose who owns the site in Search Console');
+    const body = SiteOwnersInputSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.issues[0]?.message ?? 'invalid request' });
+    const result = await registrar.setOwners(projectId, body.data.owners, siteUrl);
+    return reply.send({ result, view: await registrar.view(projectId, siteUrl) } satisfies SiteRegistrationActionResult);
   });
 }

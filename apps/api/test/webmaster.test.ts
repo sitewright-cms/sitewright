@@ -1,12 +1,14 @@
 import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { bingRemoveSite, bingSiteCode, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
+import { bingRemoveSite, bingSiteCode, bingSubmitSitemap, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
 import {
   GOOGLE_SCOPES,
   GOOGLE_TOKEN_URL,
   googleAccessToken,
   googleRegisterSite,
+  googleSetOwners,
   googleSiteToken,
+  googleSubmitSitemap,
   googleUnregisterSite,
   parseGoogleKey,
   testGoogle,
@@ -360,34 +362,77 @@ describe('removing a site', () => {
   const SITE = 'https://www.example.com/';
   const ENC = 'https%3A%2F%2Fwww.example.com%2F';
 
-  it('Google: out of Search Console, then the ownership given up', async () => {
+  it('Google: out of Search Console, then the ownership given up — the resource id encoded ONCE (measured)', async () => {
     const { io, calls } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 204, body: '' }));
-    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, io)).toBe('Removed from Search Console, and the ownership given up');
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], io)).toBe('Removed from Search Console, and the ownership given up');
     expect(calls.slice(1).map((c) => `${c.method} ${c.url}`)).toEqual([
       `DELETE https://www.googleapis.com/webmasters/v3/sites/${ENC}`,
       `DELETE https://www.googleapis.com/siteVerification/v1/webResource/${ENC}`,
     ]);
   });
 
-  it('Google: tries the other id form, and takes "not there" as removed', async () => {
-    const twice = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.endsWith(`webResource/${ENC}`) ? { status: 404, body: {} } : { status: 204, body: '' }));
-    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, twice.io)).toBe('Removed from Search Console, and the ownership given up');
-    expect(twice.calls.at(-1)!.url).toBe(`https://www.googleapis.com/siteVerification/v1/webResource/${encodeURIComponent(ENC)}`);
-    const gone = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 404, body: {} }));
-    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, gone.io)).toBe('Nothing to remove at Google');
+  it('Google: "not there" is removed — a 404, or a 403 saying the account does not own the site', async () => {
+    const notOwned = { status: 403, body: { error: { code: 403, message: 'You are not an owner of this site.', errors: [{ reason: 'forbidden' }] } } };
+    const gone = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 404, body: {} } : notOwned));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], gone.io)).toBe('Nothing to remove at Google');
+    // Never a second, double-encoded try: Google answers that one 400.
+    expect(gone.calls.filter((c) => c.url.includes('webResource'))).toHaveLength(1);
   });
 
   it('Google: a 403 from Search Console means "not in the account", and the ownership is still given up', async () => {
-    const notListed = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 403, body: { error: { code: 403 } } } : { status: 204, body: '' }));
-    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, notListed.io)).toBe('Ownership given up (the site was not in Search Console)');
+    const forbidden = { status: 403, body: { error: { code: 403, message: "User does not have sufficient permission for site 'x'.", errors: [{ reason: 'forbidden' }] } } };
+    const notListed = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? forbidden : { status: 204, body: '' }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], notListed.io)).toBe('Ownership given up (the site was not in Search Console)');
     // …unless it says the API is off: then that is the answer, after the ownership step still ran.
     const off = fake((call) =>
       call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 403, body: { error: { code: 403, errors: [{ reason: 'accessNotConfigured' }] } } } : { status: 204, body: '' },
     );
-    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, off.io), 'disabled', /^The Google Search Console API is not enabled/);
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], off.io), 'disabled', /^The Google Search Console API is not enabled/);
     expect(off.calls.some((c) => c.method === 'DELETE' && c.url.includes('siteVerification'))).toBe(true);
-    const refused = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403 } } }));
-    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, refused.io), 'auth', /Site Verification API \(HTTP 403\)/);
+    // A quota or rate refusal is NOT "already removed": it is retried, never reported as done.
+    const quota = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403, errors: [{ reason: 'rateLimitExceeded' }] } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], quota.io), 'rate', /limiting requests/);
+    // Nor is a 403 that gives no reason at all.
+    const bare = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403 } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], bare.io), 'auth', /\(HTTP 403\)/);
+    // A token without the scope is about the account, not the site: never read as "already removed".
+    const scope = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { code: 403, errors: [{ reason: 'insufficientPermissions' }] } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], scope.io), 'auth', /\(HTTP 403\)/);
+  });
+
+  it('Google: the owners the platform added lose the ownership FIRST, and nothing is removed if that fails', async () => {
+    const resource = { id: ENC, site: { type: 'SITE', identifier: SITE }, owners: [EMAIL, 'ana@agency.example', 'own@client.example'] };
+    const { io, calls } = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.method === 'GET') return { status: 200, body: resource };
+      if (call.method === 'PUT') return { status: 200, body: { ...resource, owners: JSON.parse(call.body!).owners } };
+      return { status: 204, body: '' };
+    });
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], io)).toBe('Removed from Search Console, and the ownership given up (1 owner removed)');
+    const put = calls.find((c) => c.method === 'PUT')!;
+    // The client's own owner (added at Google, not by the platform) stays.
+    expect(JSON.parse(put.body!).owners).toEqual([EMAIL, 'own@client.example']);
+    expect(calls.slice(1).map((c) => c.method).filter((m) => m !== 'POST')).toEqual(['GET', 'PUT', 'DELETE', 'DELETE']);
+
+    const down = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 503, body: {} }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], down.io), 'unavailable', /HTTP 503/);
+    expect(down.calls.some((c) => c.method === 'DELETE')).toBe(false);
+
+    // An owner Google will not take off (they verified on their own): the site is still given up, and that is said.
+    const stuck = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.method === 'GET') return { status: 200, body: resource };
+      if (call.method === 'PUT') return { status: 400, body: { error: { message: 'Delete the verification tokens of ana@agency.example first.' } } };
+      return { status: 204, body: '' };
+    });
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], stuck.io)).toBe(
+      'Removed from Search Console, and the ownership given up; the owners were not removed: Google did not change the owners: Delete the verification tokens of ana@agency.example first.',
+    );
+    expect(stuck.calls.filter((c) => c.method === 'DELETE')).toHaveLength(2);
+
+    // Not owned any more: there is nobody to take off, and the rest still runs.
+    const notOwned = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.method === 'GET' ? { status: 403, body: { error: { errors: [{ reason: 'forbidden' }] } } } : { status: 404, body: {} }));
+    expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], notOwned.io)).toBe('Nothing to remove at Google');
   });
 
   it('Bing: RemoveSite, with "not found" as removed', async () => {
@@ -398,5 +443,109 @@ describe('removing a site', () => {
     expect(JSON.parse(ok.calls[0]!.body!)).toEqual({ siteUrl: SITE });
     expect(await bingRemoveSite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 11 } })).io)).toBe('Removed from Bing Webmaster Tools');
     await expectRefusal(bingRemoveSite(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 3 } })).io), 'auth', /refused the API key/);
+  });
+});
+
+describe('Search Console owners', () => {
+  const token = { status: 200, body: { access_token: 'ya29.token' } };
+  const SITE = 'https://www.example.com/';
+  const ENC = 'https%3A%2F%2Fwww.example.com%2F';
+  const resource = (owners: string[]) => ({ id: ENC, site: { type: 'SITE', identifier: SITE }, owners });
+
+  it('sends Google’s list changed only where the platform manages it, and keeps the service account', async () => {
+    const { io, calls } = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.method === 'GET') return { status: 200, body: resource([EMAIL, 'old@agency.example', 'own@client.example']) };
+      return { status: 200, body: resource(JSON.parse(call.body!).owners) };
+    });
+    const listed = await googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: ['ana@agency.example'], dropped: ['old@agency.example'] }, io);
+    expect(listed).toEqual(['own@client.example', 'ana@agency.example']);
+    expect(calls.slice(1).map((c) => `${c.method} ${c.url}`)).toEqual([
+      `GET https://www.googleapis.com/siteVerification/v1/webResource/${ENC}`,
+      `PUT https://www.googleapis.com/siteVerification/v1/webResource/${ENC}`,
+    ]);
+    expect(JSON.parse(calls[2]!.body!)).toEqual({ id: ENC, site: { type: 'SITE', identifier: SITE }, owners: [EMAIL, 'own@client.example', 'ana@agency.example'] });
+  });
+
+  it('changes nothing when Google already lists exactly those owners (case aside)', async () => {
+    const { io, calls } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 200, body: resource([EMAIL.toUpperCase(), 'Ana@Agency.example']) }));
+    expect(await googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: ['ana@agency.example'], dropped: [] }, io)).toEqual(['Ana@Agency.example']);
+    expect(calls.some((c) => c.method === 'PUT')).toBe(false);
+  });
+
+  it('says the site must be verified first, and passes on why Google refused a list', async () => {
+    const notOwned = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { message: 'You are not an owner of this site.', errors: [{ reason: 'forbidden' }] } } }));
+    await expectRefusal(googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: ['a@b.example'], dropped: [] }, notOwned.io), 'unverified', /verify the site first/);
+    const unknown = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 404, body: { error: { code: 404 } } }));
+    await expectRefusal(googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: [], dropped: ['a@b.example'] }, unknown.io), 'unverified', /verify the site first/);
+    const refused = fake((call) =>
+      call.url === GOOGLE_TOKEN_URL
+        ? token
+        : call.method === 'GET'
+          ? { status: 200, body: resource([EMAIL]) }
+          : { status: 400, body: { error: { code: 400, message: 'Invalid owner: nobody@nowhere.example' } } },
+    );
+    await expectRefusal(
+      googleSetOwners(parseGoogleKey(keyFile()), SITE, { wanted: ['nobody@nowhere.example'], dropped: [] }, refused.io),
+      'invalid',
+      /^Google did not change the owners: Invalid owner: nobody@nowhere\.example$/,
+    );
+  });
+});
+
+describe('sitemap submission', () => {
+  const token = { status: 200, body: { access_token: 'ya29.token' } };
+  const SITE = 'https://www.example.com/';
+  const SITEMAP = 'https://www.example.com/sitemap.xml';
+
+  it('Google: PUT under the site, both addresses encoded (Google echoes the decoded feed path — measured)', async () => {
+    const { io, calls } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 204, body: '' }));
+    await googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, io);
+    expect(`${calls[1]!.method} ${calls[1]!.url}`).toBe(
+      'PUT https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F/sitemaps/https%3A%2F%2Fwww.example.com%2Fsitemap.xml',
+    );
+    expect(calls[1]!.body).toBeUndefined();
+  });
+
+  it('Google: words a site that is not in Search Console, a refused sitemap, and an outage', async () => {
+    const answer = (status: number, body: unknown) => fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status, body })).io;
+    await expectRefusal(googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(403, { error: { errors: [{ reason: 'forbidden' }] } })), 'unverified', /verify the site first/);
+    await expectRefusal(
+      googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(400, { error: { message: 'Invalid sitemap URL.' } })),
+      'invalid',
+      /^Google did not take the sitemap: Invalid sitemap URL\.$/,
+    );
+    await expectRefusal(googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(503, {})), 'unavailable', /HTTP 503/);
+    await expectRefusal(googleSubmitSitemap(parseGoogleKey(keyFile()), SITE, SITEMAP, answer(403, { error: { errors: [{ reason: 'quotaExceeded' }] } })), 'rate', /limiting/);
+  });
+
+  it('Bing: SubmitFeed with the site and the sitemap, and its refusals', async () => {
+    const KEY = '0123456789abcdef0123456789ABCDEF';
+    const ok = fake(() => ({ status: 200, body: { d: null } }));
+    await bingSubmitSitemap(KEY, SITE, SITEMAP, ok.io);
+    expect(ok.calls[0]!.url).toBe(`https://ssl.bing.com/webmaster/api.svc/json/SubmitFeed?apikey=${KEY}`);
+    expect(ok.calls[0]!.method).toBe('POST');
+    expect(JSON.parse(ok.calls[0]!.body!)).toEqual({ siteUrl: SITE, feedUrl: SITEMAP });
+    await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 11 } })).io), 'unverified', /verify the site first/);
+    await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 7 } })).io), 'invalid', /does not accept/);
+    await expectRefusal(bingSubmitSitemap(KEY, SITE, SITEMAP, fake(() => ({ status: 400, body: { ErrorCode: 3, Message: `bad ${KEY}` } })).io), 'auth', /^Bing refused the API key$/);
+  });
+});
+
+describe('a step deadline', () => {
+  it('starts no request after it, and cuts a running one off at it', async () => {
+    const calls: string[] = [];
+    const slow: FetchLike = (url, init) =>
+      new Promise((resolve, reject) => {
+        calls.push(url);
+        init.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        setTimeout(() => resolve({ ok: true, status: 200, text: async () => '{}' }), 5_000);
+      });
+    const late = { fetch: slow, deadline: Date.now() - 1 };
+    await expectRefusal(testBing('0123456789abcdef0123456789ABCDEF', late), 'unavailable', /^Bing took too long to answer$/);
+    expect(calls).toEqual([]);
+    const started = Date.now();
+    await expectRefusal(testBing('0123456789abcdef0123456789ABCDEF', { fetch: slow, deadline: Date.now() + 50 }), 'unavailable', /could not be reached/);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });

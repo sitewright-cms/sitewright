@@ -1350,6 +1350,18 @@ export const webmasterSites = sqliteTable(
     detail: text('detail'),
     verifiedAt: integer('verified_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    /**
+     * Google only: the people staff made owners of the site in Search Console, beside the service account. The list
+     * the platform manages — owners added at Google by anyone else are never touched. Kept when the switch goes off,
+     * so a later verification gives them access again.
+     */
+    owners: text('owners', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    /** Why those owners did not get access at the last verification; null when they did (or there are none). */
+    ownersDetail: text('owners_detail'),
+    /** The last sitemap submission: when, whether the search engine took it, and what it said. */
+    sitemapAt: integer('sitemap_at', { mode: 'timestamp_ms' }),
+    sitemapOk: integer('sitemap_ok', { mode: 'boolean' }),
+    sitemapDetail: text('sitemap_detail'),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.service] })],
 );

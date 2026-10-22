@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { SiteRegistrationPrepareResult, SiteRegistrationToggleResult, SiteRegistrationVerifyResult, SiteRegistrationView } from '@sitewright/schema';
+import type { SiteRegistrationActionResult, SiteRegistrationPrepareResult, SiteRegistrationToggleResult, SiteRegistrationVerifyResult, SiteRegistrationView } from '@sitewright/schema';
 import { registrableSiteUrl } from '@sitewright/schema';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { webmasterSites } from '../src/db/schema.js';
@@ -21,6 +21,7 @@ const { privateKey: PEM } = generateKeyPairSync('rsa', {
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
   publicKeyEncoding: { type: 'spki', format: 'pem' },
 });
+const SERVICE_ACCOUNT = 'sitewright-seo@sitewright-seo-123.iam.gserviceaccount.com';
 const KEY_FILE = JSON.stringify({
   type: 'service_account',
   project_id: 'sitewright-seo-123',
@@ -35,8 +36,23 @@ const GOOGLE_TAG = 'gOOgle-Tag_1234567890';
 const BING_CODE = '0A1B2C3D4E5F60718293A4B5C6D7E8F9';
 const slug = 'regsite';
 
-/** What the fake search engines do, and what they were asked (method + URL without its query). */
-let engines: { google: 'ok' | 'missing' | 'down'; bing: boolean; bingDown: boolean; bingRefusesRemoval: boolean; bingSites: string[]; calls: string[] };
+/**
+ * What the fake search engines do, and what they were asked (method + URL without its query). `googleOwners` are the
+ * site's Search Console owners besides the service account, once Google verified it (`googleOwned`).
+ */
+let engines: {
+  google: 'ok' | 'missing' | 'down';
+  bing: boolean;
+  bingDown: boolean;
+  bingRefusesRemoval: boolean;
+  bingSites: string[];
+  googleOwned: boolean;
+  googleOwners: string[];
+  /** Google refuses any owner list (as it does an address that is not a Google account). */
+  googleRefusesOwners: boolean;
+  feeds: string[];
+  calls: string[];
+};
 
 const fakeEngines: FetchLike = async (url, init) => {
   const path = url.split('?')[0]!;
@@ -46,8 +62,22 @@ const fakeEngines: FetchLike = async (url, init) => {
   if (path.startsWith('https://www.googleapis.com/') && engines.google === 'down') return answer(503, {});
   if (path.endsWith('/siteVerification/v1/token')) return answer(200, { method: 'META', token: `<meta name="google-site-verification" content="${GOOGLE_TAG}" />` });
   if (path.includes('/siteVerification/v1/webResource')) {
-    if (init.method === 'DELETE') return answer(204, '');
-    return engines.google === 'ok' ? answer(200, { id: 'x' }) : answer(400, { error: { code: 400, message: 'The necessary verification token could not be found on your site.' } });
+    const resource = () => ({ id: 'x', site: { type: 'SITE', identifier: SITE }, owners: [SERVICE_ACCOUNT, ...engines.googleOwners] });
+    const notOwner = answer(403, { error: { code: 403, message: 'You are not an owner of this site.', errors: [{ reason: 'forbidden' }] } });
+    if (init.method === 'DELETE') {
+      engines.googleOwned = false;
+      return answer(204, '');
+    }
+    if (init.method === 'GET') return engines.googleOwned ? answer(200, resource()) : notOwner;
+    if (init.method === 'PUT') {
+      if (!engines.googleOwned) return notOwner;
+      if (engines.googleRefusesOwners) return answer(400, { error: { code: 400, message: 'Invalid owner.' } });
+      engines.googleOwners = (JSON.parse(String(init.body)) as { owners: string[] }).owners.filter((o) => o !== SERVICE_ACCOUNT);
+      return answer(200, resource());
+    }
+    if (engines.google !== 'ok') return answer(400, { error: { code: 400, message: 'The necessary verification token could not be found on your site.' } });
+    engines.googleOwned = true;
+    return answer(200, resource());
   }
   if (path.startsWith('https://www.googleapis.com/webmasters/v3/sites/')) return answer(204, '');
   if (engines.bingDown) return answer(503, {});
@@ -63,6 +93,10 @@ const fakeEngines: FetchLike = async (url, init) => {
     return answer(200, { d: null });
   }
   if (path.endsWith('/VerifySite')) return answer(200, { d: engines.bing });
+  if (path.endsWith('/SubmitFeed')) {
+    engines.feeds.push((JSON.parse(String(init.body)) as { feedUrl: string }).feedUrl);
+    return answer(200, { d: null });
+  }
   return answer(404, {});
 };
 
@@ -72,7 +106,7 @@ let projectId: string;
 let publishRoot: string;
 
 beforeEach(async () => {
-  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], calls: [] };
+  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, feeds: [], calls: [] };
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-'));
   harness = await makeHarness({ publishRoot, sitesDomain: 'sites.test', webmasterFetch: fakeEngines, rankTickMs: 0 });
   admin = await harness.signup({ admin: true });
@@ -104,6 +138,12 @@ const verify = async (service: string): Promise<SiteRegistrationVerifyResult> =>
   expect(r.statusCode).toBe(200);
   return r.json() as SiteRegistrationVerifyResult;
 };
+const sitemap = async (service: string): Promise<SiteRegistrationActionResult> => {
+  const r = await admin.post(`${base()}/${service}/sitemap`, {});
+  expect(r.statusCode).toBe(200);
+  return r.json() as SiteRegistrationActionResult;
+};
+const setOwners = async (owners: unknown) => admin.put(`${base()}/google/owners`, { owners });
 const publish = async (): Promise<void> => {
   expect((await admin.post(`/projects/${projectId}/publish`, {})).statusCode).toBe(200);
 };
@@ -317,9 +357,130 @@ describe('site registration', () => {
       await client.put(base(), { google: true }),
       await client.post(`${base()}/prepare`, {}),
       await client.post(`${base()}/google/verify`, {}),
+      await client.post(`${base()}/google/sitemap`, {}),
+      await client.put(`${base()}/google/owners`, { owners: [] }),
     ]) {
       expect(r.statusCode).toBe(403);
     }
+  });
+});
+
+describe('sitemap submission', () => {
+  const SITEMAP = `${SITE}sitemap.xml`;
+  const ENC = encodeURIComponent(SITE);
+
+  it('hands the sitemap to a search engine that verified the site, and only then', async () => {
+    await toggle({ google: true, bing: true });
+    await prepare();
+    await publish();
+    expect((await view()).sitemapUrl).toBe(SITEMAP);
+    expect((await sitemap('google')).result).toEqual({ ok: false, detail: 'Verify the site with Google first' });
+    expect(count('/sitemaps/')).toBe(0);
+
+    await verify('google');
+    await verify('bing');
+    const google = await sitemap('google');
+    expect(google.result).toEqual({ ok: true, detail: `Sitemap submitted: ${SITEMAP}` });
+    expect(engines.calls).toContain(`PUT https://www.googleapis.com/webmasters/v3/sites/${ENC}/sitemaps/${encodeURIComponent(SITEMAP)}`);
+    expect(google.view.google.sitemap).toMatchObject({ ok: true, detail: `Sitemap submitted: ${SITEMAP}` });
+    expect((await sitemap('bing')).view.bing.sitemap).toMatchObject({ ok: true });
+    expect(engines.feeds).toEqual([SITEMAP]);
+    expect((await admin.post(`${base()}/yahoo/sitemap`, {})).statusCode).toBe(404);
+  });
+
+  it('records a refused submission, and forgets the record with the registration', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    engines.google = 'down';
+    const refused = await sitemap('google');
+    expect(refused.result).toEqual({ ok: false, detail: 'Google is unavailable (HTTP 503)' });
+    expect(refused.view.google.sitemap).toMatchObject({ ok: false, detail: 'Google is unavailable (HTTP 503)' });
+    engines.google = 'ok';
+    expect(((await toggle({ google: false })).json() as SiteRegistrationToggleResult).view.google.sitemap).toBeNull();
+  });
+});
+
+describe('Search Console owners', () => {
+  it('only once Google verified the site; the list is staff’s, owners added at Google stay', async () => {
+    await toggle({ google: true });
+    expect((await setOwners(['ana@agency.example'])).json()).toMatchObject({ result: { ok: false, detail: 'Verify the site with Google first' } });
+    await prepare();
+    await publish();
+    await verify('google');
+    engines.googleOwners = ['client@own.example']; // the client made themself an owner at Google
+
+    const set = (await setOwners([' Ana@Agency.example ', 'ana@agency.example', 'ben@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(set.result).toEqual({ ok: true, detail: '2 owners in Search Console' });
+    expect(set.view.google.owners).toEqual(['ana@agency.example', 'ben@agency.example']);
+    expect(engines.googleOwners).toEqual(['client@own.example', 'ana@agency.example', 'ben@agency.example']);
+
+    const fewer = (await setOwners(['ben@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(fewer.view.google.owners).toEqual(['ben@agency.example']);
+    expect(engines.googleOwners).toEqual(['client@own.example', 'ben@agency.example']);
+    expect((await view()).bing.owners).toEqual([]);
+  });
+
+  it('says when the owners did not get access at a verification, and gives them access on the next save', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    await setOwners(['ana@agency.example']);
+    // A new Production URL is a new property: its verification gives the owners access again — here, refused.
+    await seed('https://www.reg-site.test');
+    await prepare();
+    engines.googleRefusesOwners = true;
+    const done = await verify('google');
+    expect(done.result).toEqual({ ok: true, detail: 'Verified and added to Search Console · the owners were not given access: Google did not change the owners: Invalid owner.' });
+    expect(done.view.google).toMatchObject({ status: 'verified', owners: ['ana@agency.example'], ownersIssue: 'Not given access: Google did not change the owners: Invalid owner.' });
+
+    engines.googleRefusesOwners = false;
+    const saved = (await setOwners(['ana@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(saved.result.ok).toBe(true);
+    expect(saved.view.google.ownersIssue).toBeNull();
+    expect(engines.googleOwners).toEqual(['ana@agency.example']);
+  });
+
+  it('never changes the owners of a property two projects share', async () => {
+    const twin = await admin.createProject('Twin', 'twinsite');
+    await admin.project(twin).putContent('settings', 'settings', { brand: { name: 'Twin' }, settings: { defaultLocale: 'en', locales: ['en'] }, website: { siteUrl: SITE } });
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    expect((await admin.put(`/projects/${twin}/search-engines`, { google: true })).statusCode).toBe(200);
+    expect((await admin.post(`/projects/${twin}/search-engines/prepare`, {})).statusCode).toBe(200);
+    const refused = (await setOwners(['ana@agency.example'])).json() as SiteRegistrationActionResult;
+    expect(refused.result).toEqual({ ok: false, detail: `Another project registers ${SITE} too, and the two share one Search Console property: set its owners in one project only` });
+    expect(engines.googleOwners).toEqual([]);
+  });
+
+  it('refuses what is not a list of email addresses, or too many', async () => {
+    expect((await setOwners(['not-an-email'])).statusCode).toBe(400);
+    expect((await setOwners(Array.from({ length: 11 }, (_, i) => `p${i}@agency.example`))).statusCode).toBe(400);
+    expect((await admin.put(`${base()}/google/owners`, { owners: [], extra: 1 })).statusCode).toBe(400);
+  });
+
+  it('switching Google off takes them off first; the next verification gives them access again', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    engines.googleOwners = ['client@own.example'];
+    await setOwners(['ana@agency.example']);
+
+    const off = (await toggle({ google: false })).json() as SiteRegistrationToggleResult;
+    expect(off.removed.google).toEqual({ ok: true, detail: 'Removed from Search Console, and the ownership given up (1 owner removed)' });
+    expect(engines.googleOwners).toEqual(['client@own.example']);
+    expect(off.view.google.owners).toEqual(['ana@agency.example']); // staff's choice, kept for the next time
+
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    expect((await verify('google')).result).toEqual({ ok: true, detail: 'Verified and added to Search Console · 1 owner given access' });
+    expect(engines.googleOwners).toEqual(['client@own.example', 'ana@agency.example']);
   });
 });
 

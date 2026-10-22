@@ -13,7 +13,8 @@ import { Modal } from '../ui/Modal';
  *      Production URL; else the project's remote target — asked for when there are several);
  *   2. each switched-on search engine's verification tag;
  *   3. a deploy to THAT target, so the live pages carry the tags (no other target is touched);
- *   4. each search engine confirms its tag on the live site (Google then adds the site to Search Console).
+ *   4. each search engine confirms its tag on the live site (Google then adds the site to Search Console), and is
+ *      handed the site's sitemap once it has.
  *
  * A step that fails stops the ones that need it, and says why.
  */
@@ -76,7 +77,10 @@ export function SearchEngineVerify({ projectId, view, onClose }: { projectId: st
     { id: 'target', label: 'Checking the deploy target', state: 'running' },
     { id: 'tags', label: 'Getting the verification tags', state: 'waiting' },
     { id: 'deploy', label: 'Deploying the website', state: 'waiting' },
-    ...engines.map((s) => ({ id: `verify:${s}`, label: `Verifying with ${ENGINE[s]}`, state: 'waiting' as StepState })),
+    ...engines.flatMap((s) => [
+      { id: `verify:${s}`, label: `Verifying with ${ENGINE[s]}`, state: 'waiting' as StepState },
+      { id: `sitemap:${s}`, label: `Submitting the sitemap to ${ENGINE[s]}`, state: 'waiting' as StepState },
+    ]),
   ]);
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
   const abort = useRef<AbortController>(new AbortController());
@@ -149,7 +153,11 @@ export function SearchEngineVerify({ projectId, view, onClose }: { projectId: st
           state: ready.length ? 'done' : 'failed',
           detail: engines.map((s) => `${s === 'google' ? 'Google' : 'Bing'}: ${results[s]?.detail ?? 'not asked'}`).join(' · '),
         });
-        for (const s of engines) if (!ready.includes(s)) update(`verify:${s}`, { state: 'skipped', detail: 'No tag to verify' });
+        for (const s of engines) {
+          if (ready.includes(s)) continue;
+          update(`verify:${s}`, { state: 'skipped', detail: 'No tag to verify' });
+          update(`sitemap:${s}`, { state: 'skipped', detail: 'Not verified' });
+        }
       } catch (err) {
         update('tags', { state: 'failed', detail: message(err, 'Could not get the verification tags') });
         return stop('Nothing was verified.');
@@ -194,25 +202,46 @@ export function SearchEngineVerify({ projectId, view, onClose }: { projectId: st
         return stop('Nothing was verified: the tags are not on the live site.');
       }
 
-      // 4. Each search engine looks for its tag on the live site.
+      // 4. Each search engine looks for its tag on the live site, and gets the sitemap once it verified.
       const verified: string[] = [];
       const notVerified: string[] = [];
+      const noSitemap: string[] = [];
       for (const s of ready) {
         if (signal.aborted) return;
         update(`verify:${s}`, { state: 'running' });
+        let ok = false;
         try {
           const { result } = await api.verifySiteRegistration(projectId, s);
           update(`verify:${s}`, { state: result.ok ? 'done' : 'failed', detail: result.detail });
-          (result.ok ? verified : notVerified).push(ENGINE[s]);
+          ok = result.ok;
         } catch (err) {
           update(`verify:${s}`, { state: 'failed', detail: message(err, 'Could not ask the search engine') });
-          notVerified.push(ENGINE[s]);
+        }
+        (ok ? verified : notVerified).push(ENGINE[s]);
+        if (!ok) {
+          update(`sitemap:${s}`, { state: 'skipped', detail: 'Not verified' });
+          continue;
+        }
+        if (signal.aborted) return;
+        update(`sitemap:${s}`, { state: 'running' });
+        try {
+          const { result } = await api.submitSitemap(projectId, s);
+          update(`sitemap:${s}`, { state: result.ok ? 'done' : 'failed', detail: result.detail });
+          if (!result.ok) noSitemap.push(ENGINE[s]);
+        } catch (err) {
+          update(`sitemap:${s}`, { state: 'failed', detail: message(err, 'Could not submit the sitemap') });
+          noSitemap.push(ENGINE[s]);
         }
       }
+      // The sitemap is a follow-up: it can be submitted again from the tile, so it never turns a verification red.
+      const sitemapNote = verified.length === 0 ? '' : noSitemap.length ? ` The sitemap did not reach ${noSitemap.join(' and ')}: Sitemap & owners can submit it again.` : ' The sitemap was submitted.';
       setOutcome(
         notVerified.length === 0
-          ? { ok: true, text: `Verified with ${verified.join(' and ')}.` }
-          : { ok: false, text: `${verified.length ? `Verified with ${verified.join(' and ')}; ` : ''}not verified with ${notVerified.join(' and ')}. The reasons are above.` },
+          ? { ok: true, text: `Verified with ${verified.join(' and ')}.${sitemapNote}` }
+          : {
+              ok: false,
+              text: `${verified.length ? `Verified with ${verified.join(' and ')}; ` : ''}not verified with ${notVerified.join(' and ')}. The reasons are above.${sitemapNote}`,
+            },
       );
     })();
     // No cleanup abort: under StrictMode the first cleanup would stop the only run. Closing the window stops it.

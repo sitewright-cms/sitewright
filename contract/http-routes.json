@@ -262,6 +262,7 @@
   "POST /projects/:projectId/rankings/check",
   "POST /projects/:projectId/rankings/keywords",
   "POST /projects/:projectId/render-template",
+  "POST /projects/:projectId/search-engines/:service/sitemap",
   "POST /projects/:projectId/search-engines/:service/verify",
   "POST /projects/:projectId/search-engines/prepare",
   "POST /projects/:projectId/smtp/send-test",
@@ -293,6 +294,7 @@
   "PUT /projects/:projectId/payment/mode",
   "PUT /projects/:projectId/rankings/settings",
   "PUT /projects/:projectId/search-engines",
+  "PUT /projects/:projectId/search-engines/google/owners",
   "PUT /projects/:projectId/smtp",
   "PUT /projects/:projectId/translations",
   "PUT /projects/:projectId/website-data"

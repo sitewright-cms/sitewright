@@ -70,6 +70,15 @@ export interface WebmasterTestResult {
 export const SITE_REGISTRATION_STATUSES = ['off', 'none', 'pending', 'verified', 'failed'] as const;
 export type SiteRegistrationStatus = (typeof SITE_REGISTRATION_STATUSES)[number];
 
+/** The last time the site's sitemap was handed to a search engine. */
+export interface SitemapSubmission {
+  /** Whether the search engine took it (it reads the sitemap itself later, on its own schedule). */
+  ok: boolean;
+  /** What it said. Never a secret. */
+  detail: string;
+  at: string;
+}
+
 export interface SiteRegistrationEntry {
   /** Whether the platform has an account for this search engine at all (System Settings). */
   configured: boolean;
@@ -81,12 +90,23 @@ export interface SiteRegistrationEntry {
   verifiedAt: string | null;
   /** When the platform last asked the search engine. */
   checkedAt: string | null;
+  /** The last sitemap submission for the current registration; null when there was none. */
+  sitemap: SitemapSubmission | null;
+  /**
+   * Google only (always empty for Bing): the Google accounts staff made owners of the site in Search Console, so
+   * they can open its reports themselves. The platform's service account owns it too and is not listed.
+   */
+  owners: string[];
+  /** Google only: why `owners` did not get access at the last verification (a retry is offered); null when they did. */
+  ownersIssue: string | null;
 }
 
 /** A project's registration with the platform's search engine accounts (agency staff only). */
 export interface SiteRegistrationView {
   /** The URL that is registered: the website's Production URL, when it is an https address. */
   siteUrl: string | null;
+  /** The sitemap the search engines are given: `sitemap.xml` at the root of `siteUrl` (every build writes it there). */
+  sitemapUrl: string | null;
   /** Why nothing can be registered, when `siteUrl` is null. */
   notice: 'no-site-url' | 'not-https' | null;
   google: SiteRegistrationEntry;
@@ -118,6 +138,26 @@ export interface SiteRegistrationVerifyResult {
   view: SiteRegistrationView;
 }
 
+/** The answer to one action on one search engine (verify, submit the sitemap, set the owners): done or why not. */
+export type SiteRegistrationActionResult = SiteRegistrationVerifyResult;
+
+/** How many people staff may make owners of one site in Search Console. */
+export const SEARCH_CONSOLE_OWNERS_MAX = 10;
+
+/**
+ * The Google accounts that should own the site in Search Console (beside the service account), as a whole list:
+ * whoever is left out is removed. Addresses are compared without case; duplicates collapse to one.
+ */
+export const SiteOwnersInputSchema = z
+  .object({
+    owners: z
+      .array(z.string().trim().toLowerCase().max(254).email('each owner is an email address of a Google account'))
+      .max(SEARCH_CONSOLE_OWNERS_MAX, `at most ${SEARCH_CONSOLE_OWNERS_MAX} owners`),
+  })
+  .strict()
+  .transform((v) => ({ owners: [...new Set(v.owners)] }));
+export type SiteOwnersInput = z.infer<typeof SiteOwnersInputSchema>;
+
 /** The answer to a switch: the new state, and what removing the site from a search engine said. */
 export interface SiteRegistrationToggleResult {
   removed: Partial<Record<WebmasterService, SiteRegistrationStepResult>>;
@@ -140,4 +180,9 @@ export function registrableSiteUrl(siteUrl: string | null | undefined): string |
   if (url.protocol !== 'https:' || url.username || url.password || !url.hostname.includes('.')) return null;
   const path = url.pathname.endsWith('/') ? url.pathname : `${url.pathname}/`;
   return `${url.origin}${path}`;
+}
+
+/** The sitemap of a registered site: `sitemap.xml` under it, where every build with a Production URL writes one. */
+export function sitemapUrlOf(registeredSiteUrl: string | null): string | null {
+  return registeredSiteUrl ? `${registeredSiteUrl}sitemap.xml` : null;
 }

@@ -93,6 +93,23 @@ const sameSite = (a: unknown, b: string): boolean =>
 export const BING_SITE_CODE_RE = /^[A-Za-z0-9]{8,128}$/;
 
 /**
+ * Whether `apiKey` belongs to the Bing user who was handed these verification codes. Bing's code is the USER's, not
+ * the site's or the key's: measured on a real account, two sites of one user carry one code — so another user who
+ * added the same site is handed their own. Proved when Bing lists one of the sites for the key with its code, and
+ * disproved when it lists one with another code. A site it does not list proves nothing either way (the user may
+ * have removed it at Bing since); `codes` empty proves nothing: false. Reads only.
+ */
+export async function bingSameUser(apiKey: string, codes: ReadonlyArray<{ siteUrl: string; code: string }>, io: WebmasterIo): Promise<boolean> {
+  if (codes.length === 0) return false;
+  const sites = await userSites(apiKey, io);
+  const listed = codes.flatMap(({ siteUrl, code }) => {
+    const site = sites.find((s) => sameSite(s.Url, siteUrl));
+    return site ? [typeof site.AuthenticationCode === 'string' && site.AuthenticationCode.trim() === code] : [];
+  });
+  return listed.length > 0 && listed.every(Boolean);
+}
+
+/**
  * The verification tag for `siteUrl`, as the `content` of `<meta name="msvalidate.01">`. Adds the site to the
  * account (unverified) when it is not there yet — Bing only issues a code for a site it has.
  */

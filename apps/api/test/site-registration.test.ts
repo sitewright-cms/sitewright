@@ -34,6 +34,11 @@ const BING_KEY = '0123456789abcdef0123456789abcdef';
 const SITE = 'https://regsite.sites.test/';
 const GOOGLE_TAG = 'gOOgle-Tag_1234567890';
 const BING_CODE = '0A1B2C3D4E5F60718293A4B5C6D7E8F9';
+/** A second key of the same Bing user as BING_KEY: Bing hands it the same codes. */
+const SAME_USER_KEY = '00112233445566778899aabbccddeeff';
+/** Another Bing user's key, whose account holds the same site — under another code. */
+const OTHER_USER_KEY = 'fedcba9876543210fedcba9876543210';
+const OTHER_USER_CODE = 'FFEEDDCCBBAA99887766554433221100';
 const slug = 'regsite';
 
 /**
@@ -52,6 +57,8 @@ let engines: {
   googleRefusesOwners: boolean;
   feeds: string[];
   calls: string[];
+  /** The key each RemoveSite went out with. */
+  bingRemovedWith: string[];
 };
 
 const fakeEngines: FetchLike = async (url, init) => {
@@ -81,13 +88,16 @@ const fakeEngines: FetchLike = async (url, init) => {
   }
   if (path.startsWith('https://www.googleapis.com/webmasters/v3/sites/')) return answer(204, '');
   if (engines.bingDown) return answer(503, {});
-  if (path.endsWith('/GetUserSites')) return answer(200, { d: engines.bingSites.map((u) => ({ Url: u, AuthenticationCode: BING_CODE, IsVerified: false })) });
+  const bingKey = new URL(url).searchParams.get('apikey') ?? '';
+  const code = bingKey === OTHER_USER_KEY ? OTHER_USER_CODE : BING_CODE;
+  if (path.endsWith('/GetUserSites')) return answer(200, { d: engines.bingSites.map((u) => ({ Url: u, AuthenticationCode: code, IsVerified: false })) });
   if (path.endsWith('/AddSite')) {
     engines.bingSites.push((JSON.parse(String(init.body)) as { siteUrl: string }).siteUrl);
     return answer(200, { d: null });
   }
   if (path.endsWith('/RemoveSite')) {
     if (engines.bingRefusesRemoval) return answer(400, { ErrorCode: 14, Message: 'NotAuthorized' });
+    engines.bingRemovedWith.push(bingKey);
     const gone = (JSON.parse(String(init.body)) as { siteUrl: string }).siteUrl;
     engines.bingSites = engines.bingSites.filter((u) => u !== gone);
     return answer(200, { d: null });
@@ -106,7 +116,7 @@ let projectId: string;
 let publishRoot: string;
 
 beforeEach(async () => {
-  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, feeds: [], calls: [] };
+  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, feeds: [], calls: [], bingRemovedWith: [] };
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-'));
   harness = await makeHarness({ publishRoot, sitesDomain: 'sites.test', webmasterFetch: fakeEngines, rankTickMs: 0 });
   admin = await harness.signup({ admin: true });
@@ -319,18 +329,52 @@ describe('site registration', () => {
     expect((await admin.post(`${base()}/yahoo/verify`, {})).statusCode).toBe(404);
   });
 
-  it('a replaced key needs a new verification; the same key saved again does not', async () => {
+  it("another Bing user's key needs a new verification; the same key saved again does not", async () => {
     await toggle({ bing: true });
     await prepare();
     await publish();
     await verify('bing');
     expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: BING_KEY } })).statusCode).toBe(200);
     expect((await view()).bing.status).toBe('verified');
-    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' } })).statusCode).toBe(409); // a site is registered with the old one
-    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' }, force: true })).statusCode).toBe(200);
+    // Bing lists the site for the other user too, but under THEIR code: not the account that registered it.
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: OTHER_USER_KEY } })).statusCode).toBe(409);
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: OTHER_USER_KEY }, force: true })).statusCode).toBe(200);
     expect((await view()).bing).toMatchObject({ enabled: true, status: 'none' });
     await publish();
     expect(await home()).not.toContain('msvalidate.01');
+  });
+
+  it('★ a new key of the SAME Bing user is the same account: no confirm, nothing to verify again, and it removes', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    await publish();
+    await verify('bing');
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: SAME_USER_KEY } })).statusCode).toBe(200);
+    expect((await view()).bing).toMatchObject({ enabled: true, status: 'verified' });
+    await publish();
+    expect(await home()).toContain(`<meta name="msvalidate.01" content="${BING_CODE}"`);
+    // And again: the account carries on through every new key of that user, not only the first.
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: BING_KEY } })).statusCode).toBe(200);
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: SAME_USER_KEY } })).statusCode).toBe(200);
+    expect((await view()).bing.status).toBe('verified');
+    const off = (await toggle({ bing: false })).json() as SiteRegistrationToggleResult;
+    expect(off.removed.bing).toEqual({ ok: true, detail: 'Removed from Bing Webmaster Tools' });
+    expect(engines.bingRemovedWith).toEqual([SAME_USER_KEY]);
+    expect(engines.bingSites).toEqual([]);
+  });
+
+  it('a new Bing key that cannot be checked counts as another account', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    await publish();
+    await verify('bing');
+    engines.bingDown = true;
+    const refused = await admin.put('/admin/webmaster-accounts', { bing: { apiKey: SAME_USER_KEY } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({ code: 'account-in-use', accounts: [{ service: 'bing', action: 'replace', count: 1 }] });
+    expect((refused.json() as { error: string }).error).toMatch(/^1 site is switched on with this Bing Webmaster account, and Bing did not confirm the new key is the same Bing user\. /);
+    engines.bingDown = false;
+    expect((await view()).bing.status).toBe('verified'); // nothing was saved: the old key still holds the site
   });
 
   it('deleting the project removes its site from both accounts; the reap removes what was left', async () => {

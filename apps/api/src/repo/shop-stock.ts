@@ -13,10 +13,9 @@ import type { StockReconcileOp } from '../publish/shop-catalog.js';
  *    list, never a claim. The mail-delivery work took four review rounds to learn this, each round
  *    reproducing a duplicate send; here the equivalent bug sells the same unit twice.
  *
- * 2. **Serialize per (project, sku) in this process.** libsql runs on ONE connection, so a
- *    concurrent `BEGIN IMMEDIATE` is `SQLITE_BUSY` rather than a wait — a transaction is not a
- *    compare-and-swap here. The conditional UPDATE is the real guard; this queue only stops
- *    read-modify-write pairs from interleaving and keeps the common case out of error handling.
+ * 2. **Serialize per (project, sku) in this process.** The conditional UPDATE is the real guard
+ *    (it holds across processes too); this queue only stops read-modify-write pairs from
+ *    interleaving and keeps the common case out of error handling.
  */
 
 /** How long a reservation holds stock while the buyer is away on the provider's page. */

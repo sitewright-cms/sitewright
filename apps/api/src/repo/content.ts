@@ -716,12 +716,11 @@ export class ContentRepository {
     // two writers both read version V0, both pass the check, and the second silently overwrites the
     // first — the exact lost update this feature exists to prevent.
     //
-    // A DB transaction is NOT the tool here: libsql runs this local file over one connection, so a
-    // second concurrent `BEGIN IMMEDIATE` fails outright with SQLITE_BUSY (measured — the losers got an
-    // opaque 500 instead of a 409, and `busy_timeout` does not help because the contention is
-    // same-connection, not cross-connection). Instead every write to ONE entity is serialized
-    // in-process, which makes the read-compare-write indivisible and lets a genuine loser fall out as a
-    // clean VersionConflictError. Same single-container boundary the event bus already declares; a
+    // Not a DB transaction: when this was written, a second concurrent `BEGIN IMMEDIATE` failed
+    // outright with SQLITE_BUSY (measured — the losers got an opaque 500 instead of a 409). Write
+    // transactions queue now (db/sqlite.ts), but this predates that: every write to ONE entity is
+    // serialized in-process, which makes the read-compare-write indivisible without holding the
+    // instance's one writer, and lets a genuine loser fall out as a clean VersionConflictError. Same single-container boundary the event bus already declares; a
     // multi-instance deployment would need the check pushed into SQL (a conditional UPDATE).
     // `content-version-race.test.ts` races real concurrent writes and is the evidence for this.
     // What gets STORED is not always what was passed in — an `imagemap` is sanitized at rest inside
@@ -1819,7 +1818,7 @@ export class ContentRepository {
         const next = schema.parse({ ...(existing.data as Record<string, unknown>), order });
         // ★ Hand `writeRow` the row we just read. Without it, it looks the same row up AGAIN — two
         // SELECTs plus an UPDATE per item, all sequential inside one transaction. This runs on ONE
-        // shared SQLite writer for every tenant (busy_timeout 5s), so a long re-space is not just slow
+        // shared SQLite writer for every tenant (others wait up to 5s), so a long re-space is not just slow
         // for the caller: it is a write stall for every OTHER project on the instance.
         await this.writeRow(exec, ctx, kind, id, next, existing);
         updated += 1;

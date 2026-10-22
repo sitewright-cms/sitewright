@@ -1,8 +1,9 @@
-import { createClient, type Client } from '@libsql/client';
+import type { Client } from '@libsql/client';
 import { drizzle, type LibSQLDatabase } from 'drizzle-orm/libsql';
 import { migrate } from 'drizzle-orm/libsql/migrator';
 import { fileURLToPath } from 'node:url';
 import * as schema from './schema.js';
+import { openSqlite } from './sqlite.js';
 
 export type Database = LibSQLDatabase<typeof schema>;
 
@@ -12,30 +13,15 @@ export interface DbHandle {
 }
 
 /**
- * Creates a Drizzle database over libsql and applies the connection setup pragmas. `url` defaults to
- * an in-memory DB (used by tests); production passes a `file:` URL.
+ * Creates a Drizzle database over libsql. `url` defaults to an in-memory DB (used by tests); production passes a
+ * `file:` URL. `openSqlite` sets the file up — WAL, a lock wait and `synchronous = NORMAL` on every connection — and
+ * queues this process's writes, so a write meeting an open transaction waits for it instead of failing.
  *
- * The pragmas run before any query:
- * - **WAL** — readers no longer block the writer (and vice-versa, as plain rollback journaling does),
- *   and commits are a fast append to the `-wal` file. The mode is persisted in the file header (a
- *   no-op `memory` for an in-memory test DB).
- * - **busy_timeout = 5s** — on lock contention, WAIT rather than failing immediately with
- *   `SQLITE_BUSY` (the default `0`). Matters the instant there is more than one connection — e.g. a
- *   second API replica sharing the file, or the driver opening a parallel connection.
- * - **synchronous = NORMAL** — the canonical WAL pairing: no `fsync` per commit (only at a
- *   checkpoint, ~every 1000 WAL pages), vs the previous `FULL` which fsynced every commit. The DB
- *   stays CONSISTENT through any crash; the only exposure is a hard power-cut / kernel panic, which
- *   can lose the last committed-but-uncheckpointed transactions (acceptable for re-authorable site
- *   content). Back up the `-wal` sidecar too (see the Dockerfile note).
- *
- * Foreign keys need no pragma: libsql turns them ON for every connection it opens — and its pool opens more than the
- * one these pragmas run on. `test/project-reap.test.ts` pins that default.
+ * Foreign keys need no pragma: libsql turns them ON for every connection it opens. `test/project-reap.test.ts` pins
+ * that default.
  */
 export async function createDb(url = ':memory:'): Promise<DbHandle> {
-  const client = createClient({ url });
-  await client.executeMultiple(
-    'PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;',
-  );
+  const client = await openSqlite(url);
   const db = drizzle(client, { schema });
   return { db, client };
 }

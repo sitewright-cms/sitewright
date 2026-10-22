@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A write that met another one in progress no longer fails or freezes the server.** libsql keeps a small pool of
+  connections, and the database's setup reached only one of them: the others failed at once with "database is locked"
+  instead of waiting. Waiting inside SQLite does not help either: it would have frozen every request for up to 5 seconds
+  and then failed anyway, because the write it waited for could only finish once the wait was over. Writes in one
+  process now take turns: a write that meets a transaction in progress waits for it (at most 5 seconds), and plain
+  reads never wait. Every connection now also gets `synchronous = NORMAL`. This covers the platform database and the
+  statistics file, and among others the hourly clean-ups, which ran beside an open transaction.
+
 ### Security
 
 - **ip-address 10.7.4** (GHSA-rxp7-6hxx-x8q5): a long address string could make it match a zone identifier in

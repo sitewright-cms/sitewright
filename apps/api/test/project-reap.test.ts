@@ -1,10 +1,17 @@
+import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { sql } from 'drizzle-orm';
+import { createClient } from '@libsql/client';
 import { makeTestDb } from './helpers.js';
+import { createDb, runMigrations } from '../src/db/client.js';
+import { RankRepository } from '../src/rank/repo.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { SubmissionRepository } from '../src/repo/submissions.js';
-import { agentGrants, shopCatalog, shopStock, shopTransactions, shopFiltered } from '../src/db/schema.js';
+import { agentGrants, rankCharges, shopCatalog, shopStock, shopTransactions, shopFiltered, webmasterRemovals } from '../src/db/schema.js';
 
 // REAP = the permanent delete behind the admin "deleted projects" purge. There is no ON DELETE CASCADE
 // in this schema, so `ProjectRepository.remove()` must clear every table holding an FK to `projects`
@@ -135,5 +142,46 @@ describe('project reap', () => {
     await expect(projects.get(project.id)).rejects.toThrow(/not found/i);
     const left = (await db.all(sql`select count(*) as n from agent_grants where project_id = ${project.id}`)) as Array<{ n: number }>;
     expect(Number(left[0]?.n ?? 0)).toBe(0);
+  });
+
+  it('leaves what must OUTLIVE the project: what its rank checks cost, and the site removals still queued', async () => {
+    // Both tables carry a project id on purpose WITHOUT a foreign key, so the guard above does not list them: money
+    // already spent stays in the month's budget, and a site still registered at Google or Bing stays on record until
+    // the hourly sweep removes it. Clearing them here is the defect they exist to prevent.
+    const db = await makeTestDb();
+    const projects = new ProjectRepository(db);
+    const project = await projects.create({ name: 'Outlived', slug: 'outlived' });
+    const rank = new RankRepository(db);
+    await rank.putProject(project.id, { domain: 'plumbers.na', includeSubdomains: true, schedule: 'daily', depth: 100 });
+    await rank.addKeywords(project.id, { keywords: ['a'], engine: 'google', device: 'desktop', location: { name: 'Namibia', countryCode: 'NA' }, languageCode: 'en' });
+    const [k] = await rank.listKeywords(project.id);
+    const now = new Date();
+    await rank.claim({ ...k!, depth: 100, domain: 'plumbers.na', includeSubdomains: true }, now.toISOString().slice(0, 10), 'dataforseo', 0.006, now);
+    await db.insert(webmasterRemovals).values({ id: 'r1', projectId: project.id, service: 'bing', siteUrl: 'https://outlived.example/', account: 'acc', attempts: 1, nextAt: now, createdAt: now });
+
+    await projects.remove(project.id);
+    expect(await db.select().from(rankCharges)).toHaveLength(1);
+    expect(await rank.spentMicrosInMonth(now)).toBe(6000);
+    expect(await db.select().from(webmasterRemovals)).toHaveLength(1);
+  });
+
+  // The audit asked whether these guards rest on anything: `createDb` never sets PRAGMA foreign_keys. They do — libsql
+  // turns foreign keys ON by default for every connection it opens, and its pool opens more than the one `createDb`
+  // ran its pragmas on. This pins that default, so a driver change cannot quietly turn every FK in the schema off.
+  it('foreign keys are enforced on any connection to the database, not just the first', async () => {
+    const file = join(tmpdir(), `sw-fk-${randomUUID()}.db`);
+    const { db, client } = await createDb(`file:${file}`);
+    const fresh = createClient({ url: `file:${file}` }); // none of createDb's pragmas: like a connection the pool adds
+    try {
+      await runMigrations(db);
+      expect((await fresh.execute('PRAGMA foreign_keys')).rows[0]).toMatchObject({ foreign_keys: 1 });
+      await expect(
+        fresh.execute({ sql: "INSERT INTO rank_projects (project_id, domain, include_subdomains, schedule, depth, updated_at) VALUES ('no-such-project', 'x.test', 0, 'daily', 10, 0)", args: [] }),
+      ).rejects.toThrow(/FOREIGN KEY/);
+    } finally {
+      fresh.close();
+      client.close();
+      for (const suffix of ['', '-wal', '-shm']) rmSync(`${file}${suffix}`, { force: true });
+    }
   });
 });

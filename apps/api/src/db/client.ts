@@ -27,6 +27,9 @@ export interface DbHandle {
  *   stays CONSISTENT through any crash; the only exposure is a hard power-cut / kernel panic, which
  *   can lose the last committed-but-uncheckpointed transactions (acceptable for re-authorable site
  *   content). Back up the `-wal` sidecar too (see the Dockerfile note).
+ *
+ * Foreign keys need no pragma: libsql turns them ON for every connection it opens — and its pool opens more than the
+ * one these pragmas run on. `test/project-reap.test.ts` pins that default.
  */
 export async function createDb(url = ':memory:'): Promise<DbHandle> {
   const client = createClient({ url });

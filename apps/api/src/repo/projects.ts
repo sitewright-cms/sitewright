@@ -208,11 +208,14 @@ export class ProjectRepository {
       await tx.delete(shopStock).where(eq(shopStock.projectId, id));
       await tx.delete(shopTransactions).where(eq(shopTransactions.projectId, id));
       await tx.delete(shopFiltered).where(eq(shopFiltered.projectId, id));
-      // Rank tracking: checks reference keywords, so they go first.
+      // Rank tracking: checks reference keywords, so they go first. What the checks COST stays: `rank_charges` has no
+      // FK on purpose and is not cleared here — that money was spent, and the month's budget must keep counting it.
       await tx.delete(rankChecks).where(eq(rankChecks.projectId, id));
       await tx.delete(rankKeywords).where(eq(rankKeywords.projectId, id));
       await tx.delete(rankProjects).where(eq(rankProjects.projectId, id));
-      // Search engine registration (the platform account stays a verified owner at Google/Bing; only our record goes).
+      // Search engine registration. The caller removed the site at Google/Bing first (`SiteRegistrar.removeOnPurge`);
+      // what did not get through is queued in `webmaster_removals`, which has no FK and is NOT cleared here: it is the
+      // only record of a site still registered once this row is gone.
       await tx.delete(webmasterSites).where(eq(webmasterSites.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });

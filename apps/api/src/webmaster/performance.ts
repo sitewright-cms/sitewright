@@ -44,6 +44,21 @@ export class SearchPerformance {
     return this.deps.now?.() ?? new Date();
   }
 
+  /** Forgets every answer and refusal kept for a project: it was deleted, and they would otherwise wait for the overflow. */
+  forgetProject(projectId: string): void {
+    const prefix = `${projectId}\n`;
+    for (const kept of [this.answers, this.failures]) {
+      for (const key of kept.keys()) if (key.startsWith(prefix)) kept.delete(key);
+    }
+  }
+
+  /** Drops what is past its time, so stale answers do not sit in memory until the overflow pushes them out. */
+  private dropExpired(now: number): void {
+    const ttl = this.deps.ttlMs ?? TTL_MS;
+    for (const [key, a] of this.answers) if (now - a.at >= ttl) this.answers.delete(key);
+    for (const [key, f] of this.failures) if (now - f.at >= FAILURE_TTL_MS) this.failures.delete(key);
+  }
+
   /** Which search engines have data for the site. Asks no search engine. */
   async available(projectId: string, rawSiteUrl: string | null | undefined): Promise<SearchPerformanceAvailability> {
     return { services: (await this.deps.sources(projectId, rawSiteUrl)).map((s) => s.service) };
@@ -69,6 +84,7 @@ export class SearchPerformance {
       try {
         data = await source.read(period, lag === undefined ? undefined : addDays(period.end, -lag));
       } catch (err) {
+        this.dropExpired(now.getTime());
         this.failures.delete(key);
         this.failures.set(key, { at: now.getTime(), error: err });
         for (const old of this.failures.keys()) {
@@ -92,6 +108,7 @@ export class SearchPerformance {
         ...figures,
         fetchedAt: now.toISOString(),
       };
+      this.dropExpired(now.getTime());
       this.answers.delete(key);
       this.answers.set(key, { at: now.getTime(), view });
       // The oldest answers go first (a Map keeps insertion order).

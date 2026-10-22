@@ -283,11 +283,7 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
 
   async function adminView(): Promise<RankTrackingAdminView> {
     const config = await repo.getConfig();
-    const now = new Date();
-    const [spent, totals] = await Promise.all([
-      repo.spentMicrosSince(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))),
-      repo.totals(),
-    ]);
+    const [spent, totals] = await Promise.all([repo.spentMicrosInMonth(new Date()), repo.totals()]);
     const views: RankProviderView[] = [];
     const configured = await repo.listConfiguredProviders();
     for (const id of RankProviderIdSchema.options) {

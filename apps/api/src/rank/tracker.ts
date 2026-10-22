@@ -16,7 +16,9 @@ import { utcDay, type DueKeyword, type RankRepository } from './repo.js';
  *     keyword is sent at most once a day, and spending in flight already counts against the budget;
  *   - a refusal of the whole request (credentials, funds, rate) gives the claims back: nothing was charged;
  *   - an UNCERTAIN outcome (a reply lost after the request went out) keeps the estimate and is not sent again that
- *     day — it may have been charged, and sending it again could pay twice.
+ *     day — it may have been charged, and sending it again could pay twice;
+ *   - the month's spend is read from the CHARGES (`rank_charges`), which outlive the checks: removing a keyword or
+ *     purging a project deletes its checks, never what they cost — even while one is in flight.
  */
 
 /** Keywords sent per pass at most — a backlog drains over several passes rather than in one burst. */
@@ -34,7 +36,6 @@ export interface RankTrackerDeps {
   log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void };
 }
 
-const monthStart = (now: Date): Date => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 const micros = (usd: number): number => Math.max(0, Math.round(usd * 1_000_000));
 
 export class RankTracker {
@@ -43,6 +44,8 @@ export class RankTracker {
   /** Projects with a "check now" waiting or running: a second one is refused, not queued behind it. */
   private readonly checking = new Set<string>();
   private readonly timers = new Set<NodeJS.Timeout>();
+  /** The UTC day retention last ran: it runs at most once a day, from the scheduled pass. */
+  private prunedDay: string | null = null;
 
   constructor(private readonly deps: RankTrackerDeps) {}
 
@@ -50,10 +53,30 @@ export class RankTracker {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** The scheduled pass over every project. Skipped while another pass runs — the next tick picks up the rest. */
+  /**
+   * The scheduled pass over every project. Skipped while another pass runs — the next tick picks up the rest. Once a
+   * day it also deletes checks (and charges) older than the retention period: 500 keywords checked daily are 180,000
+   * rows a year per project, and nothing else ever removes one.
+   */
   async tick(): Promise<RankPassReport | null> {
     if (this.busy) return null;
-    return this.serialized(() => this.pass({}));
+    return this.serialized(async () => {
+      await this.prune();
+      return this.pass({});
+    });
+  }
+
+  /** Retention, at most once a UTC day (one attempt: a failure is logged and tried the next day). Never throws. */
+  private async prune(): Promise<void> {
+    const today = utcDay(this.now());
+    if (this.prunedDay === today) return;
+    this.prunedDay = today;
+    try {
+      const removed = await this.deps.repo.pruneOld(today);
+      if (removed.checks || removed.charges) this.deps.log.info(removed, 'rank tracking: removed checks past the retention period');
+    } catch (err) {
+      this.deps.log.warn({ errMsg: err instanceof Error ? err.message : String(err) }, 'rank tracking: retention failed');
+    }
   }
 
   /**
@@ -78,7 +101,7 @@ export class RankTracker {
     const ready = config.activeProvider ? await this.credentials(config.activeProvider) : null;
     if (!config.activeProvider || !ready) return 'no-provider';
     if (config.lastError) return 'provider-error';
-    const spent = await this.deps.repo.spentMicrosSince(monthStart(this.now()));
+    const spent = await this.deps.repo.spentMicrosInMonth(this.now());
     return spent >= config.monthlyBudgetMicros ? 'budget-reached' : 'ok';
   }
 
@@ -188,7 +211,7 @@ export class RankTracker {
     if (!creds) return { status: 'no-provider', sent: 0, failed: 0 };
 
     // What is booked this month — claims in flight included, at their estimate.
-    let remaining = config.monthlyBudgetMicros - (await repo.spentMicrosSince(monthStart(now)));
+    let remaining = config.monthlyBudgetMicros - (await repo.spentMicrosInMonth(now));
     const day = utcDay(now);
     const due = await repo.dueKeywords(day, MAX_SENDS_PER_PASS, opts);
     const idle: RankStatus = config.lastError ? 'provider-error' : remaining > 0 ? 'ok' : 'budget-reached';

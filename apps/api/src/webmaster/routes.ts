@@ -26,7 +26,8 @@ import type { SiteRegistrar } from './sites.js';
  * The platform's search engine accounts, for instance admins only (session-only: no token reaches them).
  *
  *   GET  /admin/webmaster-accounts        what is stored: the Google key's email and project, set/unset for Bing
- *   PUT  /admin/webmaster-accounts        store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null)
+ *   PUT  /admin/webmaster-accounts        store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null);
+ *                                         a removal is refused (409) while sites are still registered with the account
  *   POST /admin/webmaster-accounts/test   try a stored account (`{service}`), reading only
  *
  * ★ A secret goes in and never comes out: no answer carries the private key or the API key, not even masked.
@@ -36,15 +37,21 @@ export interface WebmasterRouteDeps {
   repo: WebmasterRepository;
   io: WebmasterIo;
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
+  /** What the current account still holds (see `SiteRegistrar.registeredWith`). */
+  registeredWith: (service: WebmasterService) => Promise<{ sites: number; pending: number }>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
+const sitesText = (n: number): string => (n === 1 ? '1 site is' : `${n} sites are`);
+const themText = (n: number): string => (n === 1 ? 'it' : 'them');
+
 const LABEL: Record<WebmasterService, string> = { google: 'Google service-account key', bing: 'Bing API key' };
+const ACCOUNT: Record<WebmasterService, string> = { google: 'Google service account', bing: 'Bing Webmaster account' };
 /** A key file is capped at 16 KB by the schema; the body never needs to be much more than that. */
 const PUT_BODY_LIMIT = 64 * 1024;
 
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
-  const { repo, io, requireInstanceAdmin, rl } = deps;
+  const { repo, io, requireInstanceAdmin, registeredWith, rl } = deps;
 
   async function view(): Promise<WebmasterAccountsView> {
     const rows = new Map((await repo.list()).map((r) => [r.service, r]));
@@ -83,6 +90,21 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
     } catch (err) {
       if (err instanceof WebmasterError) return reply.code(400).send({ error: err.message });
       throw err;
+    }
+    // ★ Removing an account the platform still has sites registered with would leave them at Google or Bing with nobody
+    // able to take them off (only the account that registered a site can remove it).
+    for (const service of WEBMASTER_SERVICES) {
+      // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+      if (input[service] !== null) continue;
+      const held = await registeredWith(service);
+      if (held.sites > 0) {
+        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+        return reply.code(409).send({ error: `${sitesText(held.sites)} registered with this ${ACCOUNT[service]}: switch ${themText(held.sites)} off first` });
+      }
+      if (held.pending > 0) {
+        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+        return reply.code(409).send({ error: `${sitesText(held.pending)} still being removed from this ${ACCOUNT[service]}: try again later` });
+      }
     }
     await repo.apply({
       ...(input.google === null ? { google: null } : {}),

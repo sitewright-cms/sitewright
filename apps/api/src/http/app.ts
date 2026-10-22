@@ -4152,6 +4152,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const project = await projects.get(req.params.id); // NotFound if absent
       if (!project.deletedAt) throw new NotFoundError('project not found'); // only deleted projects restore
       await projects.restore(req.params.id);
+      // Its search engine registrations come back as the delete left them (switches and owners kept): a removal still
+      // queued for it is cancelled. In the background, behind any step still running for the project.
+      void siteRegistrar.restored(req.params.id);
       // A restored project's verified domains start serving again (the map excludes soft-deleted ones).
       await refreshCustomDomainRoutes();
       return reply.code(204).send();
@@ -4541,8 +4544,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // permanent REAP (rows + disk + orphaned client accounts) happens from the admin surface.
       await projects.softDelete(req.params.id, userId);
       // Its site leaves the platform's Google and Bing accounts too (in the background: a search engine may be slow,
-      // and the delete must not wait on it). A restored project starts again from the Search engines tile.
-      void siteRegistrar.removeAll(project.id);
+      // and the delete must not wait on it). The switches and owners stay: a restored project verifies again from the
+      // Search engines tile. A removal that does not get through is queued and tried again from the hourly sweep.
+      void siteRegistrar.removeOnDelete(project.id);
+      searchPerformance.forgetProject(project.id);
       // A soft-deleted project's site already 404s; its custom domains must stop serving too, or they
       // would be the one remaining way to reach a project the owner believes is gone.
       await refreshCustomDomainRoutes();
@@ -4672,9 +4677,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // once the row below is gone nothing else says they are this project's; with the record, the hourly sweep
     // forgets them whatever fails from here on (or if the process stops), and however many projects go at once.
     await statsEngine.recordPurge(id);
-    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was.
-    await siteRegistrar.removeAll(id);
+    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was; what
+    // still does not get through is queued (it outlives the rows) and tried again from the hourly sweep.
+    await siteRegistrar.removeOnPurge(id);
     await projects.remove(id);
+    searchPerformance.forgetProject(id);
     try {
       await refreshCustomDomainRoutes();
       await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
@@ -9073,6 +9080,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     dataIo: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 8 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000, tokens: webmasterTokens },
     log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
   });
+  // Statistics → Search performance's answers, kept an hour per project (forgotten when the project is deleted).
+  const searchPerformance = new SearchPerformance({ sources: (projectId, rawSiteUrl) => siteRegistrar.searchDataSources(projectId, rawSiteUrl) });
 
   // Renders the project's full static site to `outDir` — the shared build for BOTH local publish and
   // (now) deploy, so a deploy always ships the latest content (build-at-deploy-time). Throws
@@ -11064,13 +11073,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins), and each
   // project's registration with them (agency staff).
-  registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, rl });
+  registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, registeredWith: (service) => siteRegistrar.registeredWith(service), rl });
   const siteUrlOf = async (ctx: ProjectContext): Promise<string | undefined> =>
     ((await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null)?.website?.siteUrl;
   registerSiteRegistrationRoutes(app, { registrar: siteRegistrar, resolveProject, requirePlatformStaff, siteUrlOf, rl });
   // Statistics → Search performance: the numbers from the accounts the site is verified with, for anyone who reads it.
   registerSearchPerformanceRoutes(app, {
-    performance: new SearchPerformance({ sources: (projectId, rawSiteUrl) => siteRegistrar.searchDataSources(projectId, rawSiteUrl) }),
+    performance: searchPerformance,
     resolveProject,
     siteUrlOf,
     rl,
@@ -12278,6 +12287,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // an expired challenge fails verification before the spent-check is ever consulted.
     void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
     if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
+    // Sites the platform could not remove from its Google or Bing account when their project was deleted: tried again
+    // with the account that registered them, until they go or 14 days pass (never throws; logs what it gives up).
+    void siteRegistrar.retryRemovals();
     // Statistics of projects that no longer exist (a reap whose own cleanup failed, a beacon that landed after it).
     void statsEngine
       .reapOrphans((ids) => projects.existingIds(ids))

@@ -1,5 +1,5 @@
 import type { SearchPerformanceAvailability, SearchPerformancePeriod, SearchPerformanceView, WebmasterService } from '@sitewright/schema';
-import { searchPeriod, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
+import { addDays, daysBefore, searchPeriod, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
 
 /**
  * SEARCH PERFORMANCE — a project's search numbers from the platform's Google and Bing accounts, for the Statistics
@@ -15,7 +15,8 @@ export interface SearchDataSource {
   siteUrl: string;
   /** The account that verified it: an answer is never reused for another account. */
   accountId: string;
-  read: (period: SearchPeriod) => Promise<SearchPerformanceData>;
+  /** `expectedEnd`: the day the period most likely ends on (Google asks in one round when it does). */
+  read: (period: SearchPeriod, expectedEnd?: string) => Promise<SearchPerformanceData>;
 }
 
 export interface SearchPerformanceDeps {
@@ -34,6 +35,8 @@ export class SearchPerformance {
   private readonly answers = new Map<string, { at: number; view: SearchPerformanceView }>();
   private readonly running = new Map<string, Promise<SearchPerformanceView>>();
   private readonly failures = new Map<string, { at: number; error: unknown }>();
+  /** How many days each site's search engine reports late, as its last answer showed: where the next period ends. */
+  private readonly lags = new Map<string, number>();
 
   constructor(private readonly deps: SearchPerformanceDeps) {}
 
@@ -53,6 +56,8 @@ export class SearchPerformance {
     const now = this.now();
     const period = searchPeriod(days, now);
     const key = [projectId, service, days, source.siteUrl, source.accountId, period.end].join('\n');
+    const site = [projectId, service, source.siteUrl, source.accountId].join('\n');
+    const lag = this.lags.get(site);
     const kept = this.answers.get(key);
     if (kept && now.getTime() - kept.at < (this.deps.ttlMs ?? TTL_MS)) return kept.view;
     const failed = this.failures.get(key);
@@ -62,7 +67,7 @@ export class SearchPerformance {
     const work = (async () => {
       let data: SearchPerformanceData;
       try {
-        data = await source.read(period);
+        data = await source.read(period, lag === undefined ? undefined : addDays(period.end, -lag));
       } catch (err) {
         this.failures.delete(key);
         this.failures.set(key, { at: now.getTime(), error: err });
@@ -74,6 +79,12 @@ export class SearchPerformance {
       }
       this.failures.delete(key);
       const { period: shown, ...figures } = data;
+      this.lags.delete(site);
+      this.lags.set(site, daysBefore(period.end, shown.end));
+      for (const old of this.lags.keys()) {
+        if (this.lags.size <= (this.deps.maxEntries ?? MAX_ENTRIES)) break;
+        this.lags.delete(old);
+      }
       const view: SearchPerformanceView = {
         service,
         siteUrl: source.siteUrl,

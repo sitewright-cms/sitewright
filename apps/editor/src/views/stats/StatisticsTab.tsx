@@ -5,7 +5,7 @@ import { api, type Project } from '../../api';
 import { accentChip, glassCard } from '../../theme';
 import { Tabs } from '../ui/Tabs';
 import { RankingsView } from './RankingsView';
-import { SearchPerformanceView } from './SearchPerformanceView';
+import { SEARCH_PERFORMANCE_DEFAULT_DAYS, SearchPerformanceView } from './SearchPerformanceView';
 import { StatsView } from './StatsView';
 
 type View = 'visits' | 'rankings' | 'search';
@@ -57,7 +57,12 @@ export function StatisticsTab({
     void Promise.resolve()
       .then(() => api.getSearchPerformanceAvailability(project.id))
       .then((r) => {
-        if (live) setSearch(r.services);
+        if (!live) return;
+        setSearch(r.services);
+        // Ask for the numbers Search performance opens on now, while the visits show: the search engines take a second
+        // or two, and the server keeps the answer (and joins a read already under way), so the view finds it ready.
+        const first = r.services[0];
+        if (first) void api.getSearchPerformance(project.id, first, SEARCH_PERFORMANCE_DEFAULT_DAYS).catch(() => undefined);
       })
       .catch(() => undefined);
     return () => {

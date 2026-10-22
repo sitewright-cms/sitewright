@@ -434,6 +434,7 @@ import { WebmasterRepository } from '../webmaster/repo.js';
 import { registerSiteRegistrationRoutes, registerWebmasterRoutes } from '../webmaster/routes.js';
 import { registerSearchPerformanceRoutes } from '../webmaster/performance-routes.js';
 import { SearchPerformance } from '../webmaster/performance.js';
+import { AccessTokens } from '../webmaster/request.js';
 import { SiteRegistrar } from '../webmaster/sites.js';
 import { registerRankRoutes } from '../rank/routes.js';
 import { RankTracker } from '../rank/tracker.js';
@@ -9037,15 +9038,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // them (webmaster/sites.ts): staff switch each search engine on and verify from the Search engines tile, and every
   // build carries the tags of the switched-on ones. Declared before the builds that read them.
   const webmasterRepo = new WebmasterRepository(db, opts.encryptionKey);
+  // One store of access tokens for the verification steps and the statistics reads alike (a Google token lasts an hour).
+  const webmasterTokens = new AccessTokens();
   const webmasterIo = {
     fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 1024 * 1024, timeoutMs: 20_000 }),
     timeoutMs: 20_000,
+    tokens: webmasterTokens,
   };
   const siteRegistrar = new SiteRegistrar({
     db,
     accounts: webmasterRepo,
     io: webmasterIo,
-    dataIo: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 8 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000 },
+    dataIo: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 8 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000, tokens: webmasterTokens },
     log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
   });
 

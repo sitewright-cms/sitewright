@@ -90,8 +90,38 @@ export function signedAssertion(key: GoogleServiceAccountKey, now: Date): string
   return `${header}.${claims}.${b64url(signature)}`;
 }
 
-/** Trades the key for an access token. */
-export async function googleAccessToken(key: GoogleServiceAccountKey, io: WebmasterIo, now = new Date()): Promise<string> {
+/** Stop using a token this long before Google's expiry: a call that starts with it still has time to finish. */
+const TOKEN_EARLY_MS = 5 * 60_000;
+
+/**
+ * An access token for the key: the one `io.tokens` keeps for it while it is good, else a new one. `fresh` always
+ * trades the key (Test saved credentials proves the key, not a token from before).
+ */
+export async function googleAccessToken(key: GoogleServiceAccountKey, io: WebmasterIo, now = new Date(), { fresh = false } = {}): Promise<string> {
+  if (!io.tokens || fresh) return (await tradeKey(key, io, now)).token;
+  // The key id too: a new key for the same service account is a new account here. A shared trade is not cut short by
+  // the step that happened to start it: others wait for it too (a step past its deadline still stops at its next call).
+  const shared: WebmasterIo = { fetch: io.fetch, ...(io.timeoutMs !== undefined ? { timeoutMs: io.timeoutMs } : {}) };
+  return io.tokens.get(`google\n${key.clientEmail}\n${key.privateKeyId}`, now.getTime(), () => tradeKey(key, shared, now));
+}
+
+/**
+ * One request with `token`. A kept token Google refuses (401) is dropped by `requestJson`; the request is then sent
+ * once more with a newly traded one, so an early-revoked token costs a retry rather than a failed read.
+ */
+async function sendRetryingRefused(
+  key: GoogleServiceAccountKey,
+  io: WebmasterIo,
+  now: Date,
+  token: string,
+  send: (token: string) => Promise<{ status: number; json: unknown }>,
+): Promise<{ status: number; json: unknown }> {
+  const first = await send(token);
+  return first.status === 401 && io.tokens ? send(await googleAccessToken(key, io, now)) : first;
+}
+
+/** Trades the key for an access token, and how long it may be used. */
+async function tradeKey(key: GoogleServiceAccountKey, io: WebmasterIo, now: Date): Promise<{ token: string; ttlMs: number }> {
   const body = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedAssertion(key, now) });
   const { status, json } = await requestJson(
     SERVICE,
@@ -99,7 +129,11 @@ export async function googleAccessToken(key: GoogleServiceAccountKey, io: Webmas
     { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' }, body: body.toString() },
     io,
   );
-  if (status === 200 && isRecord(json) && typeof json.access_token === 'string' && json.access_token) return json.access_token;
+  if (status === 200 && isRecord(json) && typeof json.access_token === 'string' && json.access_token) {
+    // Google says how long (3599 s); never longer than the assertion asked for.
+    const lifeS = typeof json.expires_in === 'number' && Number.isFinite(json.expires_in) ? Math.min(json.expires_in, TOKEN_LIFETIME_S) : TOKEN_LIFETIME_S;
+    return { token: json.access_token, ttlMs: Math.max(0, lifeS * 1000 - TOKEN_EARLY_MS) };
+  }
   if (status === 429) throw new WebmasterError('Google is limiting requests; try again in a minute', 'rate');
   if (status >= 500) throw new WebmasterError(`Google is unavailable (HTTP ${status})`, 'unavailable');
   if (status === 200) throw new WebmasterError('Google sent a token reply the platform could not read', 'unavailable');
@@ -186,7 +220,7 @@ const count = (v: unknown): number => (Array.isArray(v) ? v.filter(isRecord).len
  * in its Search Console. Reads only.
  */
 export async function testGoogle(key: GoogleServiceAccountKey, io: WebmasterIo, now = new Date()): Promise<string> {
-  const token = await googleAccessToken(key, io, now);
+  const token = await googleAccessToken(key, io, now, { fresh: true });
   const verified = await callApi(SITE_VERIFICATION_LIST, token, SITE_VERIFICATION, key.projectId, io);
   const sites = await callApi(SEARCH_CONSOLE_SITES, token, SEARCH_CONSOLE, key.projectId, io);
   const v = count(verified.items);
@@ -405,15 +439,17 @@ export async function googleSearchAnalytics(
   const token = await googleAccessToken(key, io, now);
   return Promise.all(
     queries.map(async (q) => {
-      const { status, json } = await requestJson(
-        SERVICE,
-        `${searchConsoleSite(siteUrl)}/searchAnalytics/query`,
-        {
-          method: 'POST',
-          headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
-          body: JSON.stringify({ ...q, dimensions: q.dimensions ?? [], type: 'web', dataState: 'all' }),
-        },
-        io,
+      const { status, json } = await sendRetryingRefused(key, io, now, token, (bearer) =>
+        requestJson(
+          SERVICE,
+          `${searchConsoleSite(siteUrl)}/searchAnalytics/query`,
+          {
+            method: 'POST',
+            headers: { authorization: `Bearer ${bearer}`, accept: 'application/json', 'content-type': 'application/json' },
+            body: JSON.stringify({ ...q, dimensions: q.dimensions ?? [], type: 'web', dataState: 'all' }),
+          },
+          io,
+        ),
       );
       if (isNotTheSitesOwner(status, json)) throw new WebmasterError(`${siteUrl} is not in the platform's Search Console: verify the site again`, 'unverified');
       if (status !== 200 || !isRecord(json)) return apiFailure(status, json, SEARCH_CONSOLE, key.projectId);

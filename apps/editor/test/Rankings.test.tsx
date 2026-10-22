@@ -131,9 +131,24 @@ describe('the Statistics tab', () => {
     render(<StatisticsTab project={project} />);
     const bar = await screen.findByRole('tablist', { name: 'Statistics' });
     await waitFor(() => expect(within(bar).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Visits', 'Search rankings', 'Search performance']));
+    // Asked for ahead, while the visits show: the view it opens on is ready (or on its way) when it is opened.
+    await waitFor(() => expect(api.getSearchPerformance).toHaveBeenCalledWith('p1', 'bing', 28));
+    expect(screen.queryByRole('heading', { name: 'Search performance' })).toBeNull();
     fireEvent.click(within(bar).getByRole('tab', { name: /Search performance/ }));
     expect(await screen.findByRole('heading', { name: 'Search performance' })).toBeInTheDocument();
     await waitFor(() => expect(api.getSearchPerformance).toHaveBeenCalledWith('p1', 'bing', 28));
+  });
+
+  it('a search engine that refuses the numbers asked ahead changes nothing until the view is opened', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    api.getSearchPerformanceAvailability.mockResolvedValue({ services: ['google'] });
+    api.getSearchPerformance.mockRejectedValue(new Error('Google is limiting requests; try again in a minute'));
+    render(<StatisticsTab project={project} />);
+    const bar = await screen.findByRole('tablist', { name: 'Statistics' });
+    await waitFor(() => expect(api.getSearchPerformance).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).toBeNull(); // the visits are not interrupted by it
+    fireEvent.click(within(bar).getByRole('tab', { name: /Search performance/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Google is limiting requests');
   });
 
   it('without the visit counter (a client, statistics off) the rankings are the whole tab', async () => {

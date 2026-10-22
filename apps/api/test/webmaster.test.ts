@@ -14,7 +14,7 @@ import {
   parseGoogleKey,
   testGoogle,
 } from '../src/webmaster/google.js';
-import { WebmasterError, type WebmasterIo } from '../src/webmaster/request.js';
+import { AccessTokens, requestJson, WebmasterError, type WebmasterIo } from '../src/webmaster/request.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
 /**
@@ -146,6 +146,96 @@ describe('googleAccessToken', () => {
       },
     };
     await expectRefusal(googleAccessToken(parseGoogleKey(keyFile()), io), 'unavailable', /^Google could not be reached$/);
+  });
+});
+
+describe('access tokens kept between calls', () => {
+  const key = parseGoogleKey(keyFile());
+  const T0 = new Date('2026-10-21T10:00:00Z');
+  const at = (ms: number) => new Date(T0.getTime() + ms);
+  /** Google hands out ya29.1, ya29.2, …; Search Console answers `site` (401 for a token in `refused`). */
+  function google(refused: string[] = []) {
+    let n = 0;
+    const { io, calls } = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return { status: 200, body: { access_token: `ya29.${++n}`, expires_in: 3599 } };
+      const bearer = call.headers.authorization?.slice('Bearer '.length) ?? '';
+      return refused.includes(bearer) ? { status: 401, body: { error: { code: 401 } } } : { status: 200, body: { siteEntry: [] } };
+    });
+    return { io: { ...io, tokens: new AccessTokens() }, calls, traded: () => calls.filter((c) => c.url === GOOGLE_TOKEN_URL).length };
+  }
+
+  it('trades the key once for every call within the hour, and once for calls that arrive together', async () => {
+    const { io, traded } = google();
+    const [a, b] = await Promise.all([googleAccessToken(key, io, T0), googleAccessToken(key, io, T0)]);
+    expect([a, b]).toEqual(['ya29.1', 'ya29.1']);
+    expect(await googleAccessToken(key, io, at(54 * 60_000))).toBe('ya29.1');
+    expect(traded()).toBe(1);
+    // Five minutes before Google's expiry a new one is fetched: a call that starts with it still has time.
+    expect(await googleAccessToken(key, io, at(55 * 60_000))).toBe('ya29.2');
+    expect(traded()).toBe(2);
+  });
+
+  it('keeps a token per service account AND key: a new key is asked for its own', async () => {
+    const { io, traded } = google();
+    await googleAccessToken(key, io, T0);
+    await googleAccessToken({ ...key, privateKeyId: 'ffffffffffffffffffffffffffffffffffffffff' }, io, T0);
+    expect(traded()).toBe(2);
+  });
+
+  it('does not keep a refused trade: the next call asks again', async () => {
+    let fail = true;
+    const { io, calls } = fake(() => (fail ? { status: 503, body: {} } : { status: 200, body: { access_token: 'ya29.ok', expires_in: 3599 } }));
+    const kept = { ...io, tokens: new AccessTokens() };
+    await expectRefusal(googleAccessToken(key, kept, T0), 'unavailable', /unavailable/);
+    fail = false;
+    expect(await googleAccessToken(key, kept, T0)).toBe('ya29.ok');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('drops a token an API refused with 401, so the next call trades the key again', async () => {
+    const { io, traded } = google(['ya29.1']);
+    const sites = (token: string) => requestJson('Google', 'https://www.googleapis.com/webmasters/v3/sites', { method: 'GET', headers: { authorization: `Bearer ${token}` } }, io);
+    expect(await googleAccessToken(key, io, T0)).toBe('ya29.1');
+    expect((await sites('ya29.1')).status).toBe(401);
+    expect(await googleAccessToken(key, io, T0)).toBe('ya29.2');
+    expect((await sites('ya29.2')).status).toBe(200);
+    expect(await googleAccessToken(key, io, T0)).toBe('ya29.2'); // a good one stays
+    expect(traded()).toBe(2);
+  });
+
+  it('a read refused for a kept token is sent again with a new one, and succeeds', async () => {
+    const { io, calls, traded } = google(['ya29.1']);
+    expect(await googleAccessToken(key, io, T0)).toBe('ya29.1'); // kept from an earlier call; Google has since refused it
+    const q = { startDate: '2026-10-01', endDate: '2026-10-07', rowLimit: 5 };
+    await expect(googleSearchAnalytics(key, 'https://www.example.com/', [q, { ...q, dimensions: ['query'] }], io, T0)).resolves.toHaveLength(2);
+    expect(traded()).toBe(2); // the two parallel queries shared one new trade
+    const reads = calls.filter((c) => c.url.endsWith('/searchAnalytics/query')).map((c) => c.headers.authorization);
+    expect(reads.sort()).toEqual(['Bearer ya29.1', 'Bearer ya29.1', 'Bearer ya29.2', 'Bearer ya29.2']);
+  });
+
+  it('a shared trade is not cut short by the deadline of the step that started it', async () => {
+    const { io, traded } = google();
+    const late = { ...io, deadline: Date.now() - 1 }; // a step already past its deadline
+    expect(await googleAccessToken(key, late, T0)).toBe('ya29.1');
+    expect(await googleAccessToken(key, io, T0)).toBe('ya29.1');
+    expect(traded()).toBe(1);
+  });
+
+  it('Test saved credentials always trades the key, and keeps nothing', async () => {
+    const { io, traded } = google();
+    await testGoogle(key, io, T0);
+    await testGoogle(key, io, T0);
+    expect(traded()).toBe(2);
+  });
+
+  it('keeps a bounded number of accounts', async () => {
+    const tokens = new AccessTokens(2);
+    const fetch = (t: string) => async () => ({ token: t, ttlMs: 60_000 });
+    await tokens.get('a', 0, fetch('A'));
+    await tokens.get('b', 0, fetch('B'));
+    await tokens.get('c', 0, fetch('C'));
+    expect(await tokens.get('a', 0, fetch('A2'))).toBe('A2'); // the oldest went
+    expect(await tokens.get('c', 0, fetch('C2'))).toBe('C');
   });
 });
 

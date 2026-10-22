@@ -30,7 +30,7 @@ const BING_KEY = '0123456789abcdef0123456789abcdef';
 const SITE = 'https://perfsite.sites.test/';
 const slug = 'perfsite';
 
-let engines: { googleDown: boolean; bingSites: string[]; analytics: Array<Record<string, unknown>>; calls: string[] };
+let engines: { googleDown: boolean; bingDown?: boolean; bingSites: string[]; analytics: Array<Record<string, unknown>>; calls: string[] };
 
 /** Midnight Pacific of `day`, as Bing writes it. */
 const bingDate = (day: string): string => `/Date(${Date.parse(`${day}T07:00:00Z`)}-0700)/`;
@@ -68,6 +68,7 @@ const fakeEngines: FetchLike = async (url, init) => {
     return answer(200, { d: null });
   }
   if (path.endsWith('/VerifySite')) return answer(200, { d: true });
+  if (engines.bingDown && /\/Get(RankAndTrafficStats|QueryStats|PageStats)$/.test(path)) return answer(503, {});
   if (path.endsWith('/GetRankAndTrafficStats')) return answer(200, { d: [{ Date: bingDate(daysAgo(2)), Clicks: 5, Impressions: 70 }] });
   if (path.endsWith('/GetQueryStats')) return answer(200, { d: [{ Date: bingDate(daysAgo(2)), Query: 'roof repair', Clicks: 5, Impressions: 70, AvgClickPosition: 2, AvgImpressionPosition: 3 }] });
   if (path.endsWith('/GetPageStats')) return answer(200, { d: [] });
@@ -135,11 +136,40 @@ describe('search performance', () => {
       pages: [{ key: `${SITE}services/`, clicks: 3 }],
     });
     expect(view.daily.at(-1)).toEqual({ date: daysAgo(3), clicks: 4, impressions: 80 });
-    expect(engines.analytics.map((q) => q.dimensions)).toEqual([['date'], ['query'], ['page']]);
+    // Nothing known about the site yet: the searches and pages were asked WITH the days, for the week ending yesterday;
+    // Google's newest day said otherwise, so they were asked again for the week ending three days ago.
+    expect(engines.analytics.map((q) => q.dimensions)).toEqual([['date'], ['query'], ['page'], ['query'], ['page']]);
     expect(engines.analytics[0]).toMatchObject({ type: 'web', dataState: 'all', startDate: daysAgo(16), endDate: today });
-    expect(engines.analytics[1]).toMatchObject({ startDate: daysAgo(9), endDate: daysAgo(3) });
+    expect(engines.analytics[1]).toMatchObject({ startDate: daysAgo(7), endDate: daysAgo(1) });
+    expect(engines.analytics[3]).toMatchObject({ startDate: daysAgo(9), endDate: daysAgo(3) });
     await read('google', 7);
-    expect(engines.analytics).toHaveLength(3);
+    expect(engines.analytics).toHaveLength(5);
+    // The next period knows where this site's days end: everything in one round.
+    expect((await read('google', 28)).json()).toMatchObject({ period: { days: 28, start: daysAgo(30), end: daysAgo(3) } });
+    expect(engines.analytics.slice(5).map((q) => [q.dimensions, q.startDate, q.endDate])).toEqual([
+      [['date'], daysAgo(58), today],
+      [['query'], daysAgo(30), daysAgo(3)],
+      [['page'], daysAgo(30), daysAgo(3)],
+    ]);
+    // One token for the verification and every read since: it lasts an hour.
+    expect(engines.calls.filter((c) => c === 'POST https://oauth2.googleapis.com/token')).toHaveLength(1);
+  });
+
+  it('does not keep a Bing answer that failed: the next period asks again', async () => {
+    await verifyBoth();
+    engines.bingDown = true;
+    expect((await read('bing', 7)).statusCode).toBe(502);
+    engines.bingDown = false;
+    expect((await read('bing', 28)).statusCode).toBe(200);
+  });
+
+  it('reads Bing once for every period: Bing answers with the whole history', async () => {
+    await verifyBoth();
+    const asked = () => engines.calls.filter((c) => c.endsWith('/GetQueryStats')).length;
+    expect((await read('bing', 7)).statusCode).toBe(200);
+    expect((await read('bing', 28)).statusCode).toBe(200);
+    expect((await read('bing', 90)).statusCode).toBe(200);
+    expect(asked()).toBe(1);
   });
 
   it('reads Bing’s, which have no overall position', async () => {

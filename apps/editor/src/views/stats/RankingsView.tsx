@@ -7,7 +7,8 @@ import { Tooltip } from '../ui/Tooltip';
 import { Panel } from './Breakdowns';
 import { RankChart, RankSparkline, positionText } from './RankChart';
 import { ManageKeywords } from './ManageKeywords';
-import { RankSettingsForm, placeLabel } from './RankSetup';
+import { placeLabel } from './PlacePicker';
+import { RankSettingsForm } from './RankSetup';
 import { longDay, rangeDays, type StatsRangeId } from './format';
 
 /**

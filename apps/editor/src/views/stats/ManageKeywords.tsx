@@ -6,7 +6,8 @@ import { dangerButton, ghostButton, glassInput } from '../../theme';
 import { useDialogs } from '../ui/Dialogs';
 import { SectionHelp } from '../ui/SectionHelp';
 import { Tooltip } from '../ui/Tooltip';
-import { AddKeywordsForm, placeLabel } from './RankSetup';
+import { placeLabel } from './PlacePicker';
+import { AddKeywordsForm } from './RankSetup';
 
 /**
  * MANAGE KEYWORDS — the one place a keyword's lifecycle happens: adding it, pausing and resuming it, removing it

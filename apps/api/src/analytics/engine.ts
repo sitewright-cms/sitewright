@@ -38,6 +38,8 @@ import { statsProjectKey } from './token.js';
 export const FLUSH_MS = 60_000;
 /** The orphan reap refuses to delete more sites than this AND more than half of them in one pass. */
 const MASS_REAP_FLOOR = 3;
+/** Purges held in memory because the statistics file could not record them (see {@link StatsEngine.forget}). */
+const PURGED_IN_MEMORY_MAX = 10_000;
 
 export interface StatsLimits {
   /** Distinct counter rows held between flushes, across all sites. */
@@ -50,6 +52,8 @@ export interface StatsLimits {
   seenIdsPerSite: number;
   /** Distinct referring hosts / campaigns named per site per day; the rest are counted under their kind alone. */
   sourceHosts: number;
+  /** …and across all sites (each name is up to 253 characters, remembered until midnight). */
+  sourceHostsTotal: number;
 }
 
 export const DEFAULT_STATS_LIMITS: StatsLimits = {
@@ -58,6 +62,7 @@ export const DEFAULT_STATS_LIMITS: StatsLimits = {
   seenIds: 1_000_000,
   seenIdsPerSite: 250_000,
   sourceHosts: 500,
+  sourceHostsTotal: 100_000,
 };
 
 export interface StatsHit {
@@ -126,6 +131,9 @@ export class StatsEngine {
   private seen = new Map<string, Set<number>>();
   private seenCount = 0;
   private sourceHosts = new Map<string, Set<string>>();
+  private sourceHostCount = 0;
+  /** Purges the store could not record; the next sweep finishes them all the same. */
+  private purgedInMemory = new Set<string>();
   private prunedFor = '';
   private dropped = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -211,6 +219,7 @@ export class StatsEngine {
       this.seen = new Map();
       this.seenCount = 0;
       this.sourceHosts = new Map();
+      this.sourceHostCount = 0;
     }
     return day;
   }
@@ -283,8 +292,12 @@ export class StatsEngine {
     // A site's list of referrers is a long tail; past the cap the visit still counts, under its kind alone.
     let host = rawHost;
     if (rawHost && !hosts.has(named)) {
-      if (hosts.size >= this.limits.sourceHosts) host = '';
-      else hosts.add(named);
+      if (hosts.size >= this.limits.sourceHosts || this.sourceHostCount >= this.limits.sourceHostsTotal) {
+        host = '';
+      } else {
+        hosts.add(named);
+        this.sourceHostCount++;
+      }
     }
     this.bump(
       this.pending.sources,
@@ -428,6 +441,9 @@ export class StatsEngine {
       });
     }
     for (const [key, row] of batch.seen) {
+      // Only TODAY's ids are worth retrying: an earlier day's are of no use once it is over (the prune deletes
+      // them), and keeping them would let a store that fails for days pile up a day's worth of ids per day.
+      if (row.day !== this.day) continue;
       const fresh = this.pending.seen.get(key);
       this.pending.seen.set(key, fresh ? { ...row, ids: [...row.ids, ...fresh.ids] } : row);
     }
@@ -477,9 +493,26 @@ export class StatsEngine {
     return run;
   }
 
-  /** Forgets a project entirely (it was deleted for good), and gives its space back. */
+  /**
+   * Forgets a project entirely (it was deleted for good), and gives its space back.
+   *
+   * ★ The purge is RECORDED first (in the statistics file; in memory when that cannot be written), and the record
+   * stays until a {@link reapOrphans} pass finds none of its statistics left. So a delete that fails here —
+   * or a visit that was already past its checks when the project went and lands a row afterwards — is finished by
+   * the sweep, whatever its brake says: the brake is for sites that vanished with no purge on record.
+   */
   async forget(projectId: string): Promise<void> {
     await this.exclusive(async () => {
+      try {
+        await this.store.markPurged(projectId, this.now());
+      } catch (err) {
+        if (this.purgedInMemory.size < PURGED_IN_MEMORY_MAX) {
+          this.log('statistics: could not record a purge in the statistics file — retrying it from memory until a restart', err);
+          this.purgedInMemory.add(projectId);
+        } else {
+          this.log('statistics: could not record a purge, and too many are waiting in memory — its statistics are left to the orphan sweep', err);
+        }
+      }
       await this.flushNow();
       this.dropFromMemory(projectId);
       await this.store.forget(projectId);
@@ -490,40 +523,65 @@ export class StatsEngine {
   private dropFromMemory(projectId: string): void {
     this.seenCount -= this.seen.get(projectId)?.size ?? 0;
     this.seen.delete(projectId);
+    this.sourceHostCount -= this.sourceHosts.get(projectId)?.size ?? 0;
     this.sourceHosts.delete(projectId);
   }
 
   /**
    * Deletes the statistics of every project that no longer exists — the reconciliation behind {@link forget}.
-   * A permanent delete forgets its project directly, but that cleanup can fail, and a beacon already past its
-   * checks when the project went can still land a row afterwards. Without this those rows would linger until the
-   * 25-month retention reached them. `exists` answers which ids still exist (soft-deleted ones included: they can
-   * be restored). Returns the ids it removed.
+   * `exists` answers which ids still exist (soft-deleted ones included: they can be restored). Returns the ids
+   * whose statistics it removed.
+   *
+   * Two kinds of leftovers, treated differently:
+   *  - PURGED projects (on record from {@link forget}): always forgotten; the record goes once a pass finds nothing
+   *    left. A failed delete, or a row that landed after it, is finished here however many sites went at once.
+   *  - UNEXPLAINED ones (statistics of a project the database does not know, with no purge on record — say a
+   *    beacon that landed after a restart lost an in-memory record): forgotten too, but behind the brake below.
+   * Without this, either would linger until the 25-month retention reached it.
    */
   async reapOrphans(exists: (ids: string[]) => Promise<ReadonlySet<string>>): Promise<string[]> {
     if (this.closing) return [];
     return this.exclusive(async () => {
       await this.flushNow();
       const ids = await this.store.projectIds();
-      if (ids.length === 0) return [];
-      const live = await exists(ids);
-      const gone = ids.filter((id) => !live.has(id));
+      const purged = [...new Set([...(await this.store.purgedIds()), ...this.purgedInMemory])];
+      if (ids.length === 0 && purged.length === 0) return [];
+      const live = await exists([...new Set([...ids, ...purged])]);
+      const stored = new Set(ids);
+      const removed: string[] = [];
+      for (const id of purged) {
+        // The record is dropped only by a pass that finds NOTHING left — so a visit that lands a row just after the
+        // pass that deleted the others is deleted by the next one — or when the project exists again (a main
+        // database restored from before the purge), which keeps what it has.
+        if (!live.has(id) && stored.has(id)) {
+          this.dropFromMemory(id);
+          await this.store.forget(id);
+          removed.push(id);
+          continue;
+        }
+        await this.store.unmarkPurged(id);
+        this.purgedInMemory.delete(id);
+      }
+      const onRecord = new Set(purged);
+      const rest = ids.filter((id) => !onRecord.has(id));
+      const gone = rest.filter((id) => !live.has(id));
       // ★ A sanity brake. Statistics live in their own file, so they can outlive the database they belong to: a
       // main database restored from an old backup, or a data directory pointed at another one, would make most
-      // sites look deleted at once — and this would erase their history for good. A real deletion arrives one
-      // project at a time (and is forgotten directly); most of the set vanishing at once is the other thing.
-      if (gone.length > Math.max(MASS_REAP_FLOOR, ids.length / 2)) {
+      // sites look deleted at once — and this would erase their history for good. A real deletion is on record
+      // (above); most of the REST vanishing at once is the other thing.
+      if (gone.length > Math.max(MASS_REAP_FLOOR, rest.length / 2)) {
         this.log(
-          `statistics: ${gone.length} of ${ids.length} sites with statistics are missing from the database — NOT deleting their statistics. If those projects really are gone, delete analytics.db or remove them one by one.`,
+          `statistics: ${gone.length} of ${rest.length} sites with statistics are missing from the database — NOT deleting their statistics. If those projects really are gone, delete analytics.db or remove them one by one.`,
         );
-        return [];
+      } else {
+        for (const id of gone) {
+          this.dropFromMemory(id);
+          await this.store.forget(id);
+          removed.push(id);
+        }
       }
-      for (const id of gone) {
-        this.dropFromMemory(id);
-        await this.store.forget(id);
-      }
-      if (gone.length) await this.compactQuietly();
-      return gone;
+      if (removed.length) await this.compactQuietly();
+      return removed;
     });
   }
 }

@@ -373,6 +373,7 @@ import {
   SETTINGS_ENTITY_ID,
   contentVersion,
   VersionConflictError,
+  type ImportBundleOptions,
   type Settings,
 } from '../repo/content.js';
 import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
@@ -2866,6 +2867,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (statisticsSwitchedOn(stored, next) && (await getPlatformRole(db, ctx.userId)) === null) {
       throw new ForbiddenError('only agency staff (an admin or a developer) can turn the built-in statistics on');
     }
+  }
+
+  /**
+   * The {@link guardContentWrite} rule for a bundle IMPORT, which writes the settings without passing through it.
+   * Rather than refuse a whole import over one setting, a non-staff caller's import leaves `website.statistics` as
+   * it is stored (on or off), whatever the bundle says; staff import it as before. `ctx.userId` is the human
+   * behind an agent token, as for a content write.
+   */
+  async function importOptionsFor(ctx: ProjectContext): Promise<ImportBundleOptions> {
+    return (await getPlatformRole(db, ctx.userId)) === null ? { keepStoredWebsite: ['statistics'] } : {};
   }
 
   async function requireInstanceAdmin(req: FastifyRequest): Promise<string> {
@@ -5784,7 +5795,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             await creator.settle(project.id);
             const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
             onProgress({ phase: 'content', detail: 'importing content' });
-            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
+            // A creator is staff today; the rule is applied anyway, so a looser creator gate cannot reopen it.
+            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten, await importOptionsFor(ownerCtx));
             onProgress({ phase: 'media', detail: 'restoring media' });
             const media = await extractProjectMedia(
               parsed.zip,
@@ -5847,7 +5859,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Inside the rollback: a creation that cannot be recorded must not leave a project behind.
           await creator.settle(project.id);
           const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
-          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
+          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug), await importOptionsFor(ownerCtx));
           if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
           return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
         } catch (err) {
@@ -5869,7 +5881,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
-      return reply.send(await contentRepo.importBundle(ctx, project, req.body));
+      return reply.send(await contentRepo.importBundle(ctx, project, req.body, await importOptionsFor(ctx)));
     },
   );
 
@@ -7536,6 +7548,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerImportRoutes(app, {
       resolveProject,
       contentRepo,
+      importOptions: importOptionsFor,
       createMediaAsset,
       // Self-host an imported SVG as a sanitized, verbatim VECTOR image (kept animated + scalable).
       createSvgAsset: async (ctx, slug, svgText, meta) => {

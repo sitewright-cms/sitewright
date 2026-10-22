@@ -18,7 +18,7 @@ import { downloadGoogleFont } from '../fonts/service.js';
 import { isGoogleFamily } from '@sitewright/blocks/google-fonts-catalog';
 import type { ReferencePage, CaptureRefsResult } from '../render/source-ref.js';
 import type { ProjectContext } from '../repo/context.js';
-import type { ContentRepository } from '../repo/content.js';
+import type { ContentRepository, ImportBundleOptions } from '../repo/content.js';
 import { abortOnClose } from './abort-on-close.js';
 
 const MAX_CONCURRENT_IMPORTS = 2;
@@ -218,6 +218,11 @@ export interface ImportRouteDeps {
     onProgress: (e: unknown) => void,
     signal: AbortSignal,
   ) => Promise<CaptureRefsResult>;
+  /**
+   * What this caller's import must leave as stored (a non-staff caller cannot change the built-in statistics
+   * by any route). Omit to import the bundle whole.
+   */
+  importOptions?: (ctx: ProjectContext) => Promise<ImportBundleOptions>;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -490,7 +495,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     }
     assertNoScripts(bundle);
     onProgress({ phase: 'assemble', detail: 'saving content' });
-    await contentRepo.importBundle(ctx, project, toImportInput(bundle));
+    await contentRepo.importBundle(ctx, project, toImportInput(bundle), (await deps.importOptions?.(ctx)) ?? {});
     const report = buildReport(site, result, extra);
     // FOUNDATION (AI-clone) only: cache each page's live-source screenshot so compare_to_source has a
     // stable reference from import time. Best-effort — a failure never fails the import.

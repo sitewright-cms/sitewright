@@ -1,9 +1,12 @@
 # Built-in statistics
 
-Sitewright can count a site's visits itself — no third-party tool, no cookie, no consent-manager entry. An owner
-switches it on per site in **Website Settings → Analytics** (`website.statistics.enabled`); the numbers are in the
-project's **Statistics** tab and, for agents, the `get_site_stats` MCP tool. It works for every deploy target:
-local hosting, and sites uploaded by FTP, SFTP or git.
+Sitewright can count a site's visits itself — no third-party tool, no cookie, no consent-manager entry. Agency
+staff (an admin or a developer) switch it on per site in **Website Settings → Analytics**
+(`website.statistics.enabled`); anyone who can edit the settings can switch it off. Every route that writes the
+settings holds to that: a settings save, a revision restore, and an import — a project bundle or a website import
+by anyone else leaves the setting as it was. The numbers are in the project's **Statistics** tab and, for agents,
+the `get_site_stats` MCP tool. It works for every deploy target: local hosting, and sites uploaded by FTP, SFTP
+or git.
 
 ## What it counts
 
@@ -68,8 +71,8 @@ should mention it either way.
 The collector is a public endpoint and every published page carries a valid beacon, so anyone can replay one —
 inflating a real page's count, or filling the day's list of named referrers and campaigns with junk (the rest
 are then counted under their kind alone). It is rate-limited per IP address, it cannot be made to invent pages
-(routes are signed), and every structure it fills is capped per site, so one site under attack never costs
-another site its accuracy. It is a visit counter, not an audit log.
+(routes are signed), and every structure it fills is capped per site and in all, so one site under attack never
+costs another site its accuracy, and an attack on many sites never costs unbounded memory. It is a visit counter, not an audit log.
 
 ## Cost
 
@@ -94,11 +97,15 @@ another site its accuracy. It is a visit counter, not an audit log.
     nothing.
   - A soft-deleted project stops counting too, even if a copy of its pages on another host still beacons,
     and keeps its numbers for a restore.
-  - The permanent delete removes them.
-  - An hourly sweep, alongside the other maintenance sweeps, also removes statistics that no existing
-    project owns, such as a delete whose own cleanup failed, or a beacon that landed just after it.
-  - The sweep refuses to delete most sites at once and logs instead: statistics live in their own file, and a
-    main database restored from an old backup would otherwise make every newer site look deleted.
+  - The permanent delete removes them. It first records the project in `analytics.db` (in memory when the file
+    cannot be written), and an hourly sweep, alongside the other maintenance sweeps, deletes the statistics of
+    every recorded project; the record goes once a sweep finds nothing left. So a delete whose own cleanup
+    failed, or a beacon that landed just after it, is finished by the next sweep, however many projects were
+    deleted at once. A recorded project that exists again (a main database restored from before the delete)
+    keeps its statistics.
+  - The same sweep removes statistics that no existing project owns and no delete recorded. It refuses to
+    delete most of those sites at once and logs instead: statistics live in their own file, and a main
+    database restored from an old backup would otherwise make every newer site look deleted.
   - Everything older than 25 months is pruned daily, along with the previous days' salts and visitor ids.
   - Freed space goes back to the filesystem: the file uses incremental auto-vacuum, run in small steps after
     every prune and delete. An older file converts once at startup if it is small; a large one keeps working

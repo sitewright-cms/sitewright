@@ -39,6 +39,10 @@ const SCHEMA = [
   // restart — clean or not — does not count everyone twice. Dropped once the day is over.
   `CREATE TABLE IF NOT EXISTS seen (project TEXT NOT NULL, day TEXT NOT NULL, ids BLOB NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS seen_by_day ON seen (day, project)`,
+  // Projects deleted FOR GOOD whose statistics must go: written before those statistics are deleted, removed by
+  // the hourly sweep once they are. A failed delete is retried from here — never left to the orphan sweep's
+  // brake, which cannot tell a purge from a main database restored from an old backup.
+  `CREATE TABLE IF NOT EXISTS purged (project TEXT PRIMARY KEY, at TEXT NOT NULL) WITHOUT ROWID`,
 ];
 
 const DATA_TABLES = ['traffic', 'pages', 'sources', 'goals'] as const;
@@ -47,12 +51,19 @@ const DATA_TABLES = ['traffic', 'pages', 'sources', 'goals'] as const;
 const CONVERT_MAX_BYTES = 64 * 1024 * 1024;
 /** Pages handed back per step of compact() (4 KB pages: 2 MB a step). */
 const COMPACT_STEP_PAGES = 512;
+/**
+ * Purges remembered at most (see the `purged` table). The sweep empties the table every hour, so it only fills
+ * while every delete keeps failing; past this the OLDEST go, and their statistics are left to the orphan sweep.
+ */
+export const PURGED_MAX = 10_000;
 
 export interface StatsStoreOptions {
   /** Hears about problems that are not worth failing over (an unconverted file). */
   log?: (message: string, err?: unknown) => void;
   /** Override for {@link CONVERT_MAX_BYTES} (tests). */
   convertMaxBytes?: number;
+  /** Override for {@link PURGED_MAX} (tests). */
+  purgedMax?: number;
 }
 
 export interface TrafficRow { project: string; day: string; cls: StatsClass; device: StatsDevice | ''; country: string; views: number; visitors: number }
@@ -87,7 +98,10 @@ const COUNTRY_LIMIT = 300;
 export const CSV_ROW_LIMIT = 100_000;
 
 export class StatsStore {
-  private constructor(private readonly client: Client) {}
+  private constructor(
+    private readonly client: Client,
+    private readonly purgedMax: number,
+  ) {}
 
   /** Opens (creating when absent) the statistics database at a libsql URL — `:memory:` for tests. */
   static async open(url: string, opts: StatsStoreOptions = {}): Promise<StatsStore> {
@@ -116,7 +130,7 @@ export class StatsStore {
         }
       }
     }
-    return new StatsStore(client);
+    return new StatsStore(client, opts.purgedMax ?? PURGED_MAX);
   }
 
   /** Hands the pages freed by deletes back to the filesystem (a no-op when nothing was freed). */
@@ -222,6 +236,34 @@ export class StatsStore {
       [...DATA_TABLES, 'seen'].map((t) => ({ sql: `DELETE FROM ${t} WHERE project = ?`, args: [project] })),
       'write',
     );
+  }
+
+  /**
+   * Records that `project` was deleted for good, so its statistics must go (see the `purged` table). Marking it
+   * again keeps the first time; past {@link PURGED_MAX} the oldest records are dropped.
+   */
+  async markPurged(project: string, at: Date): Promise<void> {
+    await this.client.batch(
+      [
+        { sql: 'INSERT INTO purged (project, at) VALUES (?, ?) ON CONFLICT (project) DO NOTHING', args: [project, at.toISOString()] },
+        {
+          sql: 'DELETE FROM purged WHERE project NOT IN (SELECT project FROM purged ORDER BY at DESC, project DESC LIMIT ?)',
+          args: [this.purgedMax],
+        },
+      ],
+      'write',
+    );
+  }
+
+  /** The projects recorded by {@link markPurged} and not yet settled, oldest first. */
+  async purgedIds(): Promise<string[]> {
+    const rs = await this.client.execute({ sql: 'SELECT project FROM purged ORDER BY at, project LIMIT ?', args: [this.purgedMax] });
+    return rs.rows.map((r) => str(r.project));
+  }
+
+  /** Drops the purge record of `project` (its statistics are gone, or it turned out to exist after all). */
+  async unmarkPurged(project: string): Promise<void> {
+    await this.client.execute({ sql: 'DELETE FROM purged WHERE project = ?', args: [project] });
   }
 
   /** Today's remembered visitor ids per project, in the order they were seen (see the `seen` table). */

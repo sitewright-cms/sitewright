@@ -326,6 +326,36 @@ describe('built-in statistics', () => {
     expect((await client.post(`/projects/${projectId}/content/settings/settings/revisions/${onRev}/restore`)).statusCode).toBe(200);
   });
 
+  it('★ a client cannot change the statistics by IMPORTING a bundle: the rest applies, the statistics stay as stored', async () => {
+    await seed({});
+    const { addProjectMember } = await import('../src/repo/accounts.js');
+    const owner = await harness.signup();
+    await addProjectMember(harness.db, owner.userId, projectId, 'owner'); // a client OWNER: still not staff
+    const importUrl = `/projects/${projectId}/import`;
+    const bundle = (website: Record<string, unknown>) => ({
+      project: { identity: { name: 'Example', colors: { primary: '#e11' } }, settings: { defaultLocale: 'en', locales: ['en'] }, website },
+      pages: [],
+    });
+    const website = async () =>
+      ((await client.get(`/projects/${projectId}/content/settings/settings`)).json() as { item: { website?: { siteUrl?: string; statistics?: { enabled?: boolean } } } }).item
+        .website;
+
+    // A client's bundle that switches them ON: imported (its site URL lands), and the statistics stay off.
+    expect((await owner.post(importUrl, bundle({ siteUrl: 'https://one.example.com', statistics: { enabled: true } }))).statusCode).toBe(200);
+    expect((await website())?.siteUrl).toBe('https://one.example.com');
+    expect((await website())?.statistics?.enabled ?? false).toBe(false);
+
+    // Staff import exactly as before: their bundle switches them on.
+    expect((await client.post(importUrl, bundle({ siteUrl: 'https://two.example.com', statistics: { enabled: true } }))).statusCode).toBe(200);
+    expect(await website()).toMatchObject({ siteUrl: 'https://two.example.com', statistics: { enabled: true } });
+
+    // A client's bundle that says off, or says nothing, leaves them on — the import is not the switch.
+    expect((await owner.post(importUrl, bundle({ siteUrl: 'https://three.example.com', statistics: { enabled: false } }))).statusCode).toBe(200);
+    expect(await website()).toMatchObject({ siteUrl: 'https://three.example.com', statistics: { enabled: true } });
+    expect((await owner.post(importUrl, bundle({ siteUrl: 'https://four.example.com' }))).statusCode).toBe(200);
+    expect(await website()).toMatchObject({ siteUrl: 'https://four.example.com', statistics: { enabled: true } });
+  });
+
   it('★ is readable by project members only', async () => {
     await seed();
     const anon = await harness.app.inject({ method: 'GET', url: `/projects/${projectId}/stats?from=${today()}&to=${today()}` });
@@ -508,6 +538,46 @@ describe('the statistics orphan sweep', () => {
         { timeout: 5000, interval: 100 },
       );
     } finally {
+      await harness.close();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('★ a bulk purge whose statistics cleanup FAILED is finished by the sweep — even when most sites go at once', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-purge-'));
+    const statsUrl = `file:${join(dir, 'analytics.db')}`;
+    const harness = await makeHarness({ statsDbUrl: statsUrl, statsGeo: geo, maintenanceSweepMs: 60 });
+    const forget = vi.spyOn(StatsStore.prototype, 'forget');
+    const storedIds = async (): Promise<string[]> => {
+      const store = await StatsStore.open(statsUrl);
+      try {
+        return (await store.projectIds()).sort();
+      } finally {
+        store.close();
+      }
+    };
+    try {
+      const client = await harness.signup({ admin: true });
+      const kept = await client.createProject('Kept', 'kept', { localHosting: false });
+      const doomed: string[] = [];
+      for (let i = 0; i < 4; i++) doomed.push(await client.createProject(`Doomed ${i}`, `doomed-${i}`, { localHosting: false }));
+      const row = (project: string) => ({ project, day: today(), cls: 'human' as const, device: 'desktop' as const, country: 'DE', views: 3, visitors: 1 });
+      const planted = await StatsStore.open(statsUrl);
+      await planted.apply({ traffic: [kept, ...doomed].map(row), pages: [], sources: [], goals: [], seen: [] });
+      planted.close();
+
+      // Every statistics cleanup fails while four of the five sites are deleted for good…
+      forget.mockRejectedValue(new Error('disk busy'));
+      for (const id of doomed) expect((await client.del(`/projects/${id}`)).statusCode).toBe(204);
+      expect((await client.del('/admin/deleted-projects')).json()).toEqual({ reaped: 4 });
+      // …so their statistics are still there: more than half of all sites, which the orphan brake alone would keep.
+      expect(await storedIds()).toEqual([kept, ...doomed].sort());
+
+      // Once the file can be written again, the sweep finishes every purge.
+      forget.mockRestore();
+      await vi.waitFor(async () => expect(await storedIds()).toEqual([kept]), { timeout: 5000, interval: 100 });
+    } finally {
+      forget.mockRestore();
       await harness.close();
       await rm(dir, { recursive: true, force: true });
     }

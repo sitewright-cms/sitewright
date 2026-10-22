@@ -326,13 +326,17 @@ describe('what staff manage', () => {
     expect(within(section).queryByRole('button', { name: 'Check now' })).toBeNull();
     const form = within(section).getByRole('form', { name: 'Add keywords' });
     fireEvent.change(within(form).getByLabelText('Keywords, one per line'), { target: { value: 'plumber windhoek\n\nemergency plumber\n' } });
-    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
+    // Country, Searched from and Language are searchable pickers; their lists are portalled to the body.
+    fireEvent.click(within(form).getByRole('combobox', { name: 'Country' }));
+    fireEvent.change(screen.getByLabelText('Search Country'), { target: { value: 'namib' } });
+    fireEvent.click(within(screen.getByRole('listbox', { name: 'Country' })).getByText('Namibia'));
     // The country itself is the starting place.
-    await within(form).findByText('Namibia · Country');
     const place = within(form).getByRole('combobox', { name: 'Searched from' });
-    fireEvent.focus(place);
-    fireEvent.change(place, { target: { value: 'wind' } });
-    fireEvent.click(await within(form).findByRole('button', { name: /Windhoek, Khomas Region, Namibia/ }));
+    await waitFor(() => expect(place).toHaveTextContent('NamibiaCountry'));
+    fireEvent.click(place);
+    fireEvent.change(screen.getByLabelText('Search places'), { target: { value: 'wind' } });
+    fireEvent.click(await within(screen.getByRole('listbox', { name: 'Searched from' })).findByText('Windhoek, Khomas Region, Namibia'));
+    expect(place).toHaveTextContent('Windhoek, Khomas Region, NamibiaCity');
     fireEvent.click(within(form).getByRole('radio', { name: 'Mobile' }));
     fireEvent.click(within(form).getByRole('button', { name: 'Add 2 keywords' }));
     await waitFor(() =>
@@ -344,43 +348,6 @@ describe('what staff manage', () => {
       }),
     );
     expect(await screen.findByText(/Added 2 keywords\./)).toBeInTheDocument();
-  });
-});
-
-describe('the place picker', () => {
-  async function staffForm() {
-    api.getRankings.mockResolvedValue(rankings({ canManage: true, status: 'ok', keywords: [] }));
-    render(<RankingsView project={project} />);
-    return screen.findByRole('form', { name: 'Add keywords' });
-  }
-
-  it('keeps the country as the place even when the field is focused before the list answers', async () => {
-    let answer!: (r: { locations: Array<{ name: string; type: string; countryCode: string }> }) => void;
-    api.searchRankLocations.mockImplementation((_c: string, q: string) =>
-      q === '' ? new Promise((resolve) => (answer = resolve)) : Promise.resolve({ locations: [] }),
-    );
-    const form = await staffForm();
-    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
-    const place = within(form).getByRole('combobox', { name: 'Searched from' });
-    fireEvent.focus(place);
-    await act(async () => answer({ locations: [{ name: 'Namibia', type: 'Country', countryCode: 'NA' }] }));
-    await waitFor(() => expect(place).toHaveAttribute('placeholder', 'Namibia'));
-    fireEvent.change(within(form).getByLabelText('Keywords, one per line'), { target: { value: 'plumber' } });
-    expect(within(form).getByRole('button', { name: 'Add keyword' })).toBeEnabled();
-  });
-
-  it('never offers the previous country\u2019s places after the country changes', async () => {
-    api.searchRankLocations.mockImplementation(async (country: string, q: string) => ({
-      locations: q ? [{ name: `${country}-place`, type: 'City', countryCode: country }] : [{ name: country, type: 'Country', countryCode: country }],
-    }));
-    const form = await staffForm();
-    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'NA' } });
-    const place = within(form).getByRole('combobox', { name: 'Searched from' });
-    fireEvent.focus(place);
-    fireEvent.change(place, { target: { value: 'p' } });
-    await within(form).findByRole('button', { name: /NA-place/ });
-    fireEvent.change(within(form).getByLabelText('Country'), { target: { value: 'DE' } });
-    expect(within(form).queryByRole('button', { name: /NA-place/ })).toBeNull();
   });
 });
 

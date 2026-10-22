@@ -32,6 +32,16 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Asked ahead:** opening the Statistics tab asks for the view Search performance opens on, while the visits show.
   - **While it loads,** a spinner in the title bar ("Asking Google…") and the numbers' shape as pulsing placeholders;
     switching the period keeps the numbers on screen, dimmed, with the spinner.
+- **Search rankings: Country, Searched from and Language are searchable.** In **Manage keywords → Add keywords**
+  each of the three opens a search box over its list, instead of a plain dropdown you had to scroll.
+  - **Country** finds a country by its name or its code (`DE` finds Germany), without accents (`Cote d'Ivoire`) and
+    by a common other name (`UK`, `USA`, `Holland`, `Turkey`).
+  - **Language** finds a language by its name, its code (`de`, `zh-TW`) or its own name (`Deutsch`, `español`).
+  - **Searched from** asks the rank-tracking provider as you type, as before, and now shows the chosen place and
+    its kind (City, Region) in the field. Its list now opens over the page, like the other two, so the edge of the
+    Search rankings card can no longer cut it off.
+  - The choices, the defaults (the tracked keywords' country, the country itself as the place, English) and what
+    is added are unchanged.
 
 ## [0.70.0] — 2026-10-22
 

@@ -142,7 +142,7 @@ export function DevicesPanel({ stats, filters, onDevice }: { stats: SiteStats; f
             key={d.device}
             label={DEVICE_LABELS[d.device]}
             value={pct(d.visitors, total)}
-            detail={`${fmt(d.visitors)} visitors`}
+            detail={`${fmt(d.visitors)} ${d.visitors === 1 ? 'visitor' : 'visitors'}`}
             share={total ? d.visitors / total : 0}
             active={device === d.device}
             onClick={() => onDevice(device === d.device ? undefined : d.device)}

@@ -86,6 +86,13 @@ describe('StatsView', () => {
     expect(screen.getByRole('radio', { name: '7 days' })).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('says "1 visitor" for a device with one visitor', async () => {
+    getStats.mockResolvedValue({ ...stats(), devices: [{ device: 'tablet', views: 1, visitors: 1 }] });
+    render(<StatsView project={project} />);
+    const devices = await screen.findByRole('region', { name: 'Devices' });
+    expect(within(devices).getByText('1 visitor')).toBeInTheDocument();
+  });
+
   it('★ filters by a device and a country, together, and clears each filter', async () => {
     render(<StatsView project={project} />);
     const devices = await screen.findByRole('region', { name: 'Devices' });

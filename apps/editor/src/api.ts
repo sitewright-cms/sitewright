@@ -1,6 +1,9 @@
 import type {
   CaptchaPublic,
   ProjectRankings,
+  SearchPerformanceAvailability,
+  SearchPerformancePeriod,
+  SearchPerformanceView,
   RankingsQuery,
   RankKeywordsInput,
   RankLocationOption,
@@ -1717,6 +1720,11 @@ export const api = {
     return request<SiteStats>('GET', `/projects/${projectId}/stats?${params.toString()}`);
   },
   // --- keyword rank tracking: anyone on the project reads; agency staff manage (the server enforces it) ---
+  /** Which search engines have numbers for the project's site (verified in the Search engines tile). Asks none of them. */
+  getSearchPerformanceAvailability: (projectId: string) => request<SearchPerformanceAvailability>('GET', `/projects/${projectId}/search-performance/available`),
+  /** The site's search numbers at one search engine for the last `days` days (kept by the server for an hour). */
+  getSearchPerformance: (projectId: string, service: WebmasterService, days: SearchPerformancePeriod) =>
+    request<SearchPerformanceView>('GET', `/projects/${projectId}/search-performance?service=${service}&days=${days}`),
   getRankings: (projectId: string, q: RankingsQuery = {}) => {
     const params = new URLSearchParams();
     if (q.from) params.set('from', q.from);

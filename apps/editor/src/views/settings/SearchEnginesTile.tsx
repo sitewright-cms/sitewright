@@ -22,7 +22,7 @@ import { SitemapOwnersModal } from './SitemapOwnersModal';
  */
 
 const HELP =
-  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag, asks it to confirm, and submits the sitemap. The tag stays on every later deploy. Sitemap & owners submits the sitemap again, and makes Google accounts owners in Search Console. Switching a search engine off removes the site from its account.';
+  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag, asks it to confirm, and submits the sitemap. The tag stays on every later deploy. Sitemap & owners submits the sitemap again, and makes Google accounts owners in Search Console. Once verified, Statistics → Search performance shows the site’s clicks and searches. Switching a search engine off removes the site from its account.';
 
 const ENGINES: ReadonlyArray<{ key: WebmasterService; name: string; short: string }> = [
   { key: 'google', name: 'Google Search Console', short: 'Google' },

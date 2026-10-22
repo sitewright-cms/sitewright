@@ -1,11 +1,12 @@
 import { createPublicKey, generateKeyPairSync, verify } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { bingRemoveSite, bingSiteCode, bingSubmitSitemap, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
+import { bingRemoveSite, bingSearchStats, bingSiteCode, bingSubmitSitemap, bingVerifySite, parseBingKey, testBing } from '../src/webmaster/bing.js';
 import {
   GOOGLE_SCOPES,
   GOOGLE_TOKEN_URL,
   googleAccessToken,
   googleRegisterSite,
+  googleSearchAnalytics,
   googleSetOwners,
   googleSiteToken,
   googleSubmitSitemap,
@@ -547,5 +548,50 @@ describe('a step deadline', () => {
     const started = Date.now();
     await expectRefusal(testBing('0123456789abcdef0123456789ABCDEF', { fetch: slow, deadline: Date.now() + 50 }), 'unavailable', /could not be reached/);
     expect(Date.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe('reading search numbers', () => {
+  const token = { status: 200, body: { access_token: 'ya29.token' } };
+  const SITE = 'https://www.example.com/';
+
+  it('Google: one token for every query, each a web search with fresh days, numbers read defensively', async () => {
+    const { io, calls } = fake((call) =>
+      call.url === GOOGLE_TOKEN_URL ? token : { status: 200, body: { rows: [{ keys: ['roof'], clicks: 3, impressions: 'x', ctr: 0.5, position: -1 }] } },
+    );
+    const q = { startDate: '2026-10-01', endDate: '2026-10-07', rowLimit: 25 };
+    const answers = await googleSearchAnalytics(parseGoogleKey(keyFile()), SITE, [{ ...q, dimensions: ['query'] }, q], io);
+    expect(calls.filter((c) => c.url === GOOGLE_TOKEN_URL)).toHaveLength(1);
+    expect(calls[1]!.url).toBe('https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fwww.example.com%2F/searchAnalytics/query');
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ ...q, dimensions: ['query'], type: 'web', dataState: 'all' });
+    expect(JSON.parse(calls[2]!.body!).dimensions).toEqual([]);
+    expect(answers[0]).toEqual([{ keys: ['roof'], clicks: 3, impressions: 0, ctr: 0.5, position: 0 }]);
+  });
+
+  it('Google: a site no longer in Search Console says so', async () => {
+    const { io } = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : { status: 403, body: { error: { errors: [{ reason: 'forbidden' }] } } }));
+    await expectRefusal(googleSearchAnalytics(parseGoogleKey(keyFile()), SITE, [{ startDate: '2026-10-01', endDate: '2026-10-07', rowLimit: 1 }], io), 'unverified', /verify the site again/);
+  });
+
+  it('Bing: three reads with the site in the query string (the key too, never in a message)', async () => {
+    const KEY = '0123456789abcdef0123456789ABCDEF';
+    const { io, calls } = fake((call) =>
+      call.url.includes('/GetRankAndTrafficStats?')
+        ? { status: 200, body: { d: [{ Date: '/Date(1792652400000-0700)/', Clicks: 2, Impressions: 9 }, { Date: 'not a date', Clicks: 1 }] } }
+        : call.url.includes('/GetQueryStats?')
+          ? { status: 200, body: { d: [{ Date: '/Date(1792652400000-0700)/', Query: 'roof', Clicks: 1, Impressions: 4, AvgImpressionPosition: 2.5 }] } }
+          : { status: 200, body: { d: null } },
+    );
+    const stats = await bingSearchStats(KEY, SITE, io);
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(
+      ['GetRankAndTrafficStats', 'GetQueryStats', 'GetPageStats'].map((m) => `GET https://ssl.bing.com/webmaster/api.svc/json/${m}?siteUrl=https%3A%2F%2Fwww.example.com%2F&apikey=${KEY}`),
+    );
+    expect(stats).toEqual({
+      daily: [{ date: '2026-10-22', key: '', clicks: 2, impressions: 9, position: null }],
+      queries: [{ date: '2026-10-22', key: 'roof', clicks: 1, impressions: 4, position: 2.5 }],
+      pages: [],
+    });
+    await expectRefusal(bingSearchStats(KEY, SITE, fake(() => ({ status: 400, body: { ErrorCode: 11 } })).io), 'unverified', /verify the site again/);
+    await expectRefusal(bingSearchStats(KEY, SITE, fake(() => ({ status: 200, body: { d: 'nonsense' } })).io), 'unavailable', /could not read/);
   });
 });

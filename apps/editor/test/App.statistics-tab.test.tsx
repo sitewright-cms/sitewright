@@ -7,12 +7,13 @@ import type { Project } from '../src/api';
  * The Statistics tab: always there for agency staff (an admin or a developer), and for a client only while the
  * project's built-in statistics are switched on.
  */
-const { me, loginConfig, getSettings, getProjectPayment, getRankings } = vi.hoisted(() => ({
+const { me, loginConfig, getSettings, getProjectPayment, getRankings, getSearchPerformanceAvailability } = vi.hoisted(() => ({
   me: vi.fn(),
   loginConfig: vi.fn(),
   getSettings: vi.fn(),
   getProjectPayment: vi.fn(),
   getRankings: vi.fn(),
+  getSearchPerformanceAvailability: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -21,6 +22,7 @@ vi.mock('../src/api', () => ({
     getSettings: (p: string) => getSettings(p),
     getProjectPayment: (p: string) => getProjectPayment(p),
     getRankings: (p: string, q: unknown) => getRankings(p, q),
+    getSearchPerformanceAvailability: (p: string) => getSearchPerformanceAvailability(p),
     listMedia: () => Promise.resolve({ items: [] }),
   },
   setUnauthorizedHandler: () => undefined,
@@ -75,6 +77,7 @@ beforeEach(() => {
   loginConfig.mockResolvedValue({ oidcProviders: [], branding: { name: 'SiteWright', primary: '#4f46e5', secondary: '#0ea5e9', logoUrl: null } });
   getProjectPayment.mockResolvedValue({ binding: null });
   getRankings.mockResolvedValue({ tracking: null, keywords: [], canManage: false });
+  getSearchPerformanceAvailability.mockResolvedValue({ services: [] });
 });
 
 describe('the Statistics tab', () => {
@@ -113,6 +116,15 @@ describe('the Statistics tab', () => {
     expect(screen.getByText(/staff=true/)).toBeInTheDocument();
   });
 
+  it('shows for a client once a search engine has numbers for the site, with no visits while statistics are off', async () => {
+    as(null);
+    statistics(false);
+    getSearchPerformanceAvailability.mockResolvedValue({ services: ['google'] });
+    await openAcme();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Statistics' }));
+    expect(await screen.findByText(/tab=statistics/)).toBeInTheDocument();
+    expect(screen.getByText(/visits=false/)).toBeInTheDocument();
+  });
   it('★ disappears for a client when the statistics are switched off — and a client on it is moved off it', async () => {
     as(null);
     statistics(true);

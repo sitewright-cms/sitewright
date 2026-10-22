@@ -68,10 +68,15 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
 
   const { from, to } = rangeDays(range);
   const filters: ActiveFilters = { device, country, clearDevice: () => setDevice(undefined), clearCountry: () => setCountry(undefined) };
-  const goals = stats?.goals.reduce((n, g) => n + g.count, 0) ?? 0;
+  // Under a filter the server gives the goal total (`goalCount`) — never exactly below the minimum count, and the
+  // listed goals alone would leave out the forms it does not name.
+  const goals: number | 'few' = stats?.breakdown ? stats.breakdown.goalCount : (stats?.goals.reduce((n, g) => n + g.count, 0) ?? 0);
   // Goals not broken down by device and country belong to no filter: a rate over a filter's visitors is then a part
   // over a whole, so it is only shown when every goal in the period is placed.
   const goalsUnplaced = stats?.breakdown?.goals ?? 0;
+  const minCount = stats?.breakdown?.minCount ?? 3;
+  // The forms not listed add up to fewer than the minimum: the total given is the listed part, a lower bound.
+  const goalsAtLeast = stats?.breakdown?.goalsUnlisted === 'few' && typeof goals === 'number';
   const allViews = (stats?.human.views ?? 0) + (stats?.botViews ?? 0);
   /** A KPI card's pills — only while a filter is on, so an unfiltered card keeps its height. */
   const kpiPills = (cannot?: Array<'device' | 'country'>): ReactNode =>
@@ -170,7 +175,9 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
         )}
 
         {stats && (
-          <>
+          // ★ While a new filter or period loads, the numbers on screen are the previous answer's — under pills that
+          // already show the new filter. Dimmed (and busy), so the two are never read together as one.
+          <div className={`flex flex-col gap-4 transition-opacity ${loading ? 'opacity-50' : ''}`} aria-busy={loading}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Kpi label="Visitors" value={fmt(stats.human.visitors)} filters={kpiPills()} />
               <Kpi
@@ -188,13 +195,18 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
               />
               <Kpi
                 label="Goals"
-                value={fmt(goals)}
+                value={goals === 'few' ? `< ${minCount}` : goalsAtLeast ? `${fmt(goals)}+` : fmt(goals)}
                 hint={
-                  goalsUnplaced > 0
-                    ? `+${fmt(goalsUnplaced)} not broken down`
-                    : stats.human.visitors
-                      ? `${pct(goals, stats.human.visitors)} of visitors`
-                      : undefined
+                  goals === 'few'
+                    ? `Fewer than ${minCount}: not shown exactly under a filter`
+                    : goalsAtLeast
+                      ? `Plus fewer than ${minCount} not shown`
+                      : goalsUnplaced > 0
+                      ? `+${fmt(goalsUnplaced)} not broken down`
+                      : stats.human.visitors
+                        ? // A form's device is read without the page's hints: under a device filter, approximate.
+                          `${device && goals > 0 ? '≈ ' : ''}${pct(goals, stats.human.visitors)} of visitors`
+                        : undefined
                 }
                 filters={kpiPills()}
               />
@@ -216,7 +228,7 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
               <BotsPanel stats={stats} filters={filters} />
               <GoalsPanel stats={stats} filters={filters} visitors={goalsUnplaced > 0 ? undefined : stats.human.visitors} />
             </div>
-          </>
+          </div>
         )}
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/70 pt-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">

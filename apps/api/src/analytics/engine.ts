@@ -5,7 +5,10 @@ import {
   statsDay,
   statsRetentionStart,
   STATS_DEVICES,
+  STATS_MIN_COUNT,
+  smallCount,
   type SiteStats,
+  type StatsSmallCount,
   type StatsClass,
   type StatsDevice,
   type StatsQuery,
@@ -60,16 +63,24 @@ export interface StatsLimits {
   /** …and across all sites (each name is up to 253 characters, remembered until midnight). */
   sourceHostsTotal: number;
   /**
-   * The device × country BREAKDOWN of pages, sources and goals (what a filtered list is read from): distinct
-   * (page, device, country) rows per site per day. Past it a pageview still counts everywhere else; a filtered
-   * page list then shows it as "not broken down". These three caps are what bound the breakdown's disk use.
+   * The device × country BREAKDOWN of pages, sources and goals (what a filtered list is read from), TODAY: distinct
+   * (page, device, country) rows a site may open in one day. Past it a pageview still counts everywhere else; a
+   * filtered page list then shows it in its remainder. Generous, so an ordinary site never reaches it — what is
+   * KEPT is decided by count once the day is over ({@link StatsLimits.pageDimsKept}).
    */
   pageDimsPerSite: number;
-  /** …distinct (source, host, device, country) rows per site per day. */
+  /** …distinct (source, host, device, country) rows per site today. */
   sourceDimsPerSite: number;
-  /** …distinct (goal, device, country) rows per site per day. */
+  /** …distinct (goal, device, country) rows per site today. */
   goalDimsPerSite: number;
-  /** Breakdown rows remembered for today across all sites, to apply those caps (a 30-bit fingerprint each, ~16 bytes). */
+  /**
+   * The breakdown rows KEPT per site for each finished day: its busiest, by count (cut at the day's end — see
+   * StatsStore.compactDims). These bound the breakdown's disk use over the 25 months.
+   */
+  pageDimsKept: number;
+  sourceDimsKept: number;
+  goalDimsKept: number;
+  /** Breakdown rows remembered for today across all sites, to apply the same-day caps (a 30-bit fingerprint each, ~21 bytes measured: ~6 MB at the cap). */
   dimKeys: number;
 }
 
@@ -80,17 +91,31 @@ export const DEFAULT_STATS_LIMITS: StatsLimits = {
   seenIdsPerSite: 250_000,
   sourceHosts: 500,
   sourceHostsTotal: 100_000,
-  pageDimsPerSite: 1_000,
-  sourceDimsPerSite: 500,
-  goalDimsPerSite: 200,
+  pageDimsPerSite: 10_000,
+  sourceDimsPerSite: 5_000,
+  goalDimsPerSite: 1_000,
+  pageDimsKept: 1_000,
+  sourceDimsKept: 500,
+  goalDimsKept: 200,
   dimKeys: 300_000,
 };
 
 type DimKind = 'pages' | 'sources' | 'goals';
 
 /**
+ * A filtered goal total that gives nothing away by subtraction: when the forms NOT listed add up to fewer than the
+ * minimum count, an exact total minus the listed ones would be that small number — so the total is then the listed
+ * part alone (the editor shows it as "n+"), or `'few'` when nothing is listed.
+ */
+function goalTotal(inFilter: number, listed: number): StatsSmallCount {
+  const unlisted = smallCount(inFilter - listed);
+  if (unlisted === 'few') return listed > 0 ? listed : 'few';
+  return smallCount(inFilter);
+}
+
+/**
  * A breakdown key's fingerprint for the per-site caps: FNV-1a, kept to 30 bits like a visitor id, so it stays a
- * small integer in a Set (~16 bytes, not a boxed number). A collision admits one extra row, no more.
+ * small integer in a Set (~21 bytes, not a boxed number). A collision admits one extra row, no more.
  */
 function fnv1a(s: string): number {
   let h = 0x811c9dc5;
@@ -349,14 +374,15 @@ export class StatsEngine {
     return true;
   }
 
-  private bump<R>(map: Map<string, R>, project: string, key: string, make: () => R, add: (row: R) => void): void {
+  /** Adds to a pending counter row (creating it within the caps). Whether it counted. */
+  private bump<R>(map: Map<string, R>, project: string, key: string, make: () => R, add: (row: R) => void): boolean {
     let row = map.get(key);
     if (!row) {
       const p = this.pending;
       const forSite = p.rowsBySite.get(project) ?? 0;
       if (p.rows >= this.limits.pendingRows || forSite >= this.limits.pendingRowsPerSite) {
         this.dropped++;
-        return;
+        return false;
       }
       row = make();
       map.set(key, row);
@@ -364,10 +390,11 @@ export class StatsEngine {
       p.rowsBySite.set(project, forSite + 1);
     }
     add(row);
+    return true;
   }
 
-  private countTraffic(project: string, day: string, cls: StatsClass, device: StatsDevice | '', country: string, visitor: boolean): void {
-    this.bump(
+  private countTraffic(project: string, day: string, cls: StatsClass, device: StatsDevice | '', country: string, visitor: boolean): boolean {
+    return this.bump(
       this.pending.traffic,
       project,
       [project, day, cls, device, country].join(K),
@@ -446,15 +473,17 @@ export class StatsEngine {
     }
     const device = deviceClass({ ua: hit.ua, chMobile: hit.chMobile, mobileHint: hit.mobileHint, touch: hit.touch });
     const first = this.firstVisit(hit.projectId, hit.ip, hit.ua);
-    this.countTraffic(hit.projectId, day, 'human', device, country, first);
+    // ★ The breakdown is counted only when the exact traffic row took the visit: a filtered list's remainder is
+    // the exact total MINUS the breakdown, and must never be less than nothing (see StatsEngine.query).
+    const counted = this.countTraffic(hit.projectId, day, 'human', device, country, first);
     this.countPage(hit.projectId, day, hit.route, true);
     if (!first) {
-      this.countDims(hit.projectId, day, device, country, hit.route);
+      if (counted) this.countDims(hit.projectId, day, device, country, hit.route);
       return;
     }
     const { source, host: rawHost } = trafficSource({ referrerHost: hit.referrerHost, campaign: hit.campaign, isOwnHost: hit.isOwnHost ?? (() => false) });
     const host = this.countSource(hit.projectId, day, source, rawHost);
-    this.countDims(hit.projectId, day, device, country, hit.route, { source, host });
+    if (counted) this.countDims(hit.projectId, day, device, country, hit.route, { source, host });
   }
 
   /**
@@ -479,7 +508,7 @@ export class StatsEngine {
   recordGoal(projectId: string, goal: string, visitor?: { ua: string; ip: string; chMobile?: boolean }): void {
     if (this.closing) return;
     const day = this.today();
-    this.bump(
+    const counted = this.bump(
       this.pending.goals,
       projectId,
       [projectId, day, goal].join(K),
@@ -488,7 +517,7 @@ export class StatsEngine {
         r.count++;
       },
     );
-    if (!visitor) return;
+    if (!visitor || !counted) return;
     const device = deviceClass({ ua: visitor.ua, chMobile: visitor.chMobile });
     const country = this.geo.country(visitor.ip) ?? 'ZZ';
     this.bumpDim('goals', this.pending.goalDims, projectId, dimKey(goal, device, country), () => ({ project: projectId, day, goal, device, country, count: 0 }), (r) => {
@@ -553,12 +582,20 @@ export class StatsEngine {
     if (this.prunedFor !== day) {
       await this.store.prune(day, statsRetentionStart(day), shiftStatsDay(day, -1));
       this.prunedFor = day;
-      // Yesterday's visitor ids and the oldest day of totals just went: give their space back.
+      // The finished day's breakdown goes down to each site's busiest rows (best-effort: the counts are written,
+      // and a day left uncut is still bounded by the same-day caps — the next day's cut catches it up).
+      try {
+        await this.store.compactDims(day, { pages: this.limits.pageDimsKept, sources: this.limits.sourceDimsKept, goals: this.limits.goalDimsKept });
+      } catch (err) {
+        this.log('statistics: could not cut the finished day’s breakdown to its busiest rows', err);
+      }
+      // Yesterday's visitor ids, the oldest day of totals and the breakdown's tail just went: give their space back.
       await this.compactQuietly();
     }
   }
 
   private requeue(batch: Pending): void {
+    const droppedBefore = this.dropped;
     for (const r of batch.traffic.values()) {
       this.bump(this.pending.traffic, r.project, [r.project, r.day, r.cls, r.device, r.country].join(K), () => ({ ...r, views: 0, visitors: 0 }), (x) => {
         x.views += r.views;
@@ -588,7 +625,13 @@ export class StatsEngine {
       const fresh = this.pending.seen.get(key);
       this.pending.seen.set(key, fresh ? { ...row, ids: [...row.ids, ...fresh.ids] } : row);
     }
-    // Breakdown rows were admitted when they were counted (that day's caps): merged back as they are.
+    // ★ Breakdown rows were admitted when they were counted (that day's caps), and are merged back as they are —
+    // unless the retry could not keep every exact count above: the breakdown would then exceed the exact totals,
+    // and a filtered list's remainder go below nothing. Dropping that minute's breakdown keeps it a part of them.
+    if (this.dropped !== droppedBefore) {
+      this.log('statistics: a retried write did not fit the caps — that minute’s visits are not broken down by device and country');
+      return;
+    }
     const merge = <R>(from: Map<string, R>, to: Map<string, R>, add: (into: R, r: R) => void): void => {
       for (const [key, r] of from) {
         const into = to.get(key);
@@ -612,16 +655,39 @@ export class StatsEngine {
     // to read than one with an empty bar.
     const devices = STATS_DEVICES.map((device) => res.devices.find((x) => x.device === device) ?? { device, views: 0, visitors: 0 });
     if (!totals) return { ...res, enabled, daily, devices };
-    // Under a filter: what the page, source and goal lists could not place — set against the EXACT filtered totals
-    // (the traffic table had device and country from the start), so days before the breakdown existed, and visits
-    // past a site's daily breakdown cap, show as "not broken down" rather than as no traffic.
+    // The breakdown is a PART of the exact totals by construction (counted only when they took the visit; dropped
+    // with them on a failed retry). Should that ever not hold, it is said — not hidden by the clamp below.
+    if (totals.pageViews > res.human.views || totals.sourceVisitors > res.human.visitors || totals.goalsBrokenDown > totals.goals) {
+      this.log(
+        `statistics: the device × country breakdown of ${projectId} exceeds its exact totals (pageviews ${totals.pageViews}/${res.human.views}, visitors ${totals.sourceVisitors}/${res.human.visitors}, goals ${totals.goalsBrokenDown}/${totals.goals})`,
+      );
+    }
+    // ★ Privacy (STATS_MIN_COUNT): rows under it are already left out of the lists; a filter that fewer visitors
+    // than that match lists nothing at all — one visitor's five views of a page would otherwise still show.
+    const thin = res.human.visitors < STATS_MIN_COUNT;
+    const pagesListed = thin ? 0 : totals.pageViewsListed;
+    const sourcesListed = thin ? 0 : totals.sourceVisitorsListed;
+    const goalsListed = thin ? 0 : totals.goalsListed;
+    // What a filtered list does not show — set against the EXACT filtered totals (the traffic table had device and
+    // country from the start): rows under the minimum, days before the breakdown existed, a busy day's tail.
     const breakdown = {
       since: this.dimsSince,
-      pages: Math.max(0, res.human.views - totals.pageViews),
-      sources: Math.max(0, res.human.visitors - totals.sourceVisitors),
+      minCount: STATS_MIN_COUNT,
+      thin,
+      pages: Math.max(0, res.human.views - pagesListed),
+      sources: Math.max(0, res.human.visitors - sourcesListed),
       goals: Math.max(0, totals.goals - totals.goalsBrokenDown),
+      goalCount: goalTotal(totals.goalsInFilter, goalsListed),
+      goalsUnlisted: smallCount(totals.goalsInFilter - goalsListed),
     };
-    return { ...res, enabled, daily, devices, breakdown };
+    return {
+      ...res,
+      ...(thin ? { pages: [], sources: [], goals: [] } : {}),
+      enabled,
+      daily,
+      devices,
+      breakdown,
+    };
   }
 
   /** One table's raw daily rows for the CSV export. */

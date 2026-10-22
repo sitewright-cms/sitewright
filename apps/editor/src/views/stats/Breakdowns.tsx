@@ -42,7 +42,7 @@ function BarRow({
         className={`absolute inset-y-0 left-0 rounded-md ${muted ? 'bg-slate-400/15 dark:bg-slate-400/15' : active ? 'bg-indigo-500/25' : 'bg-indigo-500/10 dark:bg-indigo-400/15'}`}
         style={{ width: `${Math.max(0, Math.min(100, share * 100))}%` }}
       />
-      <span className={`relative min-w-0 flex-1 truncate ${muted ? 'italic text-slate-500 dark:text-slate-400' : ''}`}>{label}</span>
+      <span className={`relative min-w-0 flex-1 ${muted ? 'italic text-slate-500 dark:text-slate-400' : 'truncate'}`}>{label}</span>
       {detail && <span className="relative shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">{detail}</span>}
       <span className={`relative w-14 shrink-0 text-right font-semibold tabular-nums ${muted ? 'text-slate-500 dark:text-slate-400' : ''}`}>{value}</span>
     </>
@@ -112,13 +112,23 @@ export function TileFilters({ filters, cannot = [], note, compact }: { filters: 
 }
 
 /**
- * Why a filtered list holds less than the filtered total: days before the device × country breakdown began, or a
- * busy day past its cap. Says which, and when the breakdown began.
+ * What a filtered list's remainder row holds, in words: rows under the minimum count (so nobody can be picked
+ * out), and — when the period starts before it — the days before the device × country breakdown began.
  */
-function remainderReason(breakdown: NonNullable<SiteStats['breakdown']>, from: string, what: string): string {
-  return breakdown.since > from
-    ? `${what} are broken down by device and country from ${longDay(breakdown.since)}; earlier ones are not.`
-    : `On a busy day not every ${what.toLowerCase().replace(/s$/, '')} is broken down by device and country.`;
+function remainderNote(breakdown: NonNullable<SiteStats['breakdown']>, from: string, unit: 'views' | 'visitors'): string {
+  const min = breakdown.minCount;
+  const what = unit === 'views' ? `Pages viewed fewer than ${min} times` : `Sources with fewer than ${min} visitors`;
+  const before = breakdown.since > from ? ` Visits before ${longDay(breakdown.since)} are not broken down by device and country at all.` : '';
+  return `${what} under this filter are not listed, so no single visit can be picked out; they are counted in the last line.${before}`;
+}
+
+/** A filter matched by fewer visitors than the minimum count lists nothing from the breakdown (see STATS_MIN_COUNT). */
+function ThinNote({ breakdown, what }: { breakdown: NonNullable<SiteStats['breakdown']>; what: string }) {
+  return (
+    <Empty>
+      Fewer than {breakdown.minCount} visitors match this filter, so no {what} are listed — a list this small could single someone out.
+    </Empty>
+  );
 }
 
 export function DevicesPanel({ stats, filters, onDevice }: { stats: SiteStats; filters: ActiveFilters; onDevice: (d: StatsDevice | undefined) => void }) {
@@ -192,31 +202,37 @@ export function CountriesPanel({ stats, filters, onCountry }: { stats: SiteStats
 
 /** Under a filter: human pageviews per page, then what the breakdown could not place. */
 export function PagesPanel({ stats, filters }: { stats: SiteStats; filters: ActiveFilters }) {
-  const rest = stats.breakdown?.pages ?? 0;
+  const bd = stats.breakdown;
+  const rest = bd?.pages ?? 0;
   const max = Math.max(1, rest, ...stats.pages.map((p) => p.views));
   return (
     <Panel title="Top pages" action={<TileFilters filters={filters} />}>
-      {stats.pages.length === 0 && rest === 0 ? (
+      {bd?.thin && rest > 0 ? (
+        <ThinNote breakdown={bd} what="pages" />
+      ) : stats.pages.length === 0 && rest === 0 ? (
         <Empty>No pageviews yet.</Empty>
       ) : (
         <div className="flex flex-col gap-1">
           {stats.pages.slice(0, 15).map((p) => (
             <BarRow key={p.path} label={<span className="font-mono text-xs">{p.path}</span>} value={fmt(p.views)} detail={p.botViews ? `${fmt(p.botViews)} bot` : undefined} share={p.views / max} />
           ))}
-          {rest > 0 && <BarRow label="Not broken down by page" value={fmt(rest)} share={rest / max} muted />}
+          {rest > 0 && bd && <BarRow label={`Fewer than ${bd.minCount} views each, or not broken down`} value={fmt(rest)} share={rest / max} muted />}
         </div>
       )}
-      {rest > 0 && stats.breakdown && <Footnote>{remainderReason(stats.breakdown, stats.from, 'Pageviews')}</Footnote>}
+      {rest > 0 && bd && !bd.thin && <Footnote>{remainderNote(bd, stats.from, 'views')}</Footnote>}
     </Panel>
   );
 }
 
 export function SourcesPanel({ stats, filters }: { stats: SiteStats; filters: ActiveFilters }) {
-  const rest = stats.breakdown?.sources ?? 0;
+  const bd = stats.breakdown;
+  const rest = bd?.sources ?? 0;
   const total = stats.sources.reduce((n, s) => n + s.visitors, 0) + rest;
   return (
     <Panel title="Sources" action={<TileFilters filters={filters} />}>
-      {stats.sources.length === 0 && rest === 0 ? (
+      {bd?.thin && rest > 0 ? (
+        <ThinNote breakdown={bd} what="sources" />
+      ) : stats.sources.length === 0 && rest === 0 ? (
         <Empty>No visitors yet.</Empty>
       ) : (
         <div className="flex flex-col gap-1">
@@ -234,10 +250,12 @@ export function SourcesPanel({ stats, filters }: { stats: SiteStats; filters: Ac
               share={total ? s.visitors / total : 0}
             />
           ))}
-          {rest > 0 && <BarRow label="Not broken down by source" value={fmt(rest)} detail={pct(rest, total)} share={total ? rest / total : 0} muted />}
+          {rest > 0 && bd && (
+            <BarRow label={`Fewer than ${bd.minCount} visitors each, or not broken down`} value={fmt(rest)} detail={pct(rest, total)} share={total ? rest / total : 0} muted />
+          )}
         </div>
       )}
-      {rest > 0 && stats.breakdown && <Footnote>{remainderReason(stats.breakdown, stats.from, 'Visitors')}</Footnote>}
+      {rest > 0 && bd && !bd.thin && <Footnote>{remainderNote(bd, stats.from, 'visitors')}</Footnote>}
     </Panel>
   );
 }
@@ -262,26 +280,49 @@ export function BotsPanel({ stats, filters }: { stats: SiteStats; filters: Activ
 
 /**
  * `visitors` is the visitor count for a conversion rate — omitted when the goals are not all broken down by the
- * active filter (it would compare a part with a whole).
+ * active filter (it would compare a part with a whole). Under a DEVICE filter the rates are approximate: a form's
+ * device is read from the browser that sent it, without the page's own hints.
  */
 export function GoalsPanel({ stats, filters, visitors }: { stats: SiteStats; filters: ActiveFilters; visitors?: number }) {
+  const bd = stats.breakdown;
   const max = Math.max(1, ...stats.goals.map((g) => g.count));
-  const rest = stats.breakdown?.goals ?? 0;
+  const rest = bd?.goals ?? 0;
+  const unlisted = bd?.goalsUnlisted ?? 0;
+  const rate = (n: number): string | undefined => (visitors ? `${filters.device ? '≈ ' : ''}${pct(n, visitors)} of visitors` : undefined);
   return (
     <Panel title="Goals" action={<TileFilters filters={filters} />}>
-      {stats.goals.length === 0 ? (
+      {bd?.thin && bd.goalCount !== 0 ? (
+        <ThinNote breakdown={bd} what="forms" />
+      ) : stats.goals.length === 0 && unlisted === 0 ? (
         <Empty>{rest > 0 ? 'None broken down for this filter.' : 'No form submissions in this period.'}</Empty>
       ) : (
         <div className="flex flex-col gap-1">
           {stats.goals.map((g) => (
-            <BarRow key={g.goal} label={g.label} value={fmt(g.count)} detail={visitors ? `${pct(g.count, visitors)} of visitors` : undefined} share={g.count / max} />
+            <BarRow key={g.goal} label={g.label} value={fmt(g.count)} detail={rate(g.count)} share={g.count / max} />
           ))}
+          {unlisted !== 0 && bd && (
+            <BarRow
+              label={`Other forms, fewer than ${bd.minCount} each`}
+              value={unlisted === 'few' ? `< ${bd.minCount}` : fmt(unlisted)}
+              share={unlisted === 'few' ? 0 : unlisted / max}
+              muted
+            />
+          )}
         </div>
       )}
-      {rest > 0 && stats.breakdown && (
+      {unlisted !== 0 && bd && !bd.thin && (
+        <Footnote>Under a filter, a form sent fewer than {bd.minCount} times is not named, so no single submission can be matched to a visitor.</Footnote>
+      )}
+      {rest > 0 && bd && (
         <Footnote>
           {fmt(rest)} form {rest === 1 ? 'submission' : 'submissions'} in this period {rest === 1 ? 'is' : 'are'} not broken down by device or country
-          {stats.breakdown.since > stats.from ? ` (recorded before ${longDay(stats.breakdown.since)})` : ''}, so {rest === 1 ? 'it is' : 'they are'} in no filter.
+          {bd.since > stats.from ? ` (recorded before ${longDay(bd.since)})` : ''}, so {rest === 1 ? 'it is' : 'they are'} in no filter.
+        </Footnote>
+      )}
+      {filters.device && bd && (stats.goals.length > 0 || unlisted !== 0) && (
+        <Footnote>
+          A form’s device is read from the browser that sent it, which can differ from how the page read it (an iPad asking for the desktop site
+          counts as desktop here), so these figures are approximate.
         </Footnote>
       )}
     </Panel>

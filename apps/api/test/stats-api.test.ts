@@ -249,8 +249,7 @@ describe('built-in statistics', () => {
     expect(s.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 1 }]);
   });
 
-  it('★ a device or country filter narrows the pages, sources, goals and bots too (through the real routes)', async () => {
-    await seed();
+  async function withContactForm(): Promise<void> {
     await client.project(projectId).putContent('form', 'contact', {
       id: 'contact',
       name: 'Contact us',
@@ -258,40 +257,75 @@ describe('built-in statistics', () => {
       recipient: 'owner@example.com',
       fields: [{ name: 'message', label: 'Message', type: 'textarea' }],
     });
+  }
+  const sendForm = (ua: string, ip: string) =>
+    harness.app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      headers: { 'content-type': 'application/json', 'user-agent': ua },
+      payload: { message: 'Hello there', _elapsed: '5000', _ix: '3.12.1' },
+      remoteAddress: ip,
+    });
+
+  it('★ a device or country filter narrows the pages, sources, goals and bots too (through the real routes)', async () => {
+    await seed();
+    await withContactForm();
     await publish();
     const home = trackerOf((await page('/')).body)!;
     const about = trackerOf((await page('/about/')).body)!;
-    await beacon({ r: about.r, k: about.k, h: SITE_HOST, f: 'www.google.com' }); // Germany, desktop
-    await beacon({ r: home.r, k: home.k, h: SITE_HOST, m: 1 }, { ua: IPHONE, ip: '2.2.2.2' }); // US, phone
-    await page('/', GOOGLEBOT, '2.2.2.3'); // a US crawler, served by the platform
-    // A form sent from the American phone.
-    const sent = await harness.app.inject({
-      method: 'POST',
-      url: `/f/${projectId}/contact`,
-      headers: { 'content-type': 'application/json', 'user-agent': IPHONE },
-      payload: { message: 'Hello there', _elapsed: '5000', _ix: '3.12.1' },
-      remoteAddress: '2.2.2.2',
-    });
-    expect(sent.statusCode).toBe(200);
+    for (const ip of ['1.1.1.1', '1.1.1.2', '1.1.1.3']) await beacon({ r: about.r, k: about.k, h: SITE_HOST, f: 'www.google.com' }, { ip }); // Germany, desktop
+    for (const ip of ['2.2.2.1', '2.2.2.2', '2.2.2.3']) {
+      await beacon({ r: home.r, k: home.k, h: SITE_HOST, m: 1 }, { ua: IPHONE, ip }); // US, phone
+      expect((await sendForm(IPHONE, ip)).statusCode).toBe(200);
+    }
+    await page('/', GOOGLEBOT, '2.2.2.9'); // a US crawler, served by the platform
 
     const all = await stats();
     expect(all.pages.map((p: { path: string }) => p.path).sort()).toEqual(['/', '/about/']);
     expect(all.breakdown).toBeUndefined();
 
     const us = await stats('&country=US');
-    expect(us.pages).toEqual([{ path: '/', views: 1, botViews: 0 }]);
-    expect(us.sources).toEqual([{ source: 'direct', host: '', visitors: 1 }]);
-    expect(us.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 1 }]);
+    expect(us.pages).toEqual([{ path: '/', views: 3, botViews: 0 }]);
+    expect(us.sources).toEqual([{ source: 'direct', host: '', visitors: 3 }]);
+    expect(us.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 3 }]);
     expect(us.botViews).toBe(1);
     expect(us.bots).toEqual([{ class: 'search', views: 1 }]);
-    expect(us.breakdown).toEqual({ since: today(), pages: 0, sources: 0, goals: 0 });
+    expect(us.breakdown).toEqual({ since: today(), minCount: 3, thin: false, pages: 0, sources: 0, goals: 0, goalCount: 3, goalsUnlisted: 0 });
 
     const desktop = await stats('&device=desktop');
-    expect(desktop.pages).toEqual([{ path: '/about/', views: 1, botViews: 0 }]);
-    expect(desktop.sources).toEqual([{ source: 'search', host: 'google.com', visitors: 1 }]);
+    expect(desktop.pages).toEqual([{ path: '/about/', views: 3, botViews: 0 }]);
+    expect(desktop.sources).toEqual([{ source: 'search', host: 'google.com', visitors: 3 }]);
     expect(desktop.goals).toEqual([]);
+    expect(desktop.breakdown.goalCount).toBe(0);
     // Bots have no device: the device filter leaves them whole.
     expect(desktop.botViews).toBe(1);
+  });
+
+  it('★ PRIVACY: the API never returns what a single visit under a filter did — page, source or form', async () => {
+    await seed();
+    await withContactForm();
+    await publish();
+    const home = trackerOf((await page('/')).body)!;
+    const about = trackerOf((await page('/about/')).body)!;
+    for (const ip of ['1.1.1.1', '1.1.1.2', '1.1.1.3']) await beacon({ r: home.r, k: home.k, h: SITE_HOST }, { ip }); // the site's usual visitors
+    // One American, on a phone, from a newsletter link, who sends the form.
+    await beacon({ r: about.r, k: about.k, h: SITE_HOST, m: 1, u: 'vip-list' }, { ua: IPHONE, ip: '2.2.2.2' });
+    expect((await sendForm(IPHONE, '2.2.2.2')).statusCode).toBe(200);
+
+    // Presence: the visit is counted, and shows in the unfiltered lists.
+    const all = await stats();
+    expect(all.pages.map((p: { path: string }) => p.path)).toContain('/about/');
+    expect(all.sources.map((s: { host: string }) => s.host)).toContain('vip-list');
+    const res = await client.get(`/projects/${projectId}/stats?from=${today()}&to=${today()}&country=US&device=mobile`);
+    expect(res.statusCode).toBe(200);
+    const one = res.json();
+    expect(one.human).toEqual({ views: 1, visitors: 1 });
+    expect(one.pages).toEqual([]);
+    expect(one.sources).toEqual([]);
+    expect(one.goals).toEqual([]);
+    expect(one.breakdown).toMatchObject({ thin: true, minCount: 3, pages: 1, sources: 1, goalCount: 'few' });
+    // Not anywhere in the answer.
+    expect(res.body).not.toMatch(/\/about\/|vip-list|form:contact|Contact us/);
   });
 
   it('exports a table as CSV', async () => {

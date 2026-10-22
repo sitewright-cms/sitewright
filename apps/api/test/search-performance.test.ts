@@ -256,4 +256,34 @@ describe('SearchPerformance (the cache)', () => {
     await perf.view('p3', 'x', 'google', 7); // kept
     expect(read).toHaveBeenCalledTimes(4);
   });
+
+  it('forgets a deleted project’s answers, refusals and lag, and only that project’s', async () => {
+    const read = vi.fn<SearchDataSource['read']>(async () => data);
+    const perf = new SearchPerformance({ sources: async () => [source(read)], now: () => NOW });
+    await perf.view('p1', 'x', 'google', 28);
+    await perf.view('p10', 'x', 'google', 28); // a prefix of another id is not the same project
+    read.mockRejectedValueOnce(new Error('down'));
+    await expect(perf.view('p1', 'x', 'google', 7)).rejects.toThrow('down');
+    expect(read.mock.calls.at(-1)![1]).toBe('2026-10-18'); // p1's lag was known
+    perf.forgetProject('p1');
+    await perf.view('p1', 'x', 'google', 28); // asked again…
+    expect(read.mock.calls.at(-1)![1]).toBeUndefined(); // …with no lag remembered
+    await perf.view('p1', 'x', 'google', 7); // the refusal is forgotten too
+    await perf.view('p10', 'x', 'google', 28); // still kept
+    expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it('drops expired answers and refusals when it stores a new one, instead of keeping them until it overflows', async () => {
+    let now = NOW;
+    const read = vi.fn<SearchDataSource['read']>().mockRejectedValueOnce(new Error('down')).mockResolvedValue(data);
+    const perf = new SearchPerformance({ sources: async () => [source(read)], now: () => now });
+    const kept = perf as unknown as { answers: Map<string, unknown>; failures: Map<string, unknown> };
+    await expect(perf.view('p1', 'x', 'google', 7)).rejects.toThrow('down');
+    await perf.view('p2', 'x', 'google', 28);
+    expect([kept.answers.size, kept.failures.size]).toEqual([1, 1]);
+    now = new Date(NOW.getTime() + 61 * 60_000);
+    await perf.view('p3', 'x', 'google', 28);
+    expect([...kept.answers.keys()].map((k) => k.split('\n')[0])).toEqual(['p3']);
+    expect(kept.failures.size).toBe(0);
+  });
 });

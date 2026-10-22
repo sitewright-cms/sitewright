@@ -288,6 +288,20 @@
       "when": 1792626445113,
       "tag": "0040_search_console_owners_sitemaps",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1792672009305,
+      "tag": "0041_rank_charges",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1792672010297,
+      "tag": "0042_webmaster_removals",
+      "breakpoints": true
     }
   ]
 }

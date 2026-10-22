@@ -249,6 +249,8 @@ export class ApiError extends Error {
      * Absent means it did not say, and a caller must not guess.
      */
     public readonly reason?: string,
+    /** The refusal's JSON body as sent, for a caller that reads more than the message (e.g. `account-in-use`). */
+    public readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -305,6 +307,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   let code: string | undefined;
   let transient: boolean | undefined;
   let reason: string | undefined;
+  let body: unknown;
   try {
     const json = (await res.json()) as {
       error?: string;
@@ -313,6 +316,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
       transient?: boolean;
       reason?: unknown;
     };
+    body = json;
     if (json.error) message = json.error;
     if (json.code) code = json.code;
     if (typeof json.transient === 'boolean') transient = json.transient;
@@ -339,6 +343,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
     code,
     transient,
     reason,
+    body,
   );
 }
 

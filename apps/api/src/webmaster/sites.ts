@@ -10,7 +10,7 @@ import {
   type WebmasterService,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
-import { webmasterSites } from '../db/schema.js';
+import { projects, webmasterSites } from '../db/schema.js';
 import { bingRemoveSite, bingSearchStats, bingSiteCode, bingSubmitSitemap, bingVerifySite } from './bing.js';
 import {
   googleRegisterSite,
@@ -24,6 +24,7 @@ import {
 } from './google.js';
 import type { SearchDataSource } from './performance.js';
 import type { WebmasterRepository } from './repo.js';
+import { forgetRegistration, NO_SITEMAP, RemovalQueue, type Registration } from './removals.js';
 import { bingData, googleReport, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
 
@@ -42,7 +43,9 @@ import { WebmasterError, type WebmasterIo } from './request.js';
  *   - `submitSitemap`: hand the site's sitemap to a search engine that verified it — the progress window does it
  *     right after verifying, and staff can do it again from the tile.
  *   - `setOwners`: the Google accounts that own the site in Search Console beside the service account.
- *   - `removeAll`: the project is deleted — remove the site from every account it was registered with.
+ *   - `removeOnDelete` / `removeOnPurge`: the project is deleted — remove the site from every account it was registered
+ *     with. A removal that does not get through is QUEUED (`webmaster_removals`) and tried again from the hourly sweep
+ *     (`retryRemovals`) with the account that registered it: the purge deletes the rows that were the only record.
  *
  * ★ Every build keeps the tags of the switched-on search engines, not only the verification deploy: a search engine
  * checks again later, and a site whose tag disappeared loses its verification.
@@ -50,6 +53,8 @@ import { WebmasterError, type WebmasterIo } from './request.js';
 
 /** How long a step waits for a search engine (several requests each). */
 const STEP_TIMEOUT_MS = 30_000;
+/** Queued removals tried per sweep at most (see removals.ts): each may take a step's whole deadline. */
+const REMOVALS_PER_SWEEP = 25;
 
 /**
  * How long Bing's statistics for a site are reused. Bing answers with the site's whole history at once (about two
@@ -78,6 +83,20 @@ interface Account {
 
 type Row = typeof webmasterSites.$inferSelect;
 
+/**
+ * Which Bing account a key is, as `webmaster_sites.account` records it: a fingerprint, never the key — the row is
+ * never a place a secret could be read back from. (Google's is the service account's email.)
+ */
+export const bingAccountId = (apiKey: string): string => createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+
+/** What moving a search engine off its account would leave registered there (see `SiteRegistrar.heldBy`). */
+export interface AccountHolding {
+  /** Live projects' sites switched on and registered with it: staff can switch them off first. */
+  switchedOn: number;
+  /** Sites still registered with it that switching off cannot fix: switched off but refused, or queued for removal. */
+  notRemoved: number;
+}
+
 export interface SiteRegistrarDeps {
   db: Database;
   accounts: WebmasterRepository;
@@ -86,6 +105,8 @@ export interface SiteRegistrarDeps {
   now?: () => Date;
   /** What reading a site's search numbers goes out with: Bing answers with its whole history at once. Default `io`. */
   dataIo?: WebmasterIo;
+  /** Removals queued at most (default 1000). */
+  maxRemovals?: number;
 }
 
 const NAME: Record<WebmasterService, string> = { google: 'Google', bing: 'Bing' };
@@ -110,8 +131,13 @@ export class SiteRegistrar {
   private readonly queues = new Map<string, Promise<unknown>>();
   /** Bing's statistics per account and site, while they are reused ({@link BING_STATS_TTL_MS}); a failure is not kept. */
   private readonly bingStats = new Map<string, { at: number; stats: ReturnType<typeof bingSearchStats> }>();
+  /** A sweep of the queued removals is running: the next one is skipped rather than run beside it. */
+  private sweeping = false;
+  private readonly removals: RemovalQueue;
 
-  constructor(private readonly deps: SiteRegistrarDeps) {}
+  constructor(private readonly deps: SiteRegistrarDeps) {
+    this.removals = new RemovalQueue({ db: deps.db, log: deps.log, now: () => this.now(), max: deps.maxRemovals });
+  }
 
   private now(): Date {
     return this.deps.now?.() ?? new Date();
@@ -168,8 +194,7 @@ export class SiteRegistrar {
     const apiKey = secret.apiKey ?? '';
     if (!apiKey) return null;
     return {
-      // A fingerprint, not the key: the row is never a place a secret could be read back from.
-      id: createHash('sha256').update(apiKey).digest('hex').slice(0, 16),
+      id: bingAccountId(apiKey),
       name: 'Bing Webmaster Tools',
       tag: (siteUrl) => bingSiteCode(apiKey, siteUrl, io),
       register: (siteUrl) => bingVerifySite(apiKey, siteUrl, io),
@@ -224,7 +249,7 @@ export class SiteRegistrar {
   }
 
   /** No sitemap submission on record: a new registration starts without one. */
-  private static readonly NO_SITEMAP = { sitemapAt: null, sitemapOk: null, sitemapDetail: null, ownersDetail: null } as const;
+  private static readonly NO_SITEMAP = NO_SITEMAP;
 
   /**
    * Whether `row` registered something at a search engine that a removal would have to undo: a tag was fetched — or,
@@ -234,10 +259,6 @@ export class SiteRegistrar {
     return Boolean(row?.siteUrl && (row.token || row.service === 'bing'));
   }
 
-  /**
-   * Removes `row`'s site from its account. Something already gone counts as removed; with no account (removed in
-   * System Settings) there is nothing the platform can still do, and that is said.
-   */
   /**
    * Whether another project registers the same address with the same account. One account serves every project, so
    * both then share ONE registration at the search engine (one Search Console property): what either does to it —
@@ -251,12 +272,23 @@ export class SiteRegistrar {
     return rows.some((r) => r.projectId !== row.projectId);
   }
 
-  private async unregister(row: Row): Promise<SiteRegistrationStepResult & { retry: boolean }> {
+  /**
+   * Removes a registration's site from the account that made it. Something already gone counts as removed.
+   *
+   * ★ Only THAT account can remove it. Asked with another (the key was replaced in System Settings), Google answers
+   * "not an owner" and Bing "not found" — exactly what "already removed" looks like — and the site would be forgotten
+   * while still registered with the old account. So with another account, or none, it is NOT removed, and says so.
+   */
+  private async unregister(row: Registration): Promise<SiteRegistrationStepResult & { retry: boolean }> {
     const account = await this.account(row.service, this.stepIo());
-    if (!account) return { ok: true, retry: false, detail: `Not removed from ${NAME[row.service]}: the platform no longer has that account` };
+    if (!account || account.id !== row.account) {
+      const why = account ? 'it was registered with an account the platform no longer uses' : 'the platform no longer has the account it was registered with';
+      return { ok: false, retry: false, detail: `Not removed from ${NAME[row.service]}: ${why}` };
+    }
     // An address another project still registers (a duplicate, an import of the same site) stays — removing it would
-    // take that project's registration with it.
-    if (await this.shared(row)) {
+    // take that project's registration with it. With this account; or, for a live project, with ANY: two keys can be
+    // one Bing user, whose site is the same whichever key asks (see `RemovalQueue.heldLive`).
+    if ((await this.shared(row)) || (await this.removals.heldLive(row.service, row.siteUrl, row.projectId))) {
       return { ok: true, retry: false, detail: `Kept at ${NAME[row.service]}: another project registers ${row.siteUrl} too` };
     }
     try {
@@ -365,7 +397,22 @@ export class SiteRegistrar {
         }
         // The Production URL (or the account) changed since: the old registration goes before the new one starts.
         let moved = '';
-        if (SiteRegistrar.registered(row) && row.siteUrl !== siteUrl && row.account === account.id) {
+        if (SiteRegistrar.registered(row) && row.account !== account.id) {
+          // ★ Made with an account the platform no longer uses (the key was replaced in System Settings); only that
+          // account can remove it. Never a refusal: the new account must be able to verify the site.
+          //   - Another address: the old one is QUEUED with the old account rather than overwritten and forgotten —
+          //     removed should that account come back while no live project registers it, given up after 14 days
+          //     otherwise with a warning naming the site and the account.
+          //   - The same address: nothing is queued. The new key may be the same Bing user (one site): removing the
+          //     old registration would remove the new one. A stale ownership at an old account is the safe side.
+          const previous = service === 'google' ? 'service account' : 'Bing key';
+          if (row.siteUrl !== siteUrl) {
+            await this.removals.add(row, `Not removed from ${NAME[service]}: it was registered with an account the platform no longer uses`);
+            moved = ` (${row.siteUrl} is still registered with the previous ${previous}: remove it there by hand if that account is gone)`;
+          } else {
+            moved = ` (the previous ${previous} may still hold ${siteUrl} too: remove it there by hand if that account is gone)`;
+          }
+        } else if (SiteRegistrar.registered(row) && row.siteUrl !== siteUrl) {
           const old = await this.unregister(row);
           // Not removed: stop here rather than forget the old address (the row is the only record of it).
           if (!old.ok) {
@@ -516,28 +563,122 @@ export class SiteRegistrar {
   }
 
   /**
-   * The project is being deleted: remove its site from every account it was registered with, and switch the search
-   * engines off (a restored project starts again from the tile). Never throws; what could not be removed is logged.
+   * The project was deleted (soft: it can be restored). Its site leaves every account it is registered with, but the
+   * switches and the Google owners STAY: a restored project shows its search engines on and not verified, and Verify
+   * now registers the site again and gives the owners access again. A removal that does not get through leaves the
+   * row as it is — still registered, which it is — and is queued for the hourly sweep; a restore cancels it.
+   * Never throws (it runs in the background of the delete); what fails is logged.
    */
-  removeAll(projectId: string): Promise<void> {
-    return this.queued(projectId, async () => {
-      for (const row of await this.rows(projectId)) {
-        if (SiteRegistrar.registered(row)) {
+  async removeOnDelete(projectId: string): Promise<void> {
+    try {
+      await this.queued(projectId, async () => {
+        for (const row of await this.rows(projectId)) {
+          if (!SiteRegistrar.registered(row)) continue;
           const result = await this.unregister(row);
-          if (!result.ok) {
-            // Switched off, but what it registered is kept: the reap tries the removal again.
-            this.deps.log.warn({ projectId, service: row.service, detail: result.detail }, 'site registration: not removed on delete');
-            await this.save({ ...row, enabled: false, detail: result.detail, updatedAt: this.now() });
-            continue;
-          }
+          if (result.ok) await forgetRegistration(this.deps.db, row, result.detail, this.now());
+          else await this.removals.add(row, result.detail);
         }
-        if (row.enabled || row.token || row.owners.length) {
-          await this.save({ ...row, enabled: false, siteUrl: '', account: '', token: null, status: 'none', detail: null, verifiedAt: null, updatedAt: this.now(), owners: [], ...SiteRegistrar.NO_SITEMAP });
+      });
+    } catch (err) {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: removal on delete failed');
+    }
+  }
+
+  /**
+   * The project is being purged. What is still registered leaves its account now, while the rows still say what it
+   * was; what does not get through is queued for the hourly sweep, because the purge deletes the rows and nothing else
+   * would remember the site. Throws only when the queue could not be written: the purge must then stop rather than
+   * delete the last record of a site that is still registered.
+   */
+  async removeOnPurge(projectId: string): Promise<void> {
+    await this.queued(projectId, async () => {
+      for (const row of await this.rows(projectId)) {
+        if (!SiteRegistrar.registered(row)) continue;
+        const result = await this.unregister(row);
+        if (result.ok) await this.removals.drop(row);
+        else await this.removals.add(row, result.detail);
+      }
+    });
+  }
+
+  /** A deleted project was restored: the removals queued for what its rows still hold are cancelled — those stay its own. */
+  async restored(projectId: string): Promise<void> {
+    try {
+      await this.queued(projectId, async () => {
+        const cancelled = await this.removals.cancelHeldBy(projectId);
+        if (cancelled) this.deps.log.info({ projectId, cancelled }, 'site registration: project restored, its sites stay registered');
+      });
+    } catch (err) {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: queued removals not cancelled on restore');
+    }
+  }
+
+  /**
+   * THE HOURLY SWEEP: the queued removals that are due, each with the account that registered the site. One a restored
+   * project still holds, or whose address another project registers now, is dropped — the site is theirs. One that
+   * keeps failing is tried again later each time and given up after 14 days, with a warning naming the site.
+   * Never throws.
+   */
+  async retryRemovals(): Promise<void> {
+    if (this.sweeping) return;
+    this.sweeping = true;
+    try {
+      for (const removal of await this.removals.due(REMOVALS_PER_SWEEP)) {
+        try {
+          // In the project's queue: a restore (or the purge) of the same project waits for it, and it for them.
+          await this.queued(removal.projectId, () => this.retryRemoval(removal.id));
+        } catch (err) {
+          this.deps.log.warn({ projectId: removal.projectId, service: removal.service, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: a queued removal failed');
         }
       }
-    }).catch((err: unknown) => {
-      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: removal on delete failed');
-    });
+    } catch (err) {
+      this.deps.log.warn({ errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: queued removals not read');
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  private async retryRemoval(id: string): Promise<void> {
+    const removal = await this.removals.get(id);
+    if (!removal) return; // done meanwhile: the purge got through, or a restore cancelled it
+    const where = { projectId: removal.projectId, service: removal.service, siteUrl: removal.siteUrl };
+    // ★ Never while a live project registers this address at this search engine — its own (restored) or another, under
+    // ANY account: a key replaced by another of the same Bing user still has the same site, and removing it with the
+    // old key would remove theirs. Dropped: a stale ownership left at an old account is acceptable, that is not.
+    if (await this.removals.heldLive(removal.service, removal.siteUrl)) {
+      await this.removals.remove(id);
+      this.deps.log.info(where, 'site registration: a live project registers the address, so it is not removed');
+      return;
+    }
+    const [project] = await this.deps.db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, removal.projectId));
+    const result = await this.unregister(removal);
+    if (!result.ok) {
+      await this.removals.failed(removal, result.detail);
+      return;
+    }
+    await this.removals.remove(id);
+    // A deleted project's row no longer has anything registered (its switches and owners stay for a restore).
+    if (project) await forgetRegistration(this.deps.db, removal, result.detail, this.now());
+    this.deps.log.info({ ...where, detail: result.detail }, 'site registration: removed on a later try');
+  }
+
+  /**
+   * What moving `service` off the platform's CURRENT account would leave registered there: removing the account (`next`
+   * null) or replacing it with another (`next` = the new account's id). Nothing when there is no current account, or
+   * `next` is the same one (the same key saved again). Only what is still REGISTERED counts: live projects' rows, and
+   * removals while they are queued — a deleted project's row whose removal was given up holds nothing any more.
+   */
+  async heldBy(service: WebmasterService, next: string | null): Promise<AccountHolding> {
+    const account = await this.account(service);
+    if (!account || account.id === next) return { switchedOn: 0, notRemoved: 0 };
+    const rows = await this.deps.db
+      .select({ row: webmasterSites, deletedAt: projects.deletedAt })
+      .from(webmasterSites)
+      .innerJoin(projects, eq(projects.id, webmasterSites.projectId))
+      .where(and(eq(webmasterSites.service, service), eq(webmasterSites.account, account.id)));
+    const live = rows.filter((r) => !r.deletedAt && SiteRegistrar.registered(r.row)).map((r) => r.row);
+    const stuck = new Set([...live.filter((r) => !r.enabled).map((r) => r.siteUrl), ...(await this.removals.sites(service, account.id))]);
+    return { switchedOn: live.filter((r) => r.enabled).length, notRemoved: stuck.size };
   }
 
   /**

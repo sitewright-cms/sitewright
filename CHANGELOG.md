@@ -116,6 +116,35 @@ The running version of an instance is reported at `GET /version` (baked into the
   many made-up referrers on many sites cannot grow memory without limit. Past the cap a visit still counts, under
   its kind of source.
 
+- **Rank tracking: removing keywords or deleting a project no longer takes money already spent out of the monthly
+  budget.** The month's spend was read from the checks, which go with their keyword or project: removing keywords
+  after a check and adding them again bought every check twice while the budget showed almost nothing. What each check
+  cost is now kept on its own and counts for the rest of the month, including a check whose project was deleted while
+  the provider had it. Updating keeps what was already spent this month.
+- **Rank tracking: checks older than 25 months are deleted**, once a day, the same period the built-in statistics
+  keep. Nothing removed them before: a project with 500 daily keywords gained 180,000 a year.
+- **Search engines: a site that could not be removed when its project was deleted is tried again.** If Google or
+  Bing could not be reached when a deleted project was removed for good, the site stayed in the platform's account and
+  nothing remembered it. It is now tried again every few hours, with the account that registered it, for up to 14 days;
+  after that the server log names the site to remove by hand.
+- **Search engines: a deleted project keeps its switches and Search Console owners.** Deleting a project still removes
+  its site from Google and Bing, but a restored project now shows its search engines on and not verified, with its
+  owners, and Verify now registers the site and gives the owners access again. A removal that could not get through no
+  longer shows the search engine as off while the site is still registered.
+- **Search engines: a replaced Google or Bing key no longer reports old sites as removed.** Only the account that
+  registered a site can remove it; asked with a new key, Google and Bing answer as if the site were already gone, and
+  the platform forgot it. Switching off now says the site was not removed, and keeps the record. When Verify now with
+  the new key moves the site to another address, the old address stays on record (removed if the old key comes back,
+  named in the server log otherwise); at the same address nothing is removed, since a new Bing key of the same Bing
+  user holds the same site. No removal ever runs while a live project registers that address, whatever the account.
+- **System Settings: removing or replacing a Google or Bing account that sites are registered with asks first.** Only
+  that account can remove those sites, so they would stay in it with nobody able to take them off. The save is refused,
+  account by account, with how many sites each holds and what to do: switch them off in the Search engines tile first,
+  or, for a key that no longer works, **Remove anyway** or **Replace anyway** after reading that those sites stay
+  registered at the old account, to be removed there by hand. Saving the same account's key again is not a change.
+- **Statistics → Search performance: a deleted project's numbers are no longer kept in memory**, and answers past their
+  hour are dropped as new ones come in, instead of waiting for the cache to fill.
+
 ## [0.70.0] — 2026-10-22
 
 ### Added

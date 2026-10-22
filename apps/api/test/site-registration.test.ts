@@ -2,11 +2,11 @@ import { generateKeyPairSync } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SiteRegistrationActionResult, SiteRegistrationPrepareResult, SiteRegistrationToggleResult, SiteRegistrationVerifyResult, SiteRegistrationView } from '@sitewright/schema';
 import { registrableSiteUrl } from '@sitewright/schema';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
-import { webmasterSites } from '../src/db/schema.js';
+import { webmasterRemovals, webmasterSites } from '../src/db/schema.js';
 import type { FetchLike } from '../src/payments/executor.js';
 
 /**
@@ -326,7 +326,8 @@ describe('site registration', () => {
     await verify('bing');
     expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: BING_KEY } })).statusCode).toBe(200);
     expect((await view()).bing.status).toBe('verified');
-    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' } })).statusCode).toBe(200);
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' } })).statusCode).toBe(409); // a site is registered with the old one
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' }, force: true })).statusCode).toBe(200);
     expect((await view()).bing).toMatchObject({ enabled: true, status: 'none' });
     await publish();
     expect(await home()).not.toContain('msvalidate.01');
@@ -362,6 +363,165 @@ describe('site registration', () => {
     ]) {
       expect(r.statusCode).toBe(403);
     }
+  });
+});
+
+/** What the platform does with a project's registrations when the project is deleted, restored and purged. */
+describe('deleting, restoring and purging a project', () => {
+  /** The delete removes in the background: bounded, generously, for a loaded machine. */
+  const WAIT = { timeout: 10_000, interval: 20 };
+  const sites = () => harness.db.select().from(webmasterSites);
+  const removals = () => harness.db.select().from(webmasterRemovals);
+  const del = async () => expect((await admin.del(`/projects/${projectId}`)).statusCode).toBe(204);
+
+  it('★ the delete removes the site but keeps the switches and owners: restored, Verify now registers it and gives the owners access again', async () => {
+    await toggle({ google: true, bing: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    await verify('bing');
+    expect((await setOwners(['ana@example.com'])).statusCode).toBe(200);
+    expect(engines.googleOwners).toEqual(['ana@example.com']);
+
+    await del();
+    await vi.waitFor(async () => expect((await sites()).map((r) => r.siteUrl)).toEqual(['', '']), WAIT);
+    expect(engines.googleOwned).toBe(false);
+    expect(engines.googleOwners).toEqual([]);
+    expect(engines.bingSites).toEqual([]);
+
+    expect((await admin.post(`/admin/deleted-projects/${projectId}/restore`, {})).statusCode).toBe(204);
+    const back = await view();
+    expect(back.google).toMatchObject({ enabled: true, status: 'none', owners: ['ana@example.com'] });
+    expect(back.bing).toMatchObject({ enabled: true, status: 'none' });
+
+    await prepare();
+    await publish();
+    expect((await verify('google')).result).toEqual({ ok: true, detail: 'Verified and added to Search Console · 1 owner given access' });
+    expect(engines.googleOwners).toEqual(['ana@example.com']);
+    expect((await verify('bing')).result.ok).toBe(true);
+    expect(engines.bingSites).toEqual([SITE]);
+  });
+
+  it('★ a delete that cannot reach Bing keeps the registration (it is still there) and queues it; the purge keeps the queue', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    engines.bingDown = true;
+    await del();
+    await vi.waitFor(async () => expect(await removals()).toHaveLength(1), WAIT);
+    expect((await sites())[0]).toMatchObject({ service: 'bing', enabled: true, siteUrl: SITE, status: 'pending' });
+
+    // Still down at the purge: the rows go, the queued removal stays for the hourly sweep.
+    expect((await admin.del(`/admin/deleted-projects/${projectId}`)).statusCode).toBeLessThan(300);
+    expect(await sites()).toEqual([]);
+    expect(await removals()).toMatchObject([{ projectId, service: 'bing', siteUrl: SITE, attempts: 2 }]);
+    expect(engines.bingSites).toEqual([SITE]);
+  });
+
+  it('a restore cancels what the delete could not remove', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    engines.bingDown = true;
+    await del();
+    await vi.waitFor(async () => expect(await removals()).toHaveLength(1), WAIT);
+    expect((await admin.post(`/admin/deleted-projects/${projectId}/restore`, {})).statusCode).toBe(204);
+    await vi.waitFor(async () => expect(await removals()).toEqual([]), WAIT);
+    expect((await view()).bing).toMatchObject({ enabled: true, status: 'pending' });
+  });
+
+  it('★ a replaced Google key never reports the old registration removed', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    const replaced = JSON.stringify({ ...(JSON.parse(KEY_FILE) as object), client_email: 'other@sitewright-seo-123.iam.gserviceaccount.com' });
+    // Refused without `force` while the site is registered (see below); forced, as for a key that no longer works.
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: replaced }, force: true })).statusCode).toBe(200);
+    const off = (await toggle({ google: false })).json() as SiteRegistrationToggleResult;
+    // Google would have answered the new account "not an owner" — what "already removed" looks like.
+    expect(off.removed.google).toEqual({ ok: false, detail: 'Not removed from Google: it was registered with an account the platform no longer uses' });
+    expect(count('DELETE ')).toBe(0);
+    expect(engines.googleOwned).toBe(true);
+    expect(off.view.google).toMatchObject({ enabled: false, status: 'off', detail: off.removed.google!.detail });
+  });
+
+  const STAYS = 'that site stays registered at the old account, to be removed there by hand.';
+  const BING_ON = `1 site is switched on with this Bing Webmaster account. Switch it off in the Search engines tile first, or, if the Bing API key no longer works, remove it anyway: ${STAYS}`;
+  const BING_STUCK = `1 site is still registered with this Bing Webmaster account although switched off or deleted (the removal did not get through). If the Bing API key no longer works, remove it anyway: ${STAYS}`;
+  /** The 409 for one account in the way. */
+  const inUse = (service: 'google' | 'bing', action: 'remove' | 'replace', error: string) => ({ error, code: 'account-in-use', count: 1, accounts: [{ service, action, count: 1, error }] });
+
+  it('★ System Settings refuses to remove an account sites are registered with, or still being removed from', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    const refused = await admin.put('/admin/webmaster-accounts', { bing: null });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual(inUse('bing', 'remove', BING_ON));
+    expect((await admin.get('/admin/webmaster-accounts')).json()).toMatchObject({ bing: { configured: true } });
+
+    engines.bingDown = true;
+    await del();
+    await vi.waitFor(async () => expect(await removals()).toHaveLength(1), WAIT);
+    expect((await admin.put('/admin/webmaster-accounts', { bing: null })).json()).toEqual(inUse('bing', 'remove', BING_STUCK));
+
+    // The Google account holds nothing: it can go.
+    expect((await admin.put('/admin/webmaster-accounts', { google: null })).statusCode).toBe(200);
+  });
+
+  it('★ a site switched off whose removal Bing refused does not say "switch it off" — and a dead key can still go, forced', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    engines.bingRefusesRemoval = true; // as Bing answers a revoked key
+    const off = (await toggle({ bing: false })).json() as SiteRegistrationToggleResult;
+    expect(off.view.bing).toMatchObject({ enabled: false, status: 'off' });
+    expect((await sites())[0]).toMatchObject({ enabled: false, siteUrl: SITE }); // still registered there
+
+    const refused = await admin.put('/admin/webmaster-accounts', { bing: null });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual(inUse('bing', 'remove', BING_STUCK));
+    const forced = await admin.put('/admin/webmaster-accounts', { bing: null, force: true });
+    expect(forced.statusCode).toBe(200);
+    expect(forced.json()).toMatchObject({ bing: { configured: false } });
+    expect(engines.bingSites).toEqual([SITE]); // what "remove it there by hand" means
+  });
+
+  it('★ replacing one account and removing the other: each is refused in its own words, with its own count', async () => {
+    await toggle({ google: true, bing: true });
+    await prepare();
+    const other = JSON.stringify({ ...(JSON.parse(KEY_FILE) as object), client_email: 'other@sitewright-seo-123.iam.gserviceaccount.com' });
+    const refused = await admin.put('/admin/webmaster-accounts', { google: { keyFile: other }, bing: null });
+    expect(refused.statusCode).toBe(409);
+    const body = refused.json() as { error: string; count: number; accounts: Array<{ service: string; action: string; count: number; error: string }> };
+    expect(body.accounts.map(({ service, action, count }) => ({ service, action, count }))).toEqual([
+      { service: 'google', action: 'replace', count: 1 },
+      { service: 'bing', action: 'remove', count: 1 },
+    ]);
+    expect(body.accounts[0]!.error).toMatch(/^1 site is switched on with this Google service account\. .* replace it anyway: /);
+    expect(body.accounts[1]!.error).toBe(BING_ON);
+    expect(body.count).toBe(2);
+    expect(body.error).toBe(`${body.accounts[0]!.error} ${BING_ON}`);
+  });
+
+  it('★ replacing a key with ANOTHER account is refused like removing it; forced, verifying the same address again removes nothing', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    const other = JSON.stringify({ ...(JSON.parse(KEY_FILE) as object), client_email: 'other@sitewright-seo-123.iam.gserviceaccount.com' });
+    const refused = await admin.put('/admin/webmaster-accounts', { google: { keyFile: other } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual(
+      inUse('google', 'replace', `1 site is switched on with this Google service account. Switch it off in the Search engines tile first, or, if the Google service-account key no longer works, replace it anyway: ${STAYS}`),
+    );
+    expect((await admin.get('/admin/webmaster-accounts')).json()).toMatchObject({ google: { clientEmail: SERVICE_ACCOUNT } });
+    // The same service account's key saved again is not a change of account.
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: KEY_FILE } })).statusCode).toBe(200);
+
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: other }, force: true })).statusCode).toBe(200);
+    // The same address under the new account: nothing is queued (the old account keeps a stale ownership, the safe side).
+    expect((await prepare()).results.google).toEqual({ ok: true, detail: `Tag ready (the previous service account may still hold ${SITE} too: remove it there by hand if that account is gone)` });
+    expect(await removals()).toEqual([]);
+    expect(engines.googleOwned).toBe(true); // nothing was asked of Google with the new account about the old property
+    expect(count('DELETE ')).toBe(0);
   });
 });
 

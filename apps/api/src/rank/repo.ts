@@ -1,6 +1,7 @@
-import { and, asc, count, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
 import {
   RankProviderIdSchema,
+  statsRetentionStart,
   type RankDevice,
   type RankEngine,
   type RankKeywordsInput,
@@ -11,6 +12,7 @@ import {
 import type { Database } from '../db/client.js';
 import {
   projects,
+  rankCharges,
   rankChecks,
   rankKeywords,
   rankProjects,
@@ -89,6 +91,24 @@ export const utcDay = (now: Date): string => now.toISOString().slice(0, 10);
 const SCHEDULE_DAYS: Record<RankSchedule, number> = { daily: 1, weekly: 7 };
 
 const toMicros = (usd: number): number => Math.max(0, Math.round(usd * 1_000_000));
+
+/** Retention deletes this many rows per statement, and at most this many statements per table a day. */
+const PRUNE_BATCH = 5000;
+const PRUNE_MAX_BATCHES = 40;
+
+/** Runs `step` (one bounded DELETE) until it removes fewer than `batch` rows or `maxBatches` ran; how many it removed. */
+async function inBatches(batch: number, maxBatches: number, step: () => Promise<{ rowsAffected: number }>): Promise<number> {
+  let removed = 0;
+  for (let i = 0; i < maxBatches; i++) {
+    const { rowsAffected } = await step();
+    removed += rowsAffected;
+    if (rowsAffected < batch) break;
+  }
+  return removed;
+}
+
+/** The UTC month (`YYYY-MM`) a moment falls in: the budget month a check claimed then counts against. */
+export const utcMonth = (at: Date): string => at.toISOString().slice(0, 7);
 
 export class RankRepository {
   constructor(
@@ -239,7 +259,7 @@ export class RankRepository {
     return res.length > 0;
   }
 
-  /** Removes a keyword AND its history. */
+  /** Removes a keyword AND its history. What its checks cost stays spent (`rank_charges` is not touched). */
   async removeKeyword(projectId: string, keywordId: string): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       const [row] = await tx
@@ -293,39 +313,77 @@ export class RankRepository {
    * can never send the same keyword twice in a day.
    */
   async claim(k: DueKeyword, day: string, provider: RankProviderId, estimateUsd: number, now: Date): Promise<string | null> {
-    const rows = await this.db
-      .insert(rankChecks)
-      .values({
-        id: newId(),
-        keywordId: k.id,
-        projectId: k.projectId,
-        day,
-        provider,
-        status: 'posting',
-        domain: k.domain,
-        includeSubdomains: k.includeSubdomains,
-        depth: k.depth,
-        costMicros: toMicros(estimateUsd),
-        postedAt: now,
-      })
-      .onConflictDoNothing()
-      .returning({ id: rankChecks.id });
+    const id = newId();
+    // ONE batch — one transaction, run without a break on one connection: the check and its charge land together or
+    // not at all, so no crash between the two can leave a claim whose cost the budget does not see.
+    const [rows] = await this.db.batch([
+      this.db
+        .insert(rankChecks)
+        .values({
+          id,
+          keywordId: k.id,
+          projectId: k.projectId,
+          day,
+          provider,
+          status: 'posting',
+          domain: k.domain,
+          includeSubdomains: k.includeSubdomains,
+          depth: k.depth,
+          costMicros: toMicros(estimateUsd),
+          postedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: rankChecks.id }),
+      // Only when the check above went in: a claim that lost to another the same day books nothing.
+      this.db
+        .insert(rankCharges)
+        .select(
+          this.db
+            .select({ checkId: rankChecks.id, month: sql<string>`${utcMonth(now)}`.as('month'), costMicros: rankChecks.costMicros })
+            .from(rankChecks)
+            .where(eq(rankChecks.id, id)),
+        ),
+    ]);
     return rows[0]?.id ?? null;
   }
 
-  /** Takes back a claim the provider certainly did not act on (it refused the request as a whole). */
+  /**
+   * Takes back a claim the provider certainly did not act on (it refused the request as a whole), and its charge. The
+   * charge goes too when the check is already gone (its project was purged meanwhile) — nothing was sent for it either
+   * way — but never while the check is still there in another state: that one went out and may have been charged.
+   */
   async release(id: string): Promise<void> {
-    await this.db.delete(rankChecks).where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting')));
+    await this.db.batch([
+      this.db.delete(rankChecks).where(and(eq(rankChecks.id, id), eq(rankChecks.status, 'posting'))),
+      this.db.delete(rankCharges).where(and(eq(rankCharges.checkId, id), sql`NOT EXISTS (SELECT 1 FROM ${rankChecks} WHERE ${rankChecks.id} = ${id})`)),
+    ]);
+  }
+
+  /**
+   * The check's charge, set to `costMicros` — whether or not the check is still there: a check whose keyword or project
+   * went while it was in flight was still paid for. The month is the claim's (kept on an update); only a charge somehow
+   * missing is booked in the current month.
+   */
+  private charge(id: string, costMicros: number) {
+    return this.db
+      .insert(rankCharges)
+      .values({ checkId: id, month: utcMonth(new Date()), costMicros })
+      .onConflictDoUpdate({ target: rankCharges.checkId, set: { costMicros } });
   }
 
   /** Sent: the provider's id for the search, and what it charged (replacing the estimate). */
   async markQueued(id: string, ref: string, costUsd: number): Promise<void> {
-    await this.db.update(rankChecks).set({ status: 'queued', providerRef: ref, costMicros: toMicros(costUsd) }).where(eq(rankChecks.id, id));
+    const costMicros = toMicros(costUsd);
+    await this.db.batch([
+      this.db.update(rankChecks).set({ status: 'queued', providerRef: ref, costMicros }).where(eq(rankChecks.id, id)),
+      this.charge(id, costMicros),
+    ]);
   }
 
   /** Finished. `costUsd` replaces the booked cost when the provider stated one with the result (a live search). */
   async markDone(id: string, hit: { position: number; absolutePosition: number; url: string } | null, checkedAt: Date, costUsd?: number): Promise<void> {
-    await this.db
+    const costMicros = costUsd !== undefined ? toMicros(costUsd) : undefined;
+    const update = this.db
       .update(rankChecks)
       .set({
         status: 'done',
@@ -334,9 +392,11 @@ export class RankRepository {
         url: hit?.url ?? null,
         checkedAt,
         error: null,
-        ...(costUsd !== undefined ? { costMicros: toMicros(costUsd) } : {}),
+        ...(costMicros !== undefined ? { costMicros } : {}),
       })
       .where(eq(rankChecks.id, id));
+    if (costMicros === undefined) await update;
+    else await this.db.batch([update, this.charge(id, costMicros)]);
   }
 
   /**
@@ -344,10 +404,13 @@ export class RankRepository {
    * stays — the outcome is uncertain, so the budget assumes it was paid.
    */
   async markFailed(id: string, error: string, costUsd?: number): Promise<void> {
-    await this.db
+    const costMicros = costUsd !== undefined ? toMicros(costUsd) : undefined;
+    const update = this.db
       .update(rankChecks)
-      .set({ status: 'failed', error: error.slice(0, 300), ...(costUsd !== undefined ? { costMicros: toMicros(costUsd) } : {}) })
+      .set({ status: 'failed', error: error.slice(0, 300), ...(costMicros !== undefined ? { costMicros } : {}) })
       .where(eq(rankChecks.id, id));
+    if (costMicros === undefined) await update;
+    else await this.db.batch([update, this.charge(id, costMicros)]);
   }
 
   /** Queued checks to collect, oldest first — of one project, or all. */
@@ -385,13 +448,37 @@ export class RankRepository {
     return posting.length + queued.length;
   }
 
-  /** What every check posted since `start` cost, in micro-dollars. */
-  async spentMicrosSince(start: Date): Promise<number> {
+  /**
+   * What the checks claimed in `at`'s UTC month cost, in micro-dollars — claims in flight at their estimate. Read from
+   * the charges, which outlive removed keywords and purged projects: their checks were paid for all the same.
+   */
+  async spentMicrosInMonth(at: Date): Promise<number> {
     const [row] = await this.db
-      .select({ total: sql<number>`COALESCE(SUM(${rankChecks.costMicros}), 0)` })
-      .from(rankChecks)
-      .where(gte(rankChecks.postedAt, start));
+      .select({ total: sql<number>`COALESCE(SUM(${rankCharges.costMicros}), 0)` })
+      .from(rankCharges)
+      .where(eq(rankCharges.month, utcMonth(at)));
     return Number(row?.total ?? 0);
+  }
+
+  /**
+   * RETENTION: deletes checks posted before the first day still inside `STATS_RETENTION_MONTHS` of `today`, and charges
+   * of months wholly before it (no budget reads them: it counts the current month only). In bounded batches, so the
+   * tracker's pass is never held behind one huge delete; what is left past `maxBatches` goes the next day.
+   */
+  async pruneOld(today: string, batch = PRUNE_BATCH, maxBatches = PRUNE_MAX_BATCHES): Promise<{ checks: number; charges: number }> {
+    const start = statsRetentionStart(today);
+    const before = new Date(`${start}T00:00:00Z`);
+    const checks = await inBatches(batch, maxBatches, () =>
+      this.db
+        .delete(rankChecks)
+        .where(inArray(rankChecks.id, this.db.select({ id: rankChecks.id }).from(rankChecks).where(lt(rankChecks.postedAt, before)).limit(batch))),
+    );
+    const charges = await inBatches(batch, maxBatches, () =>
+      this.db
+        .delete(rankCharges)
+        .where(inArray(rankCharges.checkId, this.db.select({ id: rankCharges.checkId }).from(rankCharges).where(lt(rankCharges.month, start.slice(0, 7))).limit(batch))),
+    );
+    return { checks, charges };
   }
 
   /** Finished checks of a project's keywords for `domain` between two days (inclusive), oldest first. */

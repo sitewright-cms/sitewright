@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
-import { projects, rankChecks, rankProviderCredentials } from '../src/db/schema.js';
+import { projects, rankCharges, rankChecks, rankProviderCredentials } from '../src/db/schema.js';
 import { RankRepository, type DueKeyword, type RankKeywordRow } from '../src/rank/repo.js';
 import { RankTracker } from '../src/rank/tracker.js';
 import { RankProviderError, type CollectOutcome, type RankProvider, type RankSearch, type SubmitOutcome } from '../src/rank/providers/index.js';
@@ -26,6 +26,10 @@ function scriptedProvider() {
     /** checkId → result page entries, 'pending', or a failure message. */
     results: new Map<string, 'pending' | { fail: string } | Array<{ position: number; url: string }>>(),
     cost: 0.006,
+    /** What the provider says it charged, when not the estimate. */
+    charged: null as number | null,
+    /** Runs while the request is with the provider (before any scripted error): what happens meanwhile. */
+    duringSubmit: null as (() => Promise<void>) | null,
   };
   const provider: RankProvider = {
     id: 'dataforseo',
@@ -36,10 +40,11 @@ function scriptedProvider() {
     parseCredentials: (raw) => ({ ...raw }),
     estimateCostUsd: (depth) => state.cost * (depth / 100),
     async submit(_creds, searches) {
+      await state.duringSubmit?.();
       const err = state.submitErrors.shift();
       if (err) throw err;
       submitted.push([...searches]);
-      return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: state.cost * (s.depth / 100) }));
+      return searches.map((s): SubmitOutcome => ({ checkId: s.checkId, state: 'queued', ref: `ref-${s.checkId}`, costUsd: (state.charged ?? state.cost) * (s.depth / 100) }));
     },
     async collect(_creds, queued) {
       if (state.collectError) throw state.collectError;
@@ -113,7 +118,7 @@ describe('the tracker sends what is due, once a day', () => {
     const rows = await checks();
     expect(rows.map((r) => r.status)).toEqual(['queued', 'queued', 'queued']);
     expect(rows.every((r) => r.costMicros === 6000 && r.day === '2026-10-20' && r.domain === 'plumbers.na')).toBe(true);
-    expect(await repo.spentMicrosSince(new Date('2026-10-01T00:00:00Z'))).toBe(18_000);
+    expect(await repo.spentMicrosInMonth(now)).toBe(18_000);
 
     // A second pass the same day — or a "check now" — sends nothing more.
     expect(await t.tick()).toMatchObject({ sent: 0 });
@@ -248,7 +253,7 @@ describe('money', () => {
     await addKeywords(pid, ['a']);
     const [k] = await repo.listKeywords(pid);
     await repo.claim(due(k!), '2026-10-20', 'dataforseo', 0.006, now);
-    expect(await repo.spentMicrosSince(new Date('2026-10-01T00:00:00Z'))).toBe(6000);
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000);
   });
 
   it('gives the claims back when the provider refuses the whole request, and says why', async () => {
@@ -259,6 +264,7 @@ describe('money', () => {
     const t = tracker(provider);
     expect(await t.tick()).toMatchObject({ status: 'provider-error', sent: 0, failed: 0 });
     expect(await checks()).toHaveLength(0); // nothing booked
+    expect(await repo.spentMicrosInMonth(now)).toBe(0); // …in the budget either: the charges went with the claims
     expect((await repo.getConfig()).lastError?.message).toMatch(/balance is too low/);
     expect(await t.status()).toBe('provider-error');
 
@@ -276,6 +282,7 @@ describe('money', () => {
     expect(await tracker(provider).tick()).toMatchObject({ status: 'provider-error', sent: 2 });
     const rows = await checks();
     expect(rows.map((r) => r.status)).toEqual(['queued', 'queued']); // the third was given back, not failed
+    expect(await repo.spentMicrosInMonth(now)).toBe(12_000);
   });
 
   it('treats a lost reply as possibly paid: final for the day, the estimate kept, sent again tomorrow', async () => {
@@ -288,6 +295,7 @@ describe('money', () => {
     expect(await t.tick()).toMatchObject({ sent: 0 }); // not again today: it may have been charged
     const [row] = await checks();
     expect(row).toMatchObject({ status: 'failed', costMicros: 6000, error: 'DataForSEO could not be reached' });
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000); // the estimate stays booked
     now = new Date('2026-10-21T08:00:00Z');
     expect(await t.tick()).toMatchObject({ sent: 1 });
     expect(submitted).toHaveLength(1);
@@ -312,9 +320,152 @@ describe('money', () => {
     const id = await repo.claim(due(k!), '2026-10-20', 'dataforseo', 0.006, now);
     expect(id).toBeTruthy();
     expect(await repo.claim(due(k!), '2026-10-20', 'dataforseo', 0.006, now)).toBeNull();
+    expect(await repo.spentMicrosInMonth(now)).toBe(6000); // the claim that lost booked nothing
     await repo.markFailed(id!, 'x');
     expect(await repo.claim(due(k!), '2026-10-20', 'dataforseo', 0.006, now)).toBeNull();
     expect(await repo.claim(due(k!), '2026-10-21', 'dataforseo', 0.006, now)).toBeTruthy();
+  });
+});
+
+describe('money outlives the checks', () => {
+  // The month's spend used to be SUM(rank_checks.cost_micros), and those rows go with their keyword or project — so
+  // money already spent vanished from the budget. Each test below read 0 (or paid past the budget) before the fix.
+
+  it('removing keywords keeps what their checks cost; adding them back and checking again counts both, up to the budget', async () => {
+    await repo.putConfig({ monthlyBudgetMicros: 30_000 }); // five checks at $0.006
+    const pid = await makeProject('readd');
+    await addKeywords(pid, ['a', 'b']);
+    const { provider, submitted } = scriptedProvider();
+    const t = tracker(provider);
+    expect(await t.tick()).toMatchObject({ sent: 2 });
+
+    const removeAll = async () => {
+      for (const k of await repo.listKeywords(pid)) expect(await repo.removeKeyword(pid, k.id)).toBe(true);
+    };
+    await removeAll();
+    expect(await checks()).toHaveLength(0);
+    expect(await repo.spentMicrosInMonth(now)).toBe(12_000);
+
+    // Added again: new ids, so the once-a-day index does not see the first checks — they are bought again, and counted.
+    await addKeywords(pid, ['a', 'b']);
+    expect(await t.tick()).toMatchObject({ sent: 2 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(24_000);
+
+    // A third round: only one more check fits in the budget.
+    await removeAll();
+    await addKeywords(pid, ['a', 'b']);
+    expect(await t.tick()).toMatchObject({ status: 'budget-reached', sent: 1 });
+    expect(submitted.flat()).toHaveLength(5);
+    expect(await repo.spentMicrosInMonth(now)).toBe(30_000);
+    expect(await t.status()).toBe('budget-reached');
+  });
+
+  it('purging a project keeps what its checks cost', async () => {
+    const pid = await makeProject('purged');
+    await addKeywords(pid, ['a', 'b']);
+    await tracker(scriptedProvider().provider).tick();
+    await new ProjectRepository(db).remove(pid);
+    expect(await checks()).toHaveLength(0);
+    expect(await repo.spentMicrosInMonth(now)).toBe(12_000);
+  });
+
+  it('a check whose project is purged while the provider has the request is still booked, at the provider’s figure', async () => {
+    const pid = await makeProject('race');
+    await addKeywords(pid, ['a']);
+    const { provider, state, submitted } = scriptedProvider();
+    state.charged = 0.004; // the estimate is $0.006
+    state.duringSubmit = () => new ProjectRepository(db).remove(pid);
+    expect(await tracker(provider).tick()).toMatchObject({ sent: 1 });
+    expect(submitted.flat()).toHaveLength(1);
+    expect(await checks()).toHaveLength(0); // markQueued found no check to update…
+    expect(await repo.spentMicrosInMonth(now)).toBe(4000); // …and the charge was booked all the same
+  });
+
+  it('a claim given back after its project was purged books nothing: nothing was sent for it', async () => {
+    const pid = await makeProject('race-refused');
+    await addKeywords(pid, ['a']);
+    const { provider, state } = scriptedProvider();
+    state.duringSubmit = () => new ProjectRepository(db).remove(pid);
+    state.submitErrors = [new RankProviderError('DataForSEO refused the credentials', 'auth')];
+    expect(await tracker(provider).tick()).toMatchObject({ status: 'provider-error', sent: 0 });
+    expect(await repo.spentMicrosInMonth(now)).toBe(0);
+  });
+
+  it('a late release never gives back a check that went out', async () => {
+    const pid = await makeProject('late-release');
+    await addKeywords(pid, ['a']);
+    const [k] = await repo.listKeywords(pid);
+    const id = await repo.claim(due(k!), '2026-10-20', 'dataforseo', 0.006, now);
+    await repo.markQueued(id!, 'ref', 0.005);
+    await repo.release(id!);
+    expect(await checks()).toHaveLength(1);
+    expect(await repo.spentMicrosInMonth(now)).toBe(5000);
+  });
+
+  it('counts a check in the month it was claimed, whenever its result arrives', async () => {
+    const pid = await makeProject('month-end');
+    await addKeywords(pid, ['a']);
+    const [k] = await repo.listKeywords(pid);
+    const id = await repo.claim(due(k!), '2026-10-31', 'dataforseo', 0.006, new Date('2026-10-31T23:59:00Z'));
+    await repo.markDone(id!, null, new Date('2026-11-01T00:05:00Z'), 0.007);
+    expect(await repo.spentMicrosInMonth(new Date('2026-10-15T00:00:00Z'))).toBe(7000);
+    expect(await repo.spentMicrosInMonth(new Date('2026-11-15T00:00:00Z'))).toBe(0);
+  });
+});
+
+describe('retention', () => {
+  const ids = async (table: typeof rankChecks | typeof rankCharges): Promise<string[]> =>
+    table === rankChecks
+      ? (await db.select({ id: rankChecks.id }).from(rankChecks)).map((r) => r.id).sort()
+      : (await db.select({ id: rankCharges.checkId }).from(rankCharges)).map((r) => r.id).sort();
+
+  it('once a day, the scheduled pass deletes checks older than 25 months, and charges of the months before them', async () => {
+    const pid = await makeProject('old');
+    await addKeywords(pid, ['a']);
+    const [k] = await repo.listKeywords(pid);
+    const claimOn = (day: string) => repo.claim(due(k!), day, 'dataforseo', 0.006, new Date(`${day}T08:00:00Z`));
+    const august = (await claimOn('2024-08-31'))!;
+    const gone = (await claimOn('2024-09-19'))!;
+    const kept = (await claimOn('2024-09-20'))!; // 2026-10-20 minus 25 months: the first day kept
+    await repo.putConfig({ activeProvider: null }); // nothing to send: only the housekeeping runs
+    const t = tracker(scriptedProvider().provider);
+
+    await t.tick();
+    expect(await ids(rankChecks)).toEqual([kept]);
+    expect(await ids(rankCharges)).toEqual([gone, kept].sort()); // September 2024 is partly inside: its charges stay
+
+    // At most once a day: a check that falls out of the window later the same day waits for the next one.
+    const later = (await claimOn('2024-09-10'))!;
+    await t.tick();
+    expect(await ids(rankChecks)).toEqual([kept, later].sort());
+    now = new Date('2026-10-21T08:00:00Z');
+    await t.tick();
+    expect(await ids(rankChecks)).toEqual([]);
+    expect(august).toBeTruthy();
+  });
+
+  it('deletes in bounded batches until nothing old is left, and stops after the day’s share', async () => {
+    const pid = await makeProject('old-batches');
+    await addKeywords(pid, ['a', 'b', 'c']);
+    const ks = await repo.listKeywords(pid);
+    for (const [i, k] of ks.entries()) {
+      for (const day of ['2024-01-01', '2024-01-02']) await repo.claim(due(k), day, 'dataforseo', 0.006, new Date(`${day}T0${i}:00:00Z`));
+    }
+    const kept = await repo.claim(due(ks[0]!), '2026-10-20', 'dataforseo', 0.006, now);
+    expect(await repo.pruneOld('2026-10-20', 4, 1)).toEqual({ checks: 4, charges: 4 }); // one batch of four: the rest tomorrow
+    expect(await repo.pruneOld('2026-10-20', 4)).toEqual({ checks: 2, charges: 2 });
+    expect(await ids(rankChecks)).toEqual([kept]);
+    expect(await ids(rankCharges)).toEqual([kept]);
+  });
+
+  it('a "check now" does not run it', async () => {
+    const pid = await makeProject('old-now');
+    await addKeywords(pid, ['a']);
+    const [k] = await repo.listKeywords(pid);
+    const old = await repo.claim(due(k!), '2024-01-01', 'dataforseo', 0.006, new Date('2024-01-01T08:00:00Z'));
+    await repo.putConfig({ activeProvider: null });
+    await tracker(scriptedProvider().provider).checkNow(pid);
+    expect(await ids(rankChecks)).toEqual([old]);
   });
 });
 

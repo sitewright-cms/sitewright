@@ -1318,6 +1318,29 @@ export const rankChecks = sqliteTable(
 );
 
 /**
+ * ★ MONEY — what each rank check cost, kept apart from the check. The month's spend is the sum of THESE, not of
+ * `rank_checks`: a check row goes when its keyword is removed or its project purged (and with retention), but the money
+ * was spent all the same. Summing the checks let staff remove keywords, add them again (new ids, so the once-a-day
+ * index no longer applies) and pay for every check twice while the budget read nearly nothing.
+ *
+ * No foreign key on purpose: a charge outlives its check, its keyword and its project. Written in the same batch as
+ * the check — the claim books the estimate, the provider's figure replaces it, an uncertain outcome keeps the
+ * estimate — and deleted only when a claim is RELEASED (the provider refused the whole request, so nothing was
+ * charged), or by retention after `STATS_RETENTION_MONTHS`.
+ */
+export const rankCharges = sqliteTable(
+  'rank_charges',
+  {
+    checkId: text('check_id').primaryKey(),
+    /** The UTC month the check was claimed in (YYYY-MM): the budget it counts against. */
+    month: text('month').notNull(),
+    /** USD × 1,000,000, as on the check: the estimate until the provider states its charge. */
+    costMicros: integer('cost_micros').notNull(),
+  },
+  (t) => [index('rank_charges_month').on(t.month)],
+);
+
+/**
  * The platform's search engine accounts (instance admins): one row per service (`google`, `bing`). The secret
  * is an `EncryptedSecret` ({iv, ct, tag}) of a JSON object; `info` is what the admin view may show (the Google
  * service account's email and project) and never holds a secret.
@@ -1367,6 +1390,34 @@ export const webmasterSites = sqliteTable(
     sitemapDetail: text('sitemap_detail'),
   },
   (t) => [primaryKey({ columns: [t.projectId, t.service] })],
+);
+
+/**
+ * A site the platform could not remove from one of its search engine accounts when its project was deleted: tried
+ * again from the hourly sweep, with the account that registered it, backing off, and given up (a warning in the log)
+ * after 14 days.
+ *
+ * No foreign key on purpose: it must outlive the purge, which deletes the `webmaster_sites` row that was the only other
+ * record of the site. `project_id` is the project it belonged to; while that project is only soft-deleted, a restore
+ * cancels the removal (its row still says what is registered).
+ */
+export const webmasterRemovals = sqliteTable(
+  'webmaster_removals',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id').notNull(),
+    service: text('service', { enum: ['google', 'bing'] }).notNull(),
+    siteUrl: text('site_url').notNull(),
+    /** The account that registered the site (as `webmaster_sites.account`): only that account can remove it. */
+    account: text('account').notNull(),
+    /** Google: the owners the platform added, who lose that ownership with the site. */
+    owners: text('owners', { mode: 'json' }).$type<string[]>().notNull().default([]),
+    attempts: integer('attempts').notNull(),
+    lastError: text('last_error'),
+    nextAt: integer('next_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('webmaster_removals_site').on(t.service, t.siteUrl, t.account), index('webmaster_removals_next').on(t.nextAt)],
 );
 
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */

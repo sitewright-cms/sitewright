@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
+  WEBMASTER_ACCOUNT_IN_USE,
   WebmasterAccountsInputSchema,
   WebmasterServiceSchema,
   SiteOwnersInputSchema,
@@ -10,6 +11,8 @@ import {
   type SiteRegistrationToggleResult,
   type SiteRegistrationVerifyResult,
   type SiteRegistrationView,
+  type WebmasterAccountInUse,
+  type WebmasterAccountsInUse,
   type WebmasterAccountsView,
   type WebmasterService,
   type WebmasterTestResult,
@@ -20,13 +23,15 @@ import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
-import type { SiteRegistrar } from './sites.js';
+import { bingAccountId, type AccountHolding, type SiteRegistrar } from './sites.js';
 
 /**
  * The platform's search engine accounts, for instance admins only (session-only: no token reaches them).
  *
  *   GET  /admin/webmaster-accounts        what is stored: the Google key's email and project, set/unset for Bing
- *   PUT  /admin/webmaster-accounts        store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null)
+ *   PUT  /admin/webmaster-accounts        store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null);
+ *                                         removing or replacing an account sites are still registered with is refused
+ *                                         (409 `account-in-use`, with a count) unless `force: true`
  *   POST /admin/webmaster-accounts/test   try a stored account (`{service}`), reading only
  *
  * ★ A secret goes in and never comes out: no answer carries the private key or the API key, not even masked.
@@ -36,15 +41,40 @@ export interface WebmasterRouteDeps {
   repo: WebmasterRepository;
   io: WebmasterIo;
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
+  /** What moving off the current account (to `next`, or null = removing it) would leave there; see `SiteRegistrar.heldBy`. */
+  heldBy: (service: WebmasterService, next: string | null) => Promise<AccountHolding>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
+const sitesText = (n: number): string => (n === 1 ? '1 site is' : `${n} sites are`);
+
 const LABEL: Record<WebmasterService, string> = { google: 'Google service-account key', bing: 'Bing API key' };
+const ACCOUNT: Record<WebmasterService, string> = { google: 'Google service account', bing: 'Bing Webmaster account' };
 /** A key file is capped at 16 KB by the schema; the body never needs to be much more than that. */
 const PUT_BODY_LIMIT = 64 * 1024;
 
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
-  const { repo, io, requireInstanceAdmin, rl } = deps;
+  const { repo, io, requireInstanceAdmin, heldBy, rl } = deps;
+
+  /**
+   * Why moving off ONE account is refused, in the shape System Settings then offers: switch the sites off first — or,
+   * for a key that no longer works, remove (replace) it anyway, knowing what stays at the old account.
+   */
+  function inUseText(service: WebmasterService, held: AccountHolding, action: WebmasterAccountInUse['action']): string {
+    // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+    const [account, label] = [ACCOUNT[service], LABEL[service]];
+    const n = held.switchedOn + held.notRemoved;
+    const stuck = (lead: string) => `${lead} still registered with ${held.switchedOn ? 'it' : `this ${account}`} although switched off or deleted (the removal did not get through)`;
+    const what = [
+      held.switchedOn ? `${sitesText(held.switchedOn)} switched on with this ${account}` : '',
+      held.notRemoved ? stuck(held.switchedOn ? `${held.notRemoved} more ${held.notRemoved === 1 ? 'is' : 'are'}` : sitesText(held.notRemoved)) : '',
+    ]
+      .filter(Boolean)
+      .join(', and ');
+    const anyway = `if the ${label} no longer works, ${action} it anyway`;
+    const how = held.switchedOn ? `Switch ${held.switchedOn === 1 ? 'it' : 'them'} off in the Search engines tile first, or, ${anyway}` : `${anyway[0]!.toUpperCase()}${anyway.slice(1)}`;
+    return `${what}. ${how}: ${n === 1 ? 'that site stays' : `those ${n} sites stay`} registered at the old account, to be removed there by hand.`;
+  }
 
   async function view(): Promise<WebmasterAccountsView> {
     const rows = new Map((await repo.list()).map((r) => [r.service, r]));
@@ -83,6 +113,34 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
     } catch (err) {
       if (err instanceof WebmasterError) return reply.code(400).send({ error: err.message });
       throw err;
+    }
+    // ★ Removing an account — or replacing it with ANOTHER one — while sites are registered with it leaves them at Google
+    // or Bing with nobody able to take them off: only the account that registered a site can remove it. Refused with a
+    // count unless forced (a key that no longer works can remove nothing anyway). The same account saved again is not
+    // a change: Google's is the service account, Bing's the key.
+    if (!input.force) {
+      const changes: Array<[WebmasterService, string | null]> = [];
+      if (input.google === null) changes.push(['google', null]);
+      else if (google) changes.push(['google', google.clientEmail]);
+      if (input.bing === null) changes.push(['bing', null]);
+      else if (bing) changes.push(['bing', bingAccountId(bing)]);
+      // One entry per account in the way, each with its own count and words: a save can remove one and replace the other.
+      const accounts: WebmasterAccountInUse[] = [];
+      for (const [service, next] of changes) {
+        const held = await heldBy(service, next);
+        const count = held.switchedOn + held.notRemoved;
+        const action = next === null ? 'remove' : 'replace';
+        if (count > 0) accounts.push({ service, action, count, error: inUseText(service, held, action) });
+      }
+      if (accounts.length > 0) {
+        const refusal: WebmasterAccountsInUse = {
+          error: accounts.map((a) => a.error).join(' '),
+          code: WEBMASTER_ACCOUNT_IN_USE,
+          count: accounts.reduce((sum, a) => sum + a.count, 0),
+          accounts,
+        };
+        return reply.code(409).send(refusal);
+      }
     }
     await repo.apply({
       ...(input.google === null ? { google: null } : {}),

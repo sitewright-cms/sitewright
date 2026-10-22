@@ -2,7 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, utimes, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { makeHarness, type Harness } from './harness.js';
+import { webmasterRemovals } from '../src/db/schema.js';
+import { WebmasterRepository } from '../src/webmaster/repo.js';
+import type { FetchLike } from '../src/payments/executor.js';
 
 /**
  * ★ The sweeps must run SHORTLY AFTER BOOT, not only on the interval.
@@ -103,5 +107,32 @@ describe('maintenance sweeps at boot', () => {
     });
     await vi.advanceTimersByTimeAsync(31_000);
     await vi.waitFor(async () => expect(await readdir(join(root, 'preview'))).toEqual([]));
+  });
+
+  it('tries again to remove a site its project’s deletion could not remove from Bing', async () => {
+    // The removal queue is only worth anything if the sweep runs it: wired here, not just unit-tested.
+    const asked: string[] = [];
+    const fetch: FetchLike = async (url, init) => {
+      asked.push(`${url.split('?')[0]} ${String(init.body)}`);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ d: null }) };
+    };
+    const key = Buffer.alloc(32, 9);
+    harness = await makeHarness({ maintenanceSweepMs: 60 * 60 * 1000, webmasterFetch: fetch, encryptionKey: key });
+    const apiKey = '0123456789abcdef0123456789abcdef';
+    await new WebmasterRepository(harness.db, key).apply({ bing: { secret: { apiKey }, info: {} } });
+    await harness.db.insert(webmasterRemovals).values({
+      id: 'queued-1',
+      projectId: 'a-purged-project',
+      service: 'bing',
+      siteUrl: 'https://gone.example.com/',
+      account: createHash('sha256').update(apiKey).digest('hex').slice(0, 16),
+      attempts: 1,
+      nextAt: new Date(Date.now() - 1000),
+      createdAt: new Date(Date.now() - 60 * 60 * 1000),
+    });
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    await vi.waitFor(async () => expect(await harness!.db.select().from(webmasterRemovals)).toEqual([]), { timeout: 10_000 });
+    expect(asked).toEqual(['https://ssl.bing.com/webmaster/api.svc/json/RemoveSite {"siteUrl":"https://gone.example.com/"}']);
   });
 });

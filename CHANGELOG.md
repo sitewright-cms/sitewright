@@ -40,8 +40,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Searched from** asks the rank-tracking provider as you type, as before, and now shows the chosen place and
     its kind (City, Region) in the field. Its list now opens over the page, like the other two, so the edge of the
     Search rankings card can no longer cut it off.
+  - **Searched from** only offers the answer to what is typed now: while that answer is on its way the list says
+    "Searching…", so a quick Enter cannot pick a row left over from the previous search. A failed search says why
+    in the list.
   - The choices, the defaults (the tracked keywords' country, the country itself as the place, English) and what
     is added are unchanged.
+
+### Fixed
+
+- **Searchable lists: Enter picks the first match of a new search.** Typing narrowed the list but kept the row
+  highlighted before by its position, so typing `de` in a country list and pressing Enter could pick Sweden instead of
+  the first match. Every searchable list in the editor had this (page, template and parent pickers too).
+- **Searchable lists: Tab moves on to the next field.** Tab from a list's search box closed the list and dropped
+  focus out of the form (the open list sits at the end of the page). Focus now goes back to the field the list
+  belongs to, and the Tab moves on from there.
+- **Searchable lists: a list under a narrow field is at least 256px wide,** and every list stays inside the window.
 
 ## [0.70.0] — 2026-10-22
 

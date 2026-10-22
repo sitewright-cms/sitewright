@@ -18,7 +18,7 @@ import { COUNTRY_OPTIONS } from '../src/views/stats/rank-options';
 
 const place = (name: string, type: string, countryCode: string): RankLocationOption => ({ name, type, countryCode });
 
-/** The provider: the country itself for an empty search, else a city named after the search. */
+/** The provider: the country itself for an empty search, else a city and a region named after the search. */
 function provider(): void {
   api.searchRankLocations.mockImplementation(async (country: string, q: string) => ({
     locations: q

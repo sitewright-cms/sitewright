@@ -18,6 +18,7 @@ export function SearchField({
   onEnter,
   noFocusRing,
   dense,
+  maxLength,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -41,6 +42,8 @@ export function SearchField({
   dense?: boolean;
   /** Enter pressed in the field — for lists where the top result is the obvious target. */
   onEnter?: () => void;
+  /** The longest search accepted, for a field whose text goes to a server that bounds it too. */
+  maxLength?: number;
   /** Combobox use: the id of the listbox this field filters (`aria-controls`). */
   controls?: string;
   /** Combobox use: the id of the visually-active option (`aria-activedescendant`) — so a screen
@@ -57,6 +60,7 @@ export function SearchField({
         aria-activedescendant={activeDescendant}
         autoFocus={autoFocus}
         disabled={disabled}
+        maxLength={maxLength}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={

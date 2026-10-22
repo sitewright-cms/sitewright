@@ -59,6 +59,41 @@ describe('SearchableSelect', () => {
     expect(onChange).toHaveBeenCalledWith('b');
   });
 
+  it('a new search highlights its first match, so Enter picks what was found', () => {
+    const onChange = vi.fn();
+    const greek = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'].map((w) => ({ value: w, label: w }));
+    // The current value (the 3rd row) is highlighted when the list opens …
+    render(<SearchableSelect ariaLabel="Parent" value="gamma" options={greek} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parent' }));
+    const search = screen.getByLabelText('Search Parent');
+    // … "a" finds alpha, beta, gamma, delta: still four rows, so the old 3rd-row highlight would survive it.
+    fireEvent.change(search, { target: { value: 'a' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('alpha');
+  });
+
+  it('keeps the current value highlighted when the list opens', () => {
+    const onChange = vi.fn();
+    render(<SearchableSelect ariaLabel="Parent" value="c" options={opts} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Parent' }));
+    fireEvent.keyDown(screen.getByLabelText('Search Parent'), { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith('c');
+  });
+
+  it('Tab from the search box closes the list and leaves focus on the field, from where the Tab moves on', () => {
+    const onChange = vi.fn();
+    render(<SearchableSelect ariaLabel="Parent" value="a" options={opts} onChange={onChange} />);
+    const combo = screen.getByRole('combobox', { name: 'Parent' });
+    fireEvent.click(combo);
+    const search = screen.getByLabelText('Search Parent');
+    expect(search).toHaveFocus();
+    // Not prevented: the browser's own Tab then moves on from the field, not from a search box that is gone.
+    expect(fireEvent.keyDown(search, { key: 'Tab' })).toBe(true);
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(combo).toHaveFocus();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('Escape closes the list without selecting', () => {
     const onChange = vi.fn();
     render(<SearchableSelect ariaLabel="Parent" value="a" options={opts} onChange={onChange} />);

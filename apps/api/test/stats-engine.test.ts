@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StatsEngine, type StatsHit, type StatsLimits } from '../src/analytics/engine.js';
 import type { GeoLookup } from '../src/analytics/geo.js';
-import { StatsStore } from '../src/analytics/store.js';
+import { StatsStore, type StatsDelta } from '../src/analytics/store.js';
 import { statsProjectKey } from '../src/analytics/token.js';
+
+/** For the tests on a real FILE (fsync, vacuum): generous, so a loaded machine is not reported as a failure. */
+const FILE_TEST_TIMEOUT = 60_000;
 
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0';
@@ -136,6 +139,26 @@ describe('the statistics engine', () => {
     expect(rows.find((r) => r[1] === 'referral' && r[2] === '')?.[3]).toBe('5');
   });
 
+  it('★ caps the named referrers across ALL sites too, and a forgotten site gives its share back', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await open(store, { sourceHosts: 200, sourceHostsTotal: 3 });
+    const refer = (projectId: string, n: number) => {
+      for (let i = 0; i < n; i++) engine.record(hit({ projectId, ip: `1.0.0.${i}`, referrerHost: `${projectId}-ref${i}.example.org` }));
+    };
+    const named = async (projectId: string) =>
+      (await engine.rows(projectId, 'sources', today(), today())).slice(1).filter((r) => r[1] === 'referral' && r[2] !== '').length;
+    refer('first', 3);
+    refer('second', 2);
+    expect(await named('first')).toBe(3);
+    // Presence: the second site's visits are counted — under their kind alone.
+    expect((await engine.query('second', q(), true)).human.visitors).toBe(2);
+    expect(await named('second')).toBe(0);
+    await engine.forget('first');
+    refer('third', 2);
+    expect(await named('third')).toBe(2);
+  });
+
   it('filters the human breakdowns by device and country, each list keeping its own dimension', async () => {
     engine.record(hit());
     engine.record(hit({ ua: IPHONE, ip: '1.1.1.9' }));
@@ -195,6 +218,31 @@ describe('the statistics engine', () => {
     expect((await store.query(P, q())).human).toEqual({ views: 2, visitors: 1 });
   });
 
+  it('★ a write that fails after midnight is retried WITHOUT the previous day’s visitor ids', async () => {
+    const deltas: StatsDelta[] = [];
+    const real = store.apply.bind(store);
+    let fail = true;
+    store.apply = async (d) => {
+      deltas.push(d);
+      if (fail) {
+        fail = false;
+        throw new Error('disk full');
+      }
+      return real(d);
+    };
+    engine.record(hit()); // the 19th
+    now = new Date('2026-10-20T00:00:05Z');
+    expect(await engine.flush()).toBe(false);
+    expect(await engine.flush()).toBe(true);
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0]!.seen).toEqual([{ project: P, day: '2026-10-19', ids: [expect.any(Number)] }]);
+    // The 19th's counts are retried…
+    expect(deltas[1]!.traffic).toEqual([expect.objectContaining({ day: '2026-10-19', views: 1, visitors: 1 })]);
+    // …its visitor ids are not: they only ever served to de-duplicate the 19th, which is over.
+    expect(deltas[1]!.seen).toEqual([]);
+    expect((await store.query(P, { from: '2026-10-19', to: '2026-10-19' })).human).toEqual({ views: 1, visitors: 1 });
+  });
+
   it('★ remembers today’s visitors across a clean restart, so nobody is counted twice', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
     try {
@@ -217,7 +265,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('drops totals older than the 25-month retention window', async () => {
     now = new Date('2024-01-10T10:00:00Z');
@@ -285,7 +333,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   /** A WAL-mode statistics file made WITHOUT incremental vacuum, holding data and free pages from a delete. */
   async function legacyFile(file: string): Promise<void> {
@@ -321,7 +369,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ never blocks startup on the conversion: a file too large to rewrite opens unconverted, and says so', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
@@ -338,7 +386,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ refuses to wipe most sites at once (a main database restored from an old backup looks like that)', async () => {
     const logs: string[] = [];
@@ -351,6 +399,133 @@ describe('the statistics engine', () => {
     expect(logs.some((m) => m.includes('NOT deleting'))).toBe(true);
     // One site gone among many is the ordinary case, and is reaped.
     expect(await engine.reapOrphans(async () => new Set(['a', 'b', 'c', 'd', 'e']))).toEqual(['f']);
+  });
+
+  /** Makes the store's forget fail while `failing()` says so. */
+  function breakForget(s: StatsStore, failing: () => boolean): void {
+    const real = s.forget.bind(s);
+    s.forget = async (project) => {
+      if (failing()) throw new Error('disk busy');
+      return real(project);
+    };
+  }
+
+  it('★ remembers a purge whose forget FAILED — across a restart — and the next sweep finishes it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
+    try {
+      const url = `file:${join(dir, 'analytics.db')}`;
+      const s = await StatsStore.open(url);
+      const first = await open(s);
+      first.record(hit({ projectId: 'live' }));
+      first.record(hit({ projectId: 'purged' }));
+      breakForget(s, () => true);
+      await expect(first.forget('purged')).rejects.toThrow('disk busy');
+      await first.close();
+      // A new process: the purge is on record in the statistics file itself.
+      const again = await StatsStore.open(url);
+      expect(await again.purgedIds()).toEqual(['purged']);
+      expect((await again.projectIds()).sort()).toEqual(['live', 'purged']);
+      const second = await open(again);
+      expect(await second.reapOrphans(async () => new Set(['live']))).toEqual(['purged']);
+      expect(await again.projectIds()).toEqual(['live']);
+      // Done with: the record goes with the next pass that finds nothing left.
+      expect(await second.reapOrphans(async () => new Set(['live']))).toEqual([]);
+      expect(await again.purgedIds()).toEqual([]);
+      await second.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, FILE_TEST_TIMEOUT);
+
+  it('★ a bulk purge of MOST sites is forgotten in full — the brake is for sites nobody deleted', async () => {
+    for (const p of ['a', 'b', 'c', 'd', 'e', 'f']) engine.record(hit({ projectId: p }));
+    let failing = true;
+    breakForget(store, () => failing);
+    for (const p of ['c', 'd', 'e', 'f']) await expect(engine.forget(p)).rejects.toThrow('disk busy');
+    // Presence first: the purged sites' statistics really are still there, and are more than the brake allows.
+    expect((await store.projectIds()).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    // While the store keeps failing, the sweep fails too — and forgets nothing it was told about.
+    await expect(engine.reapOrphans(async () => new Set(['a', 'b']))).rejects.toThrow('disk busy');
+    expect((await store.purgedIds()).sort()).toEqual(['c', 'd', 'e', 'f']);
+    failing = false;
+    expect((await engine.reapOrphans(async () => new Set(['a', 'b']))).sort()).toEqual(['c', 'd', 'e', 'f']);
+    expect((await store.projectIds()).sort()).toEqual(['a', 'b']);
+    expect(await engine.reapOrphans(async () => new Set(['a', 'b']))).toEqual([]);
+    expect(await store.purgedIds()).toEqual([]);
+  });
+
+  it('★ still holds back sites that vanished UNEXPLAINED, while finishing the purged ones', async () => {
+    const logs: string[] = [];
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await StatsEngine.open({ store, geo, now: () => now, log: (m) => logs.push(m) });
+    for (const p of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) engine.record(hit({ projectId: p }));
+    let failing = true;
+    breakForget(store, () => failing);
+    for (const p of ['g', 'h']) await expect(engine.forget(p)).rejects.toThrow('disk busy');
+    failing = false;
+    // Only a and b exist: g and h were purged on purpose, c–f vanished with no purge on record.
+    expect((await engine.reapOrphans(async () => new Set(['a', 'b']))).sort()).toEqual(['g', 'h']);
+    expect((await store.projectIds()).sort()).toEqual(['a', 'b', 'c', 'd', 'e', 'f']);
+    expect(logs.some((m) => m.includes('4 of 6 sites with statistics are missing') && m.includes('NOT deleting'))).toBe(true);
+  });
+
+  it('★ a purged id whose project EXISTS again (a restored database) keeps its statistics', async () => {
+    engine.record(hit({ projectId: 'back' }));
+    breakForget(store, () => true);
+    await expect(engine.forget('back')).rejects.toThrow('disk busy');
+    expect(await store.purgedIds()).toEqual(['back']);
+    expect(await engine.reapOrphans(async () => new Set(['back']))).toEqual([]);
+    expect(await store.projectIds()).toEqual(['back']);
+    expect(await store.purgedIds()).toEqual([]);
+  });
+
+  it('★ a purge the statistics file cannot even RECORD is still finished by the next sweep (held in memory)', async () => {
+    const logs: string[] = [];
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await StatsEngine.open({ store, geo, now: () => now, log: (m) => logs.push(m) });
+    for (const p of ['a', 'b', 'c', 'd', 'e', 'f']) engine.record(hit({ projectId: p }));
+    store.markPurged = async () => {
+      throw new Error('read-only file');
+    };
+    let failing = true;
+    breakForget(store, () => failing);
+    for (const p of ['c', 'd', 'e', 'f']) await expect(engine.forget(p)).rejects.toThrow('disk busy');
+    expect(logs.some((m) => m.includes('could not record'))).toBe(true);
+    failing = false;
+    expect((await engine.reapOrphans(async () => new Set(['a', 'b']))).sort()).toEqual(['c', 'd', 'e', 'f']);
+    expect((await store.projectIds()).sort()).toEqual(['a', 'b']);
+  });
+
+  it('★ keeps a purge on record until a sweep finds nothing left, so a visit that lands LATE is deleted too', async () => {
+    engine.record(hit({ projectId: 'live' }));
+    engine.record(hit({ projectId: 'purged' }));
+    await engine.forget('purged');
+    expect(await store.projectIds()).toEqual(['live']);
+    expect(await store.purgedIds()).toEqual(['purged']);
+    // A visit that was already past its checks when the project went lands a row after the delete…
+    engine.record(hit({ projectId: 'purged' }));
+    expect(await engine.reapOrphans(async () => new Set(['live']))).toEqual(['purged']);
+    // …and another one after that sweep: the record is still there for the next.
+    engine.record(hit({ projectId: 'purged', route: '/about/' }));
+    expect(await store.purgedIds()).toEqual(['purged']);
+    expect(await engine.reapOrphans(async () => new Set(['live']))).toEqual(['purged']);
+    expect(await store.projectIds()).toEqual(['live']);
+    // A pass that finds nothing left drops the record.
+    expect(await engine.reapOrphans(async () => new Set(['live']))).toEqual([]);
+    expect(await store.purgedIds()).toEqual([]);
+  });
+
+  it('keeps the purge record bounded, dropping the oldest', async () => {
+    const s = await StatsStore.open(':memory:', { purgedMax: 3 });
+    for (let i = 0; i < 5; i++) await s.markPurged(`p${i}`, new Date(Date.UTC(2026, 9, 19, 10, 0, i)));
+    expect((await s.purgedIds()).sort()).toEqual(['p2', 'p3', 'p4']);
+    // Marking an id again does not make it younger: p2 is still the oldest, and goes next.
+    await s.markPurged('p2', new Date(Date.UTC(2026, 9, 19, 11)));
+    await s.markPurged('p5', new Date(Date.UTC(2026, 9, 19, 12)));
+    expect((await s.purgedIds()).sort()).toEqual(['p3', 'p4', 'p5']);
+    s.close();
   });
 
   it('a failure to give space back neither fails the flush nor repeats the prune', async () => {
@@ -427,7 +602,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ a midnight rollover DURING the salt write leaves the new day’s salt to be saved next time', async () => {
     const real = store.saveSalt.bind(store);

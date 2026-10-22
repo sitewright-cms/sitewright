@@ -373,6 +373,7 @@ import {
   SETTINGS_ENTITY_ID,
   contentVersion,
   VersionConflictError,
+  type ImportBundleOptions,
   type Settings,
 } from '../repo/content.js';
 import { ensureShopOrderForms } from '../repo/shop-order-forms.js';
@@ -2868,6 +2869,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
   }
 
+  /**
+   * The {@link guardContentWrite} rule for a bundle IMPORT, which writes the settings without passing through it.
+   * Rather than refuse a whole import over one setting, a non-staff caller's import leaves `website.statistics` as
+   * it is stored (on or off), whatever the bundle says; staff import it as before. `ctx.userId` is the human
+   * behind an agent token, as for a content write.
+   */
+  async function importOptionsFor(ctx: ProjectContext): Promise<ImportBundleOptions> {
+    return (await getPlatformRole(db, ctx.userId)) === null ? { keepStoredWebsite: ['statistics'] } : {};
+  }
+
   async function requireInstanceAdmin(req: FastifyRequest): Promise<string> {
     // session-only: a Bearer token must never reach instance-admin operations.
     if (bearerToken(req) !== undefined) {
@@ -4652,28 +4663,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found'); // never reap the global scope
     const project = await projects.get(id); // NotFound if absent
     const clientIds = await listProjectClientUserIds(db, id); // snapshot BEFORE membership rows go
-    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was.
-    await siteRegistrar.removeAll(id);
-    await projects.remove(id);
-    await refreshCustomDomainRoutes();
     const onCleanupError = (what: string) => (err: unknown) =>
       app.log.warn(
         { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
         'project asset cleanup failed on reap',
       );
-    await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
-    await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
-    await sourceRefStore?.removeProject(project.slug).catch(onCleanupError('source-refs'));
-    previewBuiltVersion.delete(project.id);
-    previewBuilds.delete(project.id);
-    previewBuildFail.delete(project.id);
-    previewPageFailures.delete(project.id);
-    previewProgress.delete(project.id);
-    jsonDataCache.delete(project.id);
-    await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
-    await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
-    invalidateStatsConfig(project.id);
-    await statsEngine.forget(project.id).catch(onCleanupError('statistics'));
+    // ★ The statistics' purge record goes in BEFORE anything is destroyed. Statistics live in their own file, so
+    // once the row below is gone nothing else says they are this project's; with the record, the hourly sweep
+    // forgets them whatever fails from here on (or if the process stops), and however many projects go at once.
+    await statsEngine.recordPurge(id);
+    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was.
+    await siteRegistrar.removeAll(id);
+    await projects.remove(id);
+    try {
+      await refreshCustomDomainRoutes();
+      await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
+      await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
+      await sourceRefStore?.removeProject(project.slug).catch(onCleanupError('source-refs'));
+      previewBuiltVersion.delete(project.id);
+      previewBuilds.delete(project.id);
+      previewBuildFail.delete(project.id);
+      previewPageFailures.delete(project.id);
+      previewProgress.delete(project.id);
+      jsonDataCache.delete(project.id);
+      await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
+      await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
+    } finally {
+      // Whatever threw above, the row is gone: its statistics go now too (and the record covers a failure here).
+      invalidateStatsConfig(project.id);
+      await statsEngine.forget(project.id).catch(onCleanupError('statistics'));
+    }
   }
 
   // ---- Project content (tenant + project scoped) ----
@@ -5784,7 +5803,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             await creator.settle(project.id);
             const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
             onProgress({ phase: 'content', detail: 'importing content' });
-            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten);
+            // A creator is staff today; the rule is applied anyway, so a looser creator gate cannot reopen it.
+            const { imported } = await contentRepo.importBundle(ownerCtx, project, rewritten, await importOptionsFor(ownerCtx));
             onProgress({ phase: 'media', detail: 'restoring media' });
             const media = await extractProjectMedia(
               parsed.zip,
@@ -5847,7 +5867,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Inside the rollback: a creation that cannot be recorded must not leave a project behind.
           await creator.settle(project.id);
           const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: creator.actor };
-          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug));
+          await contentRepo.importBundle(ownerCtx, project, rewriteMediaSlug(bundle, source.slug, newSlug), await importOptionsFor(ownerCtx));
           if (mediaStorage) await mediaStorage.copyProjectMedia(source.slug, newSlug);
           return reply.code(201).send({ project: { ...project, role: 'owner' as const } });
         } catch (err) {
@@ -5869,7 +5889,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
-      return reply.send(await contentRepo.importBundle(ctx, project, req.body));
+      return reply.send(await contentRepo.importBundle(ctx, project, req.body, await importOptionsFor(ctx)));
     },
   );
 
@@ -7536,6 +7556,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerImportRoutes(app, {
       resolveProject,
       contentRepo,
+      importOptions: importOptionsFor,
       createMediaAsset,
       // Self-host an imported SVG as a sanitized, verbatim VECTOR image (kept animated + scalable).
       createSvgAsset: async (ctx, slug, svgText, meta) => {

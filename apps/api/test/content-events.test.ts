@@ -38,6 +38,21 @@ describe('ContentRepository change events', () => {
     expect(events[0]?.version).toBe(await content.versionOf(ctx, 'page', 'home'));
   });
 
+  it('★ a bundle import announces its SETTINGS as a settings save does — once, after the commit, and nothing else', async () => {
+    const events: ContentChange[] = [];
+    bus.subscribe(ctx.projectId, (e) => events.push(e));
+    const project = { id: ctx.projectId, name: 'A', slug: 'a' };
+    const settings = { identity: { name: 'A', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] }, website: { statistics: { enabled: true } } };
+    await content.importBundle(ctx, project, { project: settings, pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Home</h1>' }] });
+    expect(events).toEqual([{ kind: 'settings', entityId: 'settings', op: 'put', actor: undefined, scope: '', version: expect.any(String) }]);
+    expect(events[0]?.version).toBe(await content.versionOf(ctx, 'settings', 'settings'));
+    // A content-only bundle leaves the settings alone, and says nothing about them.
+    events.length = 0;
+    await content.importBundle(ctx, project, { pages: [{ id: 'about', path: 'about', title: 'About', source: '<h1>About</h1>' }] });
+    expect(await content.get(ctx, 'page', 'about')).toMatchObject({ title: 'About' });
+    expect(events).toEqual([]);
+  });
+
   it('emits a delete event on removal', async () => {
     await content.put(ctx, 'page', 'home', page);
     const events: ContentChange[] = [];

@@ -8,6 +8,7 @@ import { assertNoScripts, importMediaFolder, registerImportRoutes } from '../src
 import type { CrawlResult } from '../src/import/crawl.js';
 import type { ImportBundle } from '@sitewright/site-import';
 import type { ProjectContext } from '../src/repo/context.js';
+import type { ImportBundleOptions } from '../src/repo/content.js';
 
 function ctxFor(id: string, role: 'owner' | 'member'): ProjectContext {
   return { userId: 'u', projectId: id, role, actor: 'user' } as unknown as ProjectContext;
@@ -31,7 +32,7 @@ interface Built {
 
 type PinnedStub = (url: string, opts?: { signal?: AbortSignal }) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
 
-function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub; cacheSourceRefs?: (slug: string, pages: unknown[], onProgress: (e: unknown) => void, signal: AbortSignal) => Promise<{ captured: number; total: number; capped: boolean }> } = {}): Built {
+function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub; cacheSourceRefs?: (slug: string, pages: unknown[], onProgress: (e: unknown) => void, signal: AbortSignal) => Promise<{ captured: number; total: number; capped: boolean }>; importOptions?: (ctx: ProjectContext) => Promise<ImportBundleOptions> } = {}): Built {
   const app = Fastify();
   // Mirror app.ts's TWO async global onSend hooks (security headers + gzip). Load-bearing for the
   // double-send regression tests: each async hook defers the header write by a microtask hop, which
@@ -59,6 +60,7 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
     pinnedFetch: (opts.pinnedFetch ?? (async () => null)) as never,
     render: undefined,
     ...(opts.cacheSourceRefs ? { cacheSourceRefs: opts.cacheSourceRefs as never } : {}),
+    ...(opts.importOptions ? { importOptions: opts.importOptions } : {}),
   });
   return { app, importBundle, createMediaAsset, createSvgAsset, hostScript };
 }
@@ -163,6 +165,17 @@ describe('POST /projects/:id/import/upload/stream', () => {
     const { payload, headers } = multipartBody(await siteZip(), 'site.zip', 'application/zip');
     const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
     expect(res.statusCode).toBe(403);
+  });
+
+  it('★ imports with what the CALLER must leave as stored (a client cannot change the statistics by importing)', async () => {
+    const importOptions = vi.fn(async () => ({ keepStoredWebsite: ['statistics' as const] }));
+    const { app, importBundle } = track(makeApp({ importOptions }));
+    const { payload, headers } = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(res.payload).toContain('event: done');
+    expect(importOptions).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'pa' }));
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    expect(importBundle.mock.calls[0]![3]).toEqual({ keepStoredWebsite: ['statistics'] });
   });
 });
 

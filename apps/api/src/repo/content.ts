@@ -229,6 +229,32 @@ export interface ExportBundle {
   entries: Entry[];
 }
 
+export interface ImportBundleOptions {
+  /**
+   * `website` settings the import must leave AS STORED, whatever the bundle says (absent where nothing is stored).
+   * For a setting the caller may not change by a content write, so an import is not a way around that rule —
+   * the built-in statistics for a non-staff caller.
+   */
+  keepStoredWebsite?: readonly (keyof WebsiteSettings)[];
+}
+
+/**
+ * `next` with the `keys` of its `website` taken from `stored`'s (each one dropped where `stored` has none).
+ * A `next` with no `website` gets one only when a kept value needs it.
+ */
+function withStoredWebsite<T extends { website?: WebsiteSettings }>(next: T, stored: unknown, keys: readonly (keyof WebsiteSettings)[]): T {
+  const from = ((stored as { website?: unknown } | null | undefined)?.website ?? {}) as Record<string, unknown>;
+  const website: Record<string, unknown> = { ...(next.website ?? {}) };
+  for (const key of keys) {
+    // eslint-disable-next-line security/detect-object-injection -- `key` is a WebsiteSettings field name from the caller's fixed list
+    if (from[key] !== undefined) website[key] = from[key];
+    // eslint-disable-next-line security/detect-object-injection -- as above
+    else delete website[key];
+  }
+  if (next.website === undefined && Object.keys(website).length === 0) return next;
+  return { ...next, website: website as WebsiteSettings };
+}
+
 /** A db handle or a transaction handle — both expose the query builder used here. */
 type Executor = Database;
 
@@ -1269,6 +1295,7 @@ export class ContentRepository {
     ctx: ProjectContext,
     project: ProjectIdentity,
     raw: unknown,
+    opts: ImportBundleOptions = {},
   ): Promise<{ imported: number }> {
     const input = z
       .object({
@@ -1338,10 +1365,15 @@ export class ContentRepository {
     }
 
     let imported = 0;
+    let settingsWritten: unknown;
     await this.db.transaction(async (tx) => {
       const exec = tx as unknown as Executor; // tx exposes the same query builder
       if (input.project) {
-        await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, input.project);
+        const keep = opts.keepStoredWebsite ?? [];
+        // The stored row is read in the transaction that replaces it, so the value kept is the one being replaced.
+        const stored = keep.length ? await this.row(exec, ctx, 'settings', SETTINGS_ENTITY_ID) : undefined;
+        const settings = keep.length ? withStoredWebsite(input.project, stored?.data, keep) : input.project;
+        settingsWritten = await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, settings, stored);
         imported += 1;
       }
       for (const page of importPages) {
@@ -1390,6 +1422,13 @@ export class ContentRepository {
         imported += 1;
       }
     });
+    // The settings are announced exactly as a settings save announces them, once the import has committed: what
+    // caches them (the statistics collector's per-site settings) drops its copy now instead of when it expires,
+    // and an open editor reads them again. Only the settings — one event per imported page would be a request
+    // storm for every open editor, and nothing caches the other kinds.
+    if (settingsWritten !== undefined) {
+      this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor, scope: '', version: contentVersion(settingsWritten) });
+    }
     return { imported };
   }
 

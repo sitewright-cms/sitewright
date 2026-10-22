@@ -56,6 +56,24 @@ The running version of an instance is reported at `GET /version` (baked into the
   belongs to, and the Tab moves on from there.
 - **Searchable lists: a list under a narrow field is at least 256px wide,** and every list stays inside the window.
 
+- **Statistics: only agency staff can switch them on, by an import too.** Importing a project bundle wrote the
+  settings without the check a settings save makes, so a client could switch the built-in statistics on by
+  importing a bundle that said so. Now a client's import, and a client's website import, leaves the setting as it
+  was and applies the rest; staff import it as before. A settings save, a merge and a revision restore were
+  already checked, and duplicating or creating a project from an archive is for staff only.
+- **Statistics: an import that switches them on or off takes effect at once.** The visit counter kept the site's
+  previous settings for up to 30 seconds after a project or website import, where a settings save applies at
+  once; an editor open on the project now also sees the imported settings without a reload.
+- **Statistics: a deleted project's numbers are always removed in the end.** When the cleanup failed during a
+  permanent delete, the numbers could stay for up to 25 months: the hourly sweep that removes leftovers refuses to
+  delete most sites at once (a restored old database looks like that), and a bulk delete looks like that too. A
+  permanent delete now records the project in the statistics file before it deletes anything, removes the
+  statistics even when a later step of the delete fails, and the hourly sweep finishes every recorded delete,
+  however many there were. Leftovers with no recorded delete are still held back as before.
+- **Statistics: the list of named referrers is capped across all sites**, not only per site, so traffic from
+  many made-up referrers on many sites cannot grow memory without limit. Past the cap a visit still counts, under
+  its kind of source.
+
 ## [0.70.0] — 2026-10-22
 
 ### Added

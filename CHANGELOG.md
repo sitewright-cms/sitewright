@@ -55,7 +55,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   focus out of the form (the open list sits at the end of the page). Focus now goes back to the field the list
   belongs to, and the Tab moves on from there.
 - **Searchable lists: a list under a narrow field is at least 256px wide,** and every list stays inside the window.
-### Fixed
 
 - **Statistics: only agency staff can switch them on, by an import too.** Importing a project bundle wrote the
   settings without the check a settings save makes, so a client could switch the built-in statistics on by

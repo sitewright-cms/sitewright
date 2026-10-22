@@ -503,21 +503,36 @@ export class StatsEngine {
    */
   async forget(projectId: string): Promise<void> {
     await this.exclusive(async () => {
-      try {
-        await this.store.markPurged(projectId, this.now());
-      } catch (err) {
-        if (this.purgedInMemory.size < PURGED_IN_MEMORY_MAX) {
-          this.log('statistics: could not record a purge in the statistics file — retrying it from memory until a restart', err);
-          this.purgedInMemory.add(projectId);
-        } else {
-          this.log('statistics: could not record a purge, and too many are waiting in memory — its statistics are left to the orphan sweep', err);
-        }
-      }
+      await this.markPurged(projectId);
       await this.flushNow();
       this.dropFromMemory(projectId);
       await this.store.forget(projectId);
       await this.compactQuietly();
     });
+  }
+
+  /**
+   * Puts a purge on record ahead of the steps that destroy the project, so that whatever happens between here and
+   * {@link forget} — a step that throws, a process that stops — the sweep still forgets its statistics. Never
+   * throws: a purge must not fail over its statistics. A record for a project that turns out to exist after all
+   * is dropped by the sweep, statistics kept.
+   */
+  async recordPurge(projectId: string): Promise<void> {
+    await this.exclusive(() => this.markPurged(projectId));
+  }
+
+  /** The purge record: in the statistics file, or in memory when that cannot be written. */
+  private async markPurged(projectId: string): Promise<void> {
+    try {
+      await this.store.markPurged(projectId, this.now());
+    } catch (err) {
+      if (this.purgedInMemory.size < PURGED_IN_MEMORY_MAX) {
+        this.log('statistics: could not record a purge in the statistics file — retrying it from memory until a restart', err);
+        this.purgedInMemory.add(projectId);
+      } else {
+        this.log('statistics: could not record a purge, and too many are waiting in memory — its statistics are left to the orphan sweep', err);
+      }
+    }
   }
 
   private dropFromMemory(projectId: string): void {

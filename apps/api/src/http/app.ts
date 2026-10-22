@@ -4663,28 +4663,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found'); // never reap the global scope
     const project = await projects.get(id); // NotFound if absent
     const clientIds = await listProjectClientUserIds(db, id); // snapshot BEFORE membership rows go
-    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was.
-    await siteRegistrar.removeAll(id);
-    await projects.remove(id);
-    await refreshCustomDomainRoutes();
     const onCleanupError = (what: string) => (err: unknown) =>
       app.log.warn(
         { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
         'project asset cleanup failed on reap',
       );
-    await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
-    await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
-    await sourceRefStore?.removeProject(project.slug).catch(onCleanupError('source-refs'));
-    previewBuiltVersion.delete(project.id);
-    previewBuilds.delete(project.id);
-    previewBuildFail.delete(project.id);
-    previewPageFailures.delete(project.id);
-    previewProgress.delete(project.id);
-    jsonDataCache.delete(project.id);
-    await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
-    await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
-    invalidateStatsConfig(project.id);
-    await statsEngine.forget(project.id).catch(onCleanupError('statistics'));
+    // ★ The statistics' purge record goes in BEFORE anything is destroyed. Statistics live in their own file, so
+    // once the row below is gone nothing else says they are this project's; with the record, the hourly sweep
+    // forgets them whatever fails from here on (or if the process stops), and however many projects go at once.
+    await statsEngine.recordPurge(id);
+    // Whatever the soft delete could not remove from Google or Bing goes now, while the rows still say what it was.
+    await siteRegistrar.removeAll(id);
+    await projects.remove(id);
+    try {
+      await refreshCustomDomainRoutes();
+      await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
+      await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
+      await sourceRefStore?.removeProject(project.slug).catch(onCleanupError('source-refs'));
+      previewBuiltVersion.delete(project.id);
+      previewBuilds.delete(project.id);
+      previewBuildFail.delete(project.id);
+      previewPageFailures.delete(project.id);
+      previewProgress.delete(project.id);
+      jsonDataCache.delete(project.id);
+      await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
+      await reapOrphanedClients(db, clientIds).catch(onCleanupError('orphan-clients'));
+    } finally {
+      // Whatever threw above, the row is gone: its statistics go now too (and the record covers a failure here).
+      invalidateStatsConfig(project.id);
+      await statsEngine.forget(project.id).catch(onCleanupError('statistics'));
+    }
   }
 
   // ---- Project content (tenant + project scoped) ----

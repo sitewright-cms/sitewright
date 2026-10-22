@@ -1365,6 +1365,7 @@ export class ContentRepository {
     }
 
     let imported = 0;
+    let settingsWritten: unknown;
     await this.db.transaction(async (tx) => {
       const exec = tx as unknown as Executor; // tx exposes the same query builder
       if (input.project) {
@@ -1372,7 +1373,7 @@ export class ContentRepository {
         // The stored row is read in the transaction that replaces it, so the value kept is the one being replaced.
         const stored = keep.length ? await this.row(exec, ctx, 'settings', SETTINGS_ENTITY_ID) : undefined;
         const settings = keep.length ? withStoredWebsite(input.project, stored?.data, keep) : input.project;
-        await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, settings, stored);
+        settingsWritten = await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, settings, stored);
         imported += 1;
       }
       for (const page of importPages) {
@@ -1421,6 +1422,13 @@ export class ContentRepository {
         imported += 1;
       }
     });
+    // The settings are announced exactly as a settings save announces them, once the import has committed: what
+    // caches them (the statistics collector's per-site settings) drops its copy now instead of when it expires,
+    // and an open editor reads them again. Only the settings — one event per imported page would be a request
+    // storm for every open editor, and nothing caches the other kinds.
+    if (settingsWritten !== undefined) {
+      this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor, scope: '', version: contentVersion(settingsWritten) });
+    }
     return { imported };
   }
 

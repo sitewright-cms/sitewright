@@ -97,8 +97,8 @@ costs another site its accuracy, and an attack on many sites never costs unbound
     nothing.
   - A soft-deleted project stops counting too, even if a copy of its pages on another host still beacons,
     and keeps its numbers for a restore.
-  - The permanent delete removes them. It first records the project in `analytics.db` (in memory when the file
-    cannot be written), and an hourly sweep, alongside the other maintenance sweeps, deletes the statistics of
+  - The permanent delete removes them, even when one of its other steps fails. Before it deletes anything it
+    records the project in `analytics.db` (in memory when the file cannot be written), and an hourly sweep, alongside the other maintenance sweeps, deletes the statistics of
     every recorded project; the record goes once a sweep finds nothing left. So a delete whose own cleanup
     failed, or a beacon that landed just after it, is finished by the next sweep, however many projects were
     deleted at once. A recorded project that exists again (a main database restored from before the delete)

@@ -4,8 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { StatsEngine, type StatsHit, type StatsLimits } from '../src/analytics/engine.js';
 import type { GeoLookup } from '../src/analytics/geo.js';
-import { StatsStore } from '../src/analytics/store.js';
+import { StatsStore, type StatsDelta } from '../src/analytics/store.js';
 import { statsProjectKey } from '../src/analytics/token.js';
+
+/** For the tests on a real FILE (fsync, vacuum): generous, so a loaded machine is not reported as a failure. */
+const FILE_TEST_TIMEOUT = 60_000;
 
 const CHROME = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0';
@@ -215,6 +218,31 @@ describe('the statistics engine', () => {
     expect((await store.query(P, q())).human).toEqual({ views: 2, visitors: 1 });
   });
 
+  it('★ a write that fails after midnight is retried WITHOUT the previous day’s visitor ids', async () => {
+    const deltas: StatsDelta[] = [];
+    const real = store.apply.bind(store);
+    let fail = true;
+    store.apply = async (d) => {
+      deltas.push(d);
+      if (fail) {
+        fail = false;
+        throw new Error('disk full');
+      }
+      return real(d);
+    };
+    engine.record(hit()); // the 19th
+    now = new Date('2026-10-20T00:00:05Z');
+    expect(await engine.flush()).toBe(false);
+    expect(await engine.flush()).toBe(true);
+    expect(deltas).toHaveLength(2);
+    expect(deltas[0]!.seen).toEqual([{ project: P, day: '2026-10-19', ids: [expect.any(Number)] }]);
+    // The 19th's counts are retried…
+    expect(deltas[1]!.traffic).toEqual([expect.objectContaining({ day: '2026-10-19', views: 1, visitors: 1 })]);
+    // …its visitor ids are not: they only ever served to de-duplicate the 19th, which is over.
+    expect(deltas[1]!.seen).toEqual([]);
+    expect((await store.query(P, { from: '2026-10-19', to: '2026-10-19' })).human).toEqual({ views: 1, visitors: 1 });
+  });
+
   it('★ remembers today’s visitors across a clean restart, so nobody is counted twice', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
     try {
@@ -237,7 +265,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('drops totals older than the 25-month retention window', async () => {
     now = new Date('2024-01-10T10:00:00Z');
@@ -305,7 +333,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   /** A WAL-mode statistics file made WITHOUT incremental vacuum, holding data and free pages from a delete. */
   async function legacyFile(file: string): Promise<void> {
@@ -341,7 +369,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ never blocks startup on the conversion: a file too large to rewrite opens unconverted, and says so', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
@@ -358,7 +386,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ refuses to wipe most sites at once (a main database restored from an old backup looks like that)', async () => {
     const logs: string[] = [];
@@ -407,7 +435,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ a bulk purge of MOST sites is forgotten in full — the brake is for sites nobody deleted', async () => {
     for (const p of ['a', 'b', 'c', 'd', 'e', 'f']) engine.record(hit({ projectId: p }));
@@ -574,7 +602,7 @@ describe('the statistics engine', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
-  });
+  }, FILE_TEST_TIMEOUT);
 
   it('★ a midnight rollover DURING the salt write leaves the new day’s salt to be saved next time', async () => {
     const real = store.saveSalt.bind(store);

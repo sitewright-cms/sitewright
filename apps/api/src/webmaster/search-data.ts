@@ -61,6 +61,12 @@ export function searchPeriod(days: SearchPerformancePeriod, now: Date): SearchPe
 /** How far back a period's end moves to the newest reported day: a quiet site's empty days stay empty days. */
 export const MAX_LAG_DAYS = 3;
 
+/** Where a period is expected to end before anything is known about the site: Google's newest day is most often yesterday. */
+export const DEFAULT_LAG_DAYS = 1;
+
+/** How many days `end` lies before `day` (both YYYY-MM-DD). */
+export const daysBefore = (day: string, end: string): number => Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${end}T00:00:00Z`)) / DAY_MS);
+
 /** `p` moved back to end on the newest day in `reported` (at most {@link MAX_LAG_DAYS} back). */
 export function reportedPeriod(p: SearchPeriod, reported: Iterable<string>): SearchPeriod {
   const floor = addDays(p.end, -MAX_LAG_DAYS);
@@ -121,21 +127,31 @@ const byClicks = (a: SearchPerformanceRow, b: SearchPerformanceRow): number => b
 export type GoogleAsk = (queries: readonly GoogleSearchQuery[]) => Promise<GoogleSearchRow[][]>;
 
 /**
- * Google's numbers for one period, in two rounds: the days first — this period's and the one before, with room for
- * Google's delay — which say the newest reported day; then the top searches and pages for the period ending on it.
+ * Google's numbers for one period. The days — this period's and the one before, with room for Google's delay — say
+ * the newest reported day, and the top searches and pages are for the period ending on it. Each round to Google is
+ * about a second (measured), so the top searches and pages are asked WITH the days, for the period ending on
+ * `expectedEnd` (where this site's last answer ended); only when the days say otherwise is there a second round.
  */
-export async function googleReport(ask: GoogleAsk, p: SearchPeriod): Promise<SearchPerformanceData> {
-  const [daily = []] = await ask([{ startDate: addDays(p.previous.start, -MAX_LAG_DAYS), endDate: p.end, dimensions: ['date'], rowLimit: 500 }]);
+export async function googleReport(ask: GoogleAsk, p: SearchPeriod, expectedEnd: string = addDays(p.end, -DEFAULT_LAG_DAYS)): Promise<SearchPerformanceData> {
+  const top = (w: { start: string; end: string }): GoogleSearchQuery[] => [
+    { startDate: w.start, endDate: w.end, dimensions: ['query'], rowLimit: SEARCH_PERFORMANCE_TOP },
+    { startDate: w.start, endDate: w.end, dimensions: ['page'], rowLimit: SEARCH_PERFORMANCE_TOP },
+  ];
+  // ONE round when the period ends where it is expected to: the days, and the top searches and pages over the period
+  // ending on the expected day, asked together. The searches and pages wait for the days only when the guess was off.
+  const floor = addDays(p.end, -MAX_LAG_DAYS);
+  const guess = periodEnding(p.days, expectedEnd < floor ? floor : expectedEnd > p.end ? p.end : expectedEnd);
+  const [daily = [], guessedQueries = [], guessedPages = []] = await ask([
+    { startDate: addDays(p.previous.start, -MAX_LAG_DAYS), endDate: p.end, dimensions: ['date'], rowLimit: 500 },
+    ...top(guess),
+  ]);
   const byDay = new Map<string, DayFigures>();
   for (const r of daily) {
     const day = r.keys[0];
     if (day) byDay.set(day, { clicks: r.clicks, impressions: r.impressions, positionSum: r.position * r.impressions, positionWeight: r.impressions });
   }
   const shown = reportedPeriod(p, byDay.keys());
-  const [queries = [], pages = []] = await ask([
-    { startDate: shown.start, endDate: shown.end, dimensions: ['query'], rowLimit: SEARCH_PERFORMANCE_TOP },
-    { startDate: shown.start, endDate: shown.end, dimensions: ['page'], rowLimit: SEARCH_PERFORMANCE_TOP },
-  ]);
+  const [queries = [], pages = []] = shown.end === guess.end ? [guessedQueries, guessedPages] : await ask(top(shown));
   const row = (r: GoogleSearchRow): SearchPerformanceRow => ({
     key: r.keys[0] ?? '',
     clicks: r.clicks,

@@ -16,6 +16,52 @@ export interface WebmasterIo {
    * timed out therefore stops for real, rather than finishing behind the next one.
    */
   deadline?: number;
+  /** Access tokens kept between requests (Google's last an hour); without it, every call trades the key again. */
+  tokens?: AccessTokens;
+}
+
+/**
+ * Access tokens by account, reused until shortly before they expire: trading a key for a token is a full round trip
+ * (about 0.75 s to Google, measured), and one Search performance view or verification makes several calls. Callers
+ * that arrive while a token is being fetched share that one fetch; a failed fetch is not kept. A token an API call
+ * answers 401 to is dropped (see {@link requestJson}), so a revoked one is not offered again. Bounded: one entry per
+ * account, a few accounts at most.
+ */
+export class AccessTokens {
+  private readonly kept = new Map<string, { until: number; value?: string; token: Promise<string> }>();
+
+  constructor(private readonly max = 4) {}
+
+  /** The token kept for `account` until it is due, else a new one from `fetch` (`ttlMs`: how long it may be used). */
+  get(account: string, nowMs: number, fetch: () => Promise<{ token: string; ttlMs: number }>): Promise<string> {
+    const kept = this.kept.get(account);
+    if (kept && nowMs < kept.until) return kept.token;
+    // Due, or never fetched: one fetch, shared by everyone who asks before it answers.
+    const entry: { until: number; value?: string; token: Promise<string> } = { until: Infinity, token: Promise.resolve('') };
+    entry.token = fetch().then(
+      ({ token, ttlMs }) => {
+        entry.value = token;
+        entry.until = nowMs + ttlMs;
+        return token;
+      },
+      (err: unknown) => {
+        if (this.kept.get(account) === entry) this.kept.delete(account);
+        throw err;
+      },
+    );
+    this.kept.delete(account);
+    this.kept.set(account, entry);
+    for (const old of this.kept.keys()) {
+      if (this.kept.size <= this.max) break;
+      this.kept.delete(old);
+    }
+    return entry.token;
+  }
+
+  /** Stop offering `token`: an API refused it. */
+  forget(token: string): void {
+    for (const [account, entry] of this.kept) if (entry.value === token) this.kept.delete(account);
+  }
 }
 
 /**
@@ -77,6 +123,11 @@ export async function requestJson(
     json = secureJsonParse(text, undefined, { protoAction: 'remove', constructorAction: 'remove' });
   } catch {
     json = undefined;
+  }
+  // A refused token is not offered again: the next call trades the key for a new one.
+  if (status === 401 && io.tokens) {
+    const bearer = /^Bearer (.+)$/.exec(init.headers.authorization ?? '')?.[1];
+    if (bearer) io.tokens.forget(bearer);
   }
   return { status, json };
 }

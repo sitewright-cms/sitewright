@@ -20,6 +20,18 @@ The running version of an instance is reported at `GET /version` (baked into the
   - **Search Console owners:** says what each new owner still does once. Being an owner does not put the site in their
     Search Console list, so they add it as a **URL prefix** property with the exact address (a Copy button), and Google
     confirms the ownership at once. Links open Search Console's Add property and the site's reports.
+- **Statistics → Search performance loads faster, and shows that it is loading.** Measured against Google, a first
+  view took about 3 seconds: two access-token trades (about 0.75 s each) and two rounds of questions one after the other.
+  - **One Google access token per hour** for every call (verification, sitemap, owners, numbers), instead of one per
+    call; a token Google refuses is dropped, and the read is sent once more with a new one. Test saved credentials still
+    trades the key every time.
+  - **One round of questions** when the period ends where this site's last answer ended: the days, the top searches
+    and the top pages are asked together. Only a guess that was off asks the searches and pages again.
+  - **Bing is asked once for every period:** it answers with the whole history, so 7, 28 and 90 days are cut from
+    one answer, kept for ten minutes.
+  - **Asked ahead:** opening the Statistics tab asks for the view Search performance opens on, while the visits show.
+  - **While it loads,** a spinner in the title bar ("Asking Google…") and the numbers' shape as pulsing placeholders;
+    switching the period keeps the numbers on screen, dimmed, with the spinner.
 
 ## [0.70.0] — 2026-10-22
 

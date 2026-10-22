@@ -51,6 +51,15 @@ import { WebmasterError, type WebmasterIo } from './request.js';
 /** How long a step waits for a search engine (several requests each). */
 const STEP_TIMEOUT_MS = 30_000;
 
+/**
+ * How long Bing's statistics for a site are reused. Bing answers with the site's whole history at once (about two
+ * seconds, measured), so the 7-, 28- and 90-day views looked at one after the other are cut from one answer instead of
+ * asking three times. Short: each view's numbers are kept an hour anyway; this only bridges the switch between them.
+ */
+const BING_STATS_TTL_MS = 10 * 60_000;
+/** A whole history can be a few hundred KB: only the sites looked at in the last minutes. */
+const BING_STATS_MAX = 50;
+
 interface Account {
   /** Which account a tag was made for, so a different key needs a new one. */
   id: string;
@@ -63,7 +72,7 @@ interface Account {
   /** Google only: change the site's Search Console owners; the owners it then lists. */
   setOwners?: (siteUrl: string, change: GoogleOwnersChange) => Promise<string[]>;
   /** The site's search numbers for one period (Statistics → Search performance). */
-  searchData: (siteUrl: string, period: SearchPeriod) => Promise<SearchPerformanceData>;
+  searchData: (siteUrl: string, period: SearchPeriod, expectedEnd?: string) => Promise<SearchPerformanceData>;
   done: string;
 }
 
@@ -99,6 +108,8 @@ const transient = (err: unknown): boolean => !(err instanceof WebmasterError) ||
 export class SiteRegistrar {
   /** Per project, the step in flight: a second one waits for it instead of racing it on the same rows. */
   private readonly queues = new Map<string, Promise<unknown>>();
+  /** Bing's statistics per account and site, while they are reused ({@link BING_STATS_TTL_MS}); a failure is not kept. */
+  private readonly bingStats = new Map<string, { at: number; stats: ReturnType<typeof bingSearchStats> }>();
 
   constructor(private readonly deps: SiteRegistrarDeps) {}
 
@@ -150,7 +161,7 @@ export class SiteRegistrar {
         unregister: (siteUrl, owners) => googleUnregisterSite(key, siteUrl, owners, io, this.now()),
         submitSitemap: (siteUrl, sitemapUrl) => googleSubmitSitemap(key, siteUrl, sitemapUrl, io, this.now()),
         setOwners: (siteUrl, change) => googleSetOwners(key, siteUrl, change, io, this.now()),
-        searchData: (siteUrl, period) => googleReport((queries) => googleSearchAnalytics(key, siteUrl, queries, io, this.now()), period),
+        searchData: (siteUrl, period, expectedEnd) => googleReport((queries) => googleSearchAnalytics(key, siteUrl, queries, io, this.now()), period, expectedEnd),
         done: 'Verified and added to Search Console',
       };
     }
@@ -164,9 +175,29 @@ export class SiteRegistrar {
       register: (siteUrl) => bingVerifySite(apiKey, siteUrl, io),
       unregister: (siteUrl) => bingRemoveSite(apiKey, siteUrl, io),
       submitSitemap: (siteUrl, sitemapUrl) => bingSubmitSitemap(apiKey, siteUrl, sitemapUrl, io),
-      searchData: async (siteUrl, period) => bingData(await bingSearchStats(apiKey, siteUrl, io), period),
+      searchData: async (siteUrl, period) => bingData(await this.bingStatsOf(apiKey, siteUrl, io), period),
       done: 'Verified in Bing Webmaster Tools',
     };
+  }
+
+  /** Bing's statistics for the site: the answer from the last hour, else a new one (shared while it is asked). */
+  private bingStatsOf(apiKey: string, siteUrl: string, io: WebmasterIo): ReturnType<typeof bingSearchStats> {
+    const now = this.now().getTime();
+    // A fingerprint of the key, never the key: the map is no place a secret could be read back from.
+    const id = `${createHash('sha256').update(apiKey).digest('hex').slice(0, 16)}\n${siteUrl}`;
+    const kept = this.bingStats.get(id);
+    if (kept && now - kept.at < BING_STATS_TTL_MS) return kept.stats;
+    const entry = { at: now, stats: bingSearchStats(apiKey, siteUrl, io) };
+    entry.stats.catch(() => {
+      if (this.bingStats.get(id) === entry) this.bingStats.delete(id);
+    });
+    this.bingStats.delete(id);
+    this.bingStats.set(id, entry);
+    for (const [old, e] of this.bingStats) {
+      if (this.bingStats.size <= BING_STATS_MAX && now - e.at < BING_STATS_TTL_MS) break;
+      this.bingStats.delete(old);
+    }
+    return entry.stats;
   }
 
   private async rows(projectId: string): Promise<Row[]> {
@@ -522,7 +553,7 @@ export class SiteRegistrar {
         if (!row.enabled || row.status !== 'verified' || row.siteUrl !== siteUrl) continue;
         const account = await this.account(row.service, this.deps.dataIo);
         if (!account || account.id !== row.account) continue;
-        sources.push({ service: row.service, siteUrl, accountId: account.id, read: (period) => account.searchData(siteUrl, period) });
+        sources.push({ service: row.service, siteUrl, accountId: account.id, read: (period, expectedEnd) => account.searchData(siteUrl, period, expectedEnd) });
       }
       return sources.sort((a, b) => WEBMASTER_SERVICES.indexOf(a.service) - WEBMASTER_SERVICES.indexOf(b.service));
     } catch (err) {

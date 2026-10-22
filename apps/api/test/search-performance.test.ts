@@ -44,23 +44,27 @@ const g = (key: string, clicks: number, impressions: number, position: number): 
 describe('googleReport', () => {
   const p = searchPeriod(7, NOW); // 2026-10-15 … 2026-10-21
 
-  /** Google's answers, by the dimension asked for; every query asked is kept. */
+  /** Google's answers, by the dimension asked for; every query asked is kept, and every round (one `ask`) counted. */
   function google(byDimension: Record<string, GoogleSearchRow[]>) {
     const asked: Array<{ dimensions?: string[]; startDate: string; endDate: string }> = [];
+    let rounds = 0;
     const ask: GoogleAsk = async (queries) => {
+      rounds++;
       asked.push(...queries);
       return queries.map((q) => byDimension[q.dimensions?.[0] ?? ''] ?? []);
     };
-    return { ask, asked };
+    return { ask, asked, rounds: () => rounds };
   }
+  const answers = {
+    date: [g('2026-10-12', 1, 30, 9), g('2026-10-13', 2, 100, 10), g('2026-10-15', 6, 300, 4), g('2026-10-19', 1, 20, 5)],
+    query: [g('roofing windhoek', 5, 50, 3.2), g('roof repair', 3, 350, 8)],
+    page: [g('https://www.example.com/', 8, 400, 5)],
+  };
 
-  it('asks for the days first, then the searches and pages for the period ending on Google’s newest day', async () => {
-    const { ask, asked } = google({
-      date: [g('2026-10-12', 1, 30, 9), g('2026-10-13', 2, 100, 10), g('2026-10-15', 6, 300, 4), g('2026-10-19', 1, 20, 5)],
-      query: [g('roofing windhoek', 5, 50, 3.2), g('roof repair', 3, 350, 8)],
-      page: [g('https://www.example.com/', 8, 400, 5)],
-    });
-    const data = await googleReport(ask, p);
+  it('asks for the days, searches and pages in ONE round when the period ends where expected', async () => {
+    const { ask, asked, rounds } = google(answers);
+    const data = await googleReport(ask, p, '2026-10-19');
+    expect(rounds()).toBe(1);
     expect(asked.map((q) => [q.dimensions ?? [], q.startDate, q.endDate])).toEqual([
       [['date'], '2026-10-05', '2026-10-21'],
       [['query'], '2026-10-13', '2026-10-19'],
@@ -81,6 +85,31 @@ describe('googleReport', () => {
     ]);
     expect(data.queries.map((q) => q.key)).toEqual(['roofing windhoek', 'roof repair']);
     expect(data.queries[0]).toEqual({ key: 'roofing windhoek', clicks: 5, impressions: 50, ctr: 0.1, position: 3.2 });
+  });
+
+  it('asks for the searches and pages again when Google’s newest day is not the expected one, and shows those', async () => {
+    const { ask, asked, rounds } = google(answers);
+    // Nothing known: expected yesterday (the 20th); Google's newest is the 19th.
+    const data = await googleReport(ask, p);
+    expect(rounds()).toBe(2);
+    expect(asked.map((q) => [q.dimensions ?? [], q.startDate, q.endDate])).toEqual([
+      [['date'], '2026-10-05', '2026-10-21'],
+      [['query'], '2026-10-14', '2026-10-20'],
+      [['page'], '2026-10-14', '2026-10-20'],
+      [['query'], '2026-10-13', '2026-10-19'],
+      [['page'], '2026-10-13', '2026-10-19'],
+    ]);
+    expect(data.period).toEqual({ start: '2026-10-13', end: '2026-10-19' });
+  });
+
+  it('keeps an expected day inside the days a period can end on', async () => {
+    const early = google({});
+    await googleReport(early.ask, p, '2026-09-01'); // before the three days a period moves back at most
+    expect(early.asked[1]).toMatchObject({ startDate: '2026-10-12', endDate: '2026-10-18' });
+    expect(early.rounds()).toBe(1); // a quiet site: the period ends three days back, as expected
+    const late = google({});
+    await googleReport(late.ask, p, '2026-12-01');
+    expect(late.asked[1]).toMatchObject({ startDate: '2026-10-15', endDate: '2026-10-21' });
   });
 
   it('reads an empty answer as nothing at all', async () => {
@@ -162,6 +191,28 @@ describe('SearchPerformance (the cache)', () => {
     now = new Date(NOW.getTime() + 61 * 60_000);
     await perf.view('p1', 'x', 'google', 28);
     expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('tells the next read of the site where its last answer ended, so Google is asked in one round', async () => {
+    const read = vi.fn<SearchDataSource['read']>(async () => data);
+    const perf = new SearchPerformance({ sources: async () => [source(read)], now: () => NOW });
+    await perf.view('p1', 'x', 'google', 28);
+    expect(read.mock.calls[0]![1]).toBeUndefined(); // nothing known yet
+    await perf.view('p1', 'x', 'google', 7);
+    // The 28 days ended on the 18th, three days before today (the 21st in California): so will the 7.
+    expect(read.mock.calls[1]![1]).toBe('2026-10-18');
+    await perf.view('p2', 'x', 'google', 7);
+    expect(read.mock.calls[2]![1]).toBeUndefined(); // another project's site is not this one
+  });
+
+  it('remembers a bounded number of sites’ delays', async () => {
+    const read = vi.fn<SearchDataSource['read']>(async () => data);
+    const perf = new SearchPerformance({ sources: async (projectId) => [source(read, { siteUrl: `https://${projectId}.example/` })], now: () => NOW, maxEntries: 2 });
+    for (const p of ['p1', 'p2', 'p3']) await perf.view(p, 'x', 'google', 28);
+    await perf.view('p1', 'x', 'google', 7);
+    expect(read.mock.calls.at(-1)![1]).toBeUndefined(); // p1's went to make room
+    await perf.view('p3', 'x', 'google', 7);
+    expect(read.mock.calls.at(-1)![1]).toBe('2026-10-18');
   });
 
   it('never reuses an answer for another period, URL or account', async () => {

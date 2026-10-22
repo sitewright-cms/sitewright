@@ -48,6 +48,31 @@ describe('Search performance', () => {
     expect(api.getSearchPerformance).toHaveBeenCalledWith('p1', 'google', 28);
   });
 
+  it('shows the shape of the numbers, and a spinner in its title bar, while a search engine answers', async () => {
+    let answer!: (v: View) => void;
+    api.getSearchPerformance.mockImplementationOnce(() => new Promise<View>((r) => (answer = r)));
+    render(<SearchPerformanceView projectId="p1" services={['google']} />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Asking Google…');
+    expect(status.querySelector('.animate-spin')).not.toBeNull();
+    expect(screen.getByTestId('search-performance-skeleton')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Clicks' })).toBeNull();
+    answer(view());
+    expect(await screen.findByRole('group', { name: 'Clicks' })).toHaveTextContent('120');
+    expect(screen.queryByTestId('search-performance-skeleton')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent('');
+    // Another period: the numbers on screen stay (dimmed), and the spinner comes back until it answers.
+    let next!: (v: View) => void;
+    api.getSearchPerformance.mockImplementationOnce(() => new Promise<View>((r) => (next = r)));
+    fireEvent.click(screen.getByRole('radio', { name: '7 days' }));
+    expect(screen.getByRole('status')).toHaveTextContent('Asking Google…');
+    expect(screen.queryByTestId('search-performance-skeleton')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Clicks' }).parentElement?.parentElement).toHaveClass('opacity-50');
+    next(view({ totals: { clicks: 7, impressions: 70, ctr: 0.1, position: 2 } }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Clicks' })).toHaveTextContent('7'));
+    expect(screen.getByRole('status')).toHaveTextContent('');
+  });
+
   it('charts the days and lists the top searches and pages, a page as its path', async () => {
     api.getSearchPerformance.mockResolvedValue(view());
     render(<SearchPerformanceView projectId="p1" services={['google']} />);

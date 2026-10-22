@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, Loader2, Search } from 'lucide-react';
 import {
   SEARCH_PERFORMANCE_PERIODS,
   type SearchPerformanceDay,
@@ -11,6 +11,7 @@ import {
 } from '@sitewright/schema';
 import { api } from '../../api';
 import { accentChip, glassCard, gradientHover, gradientSurface } from '../../theme';
+import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
 import { Panel } from './Breakdowns';
 import { useChartTip } from './ChartTip';
@@ -23,6 +24,9 @@ import { fmt, longDay, shortDay } from './format';
  */
 
 const ENGINE: Record<WebmasterService, string> = { google: 'Google', bing: 'Bing' };
+
+/** The period the view opens on (the Statistics tab asks for it ahead, so it is ready when the view opens). */
+export const SEARCH_PERFORMANCE_DEFAULT_DAYS: SearchPerformancePeriod = 28;
 const percent = (v: number | null): string => (v === null ? '—' : `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`);
 const position = (v: number | null): string => (v === null ? '—' : v.toFixed(1));
 const message = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'The search numbers could not be read');
@@ -170,9 +174,40 @@ function TopTable({ title, keyLabel, rows, keyOf }: { title: string; keyLabel: s
   );
 }
 
+/** The shape of the numbers while the first answer is on its way: the same boxes, pulsing. */
+function SearchSkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-hidden data-testid="search-performance-skeleton">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
+            <Skeleton className="h-3 w-20 rounded" />
+            <Skeleton className="mt-2.5 h-7 w-16 rounded-md" />
+            <Skeleton className="mt-2 h-3 w-24 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
+        <Skeleton className="h-3 w-48 rounded" />
+        <Skeleton className="mt-3 h-40 w-full rounded-lg" />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        {[0, 1].map((t) => (
+          <div key={t} className="flex flex-col gap-2.5 rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
+            <Skeleton className="h-3 w-28 rounded" />
+            {[0, 1, 2, 3, 4].map((r) => (
+              <Skeleton key={r} className={`h-4 rounded ${r % 2 ? 'w-4/5' : 'w-full'}`} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function SearchPerformanceView({ projectId, services }: { projectId: string; services: WebmasterService[] }) {
   const [service, setService] = useState<WebmasterService>(services[0] ?? 'google');
-  const [days, setDays] = useState<SearchPerformancePeriod>(28);
+  const [days, setDays] = useState<SearchPerformancePeriod>(SEARCH_PERFORMANCE_DEFAULT_DAYS);
   const [view, setView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -216,7 +251,17 @@ export function SearchPerformanceView({ projectId, services }: { projectId: stri
         <h2 id="search-performance-heading" className="text-sm font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200">
           Search performance
         </h2>
-        <span className="text-sm text-slate-500 dark:text-slate-400">How often the site is shown and clicked in search results</span>
+        {/* On a phone the line goes under the title, so the spinner keeps its place beside it. */}
+        <span className="text-sm text-slate-500 max-sm:order-last max-sm:basis-full dark:text-slate-400">How often the site is shown and clicked in search results</span>
+        {/* The search engines take a second or two to answer: the title bar says something is coming. */}
+        <span role="status" className="ml-auto inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          {loading && (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin text-indigo-600 dark:text-indigo-400" aria-hidden />
+              <span className="max-sm:sr-only">Asking {ENGINE[service]}…</span>
+            </>
+          )}
+        </span>
       </header>
       <div className="flex flex-col gap-4 p-5" aria-busy={loading}>
         <div className="flex flex-wrap items-center gap-2">
@@ -263,6 +308,7 @@ export function SearchPerformanceView({ projectId, services }: { projectId: stri
           </p>
         )}
 
+        {loading && !view && !error && <SearchSkeleton />}
         {view && totals && (
           // The numbers on screen while another search engine or period loads are the previous choice's: dimmed.
           <div className={`flex flex-col gap-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>

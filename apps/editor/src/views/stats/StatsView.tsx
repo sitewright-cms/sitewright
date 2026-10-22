@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { BarChart3, Download, RefreshCw, Settings } from 'lucide-react';
 import type { SiteStats, StatsDevice } from '@sitewright/schema';
 import { api, downloadStatsCsv, type Project } from '../../api';
 import type { OpenWebsiteSettings } from '../../lib/settings-links';
 import { accentChip, ghostButton, glassCard, gradientHover, gradientSurface, primaryButton } from '../../theme';
 import { DailyChart } from './DailyChart';
-import { BotsPanel, CountriesPanel, DEVICE_LABELS, DevicesPanel, FilterChip, GoalsPanel, PagesPanel, Panel, SourcesPanel } from './Breakdowns';
+import { BotsPanel, CountriesPanel, DEVICE_LABELS, DevicesPanel, FilterChip, GoalsPanel, PagesPanel, Panel, SourcesPanel, TileFilters, type ActiveFilters } from './Breakdowns';
 import { WorldMap } from './WorldMap';
 import { countryName, fmt, pct, rangeDays, STATS_RANGES, type StatsRangeId } from './format';
 
@@ -22,8 +22,10 @@ const CSV_TABLES = [
 /**
  * The project's STATISTICS tab: the built-in, cookieless visit counter (see analytics/engine.ts on the server).
  *
- * Everything here is a daily total. Clicking a device or a country filters the human figures by it; the two
- * filters combine. The tab refreshes itself once a minute while the range includes today.
+ * Everything here is a daily total. Clicking a device or a country filters by it; the two filters combine, and
+ * apply to every tile counted with them — pages, sources and goals included (bots by country only: a bot has no
+ * device). Each tile shows the pills of the filters it applies, and a quiet note for one it cannot. The tab
+ * refreshes itself once a minute while the range includes today.
  */
 export function StatsView({ project, onOpenSettings }: { project: Project; onOpenSettings?: OpenWebsiteSettings }) {
   const [range, setRange] = useState<StatsRangeId>('30d');
@@ -65,9 +67,20 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
   }, [load]);
 
   const { from, to } = rangeDays(range);
-  const filtered = Boolean(device || country);
-  const goals = stats?.goals.reduce((n, g) => n + g.count, 0) ?? 0;
+  const filters: ActiveFilters = { device, country, clearDevice: () => setDevice(undefined), clearCountry: () => setCountry(undefined) };
+  // Under a filter the server gives the goal total (`goalCount`) — never exactly below the minimum count, and the
+  // listed goals alone would leave out the forms it does not name.
+  const goals: number | 'few' = stats?.breakdown ? stats.breakdown.goalCount : (stats?.goals.reduce((n, g) => n + g.count, 0) ?? 0);
+  // Goals not broken down by device and country belong to no filter: a rate over a filter's visitors is then a part
+  // over a whole, so it is only shown when every goal in the period is placed.
+  const goalsUnplaced = stats?.breakdown?.goals ?? 0;
+  const minCount = stats?.breakdown?.minCount ?? 3;
+  // The forms not listed add up to fewer than the minimum: the total given is the listed part, a lower bound.
+  const goalsAtLeast = stats?.breakdown?.goalsUnlisted === 'few' && typeof goals === 'number';
   const allViews = (stats?.human.views ?? 0) + (stats?.botViews ?? 0);
+  /** A KPI card's pills — only while a filter is on, so an unfiltered card keeps its height. */
+  const kpiPills = (cannot?: Array<'device' | 'country'>): ReactNode =>
+    device || country ? <TileFilters filters={filters} cannot={cannot} compact /> : undefined;
 
   return (
     <section className={`${glassCard} overflow-hidden`} aria-labelledby="stats-heading">
@@ -162,41 +175,66 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
         )}
 
         {stats && (
-          <>
+          // ★ While a new filter or period loads, the numbers on screen are the previous answer's — under pills that
+          // already show the new filter. Dimmed (and busy), so the two are never read together as one.
+          <div className={`flex flex-col gap-4 transition-opacity ${loading ? 'opacity-50' : ''}`} aria-busy={loading}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Kpi label="Visitors" value={fmt(stats.human.visitors)} />
-              <Kpi label="Pageviews" value={fmt(stats.human.views)} hint={stats.human.visitors ? `${(stats.human.views / stats.human.visitors).toFixed(1)} per visitor` : undefined} />
-              <Kpi label="Bot pageviews" value={fmt(stats.botViews)} hint={allViews ? `${pct(stats.botViews, allViews)} of all traffic` : undefined} />
-              <Kpi label="Goals" value={fmt(goals)} hint={!filtered && stats.human.visitors ? `${pct(goals, stats.human.visitors)} of visitors` : undefined} />
+              <Kpi label="Visitors" value={fmt(stats.human.visitors)} filters={kpiPills()} />
+              <Kpi
+                label="Pageviews"
+                value={fmt(stats.human.views)}
+                hint={stats.human.visitors ? `${(stats.human.views / stats.human.visitors).toFixed(1)} per visitor` : undefined}
+                filters={kpiPills()}
+              />
+              <Kpi
+                label="Bot pageviews"
+                value={fmt(stats.botViews)}
+                // Under a device filter the humans are one device's and the bots every device's: no share to give.
+                hint={allViews && !device ? `${pct(stats.botViews, allViews)} of all traffic` : undefined}
+                filters={kpiPills(['device'])}
+              />
+              <Kpi
+                label="Goals"
+                value={goals === 'few' ? `< ${minCount}` : goalsAtLeast ? `${fmt(goals)}+` : fmt(goals)}
+                hint={
+                  goals === 'few'
+                    ? `Fewer than ${minCount}: not shown exactly under a filter`
+                    : goalsAtLeast
+                      ? `Plus fewer than ${minCount} not shown`
+                      : goalsUnplaced > 0
+                      ? `+${fmt(goalsUnplaced)} not broken down`
+                      : stats.human.visitors
+                        ? // A form's device is read without the page's hints: under a device filter, approximate.
+                          `${device && goals > 0 ? '≈ ' : ''}${pct(goals, stats.human.visitors)} of visitors`
+                        : undefined
+                }
+                filters={kpiPills()}
+              />
             </div>
-            <Panel title="Pageviews per day">
+            <Panel title="Pageviews per day" action={<TileFilters filters={filters} />}>
               <DailyChart daily={stats.daily} />
+              {device && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Bot bars: any device (bots have none){country ? `, from ${countryName(country)}` : ''}.</p>}
             </Panel>
             <div className="grid gap-4 lg:grid-cols-2">
-              <DevicesPanel stats={stats} device={device} onDevice={setDevice} />
-              <CountriesPanel stats={stats} country={country} onCountry={setCountry} />
+              <DevicesPanel stats={stats} filters={filters} onDevice={setDevice} />
+              <CountriesPanel stats={stats} filters={filters} onCountry={setCountry} />
             </div>
-            <WorldMap
-              countries={stats.countries}
-              selected={country}
-              onSelect={setCountry}
-              filter={country && <FilterChip label={`Country: ${countryName(country)}`} onClear={() => setCountry(undefined)} />}
-            />
+            <WorldMap countries={stats.countries} selected={country} onSelect={setCountry} filter={<TileFilters filters={filters} />} />
             <div className="grid gap-4 lg:grid-cols-2">
-              <PagesPanel stats={stats} />
-              <SourcesPanel stats={stats} />
+              <PagesPanel stats={stats} filters={filters} />
+              <SourcesPanel stats={stats} filters={filters} />
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
-              <BotsPanel stats={stats} />
-              <GoalsPanel stats={stats} visitors={filtered ? undefined : stats.human.visitors} />
+              <BotsPanel stats={stats} filters={filters} />
+              <GoalsPanel stats={stats} filters={filters} visitors={goalsUnplaced > 0 ? undefined : stats.human.visitors} />
             </div>
-          </>
+          </div>
         )}
 
         <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/70 pt-3 text-xs text-slate-500 dark:border-white/10 dark:text-slate-400">
           <span>
             Days are UTC. A visitor is counted once a day; bots are counted as pageviews.
-            {filtered && ' Device and country filters apply to human visitors only.'}
+            {device && ' Bots have no device, so the device filter does not apply to them.'}
           </span>
           {/* Required by the DB-IP Lite licence (CC BY 4.0) wherever its results are shown. */}
           <a href="https://db-ip.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-700 dark:hover:text-slate-200">
@@ -208,10 +246,13 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
   );
 }
 
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
+/** A headline figure. `filters`: the pills of the filters it applies (see TileFilters). */
+function Kpi({ label, value, hint, filters }: { label: string; value: string; hint?: string; filters?: ReactNode }) {
   return (
-    <div role="group" aria-label={label} className="rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
+    <div role="group" aria-label={label} className="min-w-0 rounded-xl border border-slate-200/70 bg-white/60 p-4 dark:border-white/10 dark:bg-white/5">
       <div className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
+      {/* Their own row, so a filtered card's figure sits level with its neighbours' whatever its pills are. */}
+      {filters && <div className="mt-1.5 flex min-h-5 flex-wrap items-center gap-1">{filters}</div>}
       <div className="mt-1 text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">{value}</div>
       {hint && <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</div>}
     </div>

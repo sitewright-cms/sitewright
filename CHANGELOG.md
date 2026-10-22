@@ -66,6 +66,24 @@ The running version of an instance is reported at `GET /version` (baked into the
     never hides a view or the tab, or tells staff to switch on what is already on.
   - The rankings read now tells every reader whether a rank-tracking provider is set up (`configured`); why checks
     may not run is still for staff only.
+- **Statistics: a device or country filter now applies to every tile it can, and each of those tiles shows it.**
+  Top pages, Sources and Goals follow both filters, and the Bots, the bot pageviews and the chart's bot bars follow
+  the country (a bot has no device, so they say "Any device" instead). Every filtered tile carries the filter's
+  pill, and clearing any pill clears the filter everywhere. While a new filter loads, the tiles are dimmed.
+  - **Privacy:** under a filter, a page, source or form counted fewer than 3 times in the period is not listed, and
+    nothing is listed when fewer than 3 visitors match the filter, so a narrow filter cannot show what one person
+    did. A filtered goal total under 3 reads "< 3". What is left out still counts, in each list's last line
+    ("Fewer than 3 views each, or not broken down"). Unfiltered lists are unchanged.
+  - **Older days:** pages, sources and goals are broken down by device and country from the day this version
+    first runs. Earlier visits are in the same last line, with a sentence saying so, instead of looking missing;
+    goals from before say how many are in no filter, and the conversion rate shows only when every goal of the
+    period is placed. Under a device filter, goal figures are marked approximate (≈): a form's device is read
+    without the page's own hints.
+  - **Storage:** the breakdown is kept beside the exact lists for the same 25 months. Each finished day keeps its
+    busiest 1,000 page, 500 source and 200 goal rows per site, by count (up to 10,000 / 5,000 / 1,000 during the
+    day), so a burst of one-off traffic cannot decide what is kept: about 13 KB a day for a site with 150 visitors
+    a day, at most about 110 KB. Every total stays exact.
+  - Agents: `get_site_stats` returns the same filtered lists and a `breakdown` of what they could not place.
 
 ### Fixed
 

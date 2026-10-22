@@ -661,3 +661,362 @@ describe('the statistics engine', () => {
     await expect(engine.close()).resolves.toBeUndefined();
   });
 });
+
+describe('the statistics engine under a device or country filter', () => {
+  let now: Date;
+  let store: StatsStore;
+  let engine: StatsEngine;
+  let logs: string[];
+  const day = '2026-10-19';
+  const q = (over: Partial<{ device: 'desktop' | 'mobile' | 'tablet'; country: string; from: string; to: string }> = {}) => ({ from: day, to: day, ...over });
+  const open = async (s: StatsStore = store, limits?: Partial<StatsLimits>) => StatsEngine.open({ store: s, geo, now: () => now, limits, log: (m) => logs.push(m) });
+  let ip = 0;
+  /** `n` different visitors (a fresh address each) from Germany (`1.`) or the US (`2.`), one pageview each. */
+  function visits(n: number, over: Partial<StatsHit> & { from?: 'DE' | 'US' } = {}, e: StatsEngine = engine): void {
+    const { from = 'DE', ...hitOver } = over;
+    for (let i = 0; i < n; i++) e.record(hit({ ip: `${from === 'DE' ? 1 : 2}.0.${(++ip >> 8) & 255}.${ip & 255}`, ...hitOver }));
+  }
+  const goals = (n: number, ua: string, from: 'DE' | 'US', goal = 'form:contact', e: StatsEngine = engine) => {
+    for (let i = 0; i < n; i++) e.recordGoal(P, goal, { ua, ip: `${from === 'DE' ? 1 : 2}.9.0.${i}` });
+  };
+
+  beforeEach(async () => {
+    logs = [];
+    now = new Date(`${day}T10:00:00Z`);
+    store = await StatsStore.open(':memory:');
+    engine = await open();
+  });
+  afterEach(async () => {
+    await engine.close().catch(() => {});
+  });
+
+  /** Germans on desktop (/ from Google, /about/ via a campaign), Americans on phones (/pricing/ from HN), bots. */
+  function traffic(e: StatsEngine = engine): void {
+    visits(4, { route: '/', referrerHost: 'www.google.com' }, e);
+    visits(3, { route: '/about/', campaign: 'spring' }, e);
+    visits(3, { route: '/pricing/', ua: IPHONE, referrerHost: 'news.ycombinator.com', from: 'US' }, e);
+    e.record(hit({ ua: GOOGLEBOT, route: '/' })); // a German crawler
+    e.record(hit({ ip: '2.2.2.9', ua: GPTBOT, route: '/' })); // an American one
+    goals(3, CHROME, 'DE', 'form:contact', e);
+    goals(3, IPHONE, 'US', 'form:contact', e);
+  }
+
+  it('★ filters pages, sources and goals by device and by country — and both together', async () => {
+    traffic();
+    const all = await engine.query(P, q(), true);
+    expect(all.pages.map((p) => p.path).sort()).toEqual(['/', '/about/', '/pricing/']);
+    expect(all.breakdown).toBeUndefined();
+
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.human).toEqual({ views: 7, visitors: 7 });
+    expect(de.pages).toEqual([
+      { path: '/', views: 4, botViews: 0 },
+      { path: '/about/', views: 3, botViews: 0 },
+    ]);
+    expect(de.sources).toEqual([
+      { source: 'search', host: 'google.com', visitors: 4 },
+      { source: 'campaign', host: 'spring', visitors: 3 },
+    ]);
+    expect(de.goals).toEqual([{ goal: 'form:contact', label: 'form:contact', count: 3 }]);
+    // Everything placed and listed: nothing in the remainders.
+    expect(de.breakdown).toEqual({ since: day, minCount: 3, thin: false, pages: 0, sources: 0, goals: 0, goalCount: 3, goalsUnlisted: 0 });
+
+    const mobile = await engine.query(P, q({ device: 'mobile' }), true);
+    expect(mobile.pages).toEqual([{ path: '/pricing/', views: 3, botViews: 0 }]);
+    expect(mobile.sources).toEqual([{ source: 'social', host: 'news.ycombinator.com', visitors: 3 }]);
+    expect(mobile.goals).toEqual([{ goal: 'form:contact', label: 'form:contact', count: 3 }]);
+
+    const none = await engine.query(P, q({ device: 'mobile', country: 'DE' }), true);
+    expect(none.human).toEqual({ views: 0, visitors: 0 });
+    expect(none.pages).toEqual([]);
+    expect(none.breakdown).toMatchObject({ thin: true, pages: 0, sources: 0, goalCount: 0 });
+  });
+
+  it('★ PRIVACY: a single visit under a filter is never listed — its page, source and form stay in the remainder', async () => {
+    visits(5, { route: '/' }); // Germany, desktop: the site's ordinary traffic
+    // ONE American on a phone, who lands on a page, came from a newsletter and sends a form.
+    visits(1, { route: '/secret-offer/', ua: IPHONE, campaign: 'vip-list', from: 'US' });
+    goals(1, IPHONE, 'US');
+    const us = await engine.query(P, q({ country: 'US', device: 'mobile' }), true);
+    // Presence: that visit IS counted — in the exact figures, and unfiltered.
+    expect(us.human).toEqual({ views: 1, visitors: 1 });
+    expect((await engine.query(P, q(), true)).pages.map((p) => p.path)).toContain('/secret-offer/');
+    // …but under the filter nothing says what it did.
+    expect(us.pages).toEqual([]);
+    expect(us.sources).toEqual([]);
+    expect(us.goals).toEqual([]);
+    expect(us.breakdown).toMatchObject({ thin: true, pages: 1, sources: 1, goalCount: 'few', goalsUnlisted: 'few' });
+    expect(JSON.stringify(us)).not.toMatch(/secret-offer|vip-list|form:contact/);
+  });
+
+  it('★ PRIVACY: among enough visitors, a row counted fewer than 3 times is folded into the remainder', async () => {
+    visits(4, { route: '/' });
+    visits(2, { route: '/rare/', campaign: 'tiny' });
+    goals(4, CHROME, 'DE', 'form:contact');
+    goals(1, CHROME, 'DE', 'form:quote');
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.breakdown?.thin).toBe(false);
+    expect(de.pages).toEqual([{ path: '/', views: 4, botViews: 0 }]);
+    expect(de.sources).toEqual([{ source: 'direct', host: '', visitors: 4 }]);
+    expect(de.goals).toEqual([{ goal: 'form:contact', label: 'form:contact', count: 4 }]);
+    // The goal total is the LISTED part when the rest is under the minimum: 5 − 4 would give the hidden 1 away.
+    expect(de.breakdown).toMatchObject({ pages: 2, sources: 2, goalCount: 4, goalsUnlisted: 'few' });
+    goals(3, CHROME, 'DE', 'form:quote');
+    expect((await engine.query(P, q({ country: 'DE' }), true)).breakdown).toMatchObject({ goalCount: 8, goalsUnlisted: 0 });
+    // A filter's goal total under the minimum is not given exactly either.
+    goals(2, IPHONE, 'US');
+    visits(3, { route: '/', ua: IPHONE, from: 'US' });
+    expect((await engine.query(P, q({ country: 'US' }), true)).breakdown?.goalCount).toBe('few');
+  });
+
+  it('★ filters the bots by COUNTRY (a bot has no device), in the total, the kinds and the daily bars', async () => {
+    traffic();
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.botViews).toBe(1);
+    expect(de.bots).toEqual([{ class: 'search', views: 1 }]);
+    expect(de.daily).toEqual([{ day, views: 7, visitors: 7, botViews: 1 }]);
+    // The device filter leaves the bots whole.
+    const mobile = await engine.query(P, q({ device: 'mobile' }), true);
+    expect(mobile.botViews).toBe(2);
+    expect(mobile.daily[0]).toMatchObject({ views: 3, botViews: 2 });
+  });
+
+  it('★ days from before the breakdown existed are NOT broken down — said, never shown as no traffic', async () => {
+    // Totals from an older version: the exact tables only, no breakdown rows.
+    const old = '2026-10-12';
+    await store.apply({
+      traffic: [{ project: P, day: old, cls: 'human', device: 'desktop', country: 'DE', views: 40, visitors: 10 }],
+      pages: [{ project: P, day: old, path: '/', views: 40, botViews: 0 }],
+      sources: [{ project: P, day: old, source: 'direct', host: '', visitors: 10 }],
+      goals: [{ project: P, day: old, goal: 'form:contact', count: 3 }],
+      seen: [],
+    });
+    traffic();
+    const de = await engine.query(P, q({ country: 'DE', from: old }), true);
+    expect(de.breakdown).toMatchObject({ since: day, pages: 40, sources: 10, goals: 3 });
+    // What IS broken down is listed as usual, beside the remainder — together, the exact total.
+    expect(de.pages.reduce((n, p) => n + p.views, 0) + de.breakdown!.pages).toBe(de.human.views);
+    expect(de.sources.reduce((n, s) => n + s.visitors, 0) + de.breakdown!.sources).toBe(de.human.visitors);
+    // The day it started stays the day it started.
+    now = new Date('2026-10-25T10:00:00Z');
+    const later = await open(store);
+    expect((await later.query(P, q({ country: 'DE', from: old, to: '2026-10-25' }), true)).breakdown?.since).toBe(day);
+  });
+
+  it('★ the day the breakdown began is broken down only from that moment: earlier that day is in the remainder', async () => {
+    // The old version counted 6 German pageviews this morning; this version took over at 10:00.
+    await store.apply({
+      traffic: [{ project: P, day, cls: 'human', device: 'desktop', country: 'DE', views: 6, visitors: 6 }],
+      pages: [{ project: P, day, path: '/', views: 6, botViews: 0 }],
+      sources: [{ project: P, day, source: 'direct', host: '', visitors: 6 }],
+      goals: [],
+      seen: [],
+    });
+    visits(3, { route: '/' });
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.breakdown?.since).toBe(day);
+    expect(de.human.views).toBe(9);
+    expect(de.pages).toEqual([{ path: '/', views: 3, botViews: 0 }]);
+    expect(de.breakdown).toMatchObject({ pages: 6, sources: 6 });
+  });
+
+  it('★ keeps each finished day’s BUSIEST rows, whatever order they arrived in — a cheap one-off tail cannot crowd them out', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await open(store, { pageDimsPerSite: 50, pageDimsKept: 2 });
+    // Junk first: one-off pages, each opened once — then the pages people actually read.
+    for (let i = 0; i < 20; i++) visits(1, { route: `/junk-${i}/` });
+    visits(6, { route: '/pricing/' });
+    visits(5, { route: '/' });
+    visits(4, { route: '/about/' });
+    // Today, every row is there (under the same-day cap)…
+    expect((await engine.query(P, q({ country: 'DE' }), true)).pages.map((p) => p.path)).toEqual(['/pricing/', '/', '/about/']);
+    // …and once the day is over it keeps its two busiest; the rest moves into the remainder, totals unchanged.
+    now = new Date('2026-10-20T00:01:00Z');
+    await engine.flush();
+    const done = await engine.query(P, q({ country: 'DE' }), true);
+    expect(done.pages).toEqual([
+      { path: '/pricing/', views: 6, botViews: 0 },
+      { path: '/', views: 5, botViews: 0 },
+    ]);
+    expect(done.human.views).toBe(35);
+    expect(done.breakdown?.pages).toBe(35 - 11);
+    const left = await store.loadDimKeys(day);
+    expect(left.pages.get(P)).toHaveLength(2);
+    // Cut once: a second rollover leaves the finished day alone.
+    expect(await store.compactDims('2026-10-20', { pages: 1, sources: 1, goals: 1 })).toBe(0);
+  });
+
+  it('cuts every finished day it has not cut yet, after an outage (up to a week back)', async () => {
+    const keep = { pages: 1, sources: 1, goals: 1 };
+    // Last cut on 1 October (the day before the 2nd).
+    expect(await store.compactDims('2026-10-02', keep)).toBe(0);
+    await store.apply({
+      traffic: [],
+      pages: [],
+      sources: [],
+      goals: [],
+      seen: [],
+      pageDims: ['2026-10-05', '2026-10-15', '2026-10-16'].flatMap((d) =>
+        ['/a/', '/b/', '/c/'].map((path, i) => ({ project: P, day: d, path, device: 'desktop' as const, country: 'DE', views: 3 - i })),
+      ),
+    });
+    // Back on the 17th: the week before is cut (the 15th and 16th: two rows each), the 5th is left as it is.
+    expect(await store.compactDims('2026-10-17', keep)).toBe(4);
+    expect((await store.loadDimKeys('2026-10-16')).pages.get(P)).toEqual([dimKeyOf('/a/', 'desktop', 'DE')]);
+    expect((await store.loadDimKeys('2026-10-05')).pages.get(P)).toHaveLength(3);
+  });
+
+  it('★ caps the SAME-DAY breakdown per site; past the cap a visit counts, in the remainder', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await open(store, { pageDimsPerSite: 3 });
+    for (let i = 0; i < 5; i++) visits(3, { route: `/p${i}/` });
+    visits(3, { projectId: 'other', route: '/x/' });
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.human.views).toBe(15);
+    expect(de.pages).toHaveLength(3);
+    expect(de.breakdown?.pages).toBe(6);
+    // An existing row still grows past the cap; another site is untouched by this one's cap.
+    visits(1, { route: '/p0/' });
+    expect((await engine.query(P, q({ country: 'DE' }), true)).pages.find((p) => p.path === '/p0/')?.views).toBe(4);
+    expect((await engine.query('other', q({ country: 'DE' }), true)).pages).toEqual([{ path: '/x/', views: 3, botViews: 0 }]);
+    // Unfiltered, every page is there: the exact table is not capped by the breakdown.
+    expect((await engine.query(P, q(), true)).pages).toHaveLength(5);
+  });
+
+  it('★ the same-day cap holds across a RESTART (today’s rows count against it), and resets the next day', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'sw-stats-'));
+    try {
+      const url = `file:${join(dir, 'analytics.db')}`;
+      const first = await open(await StatsStore.open(url), { pageDimsPerSite: 2 });
+      visits(3, { route: '/a/' }, first);
+      visits(3, { route: '/b/' }, first);
+      await first.close();
+      const second = await open(await StatsStore.open(url), { pageDimsPerSite: 2 });
+      visits(3, { route: '/c/' }, second);
+      expect((await second.query(P, q({ country: 'DE' }), true)).pages.map((p) => p.path).sort()).toEqual(['/a/', '/b/']);
+      now = new Date('2026-10-20T10:00:00Z');
+      visits(3, { route: '/c/' }, second);
+      expect((await second.query(P, q({ country: 'DE', from: '2026-10-20', to: '2026-10-20' }), true)).pages).toEqual([{ path: '/c/', views: 3, botViews: 0 }]);
+      await second.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, FILE_TEST_TIMEOUT);
+
+  it('★ caps the same-day breakdown across ALL sites too', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await open(store, { dimKeys: 2 });
+    visits(3, { route: '/a/' });
+    visits(3, { projectId: 'two', route: '/a/' });
+    visits(3, { projectId: 'three', route: '/a/' });
+    expect((await engine.query('three', q({ country: 'DE' }), true)).breakdown?.pages).toBe(3);
+    // A forgotten site gives its share back.
+    await engine.forget(P);
+    visits(3, { projectId: 'three', route: '/b/' });
+    expect((await engine.query('three', q({ country: 'DE' }), true)).pages).toEqual([{ path: '/b/', views: 3, botViews: 0 }]);
+  });
+
+  it('★ the breakdown can never exceed the exact totals: it is counted only when they took the visit', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    // Room for two pending rows a site: the German visit takes them (traffic + page); the American's traffic row
+    // does not fit — and so its breakdown must not be counted either.
+    engine = await open(store, { pendingRowsPerSite: 2 });
+    visits(1, { route: '/' });
+    visits(1, { route: '/', ua: IPHONE, from: 'US' });
+    await engine.flush();
+    expect(await store.loadDimKeys(day)).toMatchObject({ pages: new Map([[P, [dimKeyOf('/', 'desktop', 'DE')]]]) });
+    const us = await engine.query(P, q({ country: 'US' }), true);
+    expect(us.human.views).toBe(0);
+    expect(us.breakdown?.pages).toBe(0);
+    expect(logs.some((m) => m.includes('exceeds its exact totals'))).toBe(false);
+  });
+
+  it('says so when the breakdown DOES exceed the totals (a file edited by hand), instead of hiding it', async () => {
+    await store.apply({ traffic: [], pages: [], sources: [], goals: [], seen: [], pageDims: [{ project: P, day, path: '/', device: 'desktop', country: 'DE', views: 5 }] });
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.breakdown?.pages).toBe(0);
+    expect(logs.some((m) => m.includes(`breakdown of ${P} exceeds its exact totals (pageviews 5/0`))).toBe(true);
+  });
+
+  it('a retried write that does not fit the caps drops that minute’s breakdown (it would exceed the totals)', async () => {
+    await engine.close();
+    store = await StatsStore.open(':memory:');
+    engine = await open(store, { pendingRowsPerSite: 3 });
+    const real = store.apply.bind(store);
+    let fail = true;
+    store.apply = async (d) => {
+      if (fail) {
+        fail = false;
+        // New visits while the failing write is in flight take the site's three pending rows…
+        visits(3, { route: '/', ua: IPHONE, from: 'US' });
+        throw new Error('disk full');
+      }
+      return real(d);
+    };
+    visits(3, { route: '/' }); // traffic + page + source rows: the site's three
+    // …so the German rows no longer fit when the write is retried.
+    expect(await engine.flush()).toBe(false);
+    await engine.flush();
+    expect(logs.some((m) => m.includes('not broken down by device and country'))).toBe(true);
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.pages.reduce((n, p) => n + p.views, 0) + (de.breakdown?.pages ?? 0)).toBe(de.human.views);
+  });
+
+  it('lists equal counts in a stable order (by name)', async () => {
+    for (const route of ['/c/', '/a/', '/b/']) visits(3, { route, campaign: route.slice(1, 2) });
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.pages.map((p) => p.path)).toEqual(['/a/', '/b/', '/c/']);
+    expect(de.sources.map((s) => s.host)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('a goal recorded without its visitor still counts — as not broken down', async () => {
+    visits(3, { route: '/', from: 'US', ua: IPHONE });
+    engine.recordGoal(P, 'form:contact');
+    goals(3, IPHONE, 'US');
+    const us = await engine.query(P, q({ country: 'US' }), true);
+    expect(us.goals).toEqual([{ goal: 'form:contact', label: 'form:contact', count: 3 }]);
+    expect(us.breakdown).toMatchObject({ goals: 1, goalCount: 3 });
+    expect((await engine.query(P, q(), true)).goals[0]?.count).toBe(4);
+  });
+
+  it('★ forgets and prunes the breakdown with everything else', async () => {
+    traffic();
+    await engine.flush();
+    expect(await store.projectIds()).toEqual([P]);
+    await engine.forget(P);
+    expect(await store.projectIds()).toEqual([]);
+    // Planted ONLY in the breakdown: still a project with statistics (so an orphan sweep sees it)…
+    await store.apply({ traffic: [], pages: [], sources: [], goals: [], seen: [], pageDims: [{ project: 'stray', day: '2020-01-01', path: '/', device: 'desktop', country: 'DE', views: 1 }] });
+    expect(await store.projectIds()).toEqual(['stray']);
+    // …and the 25-month retention reaches it.
+    await store.prune(day, '2024-09-19', day);
+    expect(await store.projectIds()).toEqual([]);
+  });
+
+  it('retries a failed write of the breakdown with the rest', async () => {
+    const real = store.apply.bind(store);
+    let fail = true;
+    store.apply = async (d) => {
+      if (fail) {
+        fail = false;
+        throw new Error('disk full');
+      }
+      return real(d);
+    };
+    visits(3, { route: '/' });
+    expect(await engine.flush()).toBe(false);
+    visits(3, { route: '/about/' });
+    const de = await engine.query(P, q({ country: 'DE' }), true);
+    expect(de.pages.map((p) => [p.path, p.views]).sort()).toEqual([['/', 3], ['/about/', 3]]);
+    expect(de.breakdown?.pages).toBe(0);
+  });
+});
+
+/** A breakdown row's key as the store reports it. */
+function dimKeyOf(...parts: string[]): string {
+  return parts.join('\u0000');
+}

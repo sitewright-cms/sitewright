@@ -24,6 +24,15 @@ import { z } from 'zod';
 /** How long daily totals are kept: 25 months, the CNIL audience-measurement ceiling. */
 export const STATS_RETENTION_MONTHS = 25;
 
+/**
+ * ★ PRIVACY. Under a device or country filter, a page, source or goal is listed only when it counts at least this
+ * many over the period, and nothing is listed when fewer visitors than this match the filter at all. A filter
+ * narrow enough to match one visit (a quiet day, a small country, a phone) would otherwise show where that person
+ * landed, where they came from and which form they sent — and a form's day and kind can be matched to its stored
+ * submission. What is not listed is still counted, in the list's remainder. Unfiltered lists are not affected.
+ */
+export const STATS_MIN_COUNT = 3;
+
 /** The device classes the collector distinguishes. Bots carry no device. */
 export const STATS_DEVICES = ['desktop', 'mobile', 'tablet'] as const;
 export type StatsDevice = (typeof STATS_DEVICES)[number];
@@ -70,6 +79,14 @@ export interface StatsCount {
   visitors: number;
 }
 
+/** A count that is never given exactly below {@link STATS_MIN_COUNT}: `'few'` stands for 1 to `STATS_MIN_COUNT - 1`. */
+export type StatsSmallCount = number | 'few';
+
+/** `n` as a {@link StatsSmallCount}. */
+export function smallCount(n: number): StatsSmallCount {
+  return n > 0 && n < STATS_MIN_COUNT ? 'few' : n;
+}
+
 /** The answer to a {@link StatsQuery}. Counts are for the whole range, both ends included. */
 export interface SiteStats {
   from: string;
@@ -78,22 +95,49 @@ export interface SiteStats {
   enabled: boolean;
   /** Human traffic, after the device/country filter. */
   human: StatsCount;
-  /** All bot traffic, unfiltered (bots have no device; the country filter does not apply to them). */
+  /** Bot traffic, after the COUNTRY filter (a bot has no device class, so the device filter does not apply). */
   botViews: number;
-  /** One entry per day of the range, oldest first, zero-filled. */
+  /** One entry per day of the range, oldest first, zero-filled. Human figures filtered; bot views by country only. */
   daily: Array<{ day: string; views: number; visitors: number; botViews: number }>;
   /** Human traffic per device class (country filter applied, device filter not). */
   devices: Array<{ device: StatsDevice; views: number; visitors: number }>;
   /** Human traffic per country, busiest first (device filter applied, country filter not). `ZZ` = unknown. */
   countries: Array<{ country: string; views: number; visitors: number }>;
-  /** Bot views per class, busiest first. */
+  /** Bot views per class, busiest first (country filter applied). */
   bots: Array<{ class: Exclude<StatsClass, 'human'>; views: number }>;
-  /** Pages by human views, busiest first (the device/country filter does not apply to pages). */
+  /**
+   * Pages by human views, busiest first. Under a filter: the filtered human views only (`botViews` 0), from the
+   * device × country breakdown, from {@link STATS_MIN_COUNT} views up — see {@link SiteStats.breakdown}.
+   */
   pages: Array<{ path: string; views: number; botViews: number }>;
-  /** Where human visitors came from, busiest first. `host` is the referring site, or the campaign name. */
+  /** Where human visitors came from, busiest first. `host` is the referring site, or the campaign name. Filtered. */
   sources: Array<{ source: StatsSource; host: string; visitors: number }>;
-  /** Goal completions (form submissions), busiest first. `goal` is `form:<formId>`. */
+  /** Goal completions (form submissions), busiest first. `goal` is `form:<formId>`. Filtered. */
   goals: Array<{ goal: string; label: string; count: number }>;
+  /**
+   * Only under a device or country filter. Pages, sources and goals are broken down by device and country from
+   * `since` on, and per site and day up to a cap; a filtered list leaves out rows under `minCount`
+   * ({@link STATS_MIN_COUNT}). These say how much of the filtered traffic those three lists do NOT show, so a
+   * filtered list is never mistaken for the whole of it:
+   *   - `pages` — filtered human pageviews not in `pages` (under `minCount` each, or not broken down);
+   *   - `sources` — filtered visitors not in `sources` (likewise);
+   *   - `goals` — goal completions in the range not broken down at all (so not attributable to any filter);
+   *   - `goalCount` — the filtered goal completions, and `goalsUnlisted` those of them not in `goals`: a number from
+   *     `minCount` up, `'few'` for 1 to `minCount - 1` (never the exact small count). When `goalsUnlisted` is
+   *     `'few'`, `goalCount` is the LISTED part only (a lower bound: an exact total would give the small number away
+   *     by subtraction);
+   *   - `thin` — fewer than `minCount` visitors match the filter, so the three lists are empty.
+   */
+  breakdown?: {
+    since: string;
+    minCount: number;
+    thin: boolean;
+    pages: number;
+    sources: number;
+    goals: number;
+    goalCount: StatsSmallCount;
+    goalsUnlisted: StatsSmallCount;
+  };
   /**
    * Something the owner should know about how visits are counted:
    *   - `no-public-url` — the site is also deployed to another host, but the instance has no public URL

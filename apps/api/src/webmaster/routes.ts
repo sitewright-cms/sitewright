@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
+  WEBMASTER_ACCOUNT_IN_USE,
   WebmasterAccountsInputSchema,
   WebmasterServiceSchema,
   SiteOwnersInputSchema,
@@ -20,14 +21,15 @@ import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
-import type { SiteRegistrar } from './sites.js';
+import { bingAccountId, type AccountHolding, type SiteRegistrar } from './sites.js';
 
 /**
  * The platform's search engine accounts, for instance admins only (session-only: no token reaches them).
  *
  *   GET  /admin/webmaster-accounts        what is stored: the Google key's email and project, set/unset for Bing
  *   PUT  /admin/webmaster-accounts        store, replace (`{google: {keyFile}}`, `{bing: {apiKey}}`) or remove (null);
- *                                         a removal is refused (409) while sites are still registered with the account
+ *                                         removing or replacing an account sites are still registered with is refused
+ *                                         (409 `account-in-use`, with a count) unless `force: true`
  *   POST /admin/webmaster-accounts/test   try a stored account (`{service}`), reading only
  *
  * ★ A secret goes in and never comes out: no answer carries the private key or the API key, not even masked.
@@ -37,13 +39,12 @@ export interface WebmasterRouteDeps {
   repo: WebmasterRepository;
   io: WebmasterIo;
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
-  /** What the current account still holds (see `SiteRegistrar.registeredWith`). */
-  registeredWith: (service: WebmasterService) => Promise<{ sites: number; pending: number }>;
+  /** What moving off the current account (to `next`, or null = removing it) would leave there; see `SiteRegistrar.heldBy`. */
+  heldBy: (service: WebmasterService, next: string | null) => Promise<AccountHolding>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
 const sitesText = (n: number): string => (n === 1 ? '1 site is' : `${n} sites are`);
-const themText = (n: number): string => (n === 1 ? 'it' : 'them');
 
 const LABEL: Record<WebmasterService, string> = { google: 'Google service-account key', bing: 'Bing API key' };
 const ACCOUNT: Record<WebmasterService, string> = { google: 'Google service account', bing: 'Bing Webmaster account' };
@@ -51,7 +52,18 @@ const ACCOUNT: Record<WebmasterService, string> = { google: 'Google service acco
 const PUT_BODY_LIMIT = 64 * 1024;
 
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
-  const { repo, io, requireInstanceAdmin, registeredWith, rl } = deps;
+  const { repo, io, requireInstanceAdmin, heldBy, rl } = deps;
+
+  /** Why moving off `service`'s account is refused, and what to do: switch sites off, or (a dead key) go on anyway. */
+  function inUseText(service: WebmasterService, held: AccountHolding, removing: boolean): string {
+    // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
+    const [account, label] = [ACCOUNT[service], LABEL[service]];
+    const parts: string[] = [];
+    if (held.switchedOn) parts.push(`${sitesText(held.switchedOn)} switched on with this ${account}: switch ${held.switchedOn === 1 ? 'it' : 'them'} off in the Search engines tile first`);
+    if (held.notRemoved) parts.push(`${sitesText(held.notRemoved)} still registered with ${held.switchedOn ? 'it' : `this ${account}`} although switched off or deleted (the removal did not get through)`);
+    const stay = held.switchedOn + held.notRemoved === 1 ? 'that site stays' : 'those sites stay';
+    return `${parts.join('; ')}. If the ${label} no longer works, ${removing ? 'remove' : 'replace'} it anyway: ${stay} registered at the old account, to be removed there by hand.`;
+  }
 
   async function view(): Promise<WebmasterAccountsView> {
     const rows = new Map((await repo.list()).map((r) => [r.service, r]));
@@ -91,20 +103,25 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       if (err instanceof WebmasterError) return reply.code(400).send({ error: err.message });
       throw err;
     }
-    // ★ Removing an account the platform still has sites registered with would leave them at Google or Bing with nobody
-    // able to take them off (only the account that registered a site can remove it).
-    for (const service of WEBMASTER_SERVICES) {
-      // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
-      if (input[service] !== null) continue;
-      const held = await registeredWith(service);
-      if (held.sites > 0) {
-        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
-        return reply.code(409).send({ error: `${sitesText(held.sites)} registered with this ${ACCOUNT[service]}: switch ${themText(held.sites)} off first` });
+    // ★ Removing an account — or replacing it with ANOTHER one — while sites are registered with it leaves them at Google
+    // or Bing with nobody able to take them off: only the account that registered a site can remove it. Refused with a
+    // count unless forced (a key that no longer works can remove nothing anyway). The same account saved again is not
+    // a change: Google's is the service account, Bing's the key.
+    if (!input.force) {
+      const changes: Array<[WebmasterService, string | null]> = [];
+      if (input.google === null) changes.push(['google', null]);
+      else if (google) changes.push(['google', google.clientEmail]);
+      if (input.bing === null) changes.push(['bing', null]);
+      else if (bing) changes.push(['bing', bingAccountId(bing)]);
+      const refusals: string[] = [];
+      let count = 0;
+      for (const [service, next] of changes) {
+        const held = await heldBy(service, next);
+        if (held.switchedOn + held.notRemoved === 0) continue;
+        count += held.switchedOn + held.notRemoved;
+        refusals.push(inUseText(service, held, next === null));
       }
-      if (held.pending > 0) {
-        // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
-        return reply.code(409).send({ error: `${sitesText(held.pending)} still being removed from this ${ACCOUNT[service]}: try again later` });
-      }
+      if (count > 0) return reply.code(409).send({ error: refusals.join(' '), code: WEBMASTER_ACCOUNT_IN_USE, count });
     }
     await repo.apply({
       ...(input.google === null ? { google: null } : {}),

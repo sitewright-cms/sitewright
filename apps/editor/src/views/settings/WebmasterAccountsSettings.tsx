@@ -3,13 +3,15 @@ import { ExternalLink } from 'lucide-react';
 import {
   BING_API_KEY_RE,
   GOOGLE_KEY_FILE_MAX_BYTES,
+  WEBMASTER_ACCOUNT_IN_USE,
   type WebmasterAccountsInput,
   type WebmasterAccountsView,
   type WebmasterService,
 } from '@sitewright/schema';
-import { api } from '../../api';
+import { api, type ApiError } from '../../api';
 import { secretFieldProps } from '../../lib/secret-field';
 import { ghostButton, glassCard, glassInput } from '../../theme';
+import { useDialogs } from '../ui/Dialogs';
 import { SectionHelp } from '../ui/SectionHelp';
 
 /**
@@ -48,6 +50,9 @@ function readKeyFile(text: string): { clientEmail: string } | string {
   return { clientEmail: rec.client_email };
 }
 
+/** The server's refusal to remove or replace an account sites are still registered with (it carries how many). */
+const isAccountInUse = (err: unknown): err is ApiError => err instanceof Error && (err as Partial<ApiError>).code === WEBMASTER_ACCOUNT_IN_USE;
+
 const muted = 'text-xs text-slate-500 dark:text-slate-400';
 const removeLink = 'text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline';
 
@@ -61,6 +66,7 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
   const [removeBing, setRemoveBing] = useState(false);
   const [tests, setTests] = useState<Partial<Record<WebmasterService, { ok: boolean; text: string }>>>({});
   const [testing, setTesting] = useState<WebmasterService | null>(null);
+  const { confirm, dialog } = useDialogs();
 
   function hydrate(v: WebmasterAccountsView): void {
     setView(v);
@@ -126,10 +132,40 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
       if (bingKey.trim()) input.bing = { apiKey: bingKey.trim() };
       else if (removeBing) input.bing = null;
       if (Object.keys(input).length === 0) return;
-      hydrate(await api.putWebmasterAccounts(input));
+      hydrate(await putConfirmingStrandedSites(input));
       setTests({});
     },
   }));
+
+  /**
+   * Saves; when that would remove or replace an account sites are still registered with, the server refuses with how
+   * many. A key that no longer works can remove none of them anyway, so the admin may go on — after saying so, knowing
+   * those sites stay at the old account. Declined, nothing is saved and the server's reason is what the parent shows.
+   */
+  async function putConfirmingStrandedSites(input: WebmasterAccountsInput): Promise<WebmasterAccountsView> {
+    try {
+      return await api.putWebmasterAccounts(input);
+    } catch (err) {
+      if (!isAccountInUse(err)) throw err;
+      const n = err.count ?? 0;
+      const removing = input.google === null || input.bing === null;
+      const verb = removing ? 'Remove' : 'Replace';
+      const ok = await confirm({
+        title: `${verb} the account anyway?`,
+        message: (
+          <>
+            <p>{err.message}</p>
+            <p className="mt-2 font-medium">
+              {verb} anyway — {n === 1 ? '1 site stays' : `${n} sites stay`} registered at the old account; remove {n === 1 ? 'it' : 'them'} there by hand.
+            </p>
+          </>
+        ),
+        confirmLabel: `${verb} anyway`,
+      });
+      if (!ok) throw err;
+      return api.putWebmasterAccounts({ ...input, force: true });
+    }
+  }
 
   async function runTest(service: WebmasterService): Promise<void> {
     setTesting(service);
@@ -258,6 +294,7 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
           </section>
         </div>
       )}
+      {dialog}
     </fieldset>
   );
 });

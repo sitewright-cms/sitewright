@@ -44,10 +44,10 @@ export class SearchPerformance {
     return this.deps.now?.() ?? new Date();
   }
 
-  /** Forgets every answer and refusal kept for a project: it was deleted, and they would otherwise wait for the overflow. */
+  /** Forgets everything kept for a project (answers, refusals, its sites' lag): it was deleted, and they would otherwise wait for the overflow. */
   forgetProject(projectId: string): void {
     const prefix = `${projectId}\n`;
-    for (const kept of [this.answers, this.failures]) {
+    for (const kept of [this.answers, this.failures, this.lags]) {
       for (const key of kept.keys()) if (key.startsWith(prefix)) kept.delete(key);
     }
   }

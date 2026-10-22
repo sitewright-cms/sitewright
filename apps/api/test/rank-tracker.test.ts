@@ -444,6 +444,20 @@ describe('retention', () => {
     expect(august).toBeTruthy();
   });
 
+  it('deletes in bounded batches until nothing old is left, and stops after the day’s share', async () => {
+    const pid = await makeProject('old-batches');
+    await addKeywords(pid, ['a', 'b', 'c']);
+    const ks = await repo.listKeywords(pid);
+    for (const [i, k] of ks.entries()) {
+      for (const day of ['2024-01-01', '2024-01-02']) await repo.claim(due(k), day, 'dataforseo', 0.006, new Date(`${day}T0${i}:00:00Z`));
+    }
+    const kept = await repo.claim(due(ks[0]!), '2026-10-20', 'dataforseo', 0.006, now);
+    expect(await repo.pruneOld('2026-10-20', 4, 1)).toEqual({ checks: 4, charges: 4 }); // one batch of four: the rest tomorrow
+    expect(await repo.pruneOld('2026-10-20', 4)).toEqual({ checks: 2, charges: 2 });
+    expect(await ids(rankChecks)).toEqual([kept]);
+    expect(await ids(rankCharges)).toEqual([kept]);
+  });
+
   it('a "check now" does not run it', async () => {
     const pid = await makeProject('old-now');
     await addKeywords(pid, ['a']);

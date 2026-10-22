@@ -326,7 +326,8 @@ describe('site registration', () => {
     await verify('bing');
     expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: BING_KEY } })).statusCode).toBe(200);
     expect((await view()).bing.status).toBe('verified');
-    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' } })).statusCode).toBe(200);
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' } })).statusCode).toBe(409); // a site is registered with the old one
+    expect((await admin.put('/admin/webmaster-accounts', { bing: { apiKey: 'fedcba9876543210fedcba9876543210' }, force: true })).statusCode).toBe(200);
     expect((await view()).bing).toMatchObject({ enabled: true, status: 'none' });
     await publish();
     expect(await home()).not.toContain('msvalidate.01');
@@ -433,7 +434,8 @@ describe('deleting, restoring and purging a project', () => {
     await publish();
     await verify('google');
     const replaced = JSON.stringify({ ...(JSON.parse(KEY_FILE) as object), client_email: 'other@sitewright-seo-123.iam.gserviceaccount.com' });
-    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: replaced } })).statusCode).toBe(200);
+    // Refused without `force` while the site is registered (see below); forced, as for a key that no longer works.
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: replaced }, force: true })).statusCode).toBe(200);
     const off = (await toggle({ google: false })).json() as SiteRegistrationToggleResult;
     // Google would have answered the new account "not an owner" — what "already removed" looks like.
     expect(off.removed.google).toEqual({ ok: false, detail: 'Not removed from Google: it was registered with an account the platform no longer uses' });
@@ -442,21 +444,75 @@ describe('deleting, restoring and purging a project', () => {
     expect(off.view.google).toMatchObject({ enabled: false, status: 'off', detail: off.removed.google!.detail });
   });
 
+  const NOT_WORKING_BING = 'If the Bing API key no longer works, remove it anyway: that site stays registered at the old account, to be removed there by hand.';
+
   it('★ System Settings refuses to remove an account sites are registered with, or still being removed from', async () => {
     await toggle({ bing: true });
     await prepare();
     const refused = await admin.put('/admin/webmaster-accounts', { bing: null });
     expect(refused.statusCode).toBe(409);
-    expect(refused.json()).toEqual({ error: '1 site is registered with this Bing Webmaster account: switch it off first' });
+    expect(refused.json()).toEqual({
+      error: `1 site is switched on with this Bing Webmaster account: switch it off in the Search engines tile first. ${NOT_WORKING_BING}`,
+      code: 'account-in-use',
+      count: 1,
+    });
     expect((await admin.get('/admin/webmaster-accounts')).json()).toMatchObject({ bing: { configured: true } });
 
     engines.bingDown = true;
     await del();
     await vi.waitFor(async () => expect(await removals()).toHaveLength(1), WAIT);
-    expect((await admin.put('/admin/webmaster-accounts', { bing: null })).json()).toEqual({ error: '1 site is still being removed from this Bing Webmaster account: try again later' });
+    expect((await admin.put('/admin/webmaster-accounts', { bing: null })).json()).toMatchObject({
+      error: `1 site is still registered with this Bing Webmaster account although switched off or deleted (the removal did not get through). ${NOT_WORKING_BING}`,
+      count: 1,
+    });
 
     // The Google account holds nothing: it can go.
     expect((await admin.put('/admin/webmaster-accounts', { google: null })).statusCode).toBe(200);
+  });
+
+  it('★ a site switched off whose removal Bing refused does not say "switch it off" — and a dead key can still go, forced', async () => {
+    await toggle({ bing: true });
+    await prepare();
+    engines.bingRefusesRemoval = true; // as Bing answers a revoked key
+    const off = (await toggle({ bing: false })).json() as SiteRegistrationToggleResult;
+    expect(off.view.bing).toMatchObject({ enabled: false, status: 'off' });
+    expect((await sites())[0]).toMatchObject({ enabled: false, siteUrl: SITE }); // still registered there
+
+    const refused = await admin.put('/admin/webmaster-accounts', { bing: null });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({
+      error: `1 site is still registered with this Bing Webmaster account although switched off or deleted (the removal did not get through). ${NOT_WORKING_BING}`,
+      code: 'account-in-use',
+      count: 1,
+    });
+    const forced = await admin.put('/admin/webmaster-accounts', { bing: null, force: true });
+    expect(forced.statusCode).toBe(200);
+    expect(forced.json()).toMatchObject({ bing: { configured: false } });
+    expect(engines.bingSites).toEqual([SITE]); // what "remove it there by hand" means
+  });
+
+  it('★ replacing a key with ANOTHER account is refused like removing it; forced, the next verification keeps the old registration on record', async () => {
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    const other = JSON.stringify({ ...(JSON.parse(KEY_FILE) as object), client_email: 'other@sitewright-seo-123.iam.gserviceaccount.com' });
+    const refused = await admin.put('/admin/webmaster-accounts', { google: { keyFile: other } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({
+      error: '1 site is switched on with this Google service account: switch it off in the Search engines tile first. If the Google service-account key no longer works, replace it anyway: that site stays registered at the old account, to be removed there by hand.',
+      code: 'account-in-use',
+      count: 1,
+    });
+    expect((await admin.get('/admin/webmaster-accounts')).json()).toMatchObject({ google: { clientEmail: SERVICE_ACCOUNT } });
+    // The same service account's key saved again is not a change of account.
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: KEY_FILE } })).statusCode).toBe(200);
+
+    expect((await admin.put('/admin/webmaster-accounts', { google: { keyFile: other }, force: true })).statusCode).toBe(200);
+    expect((await prepare()).results.google).toEqual({ ok: true, detail: `Tag ready (${SITE} is still registered with the previous service account: remove it there by hand if that account is gone)` });
+    expect(await removals()).toMatchObject([{ service: 'google', siteUrl: SITE, account: SERVICE_ACCOUNT }]);
+    expect(engines.googleOwned).toBe(true); // nothing was asked of Google with the new account about the old property
+    expect(count('DELETE ')).toBe(0);
   });
 });
 

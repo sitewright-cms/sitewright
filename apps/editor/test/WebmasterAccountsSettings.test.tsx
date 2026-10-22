@@ -164,4 +164,65 @@ describe('WebmasterAccountsSettings', () => {
     render(<WebmasterAccountsSettings />);
     expect(await screen.findByText('instance admin access required')).toBeInTheDocument();
   });
+
+  /** The server's 409 when sites are still registered with the account being removed or replaced. */
+  const inUse = (count: number, message: string): Error => Object.assign(new Error(message), { status: 409, code: 'account-in-use', count });
+  const REFUSED = '2 sites are switched on with this Bing Webmaster account: switch them off in the Search engines tile first. If the Bing API key no longer works, remove it anyway: those sites stay registered at the old account, to be removed there by hand.';
+
+  async function removeBingAndSave(ref: React.RefObject<WebmasterAccountsSettingsHandle | null>): Promise<{ saved: Promise<void> }> {
+    const bing = within(await screen.findByRole('region', { name: 'Bing Webmaster Tools' }));
+    fireEvent.click(bing.getByRole('button', { name: 'Remove' }));
+    let saved!: Promise<void>;
+    await act(async () => {
+      saved = ref.current!.save();
+      saved.catch(() => undefined); // asserted below
+    });
+    return { saved };
+  }
+
+  it('★ removing an account sites are registered with asks first, saying how many stay there; yes saves it with force', async () => {
+    api.getWebmasterAccounts.mockResolvedValue(STORED);
+    api.putWebmasterAccounts.mockRejectedValueOnce(inUse(2, REFUSED)).mockResolvedValueOnce({ ...STORED, bing: { configured: false, updatedAt: null } });
+    const ref = createRef<WebmasterAccountsSettingsHandle>();
+    render(<WebmasterAccountsSettings ref={ref} />);
+    const { saved } = await removeBingAndSave(ref);
+
+    expect(await screen.findByText('Remove the account anyway?')).toBeInTheDocument();
+    expect(screen.getByText(REFUSED)).toBeInTheDocument();
+    expect(screen.getByText('Remove anyway — 2 sites stay registered at the old account; remove them there by hand.')).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Remove anyway' }));
+      await saved;
+    });
+    expect(api.putWebmasterAccounts.mock.calls).toEqual([[{ bing: null }], [{ bing: null, force: true }]]);
+  });
+
+  it('declined, nothing more is sent and the save fails with the server’s reason', async () => {
+    api.getWebmasterAccounts.mockResolvedValue(STORED);
+    api.putWebmasterAccounts.mockRejectedValueOnce(inUse(2, REFUSED));
+    const ref = createRef<WebmasterAccountsSettingsHandle>();
+    render(<WebmasterAccountsSettings ref={ref} />);
+    const { saved } = await removeBingAndSave(ref);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await expect(saved).rejects.toThrow(REFUSED);
+    expect(api.putWebmasterAccounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('a replaced key that is refused asks to replace it anyway; any other refusal is not a question', async () => {
+    api.getWebmasterAccounts.mockResolvedValue(STORED);
+    api.putWebmasterAccounts.mockRejectedValueOnce(inUse(1, 'refused')).mockRejectedValueOnce(new Error('The Bing API key is not valid'));
+    const ref = createRef<WebmasterAccountsSettingsHandle>();
+    render(<WebmasterAccountsSettings ref={ref} />);
+    await screen.findByRole('region', { name: 'Bing Webmaster Tools' });
+    fireEvent.change(screen.getByLabelText('Bing Webmaster API key'), { target: { value: BING_KEY } });
+    let saved!: Promise<void>;
+    await act(async () => {
+      saved = ref.current!.save();
+      saved.catch(() => undefined);
+    });
+    expect(await screen.findByText('Replace anyway — 1 site stays registered at the old account; remove it there by hand.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace anyway' }));
+    await expect(saved).rejects.toThrow('The Bing API key is not valid');
+    expect(api.putWebmasterAccounts.mock.calls.at(-1)).toEqual([{ bing: { apiKey: BING_KEY }, force: true }]);
+  });
 });

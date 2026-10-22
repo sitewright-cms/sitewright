@@ -165,6 +165,19 @@ describe('removals that do not get through', () => {
     expect(await removals()).toEqual([]);
   });
 
+  it('★ queued again (the purge after the delete), it backs off further instead of starting over at an hour', async () => {
+    await registerBing();
+    bingDown = true;
+    await projects.softDelete(projectId, 'someone');
+    await registrar.removeOnDelete(projectId);
+    expect((await removals())[0]).toMatchObject({ attempts: 1, nextAt: hours(1) });
+    now = hours(0.5);
+    await registrar.removeOnPurge(projectId); // fails again
+    expect((await removals())[0]).toMatchObject({ attempts: 2, nextAt: hours(2) });
+    await registrar.removeOnPurge(projectId);
+    expect((await removals())[0]).toMatchObject({ attempts: 3, nextAt: hours(4) });
+  });
+
   it('gives up after 14 days, with a warning that names the site', async () => {
     await purgeWhileBingIsDown();
     for (let day = 1; day <= 15; day++) {
@@ -300,20 +313,84 @@ describe('deleting and restoring a project', () => {
   });
 });
 
-describe('what an account still holds (System Settings refuses to remove it meanwhile)', () => {
-  it('counts the live projects’ registered sites, and the sites still being removed', async () => {
-    expect(await registrar.registeredWith('bing')).toEqual({ sites: 0, pending: 0 });
+describe('what an account still holds (System Settings refuses to remove or replace it meanwhile)', () => {
+  const none = { switchedOn: 0, notRemoved: 0 };
+  const OTHER = 'fedcba9876543210fedcba9876543210';
+
+  it('counts the live projects’ sites switched on, and the ones still registered that switching off cannot fix', async () => {
+    expect(await registrar.heldBy('bing', null)).toEqual(none);
     await registrar.setEnabled(projectId, { bing: true });
-    expect(await registrar.registeredWith('bing')).toEqual({ sites: 0, pending: 0 }); // switched on, nothing registered yet
+    expect(await registrar.heldBy('bing', null)).toEqual(none); // switched on, nothing registered yet
     await registrar.prepare(projectId, SITE);
-    expect(await registrar.registeredWith('bing')).toEqual({ sites: 1, pending: 0 });
-    expect(await registrar.registeredWith('google')).toEqual({ sites: 0, pending: 0 });
+    expect(await registrar.heldBy('bing', null)).toEqual({ switchedOn: 1, notRemoved: 0 });
+    expect(await registrar.heldBy('bing', bingAccount(OTHER))).toEqual({ switchedOn: 1, notRemoved: 0 }); // replacing it
+    expect(await registrar.heldBy('bing', bingAccount(BING_KEY))).toEqual(none); // the same key saved again
+    expect(await registrar.heldBy('google', null)).toEqual(none);
     bingDown = true;
     await projects.softDelete(projectId, 'someone');
     await registrar.removeOnDelete(projectId);
-    expect(await registrar.registeredWith('bing')).toEqual({ sites: 0, pending: 1 });
+    expect(await registrar.heldBy('bing', null)).toEqual({ switchedOn: 0, notRemoved: 1 }); // queued
     // Registered with an account the platform no longer has: nothing the current one holds.
-    await accounts.apply({ bing: { secret: { apiKey: 'fedcba9876543210fedcba9876543210' }, info: {} } });
-    expect(await registrar.registeredWith('bing')).toEqual({ sites: 0, pending: 0 });
+    await accounts.apply({ bing: { secret: { apiKey: OTHER }, info: {} } });
+    expect(await registrar.heldBy('bing', null)).toEqual(none);
+  });
+
+  it('★ a site switched off whose removal was refused is not "switched on"', async () => {
+    await registrar.setEnabled(projectId, { bing: true });
+    await registrar.prepare(projectId, SITE);
+    bingDown = true; // switching off is not reached: the switch stays on
+    expect((await registrar.setEnabled(projectId, { bing: false })).bing?.ok).toBe(false);
+    expect(await registrar.heldBy('bing', null)).toEqual({ switchedOn: 1, notRemoved: 0 });
+    bingDown = false;
+    await accounts.apply({ bing: { secret: { apiKey: OTHER }, info: {} } }); // the key no longer reaches it…
+    expect((await registrar.setEnabled(projectId, { bing: false })).bing?.ok).toBe(false); // …refused for good: off
+    await accounts.apply({ bing: { secret: { apiKey: BING_KEY }, info: {} } });
+    expect(await registrar.heldBy('bing', null)).toEqual({ switchedOn: 0, notRemoved: 1 });
+  });
+
+  it('★ a deleted project whose removal was given up holds nothing any more', async () => {
+    await registrar.setEnabled(projectId, { bing: true });
+    await registrar.prepare(projectId, SITE);
+    bingDown = true;
+    await projects.softDelete(projectId, 'someone');
+    await registrar.removeOnDelete(projectId);
+    for (let day = 1; day <= 15; day++) {
+      now = new Date(T0.getTime() + day * 24 * 60 * 60_000);
+      await registrar.retryRemovals();
+    }
+    expect(await db.select().from(webmasterRemovals)).toEqual([]);
+    const [row] = await db.select().from(webmasterSites);
+    expect(row).toMatchObject({ enabled: true, siteUrl: '', account: '', token: null, status: 'none' });
+    expect(row!.detail).toBe(`Not removed from Bing (gave up after 14 days): remove ${SITE} there by hand`);
+    expect(await registrar.heldBy('bing', null)).toEqual(none);
+  });
+});
+
+describe('a key replaced while a site was registered with the old one', () => {
+  const OTHER = 'fedcba9876543210fedcba9876543210';
+
+  it('★ the next verification keeps the old registration on record instead of overwriting it', async () => {
+    await registrar.setEnabled(projectId, { bing: true });
+    await registrar.prepare(projectId, SITE);
+    await accounts.apply({ bing: { secret: { apiKey: OTHER }, info: {} } });
+    const again = await registrar.prepare(projectId, SITE);
+    expect(again.bing).toEqual({ ok: true, detail: `Tag ready (${SITE} is still registered with the previous Bing account: remove it there by hand if that account is gone)` });
+    expect(await db.select().from(webmasterRemovals)).toMatchObject([{ projectId, service: 'bing', siteUrl: SITE, account: bingAccount(BING_KEY) }]);
+    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ account: bingAccount(OTHER), status: 'pending' });
+
+    // A restore of the project does not cancel it: the row holds the NEW registration, not this one.
+    await projects.softDelete(projectId, 'someone');
+    await projects.restore(projectId);
+    await registrar.restored(projectId);
+    expect(await db.select().from(webmasterRemovals)).toHaveLength(1);
+
+    // The old key back: removed with it (and the project keeps its new registration).
+    await accounts.apply({ bing: { secret: { apiKey: BING_KEY }, info: {} } });
+    const before = calls.filter((c) => c.endsWith('/RemoveSite')).length;
+    now = hours(1);
+    await registrar.retryRemovals();
+    expect(calls.filter((c) => c.endsWith('/RemoveSite')).length).toBe(before + 1);
+    expect(await db.select().from(webmasterRemovals)).toEqual([]);
+    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ account: bingAccount(OTHER), siteUrl: SITE });
   });
 });

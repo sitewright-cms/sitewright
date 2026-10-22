@@ -32,9 +32,18 @@ export const WebmasterAccountsInputSchema = z
       .strict()
       .nullable()
       .optional(),
+    /**
+     * Remove or replace an account even though sites are still registered with it (the server refuses that with a
+     * 409 {@link WEBMASTER_ACCOUNT_IN_USE} otherwise): for a key that no longer works. Those sites stay registered at
+     * the old account, to be removed there by hand.
+     */
+    force: z.boolean().optional(),
   })
   .strict();
 export type WebmasterAccountsInput = z.infer<typeof WebmasterAccountsInputSchema>;
+
+/** The `code` of the 409 a save gets when it would remove or replace an account sites are registered with; `count` says how many. */
+export const WEBMASTER_ACCOUNT_IN_USE = 'account-in-use';
 
 export interface WebmasterAccountsView {
   google: {

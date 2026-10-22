@@ -92,6 +92,21 @@ const SCHEDULE_DAYS: Record<RankSchedule, number> = { daily: 1, weekly: 7 };
 
 const toMicros = (usd: number): number => Math.max(0, Math.round(usd * 1_000_000));
 
+/** Retention deletes this many rows per statement, and at most this many statements per table a day. */
+const PRUNE_BATCH = 5000;
+const PRUNE_MAX_BATCHES = 40;
+
+/** Runs `step` (one bounded DELETE) until it removes fewer than `batch` rows or `maxBatches` ran; how many it removed. */
+async function inBatches(batch: number, maxBatches: number, step: () => Promise<{ rowsAffected: number }>): Promise<number> {
+  let removed = 0;
+  for (let i = 0; i < maxBatches; i++) {
+    const { rowsAffected } = await step();
+    removed += rowsAffected;
+    if (rowsAffected < batch) break;
+  }
+  return removed;
+}
+
 /** The UTC month (`YYYY-MM`) a moment falls in: the budget month a check claimed then counts against. */
 export const utcMonth = (at: Date): string => at.toISOString().slice(0, 7);
 
@@ -447,19 +462,23 @@ export class RankRepository {
 
   /**
    * RETENTION: deletes checks posted before the first day still inside `STATS_RETENTION_MONTHS` of `today`, and charges
-   * of months wholly before it (no budget reads them: it counts the current month only).
+   * of months wholly before it (no budget reads them: it counts the current month only). In bounded batches, so the
+   * tracker's pass is never held behind one huge delete; what is left past `maxBatches` goes the next day.
    */
-  async pruneOld(today: string): Promise<{ checks: number; charges: number }> {
+  async pruneOld(today: string, batch = PRUNE_BATCH, maxBatches = PRUNE_MAX_BATCHES): Promise<{ checks: number; charges: number }> {
     const start = statsRetentionStart(today);
-    const checks = await this.db
-      .delete(rankChecks)
-      .where(lt(rankChecks.postedAt, new Date(`${start}T00:00:00Z`)))
-      .returning({ id: rankChecks.id });
-    const charges = await this.db
-      .delete(rankCharges)
-      .where(lt(rankCharges.month, start.slice(0, 7)))
-      .returning({ id: rankCharges.checkId });
-    return { checks: checks.length, charges: charges.length };
+    const before = new Date(`${start}T00:00:00Z`);
+    const checks = await inBatches(batch, maxBatches, () =>
+      this.db
+        .delete(rankChecks)
+        .where(inArray(rankChecks.id, this.db.select({ id: rankChecks.id }).from(rankChecks).where(lt(rankChecks.postedAt, before)).limit(batch))),
+    );
+    const charges = await inBatches(batch, maxBatches, () =>
+      this.db
+        .delete(rankCharges)
+        .where(inArray(rankCharges.checkId, this.db.select({ id: rankCharges.checkId }).from(rankCharges).where(lt(rankCharges.month, start.slice(0, 7))).limit(batch))),
+    );
+    return { checks, charges };
   }
 
   /** Finished checks of a project's keywords for `domain` between two days (inclusive), oldest first. */

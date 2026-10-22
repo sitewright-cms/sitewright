@@ -11073,7 +11073,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins), and each
   // project's registration with them (agency staff).
-  registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, registeredWith: (service) => siteRegistrar.registeredWith(service), rl });
+  registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, heldBy: (service, next) => siteRegistrar.heldBy(service, next), rl });
   const siteUrlOf = async (ctx: ProjectContext): Promise<string | undefined> =>
     ((await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null)?.website?.siteUrl;
   registerSiteRegistrationRoutes(app, { registrar: siteRegistrar, resolveProject, requirePlatformStaff, siteUrlOf, rl });

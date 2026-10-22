@@ -114,10 +114,14 @@ The running version of an instance is reported at `GET /version` (baked into the
   longer shows the search engine as off while the site is still registered.
 - **Search engines: a replaced Google or Bing key no longer reports old sites as removed.** Only the account that
   registered a site can remove it; asked with a new key, Google and Bing answer as if the site were already gone, and
-  the platform forgot it. Switching off now says the site was not removed, and keeps the record.
-- **System Settings: a Google or Bing account that sites are registered with can no longer be removed.** Those sites
-  would stay in that account with nobody able to take them off. The save is refused with how many there are: switch them
-  off first.
+  the platform forgot it. Switching off now says the site was not removed, and keeps the record; the next Verify now
+  with the new key keeps the old registration on record too (removed if the old key comes back, named in the server
+  log otherwise) instead of overwriting it.
+- **System Settings: removing or replacing a Google or Bing account that sites are registered with asks first.** Only
+  that account can remove those sites, so they would stay in it with nobody able to take them off. The save is refused
+  with how many there are and what to do: switch them off in the Search engines tile first. For a key that no longer
+  works, System Settings offers **Remove anyway** (or **Replace anyway**) after saying that those sites stay registered
+  at the old account, to be removed there by hand. Saving the same account's key again is not a change.
 - **Statistics → Search performance: a deleted project's numbers are no longer kept in memory**, and answers past their
   hour are dropped as new ones come in, instead of waiting for the cache to fill.
 

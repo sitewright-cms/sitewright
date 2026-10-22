@@ -257,15 +257,17 @@ describe('SearchPerformance (the cache)', () => {
     expect(read).toHaveBeenCalledTimes(4);
   });
 
-  it('forgets a deleted project’s answers and refusals, and only that project’s', async () => {
+  it('forgets a deleted project’s answers, refusals and lag, and only that project’s', async () => {
     const read = vi.fn<SearchDataSource['read']>(async () => data);
     const perf = new SearchPerformance({ sources: async () => [source(read)], now: () => NOW });
     await perf.view('p1', 'x', 'google', 28);
     await perf.view('p10', 'x', 'google', 28); // a prefix of another id is not the same project
     read.mockRejectedValueOnce(new Error('down'));
     await expect(perf.view('p1', 'x', 'google', 7)).rejects.toThrow('down');
+    expect(read.mock.calls.at(-1)![1]).toBe('2026-10-18'); // p1's lag was known
     perf.forgetProject('p1');
-    await perf.view('p1', 'x', 'google', 28); // asked again
+    await perf.view('p1', 'x', 'google', 28); // asked again…
+    expect(read.mock.calls.at(-1)![1]).toBeUndefined(); // …with no lag remembered
     await perf.view('p1', 'x', 'google', 7); // the refusal is forgotten too
     await perf.view('p10', 'x', 'google', 28); // still kept
     expect(read).toHaveBeenCalledTimes(5);

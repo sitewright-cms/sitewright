@@ -75,7 +75,7 @@ function weekly(series: RankKeywordView['series'], from: string): RankKeywordVie
 }
 
 /**
- * A project's rankings for a range, as every reader sees them. Shared with the agent tool.
+ * A project's rankings for a range, as every reader sees them — agents included (`get_rankings` reads the route).
  *
  * Only checks made for the project's CURRENT domain count: after a domain change, the old site's positions are
  * another site's history, and comparing them would show a move that never happened.

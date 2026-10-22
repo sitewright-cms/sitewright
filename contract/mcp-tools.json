@@ -140,11 +140,19 @@
     "required": []
   },
   {
+    "name": "get_rankings",
+    "required": []
+  },
+  {
     "name": "get_reference",
     "required": []
   },
   {
     "name": "get_scope",
+    "required": []
+  },
+  {
+    "name": "get_search_performance",
     "required": []
   },
   {

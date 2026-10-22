@@ -184,12 +184,24 @@
     ]
   },
   {
+    "name": "get_rankings",
+    "required": [
+      "project"
+    ]
+  },
+  {
     "name": "get_reference",
     "required": []
   },
   {
     "name": "get_scope",
     "required": []
+  },
+  {
+    "name": "get_search_performance",
+    "required": [
+      "project"
+    ]
   },
   {
     "name": "get_site_stats",

@@ -1168,6 +1168,26 @@ export class SitewrightClient {
     return this.request('GET', this.projectPath(`/stats?${params.toString()}`));
   }
 
+  /** The tracked keywords and their positions for a range of UTC days (`GET /projects/:id/rankings`). */
+  async rankings(q: { from?: string; to?: string } = {}): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (q.from) params.set('from', q.from);
+    if (q.to) params.set('to', q.to);
+    const query = params.toString();
+    return this.request('GET', this.projectPath(`/rankings${query ? `?${query}` : ''}`));
+  }
+
+  /** The search engines the site has search data at (`GET /projects/:id/search-performance/available`). */
+  async searchPerformanceAvailable(): Promise<{ services: Array<'google' | 'bing'> }> {
+    return this.request('GET', this.projectPath('/search-performance/available')) as Promise<{ services: Array<'google' | 'bing'> }>;
+  }
+
+  /** One search engine's numbers for the site over the last `days` (`GET /projects/:id/search-performance`). */
+  async searchPerformance(q: { service: 'google' | 'bing'; days: number }): Promise<unknown> {
+    const params = new URLSearchParams({ service: q.service, days: String(q.days) });
+    return this.request('GET', this.projectPath(`/search-performance?${params.toString()}`));
+  }
+
   async listSubmissions(opts: { formId?: string; limit?: number; offset?: number } = {}): Promise<unknown> {
     const params = new URLSearchParams();
     if (opts.formId) params.set('formId', opts.formId);

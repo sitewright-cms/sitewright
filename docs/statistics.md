@@ -8,6 +8,15 @@ by anyone else leaves the setting as it was. The numbers are in the project's **
 the `get_site_stats` MCP tool. It works for every deploy target: local hosting, and sites uploaded by FTP, SFTP
 or git.
 
+The Statistics tab's two other views have agent tools too. Like the views, both only read, and both need the
+`content:read` capability:
+
+- **Search rankings:** `get_rankings` returns the tracked keywords and where each places, for a range of days.
+  Agency staff choose the keywords.
+- **Search performance:** `get_search_performance` returns the clicks, impressions, CTR, average position and
+  top queries and pages from Google and Bing. These come from the same answers the view uses, which are kept for
+  an hour, so asking again within the hour doesn't ask the search engines again.
+
 ## What it counts
 
 | | |

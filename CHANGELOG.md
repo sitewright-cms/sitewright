@@ -9,6 +9,18 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Search engines: the tile reads "Registered"** once every switched-on search engine verified the site (each row
+  still says "verified").
+- **Sitemap & owners: a tab each.** The window splits into **Sitemap** and **Search Console owners**; an owner typed but
+  not saved survives a look at the other tab, and the window opens on the owners when some did not get access.
+  - **Sitemap:** opens the sitemap, and links each search engine's sitemap report (Google's for the site's Search
+    Console owners, Bing's for the platform's Bing account).
+  - **Search Console owners:** says what each new owner still does once. Being an owner does not put the site in their
+    Search Console list, so they add it as a **URL prefix** property with the exact address (a Copy button), and Google
+    confirms the ownership at once. Links open Search Console's Add property and the site's reports.
+
 ## [0.70.0] — 2026-10-22
 
 ### Added

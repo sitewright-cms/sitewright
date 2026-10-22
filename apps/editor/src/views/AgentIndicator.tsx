@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Tooltip } from './ui/Tooltip';
 
 /** Indicator visual states (see {@link AgentIndicator}). */
@@ -21,6 +22,54 @@ function Spinner() {
   return <span aria-hidden className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />;
 }
 
+/** What one state looks like: the same in the labelled pill and the compact circle. */
+interface Look {
+  tip: string;
+  label: string;
+  glyph: ReactNode;
+  /** Border, fill and text colours. */
+  tone: string;
+  /** Hover on the pill itself. */
+  hover: string;
+  /** The same hover for the compact circle, which sits inside a taller hit area (see below). */
+  groupHover: string;
+}
+
+function lookOf(state: AgentState, count: number): Look {
+  if (state === 'working') {
+    return {
+      tip: 'An agent is editing this project right now — click for details / to disconnect.',
+      label: 'Agent working…',
+      glyph: <Spinner />,
+      tone: 'border-emerald-300 dark:border-emerald-400/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+      hover: 'hover:bg-emerald-100 dark:hover:bg-emerald-500/15',
+      groupHover: 'group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/15',
+    };
+  }
+  if (state === 'idle') {
+    return {
+      tip: 'An agent is connected (idle) — click for details / to disconnect.',
+      label: `Agent connected${count > 1 ? ` · ${count}` : ''}`,
+      glyph: <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />,
+      tone: 'border-amber-300 dark:border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300',
+      hover: 'hover:bg-amber-100 dark:hover:bg-amber-500/15',
+      groupHover: 'group-hover:bg-amber-100 dark:group-hover:bg-amber-500/15',
+    };
+  }
+  return {
+    tip: 'No agent connected — click to learn how to connect an AI agent.',
+    label: 'Connect an agent',
+    glyph: <RobotIcon />,
+    // The "nothing connected" state is a nudge, not an alert — but it was muted to the point of
+    // measuring 2.58:1 on the light header, which is not readable, only quiet. Secondary-text weight
+    // keeps it calm and legible in both themes.
+    tone: 'border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-300',
+    hover: 'hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white',
+    groupHover:
+      'group-hover:bg-slate-100 dark:group-hover:bg-white/10 group-hover:text-slate-900 dark:group-hover:text-white',
+  };
+}
+
 /**
  * The header's AI-agent presence indicator — always shown (for users who can manage the project),
  * clickable to open the AI agent details modal. Three states:
@@ -28,8 +77,53 @@ function Spinner() {
  *  - **idle**: a breathing amber dot + "Agent connected" (· N when more than one) — connected, not editing.
  *  - **none**: a grey robot glyph + "Connect an agent" — nudges that an agent CAN be wired up (the
  *    modal carries the how-to).
+ *
+ * `compact` (the phone header) shows the same glyph and colours in a small circle, with the label as
+ * screen-reader-only text, so the accessible name is the same in both layouts.
  */
-export function AgentIndicator({ state, count, onClick }: { state: AgentState; count: number; onClick: () => void }) {
+export function AgentIndicator({
+  state,
+  count,
+  onClick,
+  compact = false,
+}: {
+  state: AgentState;
+  count: number;
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  const { tip, label, glyph, tone, hover, groupHover } = lookOf(state, count);
+
+  if (compact) {
+    // ★ WHY THE LABEL GOES. The labelled pill never shrinks (see below), and it is ~132–152px. In the
+    // phone header it shares a row with the project switcher, whose column is `min-w-0` so that it can
+    // give way, and the pill squeezed that column below the brand mark plus the switcher's own padding
+    // and chevron. Both then spilled out of it and the pill painted over them: at 320–390px a tap on
+    // the switcher opened the agent modal, and at 320px the row ran past the screen edge.
+    //
+    // ★ WHY A CIRCLE INSIDE A BARE BUTTON. On a touch screen every button gets a 44px minimum HEIGHT
+    // (styles.css, `pointer: coarse`), which would stretch a round button into a capsule. The circle is
+    // the visual and the button is the hit area. It is 30px wide because the touch row at 320px has no
+    // more to give: its other controls' 44px floors already fill it. No `aria-label` for the same
+    // reason, since that selector also adds a 44px minimum WIDTH. The sr-only text names the button.
+    // 30px matches the compact Preview/Deploy buttons' height, and the width is the same in every
+    // state, so the row does not shift when an agent starts or stops working.
+    return (
+      <Tooltip tip={tip}>
+        <button
+          type="button"
+          onClick={onClick}
+          className="group relative inline-flex w-7.5 shrink-0 cursor-pointer items-center justify-center rounded-full"
+        >
+          <span aria-hidden className={`inline-flex size-7.5 items-center justify-center rounded-full border transition ${tone} ${groupHover}`}>
+            {glyph}
+          </span>
+          <span className="sr-only">{label}</span>
+        </button>
+      </Tooltip>
+    );
+  }
+
   // A BORDER on every state, not just a tint: the pill floats on the frosted header, whose own
   // translucent surface sits close to each state's fill, so an unbordered pill reads as loose text
   // rather than a control you can click.
@@ -43,46 +137,11 @@ export function AgentIndicator({ state, count, onClick }: { state: AgentState; c
   // and the icon at dead centre). A pill of this size should never wrap in the first place.
   const base =
     'inline-flex shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-medium transition';
-  if (state === 'working') {
-    return (
-      <Tooltip tip="An agent is editing this project right now — click for details / to disconnect.">
-        <button
-          type="button"
-          onClick={onClick}
-          className={`${base} border-emerald-300 dark:border-emerald-400/40 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/15`}
-        >
-          <Spinner />
-          Agent working…
-        </button>
-      </Tooltip>
-    );
-  }
-  if (state === 'idle') {
-    return (
-      <Tooltip tip="An agent is connected (idle) — click for details / to disconnect.">
-        <button
-          type="button"
-          onClick={onClick}
-          className={`${base} border-amber-300 dark:border-amber-400/40 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-500/15`}
-        >
-          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
-          Agent connected{count > 1 ? ` · ${count}` : ''}
-        </button>
-      </Tooltip>
-    );
-  }
   return (
-    <Tooltip tip="No agent connected — click to learn how to connect an AI agent.">
-      <button
-        type="button"
-        onClick={onClick}
-        // The "nothing connected" state is a nudge, not an alert — but it was muted to the point of
-        // measuring 2.58:1 on the light header, which is not readable, only quiet. Secondary-text weight
-        // keeps it calm and legible in both themes.
-        className={`${base} border-slate-300 dark:border-white/20 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-slate-900 dark:hover:text-white`}
-      >
-        <RobotIcon />
-        Connect an agent
+    <Tooltip tip={tip}>
+      <button type="button" onClick={onClick} className={`${base} ${tone} ${hover}`}>
+        {glyph}
+        {label}
       </button>
     </Tooltip>
   );

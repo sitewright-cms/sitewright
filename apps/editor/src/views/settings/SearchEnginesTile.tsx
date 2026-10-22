@@ -42,7 +42,8 @@ const STATE: Record<SiteRegistrationEntry['status'], { word: string; tone: strin
 export function searchEnginesStatus(view: SiteRegistrationView | null): TileStatus {
   const on = view ? ENGINES.filter((e) => view[e.key].enabled).map((e) => view[e.key]) : [];
   if (on.length === 0) return { kind: 'default', label: 'Off' };
-  if (on.every((e) => e.status === 'verified')) return { kind: 'set', label: 'Verified' };
+  // Each search engine says "verified" on its row; the tile says what that adds up to: the site is registered.
+  if (on.every((e) => e.status === 'verified')) return { kind: 'set', label: 'Registered' };
   if (on.some((e) => e.status === 'failed')) return { kind: 'attention', label: 'Failed' };
   return { kind: 'attention', label: 'Not verified' };
 }

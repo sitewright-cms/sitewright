@@ -59,6 +59,10 @@ export function saveSurface(dirty: boolean): string {
 export const ghostButton =
   'waves-effect inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10';
 
+/** {@link ghostButton} at the size of a line of help text: a link or a Copy inside instructions. */
+export const smallGhostButton =
+  'waves-effect inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200/80 bg-white/70 px-2.5 py-1 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10';
+
 /** A subtle destructive action. */
 export const dangerButton =
   'waves-effect inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10';

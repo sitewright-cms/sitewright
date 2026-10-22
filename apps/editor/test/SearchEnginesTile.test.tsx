@@ -6,7 +6,7 @@ import type { SiteRegistrationEntry, SiteRegistrationView } from '@sitewright/sc
  * The Search engines tile (agency staff) and its verification run: switches that need an https Production URL and a
  * platform account, a switch-off that removes the site (after asking), and "Verify now" — targets, tags, a deploy to
  * the target that serves the Production URL with its progress, then each search engine and its sitemap — stopping
- * where a step fails and saying why — and "Sitemap & owners".
+ * where a step fails and saying why — and "Sitemap & owners", a tab each.
  */
 
 const api = vi.hoisted(() => ({
@@ -114,7 +114,7 @@ describe('the Search engines tile', () => {
 
   it('summarises its state in the head', () => {
     expect(searchEnginesStatus(null)).toEqual({ kind: 'default', label: 'Off' });
-    expect(searchEnginesStatus(view({ google: on({ status: 'verified' }) }))).toEqual({ kind: 'set', label: 'Verified' });
+    expect(searchEnginesStatus(view({ google: on({ status: 'verified' }) }))).toEqual({ kind: 'set', label: 'Registered' });
     expect(searchEnginesStatus(view({ google: on({ status: 'verified' }), bing: on({ status: 'failed' }) }))).toEqual({ kind: 'attention', label: 'Failed' });
     expect(searchEnginesStatus(view({ google: on({ status: 'pending' }) }))).toEqual({ kind: 'attention', label: 'Not verified' });
   });
@@ -299,6 +299,57 @@ describe('Sitemap & owners', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Sitemap and Search Console owners' }));
     return screen.findByRole('dialog');
   }
+  const tab = (dialog: HTMLElement, name: string) => within(dialog).getByRole('tab', { name });
+  async function openOwners(v: SiteRegistrationView) {
+    const dialog = await open(v);
+    fireEvent.click(tab(dialog, 'Search Console owners'));
+    return dialog;
+  }
+
+  it('opens on the sitemap, and keeps an owner typed but not saved across the tabs', async () => {
+    const dialog = await open(verified);
+    expect(tab(dialog, 'Sitemap')).toHaveAttribute('aria-selected', 'true');
+    expect(within(dialog).queryByRole('button', { name: 'Save owners' })).toBeNull(); // the other tab is hidden
+    fireEvent.click(tab(dialog, 'Search Console owners'));
+    fireEvent.change(within(dialog).getByLabelText('Add a Google account'), { target: { value: 'ben@agency.example' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add' }));
+    fireEvent.click(tab(dialog, 'Sitemap'));
+    expect(within(dialog).getByRole('button', { name: 'Submit again' })).toBeInTheDocument();
+    fireEvent.click(tab(dialog, 'Search Console owners'));
+    expect(within(dialog).getByRole('button', { name: 'Save owners' })).toBeEnabled();
+    expect(within(within(dialog).getByRole('list', { name: 'Owners' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'ana@agency.example',
+      'ben@agency.example',
+    ]);
+  });
+
+  it('links the sitemap, and each search engine’s sitemap report', async () => {
+    const dialog = await open(verified);
+    expect(within(dialog).getByRole('link', { name: 'Open the sitemap' })).toHaveAttribute('href', 'https://www.example.com/sitemap.xml');
+    expect(within(dialog).getByRole('link', { name: 'The sitemap report at Google Search Console' })).toHaveAttribute(
+      'href',
+      'https://search.google.com/search-console/sitemaps?resource_id=https%3A%2F%2Fwww.example.com%2F',
+    );
+    expect(within(dialog).getByRole('link', { name: 'The sitemap report at Bing Webmaster Tools' })).toHaveAttribute(
+      'href',
+      'https://www.bing.com/webmasters/sitemaps?siteUrl=https%3A%2F%2Fwww.example.com%2F',
+    );
+    for (const link of within(dialog).getAllByRole('link')) expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('tells a new owner to add the site as a URL-prefix property in their own Search Console', async () => {
+    const dialog = await openOwners(verified);
+    const steps = within(dialog).getByRole('region', { name: 'Each new owner, once' });
+    expect(steps).toHaveTextContent('Being an owner does not put the site in their Search Console list');
+    expect(steps).toHaveTextContent('URL prefix, not Domain');
+    expect(within(steps).getByText('https://www.example.com/')).toBeInTheDocument();
+    expect(within(steps).getByRole('link', { name: /Add property/ })).toHaveAttribute('href', 'https://search.google.com/search-console/welcome');
+    expect(within(steps).getByRole('link', { name: /Open the site’s reports/ })).toHaveAttribute(
+      'href',
+      'https://search.google.com/search-console?resource_id=https%3A%2F%2Fwww.example.com%2F',
+    );
+    expect(within(steps).getByRole('button', { name: 'Copy the property address' })).toBeInTheDocument();
+  });
 
   it('submits the sitemap again to every search engine that verified the site', async () => {
     api.submitSitemap.mockImplementation(async (_p: string, s: 'google' | 'bing') => ({
@@ -315,9 +366,27 @@ describe('Sitemap & owners', () => {
     expect(api.submitSitemap.mock.calls.map((c) => c[1])).toEqual(['google', 'bing']);
   });
 
+  it('copies the exact property address, and says it did', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const dialog = await openOwners(verified);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Copy the property address' }));
+    expect(await within(dialog).findByRole('button', { name: 'Copied the property address' })).toHaveTextContent('Copied');
+    expect(writeText).toHaveBeenCalledWith('https://www.example.com/');
+  });
+
+  it('without an https Production URL: no sitemap, no reports, no steps', async () => {
+    const dialog = await open(view({ siteUrl: null, sitemapUrl: null, notice: 'no-site-url', google: { ...verified.google }, bing: on({ status: 'verified' }) }));
+    expect(within(dialog).getByText('Set an https Production URL first')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('link')).toBeNull();
+    fireEvent.click(tab(dialog, 'Search Console owners'));
+    expect(within(dialog).queryByRole('region', { name: 'Each new owner, once' })).toBeNull();
+    expect(within(dialog).queryByRole('link')).toBeNull();
+  });
+
   it('edits the Search Console owners as a whole list, and keeps a refused list to fix', async () => {
     api.setSearchConsoleOwners.mockResolvedValueOnce({ result: { ok: false, detail: 'Google did not change the owners: Invalid owner' }, view: verified });
-    const dialog = await open(verified);
+    const dialog = await openOwners(verified);
     const save = within(dialog).getByRole('button', { name: 'Save owners' });
     expect(save).toBeDisabled(); // nothing changed yet
     const input = within(dialog).getByLabelText('Add a Google account');
@@ -351,10 +420,11 @@ describe('Sitemap & owners', () => {
     expect(api.submitSitemap.mock.calls.map((c) => c[1])).toEqual(['google', 'bing']);
   });
 
-  it('says when the owners did not get access, and saves the same list again to retry', async () => {
+  it('says when the owners did not get access (opening on them), and saves the same list again to retry', async () => {
     const issue = view({ ...verified, google: { ...verified.google, ownersIssue: 'Not given access: Google could not be reached' } });
     api.setSearchConsoleOwners.mockResolvedValue({ result: { ok: true, detail: '1 owner in Search Console' }, view: verified });
     const dialog = await open(issue);
+    expect(tab(dialog, 'Search Console owners')).toHaveAttribute('aria-selected', 'true');
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Not given access: Google could not be reached. Save owners tries again.');
     const save = within(dialog).getByRole('button', { name: 'Save owners' });
     expect(save).toBeEnabled(); // the list is unchanged, but it never reached Google
@@ -366,8 +436,10 @@ describe('Sitemap & owners', () => {
 
   it('offers the owners only once Google verified the site', async () => {
     const dialog = await open(view({ google: on({ status: 'pending' }), bing: on({ status: 'verified' }) }));
+    expect(within(dialog).getByText('Not verified yet: verify the site first')).toBeInTheDocument();
+    fireEvent.click(tab(dialog, 'Search Console owners'));
     expect(within(dialog).getByText('Verify the site with Google first.')).toBeInTheDocument();
     expect(within(dialog).queryByLabelText('Add a Google account')).toBeNull();
-    expect(within(dialog).getByText('Not verified yet: verify the site first')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('region', { name: 'Each new owner, once' })).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ProjectRevisionRow } from '../src/api';
-import { appendPage, comesAfter, mergeHead } from '../src/lib/history-feed';
+import { appendPage, comesAfter, legacyCreatedNote, mergeHead } from '../src/lib/history-feed';
 
 const T0 = Date.UTC(2026, 9, 1, 12);
 
@@ -80,5 +80,34 @@ describe('mergeHead — a re-read of the newest rows stitched over what is loade
     const merged = mergeHead({ items: range(0, 10), cursor: 'stale' }, { items: [row(-1), ...range(0, 49)], nextCursor: 'h' });
     expect(merged.items).toHaveLength(50);
     expect(merged.cursor).toBe('h');
+  });
+});
+
+describe('legacyCreatedNote — explaining, never re-labelling, history from before `create`', () => {
+  const since = new Date(T0 - 10_000).toISOString(); // row(n) for n > 10 is older than this
+  const put = (n: number) => ({ ...row(n), op: 'put' as const });
+
+  it('always shows under the Created filter, with the date creations are marked from', () => {
+    const note = legacyCreatedNote({ op: 'create', q: '', createdSince: since, items: [] });
+    expect(note).toContain(new Date(since).toLocaleDateString());
+    expect(note).toMatch(/created before then show as “Updated”/);
+  });
+
+  it('says so without a date when this history never marked a creation', () => {
+    expect(legacyCreatedNote({ op: 'create', q: '', createdSince: null, items: [] })).toBe(
+      'Items created before History began marking them “Created” show as “Updated”.',
+    );
+  });
+
+  it('during a search, only once the loaded rows reach the older history', () => {
+    expect(legacyCreatedNote({ op: '', q: 'team', createdSince: since, items: [put(1), put(5)] })).toBeNull();
+    expect(legacyCreatedNote({ op: '', q: 'team', createdSince: since, items: [put(1), put(20)] })).not.toBeNull();
+    expect(legacyCreatedNote({ op: '', q: 'team', createdSince: null, items: [put(1)] })).not.toBeNull();
+  });
+
+  it('stays quiet when the server was not asked, or nothing looks for creations', () => {
+    expect(legacyCreatedNote({ op: 'create', q: '', createdSince: undefined, items: [] })).toBeNull();
+    expect(legacyCreatedNote({ op: 'put', q: '', createdSince: since, items: [put(20)] })).toBeNull();
+    expect(legacyCreatedNote({ op: '', q: '', createdSince: since, items: [put(20)] })).toBeNull();
   });
 });

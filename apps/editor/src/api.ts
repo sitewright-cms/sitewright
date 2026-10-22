@@ -818,6 +818,12 @@ export interface ProjectRevisionPage {
   items: ProjectRevisionRow[];
   /** Where the next page starts, or null when this page reached the end of the filtered feed. */
   nextCursor: string | null;
+  /**
+   * Sent with a FIRST page under the Created filter or a search: when this project's history first
+   * marked a creation (ISO), or null if it never has. Every change before it shows as Updated —
+   * creations included, because history recorded before then did not tell them apart.
+   */
+  createdSince?: string | null;
 }
 /**
  * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —

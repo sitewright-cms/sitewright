@@ -702,7 +702,7 @@ export class ContentRepository {
     // writeRow. Everything downstream (the revision, the emitted version, the echoed entity and its
     // etag) must describe the persisted bytes: hashing the pre-sanitize value hands the client a
     // version the store never had, so its very next If-Match save 409s against itself.
-    const { data: persisted, created } = await this.withEntityLock(`${ctx.projectId}:${kind}:${scope}:${key}`, async () => {
+    const persisted = await this.withEntityLock(`${ctx.projectId}:${kind}:${scope}:${key}`, async () => {
       if (opts?.expectedVersion !== undefined) {
         const existing = await this.row(this.db, ctx, kind, key, scope);
         const current = existing ? contentVersion(existing.data) : null;
@@ -710,14 +710,21 @@ export class ContentRepository {
           throw new VersionConflictError(kind, key, opts.expectedVersion as string, current);
         }
       }
-      return this.writeRowReporting(this.db, ctx, kind, key, value);
+      const { data, created } = await this.writeRowReporting(this.db, ctx, kind, key, value);
+      // A restore tags its revision `restore` (+ a note). Otherwise the write itself says what happened:
+      // ★ `create` when there was NO stored row (a new entity, or one re-made after a delete), else `put`.
+      // Decided HERE, inside the write, rather than guessed later from "the entity's oldest revision" —
+      // history is pruned per entity and swept by age, so the oldest SURVIVING row is very often an edit.
+      const op: RevisionOp = opts?.op === 'restore' ? 'restore' : created ? 'create' : 'put';
+      // ★ Recorded INSIDE the lock, like `stripEntryLanguage` does, so an entity's revisions are written
+      // in the order its writes were. Outside it, a save right behind a create could record FIRST: its
+      // `put` found no row to coalesce into, and the `create` then landed on top of it, newer than the
+      // update and holding the older snapshot. The cost is one revision insert (+ prune) of extra lock
+      // time, which only delays the next write to this same entity; `recordRevision` never throws, so it
+      // cannot leave the lock held or fail the save.
+      await this.recordRevision(ctx, kind, key, scope, data, op, note);
+      return data;
     });
-    // A restore tags its revision `restore` (+ a note). Otherwise the write itself says what happened:
-    // ★ `create` when there was NO stored row (a new entity, or one re-made after a delete), else `put`.
-    // Decided HERE, inside the write, rather than guessed later from "the entity's oldest revision" —
-    // history is pruned per entity and swept by age, so the oldest SURVIVING row is very often an edit.
-    const op: RevisionOp = opts?.op === 'restore' ? 'restore' : created ? 'create' : 'put';
-    await this.recordRevision(ctx, kind, key, scope, persisted, op, note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor, scope, version: contentVersion(persisted) });
     return persisted;
   }

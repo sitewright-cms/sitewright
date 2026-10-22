@@ -220,6 +220,70 @@ describe('revision routes', () => {
     expect(ids).toEqual(Array.from({ length: 9 }, (_, i) => `tie${String(8 - i).padStart(2, '0')}`));
   });
 
+  it('searches for a literal BACKSLASH (it is LIKE’s escape character here)', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'win', { id: 'win', path: 'win', title: 'C:\\Sites\\new' });
+    await proj.putContent('page', 'nix', { id: 'nix', path: 'nix', title: 'C:/Sites/new' });
+    const labels = async (q: string) =>
+      ((await client.get(`/projects/${pid}/revisions?q=${encodeURIComponent(q)}`)).json().items as Array<{ label: string }>).map((r) => r.label);
+    expect(await labels('\\')).toEqual(['C:\\Sites\\new']);
+    expect(await labels(':\\S')).toEqual(['C:\\Sites\\new']);
+    expect(await labels('\\%')).toEqual([]); // backslash then a literal % — no title has that
+  });
+
+  it('a cursor from project A replayed on project B returns only B’s rows', async () => {
+    const pidB = await client.createProject('Other', 'other');
+    await client.project(pidB).putContent('page', 'b-only', { id: 'b-only', path: 'b-only', title: 'Only in B' });
+    await client.project(pid).putContent('page', 'a-only', { id: 'a-only', path: 'a-only', title: 'Only in A' });
+    // A's newest row is newer than all of B's, so the cursor positions B's whole history "after" it.
+    const cursorA = (await client.get(`/projects/${pid}/revisions?limit=1`)).json().nextCursor as string;
+    expect(cursorA).toBeTruthy();
+    const onB = await client.get(`/projects/${pidB}/revisions?limit=100&cursor=${cursorA}`);
+    expect(onB.statusCode).toBe(200);
+    const labels = (onB.json().items as Array<{ label: string }>).map((r) => r.label);
+    expect(labels).toContain('Only in B');
+    expect(labels).not.toContain('Only in A');
+    const allA = ((await client.get(`/projects/${pid}/revisions?limit=100`)).json().items as Array<{ id: string }>).map((r) => r.id);
+    expect((onB.json().items as Array<{ id: string }>).some((r) => allA.includes(r.id))).toBe(false);
+  });
+
+  it('says since when creations are marked — on a first page under the Created filter or a search only', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'about', aboutPage('About'));
+    // Every kind counts — creating the project already made its settings and home page.
+    const created = (await client.get(`/projects/${pid}/revisions?op=create&limit=100`)).json();
+    const firstCreate = Math.min(...created.items.map((r: { revisionAt: string }) => Date.parse(r.revisionAt)));
+    expect(Date.parse(created.createdSince)).toBe(firstCreate);
+    expect((await client.get(`/projects/${pid}/revisions?q=About`)).json().createdSince).toBe(created.createdSince);
+    // Not asked for, not sent: a plain page, another filter, or a later page.
+    expect((await client.get(`/projects/${pid}/revisions`)).json()).not.toHaveProperty('createdSince');
+    expect((await client.get(`/projects/${pid}/revisions?op=put`)).json()).not.toHaveProperty('createdSince');
+    const cursor = (await client.get(`/projects/${pid}/revisions?op=create&limit=1`)).json().nextCursor;
+    if (cursor) expect((await client.get(`/projects/${pid}/revisions?op=create&limit=1&cursor=${cursor}`)).json()).not.toHaveProperty('createdSince');
+  });
+
+  it('createdSince is null for a history recorded before creations were marked (all `put`)', async () => {
+    // A project whose history predates the `create` op: plant `put` rows directly, as old history is.
+    const pidOld = await client.createProject('Legacy', 'legacy');
+    await h.db.delete(contentRevisions).where(eq(contentRevisions.projectId, pidOld));
+    await h.db.insert(contentRevisions).values({
+      id: 'legacy01',
+      projectId: pidOld,
+      kind: 'page',
+      entityId: 'old',
+      scope: '',
+      data: { id: 'old', path: 'old', title: 'Made long ago' },
+      op: 'put',
+      userId: client.userId,
+      actor: 'user',
+      note: null,
+      revisionAt: new Date(Date.UTC(2026, 0, 1)),
+    });
+    const res = (await client.get(`/projects/${pidOld}/revisions?op=create`)).json();
+    expect(res.items).toEqual([]);
+    expect(res.createdSince).toBeNull();
+  });
+
   it('rejects a feed query it cannot honour (400) instead of silently dropping the filter', async () => {
     const bad = [
       `q=${'x'.repeat(201)}`,

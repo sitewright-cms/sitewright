@@ -101,6 +101,22 @@ describe('HistoryView — the words', () => {
   });
 });
 
+describe('HistoryView — older history under the Created filter', () => {
+  it('explains that creations before a date show as Updated (the server says since when)', async () => {
+    listProjectRevisions.mockResolvedValueOnce(page(rows(0, 3)));
+    render(<HistoryView project={project} />);
+    await screen.findByRole('list');
+    expect(screen.queryByRole('note')).toBeNull();
+
+    const since = new Date(T0 - 2000).toISOString();
+    listProjectRevisions.mockResolvedValueOnce({ ...page([row(1, { op: 'create', label: 'New page' })]), createdSince: since });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter by action' }), { target: { value: 'create' } });
+    const note = await screen.findByRole('note');
+    expect(note).toHaveTextContent(`History marks new items “Created” from ${new Date(since).toLocaleDateString()} on.`);
+    expect(note).toHaveTextContent('Items created before then show as “Updated”.');
+  });
+});
+
 describe('HistoryView — search', () => {
   it('searches the SERVER by name once typing settles, combined with the filters', async () => {
     listProjectRevisions.mockResolvedValue(page(rows(0, 3)));

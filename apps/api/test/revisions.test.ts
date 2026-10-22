@@ -138,6 +138,51 @@ describe('RevisionsRepository', () => {
     expect(rest.next).toBeNull(); // the last page says so — no extra empty request
   });
 
+  it('★ two CONCURRENT saves of a new item record exactly one create (the read happens under the lock)', async () => {
+    const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
+    // Both start before either has written. Were "did it exist?" read outside the entity lock, both
+    // would see no row and both would say Created.
+    await Promise.all([
+      content.put(ctx, 'page', 'twin', { id: 'twin', path: 'twin', title: 'First' }),
+      content.put(ctx, 'page', 'twin', { id: 'twin', path: 'twin', title: 'Second' }),
+    ]);
+    const ops = (await revs.list(ctx, 'page', 'twin')).map((r) => r.op).sort();
+    expect(ops).toEqual(['create', 'put']);
+  });
+
+  it('★ a save right behind a create is recorded AFTER it, so it can coalesce into it', async () => {
+    // Recorded outside the lock, the second write's revision could land first: it found nothing to fold
+    // into and inserted a `put`, and the `create` then arrived on top of it with the OLDER snapshot.
+    // The FIRST recording is held up (its policy read waits 50 ms), which is the window the race needs:
+    // outside the lock the second write would finish and record meanwhile.
+    let policyReads = 0;
+    const { revs, content, ctx } = await setup({
+      policy: async () => {
+        policyReads += 1;
+        if (policyReads === 1) await new Promise((r) => setTimeout(r, 50));
+        return { coalesceWindowMs: 60_000 };
+      },
+    });
+    await Promise.all([
+      content.put(ctx, 'page', 'twin', { id: 'twin', path: 'twin', title: 'First' }),
+      content.put(ctx, 'page', 'twin', { id: 'twin', path: 'twin', title: 'Second' }),
+    ]);
+    const list = await revs.list(ctx, 'page', 'twin');
+    expect(list.map((r) => r.op)).toEqual(['create']);
+    // The one row holds what is stored now, whichever write won the lock second.
+    expect(titleOf((await revs.get(ctx, list[0]!.id))?.data)).toBe(titleOf(await content.get(ctx, 'page', 'twin')));
+  });
+
+  it('firstCreateAt: null for a history with no create, then the earliest create (remembered)', async () => {
+    const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
+    expect(await revs.firstCreateAt(ctx)).toBeNull();
+    await content.put(ctx, 'page', 'about', { id: 'about', path: 'about', title: 'A' });
+    const first = (await revs.list(ctx, 'page', 'about'))[0]!;
+    expect((await revs.firstCreateAt(ctx))?.getTime()).toBe(first.revisionAt.getTime());
+    await content.put(ctx, 'page', 'later', { id: 'later', path: 'later', title: 'B' });
+    expect((await revs.firstCreateAt(ctx))?.getTime()).toBe(first.revisionAt.getTime());
+  });
+
   it('sweepOld drops revisions past the retention window', async () => {
     const { revs, content, ctx } = await setup({ coalesceWindowMs: 0, retentionDays: 90 });
     await content.put(ctx, 'page', 'home', page('A'));

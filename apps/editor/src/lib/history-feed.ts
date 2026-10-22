@@ -15,6 +15,30 @@ export interface FeedRows {
   cursor: string | null;
 }
 
+/**
+ * The note that explains why older creations read "Updated", or null when there is nothing to explain.
+ *
+ * History recorded before the `create` op existed marked every save `put`, creations included, and
+ * nothing can tell them apart now — so they are never re-labelled, only explained. Shown under the
+ * Created filter always (that is where a missing creation is noticed), and during a search once the
+ * loaded rows reach that older history. `createdSince` undefined = the server was not asked.
+ */
+export function legacyCreatedNote(args: {
+  op: string;
+  q: string;
+  createdSince: string | null | undefined;
+  items: readonly Pick<ProjectRevisionRow, 'op' | 'revisionAt'>[];
+}): string | null {
+  const { op, q, createdSince, items } = args;
+  if (createdSince === undefined) return null;
+  const boundary = createdSince === null ? Number.POSITIVE_INFINITY : Date.parse(createdSince);
+  const reachesOlder = items.some((r) => r.op === 'put' && Date.parse(r.revisionAt) < boundary);
+  if (op !== 'create' && !(q && reachesOlder)) return null;
+  return createdSince === null
+    ? 'Items created before History began marking them “Created” show as “Updated”.'
+    : `History marks new items “Created” from ${new Date(createdSince).toLocaleDateString()} on. Items created before then show as “Updated”.`;
+}
+
 /** True when `a` comes AFTER `b` in the feed: older, or the same instant with a smaller id (the server's tie-break). */
 export function comesAfter(a: Pick<ProjectRevisionRow, 'revisionAt' | 'id'>, b: Pick<ProjectRevisionRow, 'revisionAt' | 'id'>): boolean {
   const ta = Date.parse(a.revisionAt);

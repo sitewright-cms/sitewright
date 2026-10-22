@@ -55,8 +55,8 @@ type FeedQuerystring = { kind?: string; op?: string; q?: string; limit?: string;
  */
 export function parseFeedQuery(query: FeedQuerystring): ProjectFeedQuery | { error: string } {
   // A repeated parameter (`?q=a&q=b`) arrives as an array — never a value any branch below understands.
-  for (const key of ['kind', 'op', 'q', 'limit', 'cursor'] as const) {
-    const value: unknown = query[key];
+  const given: ReadonlyArray<[string, unknown]> = [['kind', query.kind], ['op', query.op], ['q', query.q], ['limit', query.limit], ['cursor', query.cursor]];
+  for (const [key, value] of given) {
     if (value !== undefined && typeof value !== 'string') return { error: `invalid \`${key}\` query parameter` };
   }
   const out: ProjectFeedQuery = {};
@@ -143,7 +143,16 @@ export function registerRevisionRoutes(app: FastifyInstance, deps: RevisionsDeps
         revisionAt: r.revisionAt,
         author: authorOf(r, emailById, ctx.userId),
       }));
-      return reply.send({ items: rows, nextCursor: page.next ? encodeFeedCursor(page.next) : null });
+      // For a FIRST page that looks for creations (the Created filter, or a search), say since when this
+      // project's history has marked them: everything before is shown as Updated, creations included.
+      // Only then — it is one more query, and no other view says anything with it.
+      const wantsCreatedSince = !parsed.after && (parsed.op === 'create' || parsed.q !== undefined);
+      const createdSince = wantsCreatedSince ? ((await revisionsRepo.firstCreateAt(ctx))?.toISOString() ?? null) : undefined;
+      return reply.send({
+        items: rows,
+        nextCursor: page.next ? encodeFeedCursor(page.next) : null,
+        ...(createdSince === undefined ? {} : { createdSince }),
+      });
     },
   );
 

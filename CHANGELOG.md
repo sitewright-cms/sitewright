@@ -59,8 +59,11 @@ The running version of an instance is reported at `GET /version` (baked into the
   now says what each change did and finds any change by name, however long the history is.
   - **Status:** a save is shown as **Updated**, and the change that made a page, dataset entry or other item is shown
     as **Created**. The platform records which one it was at the moment of the save, from whether the item already
-    existed, so a page created again after a delete is Created too. Changes recorded before this release stay
-    Updated. Restored and Deleted are unchanged. The action filter offers the same words.
+    existed, so a page created again after a delete is Created too. Restored and Deleted are unchanged. The action
+    filter offers the same words.
+  - **Older history stays Updated:** changes saved before this release did not record whether they created the item,
+    so they show as Updated, creations included, and are not guessed at. The tab says so: under the Created filter,
+    and in a search that reaches them, a note gives the date from which new items are marked Created.
   - **Dataset Entry:** entries are labelled "Dataset Entry" instead of "Entry", in the rows and in the content filter.
   - **Search:** a search box finds changes by the name the row shows (a page's title, a dataset's or template's
     name), together with the content and action filters. It searches the whole history on the server, not only the

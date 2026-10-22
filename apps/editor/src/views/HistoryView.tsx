@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, MotionConfig } from 'motion/react';
-import { RotateCcw, FileSearch } from 'lucide-react';
+import { RotateCcw, FileSearch, Info } from 'lucide-react';
 import { api, type Project, type ProjectRevisionRow } from '../api';
 import { useDialogs } from './ui/Dialogs';
 import { useToast } from './ui/Toast';
@@ -10,6 +10,7 @@ import { when, OP_PILL, OP_FILTERS, authorLabel, KIND_LABEL } from './revision-f
 import { Tooltip } from './ui/Tooltip';
 import { RevisionDetailsModal } from './RevisionDetailsModal';
 import { useHistoryFeed } from '../lib/use-history-feed';
+import { legacyCreatedNote } from '../lib/history-feed';
 import { useDebouncedValue } from '../lib/use-debounced-value';
 import { scrollHostOf, useVirtualRows } from '../lib/virtual-rows';
 
@@ -60,6 +61,7 @@ export function HistoryView({ project }: { project: Project }) {
   const items = feed.items ?? [];
   const virt = useVirtualRows(items.length);
   const windowRows = items.slice(virt.start, virt.end);
+  const legacyNote = feed.loading ? null : legacyCreatedNote({ op, q, createdSince: feed.createdSince, items });
 
   const restore = async (r: ProjectRevisionRow) => {
     const ok = await confirm({
@@ -111,6 +113,13 @@ export function HistoryView({ project }: { project: Project }) {
           </select>
         </div>
       </div>
+
+      {legacyNote && (
+        <p role="note" className="-mt-2 flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span>{legacyNote}</span>
+        </p>
+      )}
 
       {feed.error ? (
         <div role="alert" className="flex flex-col items-center gap-3 py-10 text-center text-sm text-rose-600 dark:text-rose-300">

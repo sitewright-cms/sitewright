@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { contentRevisions, type ContentKind } from '../db/schema.js';
@@ -34,6 +34,8 @@ export type RevisionActor = 'user' | 'agent';
 /** Largest page the project-wide feed returns — the History view asks for 50. */
 export const MAX_FEED_PAGE = 100;
 const DEFAULT_FEED_PAGE = 50;
+/** Projects whose first-`create` date is remembered; the oldest entry is dropped beyond this. */
+const FIRST_CREATE_CACHE = 1000;
 
 /**
  * A position in the project-wide feed: the LAST row a page returned. The feed is ordered by
@@ -141,6 +143,9 @@ const META_COLUMNS = {
  * Every read/write is project-scoped via `ProjectContext`.
  */
 export class RevisionsRepository {
+  /** Per project: when its history first marked a `create` (see {@link firstCreateAt}). */
+  private readonly firstCreate = new Map<string, Date>();
+
   constructor(
     private readonly db: Database,
     private readonly options: RevisionsOptions = {},
@@ -193,7 +198,8 @@ export class RevisionsRepository {
         .select()
         .from(contentRevisions)
         .where(this.entityWhere(ctx.projectId, kind, entityId, scope))
-        .orderBy(desc(contentRevisions.revisionAt))
+        // The id breaks a same-millisecond tie the way the feed does, so "latest" is one definite row.
+        .orderBy(desc(contentRevisions.revisionAt), desc(contentRevisions.id))
         .limit(1);
       if (
         latest &&
@@ -237,7 +243,7 @@ export class RevisionsRepository {
       .select(META_COLUMNS)
       .from(contentRevisions)
       .where(this.entityWhere(ctx.projectId, kind, entityId, scope))
-      .orderBy(desc(contentRevisions.revisionAt));
+      .orderBy(desc(contentRevisions.revisionAt), desc(contentRevisions.id));
     return rows as RevisionMeta[];
   }
 
@@ -263,6 +269,17 @@ export class RevisionsRepository {
     // The NAME search: a substring of the label, bound as a parameter, with LIKE's own wildcards escaped
     // so "100%" means 100%. SQLite's LIKE folds ASCII case itself, so the term is passed as typed — a
     // JS `toLowerCase()` would turn "Über" into "über" and then fail to match the stored "Über".
+    //
+    // ★ COST, accepted and measured. No index can serve a substring of a JSON field, so a search reads
+    // the snapshots in feed order until it has a page; a term that matches nothing reads the project's
+    // whole history. That is bounded by what history keeps — 50 revisions per entity and the age sweep
+    // (90 days by default) — and the route's 120/min. The four `json_extract`s cost ONE parse per row:
+    // SQLite (≥3.45) caches the parsed document per statement. Measured on synthetic 20 KB snapshots,
+    // no-match scan: 300 rows 2.8 ms, 5,000 rows 65 ms, 20,000 rows (400 MB) 224 ms — against 222 ms for
+    // a single `json_extract`, the one-parse floor. A common term returns in ~2.7 ms at any size.
+    // ★ Not a subquery/CTE "to compute the label once": the outer ORDER BY then sorts the whole filtered
+    // set before LIMIT, which loses the early stop — measured 2.7 ms → 68 ms for a common term at 5,000
+    // rows, and no gain on the full scan (65 → 68 ms).
     if (opts.q) conds.push(sql`${label} LIKE ${`%${escapeLike(opts.q)}%`} ESCAPE '\\'`);
     if (opts.after) {
       const { at, id } = opts.after;
@@ -280,6 +297,30 @@ export class RevisionsRepository {
     const items = rows.slice(0, limit).map((r) => ({ ...r, label: (r.label as string | null) ?? r.entityId }) as ProjectRevisionMeta);
     const last = items[items.length - 1];
     return { items, next: rows.length > limit && last ? { at: last.revisionAt, id: last.id } : null };
+  }
+
+  /**
+   * When this project's history first marked something `create`, or null if it never has.
+   *
+   * ★ Rows recorded before `create` existed are `put`, whatever they did, and nothing can tell a creation
+   * among them from an update — so they stay "Updated" rather than being guessed at. This date is what
+   * lets the History view SAY so: every change before it is shown as Updated. Kept per project once
+   * known (it can only move later, when the age sweep removes that row, by which time the older rows it
+   * speaks for are gone too). Bounded, so a long-lived process does not grow it without limit.
+   */
+  async firstCreateAt(ctx: ProjectContext): Promise<Date | null> {
+    const known = this.firstCreate.get(ctx.projectId);
+    if (known) return known;
+    const [row] = await this.db
+      .select({ at: contentRevisions.revisionAt })
+      .from(contentRevisions)
+      .where(and(eq(contentRevisions.projectId, ctx.projectId), eq(contentRevisions.op, 'create')))
+      .orderBy(asc(contentRevisions.revisionAt))
+      .limit(1);
+    if (!row) return null;
+    if (this.firstCreate.size >= FIRST_CREATE_CACHE) this.firstCreate.delete(this.firstCreate.keys().next().value!);
+    this.firstCreate.set(ctx.projectId, row.at);
+    return row.at;
   }
 
   /** A single revision (incl. `data`), scoped to the caller's project. */
@@ -340,7 +381,7 @@ export class RevisionsRepository {
       .select({ id: contentRevisions.id })
       .from(contentRevisions)
       .where(this.entityWhere(projectId, kind, entityId, scope))
-      .orderBy(desc(contentRevisions.revisionAt));
+      .orderBy(desc(contentRevisions.revisionAt), desc(contentRevisions.id));
     const stale = rows.slice(this.maxPerEntity).map((r) => r.id);
     if (stale.length > 0) {
       await this.db.delete(contentRevisions).where(inArray(contentRevisions.id, stale));

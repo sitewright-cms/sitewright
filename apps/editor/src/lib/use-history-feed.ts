@@ -23,6 +23,11 @@ export interface HistoryFeed {
   loadingMore: boolean;
   /** The last next-page read failed. Scroll-loading stops until `loadMore` is called again by hand. */
   moreFailed: boolean;
+  /**
+   * Under the Created filter or a search: since when this project's history marks creations (ISO), or
+   * null if it never has; undefined when the server was not asked (any other filter).
+   */
+  createdSince: string | null | undefined;
   loadMore: () => void;
   /** Re-read the newest rows and stitch them on top (after a restore). */
   refresh: () => Promise<void>;
@@ -42,6 +47,7 @@ interface FeedState {
   /** The cursor a next-page read is in flight from. */
   pending: string | null;
   moreFailed: boolean;
+  createdSince: string | null | undefined;
 }
 
 /** Bursts of change events (a bulk edit sends one per item) collapse into one re-read of the head. */
@@ -78,6 +84,7 @@ export function useHistoryFeed(projectId: string, filters: HistoryFilters, pageS
     error: null,
     pending: null,
     moreFailed: false,
+    createdSince: undefined,
   });
   // The latest state for event handlers and the scroll trigger, which outlive the render they came from.
   const latest = useRef(state);
@@ -90,12 +97,12 @@ export function useHistoryFeed(projectId: string, filters: HistoryFilters, pageS
     const query = queryFor({ kind, op, q }, pageSize);
     // Keep the rows on screen while the new filter loads (no flash of "Loading…" per keystroke), but
     // drop the cursor: the old filter's next page must not be fetched any more.
-    setState((prev) => ({ ...prev, gen, query, cursor: null, loading: true, error: null, pending: null, moreFailed: false }));
+    setState((prev) => ({ ...prev, gen, query, cursor: null, loading: true, error: null, pending: null, moreFailed: false, createdSince: undefined }));
     api.listProjectRevisions(projectId, query).then(
       (page) =>
         setState((prev) =>
           // `loading` already false → a live refresh of this generation answered first, and it is newer.
-          prev.gen !== gen || !prev.loading ? prev : { ...prev, items: page.items, cursor: page.nextCursor, loading: false },
+          prev.gen !== gen || !prev.loading ? prev : { ...prev, items: page.items, cursor: page.nextCursor, loading: false, createdSince: page.createdSince },
         ),
       (err: unknown) =>
         setState((prev) => (prev.gen !== gen || !prev.loading ? prev : { ...prev, items: null, cursor: null, loading: false, error: errorText(err) })),
@@ -136,8 +143,9 @@ export function useHistoryFeed(projectId: string, filters: HistoryFilters, pageS
     if (!head) return;
     setState((prev) => {
       if (prev.gen !== gen) return prev;
-      if (prev.loading || !prev.items) return { ...prev, items: head.items, cursor: head.nextCursor, loading: false, error: null };
-      return { ...prev, ...mergeHead({ items: prev.items, cursor: prev.cursor }, head) };
+      const createdSince = head.createdSince === undefined ? prev.createdSince : head.createdSince;
+      if (prev.loading || !prev.items) return { ...prev, items: head.items, cursor: head.nextCursor, loading: false, error: null, createdSince };
+      return { ...prev, ...mergeHead({ items: prev.items, cursor: prev.cursor }, head), createdSince };
     });
   });
 
@@ -159,6 +167,7 @@ export function useHistoryFeed(projectId: string, filters: HistoryFilters, pageS
     hasMore: state.cursor !== null,
     loadingMore: state.pending !== null && state.pending === state.cursor,
     moreFailed: state.moreFailed,
+    createdSince: state.createdSince,
     loadMore,
     refresh,
     retry,

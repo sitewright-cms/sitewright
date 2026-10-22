@@ -9,6 +9,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Agents can read search rankings and search performance.** Two read-only tools join `get_site_stats`, so an
+  agent can now read all three Statistics views. Both need `content:read`.
+  - `get_rankings`: the tracked keywords and where each places in Google or Bing, for a range of days. It gives
+    the latest position and the page that ranked, the change, the best position and the checks (one a week
+    over a range longer than 120 days).
+  - `get_search_performance`: Google's and Bing's clicks, impressions, CTR and average position, per day and for
+    the top queries and pages. It reads one search engine, or every one the site has data at. These come from the
+    same answers the view uses, kept for an hour, so an agent asking again within the hour does not ask Google or
+    Bing again.
+  - Search queries, listed pages and ranking URLs are outside text, and the tool descriptions tell agents to treat
+    them as data.
+
 ### Changed
 
 - **A new Bing key of the same Bing user is the same account.** Generating a new API key in Bing Webmaster Tools and

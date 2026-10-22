@@ -42,6 +42,22 @@ describe('SitewrightClient', () => {
     expect(fake.calls[0]!.input).toBe('https://cms.test/projects/p1/content/page');
   });
 
+  it('reads the rankings and search performance at their routes', async () => {
+    const fake = fakeFetch((input) => ({ status: 200, body: input.endsWith('/available') ? '{"services":["google"]}' : '{}', input }));
+    const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
+    client.primeScope(scope);
+    await client.rankings();
+    await client.rankings({ from: '2026-09-01', to: '2026-09-30' });
+    expect(await client.searchPerformanceAvailable()).toEqual({ services: ['google'] });
+    await client.searchPerformance({ service: 'bing', days: 90 });
+    expect(fake.calls.map((c) => c.input)).toEqual([
+      'https://cms.test/projects/p1/rankings',
+      'https://cms.test/projects/p1/rankings?from=2026-09-01&to=2026-09-30',
+      'https://cms.test/projects/p1/search-performance/available',
+      'https://cms.test/projects/p1/search-performance?service=bing&days=90',
+    ]);
+  });
+
   it('introspects with a Bearer header and trims the base URL', async () => {
     const { calls } = await introspected(() => ({ status: 200, body: JSON.stringify(scope) }));
     expect(calls[0]!.input).toBe('https://cms.test/api-key/self'); // trailing slash trimmed, no double //

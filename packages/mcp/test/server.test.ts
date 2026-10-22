@@ -137,6 +137,9 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     revokePreviewShare: vi.fn(async () => ({ ok: true })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
     siteStats: vi.fn(async () => ({ enabled: true, human: { views: 12, visitors: 5 }, botViews: 3 })),
+    rankings: vi.fn(async () => ({ from: '2026-07-25', to: '2026-10-22', tracking: null, keywords: [], canManage: false, configured: true })),
+    searchPerformanceAvailable: vi.fn(async () => ({ services: ['google', 'bing'] })),
+    searchPerformance: vi.fn(async ({ service }: { service: string }) => ({ service, siteUrl: 'https://www.example.com/', totals: { clicks: 4, impressions: 90, ctr: 0.044, position: 12.5 } })),
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
@@ -1583,6 +1586,97 @@ describe('createSitewrightMcpServer — built-in statistics', () => {
     expect((await mcp.callTool({ name: 'get_site_stats', arguments: { from: 'last week' } })).isError).toBe(true);
     expect((await mcp.callTool({ name: 'get_site_stats', arguments: { device: 'phone' } })).isError).toBe(true);
     expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).siteStats).not.toHaveBeenCalled();
+  });
+});
+
+describe('createSitewrightMcpServer — search rankings and search performance', () => {
+  const calls = (client: SitewrightClient, name: string) => (client as unknown as Record<string, ReturnType<typeof vi.fn>>)[name]!;
+  const body = (res: Awaited<ReturnType<Client['callTool']>>) => JSON.parse((res.content as Array<{ text: string }>)[0]!.text) as Record<string, unknown>;
+
+  it('get_rankings reads the default range, or the one asked for', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_rankings', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(body(res)).toMatchObject({ tracking: null, keywords: [], configured: true });
+    await mcp.callTool({ name: 'get_rankings', arguments: { from: '2026-09-01', to: '2026-09-30' } });
+    expect(calls(client, 'rankings').mock.calls).toEqual([[{}], [{ from: '2026-09-01', to: '2026-09-30' }]]);
+  });
+
+  it('get_rankings refuses a malformed day before calling the platform', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    expect((await mcp.callTool({ name: 'get_rankings', arguments: { from: 'last month' } })).isError).toBe(true);
+    expect(calls(client, 'rankings')).not.toHaveBeenCalled();
+  });
+
+  it('get_search_performance reads one search engine, 28 days by default', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_search_performance', arguments: { service: 'bing' } });
+    expect(body(res)).toMatchObject({ service: 'bing', totals: { clicks: 4 } });
+    await mcp.callTool({ name: 'get_search_performance', arguments: { service: 'google', days: 90 } });
+    expect(calls(client, 'searchPerformance').mock.calls).toEqual([[{ service: 'bing', days: 28 }], [{ service: 'google', days: 90 }]]);
+    expect(calls(client, 'searchPerformanceAvailable')).not.toHaveBeenCalled();
+  });
+
+  it('get_search_performance without a service reads every one the site has, and one without data or failing does not fail the call', async () => {
+    const searchPerformance = vi.fn(async ({ service }: { service: string }) => {
+      if (service === 'bing') throw new SitewrightApiError(502, 'Bing could not be reached; try again in a few minutes');
+      if (service === 'google') throw new SitewrightApiError(404, 'This site has no search data at Google yet');
+      return { service };
+    });
+    const client = fakeClient({ searchPerformance });
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_search_performance', arguments: { days: 7 } });
+    expect(res.isError).toBeFalsy();
+    expect(body(res)).toEqual({
+      services: ['google', 'bing'],
+      results: [
+        { service: 'google', error: 'This site has no search data at Google yet' },
+        { service: 'bing', error: 'Bing could not be reached; try again in a few minutes' },
+      ],
+    });
+    expect(searchPerformance.mock.calls).toEqual([[{ service: 'google', days: 7 }], [{ service: 'bing', days: 7 }]]);
+  });
+
+  it('get_search_performance fails the whole call on anything but a search engine without data or refusing', async () => {
+    const searchPerformance = vi.fn(async () => {
+      throw new SitewrightApiError(429, 'Too many requests; retry in 60 seconds');
+    });
+    const client = fakeClient({ searchPerformance });
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'get_search_performance', arguments: {} });
+    expect(res.isError).toBe(true); // the agent backs off, instead of reporting both search engines as broken
+    expect((res.content as Array<{ text: string }>)[0]!.text).toContain('Too many requests');
+  });
+
+  it('get_search_performance says so when no search engine has the site yet', async () => {
+    const client = fakeClient({ searchPerformanceAvailable: vi.fn(async () => ({ services: [] })) });
+    const mcp = await connect(client, readScope);
+    expect(body(await mcp.callTool({ name: 'get_search_performance', arguments: {} }))).toEqual({ services: [], results: [] });
+    expect(calls(client, 'searchPerformance')).not.toHaveBeenCalled();
+  });
+
+  it('get_search_performance refuses another period or search engine before calling the platform', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    expect((await mcp.callTool({ name: 'get_search_performance', arguments: { days: 30 } })).isError).toBe(true);
+    expect((await mcp.callTool({ name: 'get_search_performance', arguments: { service: 'yahoo' } })).isError).toBe(true);
+    expect(calls(client, 'searchPerformance')).not.toHaveBeenCalled();
+    expect(calls(client, 'searchPerformanceAvailable')).not.toHaveBeenCalled();
+  });
+
+  it('both need content:read', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, { projectId: 'p', role: 'member', capabilities: [] });
+    for (const name of ['get_rankings', 'get_search_performance']) {
+      const res = await mcp.callTool({ name, arguments: {} });
+      expect(res.isError).toBe(true);
+      expect((res.content as Array<{ text: string }>)[0]!.text).toContain('content:read');
+    }
+    expect(calls(client, 'rankings')).not.toHaveBeenCalled();
+    expect(calls(client, 'searchPerformanceAvailable')).not.toHaveBeenCalled();
   });
 });
 

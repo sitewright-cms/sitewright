@@ -155,6 +155,41 @@ describe('search performance', () => {
     expect(engines.calls.filter((c) => c === 'POST https://oauth2.googleapis.com/token')).toHaveLength(1);
   });
 
+  // ★ The agent tools read the SAME route, so the same answers: an agent asking costs Google and Bing nothing more.
+  it('an agent reads the same numbers, and the rankings, through its tools with a read-only key', async () => {
+    await verifyBoth();
+    const key = await admin.post(`/projects/${projectId}/api-keys`, { name: 'agent', role: 'member', expiresInDays: 1, capabilities: ['content:read'] });
+    const token = (key.json() as { token: string }).token;
+    const tool = async (name: string, args: Record<string, unknown>) => {
+      const res = await harness.app.inject({
+        method: 'POST',
+        url: '/mcp',
+        headers: { accept: 'application/json, text/event-stream', 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        payload: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+      });
+      expect(res.statusCode).toBe(200);
+      const result = (res.json() as { result: { content: Array<{ text: string }>; isError?: boolean } }).result;
+      expect(result.isError).toBeFalsy();
+      return JSON.parse(result.content[0]!.text) as Record<string, unknown>;
+    };
+
+    const both = await tool('get_search_performance', { days: 7 });
+    expect(both).toMatchObject({
+      services: ['google', 'bing'],
+      results: [
+        { service: 'google', siteUrl: SITE, totals: { clicks: 4, impressions: 80 }, queries: [{ key: 'roofing windhoek' }] },
+        { service: 'bing', siteUrl: SITE },
+      ],
+    });
+    const asked = engines.analytics.length;
+    // The editor's view of the same period is the answer the agent got, and Google was not asked again.
+    expect((await read('google', 7)).json()).toEqual((both.results as unknown[])[0]);
+    expect(engines.analytics).toHaveLength(asked);
+
+    // Rankings: nothing tracked, and no provider on this instance — read, never an error.
+    expect(await tool('get_rankings', {})).toMatchObject({ tracking: null, keywords: [], canManage: false, configured: false });
+  });
+
   it('does not keep a Bing answer that failed: the next period asks again', async () => {
     await verifyBoth();
     engines.bingDown = true;

@@ -287,6 +287,22 @@ describe('one full run', () => {
     });
     expect(read.keywords[0]!.series).toHaveLength(1);
 
+    // An agent on a STAFF member's read key gets the same rankings through get_rankings — and still nothing that is
+    // for staff in a session: no `status`, never `canManage`.
+    const key = await app.inject({ method: 'POST', url: `/projects/${pid}/api-keys`, ...as(dev.t), payload: { name: 'agent', role: 'owner', expiresInDays: 1, capabilities: ['content:read'] } });
+    const rpc = await app.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: { accept: 'application/json, text/event-stream', 'content-type': 'application/json', authorization: `Bearer ${(key.json() as { token: string }).token}` },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'get_rankings', arguments: {} } },
+    });
+    const result = (rpc.json() as { result: { content: Array<{ text: string }>; isError?: boolean } }).result;
+    expect(result.isError).toBeFalsy();
+    const viaAgent = JSON.parse(result.content[0]!.text) as ProjectRankings;
+    expect(viaAgent).toMatchObject({ canManage: false, configured: true, tracking: read.tracking });
+    expect(viaAgent).not.toHaveProperty('status');
+    expect(viaAgent.keywords).toEqual(read.keywords);
+
     const adminView = (await app.inject({ method: 'GET', url: '/admin/rank-tracking', ...as(admin.t) })).json() as RankTrackingAdminView;
     expect(adminView).toMatchObject({ spentThisMonthUsd: 0.006, projectsTracked: 1, keywordsTracked: 1 });
 

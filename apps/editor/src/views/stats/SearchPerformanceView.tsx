@@ -264,7 +264,8 @@ export function SearchPerformanceView({ projectId, services }: { projectId: stri
         )}
 
         {view && totals && (
-          <>
+          // The numbers on screen while another search engine or period loads are the previous choice's: dimmed.
+          <div className={`flex flex-col gap-4 transition-opacity ${loading ? 'opacity-50' : ''}`}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <Kpi label="Clicks" value={fmt(totals.clicks)} change={<Change now={totals.clicks} before={before?.clicks} format={fmt} />} />
               <Kpi label="Impressions" value={fmt(totals.impressions)} change={<Change now={totals.impressions} before={before?.impressions} format={fmt} />} />
@@ -288,7 +289,7 @@ export function SearchPerformanceView({ projectId, services }: { projectId: stri
                 : 'From the platform’s Bing Webmaster Tools. Bing updates searches and pages once a week, and gives no overall position. '}
               Read {new Date(view.fetchedAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}; asked again at most once an hour.
             </p>
-          </>
+          </div>
         )}
       </div>
     </section>

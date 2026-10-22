@@ -24,7 +24,7 @@ import {
 } from './google.js';
 import type { SearchDataSource } from './performance.js';
 import type { WebmasterRepository } from './repo.js';
-import { bingData, googleData, googleQueries, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
+import { bingData, googleReport, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
 
 /**
@@ -150,7 +150,7 @@ export class SiteRegistrar {
         unregister: (siteUrl, owners) => googleUnregisterSite(key, siteUrl, owners, io, this.now()),
         submitSitemap: (siteUrl, sitemapUrl) => googleSubmitSitemap(key, siteUrl, sitemapUrl, io, this.now()),
         setOwners: (siteUrl, change) => googleSetOwners(key, siteUrl, change, io, this.now()),
-        searchData: async (siteUrl, period) => googleData(await googleSearchAnalytics(key, siteUrl, googleQueries(period), io, this.now()), period),
+        searchData: (siteUrl, period) => googleReport((queries) => googleSearchAnalytics(key, siteUrl, queries, io, this.now()), period),
         done: 'Verified and added to Search Console',
       };
     }

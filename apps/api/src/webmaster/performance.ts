@@ -5,7 +5,8 @@ import { searchPeriod, type SearchPerformanceData, type SearchPeriod } from './s
  * SEARCH PERFORMANCE — a project's search numbers from the platform's Google and Bing accounts, for the Statistics
  * tab. The search engines are asked on demand, and an answer is kept for an hour: their data moves once a day at
  * most, and every viewer of a project would otherwise ask again. Two requests for the same answer while it is being
- * fetched share one round of requests.
+ * fetched share one round of requests. A refusal is remembered for a couple of minutes too: a search engine that is
+ * down or limiting requests is not asked again by every viewer and every period switch meanwhile.
  */
 
 /** One search engine a project's site has data at (switched on and verified there), and what reads it. */
@@ -25,12 +26,14 @@ export interface SearchPerformanceDeps {
 }
 
 const TTL_MS = 60 * 60_000;
+const FAILURE_TTL_MS = 2 * 60_000;
 /** About 10 KB each: a bounded few MB however many projects are looked at. */
 const MAX_ENTRIES = 300;
 
 export class SearchPerformance {
   private readonly answers = new Map<string, { at: number; view: SearchPerformanceView }>();
   private readonly running = new Map<string, Promise<SearchPerformanceView>>();
+  private readonly failures = new Map<string, { at: number; error: unknown }>();
 
   constructor(private readonly deps: SearchPerformanceDeps) {}
 
@@ -52,15 +55,30 @@ export class SearchPerformance {
     const key = [projectId, service, days, source.siteUrl, source.accountId, period.end].join('\n');
     const kept = this.answers.get(key);
     if (kept && now.getTime() - kept.at < (this.deps.ttlMs ?? TTL_MS)) return kept.view;
+    const failed = this.failures.get(key);
+    if (failed && now.getTime() - failed.at < FAILURE_TTL_MS) throw failed.error;
     const inFlight = this.running.get(key);
     if (inFlight) return inFlight;
     const work = (async () => {
-      const data = await source.read(period);
+      let data: SearchPerformanceData;
+      try {
+        data = await source.read(period);
+      } catch (err) {
+        this.failures.delete(key);
+        this.failures.set(key, { at: now.getTime(), error: err });
+        for (const old of this.failures.keys()) {
+          if (this.failures.size <= (this.deps.maxEntries ?? MAX_ENTRIES)) break;
+          this.failures.delete(old);
+        }
+        throw err;
+      }
+      this.failures.delete(key);
+      const { period: shown, ...figures } = data;
       const view: SearchPerformanceView = {
         service,
         siteUrl: source.siteUrl,
-        period: { days, start: period.start, end: period.end },
-        ...data,
+        period: { days, start: shown.start, end: shown.end },
+        ...figures,
         fetchedAt: now.toISOString(),
       };
       this.answers.delete(key);

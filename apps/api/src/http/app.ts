@@ -11049,6 +11049,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     resolveProject,
     siteUrlOf,
     rl,
+    log: { warn: (o, m) => app.log.warn(o, m) },
   });
 
   // ---- PAYMENTS -------------------------------------------------------------------------------

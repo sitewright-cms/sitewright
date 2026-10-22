@@ -49,10 +49,17 @@ const fakeEngines: FetchLike = async (url, init) => {
     const body = JSON.parse(String(init.body)) as { dimensions: string[]; startDate: string };
     engines.analytics.push(body);
     const dim = body.dimensions[0];
-    if (dim === 'date') return answer(200, { rows: [{ keys: [daysAgo(3)], clicks: 4, impressions: 80, ctr: 0.05, position: 6 }] });
+    if (dim === 'date') {
+      return answer(200, {
+        rows: [
+          { keys: [daysAgo(3)], clicks: 4, impressions: 80, ctr: 0.05, position: 6 },
+          { keys: [daysAgo(10)], clicks: 2, impressions: 50, ctr: 0.04, position: 8 },
+        ],
+      });
+    }
     if (dim === 'query') return answer(200, { rows: [{ keys: ['roofing windhoek'], clicks: 4, impressions: 60, ctr: 0.0667, position: 3.5 }] });
     if (dim === 'page') return answer(200, { rows: [{ keys: [`${SITE}services/`], clicks: 3, impressions: 40, ctr: 0.075, position: 4 }] });
-    return answer(200, { rows: [{ keys: [], clicks: 2, impressions: 50, ctr: 0.04, position: 8 }] });
+    return answer(200, { rows: [] });
   }
   if (path.startsWith('https://www.googleapis.com/webmasters/v3/sites/')) return answer(204, '');
   if (path.endsWith('/GetUserSites')) return answer(200, { d: engines.bingSites.map((u) => ({ Url: u, AuthenticationCode: '0A1B2C3D4E5F60718293A4B5C6D7E8F9', IsVerified: true })) });
@@ -117,20 +124,22 @@ describe('search performance', () => {
     const r = await read('google', 7);
     expect(r.statusCode).toBe(200);
     const view = r.json() as SearchPerformanceView;
+    // Google's newest day is three days ago: the week shown ends there, the week before it is as long.
     expect(view).toMatchObject({
       service: 'google',
       siteUrl: SITE,
-      period: { days: 7, start: daysAgo(6), end: today },
+      period: { days: 7, start: daysAgo(9), end: daysAgo(3) },
       totals: { clicks: 4, impressions: 80, ctr: 0.05, position: 6 },
       previous: { clicks: 2, impressions: 50, ctr: 0.04, position: 8 },
       queries: [{ key: 'roofing windhoek', clicks: 4, impressions: 60 }],
       pages: [{ key: `${SITE}services/`, clicks: 3 }],
     });
     expect(view.daily.at(-1)).toEqual({ date: daysAgo(3), clicks: 4, impressions: 80 });
-    expect(engines.analytics.map((q) => q.dimensions)).toEqual([['date'], ['query'], ['page'], []]);
-    expect(engines.analytics[0]).toMatchObject({ type: 'web', dataState: 'all', startDate: daysAgo(6), endDate: today });
+    expect(engines.analytics.map((q) => q.dimensions)).toEqual([['date'], ['query'], ['page']]);
+    expect(engines.analytics[0]).toMatchObject({ type: 'web', dataState: 'all', startDate: daysAgo(16), endDate: today });
+    expect(engines.analytics[1]).toMatchObject({ startDate: daysAgo(9), endDate: daysAgo(3) });
     await read('google', 7);
-    expect(engines.analytics).toHaveLength(4);
+    expect(engines.analytics).toHaveLength(3);
   });
 
   it('reads Bing’s, which have no overall position', async () => {
@@ -150,14 +159,20 @@ describe('search performance', () => {
     expect((await read('google', 28, client)).statusCode).toBe(200);
   });
 
-  it('refuses a question it cannot answer, and passes a search engine’s refusal on', async () => {
+  it('refuses a question it cannot answer, and says a search engine refused in words for any reader', async () => {
     await verifyBoth();
     expect((await read('yahoo')).statusCode).toBe(400);
     expect((await read('google', 30)).statusCode).toBe(400);
     engines.googleDown = true;
     const r = await read('google', 90);
     expect(r.statusCode).toBe(502);
-    expect(r.json()).toEqual({ error: 'Google is unavailable (HTTP 503)' });
+    expect(r.json()).toEqual({ error: 'Google could not be reached; try again later' });
+    // Remembered for a while: a second reader does not make the server ask a search engine that is down.
+    const tries = () => engines.calls.filter((c) => c.endsWith('/searchAnalytics/query')).length;
+    const asked = tries();
+    expect(asked).toBeGreaterThan(0);
+    expect((await read('google', 90)).statusCode).toBe(502);
+    expect(tries()).toBe(asked);
   });
 
   it('a new Production URL has no data until it is verified in turn', async () => {

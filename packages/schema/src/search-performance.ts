@@ -45,10 +45,13 @@ export interface SearchPerformanceView {
   service: WebmasterService;
   /** The registered address the numbers are for. */
   siteUrl: string;
-  /** The period shown, inclusive; and the one before it, for the change. */
+  /**
+   * The days shown, inclusive. It ends on the newest day the search engine has reported (they report a day or two
+   * late), so it never adds up fewer reported days than the period before it.
+   */
   period: { days: SearchPerformancePeriod; start: string; end: string };
   totals: SearchPerformanceFigures;
-  /** The same numbers for the period before; null when the search engine keeps no data that old. */
+  /** The same numbers for as many days before; null when the search engine keeps no data that old (Bing). */
   previous: SearchPerformanceFigures | null;
   daily: SearchPerformanceDay[];
   queries: SearchPerformanceRow[];

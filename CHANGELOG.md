@@ -95,8 +95,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   many made-up referrers on many sites cannot grow memory without limit. Past the cap a visit still counts, under
   its kind of source.
 
-### Fixed
-
 - **Rank tracking: removing keywords or deleting a project no longer takes money already spent out of the monthly
   budget.** The month's spend was read from the checks, which go with their keyword or project: removing keywords
   after a check and adding them again bought every check twice while the budget showed almost nothing. What each check

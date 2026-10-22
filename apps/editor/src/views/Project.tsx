@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useScrollTopOnChange } from '../lib/scroll-top';
+import { revealSettingsTile, type OpenSystemSettings, type WebsiteSettingsTile } from '../lib/settings-links';
+import { NO_STATISTICS_ACCESS, type StatisticsAccess } from '../lib/statistics-enabled';
 import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type JsonValue, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf, orderAfterSibling } from '@sitewright/core';
@@ -40,8 +42,10 @@ interface ProjectViewProps {
   ordersAvailable?: boolean;
   /** Whether the Statistics tab is showing (always for staff; for a client while it has something to show). */
   statisticsAvailable?: boolean;
-  /** Whether the tab shows the visit counter (always for staff; for a client while statistics are on). */
-  visitsAvailable?: boolean;
+  /** What the Statistics tab has (App's useStatisticsAccess): which views a client sees, and whether visits are on. */
+  statisticsAccess?: StatisticsAccess;
+  /** Opens System Settings at a tab/section — given for instance admins only (the Statistics setup guides' button). */
+  onOpenSystemSettings?: OpenSystemSettings;
   /** The viewer is agency staff (an admin or a developer) — some settings are theirs alone to switch on. */
   isStaff?: boolean;
   /** Fired ONCE when this project's opening data (pages, locales, templates) has settled — success
@@ -187,8 +191,29 @@ const LINK_ICON = rowIcon(
 const ROW_ACTION =
   'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-500 dark:text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900 dark:hover:bg-white/10 dark:hover:text-slate-100';
 
-export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false, statisticsAvailable = true, visitsAvailable = true, isStaff = false, onLoaded }: ProjectViewProps) {
+export function ProjectView({
+  project,
+  tab,
+  onSelectTab,
+  ordersAvailable = false,
+  statisticsAvailable = true,
+  statisticsAccess = NO_STATISTICS_ACCESS,
+  onOpenSystemSettings,
+  isStaff = false,
+  onLoaded,
+}: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
+  // A link to a Website Settings tile (from a Statistics setup guide): switch tabs, then bring the tile into view once
+  // the board has drawn it. Only the newest link is followed, and none outlives the view.
+  const revealing = useRef<(() => void) | null>(null);
+  useEffect(() => () => revealing.current?.(), []);
+  const openWebsiteSettings = (tile?: WebsiteSettingsTile): void => {
+    if (!onSelectTab) return;
+    revealing.current?.();
+    revealing.current = null;
+    onSelectTab('website-settings');
+    if (tile) revealing.current = revealSettingsTile(tile);
+  };
   // A new tab starts at the top. Most tabs swap their content in one commit, so the jump lands before
   // paint; between the two settings tabs SettingsView fades the old board out first and jumps then.
   useScrollTopOnChange(tab, sameSettingsView);
@@ -1012,8 +1037,10 @@ export function ProjectView({ project, tab, onSelectTab, ordersAvailable = false
         <StatisticsTab
           key={project.id}
           project={project}
-          visitsAvailable={visitsAvailable}
-          onOpenSettings={onSelectTab ? () => onSelectTab('website-settings') : undefined}
+          access={statisticsAccess}
+          isStaff={isStaff}
+          onOpenSystemSettings={onOpenSystemSettings}
+          onOpenSettings={onSelectTab ? openWebsiteSettings : undefined}
         />
       ) : tab === 'history' ? (
         <HistoryView key={project.id} project={project} />

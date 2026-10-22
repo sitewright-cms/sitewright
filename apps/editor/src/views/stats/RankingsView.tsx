@@ -65,11 +65,14 @@ export function RankingsView({
   project,
   initial,
   onLoaded,
+  guided = false,
 }: {
   project: Project;
   initial?: ProjectRankings | null;
   /** Each fresh answer, so the parent's copy (its first answer for the next visit) stays current. */
   onLoaded?: (r: ProjectRankings) => void;
+  /** A setup guide is drawn above (staff, rankings not live): it already says that no provider is set up. */
+  guided?: boolean;
 }) {
   const [range, setRange] = useState<StatsRangeId>('90d');
   const [data, setData] = useState<ProjectRankings | null>(initial ?? null);
@@ -166,7 +169,7 @@ export function RankingsView({
         </span>
       </div>
 
-      {manage && data?.status && data.status !== 'ok' && (
+      {manage && data?.status && data.status !== 'ok' && !(guided && data.status === 'no-provider') && (
         <p role="status" className="rounded-lg border border-amber-300/70 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {STATUS_TEXT[data.status]}
         </p>

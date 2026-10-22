@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DEFAULT_FORM_MODES } from '@sitewright/schema';
 import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
@@ -16,20 +16,24 @@ const rankValidate = vi.hoisted(() => vi.fn());
 // The search engine accounts have their own tests (WebmasterAccountsSettings.test.tsx); here only the save wiring.
 const webmasterSave = vi.hoisted(() => vi.fn());
 const webmasterValidate = vi.hoisted(() => vi.fn());
+// When each section has read its own data (it calls `onReady`): resolved at once unless a test holds it back.
+const sectionReady = vi.hoisted(() => ({ rank: Promise.resolve(), webmaster: Promise.resolve() }));
 vi.mock('../src/views/settings/WebmasterAccountsSettings', async () => {
-  const { forwardRef, useImperativeHandle } = await import('react');
+  const { forwardRef, useEffect, useImperativeHandle } = await import('react');
   return {
-    WebmasterAccountsSettings: forwardRef(function WebmasterStub(_p, ref) {
+    WebmasterAccountsSettings: forwardRef(function WebmasterStub({ onReady }: { onReady?: () => void }, ref) {
       useImperativeHandle(ref, () => ({ save: () => webmasterSave(), validate: () => webmasterValidate() }));
+      useEffect(() => void sectionReady.webmaster.then(() => onReady?.()), []);
       return <fieldset aria-label="Search engine accounts" />;
     }),
   };
 });
 vi.mock('../src/views/settings/RankTrackingSettings', async () => {
-  const { forwardRef, useImperativeHandle } = await import('react');
+  const { forwardRef, useEffect, useImperativeHandle } = await import('react');
   return {
-    RankTrackingSettings: forwardRef(function RankStub(_p, ref) {
+    RankTrackingSettings: forwardRef(function RankStub({ onReady }: { onReady?: () => void }, ref) {
       useImperativeHandle(ref, () => ({ save: () => rankSave(), validate: () => rankValidate() }));
+      useEffect(() => void sectionReady.rank.then(() => onReady?.()), []);
       return <fieldset aria-label="Keyword rank tracking" />;
     }),
   };
@@ -74,6 +78,74 @@ beforeEach(() => {
   webmasterSave.mockResolvedValue(undefined);
   webmasterValidate.mockReset();
   webmasterValidate.mockReturnValue(null);
+  sectionReady.rank = Promise.resolve();
+  sectionReady.webmaster = Promise.resolve();
+});
+
+describe('InstanceSettings opened by a link (a Statistics setup guide)', () => {
+  afterEach(() => {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('opens on the General tab by default, and scrolls nowhere', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    render(<InstanceSettings />);
+    expect(await screen.findByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Search engine accounts' })).toBeInTheDocument());
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it('opens on Integrations and brings the named section into view, once', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    render(<InstanceSettings initialTab="integrations" focusSection="rank-tracking" />);
+    expect(await screen.findByRole('tab', { name: 'Integrations' })).toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+    expect(scrolled[0]).toHaveAttribute('id', 'system-settings-rank-tracking');
+    expect(within(scrolled[0] as HTMLElement).getByRole('group', { name: 'Keyword rank tracking' })).toBeInTheDocument();
+    // Outlined for a moment, so the eye lands on it.
+    expect(scrolled[0]).toHaveAttribute('data-sw-reveal');
+  });
+
+  it('does not jump later for someone who went to another tab meanwhile', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    let rankDone!: () => void;
+    sectionReady.rank = new Promise((resolve) => (rankDone = resolve));
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    render(<InstanceSettings initialTab="integrations" focusSection="rank-tracking" />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'General' }));
+    expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+    rankDone();
+    await new Promise((r) => setTimeout(r, 30));
+    fireEvent.click(screen.getByRole('tab', { name: 'Integrations' }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(scrolled).toHaveLength(0);
+  });
+
+  it('★ waits for the section ABOVE the accounts before scrolling to them (a late answer would push them away)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    let rankDone!: () => void;
+    sectionReady.rank = new Promise((resolve) => (rankDone = resolve));
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this);
+    };
+    render(<InstanceSettings initialTab="integrations" focusSection="search-engine-accounts" />);
+    await screen.findByRole('group', { name: 'Search engine accounts' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(scrolled).toHaveLength(0);
+    rankDone();
+    await waitFor(() => expect(scrolled).toHaveLength(1));
+    expect(scrolled[0]).toHaveAttribute('id', 'system-settings-search-engine-accounts');
+  });
 });
 
 describe('InstanceSettings', () => {

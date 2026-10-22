@@ -45,6 +45,27 @@ The running version of an instance is reported at `GET /version` (baked into the
     in the list.
   - The choices, the defaults (the tracked keywords' country, the country itself as the place, English) and what
     is added are unchanged.
+- **Statistics: admins and developers always see Visits, Search rankings and Search performance; a view that is not
+  live yet explains how to set it up.** Project members see a view only once its feature is set up and enabled.
+  - **When members see each view:**
+    - Visits: once the built-in statistics are switched on (they need nothing in System Settings).
+    - Search rankings: once a rank-tracking provider with credentials is set up in System Settings and the project has
+      a tracked domain with at least one keyword. Before, a tracked project showed the view even with no provider.
+    - Search performance: once the platform has a Google or Bing account and the site is switched on and verified in
+      Website Settings → Search engines.
+    - The Statistics tab shows for a member only while at least one of the three does.
+  - **What admins and developers see instead of empty charts:** a note that only they see the view for now, and the
+    steps that make it live.
+    - Not set up in System Settings: numbered steps for DataForSEO (account, API login and password, funds or the free
+      sandbox), the Google service account (project, the two APIs, the key file) or the Bing Webmaster API key, with
+      links to each provider. Instance admins get a button that opens System Settings → Integrations at the right
+      section; developers are told an instance admin does it.
+    - Not enabled for the project: how to enable it, with a button that opens Website Settings at the Analytics or
+      Search engines tile. For Search rankings the note sits above the existing keyword setup.
+  - Each view waits only on its own read, and a re-check that cannot read keeps the last answer: a passing failure
+    never hides a view or the tab, or tells staff to switch on what is already on.
+  - The rankings read now tells every reader whether a rank-tracking provider is set up (`configured`); why checks
+    may not run is still for staff only.
 
 ### Fixed
 

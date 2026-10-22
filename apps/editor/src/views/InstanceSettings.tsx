@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { KeyRound, ShieldCheck } from 'lucide-react';
 import {
   DEFAULT_AGENT_INSTRUCTIONS,
@@ -68,6 +68,7 @@ import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from 
 import { RankTrackingSettings, type RankTrackingSettingsHandle } from './settings/RankTrackingSettings';
 import { WebmasterAccountsSettings, type WebmasterAccountsSettingsHandle } from './settings/WebmasterAccountsSettings';
 import { secretFieldProps } from '../lib/secret-field';
+import { revealElement, SYSTEM_SETTINGS_SECTION_ID, type SystemSettingsSection } from '../lib/settings-links';
 import { Tooltip } from './ui/Tooltip';
 
 /** System-settings sections grouped into tabs (declared before the component so the id union is stable). */
@@ -80,6 +81,8 @@ const SETTINGS_TABS = [
   { id: 'agents', label: 'Agents' },
 ] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number]['id'];
+/** A System Settings tab, for a link that opens System Settings on it (lib/settings-links.ts). */
+export type SystemSettingsTab = SettingsTab;
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -134,8 +137,8 @@ const formatBytes = (n: number): string => {
  * API never returns them, so a blank password/secret field means "keep the current
  * one". Shown only to instance admins (gated in App).
  */
-export function InstanceSettings() {
-  const [tab, setTab] = useState<SettingsTab>('general');
+export function InstanceSettings({ initialTab = 'general', focusSection }: { initialTab?: SettingsTab; focusSection?: SystemSettingsSection } = {}) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab);
   // A tab panel: visible only when active. Hidden panels stay MOUNTED so the single form save always
   // submits every section's state regardless of which tab is showing.
   const panelCls = (id: SettingsTab) => (tab === id ? 'flex flex-col gap-6' : 'hidden');
@@ -511,6 +514,29 @@ export function InstanceSettings() {
 
   const rankRef = useRef<RankTrackingSettingsHandle>(null);
   const webmasterRef = useRef<WebmasterAccountsSettingsHandle>(null);
+
+  // A link may open System Settings at one of the Integrations sections. Both read their own data after the form has
+  // loaded, and rank tracking sits ABOVE the accounts: scroll only once everything above the section has its height,
+  // or a late answer pushes the section back down out of view.
+  const [sectionsReady, setSectionsReady] = useState({ rank: false, webmaster: false });
+  const markRankReady = useCallback(() => setSectionsReady((r) => (r.rank ? r : { ...r, rank: true })), []);
+  const markWebmasterReady = useCallback(() => setSectionsReady((r) => (r.webmaster ? r : { ...r, webmaster: true })), []);
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (!focusSection || loading || revealed.current) return;
+    // Someone who went to another tab meanwhile has taken over: no jump later.
+    if (tab !== initialTab) {
+      revealed.current = true;
+      return;
+    }
+    const ready = focusSection === 'rank-tracking' ? sectionsReady.rank : sectionsReady.rank && sectionsReady.webmaster;
+    if (!ready) return;
+    // eslint-disable-next-line security/detect-object-injection -- focusSection is a SystemSettingsSection literal
+    const el = document.getElementById(SYSTEM_SETTINGS_SECTION_ID[focusSection]);
+    if (!el) return;
+    revealed.current = true;
+    revealElement(el, 'start');
+  }, [focusSection, loading, sectionsReady, tab, initialTab]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -1118,9 +1144,13 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
-      <RankTrackingSettings ref={rankRef} />
+      <div id={SYSTEM_SETTINGS_SECTION_ID['rank-tracking']} className="scroll-mt-4 rounded-2xl">
+        <RankTrackingSettings ref={rankRef} onReady={markRankReady} />
+      </div>
 
-      <WebmasterAccountsSettings ref={webmasterRef} />
+      <div id={SYSTEM_SETTINGS_SECTION_ID['search-engine-accounts']} className="scroll-mt-4 rounded-2xl">
+        <WebmasterAccountsSettings ref={webmasterRef} onReady={markWebmasterReady} />
+      </div>
 
       </div>
 

@@ -248,6 +248,11 @@ export interface ProjectRankings {
   keywords: RankKeywordView[];
   /** The caller may change the setup and the keywords (agency staff on this project). */
   canManage: boolean;
+  /**
+   * Rank tracking is set up on the instance: a provider is chosen and has credentials (System Settings →
+   * Integrations). Told to every reader; a client is shown the rankings only while it is.
+   */
+  configured: boolean;
   /** Present for staff only. */
   status?: RankStatus;
 }

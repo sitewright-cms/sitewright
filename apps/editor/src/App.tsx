@@ -467,8 +467,10 @@ function MainApp({
           Safe at every width despite being fixed: this is a flex CHILD with `min-w-0`, so 285px is the
           PREFERRED size (flex-basis) and the default `flex-shrink: 1` still lets it give way when the
           row is tight — which is the whole story on a phone, where 285px plus the action nav is more
-          than the screen. The project name truncates into whatever it actually gets. */}
-      <div className={`flex w-[285px] min-w-0 items-center ${isMobile ? 'gap-1' : 'gap-3'}`}>
+          than the screen. The project name truncates into whatever it actually gets.
+          On a phone the column is also a size CONTAINER, so the project pill can step aside when the
+          column gets too narrow to hold it (see the pill). */}
+      <div className={`flex w-[285px] min-w-0 items-center ${isMobile ? '@container gap-1' : 'gap-3'}`}>
         <Tooltip tip="Switch project" className="shrink-0">
           <button
             className={`flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700 dark:text-slate-100 dark:hover:text-indigo-300 ${
@@ -496,7 +498,17 @@ function MainApp({
         {inProject && (
           <button
             aria-label="Switch project"
-            className="flex min-w-0 items-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
+            // ★ PHONE: STEP ASIDE RATHER THAN SPILL. `min-w-0` lets the name truncate to nothing, but
+            // the padding and chevron cannot shrink, and on a touch screen the button also has a 44px
+            // minimum width (styles.css). When the column is narrower than all of that, the pill used
+            // to overflow it, under the controls on the right. At 320px with an agent connected, the
+            // agent indicator then painted over it and took its taps. Hidden at that point, it costs
+            // nothing: it was showing no name, and the brand mark beside it opens the same project
+            // selector. 94px = the brand mark at its 44px touch floor + the 4px gap + this pill's
+            // padding, border, gap and chevron (46px).
+            className={`flex min-w-0 items-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10${
+              isMobile ? ' @max-[94px]:hidden' : ''
+            }`}
             onClick={() => setSelectorOpen(true)}
           >
             <span className="truncate">{inProject.name}</span>

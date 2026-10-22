@@ -209,7 +209,9 @@ describe('App shell', () => {
     // The selector now holds a spinner until the opened project reports its data has settled, so it
     // closes a tick AFTER the view first renders rather than in the same click.
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    fireEvent.click(screen.getByRole('button', { name: 'Switch project' }));
+    const pill = screen.getByRole('button', { name: 'Switch project' });
+    expect(pill.className).not.toContain('@max-'); // only the phone header lets it step aside
+    fireEvent.click(pill);
     expect(await screen.findByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
   });
 
@@ -510,6 +512,20 @@ describe('App shell on a phone', () => {
     for (const rail of ['LIBRARY PANEL', 'SNIPPETS PANEL', 'WIDGETS PANEL', 'TEMPLATES PANEL']) {
       expect(screen.queryByText(rail)).not.toBeInTheDocument();
     }
+  });
+
+  /**
+   * ★ On a narrow phone the project pill steps aside (a container query hides it once its column cannot
+   * hold it), which is only safe because the brand mark beside it ALWAYS opens the same selector.
+   */
+  it('the brand mark switches projects, so the pill may step aside on a narrow phone', async () => {
+    withMobileViewport();
+    await openProject();
+    const pill = screen.getByRole('button', { name: 'Switch project' });
+    expect(pill.className).toContain('@max-[94px]:hidden');
+    expect(pill.parentElement?.className).toContain('@container');
+    fireEvent.click(screen.getByRole('button', { name: /— switch project$/ }));
+    expect(await screen.findByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
   });
 
   it('drops the System Library even with NO project open — it is a code reference, not a project rail', async () => {

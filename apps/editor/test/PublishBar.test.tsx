@@ -406,6 +406,9 @@ describe('PublishBar in a compact header', () => {
     listAgentConnections.mockResolvedValue({ items: [{ id: 'a1', name: 'agent' }] });
     render(<PublishBar project={both} compact />);
     expect(await screen.findByRole('button', { name: /Agent connected/i })).toBeInTheDocument();
+    // …as its dot alone. The labelled pill never shrinks, and at 320–390px it painted over the
+    // project switcher; the words stay for screen readers.
+    expect(screen.getByText('Agent connected')).toHaveClass('sr-only');
   });
 
   it('★ LONG-PRESS opens what the dropped caret used to open', async () => {

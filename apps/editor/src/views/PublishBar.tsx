@@ -73,7 +73,8 @@ export function PublishBar({
    * Compact keeps both PRIMARY actions and drops what is configuration: the labels (every button keeps
    * its `aria-label`, so nothing is lost to a screen reader), the two split-button carets, "View live",
    * and the "Connect an agent" nudge. Everything behind those carets — share links, choosing a target,
-   * Download .zip — is reachable from the gear menu's Publish & Deploy Options.
+   * Download .zip — is reachable from the gear menu's Publish & Deploy Options. A connected or working
+   * agent still shows, as its dot/spinner alone (see AgentIndicator's `compact`).
    */
   compact?: boolean;
 }) {
@@ -361,6 +362,7 @@ export function PublishBar({
           state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
           count={connectionCount}
           onClick={() => setAgentModalOpen(true)}
+          compact={compact}
         />
       )}
       {/* Always-on Preview: a SPLIT button — the main action browses the live site with the latest (saved)

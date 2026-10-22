@@ -30,10 +30,19 @@ export async function fetchRankingsTracked(projectId: string): Promise<boolean> 
     .catch(() => false);
 }
 
-/** What the Statistics tab has for a CLIENT: the visit counter (statistics on), and/or the search rankings. */
+/** Whether a search engine has numbers for the project's site (verified in the Search engines tile). A failed read is "no". */
+export async function fetchSearchAvailable(projectId: string): Promise<boolean> {
+  return Promise.resolve()
+    .then(() => api.getSearchPerformanceAvailability(projectId))
+    .then((r) => r.services.length > 0)
+    .catch(() => false);
+}
+
+/** What the Statistics tab has for a CLIENT: the visit counter (statistics on), the search rankings, the search performance. */
 export interface StatisticsAccess {
   statistics: boolean;
   rankings: boolean;
+  search: boolean;
 }
 
 /**
@@ -42,15 +51,15 @@ export interface StatisticsAccess {
  * focus (an agent or another tab may have changed it). Decides what a CLIENT sees — agency staff see it all.
  */
 export function useStatisticsAccess(projectId: string | null): StatisticsAccess {
-  const [access, setAccess] = useState<StatisticsAccess>({ statistics: false, rankings: false });
+  const [access, setAccess] = useState<StatisticsAccess>({ statistics: false, rankings: false, search: false });
   useEffect(() => {
     // A different project starts from "nothing" — never show one project's tab on another.
-    setAccess({ statistics: false, rankings: false });
+    setAccess({ statistics: false, rankings: false, search: false });
     if (!projectId) return;
     let live = true;
     const check = (): void => {
-      void Promise.all([fetchStatisticsEnabled(projectId), fetchRankingsTracked(projectId)]).then(([statistics, rankings]) => {
-        if (live) setAccess({ statistics, rankings });
+      void Promise.all([fetchStatisticsEnabled(projectId), fetchRankingsTracked(projectId), fetchSearchAvailable(projectId)]).then(([statistics, rankings, search]) => {
+        if (live) setAccess({ statistics, rankings, search });
       });
     };
     check();

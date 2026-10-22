@@ -11,6 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Statistics → Search performance: Google's and Bing's numbers for the site.** Once a search engine verified the site
+  (Website settings → Search engines), Statistics gets a **Search performance** view, read from the platform's own
+  Search Console and Bing Webmaster accounts, so neither the agency nor the client needs an account there.
+  - Clicks, impressions, click-through rate and average position for the last 7, 28 or 90 days, each against the
+    period before; clicks and impressions per day; the top 25 searches and pages. A choice of Google or Bing when both
+    verified the site.
+  - **Who sees it:** anyone who can read the project, the client included (like the search rankings). A client whose
+    built-in statistics are off sees the Statistics tab for it.
+  - **Freshness:** Google's newest days can still change; Bing updates searches and pages once a week and gives no
+    overall position. The platform asks each search engine at most once an hour per project and period.
+  - Nothing is asked for a site that no search engine verified, or after the Production URL changed, until it is
+    verified again.
+
 - **Search engines: sitemap submission and Search Console owners.** The Search engines tile gets a **Sitemap & owners**
   window beside **Verify now**.
   - **Sitemap:** Verify now hands the site's `sitemap.xml` to each search engine right after it verifies the site.

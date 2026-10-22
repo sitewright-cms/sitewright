@@ -11,9 +11,10 @@ import {
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { webmasterSites } from '../db/schema.js';
-import { bingRemoveSite, bingSiteCode, bingSubmitSitemap, bingVerifySite } from './bing.js';
+import { bingRemoveSite, bingSearchStats, bingSiteCode, bingSubmitSitemap, bingVerifySite } from './bing.js';
 import {
   googleRegisterSite,
+  googleSearchAnalytics,
   googleSetOwners,
   googleSiteToken,
   googleSubmitSitemap,
@@ -21,7 +22,9 @@ import {
   type GoogleOwnersChange,
   type GoogleServiceAccountKey,
 } from './google.js';
+import type { SearchDataSource } from './performance.js';
 import type { WebmasterRepository } from './repo.js';
+import { bingData, googleData, googleQueries, type SearchPerformanceData, type SearchPeriod } from './search-data.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
 
 /**
@@ -59,6 +62,8 @@ interface Account {
   submitSitemap: (siteUrl: string, sitemapUrl: string) => Promise<void>;
   /** Google only: change the site's Search Console owners; the owners it then lists. */
   setOwners?: (siteUrl: string, change: GoogleOwnersChange) => Promise<string[]>;
+  /** The site's search numbers for one period (Statistics → Search performance). */
+  searchData: (siteUrl: string, period: SearchPeriod) => Promise<SearchPerformanceData>;
   done: string;
 }
 
@@ -70,6 +75,8 @@ export interface SiteRegistrarDeps {
   io: WebmasterIo;
   log: { warn: (obj: object, msg: string) => void; info: (obj: object, msg: string) => void };
   now?: () => Date;
+  /** What reading a site's search numbers goes out with: Bing answers with its whole history at once. Default `io`. */
+  dataIo?: WebmasterIo;
 }
 
 const NAME: Record<WebmasterService, string> = { google: 'Google', bing: 'Bing' };
@@ -143,6 +150,7 @@ export class SiteRegistrar {
         unregister: (siteUrl, owners) => googleUnregisterSite(key, siteUrl, owners, io, this.now()),
         submitSitemap: (siteUrl, sitemapUrl) => googleSubmitSitemap(key, siteUrl, sitemapUrl, io, this.now()),
         setOwners: (siteUrl, change) => googleSetOwners(key, siteUrl, change, io, this.now()),
+        searchData: async (siteUrl, period) => googleData(await googleSearchAnalytics(key, siteUrl, googleQueries(period), io, this.now()), period),
         done: 'Verified and added to Search Console',
       };
     }
@@ -156,6 +164,7 @@ export class SiteRegistrar {
       register: (siteUrl) => bingVerifySite(apiKey, siteUrl, io),
       unregister: (siteUrl) => bingRemoveSite(apiKey, siteUrl, io),
       submitSitemap: (siteUrl, sitemapUrl) => bingSubmitSitemap(apiKey, siteUrl, sitemapUrl, io),
+      searchData: async (siteUrl, period) => bingData(await bingSearchStats(apiKey, siteUrl, io), period),
       done: 'Verified in Bing Webmaster Tools',
     };
   }
@@ -498,6 +507,28 @@ export class SiteRegistrar {
     }).catch((err: unknown) => {
       this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: removal on delete failed');
     });
+  }
+
+  /**
+   * The search engines this project's site has numbers at — switched on and verified for its CURRENT Production URL by
+   * the account the platform has NOW — each with what reads them. Asks no search engine; never throws (none, then).
+   */
+  async searchDataSources(projectId: string, rawSiteUrl: string | null | undefined): Promise<SearchDataSource[]> {
+    const siteUrl = registrableSiteUrl(rawSiteUrl);
+    if (!siteUrl) return [];
+    try {
+      const sources: SearchDataSource[] = [];
+      for (const row of await this.rows(projectId)) {
+        if (!row.enabled || row.status !== 'verified' || row.siteUrl !== siteUrl) continue;
+        const account = await this.account(row.service, this.deps.dataIo);
+        if (!account || account.id !== row.account) continue;
+        sources.push({ service: row.service, siteUrl, accountId: account.id, read: (period) => account.searchData(siteUrl, period) });
+      }
+      return sources.sort((a, b) => WEBMASTER_SERVICES.indexOf(a.service) - WEBMASTER_SERVICES.indexOf(b.service));
+    } catch (err) {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'search performance: sources not read');
+      return [];
+    }
   }
 
   /** What staff see: per search engine, whether it is on, how far it got, and why not. */

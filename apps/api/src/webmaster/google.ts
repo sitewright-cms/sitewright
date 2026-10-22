@@ -370,3 +370,61 @@ export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl
   if (listed) return `Removed from Search Console${people}`;
   return owned ? `Ownership given up (the site was not in Search Console)${people}` : `Nothing to remove at Google${ownersKept}`;
 }
+
+/** One Search Analytics row, as read: the dimension values and the four numbers. */
+export interface GoogleSearchRow {
+  keys: string[];
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+/** A Search Analytics query: an inclusive range of YYYY-MM-DD days (Pacific time, as Google counts them). */
+export interface GoogleSearchQuery {
+  startDate: string;
+  endDate: string;
+  dimensions?: Array<'date' | 'query' | 'page'>;
+  rowLimit: number;
+}
+
+const finite = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+
+/**
+ * Asks Search Console for `siteUrl`'s web search numbers, one answer per query, with ONE access token. Fresh days are
+ * included (`dataState: all`): the newest days may still change. Throws `unverified` when the site is not in the
+ * service account's Search Console (any more).
+ */
+export async function googleSearchAnalytics(
+  key: GoogleServiceAccountKey,
+  siteUrl: string,
+  queries: readonly GoogleSearchQuery[],
+  io: WebmasterIo,
+  now = new Date(),
+): Promise<GoogleSearchRow[][]> {
+  const token = await googleAccessToken(key, io, now);
+  return Promise.all(
+    queries.map(async (q) => {
+      const { status, json } = await requestJson(
+        SERVICE,
+        `${searchConsoleSite(siteUrl)}/searchAnalytics/query`,
+        {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({ ...q, dimensions: q.dimensions ?? [], type: 'web', dataState: 'all' }),
+        },
+        io,
+      );
+      if (isNotTheSitesOwner(status, json)) throw new WebmasterError(`${siteUrl} is not in the platform's Search Console: verify the site again`, 'unverified');
+      if (status !== 200 || !isRecord(json)) return apiFailure(status, json, SEARCH_CONSOLE, key.projectId);
+      const rows = Array.isArray(json.rows) ? json.rows.filter(isRecord) : [];
+      return rows.map((r) => ({
+        keys: Array.isArray(r.keys) ? r.keys.map((k) => (typeof k === 'string' ? k.slice(0, 2048) : '')) : [],
+        clicks: finite(r.clicks),
+        impressions: finite(r.impressions),
+        ctr: finite(r.ctr),
+        position: finite(r.position),
+      }));
+    }),
+  );
+}

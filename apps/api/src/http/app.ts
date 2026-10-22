@@ -432,6 +432,8 @@ import { RANK_PROVIDERS } from '../rank/providers/index.js';
 import { RankRepository } from '../rank/repo.js';
 import { WebmasterRepository } from '../webmaster/repo.js';
 import { registerSiteRegistrationRoutes, registerWebmasterRoutes } from '../webmaster/routes.js';
+import { registerSearchPerformanceRoutes } from '../webmaster/performance-routes.js';
+import { SearchPerformance } from '../webmaster/performance.js';
 import { SiteRegistrar } from '../webmaster/sites.js';
 import { registerRankRoutes } from '../rank/routes.js';
 import { RankTracker } from '../rank/tracker.js';
@@ -9043,6 +9045,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     db,
     accounts: webmasterRepo,
     io: webmasterIo,
+    dataIo: { fetch: opts.webmasterFetch ?? makeProviderFetch({ maxBytes: 8 * 1024 * 1024, timeoutMs: 30_000 }), timeoutMs: 30_000 },
     log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
   });
 
@@ -11037,11 +11040,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The platform's ONE Google service account and ONE Bing Webmaster account (instance admins), and each
   // project's registration with them (agency staff).
   registerWebmasterRoutes(app, { repo: webmasterRepo, io: webmasterIo, requireInstanceAdmin, rl });
-  registerSiteRegistrationRoutes(app, {
-    registrar: siteRegistrar,
+  const siteUrlOf = async (ctx: ProjectContext): Promise<string | undefined> =>
+    ((await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null)?.website?.siteUrl;
+  registerSiteRegistrationRoutes(app, { registrar: siteRegistrar, resolveProject, requirePlatformStaff, siteUrlOf, rl });
+  // Statistics → Search performance: the numbers from the accounts the site is verified with, for anyone who reads it.
+  registerSearchPerformanceRoutes(app, {
+    performance: new SearchPerformance({ sources: (projectId, rawSiteUrl) => siteRegistrar.searchDataSources(projectId, rawSiteUrl) }),
     resolveProject,
-    requirePlatformStaff,
-    siteUrlOf: async (ctx) => ((await contentRepo.get(ctx, 'settings', 'settings').catch(() => null)) as Settings | null)?.website?.siteUrl,
+    siteUrlOf,
     rl,
   });
 

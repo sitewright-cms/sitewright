@@ -15,6 +15,8 @@ const api = vi.hoisted(() => ({
   getRankTracking: vi.fn(),
   putRankTracking: vi.fn(),
   testRankProvider: vi.fn(),
+  getSearchPerformanceAvailability: vi.fn(),
+  getSearchPerformance: vi.fn(),
 }));
 vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
 
@@ -76,6 +78,7 @@ beforeEach(() => {
   for (const fn of Object.values(api)) fn.mockReset();
   api.getStats.mockResolvedValue(minimalStats);
   api.searchRankLocations.mockResolvedValue({ locations: [] });
+  api.getSearchPerformanceAvailability.mockResolvedValue({ services: [] });
 });
 
 describe('the Statistics tab', () => {
@@ -109,6 +112,28 @@ describe('the Statistics tab', () => {
     await act(async () => answer(rankings()));
     expect(await screen.findByRole('tab', { name: /Search rankings/ })).toBeInTheDocument();
     expect(api.getStats).toHaveBeenCalledTimes(1);
+  });
+
+  it('offers the search performance once a search engine verified the site, beside the others', async () => {
+    api.getRankings.mockResolvedValue(rankings());
+    api.getSearchPerformanceAvailability.mockResolvedValue({ services: ['bing'] });
+    api.getSearchPerformance.mockResolvedValue({
+      service: 'bing',
+      siteUrl: 'https://www.plumbers.na/',
+      period: { days: 28, start: '2026-09-24', end: '2026-10-21' },
+      totals: { clicks: 3, impressions: 40, ctr: 0.075, position: null },
+      previous: null,
+      daily: [],
+      queries: [],
+      pages: [],
+      fetchedAt: '2026-10-21T10:00:00.000Z',
+    });
+    render(<StatisticsTab project={project} />);
+    const bar = await screen.findByRole('tablist', { name: 'Statistics' });
+    await waitFor(() => expect(within(bar).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Visits', 'Search rankings', 'Search performance']));
+    fireEvent.click(within(bar).getByRole('tab', { name: /Search performance/ }));
+    expect(await screen.findByRole('heading', { name: 'Search performance' })).toBeInTheDocument();
+    await waitFor(() => expect(api.getSearchPerformance).toHaveBeenCalledWith('p1', 'bing', 28));
   });
 
   it('without the visit counter (a client, statistics off) the rankings are the whole tab', async () => {

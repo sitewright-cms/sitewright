@@ -290,11 +290,12 @@ function MainApp({
   // with the other hooks, because the render below has early returns.
   const paymentsActive = usePaymentsActive(stage.name === 'project' ? stage.project.id : null);
   // The Statistics tab: always for agency staff (they decide whether the site counts visits, and which keywords
-  // are tracked); for a client only while there is something in it — the built-in statistics switched on, or
-  // search rankings the agency tracks for the site. A client sees the visits only while statistics are on.
+  // are tracked); for a client only while there is something in it — the built-in statistics switched on, search
+  // rankings the agency tracks for the site, or search numbers from a search engine that verified the site. A client
+  // sees the visits only while statistics are on.
   const statisticsAccess = useStatisticsAccess(stage.name === 'project' ? stage.project.id : null);
   const visitsVisible = canCreateProjects || statisticsAccess.statistics;
-  const statisticsVisible = visitsVisible || statisticsAccess.rankings;
+  const statisticsVisible = visitsVisible || statisticsAccess.rankings || statisticsAccess.search;
   // A tab that disappears (payments or statistics switched off, or a different project) must not stay selected.
   useEffect(() => {
     if (tab === 'orders' && !paymentsActive) setTab('website-settings');

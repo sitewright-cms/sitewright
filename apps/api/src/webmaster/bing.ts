@@ -46,9 +46,19 @@ function bingFailure(status: number, json: unknown, apiKey: string): never {
   throw new WebmasterError(`Bing answered HTTP ${status}${said ? ` (${said})` : ''}`, 'unavailable');
 }
 
-/** One API method. A GET without a body, or a POST of its JSON arguments; the reply's `d` on success. */
-async function bingCall(apiKey: string, method: string, io: WebmasterIo, args?: Json): Promise<{ ok: true; d: unknown } | { ok: false; status: number; json: unknown }> {
-  const url = `${API}/${method}?apikey=${encodeURIComponent(apiKey)}`;
+/**
+ * One API method. A GET (its `params` in the query string), or a POST of its JSON arguments; the reply's `d` on
+ * success.
+ */
+async function bingCall(
+  apiKey: string,
+  method: string,
+  io: WebmasterIo,
+  args?: Json,
+  params: Record<string, string> = {},
+): Promise<{ ok: true; d: unknown } | { ok: false; status: number; json: unknown }> {
+  const query = new URLSearchParams({ ...params, apikey: apiKey });
+  const url = `${API}/${method}?${query.toString()}`;
   const { status, json } = await requestJson(
     SERVICE,
     url,
@@ -129,4 +139,62 @@ export async function bingRemoveSite(apiKey: string, siteUrl: string, io: Webmas
   const r = await bingCall(apiKey, 'RemoveSite', io, { siteUrl });
   if (!r.ok && errorCodeOf(r.json) !== NOT_FOUND) bingFailure(r.status, r.json, apiKey);
   return 'Removed from Bing Webmaster Tools';
+}
+
+/** One day's or one week's numbers, as Bing reports them. `key` is the query or the page (empty for site traffic). */
+export interface BingStat {
+  /** The day it is for, YYYY-MM-DD in Pacific time (Bing's own dates are Pacific midnights). */
+  date: string;
+  key: string;
+  clicks: number;
+  impressions: number;
+  /** Average position when shown; null when Bing gives none. */
+  position: number | null;
+}
+
+/** Bing's WCF date, `/Date(1316156400000-0700)/`: the epoch milliseconds, read as a Pacific day. */
+export function bingDay(raw: unknown): string | null {
+  const ms = typeof raw === 'string' ? /^\/Date\((-?\d{1,15})(?:[+-]\d{4})?\)\/$/.exec(raw)?.[1] : undefined;
+  if (ms === undefined) return null;
+  const date = new Date(Number(ms));
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+const count = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
+
+function stats(d: unknown, keyField: 'Query' | null): BingStat[] {
+  if (d !== null && !Array.isArray(d)) throw new WebmasterError('Bing sent statistics the platform could not read', 'unavailable');
+  const out: BingStat[] = [];
+  for (const item of Array.isArray(d) ? d.filter(isRecord) : []) {
+    const date = bingDay(item.Date);
+    if (!date) continue;
+    const position = typeof item.AvgImpressionPosition === 'number' && Number.isFinite(item.AvgImpressionPosition) && item.AvgImpressionPosition > 0 ? item.AvgImpressionPosition : null;
+    out.push({
+      date,
+      key: keyField && typeof item[keyField] === 'string' ? (item[keyField] as string).slice(0, 2048) : '',
+      clicks: count(item.Clicks),
+      impressions: count(item.Impressions),
+      position,
+    });
+  }
+  return out;
+}
+
+/**
+ * The site's search traffic at Bing: per day (`GetRankAndTrafficStats`), and per query and per page
+ * (`GetQueryStats`, `GetPageStats` — Bing updates those weekly). Bing answers with all the history it keeps; the
+ * caller picks the period. Throws `unverified` when the site is not on the account.
+ */
+export async function bingSearchStats(apiKey: string, siteUrl: string, io: WebmasterIo): Promise<{ daily: BingStat[]; queries: BingStat[]; pages: BingStat[] }> {
+  const read = async (method: string, keyField: 'Query' | null): Promise<BingStat[]> => {
+    const r = await bingCall(apiKey, method, io, undefined, { siteUrl });
+    if (!r.ok) {
+      if (errorCodeOf(r.json) === NOT_FOUND) throw new WebmasterError(`${siteUrl} is not on the platform's Bing account: verify the site again`, 'unverified');
+      bingFailure(r.status, r.json, apiKey);
+    }
+    return stats(r.d, keyField);
+  };
+  const [daily, queries, pages] = await Promise.all([read('GetRankAndTrafficStats', null), read('GetQueryStats', 'Query'), read('GetPageStats', 'Query')]);
+  return { daily, queries, pages };
 }

@@ -286,8 +286,9 @@ export class SiteRegistrar {
       return { ok: false, retry: false, detail: `Not removed from ${NAME[row.service]}: ${why}` };
     }
     // An address another project still registers (a duplicate, an import of the same site) stays — removing it would
-    // take that project's registration with it.
-    if (await this.shared(row)) {
+    // take that project's registration with it. With this account; or, for a live project, with ANY: two keys can be
+    // one Bing user, whose site is the same whichever key asks (see `RemovalQueue.heldLive`).
+    if ((await this.shared(row)) || (await this.removals.heldLive(row.service, row.siteUrl, row.projectId))) {
       return { ok: true, retry: false, detail: `Kept at ${NAME[row.service]}: another project registers ${row.siteUrl} too` };
     }
     try {
@@ -397,12 +398,20 @@ export class SiteRegistrar {
         // The Production URL (or the account) changed since: the old registration goes before the new one starts.
         let moved = '';
         if (SiteRegistrar.registered(row) && row.account !== account.id) {
-          // ★ Made with an account the platform no longer uses (the key was replaced in System Settings). Only that
-          // account can remove it, so it is QUEUED with it rather than overwritten and forgotten: removed should that
-          // account come back, given up after 14 days otherwise, with a warning that names the site and the account.
-          // Never a refusal: the new account must be able to verify the site.
-          await this.removals.add(row, `Not removed from ${NAME[service]}: it was registered with an account the platform no longer uses`);
-          moved = ` (${row.siteUrl} is still registered with the previous ${service === 'google' ? 'service account' : 'Bing account'}: remove it there by hand if that account is gone)`;
+          // ★ Made with an account the platform no longer uses (the key was replaced in System Settings); only that
+          // account can remove it. Never a refusal: the new account must be able to verify the site.
+          //   - Another address: the old one is QUEUED with the old account rather than overwritten and forgotten —
+          //     removed should that account come back while no live project registers it, given up after 14 days
+          //     otherwise with a warning naming the site and the account.
+          //   - The same address: nothing is queued. The new key may be the same Bing user (one site): removing the
+          //     old registration would remove the new one. A stale ownership at an old account is the safe side.
+          const previous = service === 'google' ? 'service account' : 'Bing key';
+          if (row.siteUrl !== siteUrl) {
+            await this.removals.add(row, `Not removed from ${NAME[service]}: it was registered with an account the platform no longer uses`);
+            moved = ` (${row.siteUrl} is still registered with the previous ${previous}: remove it there by hand if that account is gone)`;
+          } else {
+            moved = ` (the previous ${previous} may still hold ${siteUrl} too: remove it there by hand if that account is gone)`;
+          }
         } else if (SiteRegistrar.registered(row) && row.siteUrl !== siteUrl) {
           const old = await this.unregister(row);
           // Not removed: stop here rather than forget the old address (the row is the only record of it).
@@ -633,12 +642,15 @@ export class SiteRegistrar {
     const removal = await this.removals.get(id);
     if (!removal) return; // done meanwhile: the purge got through, or a restore cancelled it
     const where = { projectId: removal.projectId, service: removal.service, siteUrl: removal.siteUrl };
-    const [project] = await this.deps.db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, removal.projectId));
-    if (project && !project.deletedAt && (await this.removals.heldByItsProject(removal))) {
+    // ★ Never while a live project registers this address at this search engine — its own (restored) or another, under
+    // ANY account: a key replaced by another of the same Bing user still has the same site, and removing it with the
+    // old key would remove theirs. Dropped: a stale ownership left at an old account is acceptable, that is not.
+    if (await this.removals.heldLive(removal.service, removal.siteUrl)) {
       await this.removals.remove(id);
-      this.deps.log.info(where, 'site registration: the project was restored, so its site stays registered');
+      this.deps.log.info(where, 'site registration: a live project registers the address, so it is not removed');
       return;
     }
+    const [project] = await this.deps.db.select({ deletedAt: projects.deletedAt }).from(projects).where(eq(projects.id, removal.projectId));
     const result = await this.unregister(removal);
     if (!result.ok) {
       await this.removals.failed(removal, result.detail);

@@ -42,8 +42,27 @@ export const WebmasterAccountsInputSchema = z
   .strict();
 export type WebmasterAccountsInput = z.infer<typeof WebmasterAccountsInputSchema>;
 
-/** The `code` of the 409 a save gets when it would remove or replace an account sites are registered with; `count` says how many. */
+/** The `code` of the 409 a save gets when it would remove or replace an account sites are registered with. */
 export const WEBMASTER_ACCOUNT_IN_USE = 'account-in-use';
+
+/** One account of a {@link WebmasterAccountsInUse} refusal: what the save would do to it, and what stays there. */
+export interface WebmasterAccountInUse {
+  service: WebmasterService;
+  action: 'remove' | 'replace';
+  /** Sites still registered with this account (switched on, or switched off or deleted but not removed). */
+  count: number;
+  /** What to do, in words: switch them off first, or (a dead key) remove or replace it anyway. */
+  error: string;
+}
+
+/** The 409 body of a save that would remove or replace accounts sites are registered with: one entry per account. */
+export interface WebmasterAccountsInUse {
+  error: string;
+  code: typeof WEBMASTER_ACCOUNT_IN_USE;
+  /** All accounts' sites together. */
+  count: number;
+  accounts: WebmasterAccountInUse[];
+}
 
 export interface WebmasterAccountsView {
   google: {

@@ -287,9 +287,10 @@ describe('deleting and restoring a project', () => {
     bingDown = true;
     await projects.softDelete(projectId, 'someone');
     await registrar.removeOnDelete(projectId);
+    expect(await removals()).toHaveLength(1); // queued: the row still holds the registration…
     await projects.restore(projectId);
     await registrar.restored(projectId);
-    expect(await removals()).toEqual([]);
+    expect(await removals()).toEqual([]); // …so the restore cancels it
     bingDown = false;
     now = hours(1);
     await registrar.retryRemovals();
@@ -368,29 +369,72 @@ describe('what an account still holds (System Settings refuses to remove or repl
 
 describe('a key replaced while a site was registered with the old one', () => {
   const OTHER = 'fedcba9876543210fedcba9876543210';
+  const removeCalls = (): number => calls.filter((c) => c.endsWith('/RemoveSite')).length;
 
-  it('★ the next verification keeps the old registration on record instead of overwriting it', async () => {
+  it('★ the same address verified with the new key queues nothing: the old key back removes nothing', async () => {
+    // The new key may be the same Bing user, who has ONE site per address: removing the old registration would remove
+    // the new one. A stale ownership at an old account is the safe side.
     await registrar.setEnabled(projectId, { bing: true });
     await registrar.prepare(projectId, SITE);
     await accounts.apply({ bing: { secret: { apiKey: OTHER }, info: {} } });
     const again = await registrar.prepare(projectId, SITE);
-    expect(again.bing).toEqual({ ok: true, detail: `Tag ready (${SITE} is still registered with the previous Bing account: remove it there by hand if that account is gone)` });
-    expect(await db.select().from(webmasterRemovals)).toMatchObject([{ projectId, service: 'bing', siteUrl: SITE, account: bingAccount(BING_KEY) }]);
-    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ account: bingAccount(OTHER), status: 'pending' });
+    expect(again.bing).toEqual({ ok: true, detail: `Tag ready (the previous Bing key may still hold ${SITE} too: remove it there by hand if that account is gone)` });
+    expect(await db.select().from(webmasterRemovals)).toEqual([]);
+    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ account: bingAccount(OTHER), siteUrl: SITE, status: 'pending' });
 
-    // A restore of the project does not cancel it: the row holds the NEW registration, not this one.
+    await accounts.apply({ bing: { secret: { apiKey: BING_KEY }, info: {} } });
+    now = hours(1);
+    await registrar.retryRemovals();
+    expect(removeCalls()).toBe(0);
+  });
+
+  it('★ a queued removal never runs while a live project registers the address — under ANY account', async () => {
+    await registrar.setEnabled(projectId, { bing: true });
+    await registrar.prepare(projectId, SITE);
+    bingDown = true;
+    await projects.softDelete(projectId, 'someone');
+    await registrar.removeOnDelete(projectId); // queued with the first key
+    expect(await db.select().from(webmasterRemovals)).toMatchObject([{ projectId, account: bingAccount(BING_KEY) }]);
+    bingDown = false;
+
+    // Another project registers the same address with a new key — maybe the same Bing user.
+    await accounts.apply({ bing: { secret: { apiKey: OTHER }, info: {} } });
+    const twin = (await projects.create({ name: 'Twin', slug: `twin-${randomBytes(3).toString('hex')}` })).id;
+    await registrar.setEnabled(twin, { bing: true });
+    await registrar.prepare(twin, SITE);
+
+    // The first key back: the removal would now be "its own" — and would take the twin's site with it.
+    await accounts.apply({ bing: { secret: { apiKey: BING_KEY }, info: {} } });
+    const before = removeCalls();
+    now = hours(1);
+    await registrar.retryRemovals();
+    expect(removeCalls()).toBe(before);
+    expect(await db.select().from(webmasterRemovals)).toEqual([]); // dropped, not kept to try again
+  });
+
+  it('another address is queued with the old account; a restore keeps it (the row holds the new one); the old key back removes it', async () => {
+    const OLD_EMAIL = 'seo@p-123.iam.gserviceaccount.com';
+    const NEW_SITE = 'https://new.example.com/';
+    const deletes = (site: string) => calls.filter((c) => c.startsWith('DELETE') && c.includes(encodeURIComponent(site))).length;
+    const google = (clientEmail: string) => ({ google: { secret: { clientEmail, privateKey: PEM, privateKeyId: 'a1b2c3d4e5f6', projectId: 'p-123' }, info: { clientEmail, projectId: 'p-123' } } });
+    await registrar.setEnabled(projectId, { google: true });
+    await registrar.prepare(projectId, SITE);
+    await accounts.apply(google('other@p-123.iam.gserviceaccount.com'));
+    const moved = await registrar.prepare(projectId, NEW_SITE);
+    expect(moved.google).toEqual({ ok: true, detail: `Tag ready (${SITE} is still registered with the previous service account: remove it there by hand if that account is gone)` });
+    expect(await db.select().from(webmasterRemovals)).toMatchObject([{ projectId, service: 'google', siteUrl: SITE, account: OLD_EMAIL }]);
+
     await projects.softDelete(projectId, 'someone');
     await projects.restore(projectId);
     await registrar.restored(projectId);
     expect(await db.select().from(webmasterRemovals)).toHaveLength(1);
 
-    // The old key back: removed with it (and the project keeps its new registration).
-    await accounts.apply({ bing: { secret: { apiKey: BING_KEY }, info: {} } });
-    const before = calls.filter((c) => c.endsWith('/RemoveSite')).length;
+    await accounts.apply(google(OLD_EMAIL));
     now = hours(1);
     await registrar.retryRemovals();
-    expect(calls.filter((c) => c.endsWith('/RemoveSite')).length).toBe(before + 1);
+    expect(deletes(SITE)).toBeGreaterThan(0);
+    expect(deletes(NEW_SITE)).toBe(0);
     expect(await db.select().from(webmasterRemovals)).toEqual([]);
-    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ account: bingAccount(OTHER), siteUrl: SITE });
+    expect((await db.select().from(webmasterSites))[0]).toMatchObject({ siteUrl: NEW_SITE });
   });
 });

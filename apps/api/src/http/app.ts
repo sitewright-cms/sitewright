@@ -12281,15 +12281,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     void sweepExpiredAuthRows(db)
       .then(() => reapUnusedOAuthClients(db))
       .then(() => reapDeadPats(db))
-      .catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
+      .catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'))
+      // Sites the platform could not remove from its Google or Bing account when their project was deleted: tried again
+      // with the account that registered them, until they go or 14 days pass (never throws; logs what it gives up).
+      // ★ AFTER the auth rows, not beside them: `reapDeadPats` holds a write transaction across awaits, and a write on
+      // another connection meanwhile fails at once with SQLITE_BUSY (contention inside one process never waits).
+      .then(() => siteRegistrar.retryRemovals());
     void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
     // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
     // an expired challenge fails verification before the spent-check is ever consulted.
     void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
     if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
-    // Sites the platform could not remove from its Google or Bing account when their project was deleted: tried again
-    // with the account that registered them, until they go or 14 days pass (never throws; logs what it gives up).
-    void siteRegistrar.retryRemovals();
     // Statistics of projects that no longer exist (a reap whose own cleanup failed, a beacon that landed after it).
     void statsEngine
       .reapOrphans((ids) => projects.existingIds(ids))

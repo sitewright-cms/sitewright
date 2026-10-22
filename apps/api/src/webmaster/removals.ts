@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import type { WebmasterService } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { projects, webmasterRemovals, webmasterSites } from '../db/schema.js';
@@ -123,19 +123,28 @@ export class RemovalQueue {
       .limit(limit);
   }
 
-  /** Whether the removal's project still holds that registration in its row (a restored project: the site is its own). */
-  async heldByItsProject(r: Registration): Promise<boolean> {
+  /**
+   * ★ Whether a LIVE project's row (`exceptProjectId` aside) registers this address at this search engine — under ANY
+   * account. Two Bing keys can belong to one Bing user, who has one site per address: a removal made with either key
+   * removes it for both. So no removal runs while a live project holds the address: an old account keeping a stale
+   * ownership is acceptable, removing a live registration is not.
+   */
+  async heldLive(service: WebmasterService, siteUrl: string, exceptProjectId?: string): Promise<boolean> {
     const [row] = await this.deps.db
       .select({ projectId: webmasterSites.projectId })
       .from(webmasterSites)
+      .innerJoin(projects, eq(projects.id, webmasterSites.projectId))
       .where(
         and(
-          eq(webmasterSites.projectId, r.projectId),
-          eq(webmasterSites.service, r.service),
-          eq(webmasterSites.siteUrl, r.siteUrl),
-          eq(webmasterSites.account, r.account),
+          eq(webmasterSites.service, service),
+          eq(webmasterSites.siteUrl, siteUrl),
+          isNull(projects.deletedAt),
+          // Registered: Google once a tag was fetched; Bing as soon as the site was asked for (it adds it first).
+          or(isNotNull(webmasterSites.token), eq(webmasterSites.service, 'bing')),
+          exceptProjectId ? ne(webmasterSites.projectId, exceptProjectId) : undefined,
         ),
-      );
+      )
+      .limit(1);
     return Boolean(row);
   }
 

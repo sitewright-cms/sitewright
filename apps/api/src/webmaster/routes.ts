@@ -11,6 +11,8 @@ import {
   type SiteRegistrationToggleResult,
   type SiteRegistrationVerifyResult,
   type SiteRegistrationView,
+  type WebmasterAccountInUse,
+  type WebmasterAccountsInUse,
   type WebmasterAccountsView,
   type WebmasterService,
   type WebmasterTestResult,
@@ -54,15 +56,24 @@ const PUT_BODY_LIMIT = 64 * 1024;
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
   const { repo, io, requireInstanceAdmin, heldBy, rl } = deps;
 
-  /** Why moving off `service`'s account is refused, and what to do: switch sites off, or (a dead key) go on anyway. */
-  function inUseText(service: WebmasterService, held: AccountHolding, removing: boolean): string {
+  /**
+   * Why moving off ONE account is refused, in the shape System Settings then offers: switch the sites off first — or,
+   * for a key that no longer works, remove (replace) it anyway, knowing what stays at the old account.
+   */
+  function inUseText(service: WebmasterService, held: AccountHolding, action: WebmasterAccountInUse['action']): string {
     // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
     const [account, label] = [ACCOUNT[service], LABEL[service]];
-    const parts: string[] = [];
-    if (held.switchedOn) parts.push(`${sitesText(held.switchedOn)} switched on with this ${account}: switch ${held.switchedOn === 1 ? 'it' : 'them'} off in the Search engines tile first`);
-    if (held.notRemoved) parts.push(`${sitesText(held.notRemoved)} still registered with ${held.switchedOn ? 'it' : `this ${account}`} although switched off or deleted (the removal did not get through)`);
-    const stay = held.switchedOn + held.notRemoved === 1 ? 'that site stays' : 'those sites stay';
-    return `${parts.join('; ')}. If the ${label} no longer works, ${removing ? 'remove' : 'replace'} it anyway: ${stay} registered at the old account, to be removed there by hand.`;
+    const n = held.switchedOn + held.notRemoved;
+    const stuck = (lead: string) => `${lead} still registered with ${held.switchedOn ? 'it' : `this ${account}`} although switched off or deleted (the removal did not get through)`;
+    const what = [
+      held.switchedOn ? `${sitesText(held.switchedOn)} switched on with this ${account}` : '',
+      held.notRemoved ? stuck(held.switchedOn ? `${held.notRemoved} more ${held.notRemoved === 1 ? 'is' : 'are'}` : sitesText(held.notRemoved)) : '',
+    ]
+      .filter(Boolean)
+      .join(', and ');
+    const anyway = `if the ${label} no longer works, ${action} it anyway`;
+    const how = held.switchedOn ? `Switch ${held.switchedOn === 1 ? 'it' : 'them'} off in the Search engines tile first, or, ${anyway}` : `${anyway[0]!.toUpperCase()}${anyway.slice(1)}`;
+    return `${what}. ${how}: ${n === 1 ? 'that site stays' : `those ${n} sites stay`} registered at the old account, to be removed there by hand.`;
   }
 
   async function view(): Promise<WebmasterAccountsView> {
@@ -113,15 +124,23 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       else if (google) changes.push(['google', google.clientEmail]);
       if (input.bing === null) changes.push(['bing', null]);
       else if (bing) changes.push(['bing', bingAccountId(bing)]);
-      const refusals: string[] = [];
-      let count = 0;
+      // One entry per account in the way, each with its own count and words: a save can remove one and replace the other.
+      const accounts: WebmasterAccountInUse[] = [];
       for (const [service, next] of changes) {
         const held = await heldBy(service, next);
-        if (held.switchedOn + held.notRemoved === 0) continue;
-        count += held.switchedOn + held.notRemoved;
-        refusals.push(inUseText(service, held, next === null));
+        const count = held.switchedOn + held.notRemoved;
+        const action = next === null ? 'remove' : 'replace';
+        if (count > 0) accounts.push({ service, action, count, error: inUseText(service, held, action) });
       }
-      if (count > 0) return reply.code(409).send({ error: refusals.join(' '), code: WEBMASTER_ACCOUNT_IN_USE, count });
+      if (accounts.length > 0) {
+        const refusal: WebmasterAccountsInUse = {
+          error: accounts.map((a) => a.error).join(' '),
+          code: WEBMASTER_ACCOUNT_IN_USE,
+          count: accounts.reduce((sum, a) => sum + a.count, 0),
+          accounts,
+        };
+        return reply.code(409).send(refusal);
+      }
     }
     await repo.apply({
       ...(input.google === null ? { google: null } : {}),

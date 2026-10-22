@@ -4,6 +4,7 @@ import {
   BING_API_KEY_RE,
   GOOGLE_KEY_FILE_MAX_BYTES,
   WEBMASTER_ACCOUNT_IN_USE,
+  type WebmasterAccountInUse,
   type WebmasterAccountsInput,
   type WebmasterAccountsView,
   type WebmasterService,
@@ -50,8 +51,23 @@ function readKeyFile(text: string): { clientEmail: string } | string {
   return { clientEmail: rec.client_email };
 }
 
-/** The server's refusal to remove or replace an account sites are still registered with (it carries how many). */
-const isAccountInUse = (err: unknown): err is ApiError => err instanceof Error && (err as Partial<ApiError>).code === WEBMASTER_ACCOUNT_IN_USE;
+const ENGINE: Record<WebmasterService, string> = { google: 'Google', bing: 'Bing' };
+const VERB: Record<WebmasterAccountInUse['action'], string> = { remove: 'Remove', replace: 'Replace' };
+
+/**
+ * The accounts of the server's refusal to remove or replace accounts sites are still registered with — one entry each,
+ * with what the save would do to it and how many sites stay there — or null for any other error.
+ */
+function accountsInUse(err: unknown): WebmasterAccountInUse[] | null {
+  if (!(err instanceof Error) || (err as Partial<ApiError>).code !== WEBMASTER_ACCOUNT_IN_USE) return null;
+  const list = ((err as Partial<ApiError>).body as { accounts?: unknown } | undefined)?.accounts;
+  if (!Array.isArray(list)) return null;
+  const valid = list.filter(
+    (a): a is WebmasterAccountInUse =>
+      typeof a === 'object' && a !== null && (a.service === 'google' || a.service === 'bing') && (a.action === 'remove' || a.action === 'replace') && Number.isInteger(a.count) && typeof a.error === 'string',
+  );
+  return valid.length ? valid : null;
+}
 
 const muted = 'text-xs text-slate-500 dark:text-slate-400';
 const removeLink = 'text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline';
@@ -138,29 +154,35 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
   }));
 
   /**
-   * Saves; when that would remove or replace an account sites are still registered with, the server refuses with how
-   * many. A key that no longer works can remove none of them anyway, so the admin may go on — after saying so, knowing
-   * those sites stay at the old account. Declined, nothing is saved and the server's reason is what the parent shows.
+   * Saves; when that would remove or replace an account sites are still registered with, the server refuses with each
+   * such account, what the save does to it and how many sites stay there. A key that no longer works can remove none of
+   * them anyway, so the admin may go on — after reading, per account, what stays at it. Declined, nothing is saved and
+   * the server's reason is what the parent shows.
    */
   async function putConfirmingStrandedSites(input: WebmasterAccountsInput): Promise<WebmasterAccountsView> {
     try {
       return await api.putWebmasterAccounts(input);
     } catch (err) {
-      if (!isAccountInUse(err)) throw err;
-      const n = err.count ?? 0;
-      const removing = input.google === null || input.bing === null;
-      const verb = removing ? 'Remove' : 'Replace';
+      const accounts = accountsInUse(err);
+      if (!accounts) throw err;
+      const verbs = [...new Set(accounts.map((a) => VERB[a.action]))];
+      const only = accounts.length === 1 ? accounts[0]! : null;
       const ok = await confirm({
-        title: `${verb} the account anyway?`,
+        title: only ? `${VERB[only.action]} the ${ENGINE[only.service]} account anyway?` : 'Change both search engine accounts anyway?',
         message: (
           <>
-            <p>{err.message}</p>
-            <p className="mt-2 font-medium">
-              {verb} anyway — {n === 1 ? '1 site stays' : `${n} sites stay`} registered at the old account; remove {n === 1 ? 'it' : 'them'} there by hand.
-            </p>
+            {accounts.map((a) => (
+              <div key={a.service} className="mb-2">
+                <p>{a.error}</p>
+                <p className="mt-1 font-medium">
+                  {only ? '' : `${ENGINE[a.service]}: `}
+                  {VERB[a.action]} anyway — {a.count === 1 ? '1 site stays' : `${a.count} sites stay`} registered at the old account; remove {a.count === 1 ? 'it' : 'them'} there by hand.
+                </p>
+              </div>
+            ))}
           </>
         ),
-        confirmLabel: `${verb} anyway`,
+        confirmLabel: verbs.length === 1 ? `${verbs[0]} anyway` : 'Remove and replace anyway',
       });
       if (!ok) throw err;
       return api.putWebmasterAccounts({ ...input, force: true });

@@ -78,22 +78,34 @@ export interface SiteStats {
   enabled: boolean;
   /** Human traffic, after the device/country filter. */
   human: StatsCount;
-  /** All bot traffic, unfiltered (bots have no device; the country filter does not apply to them). */
+  /** Bot traffic, after the COUNTRY filter (a bot has no device class, so the device filter does not apply). */
   botViews: number;
-  /** One entry per day of the range, oldest first, zero-filled. */
+  /** One entry per day of the range, oldest first, zero-filled. Human figures filtered; bot views by country only. */
   daily: Array<{ day: string; views: number; visitors: number; botViews: number }>;
   /** Human traffic per device class (country filter applied, device filter not). */
   devices: Array<{ device: StatsDevice; views: number; visitors: number }>;
   /** Human traffic per country, busiest first (device filter applied, country filter not). `ZZ` = unknown. */
   countries: Array<{ country: string; views: number; visitors: number }>;
-  /** Bot views per class, busiest first. */
+  /** Bot views per class, busiest first (country filter applied). */
   bots: Array<{ class: Exclude<StatsClass, 'human'>; views: number }>;
-  /** Pages by human views, busiest first (the device/country filter does not apply to pages). */
+  /**
+   * Pages by human views, busiest first. Under a filter: the filtered human views only (`botViews` 0), from the
+   * device × country breakdown — see {@link SiteStats.breakdown} for what it could not place.
+   */
   pages: Array<{ path: string; views: number; botViews: number }>;
-  /** Where human visitors came from, busiest first. `host` is the referring site, or the campaign name. */
+  /** Where human visitors came from, busiest first. `host` is the referring site, or the campaign name. Filtered. */
   sources: Array<{ source: StatsSource; host: string; visitors: number }>;
-  /** Goal completions (form submissions), busiest first. `goal` is `form:<formId>`. */
+  /** Goal completions (form submissions), busiest first. `goal` is `form:<formId>`. Filtered. */
   goals: Array<{ goal: string; label: string; count: number }>;
+  /**
+   * Only under a device or country filter. Pages, sources and goals are broken down by device and country from
+   * `since` on, and per site and day up to a cap; these say how much of the filtered traffic those three lists
+   * could NOT place, so a filtered list is never mistaken for the whole of it:
+   *   - `pages` — filtered human pageviews not in `pages`;
+   *   - `sources` — filtered visitors not in `sources`;
+   *   - `goals` — goal completions in the range not broken down at all (so not attributable to any filter).
+   */
+  breakdown?: { since: string; pages: number; sources: number; goals: number };
   /**
    * Something the owner should know about how visits are counted:
    *   - `no-public-url` — the site is also deployed to another host, but the instance has no public URL

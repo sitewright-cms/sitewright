@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import type { SiteStats, StatsDevice } from '@sitewright/schema';
-import { BOT_LABELS, countryFlag, countryName, fmt, pct, SOURCE_LABELS } from './format';
+import { BOT_LABELS, countryFlag, countryName, fmt, longDay, pct, SOURCE_LABELS } from './format';
 
 /** A titled panel inside the Statistics tab. `action` sits at the right of its heading. */
 export function Panel({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -17,14 +17,34 @@ export function Panel({ title, action, children }: { title: string; action?: Rea
   );
 }
 
-/** One row of a breakdown: a label, a proportional bar behind it, and the numbers. */
-function BarRow({ label, value, share, detail, onClick, active }: { label: ReactNode; value: string; share: number; detail?: string; onClick?: () => void; active?: boolean }) {
+/** One row of a breakdown: a label, a proportional bar behind it, and the numbers. `muted`: a remainder, not an item. */
+function BarRow({
+  label,
+  value,
+  share,
+  detail,
+  onClick,
+  active,
+  muted,
+}: {
+  label: ReactNode;
+  value: string;
+  share: number;
+  detail?: string;
+  onClick?: () => void;
+  active?: boolean;
+  muted?: boolean;
+}) {
   const inner = (
     <>
-      <span aria-hidden className={`absolute inset-y-0 left-0 rounded-md ${active ? 'bg-indigo-500/25' : 'bg-indigo-500/10 dark:bg-indigo-400/15'}`} style={{ width: `${Math.max(0, Math.min(100, share * 100))}%` }} />
-      <span className="relative min-w-0 flex-1 truncate">{label}</span>
+      <span
+        aria-hidden
+        className={`absolute inset-y-0 left-0 rounded-md ${muted ? 'bg-slate-400/15 dark:bg-slate-400/15' : active ? 'bg-indigo-500/25' : 'bg-indigo-500/10 dark:bg-indigo-400/15'}`}
+        style={{ width: `${Math.max(0, Math.min(100, share * 100))}%` }}
+      />
+      <span className={`relative min-w-0 flex-1 truncate ${muted ? 'italic text-slate-500 dark:text-slate-400' : ''}`}>{label}</span>
       {detail && <span className="relative shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400">{detail}</span>}
-      <span className="relative w-14 shrink-0 text-right font-semibold tabular-nums">{value}</span>
+      <span className={`relative w-14 shrink-0 text-right font-semibold tabular-nums ${muted ? 'text-slate-500 dark:text-slate-400' : ''}`}>{value}</span>
     </>
   );
   const cls = 'relative flex w-full items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm text-slate-700 dark:text-slate-200';
@@ -39,29 +59,73 @@ function BarRow({ label, value, share, detail, onClick, active }: { label: React
 
 const Empty = ({ children }: { children: ReactNode }) => <p className="py-3 text-center text-sm text-slate-500 dark:text-slate-400">{children}</p>;
 
+/** A quiet line under a list: what it does not show, so a short list is not read as the whole. */
+const Footnote = ({ children }: { children: ReactNode }) => <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{children}</p>;
+
 export const DEVICE_LABELS: Record<StatsDevice, string> = { desktop: 'Desktop', mobile: 'Mobile', tablet: 'Tablet' };
 
 /**
- * An active filter, with the button that clears it. Shown above the figures AND in the section the filter
- * belongs to, so a filter set in one panel is visible from the others. The two copies carry the same name
- * and do the same thing; each sits in its own labelled region.
+ * An active filter, with the button that clears it. Shown above the figures AND on every tile the filter applies
+ * to, so nobody reads a filtered tile as the whole site. Every copy carries the same name and clears the filter
+ * everywhere. `compact` shows the value alone (the KPI cards are narrow); its button keeps the full name.
  */
-export function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+export function FilterChip({ label, value, onClear, compact }: { label: string; value?: string; onClear: () => void; compact?: boolean }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-indigo-300/70 bg-indigo-50 py-0.5 pl-3 pr-1 text-sm text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200">
-      {label}
-      <button type="button" className="rounded-full p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/20" aria-label={`Clear ${label}`} onClick={onClear}>
-        <X className="h-3.5 w-3.5" aria-hidden />
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border border-indigo-300/70 bg-indigo-50 text-indigo-800 dark:border-indigo-400/40 dark:bg-indigo-500/10 dark:text-indigo-200 ${compact ? 'py-0 pl-2 pr-0.5 text-xs' : 'py-0.5 pl-3 pr-1 text-sm'}`}
+    >
+      <span className="max-w-[10rem] truncate">{compact && value ? value : label}</span>
+      <button type="button" className="shrink-0 rounded-full p-0.5 hover:bg-indigo-100 dark:hover:bg-indigo-500/20" aria-label={`Clear ${label}`} onClick={onClear}>
+        <X className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} aria-hidden />
       </button>
     </span>
   );
 }
 
-export function DevicesPanel({ stats, device, onDevice }: { stats: SiteStats; device?: StatsDevice; onDevice: (d: StatsDevice | undefined) => void }) {
-  const total = stats.devices.reduce((n, d) => n + d.visitors, 0);
+/** The active device and country filters, and how to clear each — every tile gets them, to show what it applies. */
+export interface ActiveFilters {
+  device?: StatsDevice;
+  country?: string;
+  clearDevice: () => void;
+  clearCountry: () => void;
+}
+
+/**
+ * A tile's filter pills: one per active filter the tile APPLIES. An active filter it cannot apply gets a quiet
+ * note instead (`note`, or "Any device" / "All countries" / "All visitors"), so a tile never looks filtered when
+ * it is not — nor unfiltered when it is.
+ */
+export function TileFilters({ filters, cannot = [], note, compact }: { filters: ActiveFilters; cannot?: Array<'device' | 'country'>; note?: string; compact?: boolean }) {
+  const { device, country } = filters;
+  const skipDevice = Boolean(device) && cannot.includes('device');
+  const skipCountry = Boolean(country) && cannot.includes('country');
+  const quiet = note && (skipDevice || skipCountry) ? note : skipDevice && skipCountry ? 'All visitors' : skipDevice ? 'Any device' : skipCountry ? 'All countries' : null;
+  if (!device && !country) return null;
   return (
-    // eslint-disable-next-line security/detect-object-injection -- device is a typed StatsDevice
-    <Panel title="Devices" action={device && <FilterChip label={`Device: ${DEVICE_LABELS[device]}`} onClear={() => onDevice(undefined)} />}>
+    <>
+      {/* eslint-disable-next-line security/detect-object-injection -- device is a typed StatsDevice */}
+      {device && !skipDevice && <FilterChip label={`Device: ${DEVICE_LABELS[device]}`} value={DEVICE_LABELS[device]} onClear={filters.clearDevice} compact={compact} />}
+      {country && !skipCountry && <FilterChip label={`Country: ${countryName(country)}`} value={countryName(country)} onClear={filters.clearCountry} compact={compact} />}
+      {quiet && <span className="text-xs text-slate-500 dark:text-slate-400">{quiet}</span>}
+    </>
+  );
+}
+
+/**
+ * Why a filtered list holds less than the filtered total: days before the device × country breakdown began, or a
+ * busy day past its cap. Says which, and when the breakdown began.
+ */
+function remainderReason(breakdown: NonNullable<SiteStats['breakdown']>, from: string, what: string): string {
+  return breakdown.since > from
+    ? `${what} are broken down by device and country from ${longDay(breakdown.since)}; earlier ones are not.`
+    : `On a busy day not every ${what.toLowerCase().replace(/s$/, '')} is broken down by device and country.`;
+}
+
+export function DevicesPanel({ stats, filters, onDevice }: { stats: SiteStats; filters: ActiveFilters; onDevice: (d: StatsDevice | undefined) => void }) {
+  const total = stats.devices.reduce((n, d) => n + d.visitors, 0);
+  const { device } = filters;
+  return (
+    <Panel title="Devices" action={<TileFilters filters={filters} />}>
       <div className="flex flex-col gap-1">
         {stats.devices.map((d) => (
           <BarRow
@@ -81,24 +145,23 @@ export function DevicesPanel({ stats, device, onDevice }: { stats: SiteStats; de
 
 const COUNTRIES_SHOWN = 10;
 
-export function CountriesPanel({ stats, country, onCountry }: { stats: SiteStats; country?: string; onCountry: (c: string | undefined) => void }) {
+export function CountriesPanel({ stats, filters, onCountry }: { stats: SiteStats; filters: ActiveFilters; onCountry: (c: string | undefined) => void }) {
   const [all, setAll] = useState(false);
   const total = stats.countries.reduce((n, c) => n + c.visitors, 0);
   const rows = all ? stats.countries : stats.countries.slice(0, COUNTRIES_SHOWN);
+  const { country } = filters;
   return (
     <Panel
       title="Countries"
       action={
-        (country || stats.countries.length > COUNTRIES_SHOWN) && (
-          <>
-            {country && <FilterChip label={`Country: ${countryName(country)}`} onClear={() => onCountry(undefined)} />}
-            {stats.countries.length > COUNTRIES_SHOWN && (
-              <button type="button" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setAll(!all)}>
-                {all ? 'Show fewer' : `Show all ${stats.countries.length}`}
-              </button>
-            )}
-          </>
-        )
+        <>
+          <TileFilters filters={filters} />
+          {stats.countries.length > COUNTRIES_SHOWN && (
+            <button type="button" className="text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-400" onClick={() => setAll(!all)}>
+              {all ? 'Show fewer' : `Show all ${stats.countries.length}`}
+            </button>
+          )}
+        </>
       }
     >
       {rows.length === 0 ? (
@@ -127,28 +190,33 @@ export function CountriesPanel({ stats, country, onCountry }: { stats: SiteStats
   );
 }
 
-export function PagesPanel({ stats }: { stats: SiteStats }) {
-  const max = Math.max(1, ...stats.pages.map((p) => p.views));
+/** Under a filter: human pageviews per page, then what the breakdown could not place. */
+export function PagesPanel({ stats, filters }: { stats: SiteStats; filters: ActiveFilters }) {
+  const rest = stats.breakdown?.pages ?? 0;
+  const max = Math.max(1, rest, ...stats.pages.map((p) => p.views));
   return (
-    <Panel title="Top pages">
-      {stats.pages.length === 0 ? (
+    <Panel title="Top pages" action={<TileFilters filters={filters} />}>
+      {stats.pages.length === 0 && rest === 0 ? (
         <Empty>No pageviews yet.</Empty>
       ) : (
         <div className="flex flex-col gap-1">
           {stats.pages.slice(0, 15).map((p) => (
             <BarRow key={p.path} label={<span className="font-mono text-xs">{p.path}</span>} value={fmt(p.views)} detail={p.botViews ? `${fmt(p.botViews)} bot` : undefined} share={p.views / max} />
           ))}
+          {rest > 0 && <BarRow label="Not broken down by page" value={fmt(rest)} share={rest / max} muted />}
         </div>
       )}
+      {rest > 0 && stats.breakdown && <Footnote>{remainderReason(stats.breakdown, stats.from, 'Pageviews')}</Footnote>}
     </Panel>
   );
 }
 
-export function SourcesPanel({ stats }: { stats: SiteStats }) {
-  const total = stats.sources.reduce((n, s) => n + s.visitors, 0);
+export function SourcesPanel({ stats, filters }: { stats: SiteStats; filters: ActiveFilters }) {
+  const rest = stats.breakdown?.sources ?? 0;
+  const total = stats.sources.reduce((n, s) => n + s.visitors, 0) + rest;
   return (
-    <Panel title="Sources">
-      {stats.sources.length === 0 ? (
+    <Panel title="Sources" action={<TileFilters filters={filters} />}>
+      {stats.sources.length === 0 && rest === 0 ? (
         <Empty>No visitors yet.</Empty>
       ) : (
         <div className="flex flex-col gap-1">
@@ -166,16 +234,19 @@ export function SourcesPanel({ stats }: { stats: SiteStats }) {
               share={total ? s.visitors / total : 0}
             />
           ))}
+          {rest > 0 && <BarRow label="Not broken down by source" value={fmt(rest)} detail={pct(rest, total)} share={total ? rest / total : 0} muted />}
         </div>
       )}
+      {rest > 0 && stats.breakdown && <Footnote>{remainderReason(stats.breakdown, stats.from, 'Visitors')}</Footnote>}
     </Panel>
   );
 }
 
-export function BotsPanel({ stats }: { stats: SiteStats }) {
+/** Bots have a country but no device: the device filter does not reach them, and the tile says so. */
+export function BotsPanel({ stats, filters }: { stats: SiteStats; filters: ActiveFilters }) {
   const total = stats.botViews;
   return (
-    <Panel title="Bots">
+    <Panel title="Bots" action={<TileFilters filters={filters} cannot={['device']} note="Any device (bots have none)" />}>
       {stats.bots.length === 0 ? (
         <Empty>No bot traffic.</Empty>
       ) : (
@@ -189,19 +260,29 @@ export function BotsPanel({ stats }: { stats: SiteStats }) {
   );
 }
 
-/** `visitors` is the unfiltered visitor count for a conversion rate — omitted while a filter is on, because goals are not split by device or country. */
-export function GoalsPanel({ stats, visitors }: { stats: SiteStats; visitors?: number }) {
+/**
+ * `visitors` is the visitor count for a conversion rate — omitted when the goals are not all broken down by the
+ * active filter (it would compare a part with a whole).
+ */
+export function GoalsPanel({ stats, filters, visitors }: { stats: SiteStats; filters: ActiveFilters; visitors?: number }) {
   const max = Math.max(1, ...stats.goals.map((g) => g.count));
+  const rest = stats.breakdown?.goals ?? 0;
   return (
-    <Panel title="Goals">
+    <Panel title="Goals" action={<TileFilters filters={filters} />}>
       {stats.goals.length === 0 ? (
-        <Empty>No form submissions in this period.</Empty>
+        <Empty>{rest > 0 ? 'None broken down for this filter.' : 'No form submissions in this period.'}</Empty>
       ) : (
         <div className="flex flex-col gap-1">
           {stats.goals.map((g) => (
             <BarRow key={g.goal} label={g.label} value={fmt(g.count)} detail={visitors ? `${pct(g.count, visitors)} of visitors` : undefined} share={g.count / max} />
           ))}
         </div>
+      )}
+      {rest > 0 && stats.breakdown && (
+        <Footnote>
+          {fmt(rest)} form {rest === 1 ? 'submission' : 'submissions'} in this period {rest === 1 ? 'is' : 'are'} not broken down by device or country
+          {stats.breakdown.since > stats.from ? ` (recorded before ${longDay(stats.breakdown.since)})` : ''}, so {rest === 1 ? 'it is' : 'they are'} in no filter.
+        </Footnote>
       )}
     </Panel>
   );

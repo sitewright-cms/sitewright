@@ -43,9 +43,29 @@ const SCHEMA = [
   // the hourly sweep once they are. A failed delete is retried from here — never left to the orphan sweep's
   // brake, which cannot tell a purge from a main database restored from an old backup.
   `CREATE TABLE IF NOT EXISTS purged (project TEXT PRIMARY KEY, at TEXT NOT NULL) WITHOUT ROWID`,
+  // ★ The device × country BREAKDOWNS of pages, sources and goals — what lets those lists follow a filter.
+  // `pages`, `sources` and `goals` above stay the exact, uncapped record; these are capped per site and day
+  // (see StatsLimits in engine.ts), and a filtered list states what they could not place by comparing with the
+  // exact `traffic` totals. Human pageviews only. Recorded from the day in meta `dims_since` on.
+  `CREATE TABLE IF NOT EXISTS page_dims (
+     project TEXT NOT NULL, day TEXT NOT NULL, path TEXT NOT NULL, device TEXT NOT NULL, country TEXT NOT NULL,
+     views INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (project, day, path, device, country)) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS source_dims (
+     project TEXT NOT NULL, day TEXT NOT NULL, source TEXT NOT NULL, host TEXT NOT NULL, device TEXT NOT NULL,
+     country TEXT NOT NULL, visitors INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (project, day, source, host, device, country)) WITHOUT ROWID`,
+  `CREATE TABLE IF NOT EXISTS goal_dims (
+     project TEXT NOT NULL, day TEXT NOT NULL, goal TEXT NOT NULL, device TEXT NOT NULL, country TEXT NOT NULL,
+     count INTEGER NOT NULL DEFAULT 0,
+     PRIMARY KEY (project, day, goal, device, country)) WITHOUT ROWID`,
 ];
 
 const DATA_TABLES = ['traffic', 'pages', 'sources', 'goals'] as const;
+/** The breakdown tables (not exported as CSV: the exact tables are the record; these only serve filters). */
+const DIM_TABLES = ['page_dims', 'source_dims', 'goal_dims'] as const;
+/** Every table holding a project's statistics by day — what the retention prune and a forget cover. */
+const DAILY_TABLES = [...DATA_TABLES, ...DIM_TABLES] as const;
 
 /** Above this, an existing file is not rewritten at startup to switch on incremental vacuum. */
 const CONVERT_MAX_BYTES = 64 * 1024 * 1024;
@@ -71,6 +91,9 @@ export interface PageRow { project: string; day: string; path: string; views: nu
 export interface SourceRow { project: string; day: string; source: StatsSource; host: string; visitors: number }
 export interface GoalRow { project: string; day: string; goal: string; count: number }
 export interface SeenRow { project: string; day: string; ids: number[] }
+export interface PageDimRow { project: string; day: string; path: string; device: StatsDevice; country: string; views: number }
+export interface SourceDimRow { project: string; day: string; source: StatsSource; host: string; device: StatsDevice; country: string; visitors: number }
+export interface GoalDimRow { project: string; day: string; goal: string; device: StatsDevice; country: string; count: number }
 
 /** One flush worth of increments. */
 export interface StatsDelta {
@@ -80,7 +103,35 @@ export interface StatsDelta {
   goals: GoalRow[];
   /** Visitor ids first seen since the last flush. */
   seen: SeenRow[];
+  /** The device × country breakdowns (see the `page_dims` table). */
+  pageDims?: PageDimRow[];
+  sourceDims?: SourceDimRow[];
+  goalDims?: GoalDimRow[];
 }
+
+/** Today's breakdown keys per project, for the engine's per-site caps after a restart. */
+export interface DimKeys {
+  pages: Map<string, string[]>;
+  sources: Map<string, string[]>;
+  goals: Map<string, string[]>;
+}
+
+/**
+ * The exact figures a filtered list is checked against, from {@link StatsStore.query} under a device or country
+ * filter: what the breakdown tables hold for it, beside the totals it should add up to.
+ */
+export interface StatsBreakdownTotals {
+  /** Filtered human pageviews that are in `page_dims`. */
+  pageViews: number;
+  /** Filtered visitors (their first pageview of the day) that are in `source_dims`. */
+  sourceVisitors: number;
+  /** All goal completions in the range, and those broken down at all (whatever the filter). */
+  goals: number;
+  goalsBrokenDown: number;
+}
+
+/** The key of a breakdown row within its site and day — the unit the engine's per-site caps count. */
+export const dimKey = (...parts: string[]): string => parts.join('\u0000');
 
 /** The four exportable tables, for the CSV download. */
 export type StatsTable = (typeof DATA_TABLES)[number];
@@ -156,11 +207,47 @@ export class StatsStore {
 
   /** Every project id that has statistics stored. */
   async projectIds(): Promise<string[]> {
-    const rs = await this.client.execute(
-      `SELECT project FROM traffic UNION SELECT project FROM pages UNION SELECT project FROM sources
-       UNION SELECT project FROM goals UNION SELECT project FROM seen`,
-    );
+    // DAILY_TABLES is a closed constant list.
+    const rs = await this.client.execute([...DAILY_TABLES, 'seen'].map((t) => `SELECT project FROM ${t}`).join(' UNION '));
     return rs.rows.map((r) => str(r.project));
+  }
+
+  /**
+   * The first day the device × country breakdowns were recorded: the day this version first opened the file
+   * (stored then, and kept). Days before it have no breakdown, and a filtered list says so.
+   */
+  async dimsSince(today: string): Promise<string> {
+    await this.client.execute({ sql: 'INSERT OR IGNORE INTO meta (k, v) VALUES (?, ?)', args: ['dims_since', today] });
+    const rs = await this.client.execute({ sql: 'SELECT v FROM meta WHERE k = ?', args: ['dims_since'] });
+    return str(rs.rows[0]?.v) || today;
+  }
+
+  /** `day`'s breakdown keys per project and table (bounded by the engine's per-site caps). */
+  async loadDimKeys(day: string): Promise<DimKeys> {
+    const [pages, sources, goals] = await this.client.batch(
+      [
+        { sql: 'SELECT project, path, device, country FROM page_dims WHERE day = ?', args: [day] },
+        { sql: 'SELECT project, source, host, device, country FROM source_dims WHERE day = ?', args: [day] },
+        { sql: 'SELECT project, goal, device, country FROM goal_dims WHERE day = ?', args: [day] },
+      ],
+      'read',
+    );
+    const group = (rows: ReadonlyArray<Record<string, unknown>>, cols: string[]): Map<string, string[]> => {
+      const out = new Map<string, string[]>();
+      for (const r of rows) {
+        const project = str(r.project);
+        let keys = out.get(project);
+        if (!keys) out.set(project, (keys = []));
+        // eslint-disable-next-line security/detect-object-injection -- `c` is one of the constant column names above
+        keys.push(dimKey(...cols.map((c) => str(r[c]))));
+      }
+      return out;
+    };
+    return {
+      pages: group(pages!.rows, ['path', 'device', 'country']),
+      sources: group(sources!.rows, ['source', 'host', 'device', 'country']),
+      goals: group(goals!.rows, ['goal', 'device', 'country']),
+    };
   }
 
   close(): void {
@@ -214,6 +301,21 @@ export class StatsStore {
       ...delta.seen
         .filter((r) => r.ids.length > 0)
         .map((r) => ({ sql: 'INSERT INTO seen (project, day, ids) VALUES (?, ?, ?)', args: [r.project, r.day, Buffer.from(Uint32Array.from(r.ids).buffer)] })),
+      ...(delta.pageDims ?? []).map((r) => ({
+        sql: `INSERT INTO page_dims (project, day, path, device, country, views) VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT (project, day, path, device, country) DO UPDATE SET views = views + excluded.views`,
+        args: [r.project, r.day, r.path, r.device, r.country, r.views],
+      })),
+      ...(delta.sourceDims ?? []).map((r) => ({
+        sql: `INSERT INTO source_dims (project, day, source, host, device, country, visitors) VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT (project, day, source, host, device, country) DO UPDATE SET visitors = visitors + excluded.visitors`,
+        args: [r.project, r.day, r.source, r.host, r.device, r.country, r.visitors],
+      })),
+      ...(delta.goalDims ?? []).map((r) => ({
+        sql: `INSERT INTO goal_dims (project, day, goal, device, country, count) VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT (project, day, goal, device, country) DO UPDATE SET count = count + excluded.count`,
+        args: [r.project, r.day, r.goal, r.device, r.country, r.count],
+      })),
     ];
     if (stmts.length) await this.client.batch(stmts, 'write');
   }
@@ -222,7 +324,7 @@ export class StatsStore {
   async prune(today: string, keepFrom: string, saltKeepFrom: string): Promise<void> {
     await this.client.batch(
       [
-        ...DATA_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE day < ?`, args: [keepFrom] })),
+        ...DAILY_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE day < ?`, args: [keepFrom] })),
         { sql: 'DELETE FROM salts WHERE day < ?', args: [saltKeepFrom] },
         { sql: 'DELETE FROM seen WHERE day < ?', args: [today] },
       ],
@@ -233,7 +335,7 @@ export class StatsStore {
   /** Deletes every statistic of a project (it was deleted for good). */
   async forget(project: string): Promise<void> {
     await this.client.batch(
-      [...DATA_TABLES, 'seen'].map((t) => ({ sql: `DELETE FROM ${t} WHERE project = ?`, args: [project] })),
+      [...DAILY_TABLES, 'seen'].map((t) => ({ sql: `DELETE FROM ${t} WHERE project = ?`, args: [project] })),
       'write',
     );
   }
@@ -282,13 +384,20 @@ export class StatsStore {
     return out;
   }
 
-  /** The breakdowns for one project and range (the engine zero-fills the days and adds `enabled`). */
-  async query(project: string, q: StatsQuery): Promise<Omit<SiteStats, 'enabled' | 'daily'> & { daily: SiteStats['daily'] }> {
+  /**
+   * The breakdowns for one project and range (the engine zero-fills the days and adds `enabled` and the breakdown's
+   * start). `totals` is there only under a filter (see {@link StatsBreakdownTotals}).
+   */
+  async query(
+    project: string,
+    q: StatsQuery,
+  ): Promise<Omit<SiteStats, 'enabled' | 'daily' | 'breakdown'> & { daily: SiteStats['daily']; totals?: StatsBreakdownTotals }> {
     const range = 'project = ? AND day >= ? AND day <= ?';
     const base: InValue[] = [project, q.from, q.to];
-    // The human filters: device and/or country. Each breakdown drops its OWN dimension's filter, so the device
-    // list under a country filter still shows every device (and vice versa) — that is what makes it a filter
-    // you can switch, not a dead end.
+    const filtered = Boolean(q.device || q.country);
+    // The filters: device and/or country, on everything that was counted with them. Each breakdown drops its OWN
+    // dimension's filter, so the device list under a country filter still shows every device (and vice versa) —
+    // that is what makes it a filter you can switch, not a dead end. Bots have a country but no device.
     const filter = (skip?: 'device' | 'country'): { sql: string; args: InValue[] } => {
       const parts: string[] = [];
       const args: InValue[] = [];
@@ -305,28 +414,45 @@ export class StatsStore {
     const all = filter();
     const exceptDevice = filter('device');
     const exceptCountry = filter('country');
-    const [human, bots, daily, devices, countries, botClasses, pages, sources, goals] = await this.client.batch(
+    // Bots: the country filter only (a bot has no device class).
+    const bot = filter('device');
+    // Pages, sources and goals: the exact tables unfiltered; the breakdown tables under a filter.
+    const lists: InStatement[] = filtered
+      ? [
+          { sql: `SELECT path, SUM(views) AS v, 0 AS b FROM page_dims WHERE ${range}${all.sql} GROUP BY path ORDER BY v DESC LIMIT ${LIST_LIMIT}`, args: [...base, ...all.args] },
+          { sql: `SELECT source, host, SUM(visitors) AS u FROM source_dims WHERE ${range}${all.sql} GROUP BY source, host ORDER BY u DESC LIMIT ${LIST_LIMIT}`, args: [...base, ...all.args] },
+          { sql: `SELECT goal, SUM(count) AS c FROM goal_dims WHERE ${range}${all.sql} GROUP BY goal ORDER BY c DESC LIMIT ${LIST_LIMIT}`, args: [...base, ...all.args] },
+          // What those lists add up to, and what they should: see StatsBreakdownTotals.
+          { sql: `SELECT COALESCE(SUM(views), 0) AS n FROM page_dims WHERE ${range}${all.sql}`, args: [...base, ...all.args] },
+          { sql: `SELECT COALESCE(SUM(visitors), 0) AS n FROM source_dims WHERE ${range}${all.sql}`, args: [...base, ...all.args] },
+          { sql: `SELECT COALESCE(SUM(count), 0) AS n FROM goals WHERE ${range}`, args: base },
+          { sql: `SELECT COALESCE(SUM(count), 0) AS n FROM goal_dims WHERE ${range}`, args: base },
+        ]
+      : [
+          { sql: `SELECT path, SUM(views) AS v, SUM(bot_views) AS b FROM pages WHERE ${range} GROUP BY path ORDER BY v DESC, b DESC LIMIT ${LIST_LIMIT}`, args: base },
+          { sql: `SELECT source, host, SUM(visitors) AS u FROM sources WHERE ${range} GROUP BY source, host ORDER BY u DESC LIMIT ${LIST_LIMIT}`, args: base },
+          { sql: `SELECT goal, SUM(count) AS c FROM goals WHERE ${range} GROUP BY goal ORDER BY c DESC LIMIT ${LIST_LIMIT}`, args: base },
+        ];
+    const [human, bots, daily, devices, countries, botClasses, pages, sources, goals, pageDimViews, sourceDimVisitors, goalsAll, goalDimsAll] = await this.client.batch(
       [
         { sql: `SELECT COALESCE(SUM(views), 0) AS v, COALESCE(SUM(visitors), 0) AS u FROM traffic WHERE ${range} AND class = 'human'${all.sql}`, args: [...base, ...all.args] },
-        { sql: `SELECT COALESCE(SUM(views), 0) AS v FROM traffic WHERE ${range} AND class <> 'human'`, args: base },
+        { sql: `SELECT COALESCE(SUM(views), 0) AS v FROM traffic WHERE ${range} AND class <> 'human'${bot.sql}`, args: [...base, ...bot.args] },
         {
           sql: `SELECT day,
                   SUM(CASE WHEN class = 'human'${all.sql} THEN views ELSE 0 END) AS v,
                   SUM(CASE WHEN class = 'human'${all.sql} THEN visitors ELSE 0 END) AS u,
-                  SUM(CASE WHEN class <> 'human' THEN views ELSE 0 END) AS b
+                  SUM(CASE WHEN class <> 'human'${bot.sql} THEN views ELSE 0 END) AS b
                 FROM traffic WHERE ${range} GROUP BY day ORDER BY day`,
-          args: [...all.args, ...all.args, ...base],
+          args: [...all.args, ...all.args, ...bot.args, ...base],
         },
         { sql: `SELECT device, SUM(views) AS v, SUM(visitors) AS u FROM traffic WHERE ${range} AND class = 'human'${exceptDevice.sql} GROUP BY device ORDER BY u DESC, v DESC`, args: [...base, ...exceptDevice.args] },
         { sql: `SELECT country, SUM(views) AS v, SUM(visitors) AS u FROM traffic WHERE ${range} AND class = 'human'${exceptCountry.sql} GROUP BY country ORDER BY u DESC, v DESC LIMIT ${COUNTRY_LIMIT}`, args: [...base, ...exceptCountry.args] },
-        { sql: `SELECT class, SUM(views) AS v FROM traffic WHERE ${range} AND class <> 'human' GROUP BY class ORDER BY v DESC`, args: base },
-        { sql: `SELECT path, SUM(views) AS v, SUM(bot_views) AS b FROM pages WHERE ${range} GROUP BY path ORDER BY v DESC, b DESC LIMIT ${LIST_LIMIT}`, args: base },
-        { sql: `SELECT source, host, SUM(visitors) AS u FROM sources WHERE ${range} GROUP BY source, host ORDER BY u DESC LIMIT ${LIST_LIMIT}`, args: base },
-        { sql: `SELECT goal, SUM(count) AS c FROM goals WHERE ${range} GROUP BY goal ORDER BY c DESC LIMIT ${LIST_LIMIT}`, args: base },
+        { sql: `SELECT class, SUM(views) AS v FROM traffic WHERE ${range} AND class <> 'human'${bot.sql} GROUP BY class ORDER BY v DESC`, args: [...base, ...bot.args] },
+        ...lists,
       ],
       'read',
     );
-    return {
+    const out = {
       from: q.from,
       to: q.to,
       human: { views: num(human!.rows[0]?.v), visitors: num(human!.rows[0]?.u) },
@@ -338,6 +464,16 @@ export class StatsStore {
       pages: pages!.rows.map((r) => ({ path: str(r.path), views: num(r.v), botViews: num(r.b) })),
       sources: sources!.rows.map((r) => ({ source: str(r.source) as StatsSource, host: str(r.host), visitors: num(r.u) })),
       goals: goals!.rows.map((r) => ({ goal: str(r.goal), label: str(r.goal), count: num(r.c) })),
+    };
+    if (!filtered) return out;
+    return {
+      ...out,
+      totals: {
+        pageViews: num(pageDimViews!.rows[0]?.n),
+        sourceVisitors: num(sourceDimVisitors!.rows[0]?.n),
+        goals: num(goalsAll!.rows[0]?.n),
+        goalsBrokenDown: num(goalDimsAll!.rows[0]?.n),
+      },
     };
   }
 

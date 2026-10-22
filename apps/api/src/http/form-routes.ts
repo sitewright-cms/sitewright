@@ -66,8 +66,11 @@ export interface FormRoutesDeps {
   ) => Promise<{ ctx: ProjectContext; project: { id: string } }>;
   isWriter: (ctx: ProjectContext) => boolean;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
-  /** Told about every STORED submission (the built-in statistics count it as a goal). Must not throw. */
-  onSubmitted?: (projectId: string, formId: string) => void;
+  /**
+   * Told about every STORED submission (the built-in statistics count it as a goal, broken down by the submitter's
+   * device class and country — neither is stored anywhere else). Must not throw.
+   */
+  onSubmitted?: (projectId: string, formId: string, visitor: { ua: string; ip: string; chMobile: boolean }) => void;
 }
 
 /** Loads a project's form definition (server-side, no tenant context). */
@@ -490,7 +493,11 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // can see, rather than one line in a log nobody reads.
       const routed = isPlatformRoutedMode(form.mode);
       const stored = await submissions.create(projectId, formId, parsed.fields, { owesEmail: routed });
-      deps.onSubmitted?.(projectId, formId);
+      deps.onSubmitted?.(projectId, formId, {
+        ua: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : '',
+        ip: req.ip,
+        chMobile: req.headers['sec-ch-ua-mobile'] === '?1',
+      });
 
       // Delivery (best-effort): never fail the visitor's request on a mail error.
       // globalSmtp → instance SMTP; userSmtp → the project's own SMTP. (contactPhp,

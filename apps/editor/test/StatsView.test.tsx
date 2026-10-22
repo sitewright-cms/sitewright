@@ -89,33 +89,90 @@ describe('StatsView', () => {
     const countries = screen.getByRole('region', { name: 'Countries' });
     fireEvent.click(within(countries).getByRole('button', { name: /Germany/ }));
     await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), device: 'mobile', country: 'DE' }));
-    // A filtered view has no meaningful conversion rate: goals are not split by device or country.
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Goals' })).not.toHaveTextContent('of visitors'));
     fireEvent.click(within(devices).getByRole('button', { name: 'Clear Device: Mobile' }));
     await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), country: 'DE' }));
   });
 
-  it('★ shows each filter at the top AND in its own section, and either copy clears it', async () => {
+  it('★ shows a filtered conversion rate only when every goal of the period is broken down', async () => {
+    getStats.mockImplementation(async (_p: string, q: StatsQuery) => (q.country ? stats({ breakdown: { since: '2026-09-01', pages: 0, sources: 0, goals: 0 } }) : stats()));
+    render(<StatsView project={project} />);
+    const countries = await screen.findByRole('region', { name: 'Countries' });
+    fireEvent.click(within(countries).getByRole('button', { name: /Germany/ }));
+    await waitFor(() => expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), country: 'DE' }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Goals' })).toHaveTextContent('10% of visitors'));
+    // Two submissions from before the breakdown: in no filter, so no rate — and the card says what is missing.
+    getStats.mockImplementation(async () => stats({ breakdown: { since: '2026-10-01', pages: 0, sources: 0, goals: 2 } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh statistics' }));
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Goals' })).toHaveTextContent('+2 not broken down'));
+    expect(screen.getByRole('group', { name: 'Goals' })).not.toHaveTextContent('of visitors');
+    expect(within(screen.getByRole('region', { name: 'Goals' })).getByText(/2 form submissions in this period are not broken down by device or country \(recorded before Thu, 1 Oct 2026\)/)).toBeInTheDocument();
+  });
+
+  it('★ every tile a filter applies to shows its pill; a tile it cannot apply to says so; any pill clears it everywhere', async () => {
+    getStats.mockImplementation(async (_p: string, q: StatsQuery) => (q.device || q.country ? stats({ breakdown: { since: '2026-09-01', pages: 0, sources: 0, goals: 0 } }) : stats()));
     render(<StatsView project={project} />);
     const devices = await screen.findByRole('region', { name: 'Devices' });
-    const countries = screen.getByRole('region', { name: 'Countries' });
-    // Presence guard: no pill anywhere before a filter is set.
+    const region = (name: string) => screen.getByRole('region', { name });
+    const kpi = (name: string) => screen.getByRole('group', { name });
+    // Presence guard: unfiltered, no pill and no "not filtered" note anywhere.
     expect(screen.queryAllByRole('button', { name: /^Clear / })).toHaveLength(0);
+    expect(screen.queryByText(/Any device/)).toBeNull();
+
     fireEvent.click(within(devices).getByRole('button', { name: /Mobile/ }));
-    await waitFor(() => expect(within(devices).getByRole('button', { name: 'Clear Device: Mobile' })).toBeInTheDocument());
-    expect(screen.getAllByRole('button', { name: 'Clear Device: Mobile' })).toHaveLength(2); // the top row + Devices
-    expect(within(countries).queryByRole('button', { name: /^Clear / })).toBeNull(); // not in a section it isn't about
+    await waitFor(() => expect(within(region('Top pages')).getByRole('button', { name: 'Clear Device: Mobile' })).toBeInTheDocument());
+    const filteredByDevice = ['Pageviews per day', 'Devices', 'Countries', 'Map', 'Top pages', 'Sources', 'Goals'];
+    for (const name of filteredByDevice) expect(within(region(name)).getByRole('button', { name: 'Clear Device: Mobile' })).toBeInTheDocument();
+    for (const name of ['Visitors', 'Pageviews', 'Goals']) expect(within(kpi(name)).getByRole('button', { name: 'Clear Device: Mobile' })).toBeInTheDocument();
+    // The bots have no device: no pill there, and a note so they are not read as mobile bots.
+    expect(within(region('Bots')).queryByRole('button', { name: /^Clear / })).toBeNull();
+    expect(within(region('Bots')).getByText('Any device (bots have none)')).toBeInTheDocument();
+    expect(within(kpi('Bot pageviews')).queryByRole('button', { name: /^Clear / })).toBeNull();
+    expect(within(kpi('Bot pageviews')).getByText('Any device')).toBeInTheDocument();
+    // …nor set against ONE device's humans as a share of "all traffic".
+    expect(kpi('Bot pageviews')).not.toHaveTextContent('of all traffic');
+    expect(kpi('Bot pageviews')).toHaveTextContent('80');
+    expect(within(region('Pageviews per day')).getByText(/Bot bars: any device/)).toBeInTheDocument();
+    // The top row + 7 panels + 3 KPI cards: every copy names the same filter.
+    expect(screen.getAllByRole('button', { name: 'Clear Device: Mobile' })).toHaveLength(11);
 
-    fireEvent.click(within(countries).getByRole('button', { name: /Germany/ }));
-    await waitFor(() => expect(within(countries).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument());
-    const map = await screen.findByRole('region', { name: 'Map' });
-    expect(within(map).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Clear Country: Germany' })).toHaveLength(3); // top, Countries, Map
+    // A country reaches the bots as well.
+    fireEvent.click(within(region('Countries')).getByRole('button', { name: /Germany/ }));
+    await waitFor(() => expect(within(region('Bots')).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument());
+    expect(within(kpi('Bot pageviews')).getByRole('button', { name: 'Clear Country: Germany' })).toBeInTheDocument();
 
-    // Cleared from the MAP section, it goes everywhere.
-    fireEvent.click(within(map).getByRole('button', { name: 'Clear Country: Germany' }));
-    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Clear Country: Germany' })).toHaveLength(0));
-    expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), device: 'mobile' });
+    // Cleared from ONE tile (Top pages), it goes from every tile and from the query.
+    fireEvent.click(within(region('Top pages')).getByRole('button', { name: 'Clear Device: Mobile' }));
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Clear Device: Mobile' })).toHaveLength(0));
+    expect(getStats).toHaveBeenLastCalledWith('p1', { ...rangeDays('30d'), country: 'DE' });
+    expect(screen.queryByText(/Any device/)).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Clear Country: Germany' }).length).toBeGreaterThan(1);
+  });
+
+  it('★ a filtered list says what it could not place: a "not broken down" row and why', async () => {
+    getStats.mockImplementation(async (_p: string, q: StatsQuery) =>
+      q.country
+        ? stats({
+            pages: [{ path: '/about/', views: 30, botViews: 0 }],
+            sources: [{ source: 'search', host: 'google.com', visitors: 6 }],
+            breakdown: { since: '2026-10-10', pages: 60, sources: 24, goals: 0 },
+          })
+        : stats(),
+    );
+    render(<StatsView project={project} />);
+    fireEvent.click(within(await screen.findByRole('region', { name: 'Countries' })).getByRole('button', { name: /Germany/ }));
+    const pages = await screen.findByRole('region', { name: 'Top pages' });
+    await waitFor(() => expect(within(pages).getByText('Not broken down by page')).toBeInTheDocument());
+    // Presence: the placed page is listed beside the remainder.
+    expect(within(pages).getByText('/about/')).toBeInTheDocument();
+    expect(within(pages).getByText('Not broken down by page').closest('div')).toHaveTextContent('60');
+    expect(within(pages).getByText(/broken down by device and country from Sat, 10 Oct 2026; earlier ones are not/)).toBeInTheDocument();
+    const sources = screen.getByRole('region', { name: 'Sources' });
+    expect(within(sources).getByText('Not broken down by source').closest('div')).toHaveTextContent('24');
+    expect(within(sources).getByText('google.com')).toBeInTheDocument();
+    // Unfiltered again: the exact lists, nothing "not broken down".
+    fireEvent.click(within(pages).getByRole('button', { name: 'Clear Country: Germany' }));
+    await waitFor(() => expect(within(screen.getByRole('region', { name: 'Top pages' })).queryByText('Not broken down by page')).toBeNull());
+    expect(within(screen.getByRole('region', { name: 'Top pages' })).getByText('/')).toBeInTheDocument();
   });
 
   it('★ a day in the chart shows the editor tooltip, one figure per line', async () => {

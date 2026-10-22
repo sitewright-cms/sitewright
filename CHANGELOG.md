@@ -66,6 +66,18 @@ The running version of an instance is reported at `GET /version` (baked into the
     never hides a view or the tab, or tells staff to switch on what is already on.
   - The rankings read now tells every reader whether a rank-tracking provider is set up (`configured`); why checks
     may not run is still for staff only.
+- **Statistics: a device or country filter now applies to every tile it can, and each of those tiles shows it.**
+  Top pages, Sources and Goals follow both filters, and the Bots, the bot pageviews and the chart's bot bars follow
+  the country (a bot has no device, so they say "Any device" instead). Every filtered tile carries the filter's
+  pill, and clearing any pill clears the filter everywhere.
+  - **Older days:** pages, sources and goals are broken down by device and country from the day this version
+    first runs. A filtered list over earlier days ends with a "Not broken down" line, worked out from the exact
+    totals and saying why, instead of showing those visits as missing; goals from before say how many are not in
+    any filter, and the conversion rate shows only when every goal of the period is placed.
+  - **Storage:** the breakdown is kept beside the exact lists, at most 1,000 page rows, 500 source rows and 200 goal
+    rows per site per day (about 13 KB a day for a site with 150 visitors a day), for the same 25 months. Past a
+    cap a visit still counts everywhere; on a filtered list it shows as not broken down.
+  - Agents: `get_site_stats` returns the same filtered lists and a `breakdown` of what they could not place.
 
 ### Fixed
 

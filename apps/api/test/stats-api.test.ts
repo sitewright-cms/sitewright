@@ -249,6 +249,51 @@ describe('built-in statistics', () => {
     expect(s.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 1 }]);
   });
 
+  it('★ a device or country filter narrows the pages, sources, goals and bots too (through the real routes)', async () => {
+    await seed();
+    await client.project(projectId).putContent('form', 'contact', {
+      id: 'contact',
+      name: 'Contact us',
+      mode: 'globalSmtp',
+      recipient: 'owner@example.com',
+      fields: [{ name: 'message', label: 'Message', type: 'textarea' }],
+    });
+    await publish();
+    const home = trackerOf((await page('/')).body)!;
+    const about = trackerOf((await page('/about/')).body)!;
+    await beacon({ r: about.r, k: about.k, h: SITE_HOST, f: 'www.google.com' }); // Germany, desktop
+    await beacon({ r: home.r, k: home.k, h: SITE_HOST, m: 1 }, { ua: IPHONE, ip: '2.2.2.2' }); // US, phone
+    await page('/', GOOGLEBOT, '2.2.2.3'); // a US crawler, served by the platform
+    // A form sent from the American phone.
+    const sent = await harness.app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      headers: { 'content-type': 'application/json', 'user-agent': IPHONE },
+      payload: { message: 'Hello there', _elapsed: '5000', _ix: '3.12.1' },
+      remoteAddress: '2.2.2.2',
+    });
+    expect(sent.statusCode).toBe(200);
+
+    const all = await stats();
+    expect(all.pages.map((p: { path: string }) => p.path).sort()).toEqual(['/', '/about/']);
+    expect(all.breakdown).toBeUndefined();
+
+    const us = await stats('&country=US');
+    expect(us.pages).toEqual([{ path: '/', views: 1, botViews: 0 }]);
+    expect(us.sources).toEqual([{ source: 'direct', host: '', visitors: 1 }]);
+    expect(us.goals).toEqual([{ goal: 'form:contact', label: 'Contact us', count: 1 }]);
+    expect(us.botViews).toBe(1);
+    expect(us.bots).toEqual([{ class: 'search', views: 1 }]);
+    expect(us.breakdown).toEqual({ since: today(), pages: 0, sources: 0, goals: 0 });
+
+    const desktop = await stats('&device=desktop');
+    expect(desktop.pages).toEqual([{ path: '/about/', views: 1, botViews: 0 }]);
+    expect(desktop.sources).toEqual([{ source: 'search', host: 'google.com', visitors: 1 }]);
+    expect(desktop.goals).toEqual([]);
+    // Bots have no device: the device filter leaves them whole.
+    expect(desktop.botViews).toBe(1);
+  });
+
   it('exports a table as CSV', async () => {
     await seed();
     await publish();

@@ -13,7 +13,7 @@ import {
 } from '@sitewright/schema';
 import { deviceClass, trafficClass, trafficSource } from './classify.js';
 import type { GeoLookup } from './geo.js';
-import type { GoalRow, PageRow, SeenRow, SourceRow, StatsDelta, StatsStore, StatsTable, TrafficRow } from './store.js';
+import { dimKey, type GoalDimRow, type GoalRow, type PageDimRow, type PageRow, type SeenRow, type SourceDimRow, type SourceRow, type StatsDelta, type StatsStore, type StatsTable, type TrafficRow } from './store.js';
 import { statsProjectKey } from './token.js';
 
 /**
@@ -29,6 +29,11 @@ import { statsProjectKey } from './token.js';
  * later. The first pageview of a visitor's day counts the visitor — on that pageview's device/country row, and
  * on its traffic source — so "visitors from Germany on mobile" needs no per-visitor storage at all. A truncated
  * id can collide; at 100,000 visitors to one site in a day that undercounts by about five.
+ *
+ * BREAKDOWNS. A human pageview is also counted by (page, device, country), and a visitor's source and a goal by
+ * (…, device, country), so the device and country filters reach those lists too. They sit beside the exact lists,
+ * capped per site and day; what they could not place is the difference from the exact totals, which a filtered
+ * query reports rather than hides (see {@link StatsEngine.query}).
  *
  * Every in-memory structure is BOUNDED, per site as well as overall (see {@link StatsLimits}): a flood of junk
  * — or one very busy site — can cost one site its accuracy, never another site's, and never unbounded memory.
@@ -54,6 +59,18 @@ export interface StatsLimits {
   sourceHosts: number;
   /** …and across all sites (each name is up to 253 characters, remembered until midnight). */
   sourceHostsTotal: number;
+  /**
+   * The device × country BREAKDOWN of pages, sources and goals (what a filtered list is read from): distinct
+   * (page, device, country) rows per site per day. Past it a pageview still counts everywhere else; a filtered
+   * page list then shows it as "not broken down". These three caps are what bound the breakdown's disk use.
+   */
+  pageDimsPerSite: number;
+  /** …distinct (source, host, device, country) rows per site per day. */
+  sourceDimsPerSite: number;
+  /** …distinct (goal, device, country) rows per site per day. */
+  goalDimsPerSite: number;
+  /** Breakdown rows remembered for today across all sites, to apply those caps (a 30-bit fingerprint each, ~16 bytes). */
+  dimKeys: number;
 }
 
 export const DEFAULT_STATS_LIMITS: StatsLimits = {
@@ -63,7 +80,26 @@ export const DEFAULT_STATS_LIMITS: StatsLimits = {
   seenIdsPerSite: 250_000,
   sourceHosts: 500,
   sourceHostsTotal: 100_000,
+  pageDimsPerSite: 1_000,
+  sourceDimsPerSite: 500,
+  goalDimsPerSite: 200,
+  dimKeys: 300_000,
 };
+
+type DimKind = 'pages' | 'sources' | 'goals';
+
+/**
+ * A breakdown key's fingerprint for the per-site caps: FNV-1a, kept to 30 bits like a visitor id, so it stays a
+ * small integer in a Set (~16 bytes, not a boxed number). A collision admits one extra row, no more.
+ */
+function fnv1a(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 2;
+}
 
 export interface StatsHit {
   projectId: string;
@@ -103,12 +139,30 @@ interface Pending {
   goals: Map<string, GoalRow>;
   /** Visitor ids first seen since the last flush, per site and day — appended to the store with the counts. */
   seen: Map<string, SeenRow>;
+  /**
+   * The device × country breakdowns. Outside the pending-row caps: a row here exists only for a key admitted under
+   * the per-site breakdown caps for the day, which bound them on their own.
+   */
+  pageDims: Map<string, PageDimRow>;
+  sourceDims: Map<string, SourceDimRow>;
+  goalDims: Map<string, GoalDimRow>;
   /** Distinct counter rows per site (for the per-site cap). */
   rowsBySite: Map<string, number>;
   rows: number;
 }
 
-const emptyPending = (): Pending => ({ traffic: new Map(), pages: new Map(), sources: new Map(), goals: new Map(), seen: new Map(), rowsBySite: new Map(), rows: 0 });
+const emptyPending = (): Pending => ({
+  traffic: new Map(),
+  pages: new Map(),
+  sources: new Map(),
+  goals: new Map(),
+  seen: new Map(),
+  pageDims: new Map(),
+  sourceDims: new Map(),
+  goalDims: new Map(),
+  rowsBySite: new Map(),
+  rows: 0,
+});
 const K = '\u0000';
 
 export class StatsEngine {
@@ -132,6 +186,12 @@ export class StatsEngine {
   private seenCount = 0;
   private sourceHosts = new Map<string, Set<string>>();
   private sourceHostCount = 0;
+  /** Today's breakdown rows per `${kind}\0${project}`, as key fingerprints (see {@link StatsLimits.pageDimsPerSite}). */
+  private dimKeys = new Map<string, Set<number>>();
+  private dimKeyCount = 0;
+  private dimsDropped = 0;
+  /** The first day the breakdowns were recorded (see StatsStore.dimsSince). */
+  private dimsSince = '';
   /** Purges the store could not record; the next sweep finishes them all the same. */
   private purgedInMemory = new Set<string>();
   private prunedFor = '';
@@ -174,6 +234,18 @@ export class StatsEngine {
         engine.seenCount++;
       }
       engine.seen.set(project, set);
+    }
+    engine.dimsSince = await engine.store.dimsSince(today);
+    // Today's breakdown rows count against today's caps after a restart too — or every restart would grant a site
+    // a fresh allowance, and a crash loop an unbounded one.
+    const stored = await engine.store.loadDimKeys(today);
+    for (const kind of ['pages', 'sources', 'goals'] as const) {
+      // eslint-disable-next-line security/detect-object-injection -- kind is one of three literals
+      for (const [project, keys] of stored[kind]) {
+        const set = new Set(keys.map(fnv1a));
+        engine.dimKeys.set(`${kind}${K}${project}`, set);
+        engine.dimKeyCount += set.size;
+      }
     }
     return engine;
   }
@@ -220,8 +292,43 @@ export class StatsEngine {
       this.seenCount = 0;
       this.sourceHosts = new Map();
       this.sourceHostCount = 0;
+      this.dimKeys = new Map();
+      this.dimKeyCount = 0;
     }
     return day;
+  }
+
+  /**
+   * Whether a breakdown row may be written for `key` today: it already exists, or the site and the instance are
+   * under their caps (and it is then remembered). A refusal costs only the breakdown — the visit counts everywhere
+   * else, and a filtered list shows it as not broken down.
+   */
+  private admitDim(kind: DimKind, project: string, key: string): boolean {
+    const id = `${kind}${K}${project}`;
+    const fp = fnv1a(key);
+    let set = this.dimKeys.get(id);
+    if (set?.has(fp)) return true;
+    const cap = kind === 'pages' ? this.limits.pageDimsPerSite : kind === 'sources' ? this.limits.sourceDimsPerSite : this.limits.goalDimsPerSite;
+    if ((set?.size ?? 0) >= cap || this.dimKeyCount >= this.limits.dimKeys) {
+      this.dimsDropped++;
+      return false;
+    }
+    if (!set) this.dimKeys.set(id, (set = new Set()));
+    set.add(fp);
+    this.dimKeyCount++;
+    return true;
+  }
+
+  /** Adds to TODAY's breakdown row for `key` (admitting it first when it is new). */
+  private bumpDim<R>(kind: DimKind, map: Map<string, R>, project: string, key: string, make: () => R, add: (row: R) => void): void {
+    const mapKey = dimKey(this.day, project, key);
+    let row = map.get(mapKey);
+    if (!row) {
+      if (!this.admitDim(kind, project, key)) return;
+      row = make();
+      map.set(mapKey, row);
+    }
+    add(row);
   }
 
   /** Whether `id` is a visitor not yet seen today on `projectId` (and remembers it). */
@@ -285,7 +392,8 @@ export class StatsEngine {
     );
   }
 
-  private countSource(project: string, day: string, source: StatsSource, rawHost: string): void {
+  /** Counts a visitor's source; returns the host it was counted under (`''` past the named-host caps). */
+  private countSource(project: string, day: string, source: StatsSource, rawHost: string): string {
     let hosts = this.sourceHosts.get(project);
     if (!hosts) this.sourceHosts.set(project, (hosts = new Set()));
     const named = `${source}${K}${rawHost}`;
@@ -308,6 +416,19 @@ export class StatsEngine {
         r.visitors++;
       },
     );
+    return host;
+  }
+
+  /** The device × country breakdown of a human pageview, its source (on a first visit) — see `page_dims`. */
+  private countDims(project: string, day: string, device: StatsDevice, country: string, path: string, source?: { source: StatsSource; host: string }): void {
+    this.bumpDim('pages', this.pending.pageDims, project, dimKey(path, device, country), () => ({ project, day, path, device, country, views: 0 }), (r) => {
+      r.views++;
+    });
+    if (!source) return;
+    const { source: kind, host } = source;
+    this.bumpDim('sources', this.pending.sourceDims, project, dimKey(kind, host, device, country), () => ({ project, day, source: kind, host, device, country, visitors: 0 }), (r) => {
+      r.visitors++;
+    });
   }
 
   /** Counts one pageview reported by a page's tracker. */
@@ -327,10 +448,13 @@ export class StatsEngine {
     const first = this.firstVisit(hit.projectId, hit.ip, hit.ua);
     this.countTraffic(hit.projectId, day, 'human', device, country, first);
     this.countPage(hit.projectId, day, hit.route, true);
-    if (first) {
-      const { source, host } = trafficSource({ referrerHost: hit.referrerHost, campaign: hit.campaign, isOwnHost: hit.isOwnHost ?? (() => false) });
-      this.countSource(hit.projectId, day, source, host);
+    if (!first) {
+      this.countDims(hit.projectId, day, device, country, hit.route);
+      return;
     }
+    const { source, host: rawHost } = trafficSource({ referrerHost: hit.referrerHost, campaign: hit.campaign, isOwnHost: hit.isOwnHost ?? (() => false) });
+    const host = this.countSource(hit.projectId, day, source, rawHost);
+    this.countDims(hit.projectId, day, device, country, hit.route, { source, host });
   }
 
   /**
@@ -347,8 +471,12 @@ export class StatsEngine {
     this.countPage(projectId, day, route, false);
   }
 
-  /** Counts a goal completion (a form submission). */
-  recordGoal(projectId: string, goal: string): void {
+  /**
+   * Counts a goal completion (a form submission). `visitor` is the submitting request: its device class (from the
+   * user agent and the mobile client hint — the page's own hints are not sent with a form) and country break the
+   * goal down for the filters. Without it the goal counts, unbroken down.
+   */
+  recordGoal(projectId: string, goal: string, visitor?: { ua: string; ip: string; chMobile?: boolean }): void {
     if (this.closing) return;
     const day = this.today();
     this.bump(
@@ -360,6 +488,12 @@ export class StatsEngine {
         r.count++;
       },
     );
+    if (!visitor) return;
+    const device = deviceClass({ ua: visitor.ua, chMobile: visitor.chMobile });
+    const country = this.geo.country(visitor.ip) ?? 'ZZ';
+    this.bumpDim('goals', this.pending.goalDims, projectId, dimKey(goal, device, country), () => ({ project: projectId, day, goal, device, country, count: 0 }), (r) => {
+      r.count++;
+    });
   }
 
   /**
@@ -394,12 +528,19 @@ export class StatsEngine {
       this.log(`statistics: ${this.dropped} counts dropped — more distinct rows between flushes than the caps allow`);
       this.dropped = 0;
     }
+    if (this.dimsDropped > 0) {
+      this.log(`statistics: ${this.dimsDropped} visits not broken down by device and country — a site reached its daily breakdown cap (they still count)`);
+      this.dimsDropped = 0;
+    }
     const delta: StatsDelta = {
       traffic: [...batch.traffic.values()],
       pages: [...batch.pages.values()],
       sources: [...batch.sources.values()],
       goals: [...batch.goals.values()],
       seen: [...batch.seen.values()],
+      pageDims: [...batch.pageDims.values()],
+      sourceDims: [...batch.sourceDims.values()],
+      goalDims: [...batch.goalDims.values()],
     };
     try {
       await this.store.apply(delta);
@@ -447,19 +588,40 @@ export class StatsEngine {
       const fresh = this.pending.seen.get(key);
       this.pending.seen.set(key, fresh ? { ...row, ids: [...row.ids, ...fresh.ids] } : row);
     }
+    // Breakdown rows were admitted when they were counted (that day's caps): merged back as they are.
+    const merge = <R>(from: Map<string, R>, to: Map<string, R>, add: (into: R, r: R) => void): void => {
+      for (const [key, r] of from) {
+        const into = to.get(key);
+        if (into) add(into, r);
+        else to.set(key, r);
+      }
+    };
+    merge(batch.pageDims, this.pending.pageDims, (x, r) => (x.views += r.views));
+    merge(batch.sourceDims, this.pending.sourceDims, (x, r) => (x.visitors += r.visitors));
+    merge(batch.goalDims, this.pending.goalDims, (x, r) => (x.count += r.count));
   }
 
   /** A project's statistics for a range: flushed first, so the answer includes the last minute. */
   async query(projectId: string, q: StatsQuery, enabled: boolean): Promise<SiteStats> {
     await this.flush();
-    const res = await this.store.query(projectId, q);
+    const { totals, ...res } = await this.store.query(projectId, q);
     const byDay = new Map(res.daily.map((d) => [d.day, d]));
     const daily: SiteStats['daily'] = [];
     for (let d = q.from; d <= q.to; d = shiftStatsDay(d, 1)) daily.push(byDay.get(d) ?? { day: d, views: 0, visitors: 0, botViews: 0 });
     // Every device class is listed, zero or not, in a fixed order — a chart whose bars come and go is harder
     // to read than one with an empty bar.
     const devices = STATS_DEVICES.map((device) => res.devices.find((x) => x.device === device) ?? { device, views: 0, visitors: 0 });
-    return { ...res, enabled, daily, devices };
+    if (!totals) return { ...res, enabled, daily, devices };
+    // Under a filter: what the page, source and goal lists could not place — set against the EXACT filtered totals
+    // (the traffic table had device and country from the start), so days before the breakdown existed, and visits
+    // past a site's daily breakdown cap, show as "not broken down" rather than as no traffic.
+    const breakdown = {
+      since: this.dimsSince,
+      pages: Math.max(0, res.human.views - totals.pageViews),
+      sources: Math.max(0, res.human.visitors - totals.sourceVisitors),
+      goals: Math.max(0, totals.goals - totals.goalsBrokenDown),
+    };
+    return { ...res, enabled, daily, devices, breakdown };
   }
 
   /** One table's raw daily rows for the CSV export. */
@@ -540,6 +702,11 @@ export class StatsEngine {
     this.seen.delete(projectId);
     this.sourceHostCount -= this.sourceHosts.get(projectId)?.size ?? 0;
     this.sourceHosts.delete(projectId);
+    for (const kind of ['pages', 'sources', 'goals'] as const) {
+      const id = `${kind}${K}${projectId}`;
+      this.dimKeyCount -= this.dimKeys.get(id)?.size ?? 0;
+      this.dimKeys.delete(id);
+    }
   }
 
   /**

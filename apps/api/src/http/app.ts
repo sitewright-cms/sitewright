@@ -10999,10 +10999,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
     rl,
     // A stored submission is a GOAL for the built-in statistics (when the site counts visits).
-    onSubmitted: (projectId, formId) => {
+    onSubmitted: (projectId, formId, visitor) => {
       void statsSiteConfig(projectId)
         .then((cfg) => {
-          if (cfg?.enabled) statsEngine.recordGoal(projectId, `form:${formId}`);
+          if (cfg?.enabled) statsEngine.recordGoal(projectId, `form:${formId}`, visitor);
         })
         .catch(() => {});
     },

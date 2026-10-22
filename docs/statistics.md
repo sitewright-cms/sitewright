@@ -18,8 +18,32 @@ or git.
 | **Visitors** | One per person per day — see [Privacy](#privacy). |
 | **Pages, sources, goals** | Human and bot views per page; where each day's visitors came from (direct, search, social, AI assistant, referral, or a `utm_source` / `ref` campaign); and form submissions per form. |
 
+### Filtering by device and country
+
 Device and country are counted together, so the Statistics tab can filter by either or both ("mobile visitors
-from Germany"). Pages, sources and goals are separate lists and are not split by device or country.
+from Germany"): click a device, a country or the map. A filter applies to every tile that was counted with it,
+and each of those tiles shows the filter's pill (clearing any pill clears the filter everywhere):
+
+| Tile | Device filter | Country filter |
+|---|---|---|
+| Visitors, Pageviews, Pageviews per day (human bars) | yes | yes |
+| Devices | its own selection | yes |
+| Countries, Map | yes | their own selection |
+| Top pages, Sources, Goals | yes | yes |
+| Bots, Bot pageviews, the chart's bot bars | no — "Any device": a bot has no device | yes |
+
+**Pages, sources and goals by device and country** come from a separate breakdown (`page_dims`, `source_dims`,
+`goal_dims` in `analytics.db`) beside the exact lists, which stay as they were. Under a filter:
+
+- Pages are listed by **human** pageviews (no bot column).
+- The breakdown exists only from the day this version first ran (`dims_since`). Earlier days are not broken down,
+  and neither is a busy site's traffic past the daily caps (see [Cost](#cost)). A filtered list therefore ends
+  with a **Not broken down** row (pageviews or visitors in the filter that the list cannot place), worked out from
+  the exact totals, and a line saying why, rather than showing those visits as missing. Goals that are not broken
+  down belong to no filter; the Goals tile counts them in a note, and the conversion rate is shown only when every
+  goal of the period is placed.
+- A goal's device and country are the submitting request's (its user agent and mobile hint; a form does not send
+  the page's own hints, so an iPad asking for the desktop site counts as desktop there).
 
 ### Sites on other hosts need a public URL
 
@@ -71,16 +95,17 @@ should mention it either way.
 The collector is a public endpoint and every published page carries a valid beacon, so anyone can replay one —
 inflating a real page's count, or filling the day's list of named referrers and campaigns with junk (the rest
 are then counted under their kind alone). It is rate-limited per IP address, it cannot be made to invent pages
-(routes are signed), and every structure it fills is capped per site and in all, so one site under attack never
-costs another site its accuracy, and an attack on many sites never costs unbounded memory. It is a visit counter, not an audit log.
+(routes are signed), and every structure it fills is capped per site and in all — the device × country breakdown
+too — so one site under attack never costs another site its accuracy, and an attack on many sites never costs
+unbounded memory or disk. It is a visit counter, not an audit log.
 
 ## Cost
 
 | | |
 |---|---|
 | **Per pageview** | A few microseconds of CPU: one bot pattern test, a device check, a country lookup (~0.6 µs), one hash. Bot categories are only looked up for traffic already flagged as a bot, and cached per user agent. |
-| **Memory** | The country database (~16 MB) loads on the first counted visit, so an instance whose sites never count pays nothing. Today's visitor ids take ~30 bytes each, capped at 250,000 per site and one million in all; pending counters are capped per site and in all. |
-| **Disk** | Daily totals in their own SQLite file, `<SW_DATA_DIR>/analytics.db` — a few dozen rows per site per day. Deleting the file resets the statistics (and the route-signing key: republish remote sites afterwards). |
+| **Memory** | The country database (~16 MB) loads on the first counted visit, so an instance whose sites never count pays nothing. Today's visitor ids take ~30 bytes each, capped at 250,000 per site and one million in all; pending counters are capped per site and in all. The breakdown's caps are kept as one ~16-byte fingerprint per row, at most 300,000 in all (~5 MB). |
+| **Disk** | Daily totals in their own SQLite file, `<SW_DATA_DIR>/analytics.db` — a few dozen rows per site per day, ~60–70 bytes each. The device × country breakdown of pages, sources and goals adds at most **1,000 page rows, 500 source rows and 200 goal rows per site per day** (one row per page, device and country seen that day); past a cap a visit still counts everywhere else. Measured on a site with ~150 visitors a day: ~200 extra rows (~13 KB) a day, ~10 MB over the 25 months. Deleting the file resets the statistics (and the route-signing key: republish remote sites afterwards). |
 
 ## Operating it
 

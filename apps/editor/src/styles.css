@@ -209,6 +209,13 @@
   --input-color: rgb(148 163 184 / 0.75); /* slate-400 @ 75% */
 }
 
+/* A settings tile or section a link has just brought into view (lib/settings-links.ts `revealElement`): outlined in
+   the brand colour for a moment, so the eye lands on it. An outline takes no space, so nothing around it moves. */
+[data-sw-reveal] {
+  outline: 3px solid var(--sw-brand-1);
+  outline-offset: 3px;
+}
+
 /* Error focus ring (rose, brand-INDEPENDENT). Defined AFTER .sw-brand-focus so that on an input
    carrying both classes (a glassInput in an invalid state) this wins on equal specificity — keeping
    the validation cue rose, not brand-coloured. Matches the old `focus:border-rose-400 ring-rose-300/40`. */

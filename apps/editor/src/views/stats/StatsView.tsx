@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { BarChart3, Download, RefreshCw, Settings } from 'lucide-react';
 import type { SiteStats, StatsDevice } from '@sitewright/schema';
 import { api, downloadStatsCsv, type Project } from '../../api';
+import type { OpenWebsiteSettings } from '../../lib/settings-links';
 import { accentChip, ghostButton, glassCard, gradientHover, gradientSurface, primaryButton } from '../../theme';
 import { DailyChart } from './DailyChart';
 import { BotsPanel, CountriesPanel, DEVICE_LABELS, DevicesPanel, FilterChip, GoalsPanel, PagesPanel, Panel, SourcesPanel } from './Breakdowns';
@@ -24,7 +25,7 @@ const CSV_TABLES = [
  * Everything here is a daily total. Clicking a device or a country filters the human figures by it; the two
  * filters combine. The tab refreshes itself once a minute while the range includes today.
  */
-export function StatsView({ project, onOpenSettings }: { project: Project; onOpenSettings?: () => void }) {
+export function StatsView({ project, onOpenSettings }: { project: Project; onOpenSettings?: OpenWebsiteSettings }) {
   const [range, setRange] = useState<StatsRangeId>('30d');
   const [device, setDevice] = useState<StatsDevice | undefined>();
   const [country, setCountry] = useState<string | undefined>();
@@ -135,7 +136,7 @@ export function StatsView({ project, onOpenSettings }: { project: Project; onOpe
               Statistics are off for this site. Turn them on in Website Settings → Analytics, then deploy: the next deploy adds the counter to every page.
             </span>
             {onOpenSettings && (
-              <button type="button" className={primaryButton} onClick={onOpenSettings}>
+              <button type="button" className={primaryButton} onClick={() => onOpenSettings('analytics')}>
                 <Settings className="h-4 w-4" aria-hidden /> Open Website Settings
               </button>
             )}

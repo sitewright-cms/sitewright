@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Project } from '../api';
+import type { SystemSettingsTarget } from '../lib/settings-links';
 import { Modal } from './ui/Modal';
 import { InstanceSettings } from './InstanceSettings';
 import { ClientsManager } from './ClientsManager';
@@ -64,16 +65,19 @@ export function SettingsModalHost({
   view,
   project,
   onClose,
+  systemTarget,
 }: {
   view: SettingsView;
   project: Project | null;
   onClose: () => void;
+  /** Where System Settings opens: a tab, and a section on it to bring into view (a link from a view's setup guide). */
+  systemTarget?: SystemSettingsTarget | null;
 }) {
   if (view === 'system') {
     // The instance/system settings form brings its own padding + Save button.
     return (
       <Modal title="System settings" titleExtra={<VersionBadge />} size="2xl" onClose={onClose}>
-        <InstanceSettings />
+        <InstanceSettings initialTab={systemTarget?.tab} focusSection={systemTarget?.section} />
       </Modal>
     );
   }

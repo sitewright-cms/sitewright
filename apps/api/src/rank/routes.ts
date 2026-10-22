@@ -84,7 +84,7 @@ export async function projectRankings(
   repo: RankRepository,
   projectId: string,
   range: { from: string; to: string },
-): Promise<Omit<ProjectRankings, 'canManage' | 'status'>> {
+): Promise<Omit<ProjectRankings, 'canManage' | 'configured' | 'status'>> {
   const [tracking, keywords, inFlight] = await Promise.all([repo.getProject(projectId), repo.listKeywords(projectId), repo.inFlight(projectId)]);
   const domain = tracking?.domain ?? '';
   const [history, latest] = tracking
@@ -156,7 +156,11 @@ export function registerRankRoutes(app: FastifyInstance, deps: RankRouteDeps): v
     const { project } = await resolveProject(req, 'content:read');
     const role = await sessionPlatformRole(req);
     const base = await projectRankings(repo, project.id, range);
-    return role ? { ...base, canManage: true, status: await tracker.status() } : { ...base, canManage: false };
+    // Whether rank tracking is set up on the instance is told to every reader (the editor shows a client the view only
+    // then); WHY checks may not run is for staff alone.
+    const status = await tracker.status();
+    const configured = status !== 'no-provider';
+    return role ? { ...base, canManage: true, configured, status } : { ...base, canManage: false, configured };
   };
 
   app.get<{ Params: { projectId: string }; Querystring: Record<string, string> }>(

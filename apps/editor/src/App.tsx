@@ -39,6 +39,7 @@ import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 import { usePaymentsActive } from './lib/payments-active';
 import { useStatisticsAccess } from './lib/statistics-enabled';
+import type { OpenSystemSettings, SystemSettingsTarget } from './lib/settings-links';
 import { Tooltip } from './views/ui/Tooltip';
 
 /**
@@ -156,6 +157,12 @@ function MainApp({
   const [publishRefresh, setPublishRefresh] = useState(0);
   // The header gear menu's settings surfaces (System Settings / Project Members / Administrators / Access), each a modal.
   const [settingsView, setSettingsView] = useState<SettingsView | null>(null);
+  // Where System Settings opens when a view's setup guide links into it (the gear menu opens it plain).
+  const [systemTarget, setSystemTarget] = useState<SystemSettingsTarget | null>(null);
+  const openSystemSettings = useCallback<OpenSystemSettings>((target) => {
+    setSystemTarget(target);
+    setSettingsView('system');
+  }, []);
   // The owner-only "Delete Project" type-to-confirm modal (the project being deleted, or null).
   const [deleteFor, setDeleteFor] = useState<Project | null>(null);
 
@@ -289,12 +296,12 @@ function MainApp({
   // The Orders tab exists only while the open project's payments are actually active. Called up here,
   // with the other hooks, because the render below has early returns.
   const paymentsActive = usePaymentsActive(stage.name === 'project' ? stage.project.id : null);
-  // The Statistics tab: always for agency staff (they decide whether the site counts visits, and which keywords
-  // are tracked); for a client only while there is something in it — the built-in statistics switched on, search
-  // rankings the agency tracks for the site, or search numbers from a search engine that verified the site. A client
+  // The Statistics tab: always for agency staff, with all three views (one whose feature is not set up or not enabled
+  // shows how to do that); for a client only while one of its views is set up AND enabled — the built-in statistics
+  // switched on, rank tracking set up with keywords, or a search engine account the site is verified with. A client
   // sees the visits only while statistics are on.
   const statisticsAccess = useStatisticsAccess(stage.name === 'project' ? stage.project.id : null);
-  const visitsVisible = canCreateProjects || statisticsAccess.statistics;
+  const visitsVisible = canCreateProjects || statisticsAccess.statistics === true;
   const statisticsVisible = visitsVisible || statisticsAccess.rankings || statisticsAccess.search;
   // A tab that disappears (payments or statistics switched off, or a different project) must not stay selected.
   useEffect(() => {
@@ -524,7 +531,10 @@ function MainApp({
           onExportProject={inProject ? () => downloadProjectExport(inProject.id) : undefined}
           onDuplicateProject={inProject && canCreateProjects ? () => setDuplicateFor(inProject) : undefined}
           onProjectSettings={inProject && !isClient ? () => setSettingsFor(inProject) : undefined}
-          onSystemSettings={() => setSettingsView('system')}
+          onSystemSettings={() => {
+            setSystemTarget(null);
+            setSettingsView('system');
+          }}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
           onDeleteProject={inProject && !isClient ? () => setDeleteFor(inProject) : undefined}
@@ -584,6 +594,11 @@ function MainApp({
           ordersAvailable={paymentsActive}
           statisticsAvailable={statisticsVisible}
           visitsAvailable={visitsVisible}
+          // Unknown (undefined) until the first answer, so staff never see "switched off" while it is asked; null when it
+          // could not be read, and the counter then speaks for itself.
+          visitsEnabled={statisticsAccess.loaded ? statisticsAccess.statistics : undefined}
+          // Only an instance admin can act in System Settings; the guides tell a developer who does it.
+          onOpenSystemSettings={isInstanceAdmin ? openSystemSettings : undefined}
           isStaff={canCreateProjects}
           onLoaded={() => finishOpening(stage.project.id)}
         />
@@ -671,7 +686,7 @@ function MainApp({
       )}
       {/* System Settings / Project Members / Administrators — opened (as modals) from the header gear menu. */}
       {settingsView && (
-        <SettingsModalHost view={settingsView} project={inProject} onClose={() => setSettingsView(null)} />
+        <SettingsModalHost view={settingsView} project={inProject} systemTarget={settingsView === 'system' ? systemTarget : null} onClose={() => setSettingsView(null)} />
       )}
       {/* Owner-only "Delete Project" (type-to-confirm). On success, leave the now-deleted project. */}
       {deleteFor && (

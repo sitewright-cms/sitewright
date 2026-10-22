@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   testRankProvider: vi.fn(),
   getSearchPerformanceAvailability: vi.fn(),
   getSearchPerformance: vi.fn(),
+  getSiteRegistration: vi.fn(),
 }));
 vi.mock('../src/api', () => ({ api, downloadStatsCsv: vi.fn() }));
 
@@ -55,6 +56,7 @@ function rankings(over: Partial<ProjectRankings> = {}): ProjectRankings {
     tracking: { domain: 'plumbers.na', includeSubdomains: true, schedule: 'weekly', depth: 100 },
     keywords: [keyword(), keyword({ id: 'k2', keyword: 'geyser repair', latest: { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: null, url: null, depth: 100 }, change: null, best: null, series: [{ day: '2026-10-20', position: null }] })],
     canManage: false,
+    configured: true,
     ...over,
   };
 }
@@ -79,6 +81,7 @@ beforeEach(() => {
   api.getStats.mockResolvedValue(minimalStats);
   api.searchRankLocations.mockResolvedValue({ locations: [] });
   api.getSearchPerformanceAvailability.mockResolvedValue({ services: [] });
+  api.getSiteRegistration.mockRejectedValue(new Error('not staff'));
 });
 
 describe('the Statistics tab', () => {
@@ -160,8 +163,8 @@ describe('the Statistics tab', () => {
   });
 
   it('offers staff the tab to set tracking up', async () => {
-    api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider' }));
-    render(<StatisticsTab project={project} />);
+    api.getRankings.mockResolvedValue(rankings({ tracking: null, keywords: [], canManage: true, status: 'no-provider', configured: false }));
+    render(<StatisticsTab project={project} isStaff visitsEnabled />);
     fireEvent.click(await screen.findByRole('tab', { name: /Search rankings/ }));
     expect(await screen.findByRole('form', { name: 'Rank tracking setup' })).toBeInTheDocument();
     // The site URL is the suggested domain.

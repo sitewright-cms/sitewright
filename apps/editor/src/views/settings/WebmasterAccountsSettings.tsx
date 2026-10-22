@@ -51,7 +51,7 @@ function readKeyFile(text: string): { clientEmail: string } | string {
 const muted = 'text-xs text-slate-500 dark:text-slate-400';
 const removeLink = 'text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline';
 
-export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHandle>(function WebmasterAccountsSettings(_props, ref) {
+export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHandle, { onReady?: () => void }>(function WebmasterAccountsSettings({ onReady }, ref) {
   const [view, setView] = useState<WebmasterAccountsView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedKey | null>(null);
@@ -80,10 +80,15 @@ export const WebmasterAccountsSettings = forwardRef<WebmasterAccountsSettingsHan
       })
       .catch((err: unknown) => {
         if (live) setLoadError(err instanceof Error ? err.message : 'Could not load the search engine accounts');
+      })
+      // The section has its height now (System Settings may be waiting to scroll to it).
+      .finally(() => {
+        if (live) onReady?.();
       });
     return () => {
       live = false;
     };
+    // Read once; `onReady` is a stable callback from the parent.
   }, []);
 
   async function onPick(file: File | undefined): Promise<void> {

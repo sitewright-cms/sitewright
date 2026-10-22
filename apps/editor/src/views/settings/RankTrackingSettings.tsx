@@ -25,7 +25,7 @@ const baselineOf = (f: RankProviderView['fields'][number], stored: Record<string
 
 const usd = (n: number): string => `$${n.toFixed(n > 0 && n < 1 ? 3 : 2)}`;
 
-export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(function RankTrackingSettings(_props, ref) {
+export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle, { onReady?: () => void }>(function RankTrackingSettings({ onReady }, ref) {
   const [view, setView] = useState<RankTrackingAdminView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [active, setActive] = useState<RankProviderId | ''>('');
@@ -51,10 +51,15 @@ export const RankTrackingSettings = forwardRef<RankTrackingSettingsHandle>(funct
       })
       .catch((err: unknown) => {
         if (live) setLoadError(err instanceof Error ? err.message : 'Could not load rank tracking');
+      })
+      // The section has its height now (System Settings may be waiting to scroll to it).
+      .finally(() => {
+        if (live) onReady?.();
       });
     return () => {
       live = false;
     };
+    // Read once; `onReady` is a stable callback from the parent.
   }, []);
 
   const budgetError = (): string | null => {

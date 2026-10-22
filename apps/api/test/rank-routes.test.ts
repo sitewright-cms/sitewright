@@ -180,6 +180,8 @@ describe('agency staff manage a project; clients only read', () => {
     const read = (await app.inject({ method: 'GET', url: `/projects/${pid}/rankings`, ...as(client.t) })).json() as ProjectRankings;
     expect(read.canManage).toBe(false);
     expect(read).not.toHaveProperty('status');
+    // No provider is set up yet: every reader is told so (the editor hides the view from a client until it is).
+    expect(read.configured).toBe(false);
     expect(read.keywords.map((k) => k.keyword)).toEqual(['geyser repair', 'plumber windhoek']);
     const kid = read.keywords[0]!.id;
     for (const req of [
@@ -195,7 +197,7 @@ describe('agency staff manage a project; clients only read', () => {
     expect((await app.inject({ method: 'DELETE', url: `/projects/${pid}/rankings/keywords/${kid}`, ...as(dev.t) })).statusCode).toBe(200);
     expect((await app.inject({ method: 'DELETE', url: `/projects/${pid}/rankings/keywords/${kid}`, ...as(dev.t) })).statusCode).toBe(404);
     const staffRead = (await app.inject({ method: 'GET', url: `/projects/${pid}/rankings`, ...as(dev.t) })).json() as ProjectRankings;
-    expect(staffRead).toMatchObject({ canManage: true, status: 'no-provider' });
+    expect(staffRead).toMatchObject({ canManage: true, status: 'no-provider', configured: false });
     expect(staffRead.keywords).toHaveLength(1);
   });
 
@@ -271,6 +273,9 @@ describe('one full run', () => {
     // The next pass collects (a second "check now" sends nothing new: once a day).
     expect((await app.inject({ method: 'POST', url: `/projects/${pid}/rankings/check`, ...as(dev.t) })).json()).toMatchObject({ sent: 0, collected: 1 });
     const read = (await app.inject({ method: 'GET', url: `/projects/${pid}/rankings`, ...as(client.t) })).json() as ProjectRankings;
+    // The provider is set up: the client is told it is, and still nothing about why checks may not run.
+    expect(read).toMatchObject({ canManage: false, configured: true });
+    expect(read).not.toHaveProperty('status');
     expect(read.tracking).toEqual({ domain: 'plumbers.na', includeSubdomains: true, schedule: 'weekly', depth: 100 });
     expect(read.keywords[0]).toMatchObject({
       keyword: 'plumber windhoek',

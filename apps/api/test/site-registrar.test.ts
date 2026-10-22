@@ -438,3 +438,74 @@ describe('a key replaced while a site was registered with the old one', () => {
     expect((await db.select().from(webmasterSites))[0]).toMatchObject({ siteUrl: NEW_SITE });
   });
 });
+
+describe('SiteRegistrar.bingAccountFor — a new Bing key of the same Bing user', () => {
+  const NEW_KEY = '00112233445566778899aabbccddeeff';
+  const TWO = 'https://two.example/';
+  let listed: Array<{ Url: string; AuthenticationCode: string }>;
+  let asked: number;
+  const bingFetch: FetchLike = async () => {
+    asked++;
+    return { ok: true, status: 200, text: async () => JSON.stringify({ d: listed }) };
+  };
+  const forKey = (key: string) =>
+    new SiteRegistrar({ db, accounts, io: { fetch: bingFetch }, now: () => now, log: { info: () => {}, warn: (obj, msg) => warnings.push({ obj, msg }) } }).bingAccountFor(key);
+  const row = async (siteUrl: string, token: string | null, id = projectId) =>
+    db.insert(webmasterSites).values({ projectId: id, service: 'bing', enabled: true, siteUrl, account: bingAccount(BING_KEY), token, status: 'verified', updatedAt: now });
+
+  beforeEach(() => {
+    listed = [];
+    asked = 0;
+  });
+
+  it('carries the account on when Bing lists a registered site with its code; a site it no longer lists proves nothing', async () => {
+    const other = (await projects.create({ name: 'Two', slug: `two-${randomBytes(3).toString('hex')}` })).id;
+    await row(SITE, 'C0DE0001');
+    await row(TWO, 'C0DE0001', other);
+    listed = [{ Url: 'https://WWW.example.com', AuthenticationCode: 'C0DE0001' }]; // TWO was removed at Bing meanwhile
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(BING_KEY));
+  });
+
+  it('another code for ANY listed site is another Bing user', async () => {
+    const other = (await projects.create({ name: 'Two', slug: `two-${randomBytes(3).toString('hex')}` })).id;
+    await row(SITE, 'C0DE0001');
+    await row(TWO, 'C0DE0001', other);
+    listed = [
+      { Url: SITE, AuthenticationCode: 'C0DE0001' },
+      { Url: TWO, AuthenticationCode: 'FFFF9999' },
+    ];
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(NEW_KEY));
+  });
+
+  it('nothing to compare is a new account: no registered site, no code, or none of them listed', async () => {
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(NEW_KEY));
+    expect(asked).toBe(0);
+    await row(SITE, null);
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(NEW_KEY));
+    await db.delete(webmasterSites);
+    await row(SITE, 'C0DE0001');
+    listed = [{ Url: TWO, AuthenticationCode: 'C0DE0001' }];
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(NEW_KEY));
+  });
+
+  it('Bing not answering is a new account, with a warning that names no key', async () => {
+    await row(SITE, 'C0DE0001');
+    const down: FetchLike = async () => ({ ok: false, status: 503, text: async () => '{}' });
+    const r = new SiteRegistrar({ db, accounts, io: { fetch: down }, now: () => now, log: { info: () => {}, warn: (obj, msg) => warnings.push({ obj, msg }) } });
+    expect(await r.bingAccountFor(NEW_KEY)).toBe(bingAccount(NEW_KEY));
+    expect(warnings.map((w) => w.msg)).toContain('search engines: could not ask Bing whether a new key is the same Bing user');
+    expect(JSON.stringify(warnings)).not.toContain(NEW_KEY);
+  });
+
+  it('the same key again keeps its account without asking Bing; a carried account outlives its key', async () => {
+    expect(await forKey(BING_KEY)).toBe(bingAccount(BING_KEY));
+    await accounts.apply({ bing: { secret: { apiKey: NEW_KEY, account: bingAccount(BING_KEY) }, info: {} } });
+    expect(await forKey(NEW_KEY)).toBe(bingAccount(BING_KEY));
+    expect(asked).toBe(0);
+  });
+
+  it('a stored account that is not a fingerprint is ignored', async () => {
+    await accounts.apply({ bing: { secret: { apiKey: BING_KEY, account: 'not-an-account-id' }, info: {} } });
+    expect(await forKey(BING_KEY)).toBe(bingAccount(BING_KEY));
+  });
+});

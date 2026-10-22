@@ -9,6 +9,15 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **A new Bing key of the same Bing user is the same account.** Generating a new API key in Bing Webmaster Tools and
+  saving it in System Settings used to count as another account: it asked to replace it anyway, and every site then
+  had to be verified again. Now the platform asks Bing first. When the new key is handed the same verification codes
+  for the sites the platform registered, it is the same Bing user: the key is saved without a question, the sites stay
+  verified, and switching one off removes it with the new key. Another user's key, or one Bing could not be asked
+  about, still asks first, and the message now says Bing did not confirm the key.
+
 ### Fixed
 
 - **A write that met another one in progress no longer fails or freezes the server.** libsql keeps a small pool of

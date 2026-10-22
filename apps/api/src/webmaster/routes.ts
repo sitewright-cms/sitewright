@@ -23,7 +23,7 @@ import { EncryptionUnavailableError } from '../repo/instance-settings.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { WebmasterRepository } from './repo.js';
 import { WebmasterError, type WebmasterIo } from './request.js';
-import { bingAccountId, type AccountHolding, type SiteRegistrar } from './sites.js';
+import type { AccountHolding, SiteRegistrar } from './sites.js';
 
 /**
  * The platform's search engine accounts, for instance admins only (session-only: no token reaches them).
@@ -43,6 +43,8 @@ export interface WebmasterRouteDeps {
   requireInstanceAdmin: (req: FastifyRequest) => Promise<string>;
   /** What moving off the current account (to `next`, or null = removing it) would leave there; see `SiteRegistrar.heldBy`. */
   heldBy: (service: WebmasterService, next: string | null) => Promise<AccountHolding>;
+  /** The account a Bing key about to be saved is: the current one's for a new key of the same Bing user; see `SiteRegistrar.bingAccountFor`. */
+  bingAccountFor: (apiKey: string) => Promise<string>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -54,7 +56,7 @@ const ACCOUNT: Record<WebmasterService, string> = { google: 'Google service acco
 const PUT_BODY_LIMIT = 64 * 1024;
 
 export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRouteDeps): void {
-  const { repo, io, requireInstanceAdmin, heldBy, rl } = deps;
+  const { repo, io, requireInstanceAdmin, heldBy, bingAccountFor, rl } = deps;
 
   /**
    * Why moving off ONE account is refused, in the shape System Settings then offers: switch the sites off first — or,
@@ -73,7 +75,9 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       .join(', and ');
     const anyway = `if the ${label} no longer works, ${action} it anyway`;
     const how = held.switchedOn ? `Switch ${held.switchedOn === 1 ? 'it' : 'them'} off in the Search engines tile first, or, ${anyway}` : `${anyway[0]!.toUpperCase()}${anyway.slice(1)}`;
-    return `${what}. ${how}: ${n === 1 ? 'that site stays' : `those ${n} sites stay`} registered at the old account, to be removed there by hand.`;
+    // A new key of the same Bing user is no replacement (see `SiteRegistrar.bingAccountFor`): this one was not proved to be.
+    const notSame = service === 'bing' && action === 'replace' ? ', and Bing did not confirm the new key is the same Bing user' : '';
+    return `${what}${notSame}. ${how}: ${n === 1 ? 'that site stays' : `those ${n} sites stay`} registered at the old account, to be removed there by hand.`;
   }
 
   async function view(): Promise<WebmasterAccountsView> {
@@ -114,16 +118,19 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
       if (err instanceof WebmasterError) return reply.code(400).send({ error: err.message });
       throw err;
     }
+    // Which Bing account the new key is: a new key of the same Bing user carries the current account on — asked even when
+    // forced, since the registrations then stay valid instead of needing a new verification.
+    const bingAccount = bing ? await bingAccountFor(bing) : undefined;
     // ★ Removing an account — or replacing it with ANOTHER one — while sites are registered with it leaves them at Google
     // or Bing with nobody able to take them off: only the account that registered a site can remove it. Refused with a
     // count unless forced (a key that no longer works can remove nothing anyway). The same account saved again is not
-    // a change: Google's is the service account, Bing's the key.
+    // a change: Google's is the service account, Bing's the Bing user (the same key, or a new key Bing proves is theirs).
     if (!input.force) {
       const changes: Array<[WebmasterService, string | null]> = [];
       if (input.google === null) changes.push(['google', null]);
       else if (google) changes.push(['google', google.clientEmail]);
       if (input.bing === null) changes.push(['bing', null]);
-      else if (bing) changes.push(['bing', bingAccountId(bing)]);
+      else if (bingAccount) changes.push(['bing', bingAccount]);
       // One entry per account in the way, each with its own count and words: a save can remove one and replace the other.
       const accounts: WebmasterAccountInUse[] = [];
       for (const [service, next] of changes) {
@@ -153,7 +160,7 @@ export function registerWebmasterRoutes(app: FastifyInstance, deps: WebmasterRou
           }
         : {}),
       ...(input.bing === null ? { bing: null } : {}),
-      ...(bing ? { bing: { secret: { apiKey: bing }, info: {} } } : {}),
+      ...(bing && bingAccount ? { bing: { secret: { apiKey: bing, account: bingAccount }, info: {} } } : {}),
     });
     return reply.send(await view());
   });

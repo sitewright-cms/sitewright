@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull, ne } from 'drizzle-orm';
 import {
   registrableSiteUrl,
   sitemapUrlOf,
@@ -11,7 +11,7 @@ import {
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { projects, webmasterSites } from '../db/schema.js';
-import { bingRemoveSite, bingSearchStats, bingSiteCode, bingSubmitSitemap, bingVerifySite } from './bing.js';
+import { bingRemoveSite, bingSameUser, bingSearchStats, bingSiteCode, bingSubmitSitemap, bingVerifySite } from './bing.js';
 import {
   googleRegisterSite,
   googleSearchAnalytics,
@@ -88,6 +88,15 @@ type Row = typeof webmasterSites.$inferSelect;
  * never a place a secret could be read back from. (Google's is the service account's email.)
  */
 export const bingAccountId = (apiKey: string): string => createHash('sha256').update(apiKey).digest('hex').slice(0, 16);
+
+const BING_ACCOUNT_ID_RE = /^[0-9a-f]{16}$/;
+
+/**
+ * The account a stored Bing key is: the id saved with it (`account`) — which a new key of the same Bing user carries
+ * over from the one it replaced, see `SiteRegistrar.bingAccountFor` — else the key's own fingerprint.
+ */
+const storedBingAccount = (secret: Record<string, string>, apiKey: string): string =>
+  secret.account && BING_ACCOUNT_ID_RE.test(secret.account) ? secret.account : bingAccountId(apiKey);
 
 /** What moving a search engine off its account would leave registered there (see `SiteRegistrar.heldBy`). */
 export interface AccountHolding {
@@ -194,7 +203,7 @@ export class SiteRegistrar {
     const apiKey = secret.apiKey ?? '';
     if (!apiKey) return null;
     return {
-      id: bingAccountId(apiKey),
+      id: storedBingAccount(secret, apiKey),
       name: 'Bing Webmaster Tools',
       tag: (siteUrl) => bingSiteCode(apiKey, siteUrl, io),
       register: (siteUrl) => bingVerifySite(apiKey, siteUrl, io),
@@ -660,6 +669,40 @@ export class SiteRegistrar {
     // A deleted project's row no longer has anything registered (its switches and owners stay for a restore).
     if (project) await forgetRegistration(this.deps.db, removal, result.detail, this.now());
     this.deps.log.info({ ...where, detail: result.detail }, 'site registration: removed on a later try');
+  }
+
+  /**
+   * The account a Bing key about to be saved is. A new key of the SAME Bing user carries the current account on: Bing
+   * keeps one site per address per user, so every registration the platform made with the old key is that user's and
+   * the new key can verify, read and remove it — nothing is left behind, and nothing has to be verified again. Proved
+   * by the codes, not by the sites alone: Bing hands the new key the verification code it handed the old one for the
+   * sites the platform registered (a code is the Bing user's own, see `bingSameUser`). Anything else — another user,
+   * Bing not answering, nothing to compare — is a new account: the key's own fingerprint, and the save then counts
+   * what the old account still holds (see `heldBy`).
+   */
+  async bingAccountFor(apiKey: string): Promise<string> {
+    const own = bingAccountId(apiKey);
+    let secret: Record<string, string> | null;
+    try {
+      secret = await this.deps.accounts.getSecret('bing');
+    } catch {
+      return own; // the current key cannot be read: nothing to carry on
+    }
+    const currentKey = secret?.apiKey ?? '';
+    if (!secret || !currentKey) return own;
+    const current = storedBingAccount(secret, currentKey);
+    if (currentKey === apiKey) return current; // the same key saved again
+    try {
+      const rows = await this.deps.db
+        .select({ siteUrl: webmasterSites.siteUrl, token: webmasterSites.token })
+        .from(webmasterSites)
+        .where(and(eq(webmasterSites.service, 'bing'), eq(webmasterSites.account, current), ne(webmasterSites.siteUrl, ''), isNotNull(webmasterSites.token)));
+      const codes = [...new Map(rows.map((r) => [`${r.siteUrl}\n${r.token}`, { siteUrl: r.siteUrl, code: r.token ?? '' }])).values()];
+      return (await withTimeout(bingSameUser(apiKey, codes, this.stepIo()), STEP_TIMEOUT_MS, 'bing')) ? current : own;
+    } catch (err) {
+      this.deps.log.warn({ errMsg: failureText(err) }, 'search engines: could not ask Bing whether a new key is the same Bing user');
+      return own;
+    }
   }
 
   /**

@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import { createClient, type Client, type InStatement, type InValue } from '@libsql/client';
+import type { Client, InStatement, InValue } from '@libsql/client';
 import { shiftStatsDay, STATS_MIN_COUNT, type SiteStats, type StatsClass, type StatsDevice, type StatsQuery, type StatsSource } from '@sitewright/schema';
+import { openSqlite } from '../db/sqlite.js';
 
 /**
  * The built-in statistics' storage: DAILY TOTALS in their own SQLite file (`<data>/analytics.db`).
@@ -168,13 +169,11 @@ export class StatsStore {
 
   /** Opens (creating when absent) the statistics database at a libsql URL — `:memory:` for tests. */
   static async open(url: string, opts: StatsStoreOptions = {}): Promise<StatsStore> {
-    const client = createClient({ url });
-    // Same posture as the main database (see db/client.ts); WAL is a no-op for `:memory:`.
+    // Same posture as the main database (see db/sqlite.ts); WAL is a no-op for `:memory:`.
     // INCREMENTAL auto-vacuum lets compact() hand freed pages back to the filesystem; without it a SQLite file
     // never shrinks, and a reaped site's rows would leave their space behind for good. It only takes effect
     // before the first table exists, so it goes first — ahead of the WAL switch too.
-    await client.execute('PRAGMA auto_vacuum = INCREMENTAL');
-    await client.executeMultiple('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;');
+    const client = await openSqlite(url, { first: 'PRAGMA auto_vacuum = INCREMENTAL' });
     await client.batch(SCHEMA, 'write');
     // A file created without incremental vacuum converts once — a full VACUUM, which rewrites the file. Only a
     // small one, and never fatally: statistics are optional, and the platform must boot even when a rewrite

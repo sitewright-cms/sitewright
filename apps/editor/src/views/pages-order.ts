@@ -134,9 +134,10 @@ export function canReorder(pages: readonly Page[], dragId: string, targetId: str
 
 /**
  * Moves `dragId` to sit before/after `targetId` within their shared sibling group and returns
- * ONLY the pages whose effective `order` changed, as new immutable copies (sequential 0..n
- * within the group). Returns `[]` for an invalid or no-op move. Home (empty slug) is pinned
- * and is never part of a group, so its order is left untouched.
+ * ONLY the pages whose effective `order` changed, as new immutable copies: the moved page alone
+ * at a midpoint, or the whole group when it had to be re-spaced. Returns `[]` for an invalid or
+ * no-op move. Home is pinned and never part of a group (a slugless menu link IS), so its order is
+ * left untouched.
  */
 export function reorderWithinParent<T extends Page>(
   pages: readonly T[],
@@ -151,8 +152,11 @@ export function reorderWithinParent<T extends Page>(
   const key = siblingKey(byId.get(dragId)!, present, defaultLocale);
 
   // The group's current order (excluding Home, which never joins a group).
+  // ★ `isHome`, not `path !== ''`: a menu link is slugless too, and dropping it here made every move
+  // whose target was a link a silent no-op (the context menu's Top/Bottom of group whenever a link
+  // sat at that end) and gave a moved link the wrong neighbours.
   const group = pages
-    .filter((p) => p.path !== '' && siblingKey(p, present, defaultLocale) === key)
+    .filter((p) => !isHome(p) && siblingKey(p, present, defaultLocale) === key)
     .sort((a, b) => bySiblingOrder(a, b, defaultLocale));
 
   const ids = group.map((p) => p.id).filter((id) => id !== dragId);

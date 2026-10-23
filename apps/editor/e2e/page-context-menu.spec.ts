@@ -9,7 +9,7 @@ import { signUp } from './helpers.js';
 
 const PAGES = 12;
 
-async function seed(page: import('@playwright/test').Page, tag: string) {
+async function seed(page: import('@playwright/test').Page, tag: string, extra: Array<Record<string, unknown>> = []) {
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
   await signUp(page, `${tag}-${stamp}@e2e.test`);
   const created = await page.request.post('/projects', { data: { name: `Menu ${stamp}`, slug: `menu${stamp}` } });
@@ -27,6 +27,7 @@ async function seed(page: import('@playwright/test').Page, tag: string) {
           title: `Page ${String(i).padStart(2, '0')}`,
           source: '<p>body</p>',
         })),
+        ...extra,
       ],
     },
   });
@@ -72,6 +73,39 @@ test('right-click opens the menu with every row action, and Move to reaches both
   await page.getByRole('menuitem', { name: 'Move to' }).click();
   await page.getByRole('menuitem', { name: 'Top of group' }).click();
   await expect.poll(async () => (await order(page, projectId))[0], { timeout: 20_000 }).toBe('p-05');
+});
+
+test('★ Move to reaches both ends when a MENU LINK sits at that end of the group', async ({ page, baseURL }) => {
+  // A menu link is slugless like Home, and the reorder used to drop every slugless page from the group.
+  // Top/Bottom of group then aimed at a row it could not find, and the menu closed with nothing moved.
+  test.setTimeout(120_000);
+  const link = (id: string, title: string, order: number) => ({
+    id,
+    path: '',
+    title,
+    kind: 'link',
+    link: { target: '/p-00/' },
+    nav: { slots: ['header'] },
+    parent: 'home',
+    order,
+  });
+  const { projectId, name } = await seed(page, 'ctxlink', [link('nav-first', 'Services', 1_000), link('nav-last', 'Contact', (PAGES + 1) * 65_536)]);
+  expect((await order(page, projectId))[0]).toBe('nav-first');
+  expect((await order(page, projectId)).at(-1)).toBe('nav-last');
+  await page.goto(baseURL!);
+  await page.getByText(name, { exact: true }).first().click();
+  const row = page.locator('li[data-virtual-row]').filter({ hasText: 'Page 05' }).first();
+  await expect(row).toBeVisible();
+
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Move to' }).click();
+  await page.getByRole('menuitem', { name: 'Top of group' }).click();
+  await expect.poll(async () => (await order(page, projectId))[0], { timeout: 20_000 }).toBe('p-05');
+
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Move to' }).click();
+  await page.getByRole('menuitem', { name: 'Bottom of group' }).click();
+  await expect.poll(async () => (await order(page, projectId)).at(-1), { timeout: 20_000 }).toBe('p-05');
 });
 
 test('★ Duplicate places the copy immediately after its source', async ({ page, baseURL }) => {

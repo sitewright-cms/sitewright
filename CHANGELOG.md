@@ -9,6 +9,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pages: Move to ▸ Top/Bottom of group works when a menu link sits at that end.** Reordering treated
+  every slugless page as Home and left menu links out of the group. A move aimed at a menu link did
+  nothing and showed no error. This affected Top/Bottom of group, drag, arrow keys and Select sibling….
+  A moved menu link could also land past the next link.
+
 ## [0.72.0] — 2026-10-22
 
 ### Added

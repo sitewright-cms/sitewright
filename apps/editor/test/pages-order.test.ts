@@ -233,6 +233,66 @@ describe('link placeholders in the tree', () => {
     expect(orderedSiblings(pages, 'nav-x', DL).map((p) => p.id)).toEqual(['nav-x', 'a']);
   });
 
+  /** A home group whose first and last members are menu links — a common shape for imported sites. */
+  const linkEdged = () => [
+    page('home', { path: '', title: 'Home' }),
+    page('nav-first', { path: '', title: 'Services', kind: 'link', parent: 'home', order: 1000 }),
+    page('a', { parent: 'home', title: 'A', order: 2000 }),
+    page('b', { parent: 'home', title: 'B', order: 3000 }),
+    page('nav-last', { path: '', title: 'Contact', kind: 'link', parent: 'home', order: 4000 }),
+  ];
+  /** The group's display order after applying `updated` (only the real Home is left out). */
+  const seqOf = (pages: Page[], updated: Page[]) =>
+    pages
+      .map((p) => updated.find((u) => u.id === p.id) ?? p)
+      .filter((p) => p.id !== 'home')
+      .sort((x, y) => bySiblingOrder(x, y, DL))
+      .map((p) => p.id);
+
+  it('★ "Top of group" lands a page above a menu link that leads the group', () => {
+    // The context menu targets the first sibling. When that sibling was a menu link, the reorder
+    // dropped every slugless page from the group as if it were Home, never found its target, and
+    // returned [] — the menu closed and nothing moved.
+    const top = orderedSiblings(linkEdged(), 'b', DL)[0]!;
+    expect(top.id).toBe('nav-first');
+    const updated = reorderWithinParent(linkEdged(), 'b', top.id, 'before', DL);
+    expect(updated).toHaveLength(1);
+    expect(seqOf(linkEdged(), updated)).toEqual(['b', 'nav-first', 'a', 'nav-last']);
+  });
+
+  it('★ "Bottom of group" lands a page below a menu link that ends the group', () => {
+    const bottom = orderedSiblings(linkEdged(), 'a', DL).at(-1)!;
+    expect(bottom.id).toBe('nav-last');
+    const updated = reorderWithinParent(linkEdged(), 'a', bottom.id, 'after', DL);
+    expect(updated).toHaveLength(1);
+    expect(seqOf(linkEdged(), updated)).toEqual(['nav-first', 'b', 'nav-last', 'a']);
+  });
+
+  it('★ a moved menu link takes its place between its REAL neighbours, other links included', () => {
+    // With `nav-last` missing from the group, "after B" looked like the end of the group, so the
+    // link was stepped past `nav-last` instead of landing between B and it.
+    const updated = reorderWithinParent(linkEdged(), 'nav-first', 'b', 'after', DL);
+    expect(updated).toHaveLength(1);
+    expect(seqOf(linkEdged(), updated)).toEqual(['a', 'b', 'nav-first', 'nav-last']);
+  });
+
+  it('★ a RE-SPACE renumbers the menu links with the rest of the group', () => {
+    // A legacy dense group starts at 0, so "to the top" has nothing below it and the group is re-spaced.
+    // Left out of the group, the links kept their old 0 and 3 and the re-spaced pages sorted past them.
+    const dense = [
+      page('home', { path: '', title: 'Home' }),
+      page('nav-first', { path: '', title: 'Services', kind: 'link', parent: 'home', order: 0 }),
+      page('a', { parent: 'home', title: 'A', order: 1 }),
+      page('b', { parent: 'home', title: 'B', order: 2 }),
+      page('nav-last', { path: '', title: 'Contact', kind: 'link', parent: 'home', order: 3 }),
+    ];
+    const updated = reorderWithinParent(dense, 'b', 'nav-first', 'before', DL);
+    expect(updated.length).toBeGreaterThan(1);
+    expect(seqOf(dense, updated)).toEqual(['b', 'nav-first', 'a', 'nav-last']);
+    const orders = dense.filter((p) => p.id !== 'home').map((p) => (updated.find((u) => u.id === p.id) ?? p).order!);
+    expect(new Set(orders).size).toBe(orders.length);
+  });
+
   it('child pages nest under a link-placeholder parent', () => {
     const pages = [
       page('home', { path: '', title: 'Home' }),

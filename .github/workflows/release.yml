@@ -43,6 +43,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          # ★ Without this, setup-node takes ANY cached Node matching `22` from the runner's tool cache, which
+          # lags Node's security releases. It served 22.23.3 after 22.23.4 fixed CVE-2026-111497.
+          check-latest: true
           cache: pnpm
 
       - name: Install
@@ -86,13 +89,28 @@ jobs:
         run: |
           tags=(-t "$IMAGE:$VERSION")
           [[ "$PRERELEASE" == "false" ]] && tags+=(-t "$IMAGE:latest")
-          docker build \
+          docker build --pull \
             --build-arg SW_VERSION="$VERSION" \
             --label "org.opencontainers.image.source=$SOURCE_URL" \
             --label "org.opencontainers.image.revision=$REVISION" \
             --label "org.opencontainers.image.version=$VERSION" \
             "${tags[@]}" \
             -f apps/api/Dockerfile /tmp/deploy
+
+      # The image's Node must meet the repo's floor (scripts/node-version-gate.mjs), which includes Node's
+      # security fixes. The base is the moving `node:22-slim` tag, so this is the only check that a release
+      # was not built on a vulnerable Node. Like the smoke, a failure aborts with NOTHING pushed to GHCR.
+      - name: Image Node meets the floor
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          image_node="$(docker run --rm --entrypoint node "$IMAGE:$VERSION" --version)"
+          echo "runtime image Node: ${image_node}"
+          node scripts/node-version-gate.mjs "$image_node" || {
+            echo "::error::The runtime image runs Node ${image_node}, below the repo's floor. Rebuild it on a patched node:22-slim."
+            exit 1
+          }
 
       # Smoke the freshly-built image BEFORE publishing: prove the slimmed Chromium still renders
       # (Latin+CJK+emoji). A failure here aborts the release with NOTHING pushed to GHCR.

@@ -74,7 +74,8 @@ pnpm install
 pnpm verify               # the full merge gate — run this before you push
 ```
 
-Requires Node `^22.22.2 || ^24.15.0 || >=26` (see `.nvmrc` for the supported line) and **pnpm 11**, pinned in `packageManager` with a corepack
+Requires Node `^22.23.4 || ^24.22.1 || >=26.12.1`, the first releases with Node's October 2026 security
+fixes (see `.nvmrc` for the supported line), and **pnpm 11**, pinned in `packageManager` with a corepack
 integrity hash — corepack verifies the downloaded pnpm against it, so `corepack enable` both gets
 you the right version and checks it is the real one.
 

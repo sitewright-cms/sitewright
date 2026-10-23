@@ -52,6 +52,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          # ★ Without this, setup-node takes ANY cached Node matching `22` from the runner's tool cache, which
+          # lags Node's security releases. It served 22.23.3 after 22.23.4 fixed CVE-2026-111497.
+          check-latest: true
           cache: pnpm
 
       - name: Install
@@ -88,6 +91,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          # ★ Without this, setup-node takes ANY cached Node matching `22` from the runner's tool cache, which
+          # lags Node's security releases. It served 22.23.3 after 22.23.4 fixed CVE-2026-111497.
+          check-latest: true
           cache: pnpm
 
       - name: Install
@@ -103,7 +109,20 @@ jobs:
           mkdir -p /tmp/deploy/editor   # the Dockerfile COPYs editor/; the smoke doesn't serve the SPA
 
       - name: Build runtime image
-        run: docker build -t sw-snapshot -f apps/api/Dockerfile /tmp/deploy
+        run: docker build --pull -t sw-snapshot -f apps/api/Dockerfile /tmp/deploy
+
+      # The image's Node must meet the same floor as a contributor's (scripts/node-version-gate.mjs). The
+      # Dockerfile builds on the moving `node:22-slim` tag, so nothing else would notice an image built on
+      # a Node with a known hole (CVE-2026-111497, reached through fetch()). `--pull` above fetches the
+      # tag fresh rather than trusting a cached copy.
+      - name: Runtime image Node meets the floor
+        run: |
+          image_node="$(docker run --rm --entrypoint node sw-snapshot --version)"
+          echo "runtime image Node: ${image_node}"
+          node scripts/node-version-gate.mjs "$image_node" || {
+            echo "::error::The runtime image runs Node ${image_node}, below the repo's floor. Rebuild it on a patched node:22-slim."
+            exit 1
+          }
 
       # Render a real screenshot (Latin + CJK + emoji) INSIDE the image, asserting both viewports produce
       # a plausible JPEG — proves the slimmed Chromium (Mesa/LLVM stripped, fonts kept) still renders.

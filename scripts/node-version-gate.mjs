@@ -15,6 +15,19 @@
 // `.nvmrc` deliberately stays on the major (`22`) rather than pinning the patch: CI resolves it with
 // `node-version-file`, so pinning would freeze CI on one patch release and stop it picking up Node's
 // own security updates. The FLOOR lives here; the version file says which line to be on.
+// ★ The major alone is not enough: setup-node also needs `check-latest: true`, or it takes whatever
+// Node matching `22` the runner image cached. That cache served 22.23.3 days after 22.23.4 shipped,
+// and this gate is what caught it.
+//
+// ★ The floor is ALSO a security floor now. Node's October 2026 security release fixed an out-of-bounds
+// write in its Brotli decoder (CVE-2026-111497, "Node2Shell") that a malicious server reaches through
+// `fetch()`, which decompresses `br` responses on its own. The site import, clone and screenshot paths
+// fetch author-supplied URLs. Each line's first fixed release (22.23.4 / 24.22.1 / 26.12.1) is its
+// floor.
+//
+// The same check runs against the RUNTIME IMAGE (ci.yml smoke job and release.yml), passing the image's
+// `node --version` as the argument, because the Dockerfile builds on the moving `node:22-slim` tag and
+// nothing else would notice an image built on an older Node.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -70,6 +83,9 @@ const clauses = range.split('||').map((c) => c.trim()).filter(Boolean).map(parse
 if (!clauses.some((clause) => satisfies(current, clause))) {
   console.error(`This repo needs Node ${range} — this is ${subject}.`);
   console.error('`.nvmrc` names the supported line: run `nvm use` (or `fnm use`) in the repo root, or install a newer Node.');
-  console.error('The floor is set by dependencies, not by preference: lighthouse needs >=22.19 and jsdom needs ^22.22.2.');
+  console.error(
+    'The floor is set by dependencies and security fixes, not by preference: lighthouse needs >=22.19, jsdom ' +
+      'needs ^22.22.2, and 22.23.4 / 24.22.1 / 26.12.1 are the first releases with the CVE-2026-111497 Brotli fix.',
+  );
   process.exit(1);
 }

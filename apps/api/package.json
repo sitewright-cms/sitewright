@@ -35,7 +35,7 @@
     "clean-css": "^5.3.3",
     "crawler-user-agents": "1.62.0",
     "drizzle-orm": "^0.45.3",
-    "fastify": "^5.12.5",
+    "fastify": "^5.12.7",
     "html-minifier-terser": "^7",
     "isbot": "5.2.2",
     "isomorphic-git": "^1.43.0",

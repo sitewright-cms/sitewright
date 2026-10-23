@@ -9,6 +9,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Security
+
+- **Node's October 2026 security fixes are now the minimum.** Node 22.23.4, 24.22.1 and 26.12.1 fix
+  CVE-2026-111497 ("Node2Shell"), an out-of-bounds write in the Brotli decoder. A malicious server can
+  reach it through `fetch()`, which decompresses `br` responses on its own. Sitewright fetches
+  author-supplied URLs when importing, cloning and taking screenshots. The same releases also fix two
+  TLS hostname-check bypasses. Release images since 0.69.0 already run Node 22.23.4. Two new
+  safeguards keep it that way:
+  - `engines.node` and the `pnpm verify` Node gate now require `^22.23.4 || ^24.22.1 || >=26.12.1`,
+    so building from source on an older Node fails up front.
+  - CI and the release workflow build the image with `--pull` and refuse an image whose Node is below
+    that floor, before anything is pushed.
+  - CI, release and audit jobs set `check-latest: true` on `setup-node`. Without it, the runner's cached
+    Node 22.23.3 was still being used after the fix shipped.
+- **fastify 5.12.7** fixes GHSA-389g-gv7q-r4x8 (low), a header-validation bypass via case-sensitive
+  `propertyNames`.
+
 ### Fixed
 
 - **Pages: Move to ▸ Top/Bottom of group works when a menu link sits at that end.** Reordering treated

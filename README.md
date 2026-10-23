@@ -157,7 +157,7 @@ Deeper design docs: **[architecture](./docs/architecture.md)** · **[authoring m
 ## Development
 
 ```bash
-corepack enable      # provides pnpm (Node >= 22, see .nvmrc)
+corepack enable      # provides pnpm (Node ^22.23.4 || ^24.22.1 || >=26.12.1, see .nvmrc)
 pnpm install
 pnpm verify          # typecheck + lint + test + build
 ```

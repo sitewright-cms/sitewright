@@ -21,6 +21,8 @@ The running version of an instance is reported at `GET /version` (baked into the
     so building from source on an older Node fails up front.
   - CI and the release workflow build the image with `--pull` and refuse an image whose Node is below
     that floor, before anything is pushed.
+  - CI, release and audit jobs set `check-latest: true` on `setup-node`. Without it, the runner's cached
+    Node 22.23.3 was still being used after the fix shipped.
 - **fastify 5.12.7** fixes GHSA-389g-gv7q-r4x8 (low), a header-validation bypass via case-sensitive
   `propertyNames`.
 

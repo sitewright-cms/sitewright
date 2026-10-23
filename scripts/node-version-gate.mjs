@@ -15,6 +15,9 @@
 // `.nvmrc` deliberately stays on the major (`22`) rather than pinning the patch: CI resolves it with
 // `node-version-file`, so pinning would freeze CI on one patch release and stop it picking up Node's
 // own security updates. The FLOOR lives here; the version file says which line to be on.
+// ★ The major alone is not enough: setup-node also needs `check-latest: true`, or it takes whatever
+// Node matching `22` the runner image cached. That cache served 22.23.3 days after 22.23.4 shipped,
+// and this gate is what caught it.
 //
 // ★ The floor is ALSO a security floor now. Node's October 2026 security release fixed an out-of-bounds
 // write in its Brotli decoder (CVE-2026-111497, "Node2Shell") that a malicious server reaches through

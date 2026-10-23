@@ -43,6 +43,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+          # ★ Without this, setup-node takes ANY cached Node matching `22` from the runner's tool cache, which
+          # lags Node's security releases. It served 22.23.3 after 22.23.4 fixed CVE-2026-111497.
+          check-latest: true
           cache: pnpm
 
       - name: Install

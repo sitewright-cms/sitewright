@@ -9,6 +9,27 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Development dependency refresh** (Dependabot #1194, 13 packages, each at the version Dependabot proposed):
+  `eslint` 10.13, `typescript-eslint` 8.71.2, `vitest` and `@vitest/coverage-v8` 5.0.5, `@playwright/test`
+  1.64.1, `jsdom` 30.1.3, `turbo` 2.11.9, `globals` 17.13, `@types/node` 26.6.5,
+  `@testing-library/user-event` 14.6.8, and the three icon sources below.
+  - **29 new Lucide icon names** render through `{{sw-icon}}`, among them `certificate`, `cpu-ai`,
+    `eighth-note`, `groceries`, `guitar-electric`, `perfume-bottle`, `server-nas`, `shield-house` and
+    `wifi-lock` (`lucide-static` 1.52 → 1.59). No icon was removed. Lucide redrew 32 existing glyphs.
+    27 of them, among them `music`, `music-2`, `chess-queen`, `salad` and `toothbrush`, render through
+    the Lucide fallback, so a site that uses one shows the new drawing after its next publish. The
+    other 5 (`pen-tool`, `circle-x`, `asterisk`, `car-battery`, `lighthouse`) resolve to a Phosphor
+    glyph and look the same. The Lucide → Phosphor aliases did not change.
+  - **12 flags redrawn upstream** (`flag-icons` 7.5 → 7.6). No flag was removed. Most are cleaner
+    geometry with the same colours. Côte d'Ivoire's orange and green are now deeper shades
+    (`#ff8200` and `#009a44`), and New Caledonia's and Vanuatu's artwork was redrawn.
+  - `simple-icons` 16.35 changes none of the bundled brand icons.
+  - **Running the E2E suites after this bump needs Playwright's Chromium 1248**
+    (`pnpm -F @sitewright/editor exec playwright install chromium`). Without it, every spec fails
+    within a millisecond, because the browser never launches.
+
 ## [0.73.0] — 2026-10-24
 
 ### Changed

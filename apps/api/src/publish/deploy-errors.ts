@@ -309,7 +309,9 @@ function describeSocket(code: string, raw: string, e: DeployEndpoint): DeployFai
       detail: raw,
     };
   }
-  if (code === 'ECONNRESET' || code === 'EPIPE' || /socket hang ?up|ECONNRESET|EPIPE/i.test(raw)) {
+  // "Connection lost before handshake" is how ssh2 reports a peer that dropped the TCP connection
+  // before the SSH handshake. It carries no code, so it would otherwise fall through to "failed".
+  if (code === 'ECONNRESET' || code === 'EPIPE' || /socket hang ?up|ECONNRESET|EPIPE|Connection lost before handshake/i.test(raw)) {
     return {
       kind: 'reset',
       message: `${at(e)} closed the connection unexpectedly.`,
@@ -374,7 +376,10 @@ function describeSsh(raw: string, e: DeployEndpoint): DeployFailure | null {
       detail: raw,
     };
   }
-  if (/Host (key )?verification failed|handshake failed.*host key|hostVerifier/i.test(raw)) {
+  // ★ "Host denied (verification failed)" is the wording ssh2 actually uses when our hostVerifier
+  // refuses the key. The other alternatives were written from a paraphrase and matched nothing real,
+  // so a rekeyed or intercepted server was reported as a generic failure with no word about the pin.
+  if (/Host (key )?verification failed|Host denied \(verification failed\)|handshake failed.*host key|hostVerifier/i.test(raw)) {
     return {
       kind: 'host-key',
       message: `The SSH host key at ${e.host} does not match the pinned fingerprint.`,

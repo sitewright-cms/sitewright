@@ -57,7 +57,7 @@
     "@types/html-minifier-terser": "^7",
     "@types/node": "^26.6.5",
     "@types/ssh2-sftp-client": "^9.0.6",
-    "@types/yauzl": "^2.10.3",
+    "@types/yauzl": "^3.4.0",
     "@vitest/coverage-v8": "^5.0.5",
     "drizzle-kit": "^0.31",
     "jose": "^6.2.12",

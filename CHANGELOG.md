@@ -50,6 +50,16 @@ The running version of an instance is reported at `GET /version` (baked into the
     (`pnpm -F @sitewright/editor exec playwright install chromium`). Without it, every spec fails
     within a millisecond, because the browser never launches.
 
+### Fixed
+
+- **SFTP: a host key that does not match the pin is named as such.** When a pinned SFTP server presented a
+  different key (it was rebuilt or rekeyed, or the connection is being intercepted), the deploy and the
+  connection test said only "The deploy to … failed." The check looked for wording the SSH library never
+  uses. It now matches the real message ("Host denied (verification failed)"), so authors see that the
+  key does not match the pinned fingerprint, with the advice to confirm the new one out of band. A
+  connection dropped before the SSH handshake is likewise reported as closed unexpectedly rather than
+  as an unexplained failure. Found by running deploys against a real OpenSSH server.
+
 ## [0.73.0] — 2026-10-24
 
 ### Changed

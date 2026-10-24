@@ -221,7 +221,8 @@ function fakeSftp(opts: SftpFakeOptions = {}): { make: () => SftpClient; calls: 
       connect: async (o: { hostVerifier?: (k: string) => boolean }) => {
         calls.push('connect');
         // ssh2 calls the verifier during the handshake; the test captures the key through it.
-        if (o.hostVerifier && !o.hostVerifier('AA:BB:CC')) throw new Error('Host verification failed');
+        // The REAL ssh2-sftp-client wording for a refused host key, so the classifier is tested on it.
+        if (o.hostVerifier && !o.hostVerifier('AA:BB:CC')) throw new Error('getConnection: Host denied (verification failed)');
         boom('connect');
       },
       mkdir: async () => {

@@ -117,6 +117,29 @@ describe('describeDeployError — SSH and rsync', () => {
     expect(describeDeployError(new Error('Host verification failed'), sftp).kind).toBe('host-key');
   });
 
+  // ★ The EXACT wording ssh2-sftp-client throws, measured against a real OpenSSH server (11.0.0 prefixes
+  // "connect: ", 12.x does not). The rule above was written from a paraphrase, so a real rekeyed or
+  // intercepted server was reported as "The deploy … failed." with no word about the pin.
+  it.each([
+    'connect: getConnection: Host denied (verification failed)',
+    'getConnection: Host denied (verification failed)',
+  ])('names the REAL host-key mismatch message as a pin failure: %s', (message) => {
+    const d = describeDeployError(new Error(message), sftp);
+    expect(d.kind).toBe('host-key');
+    expect(d.message).toMatch(/does not match the pinned fingerprint/);
+  });
+
+  it.each([
+    'connect: getConnection: Connection lost before handshake',
+    'getConnection: Connection lost before handshake',
+  ])('names a connection dropped before the SSH handshake as a reset: %s', (message) => {
+    expect(describeDeployError(new Error(message), sftp).kind).toBe('reset');
+  });
+
+  it('keeps the real SSH timeout wording a timeout', () => {
+    expect(describeDeployError(new Error('getConnection: Timed out while waiting for handshake'), sftp).kind).toBe('timeout');
+  });
+
   it('reads the rsync exit code and points at the SFTP fallback for an SSH-layer failure', () => {
     const d = describeDeployError(new Error('rsync failed (exit 12): connection unexpectedly closed'), sftp);
     expect(d.kind).toBe('rsync');

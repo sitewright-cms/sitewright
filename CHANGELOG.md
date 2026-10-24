@@ -9,6 +9,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Statistics → Search performance: the page addresses in Top pages are links.** A page opens its live address in
+  a new tab. It is still shown as its path when it is on the site, with the full address in the tooltip, and the
+  whole row height is its tap target on a phone. The list is what Google or Bing reported, so only an `http(s)`
+  address is linked: a relative one resolves against the site's address, and anything else stays plain text, shown
+  exactly as reported. Search rankings' page links now follow the same rule. An address on another host is always
+  shown in full: with a site URL saved without its trailing slash, `https://example.com.evil.net/…` used to be
+  shown as a path on the site.
+
 ## [0.74.0] — 2026-10-24
 
 ### Changed

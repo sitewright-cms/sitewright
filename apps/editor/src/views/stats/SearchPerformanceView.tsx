@@ -10,6 +10,7 @@ import {
   type WebmasterService,
 } from '@sitewright/schema';
 import { api } from '../../api';
+import { httpHref } from '../../lib/external-href';
 import { accentChip, glassCard, gradientHover, gradientSurface } from '../../theme';
 import { Skeleton } from '../ui/Skeleton';
 import { Tooltip } from '../ui/Tooltip';
@@ -31,9 +32,15 @@ const percent = (v: number | null): string => (v === null ? '—' : `${(v * 100)
 const position = (v: number | null): string => (v === null ? '—' : v.toFixed(1));
 const message = (err: unknown): string => (err instanceof Error && err.message ? err.message : 'The search numbers could not be read');
 
-/** A page's address as a path on the site, when it is on the site. */
+/**
+ * A page's address as a path on the site, when it is on the site; else the whole address.
+ * ★ The prefix always ends in `/`. Without it, a site URL saved as `https://example.com` would also prefix
+ * `https://example.com.evil.net/x`, showing an address on another host as a path on this one while it links there.
+ */
 function pathOf(url: string, siteUrl: string): string {
-  return url.startsWith(siteUrl) ? `/${url.slice(siteUrl.length)}` : url;
+  const base = siteUrl.endsWith('/') ? siteUrl : `${siteUrl}/`;
+  if (url === siteUrl || url === base) return '/';
+  return url.startsWith(base) ? `/${url.slice(base.length)}` : url;
 }
 
 /** The change against the period before: up is better for everything but the position, where lower is better. */
@@ -124,8 +131,23 @@ function SearchChart({ daily }: { daily: SearchPerformanceDay[] }) {
   );
 }
 
-/** The top searches or pages: on a phone the key, clicks and impressions; the rate and position from `sm` up. */
-function TopTable({ title, keyLabel, rows, keyOf }: { title: string; keyLabel: string; rows: SearchPerformanceRow[]; keyOf: (r: SearchPerformanceRow) => string }) {
+/**
+ * The top searches or pages: on a phone the key, clicks and impressions; the rate and position from `sm` up.
+ * `hrefOf` makes a row's key a link to the live page (in a new tab); it gives null for one that cannot be linked.
+ */
+function TopTable({
+  title,
+  keyLabel,
+  rows,
+  keyOf,
+  hrefOf,
+}: {
+  title: string;
+  keyLabel: string;
+  rows: SearchPerformanceRow[];
+  keyOf: (r: SearchPerformanceRow) => string;
+  hrefOf?: (r: SearchPerformanceRow) => string | null;
+}) {
   return (
     <Panel title={title}>
       {rows.length === 0 ? (
@@ -152,21 +174,41 @@ function TopTable({ title, keyLabel, rows, keyOf }: { title: string; keyLabel: s
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} className="border-t border-slate-200/70 text-slate-700 dark:border-white/10 dark:text-slate-200">
-                <td className="py-1.5 pr-2">
-                  {/* The whole search or address in the editor's tooltip: the cell cuts a long one off. The tooltip's
-                      host is inline-flex, so it takes the cell's width and the text inside it truncates. */}
-                  <Tooltip tip={r.key} className="flex w-full min-w-0">
-                    <span className="min-w-0 truncate">{keyOf(r)}</span>
-                  </Tooltip>
-                </td>
-                <td className="py-1.5 text-right font-semibold tabular-nums">{fmt(r.clicks)}</td>
-                <td className="py-1.5 text-right tabular-nums">{fmt(r.impressions)}</td>
-                <td className="py-1.5 text-right tabular-nums max-sm:hidden">{percent(r.ctr)}</td>
-                <td className="py-1.5 text-right tabular-nums max-sm:hidden">{position(r.position)}</td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const href = hrefOf?.(r) ?? null;
+              return (
+                <tr key={r.key} className="border-t border-slate-200/70 text-slate-700 dark:border-white/10 dark:text-slate-200">
+                  <td className="py-1.5 pr-2">
+                    {/* The whole search or address in the editor's tooltip: the cell cuts a long one off. The tooltip's
+                        host is inline-flex, so it takes the cell's width and the text inside it truncates. It is not
+                        focusable itself, so a page's link is the one tab stop, and it opens on the first tap. */}
+                    <Tooltip tip={r.key} className="flex w-full min-w-0">
+                      {href ? (
+                        // `-my-1.5 py-1.5`: the link covers the cell's vertical padding too, so the whole row height
+                        // is its tap target on a phone, with nothing on screen moving. ★ `relative` keeps the sr-only
+                        // hint (absolutely positioned) inside the link's clipped box: without it, the hint sat after
+                        // the UNtruncated path and widened the panel on a phone (measured).
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="relative -my-1.5 min-w-0 truncate py-1.5 underline decoration-slate-300 hover:decoration-slate-500 dark:decoration-slate-600 dark:hover:decoration-slate-400"
+                        >
+                          {keyOf(r)}
+                          <span className="sr-only"> (opens in a new tab)</span>
+                        </a>
+                      ) : (
+                        <span className="min-w-0 truncate">{keyOf(r)}</span>
+                      )}
+                    </Tooltip>
+                  </td>
+                  <td className="py-1.5 text-right font-semibold tabular-nums">{fmt(r.clicks)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{fmt(r.impressions)}</td>
+                  <td className="py-1.5 text-right tabular-nums max-sm:hidden">{percent(r.ctr)}</td>
+                  <td className="py-1.5 text-right tabular-nums max-sm:hidden">{position(r.position)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -327,7 +369,7 @@ export function SearchPerformanceView({ projectId, services }: { projectId: stri
             </Panel>
             <div className="grid gap-4 xl:grid-cols-2">
               <TopTable title="Top searches" keyLabel="Search" rows={view.queries} keyOf={(r) => r.key} />
-              <TopTable title="Top pages" keyLabel="Page" rows={view.pages} keyOf={(r) => pathOf(r.key, view.siteUrl)} />
+              <TopTable title="Top pages" keyLabel="Page" rows={view.pages} keyOf={(r) => pathOf(r.key, view.siteUrl)} hrefOf={(r) => httpHref(r.key, view.siteUrl)} />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {view.service === 'google'

@@ -183,7 +183,7 @@ describe('what a client reads', () => {
     expect(rows[1]).toHaveTextContent('plumber windhoek');
     expect(rows[1]).toHaveTextContent('Windhoek, Khomas Region, Namibia · Desktop · en');
     expect(rows[1]).toHaveTextContent('up2');
-    expect(within(rows[1]!).getByRole('link', { name: '/emergency/' })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
+    expect(within(rows[1]!).getByRole('link', { name: /^\/emergency\/ ?\(opens in a new tab\)$/ })).toHaveAttribute('href', 'https://www.plumbers.na/emergency/');
     expect(rows[2]).toHaveTextContent('Not in top 100');
     expect(screen.getByText(/plumbers\.na/, { selector: 'span.font-medium' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Pause|Resume|Remove|Check now|Setup/ })).toBeNull();
@@ -191,6 +191,20 @@ describe('what a client reads', () => {
     expect(screen.queryByRole('region', { name: /Manage keywords/ })).toBeNull();
     expect(screen.queryByRole('form', { name: 'Add keywords' })).toBeNull();
     expect(screen.queryByText(/provider/)).toBeNull();
+  });
+
+  it('never links a ranking page whose address is not http(s): the provider’s text is shown, not run', async () => {
+    const latest = { day: '2026-10-20', checkedAt: '2026-10-20T06:00:00.000Z', position: 3, url: 'javascript:alert(1)', depth: 100 };
+    api.getRankings.mockResolvedValue(rankings({ keywords: [keyword({ latest })] }));
+    render(<RankingsView project={project} />);
+    const table = await screen.findByRole('table', { name: /Tracked keywords/ });
+    const row = within(table).getAllByRole('row')[1]!;
+    expect(within(row).queryByRole('link')).toBeNull();
+    expect(within(row).getByText('javascript:alert(1)')).toBeInTheDocument(); // as it came, not a path read out of it
+    fireEvent.click(within(row).getByRole('button', { name: /plumber windhoek/ })); // the detail names the page too
+    expect(await screen.findByText(/· page:/)).toBeInTheDocument();
+    expect(within(table).getAllByText('javascript:alert(1)')).toHaveLength(2);
+    expect(within(table).queryByRole('link')).toBeNull();
   });
 
   it('opens a keyword into a chart of its position, with the editor tooltip and no native one', async () => {

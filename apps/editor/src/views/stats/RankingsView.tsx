@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronDown, RefreshCw, Settings2 } from 'lucide-react';
 import type { ProjectRankings, RankKeywordView, RankStatus } from '@sitewright/schema';
 import { api, type Project } from '../../api';
+import { httpHref } from '../../lib/external-href';
 import { ghostButton, gradientHover, gradientSurface } from '../../theme';
 import { Tooltip } from '../ui/Tooltip';
 import { Panel } from './Breakdowns';
@@ -287,6 +288,8 @@ function KeywordRow({
   // The place first; its region and country only where there is room for them.
   const [place, ...within] = placeLabel(k.location.name).split(', ');
   const region = within.join(', ');
+  // A results page's URL is the search provider's text: only an http(s) one is linked (see httpHref).
+  const latestHref = k.latest?.url ? httpHref(k.latest.url) : null;
   return (
     <>
       <tr className={`border-t border-slate-200/70 dark:border-white/10 ${k.paused ? 'opacity-60' : ''}`}>
@@ -315,9 +318,15 @@ function KeywordRow({
         </td>
         <td className="hidden max-w-[16rem] px-3 py-2 md:table-cell">
           {k.latest?.url ? (
-            <a href={k.latest.url} target="_blank" rel="noopener noreferrer" className="block truncate text-slate-700 underline decoration-slate-300 hover:decoration-slate-500 dark:text-slate-200">
-              {pagePath(k.latest.url, domain)}
-            </a>
+            latestHref ? (
+              <a href={latestHref} target="_blank" rel="noopener noreferrer" className="relative block truncate text-slate-700 underline decoration-slate-300 hover:decoration-slate-500 dark:text-slate-200">
+                {pagePath(k.latest.url, domain)}
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            ) : (
+              // Not an address we link: the provider's text exactly as it came, not a path read out of it.
+              <span className="block truncate text-slate-700 dark:text-slate-200">{k.latest.url}</span>
+            )
           ) : (
             <span className="text-slate-400 dark:text-slate-500">—</span>
           )}
@@ -338,9 +347,14 @@ function KeywordRow({
                 {k.latest.url && (
                   <>
                     {' · page: '}
-                    <a href={k.latest.url} target="_blank" rel="noopener noreferrer" className="break-all underline">
-                      {pagePath(k.latest.url, domain)}
-                    </a>
+                    {latestHref ? (
+                      <a href={latestHref} target="_blank" rel="noopener noreferrer" className="relative break-all underline">
+                        {pagePath(k.latest.url, domain)}
+                        <span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <span className="break-all">{k.latest.url}</span>
+                    )}
                   </>
                 )}
               </p>

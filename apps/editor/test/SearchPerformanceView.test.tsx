@@ -83,6 +83,54 @@ describe('Search performance', () => {
     expect(screen.getByText(/From the platform’s Google Search Console. The newest days can still change./)).toBeInTheDocument();
   });
 
+  it('links every page to its live address in a new tab, and never a search', async () => {
+    const row = { clicks: 1, impressions: 10, ctr: 0.1, position: 5 };
+    api.getSearchPerformance.mockResolvedValue(
+      view({
+        pages: [
+          { key: `${SITE}services/roofing/`, ...row },
+          { key: 'https://blog.example.com/post', ...row }, // another host: still a page, shown in full
+          { key: '/contact/', ...row }, // a relative address: resolved against the site
+          // The page list is the search engine's text. A scheme that would run script is never a link.
+          { key: 'javascript:alert(1)', ...row },
+        ],
+      }),
+    );
+    render(<SearchPerformanceView projectId="p1" services={['google']} />);
+    const pages = await screen.findByRole('region', { name: 'Top pages' });
+    const roofing = within(pages).getByRole('link', { name: /^\/services\/roofing\/ ?\(opens in a new tab\)$/ });
+    expect(roofing).toHaveAttribute('href', `${SITE}services/roofing/`);
+    expect(roofing).toHaveAttribute('target', '_blank');
+    expect(roofing).toHaveAttribute('rel', 'noopener noreferrer');
+    // The editor's tooltip still carries the whole address (the cell shows the path).
+    expect(roofing.closest('[data-tip]')).toHaveAttribute('data-tip', `${SITE}services/roofing/`);
+    expect(within(pages).getByRole('link', { name: /^https:\/\/blog\.example\.com\/post/ })).toHaveAttribute('href', 'https://blog.example.com/post');
+    expect(within(pages).getByRole('link', { name: /^\/contact\// })).toHaveAttribute('href', `${SITE}contact/`);
+    expect(within(pages).getAllByRole('link')).toHaveLength(3);
+    expect(within(pages).getByText('javascript:alert(1)').closest('a')).toBeNull();
+    expect(within(screen.getByRole('region', { name: 'Top searches' })).queryByRole('link')).toBeNull();
+  });
+
+  it('never shows an address on a look-alike host as a path on the site', async () => {
+    // A site URL saved without its trailing slash used to prefix `https://www.example.com.evil.net/…` as text.
+    const row = { clicks: 1, impressions: 10, ctr: 0.1, position: 5 };
+    api.getSearchPerformance.mockResolvedValue(
+      view({
+        siteUrl: 'https://www.example.com',
+        pages: [
+          { key: 'https://www.example.com/services/', ...row },
+          { key: 'https://www.example.com.evil.net/x', ...row },
+        ],
+      }),
+    );
+    render(<SearchPerformanceView projectId="p1" services={['google']} />);
+    const pages = await screen.findByRole('region', { name: 'Top pages' });
+    expect(within(pages).getByRole('link', { name: /^\/services\// })).toHaveAttribute('href', 'https://www.example.com/services/');
+    const lookalike = within(pages).getByRole('link', { name: /evil\.net/ });
+    expect(lookalike).toHaveTextContent('https://www.example.com.evil.net/x');
+    expect(lookalike).toHaveAttribute('href', 'https://www.example.com.evil.net/x');
+  });
+
   it('switches the search engine and the period', async () => {
     api.getSearchPerformance.mockImplementation(async (_p: string, service: 'google' | 'bing', days: number) =>
       view({ service, period: { days: days as 7, start: '2026-10-15', end: '2026-10-21' }, totals: { clicks: 9, impressions: 90, ctr: 0.1, position: null }, previous: null }),

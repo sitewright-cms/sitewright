@@ -9,6 +9,33 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency refresh** (Dependabot #1191, 17 production packages). Each resolves to the version
+  Dependabot proposed, except nodemailer, which an advisory took further (see Security):
+  `@codemirror/language` 6.12.4 → 6.13.1, `@codemirror/view` 6.43.13 → 6.43.14, `daisyui` 5.7.47 → 5.7.50,
+  `isomorphic-git` 1.43 → 1.44, `lucide-react` 1.52 → 1.58, `nodemailer` 10.0.15 → 10.1.7,
+  `playwright-core` 1.63.0 → 1.64.1 (and the image's headless Chromium with it), `react`/`react-dom`
+  19.3.1, `zod` 4.6.7, `drizzle-orm` 0.45.4, `basic-ftp` 6.2.3, `secure-json-parse` 4.1.1, and patch
+  releases of `@fastify/cookie`, `multipart`, `rate-limit` and `static`.
+  - As proposed, the batch broke the editor's code view. It raised CodeMirror in the editor's manifest,
+    but the repo's pins kept installing the old versions, and the lockfile ended up holding two copies
+    of the Lezer parser packages, which made highlighting throw. The pins now move with the manifest,
+    and the lockfile is deduplicated: one copy of every CodeMirror and Lezer package.
+  - daisyUI 5.7.50 changes only how components look in Windows High Contrast mode (`forced-colors`).
+    Its themes are identical, and published sites look the same after a republish.
+  - nodemailer 10.1 hardens mail sending: a header key can no longer smuggle in a second `From:`
+    line, and a few inputs that took seconds to parse are now bounded. It also pipelines the
+    envelope on servers that offer it (MAIL FROM, RCPT TO and DATA in one round trip). A message
+    whose recipients are all refused still fails, and its content is never sent.
+
+### Fixed
+
+- **Pages: Move to ▸ Top/Bottom of group works when a menu link sits at that end.** Reordering treated
+  every slugless page as Home and left menu links out of the group. A move aimed at a menu link did
+  nothing and showed no error. This affected Top/Bottom of group, drag, arrow keys and Select sibling….
+  A moved menu link could also land past the next link.
+
 ### Security
 
 - **Node's October 2026 security fixes are now the minimum.** Node 22.23.4, 24.22.1 and 26.12.1 fix
@@ -25,13 +52,22 @@ The running version of an instance is reported at `GET /version` (baked into the
     Node 22.23.3 was still being used after the fix shipped.
 - **fastify 5.12.7** fixes GHSA-389g-gv7q-r4x8 (low), a header-validation bypass via case-sensitive
   `propertyNames`.
-
-### Fixed
-
-- **Pages: Move to ▸ Top/Bottom of group works when a menu link sits at that end.** Reordering treated
-  every slugless page as Home and left menu links out of the group. A move aimed at a menu link did
-  nothing and showed no error. This affected Top/Bottom of group, drag, arrow keys and Select sibling….
-  A moved menu link could also land past the next link.
+- **Advisories published 2026-10-23 and 2026-10-24**, all cleared by upgrades:
+  - **nodemailer 10.1.4+** (resolves 10.1.7): three address-parser flaws, GHSA-8c8m-p3m8-cjg8,
+    GHSA-m943-m63m-w62w and GHSA-85x2-q946-cp5h. A nested comment, a `;` inside a quoted string or a
+    `>` inside a quoted local part could turn display text into a recipient, or send mail to a domain
+    the header does not name.
+  - **body-parser 2.4.0** (GHSA-27r3-jxmh-p828, high): trailing bytes after a compressed request body
+    could take the process down. Reached through the MCP server's Express stack. 2.4.0 is younger
+    than the 3-day release-age cooldown, so it is excepted by exact version until 2026-10-25.
+  - **fast-uri 3.1.9 and 4.2.3** (GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr and two lows): scheme
+    spoofing through a percent-encoded scheme, and host confusion. Reached through fastify's and the
+    MCP SDK's JSON-schema validators.
+  - **zod 3 is gone from the tree** (GHSA-mrhx-c7xc-m3w5, high, no 3.x fix). Its only user was
+    Lighthouse's copy of puppeteer-core, now 25.15 (still inside Lighthouse's own range), whose browser
+    protocol layer uses zod 4.
+  - **undici 8.12.3** (GHSA-xjj6-f33q-929c high, GHSA-4qv8-2p9j-2685, GHSA-f72v-6w45-q472): in the
+    test toolchain only, through jsdom. Node's built-in `fetch` has its own copy.
 
 ## [0.72.0] — 2026-10-22
 

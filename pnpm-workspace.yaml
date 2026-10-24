@@ -38,6 +38,9 @@ minimumReleaseAge: 4320
 # publishing these to a registry cannot deadlock our own releases.
 minimumReleaseAgeExclude:
   - "@sitewright/*"
+  # GHSA-27r3-jxmh-p828 (high, see the body-parser override). 2.4.0 was published 2026-10-22 and
+  # clears the cooldown on 2026-10-25: remove this line after that date.
+  - "body-parser@2.4.0"
 
 # Refuse transitive deps that resolve from git URLs, gists, or arbitrary tarballs
 # rather than the registry. Default-on in pnpm 11; stated so a downgrade or a
@@ -88,14 +91,26 @@ overrides:
   # which must print exactly one line per package. (Measured 2026-10-01: with these three removed,
   # the tree immediately carried TWO copies each of state and view — the pin is still load-bearing,
   # it is not a historical leftover.)
+  #
+  # ★ The same holds for the Lezer packages underneath (@lezer/common, @lezer/lr, @lezer/highlight):
+  # a parse tree from one copy of @lezer/common is unreadable to another. A Dependabot lockfile
+  # left two copies each of @lezer/common and @lezer/lr (2026-10-24), and the editor's code view
+  # crashed while parsing and highlighting ("tags is not iterable"). They are not pinned, so after
+  # a CodeMirror bump run `pnpm dedupe`, then check that
+  #   grep -oE "^  '@lezer/(common|lr|highlight)@[0-9.]+'" pnpm-lock.yaml | sort -u
+  # prints one line per package too.
   "@codemirror/state": 6.7.6
-  "@codemirror/view": 6.43.13
-  "@codemirror/language": 6.12.4
+  "@codemirror/view": 6.43.14
+  "@codemirror/language": 6.13.1
 
   # ── Advisory remediation (see the note above the block) ──
   "@esbuild-kit/core-utils>esbuild": ^0.25.0
   "@hono/node-server@<2.0.5": ^2.0.5
-  "body-parser@<2.3.0": ^2.3.0
+  # ★ Widened range: 2.3.0 was the fix, then GHSA-27r3-jxmh-p828 (high, DoS through trailing bytes
+  # after a compressed request body) landed with 2.4.0 as the fix. It is in the RUNTIME tree:
+  # @modelcontextprotocol/sdk → express, which the MCP server runs. 2.4.0 is younger than the
+  # release-age cooldown, hence its one-version entry in minimumReleaseAgeExclude.
+  "body-parser@<2.4.0": ^2.4.0
   # ★ Widened range. 5.0.9 fixed GHSA-v6h2-p8h4-qcjw; three more then landed (GHSA-6j4f-fj2g-mc7p
   # and GHSA-qhr7-859c-m2p7, stack exhaustion via uncontrolled recursion; GHSA-q2hr-2g5m-vwhr,
   # quadratic `{a},b}` expansion), with 5.0.12 as the fix for all three.
@@ -118,8 +133,11 @@ overrides:
   # NB the audit output prints "fixed in: undefined" for GHSA-58mr-gqgx-xq4g — a display artifact:
   # the advisory patches = 2.4.5 → 2.4.6, = 3.1.6 → 3.1.7 and = 4.1.3 → 4.1.4, exact-version
   # ranges with no single global fix. Do not read that as "unfixable".
-  "fast-uri@<3.1.8": ^3.1.8
-  "fast-uri@>=4.0.0 <4.1.5": ^4.1.5
+  # ★ Widened a THIRD time (2026-10-24): GHSA-w74x-v6f9-j3xg (scheme spoofing via a percent-encoded
+  # scheme), GHSA-wjr9-j795-jxcr (host confusion via unchecked WHATWG host canonicalization) and two
+  # lows, fixed in 3.1.9 and 4.2.3.
+  "fast-uri@<3.1.9": ^3.1.9
+  "fast-uri@>=4.0.0 <4.2.3": ^4.2.3
   # GHSA-wq5f-xc86-pv6w via the busboy CRLF-injection advisory: a multipart Content-Disposition
   # filename carrying CR/LF could inject header lines. `@fastify/multipart` is how every upload in
   # this platform arrives, so this is squarely in the runtime path.
@@ -155,7 +173,11 @@ overrides:
   # transports, i.e. cross-tenant SMTP credential disclosure, which for a platform sending as
   # many different clients is the one that matters), two addressparser DoS bugs, and a malformed
   # envelope recipient. 10.0.9 is the floor; 10.0.12 is what resolves.
-  "nodemailer@<10.0.9": ">=10.0.9"
+  # ★ Raised to 10.1.4 (2026-10-24): three addressparser advisories (GHSA-8c8m-p3m8-cjg8,
+  # GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h) where a nested comment, a ";" in a quoted string or a
+  # ">" in a quoted local part ended a token early and turned display text into a RECIPIENT. Contact
+  # forms put visitor input into address headers, so this is reachable. Now on the 10 line only.
+  "nodemailer@<10.1.4": ^10.1.4
   # GHSA — IP spoofing via IPv4-mapped IPv6 addresses: `proxy-addr` trusted a mapped form that
   # bypasses a configured trust list. Reached through @modelcontextprotocol/sdk's express, which the
   # MCP server runs, and this platform makes trust decisions from client IPs (rate limits, the SSRF
@@ -176,6 +198,17 @@ overrides:
   # Reached through drizzle-orm's `gel` driver, which this platform never loads — pinned anyway,
   # because an override keeps `pnpm audit` honest and costs nothing.
   "shell-quote@<1.11.0": ^1.11.0
+  # GHSA-mrhx-c7xc-m3w5 (high): zod <4.6.6 can exhaust memory validating an oversized constrained
+  # collection, and there is NO 3.x fix. The tree's only zod 3 came through lighthouse →
+  # puppeteer-core 25.12 → chromium-bidi 17 (which needs zod ^3). puppeteer-core 25.13 moved to
+  # chromium-bidi 157.x, which needs zod ^4, so raising puppeteer-core inside lighthouse's own
+  # `^25.9.0` range removes zod 3 from the tree. That beats forcing zod 4 onto a zod 3 consumer.
+  "puppeteer-core@<25.13.0": ^25.13.0
+  # GHSA-xjj6-f33q-929c (high, unhandled error on too many content-encodings), GHSA-4qv8-2p9j-2685
+  # (unbounded EventSource buffer) and GHSA-f72v-6w45-q472 (SRI bypass via upper-case algorithm
+  # names). The npm package is reached only through jsdom in the TEST toolchain; Node's own fetch
+  # bundles a separate copy. Pinned rather than accepted because a fix exists.
+  "undici@>=8.0.0 <8.12.2": ^8.12.2
 
 # Deliberately EMPTY and it should stay that way — advisory acceptances live in scripts/audit-gate.mjs,
 # where they carry a reason and a stale one is a hard failure. An `ignore` here would instead make

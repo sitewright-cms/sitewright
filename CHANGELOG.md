@@ -11,6 +11,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Three major dependency upgrades** (Dependabot #1131, #1132, #1133), each tested beyond the unit suite:
+  - **`ssh2-sftp-client` 11 → 12**, which every SFTP deploy and SFTP connection test goes through. The
+    unit tests use a fake client, so 11.0.0 and 12.1.1 were also run side by side against a real OpenSSH
+    server. Results matched in every case: password and key sign-in, wrong credentials and wrong
+    passphrases, a 126-file deploy (the remote tree byte-identical, the mail credentials file still
+    mode 600), an incremental re-deploy, a refused connection, and a server killed mid-upload. The
+    messages authors see are identical too.
+  - The one change: 12 no longer retries a failed connect, where 11 retried almost any failure once,
+    25 s later. A wrong host-key pin is now refused in 0.1 s instead of 25 s. **A connection the server
+    drops before the handshake is still retried once**, now by Sitewright itself, after 5 s and on a
+    fresh connection. Busy shared hosts do this at random when too many logins are pending (OpenSSH's
+    `MaxStartups`). A reset or broken connection and a temporary DNS failure are retried the same way.
+    Nothing else is: rejected credentials, a host-key mismatch, an unreadable key, a refused or unknown
+    host and a handshake timeout all fail at once.
+  - **`motion` 12 → 14**, the editor's animation library (it is not shipped to published sites). The
+    settings panel's entrance, the swap between Corporate Identity and Website Settings (one panel at
+    a time), and a dialog opening and closing were measured frame by frame in Chromium on both versions,
+    with and without reduced motion. They match, and a closed dialog leaves the page at the same frame.
+  - **`@types/yauzl` 2 → 3**: type definitions only, now matching the `yauzl` 3.4 that already runs.
+
 - **Development dependency refresh** (Dependabot #1194, 13 packages, each at the version Dependabot proposed):
   `eslint` 10.13, `typescript-eslint` 8.71.2, `vitest` and `@vitest/coverage-v8` 5.0.5, `@playwright/test`
   1.64.1, `jsdom` 30.1.3, `turbo` 2.11.9, `globals` 17.13, `@types/node` 26.6.5,

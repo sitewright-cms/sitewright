@@ -13,6 +13,7 @@ import {
   type DeploySecurity,
 } from './adapters.js';
 import { captureTranscript, connectFtp, defaultFtpPort, probeFtpsCertificate, type FtpTlsInfo } from './ftp-connect.js';
+import { connectSftpWithRetry } from './sftp-connect.js';
 import { describeDeployError, normalizeFingerprint, type DeployFailure, type OfferedCertificate } from './deploy-errors.js';
 
 /**
@@ -87,6 +88,8 @@ export interface DeployTestDeps {
   /** Runs the real rsync probe for the rsync step. Takes the same `opts` the deploy path does, so a
    *  test observes the ACTUAL flags the probe runs with rather than a stand-in for them. */
   runRsync?: (siteDir: string, cfg: DeployConfig, opts: { dryRun?: boolean }) => Promise<unknown>;
+  /** The pause before the SFTP connect retry (see sftp-connect.ts), so a test need not really wait. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /** Runs `fn`, recording it as a step. Rethrows so the caller stops at the first real failure.
@@ -202,7 +205,9 @@ async function testSftp(cfg: DeployConfig, deps: DeployTestDeps): Promise<Deploy
   const port = cfg.port ?? 22;
   const startedAt = Date.now();
   const steps: DeployTestStep[] = [];
-  const client = deps.makeSftpClient ? deps.makeSftpClient() : new SftpClientImpl();
+  const makeClient = (): SftpClientImpl => (deps.makeSftpClient ? deps.makeSftpClient() : new SftpClientImpl());
+  // Reassigned when an early-dropped connect is retried on a fresh client (connectSftpWithRetry).
+  let client = makeClient();
   const base: Omit<DeployTestResult, 'ok' | 'elapsedMs'> = { protocol: cfg.protocol, host: cfg.host, port, steps };
   // Captured from the host verifier so the fingerprint can be REPORTED (and pinned) rather than only
   // compared — an operator with no pin set otherwise has no way to learn what to pin.
@@ -224,7 +229,7 @@ async function testSftp(cfg: DeployConfig, deps: DeployTestDeps): Promise<Deploy
           return pinned ? hostKey === pinned : true; // parity with the transport: pin, else trust on first use
         },
       };
-      await client.connect(opts);
+      client = await connectSftpWithRetry(client, makeClient, opts, deps.sleep);
     });
     steps.push({
       key: 'auth',

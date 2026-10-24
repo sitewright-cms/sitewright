@@ -124,6 +124,10 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
     sock.setEncoding('utf8');
     let buffer = '';
     let inData = false;
+    // Recipients accepted in the current transaction. A real server refuses DATA when there are none
+    // (RFC 5321 §3.3). This one used to answer 354 regardless, and a pipelining client then had to end
+    // an empty message to a server that should never have taken it (nodemailer 10.1 does exactly that).
+    let acceptedRecipients = 0;
     // AUTH LOGIN is a challenge/response: the next two lines after it are base64 payloads, not
     // commands, so the dispatcher has to track where it is. Without this the server answered the
     // generic "250 ok" to `AUTH LOGIN`, the client's chain died on the first step expecting 334,
@@ -205,10 +209,16 @@ export async function startFakeSmtp(options: FakeSmtpOptions = {}): Promise<Fake
           // A relay that demands authentication answers 530 until it has it. Without this a client
           // that skipped AUTH entirely would still sail through to a queued message, and the test
           // would be proving nothing about authentication at all.
+          acceptedRecipients = 0;
           sock.write(options.requireAuth && !authenticated ? '530 5.7.0 authentication required\r\n' : '250 2.1.0 ok\r\n');
         } else if (up.startsWith('RCPT TO')) {
+          if (!options.rejectRecipient) acceptedRecipients++;
           sock.write(options.rejectRecipient ? '550 5.1.1 no such user\r\n' : '250 2.1.5 ok\r\n');
         } else if (up === 'DATA') {
+          if (acceptedRecipients === 0) {
+            sock.write('554 5.5.1 no valid recipients\r\n');
+            continue;
+          }
           inData = true;
           sock.write('354 end with .\r\n');
         } else if (up === 'QUIT') {

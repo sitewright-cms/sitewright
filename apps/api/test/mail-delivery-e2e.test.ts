@@ -216,6 +216,9 @@ describe.skipIf(!opensslAvailable())('mail delivery over a real SMTP dialogue', 
     const srv = await server({ offerStartTls: true, rejectRecipient: true });
     await expect(globalMailer(smtp({ port: srv.port, secure: false })).send(mail)).rejects.toThrow();
     expect(srv.transcript.commands).not.toContain('[tls] <END-OF-DATA>');
+    // ★ What matters is that no message CONTENT left. nodemailer pipelines the envelope (MAIL, RCPT and
+    // DATA in one write) since 10.1, so DATA itself is sent; the server's 554 is what stops it.
+    expect(srv.transcript.rawData).toEqual([]);
   });
 
   // ---------------------------------------------------------------------------------------------
@@ -393,6 +396,7 @@ describe.skipIf(!opensslAvailable())('mail delivery over a real SMTP dialogue', 
       expect(res.ok).toBe(false);
       expect(res.error).toBeTruthy();
       expect(srv.transcript.commands).not.toContain('[tls] <END-OF-DATA>');
+      expect(srv.transcript.rawData).toEqual([]);
     });
 
     it('★ will not send a test message over an unencrypted remote session either', async () => {

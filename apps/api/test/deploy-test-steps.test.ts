@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readdirSync } from 'node:fs';
 import { Socket } from 'node:net';
 import { TLSSocket } from 'node:tls';
@@ -262,6 +262,39 @@ describe('connection test — SFTP', () => {
     expect(result.ok).toBe(false);
     expect(result.failure?.kind).toBe('host-key');
     expect(result.hostKeyFingerprint).toBe('aabbcc');
+  });
+
+  it('retries a connect the server dropped before the handshake, once, on a fresh client', async () => {
+    const { make: makeOk, calls } = fakeSftp();
+    let made = 0;
+    const make = (): SftpClient => {
+      made += 1;
+      if (made > 1) return makeOk();
+      // The real ssh2-sftp-client 12 wording for a peer that drops the TCP connection early.
+      return fakeSftp({ failAt: 'connect', error: new Error('getConnection: Connection lost before handshake') }).make();
+    };
+    const sleep = vi.fn(async () => {});
+    const result = await testDeployTarget(sftpCfg, { makeSftpClient: make, sleep });
+    expect(result.ok).toBe(true);
+    expect(stepMap(result)).toEqual({ connect: 'ok', auth: 'ok', directory: 'ok', write: 'ok' });
+    expect(made).toBe(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    // Every later step ran on the RETRY client.
+    expect(calls).toEqual(expect.arrayContaining(['connect', 'mkdir', 'put', 'delete', 'end']));
+  });
+
+  it('does not retry rejected credentials: one attempt, then a failed connect step', async () => {
+    let made = 0;
+    const make = (): SftpClient => {
+      made += 1;
+      return fakeSftp({ failAt: 'connect', error: new Error('getConnection: All configured authentication methods failed') }).make();
+    };
+    const sleep = vi.fn(async () => {});
+    const result = await testDeployTarget(sftpCfg, { makeSftpClient: make, sleep });
+    expect(result.ok).toBe(false);
+    expect(result.failure?.kind).toBe('auth');
+    expect(made).toBe(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it('names a write failure as such rather than blaming the credentials', async () => {

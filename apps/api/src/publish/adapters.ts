@@ -20,6 +20,7 @@ import {
 } from './deploy/manifest.js';
 import { planDirLevels, remoteJoin } from './deploy/plan.js';
 import { captureTranscript, connectFtp, defaultFtpPort, type FtpConnectInfo, type FtpSecurity } from './ftp-connect.js';
+import { connectSftpWithRetry } from './sftp-connect.js';
 import { attachTranscript } from './deploy-errors.js';
 import { PHP_SMTP_CONFIG_FILE } from './contact-php.js';
 import { MAX_PROJECT_ARCHIVE_BYTES, assertDiskHeadroom } from '../limits.js';
@@ -447,7 +448,8 @@ class FtpTransport implements DeployTransport {
 }
 
 class SftpTransport implements DeployTransport {
-  private readonly client = new SftpClientImpl();
+  // Not readonly: a connect that is dropped early is retried on a fresh client (see sftp-connect.ts).
+  private client = new SftpClientImpl();
   readonly security: DeploySecurity = 'ssh';
   constructor(private readonly cfg: DeployConfig) {}
   async connect(): Promise<void> {
@@ -468,7 +470,7 @@ class SftpTransport implements DeployTransport {
     // text-heavy site's on-the-wire bytes several-fold; it falls back gracefully if the server
     // declines. Not surfaced in @types/ssh2-sftp-client's ConnectOptions, but ssh2 reads it.
     (opts as { compress?: boolean }).compress = true;
-    await this.client.connect(opts);
+    this.client = await connectSftpWithRetry(this.client, () => new SftpClientImpl(), opts);
   }
   async readManifest(remoteDir: string): Promise<DeployManifest | null> {
     const path = remoteJoin(remoteDir, MANIFEST_FILENAME);

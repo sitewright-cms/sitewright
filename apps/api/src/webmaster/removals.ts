@@ -6,7 +6,8 @@ import { newId } from '../id.js';
 
 /**
  * THE REMOVAL QUEUE (`webmaster_removals`) — sites the platform could not remove from one of its search engine accounts:
- * when their project was deleted, or when a replaced key left a registration with the old account. `SiteRegistrar`
+ * when their project was deleted, when a replaced key left a registration with the old account, or when Google kept an
+ * ownership because the live site still carried the tag (switched off, or an old Production URL). `SiteRegistrar`
  * tries each again from the hourly sweep, with the account that registered it; this module keeps the table: when the
  * next try is due, when to give up, and how large it may grow.
  *
@@ -97,11 +98,40 @@ export class RemovalQueue {
     await this.cap();
   }
 
-  /** The site was removed (or is someone else's now): nothing left to try. */
-  async drop(reg: Pick<Registration, 'service' | 'siteUrl' | 'account'>): Promise<void> {
+  /**
+   * A deploy went out and the removal still did not get through — a git host builds for minutes, a cache serves the
+   * old pages a while. Tried again within the hour, its backoff and its 14 days counted from now: the deploy was a new
+   * chance, not one more failure of the old one.
+   */
+  async afterDeploy(reg: Registration, error: string): Promise<void> {
+    const now = this.deps.now();
+    const owners = [...reg.owners];
+    const nextAt = new Date(now.getTime() + retryDelay(1));
+    await this.deps.db
+      .insert(webmasterRemovals)
+      .values({ id: newId(), projectId: reg.projectId, service: reg.service, siteUrl: reg.siteUrl, account: reg.account, owners, attempts: 1, lastError: error, nextAt, createdAt: now })
+      .onConflictDoUpdate({
+        target: [webmasterRemovals.service, webmasterRemovals.siteUrl, webmasterRemovals.account],
+        set: { projectId: reg.projectId, owners, lastError: error, attempts: 1, nextAt, createdAt: now },
+      });
+    await this.cap();
+  }
+
+  /**
+   * The site was removed (or is someone else's now): nothing left to try. With `ownOnly`, only while the entry is
+   * `reg`'s project's own — a "kept, another project registers it" says nothing about that project's queued removal.
+   */
+  async drop(reg: Pick<Registration, 'service' | 'siteUrl' | 'account' | 'projectId'>, ownOnly = false): Promise<void> {
     await this.deps.db
       .delete(webmasterRemovals)
-      .where(and(eq(webmasterRemovals.service, reg.service), eq(webmasterRemovals.siteUrl, reg.siteUrl), eq(webmasterRemovals.account, reg.account)));
+      .where(
+        and(
+          eq(webmasterRemovals.service, reg.service),
+          eq(webmasterRemovals.siteUrl, reg.siteUrl),
+          eq(webmasterRemovals.account, reg.account),
+          ownOnly ? eq(webmasterRemovals.projectId, reg.projectId) : undefined,
+        ),
+      );
   }
 
   async remove(id: string): Promise<void> {
@@ -128,6 +158,9 @@ export class RemovalQueue {
    * account. Two Bing keys can belong to one Bing user, who has one site per address: a removal made with either key
    * removes it for both. So no removal runs while a live project holds the address: an old account keeping a stale
    * ownership is acceptable, removing a live registration is not.
+   *
+   * Switched ON: a switched-off row that still holds its registration is not keeping it, it is waiting for the removal
+   * (Google keeps an ownership until the live site no longer carries the tag) — which this must then let through.
    */
   async heldLive(service: WebmasterService, siteUrl: string, exceptProjectId?: string): Promise<boolean> {
     const [row] = await this.deps.db
@@ -138,6 +171,7 @@ export class RemovalQueue {
         and(
           eq(webmasterSites.service, service),
           eq(webmasterSites.siteUrl, siteUrl),
+          eq(webmasterSites.enabled, true),
           isNull(projects.deletedAt),
           // Registered: Google once a tag was fetched; Bing as soon as the site was asked for (it adds it first).
           or(isNotNull(webmasterSites.token), eq(webmasterSites.service, 'bing')),
@@ -150,7 +184,8 @@ export class RemovalQueue {
 
   /**
    * A restored project: its queued removals are cancelled — the ones its rows still hold, whose sites stay registered
-   * for it. One it no longer holds (a registration a replaced key left with the old account) stays queued.
+   * for it. One it no longer holds (a registration a replaced key left with the old account) stays queued, and so does
+   * one its row holds switched OFF: that one was waiting to be removed before the delete (see `heldLive`).
    */
   async cancelHeldBy(projectId: string): Promise<number> {
     const held = this.deps.db
@@ -160,6 +195,7 @@ export class RemovalQueue {
         webmasterSites,
         and(
           eq(webmasterSites.projectId, webmasterRemovals.projectId),
+          eq(webmasterSites.enabled, true),
           eq(webmasterSites.service, webmasterRemovals.service),
           eq(webmasterSites.siteUrl, webmasterRemovals.siteUrl),
           eq(webmasterSites.account, webmasterRemovals.account),

@@ -70,12 +70,13 @@ export class AccessTokens {
  * - `auth`: the service refused the key.
  * - `disabled`: the key works, but an API it needs is switched off for its project.
  * - `unverified`: the service looked for the site's verification tag and did not find it.
+ * - `tagged`: the opposite — the site still carries the tag, so Google will not give the ownership up yet.
  * - `rate`, `unavailable`: try again later.
  */
 export class WebmasterError extends Error {
   constructor(
     message: string,
-    readonly kind: 'invalid' | 'auth' | 'disabled' | 'unverified' | 'rate' | 'unavailable',
+    readonly kind: 'invalid' | 'auth' | 'disabled' | 'unverified' | 'tagged' | 'rate' | 'unavailable',
   ) {
     super(message);
     this.name = 'WebmasterError';

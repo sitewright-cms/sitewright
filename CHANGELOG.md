@@ -19,6 +19,19 @@ The running version of an instance is reported at `GET /version` (baked into the
   shown in full: with a site URL saved without its trailing slash, `https://example.com.evil.net/…` used to be
   shown as a path on the site.
 
+### Fixed
+
+- **Search engines: switching Google off no longer fails while the live site still carries the tag.** Google will
+  not give up an ownership while the site still serves its verification tag. It answers 400 ("You cannot unverify
+  … until your verification token … has been removed"), measured on a real site. Every build carries the tag while
+  the switch is on, and that answer was read as "Google could not be reached, try again". So the switch stayed on,
+  and no later try could get through. Now the switch goes off and the site leaves Search Console at once, and the
+  owners lose their access as before. The platform's own ownership is given up right after the next deploy or
+  Local Hosting publish, the first build without the tag. The tile says so in the meantime. If the live site still
+  serves the old pages at that point (a git host still building, or a cache), the hourly sweep tries again. A new
+  Production URL whose old address still carries the tag no longer blocks verifying the new one: the old ownership
+  is queued and given up once the old pages are gone. A refusal for any other reason is unchanged.
+
 ## [0.74.0] — 2026-10-24
 
 ### Changed

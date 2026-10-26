@@ -22,7 +22,7 @@ import { SitemapOwnersModal } from './SitemapOwnersModal';
  */
 
 const HELP =
-  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag, asks it to confirm, and submits the sitemap. The tag stays on every later deploy. Sitemap & owners submits the sitemap again, and makes Google accounts owners in Search Console. Once verified, Statistics → Search performance shows the site’s clicks and searches. Switching a search engine off removes the site from its account.';
+  'Registers this site with the platform’s Google Search Console and Bing Webmaster Tools accounts, so the client needs no account of their own. Switch a search engine on, then Verify now: it deploys the site with that search engine’s tag, asks it to confirm, and submits the sitemap. The tag stays on every later deploy. Sitemap & owners submits the sitemap again, and makes Google accounts owners in Search Console. Once verified, Statistics → Search performance shows the site’s clicks and searches. Switching a search engine off removes the site from its account; Google gives up the platform’s ownership only once a deploy has taken the tag off the live site.';
 
 const ENGINES: ReadonlyArray<{ key: WebmasterService; name: string; short: string }> = [
   { key: 'google', name: 'Google Search Console', short: 'Google' },
@@ -98,7 +98,7 @@ export function SearchEnginesTile({ projectId }: { projectId: string }) {
     if (!on) {
       const ok = await confirm({
         title: `Switch ${name} off`,
-        message: `Remove ${view.siteUrl ?? 'this site'} from the platform’s ${name} account, if it is registered there? Its tag leaves the site with the next deploy.`,
+        message: `Remove ${view.siteUrl ?? 'this site'} from the platform’s ${name} account, if it is registered there? Its tag leaves the site with the next deploy${service === 'google' ? ', and Google gives up the platform’s ownership once the live site no longer carries it' : ''}.`,
         confirmLabel: 'Switch off',
       });
       if (!ok) return;

@@ -55,6 +55,11 @@ let engines: {
   googleOwners: string[];
   /** Google refuses any owner list (as it does an address that is not a Google account). */
   googleRefusesOwners: boolean;
+  /**
+   * Google refuses to give the ownership up while the live site carries its tag, as the real one does (measured:
+   * 400 "You cannot unverify … until your verification token … has been removed"). Off unless a test asks.
+   */
+  googleChecksTag: boolean;
   feeds: string[];
   calls: string[];
   /** The key each RemoveSite went out with. */
@@ -72,6 +77,10 @@ const fakeEngines: FetchLike = async (url, init) => {
     const resource = () => ({ id: 'x', site: { type: 'SITE', identifier: SITE }, owners: [SERVICE_ACCOUNT, ...engines.googleOwners] });
     const notOwner = answer(403, { error: { code: 403, message: 'You are not an owner of this site.', errors: [{ reason: 'forbidden' }] } });
     if (init.method === 'DELETE') {
+      if (engines.googleChecksTag && (await liveHome()).includes(GOOGLE_TAG)) {
+        const message = 'You cannot unverify your ownership of this site until your verification token (meta tag, HTML file, Google Analytics tracking code, Google Tag Manager container code, or DNS record) has been removed.';
+        return answer(400, { error: { code: 400, message, errors: [{ message, domain: 'global', reason: 'badRequest' }] } });
+      }
       engines.googleOwned = false;
       return answer(204, '');
     }
@@ -116,7 +125,7 @@ let projectId: string;
 let publishRoot: string;
 
 beforeEach(async () => {
-  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, feeds: [], calls: [], bingRemovedWith: [] };
+  engines = { google: 'ok', bing: true, bingDown: false, bingRefusesRemoval: false, bingSites: [], googleOwned: false, googleOwners: [], googleRefusesOwners: false, googleChecksTag: false, feeds: [], calls: [], bingRemovedWith: [] };
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-'));
   harness = await makeHarness({ publishRoot, sitesDomain: 'sites.test', webmasterFetch: fakeEngines, rankTickMs: 0 });
   admin = await harness.signup({ admin: true });
@@ -157,6 +166,10 @@ const setOwners = async (owners: unknown) => admin.put(`${base()}/google/owners`
 const publish = async (): Promise<void> => {
   expect((await admin.post(`/projects/${projectId}/publish`, {})).statusCode).toBe(200);
 };
+/** What the live site serves at its home page right now (what Google would fetch). */
+async function liveHome(): Promise<string> {
+  return (await harness.app.inject({ method: 'GET', url: '/', headers: { host: `${slug}.sites.test` } })).body;
+}
 /** The published home page, through the host Local Hosting serves it at. Asserted present, so an absence check means something. */
 async function home(): Promise<string> {
   const r = await harness.app.inject({ method: 'GET', url: '/', headers: { host: `${slug}.sites.test` } });
@@ -250,6 +263,27 @@ describe('site registration', () => {
     expect(engines.bingSites).toEqual([]);
     // Switched back on, it starts over: nothing is left of the old registration.
     expect(((await toggle({ bing: true })).json() as SiteRegistrationToggleResult).view.bing).toMatchObject({ enabled: true, status: 'none' });
+  });
+
+  it('★ switched off while the live site carries the tag: off at once, and the next publish gives the ownership up', async () => {
+    // Before the fix the switch stayed on "to try again" — and kept the tag on the site, so no try could ever succeed.
+    engines.googleChecksTag = true;
+    await toggle({ google: true });
+    await prepare();
+    await publish();
+    await verify('google');
+    expect(await home()).toContain(GOOGLE_TAG);
+
+    const off = (await toggle({ google: false })).json() as SiteRegistrationToggleResult;
+    const left = "Removed from Search Console. Google keeps the platform's ownership while the site still carries its tag: it is given up once a deploy has taken the tag off";
+    expect(off.removed.google).toEqual({ ok: true, detail: left });
+    expect(off.view.google).toMatchObject({ enabled: false, status: 'off', detail: left });
+    expect(engines.googleOwned).toBe(true);
+
+    await publish(); // Local Hosting: the publish IS the deploy
+    expect(await home()).not.toContain('google-site-verification');
+    await vi.waitFor(() => expect(engines.googleOwned).toBe(false));
+    await vi.waitFor(async () => expect((await view()).google.detail).toBe('Removed from Search Console, and the ownership given up'));
   });
 
   it('keeps a search engine on when its removal could not get through', async () => {

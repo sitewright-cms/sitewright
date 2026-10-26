@@ -42,11 +42,18 @@ const BING_CODE = '0A1B2C3D4E5F60718293A4B5C6D7E8F9';
 
 let verifies: string[];
 let calls: string[];
-const fakeEngines: FetchLike = async (url) => {
+/** The live site still carries Google's tag: Google refuses to give the ownership up (its measured answer). */
+let tagLive: boolean;
+const fakeEngines: FetchLike = async (url, init) => {
   const path = url.split('?')[0]!;
   calls.push(path);
   const answer = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => (body === '' ? '' : JSON.stringify(body)) });
   if (path === 'https://oauth2.googleapis.com/token') return answer(200, { access_token: 'ya29.token' });
+  if (init.method === 'DELETE' && path.startsWith('https://www.googleapis.com/siteVerification/v1/webResource/')) {
+    if (!tagLive) return answer(204, '');
+    const message = 'You cannot unverify your ownership of this site until your verification token (meta tag, HTML file, Google Analytics tracking code, Google Tag Manager container code, or DNS record) has been removed.';
+    return answer(400, { error: { code: 400, message, errors: [{ message, domain: 'global', reason: 'badRequest' }] } });
+  }
   if (path.endsWith('/siteVerification/v1/token')) return answer(200, { method: 'META', token: `<meta name="google-site-verification" content="${GOOGLE_TAG}" />` });
   if (path.endsWith('/siteVerification/v1/webResource')) {
     verifies.push('google');
@@ -72,6 +79,7 @@ beforeEach(async () => {
   upload.homes = [];
   verifies = [];
   calls = [];
+  tagLive = false;
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-site-reg-deploy-'));
   h = await makeHarness({ publicUrl: 'https://sw.test', publishRoot, deployAllowedHosts: ['allowed.example.com'], webmasterFetch: fakeEngines, rankTickMs: 0 });
   owner = await h.signup({ admin: true });
@@ -110,5 +118,34 @@ describe('site registration and a remote deploy', () => {
     expect(upload.homes[0]).toContain('<h1>Hi</h1>');
     expect(upload.homes[0]).not.toMatch(/google-site-verification|msvalidate/);
     expect(calls).toEqual([]);
+  });
+
+  /**
+   * ★ Google keeps an ownership while the live site carries its tag, and builds carry the tag while the switch is on —
+   * so before the fix switching Google off "stayed on to try again" and never could. Found on a real site.
+   */
+  it('★ switching Google off while the live site carries the tag: off now, the ownership given up after the next deploy', async () => {
+    const siteResource = `https://www.googleapis.com/siteVerification/v1/webResource/${encodeURIComponent('https://www.shop.test/')}`;
+    expect((await owner.put(`/projects/${projectId}/search-engines`, { google: true })).statusCode).toBe(200);
+    expect((await owner.post(`/projects/${projectId}/search-engines/prepare`, {})).statusCode).toBe(200);
+    tagLive = true;
+
+    const off = await owner.put(`/projects/${projectId}/search-engines`, { google: false });
+    expect(off.statusCode).toBe(200);
+    const detail = "Removed from Search Console. Google keeps the platform's ownership while the site still carries its tag: it is given up once a deploy has taken the tag off";
+    expect(off.json()).toMatchObject({ removed: { google: { ok: true, detail } }, view: { google: { enabled: false } } });
+
+    // The deploy that takes the tag off the live site…
+    tagLive = false;
+    calls = [];
+    expect((await owner.post(`/projects/${projectId}/deploy-targets/${targetId}/deploy`, {})).statusCode).toBe(200);
+    expect(upload.homes[0]).toContain('<h1>Hi</h1>');
+    expect(upload.homes[0]).not.toContain('google-site-verification');
+    // …and, after it, the ownership given up (in the background: the deploy's answer does not wait for Google).
+    await vi.waitFor(() => expect(calls).toContain(siteResource));
+    await vi.waitFor(async () => {
+      const view = (await owner.get(`/projects/${projectId}/search-engines`)).json() as { google: { detail: string | null } };
+      expect(view.google.detail).toBe('Removed from Search Console, and the ownership given up');
+    });
   });
 });

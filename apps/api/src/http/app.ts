@@ -9262,7 +9262,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // showed "changes to deploy" permanently, seconds after a successful publish. Observed on the
           // live instance, where all four client sites are locally hosted.
           const localTarget = await findLocalTarget(ctx);
-          if (localTarget) await recordDeployed(contentRepo, ctx, localTarget);
+          if (localTarget) {
+            await recordDeployed(contentRepo, ctx, localTarget);
+            // As after a remote deploy: a search engine removal that waited for a build without its tag.
+            void siteRegistrar.deployed(project.id);
+          }
 
           // ★ RETENTION IS THE SWEEP'S JOB, NOT THIS ROUTE'S. A build for a project with no Local
           // Hosting target serves nothing, but deleting it HERE would punish the ordinary sequence
@@ -10861,8 +10865,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       // Build the site fresh into a temp dir at deploy time; the route uploads it then removes it.
       buildForDeploy,
-      // A remote deploy just made its build the live site: checkout charges that build's price lists.
-      onDeployed: (projectId, release) => persistShopCatalog(projectId, 'live', release),
+      // A remote deploy just made its build the live site: checkout charges that build's price lists. And a
+      // switched-off search engine whose removal waited for a build without its tag is finished, in the background.
+      onDeployed: (projectId, release) => {
+        void siteRegistrar.deployed(projectId);
+        return persistShopCatalog(projectId, 'live', release);
+      },
       // Drop the locally-served build when its Local Hosting target is deleted (see that route).
       // No publish root configured → nothing was ever served locally, so there is nothing to remove.
       removeLocalSite: async (slug) => {

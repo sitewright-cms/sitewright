@@ -38,7 +38,7 @@
     "fastify": "^5.12.7",
     "html-minifier-terser": "^7",
     "isbot": "5.2.2",
-    "isomorphic-git": "^1.44.2",
+    "isomorphic-git": "^1.44.3",
     "jszip": "^3",
     "lighthouse": "^13.5.0",
     "mmdb-lib": "3.0.3",

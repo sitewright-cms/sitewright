@@ -34,7 +34,9 @@ import { WebmasterError, type WebmasterIo } from './request.js';
  * tile; nothing here runs on its own:
  *
  *   - `setEnabled`: switch a search engine on or off for the project. Off REMOVES the site from that account
- *     (Search Console and the ownership at Google; the site at Bing) before the switch goes off.
+ *     (Search Console and the ownership at Google; the site at Bing) before the switch goes off. Google gives the
+ *     ownership up only once the live site no longer carries the tag, so that part waits for the next deploy
+ *     (`deployed`).
  *   - `prepare`: before the verification deploy — each switched-on account's tag for the Production URL (Google
  *     getToken; Bing adds the site, then reads its code). A registration for an older URL is removed first.
  *   - the deploy (the editor runs the project's own deploys), whose builds carry the tags (`tagsForBuild`);
@@ -142,6 +144,8 @@ export class SiteRegistrar {
   private readonly bingStats = new Map<string, { at: number; stats: ReturnType<typeof bingSearchStats> }>();
   /** A sweep of the queued removals is running: the next one is skipped rather than run beside it. */
   private sweeping = false;
+  /** Projects whose `deployed` step is queued but has not started: another deploy meanwhile adds nothing. */
+  private readonly deployWaiting = new Set<string>();
   private readonly removals: RemovalQueue;
 
   constructor(private readonly deps: SiteRegistrarDeps) {
@@ -288,7 +292,7 @@ export class SiteRegistrar {
    * "not an owner" and Bing "not found" — exactly what "already removed" looks like — and the site would be forgotten
    * while still registered with the old account. So with another account, or none, it is NOT removed, and says so.
    */
-  private async unregister(row: Registration): Promise<SiteRegistrationStepResult & { retry: boolean }> {
+  private async unregister(row: Registration): Promise<SiteRegistrationStepResult & { retry: boolean; afterDeploy?: boolean }> {
     const account = await this.account(row.service, this.stepIo());
     if (!account || account.id !== row.account) {
       const why = account ? 'it was registered with an account the platform no longer uses' : 'the platform no longer has the account it was registered with';
@@ -303,6 +307,8 @@ export class SiteRegistrar {
     try {
       return { ok: true, retry: false, detail: await withTimeout(account.unregister(row.siteUrl, row.owners), STEP_TIMEOUT_MS, row.service) };
     } catch (err) {
+      // The live site still carries the tag: no retry gets through until a deploy without it (see `deployed`).
+      if (err instanceof WebmasterError && err.kind === 'tagged') return { ok: false, retry: false, afterDeploy: true, detail: err.message };
       return { ok: false, retry: transient(err), detail: `Could not remove ${row.siteUrl} from ${NAME[row.service]}: ${failureText(err)}` };
     }
   }
@@ -329,6 +335,12 @@ export class SiteRegistrar {
   /**
    * Switches search engines on or off. Off removes the site from that account first; when the search engine could
    * not be reached the switch stays on (say so, try again), when it refused for good the switch goes off anyway.
+   *
+   * ★ Google refuses to give the ownership up while the live site carries its tag, and every build carries the tag
+   * while the switch is on. Keeping the switch on until the removal got through (as for an unreachable Google) could
+   * therefore never end. So the switch goes off, the next build leaves the tag out, and `deployed` gives the ownership
+   * up after that deploy. The row keeps the registration until then; it is reported as done (nothing is left for
+   * staff to do but deploy, which the answer says).
    */
   setEnabled(projectId: string, changes: Partial<Record<WebmasterService, boolean>>): Promise<Partial<Record<WebmasterService, SiteRegistrationStepResult>>> {
     return this.queued(projectId, async () => {
@@ -360,16 +372,18 @@ export class SiteRegistrar {
         if (!row) continue;
         let result: SiteRegistrationStepResult | undefined;
         if (SiteRegistrar.registered(row)) {
-          const { retry, ...outcome } = await this.unregister(row);
+          const { retry, afterDeploy, ...outcome } = await this.unregister(row);
           result = outcome;
           // eslint-disable-next-line security/detect-object-injection -- service is a WEBMASTER_SERVICES literal
-          removed[service] = outcome;
+          removed[service] = afterDeploy ? { ok: true, detail: outcome.detail } : outcome;
           // Not reached: the site is still registered, so the switch stays on until a removal gets through.
           if (retry) continue;
-          // Refused for good: switched off (no more tags), but what it registered is kept for the delete or the
-          // reap to try again.
+          // Refused for good: switched off (no more tags), but what it registered is kept for the next deploy, the
+          // delete or the reap to try again. Waiting for the tag to go: also queued for the hourly sweep, which
+          // finishes it should the deploy's own try come too early (a git host still building, a cache).
           if (!outcome.ok) {
             await this.save({ ...row, enabled: false, detail: outcome.detail, updatedAt: now });
+            if (afterDeploy) await this.removals.add(row, outcome.detail);
             continue;
           }
         }
@@ -423,12 +437,19 @@ export class SiteRegistrar {
           }
         } else if (SiteRegistrar.registered(row) && row.siteUrl !== siteUrl) {
           const old = await this.unregister(row);
-          // Not removed: stop here rather than forget the old address (the row is the only record of it).
-          if (!old.ok) {
+          if (old.afterDeploy) {
+            // ★ The old address still carries the tag, and nothing the platform deploys will take it off there now: never
+            // a refusal (the new address could never be verified), but queued — given up once the old pages are gone,
+            // or after 14 days with a warning naming the site.
+            await this.removals.add(row, old.detail);
+            moved = ` (the old address ${row.siteUrl} still carries the tag, so Google keeps the platform's ownership of it until it no longer does)`;
+          } else if (!old.ok) {
+            // Not removed: stop here rather than forget the old address (the row is the only record of it).
             set({ ok: false, detail: `${old.detail}. Try again.` });
             continue;
+          } else {
+            moved = ` (${old.detail.startsWith('Kept') ? old.detail : `the old address ${row.siteUrl} was removed`})`;
           }
-          moved = ` (${old.detail.startsWith('Kept') ? old.detail : `the old address ${row.siteUrl} was removed`})`;
         }
         const base = { projectId, service, enabled: true, siteUrl, account: account.id, verifiedAt: null, owners: row.owners, ...SiteRegistrar.NO_SITEMAP };
         try {
@@ -608,6 +629,43 @@ export class SiteRegistrar {
         else await this.removals.add(row, result.detail);
       }
     });
+  }
+
+  /**
+   * A deploy of the project went out. What a switched-off search engine still holds is removed now — above all the
+   * Google ownership that waited for this deploy, the first build without the tag (see `setEnabled`). Any target
+   * counts: one that does not serve the Production URL only means Google refuses once more. Still waiting for the tag
+   * to go, the removal is queued to be tried again within the hour (the live site may lag the deploy), and every later
+   * deploy tries again too. Never throws: it runs after a deploy that succeeded either way.
+   */
+  async deployed(projectId: string): Promise<void> {
+    // One waiting its turn already sees this deploy too: a burst of publishes asks the search engines once, rather
+    // than queueing a full round each in front of staff's next step. (A switch-off queued between the two runs after
+    // the waiting one; the hourly sweep it queued itself covers it.)
+    if (this.deployWaiting.has(projectId)) return;
+    this.deployWaiting.add(projectId);
+    try {
+      await this.queued(projectId, async () => {
+        this.deployWaiting.delete(projectId);
+        for (const row of await this.rows(projectId)) {
+          if (row.enabled || !SiteRegistrar.registered(row)) continue;
+          const { afterDeploy, ...result } = await this.unregister(row);
+          const where = { projectId, service: row.service, siteUrl: row.siteUrl, detail: result.detail };
+          if (result.ok) {
+            await forgetRegistration(this.deps.db, row, result.detail, this.now());
+            await this.removals.drop(row, true);
+            this.deps.log.info(where, 'site registration: removed after the deploy');
+            continue;
+          }
+          if (afterDeploy) await this.removals.afterDeploy(row, result.detail);
+          // Said again only when it changed: a refusal for good repeats itself on every deploy.
+          if (result.detail !== row.detail) await this.save({ ...row, detail: result.detail, updatedAt: this.now() });
+          this.deps.log.info(where, 'site registration: still not removed after the deploy');
+        }
+      });
+    } catch (err) {
+      this.deps.log.warn({ projectId, errMsg: err instanceof Error ? err.message : String(err) }, 'site registration: removal after the deploy failed');
+    }
   }
 
   /** A deleted project was restored: the removals queued for what its rows still hold are cancelled — those stay its own. */

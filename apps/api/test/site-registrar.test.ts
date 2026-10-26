@@ -23,11 +23,18 @@ let calls: string[];
 let bingCode: string;
 /** Bing answers 503 to everything while this is set. */
 let bingDown: boolean;
+/** The live site carries Google's tag while this is set: Google will not give the ownership up (measured answer). */
+let googleTagLive: boolean;
+const TAG_STILL_THERE =
+  'You cannot unverify your ownership of this site until your verification token (meta tag, HTML file, Google Analytics tracking code, Google Tag Manager container code, or DNS record) has been removed.';
 const fetch: FetchLike = async (url, init) => {
   const path = url.split('?')[0]!;
   calls.push(`${init.method} ${path}`);
   const answer = (status: number, body: unknown) => ({ ok: status < 400, status, text: async () => JSON.stringify(body) });
   if (bingDown && path.startsWith('https://ssl.bing.com/')) return answer(503, {});
+  if (googleTagLive && init.method === 'DELETE' && path.includes('/siteVerification/v1/webResource/')) {
+    return answer(400, { error: { code: 400, message: TAG_STILL_THERE, errors: [{ message: TAG_STILL_THERE, domain: 'global', reason: 'badRequest' }] } });
+  }
   if (path === 'https://oauth2.googleapis.com/token') return answer(200, { access_token: 'ya29.token' });
   if (path.endsWith('/siteVerification/v1/token')) {
     await new Promise((r) => setTimeout(r, 20));
@@ -60,6 +67,7 @@ beforeEach(async () => {
   calls = [];
   bingCode = 'B1NGC0DE0001';
   bingDown = false;
+  googleTagLive = false;
   now = T0;
   warnings = [];
   db = await makeTestDb();
@@ -117,6 +125,134 @@ describe('SiteRegistrar', () => {
     await registrar.setEnabled(projectId, { google: true });
     expect(await registrar.verify(projectId, 'google', SITE)).toEqual({ ok: false, detail: 'No tag for this Production URL yet: start the verification again' });
     expect(await registrar.verify(projectId, 'google', 'http://www.example.com/')).toEqual({ ok: false, detail: 'Set an https Production URL first' });
+  });
+});
+
+/**
+ * ★ Google keeps an ownership while the live site carries its tag (measured: 400 "You cannot unverify … until your
+ * verification token … has been removed"), and every build carries the tag while the switch is on. Before the fix the
+ * switch stayed on "to try again", which could never get through: found switching a real site off.
+ */
+describe('switching Google off while the live site carries its tag', () => {
+  const googleRow = async () => (await db.select().from(webmasterSites)).find((r) => r.projectId === projectId && r.service === 'google');
+  const giveUps = (): number => calls.filter((c) => c.startsWith('DELETE') && c.includes('/siteVerification/')).length;
+  const removals = () => db.select().from(webmasterRemovals);
+  const LEFT = "Removed from Search Console. Google keeps the platform's ownership while the site still carries its tag: it is given up once a deploy has taken the tag off";
+
+  beforeEach(async () => {
+    await registrar.setEnabled(projectId, { google: true });
+    expect((await registrar.prepare(projectId, SITE)).google).toMatchObject({ ok: true });
+    googleTagLive = true;
+  });
+
+  it('goes off at once, out of Search Console, with no tag in the next build — and says what is left', async () => {
+    expect((await registrar.setEnabled(projectId, { google: false })).google).toEqual({ ok: true, detail: LEFT });
+    expect(calls).toContain(`DELETE https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(SITE)}`);
+    // Still registered (Google still owns it), but off: no tag in the next build, which is what lets the removal end.
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: SITE, token: 'gTag_first111', detail: LEFT });
+    expect(await registrar.tagsForBuild(projectId, SITE)).toEqual({});
+    // …and queued for the hourly sweep, should the deploy's own try come before the live site changed.
+    expect(await removals()).toMatchObject([{ projectId, service: 'google', siteUrl: SITE, attempts: 1, nextAt: hours(1), lastError: LEFT }]);
+  });
+
+  it('the deploy without the tag gives the ownership up: the row forgets the registration, the queue drops it', async () => {
+    await registrar.setEnabled(projectId, { google: false });
+    googleTagLive = false;
+    await registrar.deployed(projectId);
+    expect(giveUps()).toBe(2);
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: '', account: '', token: null, status: 'none', detail: 'Removed from Search Console, and the ownership given up' });
+    expect(await removals()).toEqual([]);
+  });
+
+  it('★ a deploy the live site lags behind (a git host still building): the hourly sweep finishes it, from the deploy on', async () => {
+    await registrar.setEnabled(projectId, { google: false });
+    const at = (n: number): Date => new Date(T0.getTime() + n * 60 * 60_000);
+    now = at(30);
+    await registrar.deployed(projectId); // too early: the old pages, with the tag, still answer
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: SITE, detail: LEFT });
+    // Counted from the deploy: an hour later, whatever the backoff had reached before it.
+    expect(await removals()).toMatchObject([{ attempts: 1, nextAt: at(31), createdAt: at(30) }]);
+    googleTagLive = false; // the new build is live
+    now = at(31);
+    await registrar.retryRemovals();
+    expect(giveUps()).toBe(3);
+    expect(await removals()).toEqual([]);
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: '', token: null, status: 'none' });
+  });
+
+  it('a deploy that left the tag up (another target) keeps the registration, and the next deploy tries again', async () => {
+    await registrar.setEnabled(projectId, { google: false });
+    await registrar.deployed(projectId);
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: SITE, detail: LEFT, updatedAt: T0 }); // unchanged: not saved again
+    googleTagLive = false;
+    await registrar.deployed(projectId);
+    expect(giveUps()).toBe(3);
+    expect(await googleRow()).toMatchObject({ siteUrl: '', token: null });
+  });
+
+  it('switched back on before the removal got through: the tag stays, and neither a deploy nor the sweep removes it', async () => {
+    calls = [];
+    await registrar.deployed(projectId);
+    expect(calls).toEqual([]); // on: a deploy asks nothing
+    await registrar.setEnabled(projectId, { google: false });
+    await registrar.setEnabled(projectId, { google: true });
+    calls = [];
+    await registrar.deployed(projectId);
+    now = hours(1);
+    await registrar.retryRemovals();
+    expect(calls).toEqual([]);
+    expect(await removals()).toEqual([]); // dropped: the project holds the site again
+    expect(await registrar.tagsForBuild(projectId, SITE)).toEqual({ google: 'gTag_first111' });
+  });
+
+  it('★ a delete and a restore keep the queued removal of a site switched off before them', async () => {
+    await registrar.setEnabled(projectId, { google: false });
+    await projects.softDelete(projectId, 'someone');
+    await registrar.removeOnDelete(projectId); // still tagged: queued again
+    await projects.restore(projectId);
+    await registrar.restored(projectId);
+    expect(await removals()).toHaveLength(1); // not "its site stays registered": it was switched off
+    googleTagLive = false;
+    now = hours(24);
+    await registrar.retryRemovals();
+    expect(await removals()).toEqual([]);
+    expect(await googleRow()).toMatchObject({ enabled: false, siteUrl: '', token: null, status: 'none' });
+  });
+
+  it('a burst of deploys asks Google once while one waits its turn', async () => {
+    await registrar.setEnabled(projectId, { google: false });
+    await Promise.all([registrar.deployed(projectId), registrar.deployed(projectId), registrar.deployed(projectId)]);
+    expect(giveUps()).toBe(2); // the switch-off's, and ONE after the deploys
+    await registrar.deployed(projectId);
+    expect(giveUps()).toBe(3);
+  });
+
+  it('never throws: it runs after a deploy that succeeded either way', async () => {
+    const broken = { select: () => { throw new Error('database closed'); } } as unknown as typeof db;
+    registrar = new SiteRegistrar({ db: broken, accounts, io: { fetch }, now: () => now, log: { info: () => {}, warn: (obj, msg) => warnings.push({ obj, msg }) } });
+    await expect(registrar.deployed(projectId)).resolves.toBeUndefined();
+    expect(warnings.find((w) => w.msg === 'site registration: removal after the deploy failed')?.obj).toMatchObject({ projectId, errMsg: 'database closed' });
+  });
+
+  it('★ a new Production URL while the old address still carries the tag: the new one is verified, the old one queued', async () => {
+    const NEW_SITE = 'https://new.example.com/';
+    const moved = (await registrar.prepare(projectId, NEW_SITE)).google;
+    expect(moved).toEqual({ ok: true, detail: `Tag ready (the old address ${SITE} still carries the tag, so Google keeps the platform's ownership of it until it no longer does)` });
+    expect(await googleRow()).toMatchObject({ enabled: true, siteUrl: NEW_SITE, status: 'pending' });
+    expect(await removals()).toMatchObject([{ projectId, service: 'google', siteUrl: SITE }]);
+    googleTagLive = false; // the old pages are gone
+    now = hours(1);
+    await registrar.retryRemovals();
+    expect(await removals()).toEqual([]);
+    expect(await googleRow()).toMatchObject({ siteUrl: NEW_SITE }); // the new registration untouched
+  });
+
+  it('a Google that cannot be reached is not the tag: the switch stays on, as before', async () => {
+    googleTagLive = false;
+    const down: FetchLike = async (url, init) => (url.includes('googleapis.com/webmasters') ? { ok: false, status: 503, text: async () => '{}' } : fetch(url, init));
+    registrar = new SiteRegistrar({ db, accounts, io: { fetch: down }, now: () => now, log: { info: () => {}, warn: () => {} } });
+    expect((await registrar.setEnabled(projectId, { google: false })).google).toEqual({ ok: false, detail: `Could not remove ${SITE} from Google: Google is unavailable (HTTP 503)` });
+    expect(await googleRow()).toMatchObject({ enabled: true });
   });
 });
 

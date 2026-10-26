@@ -169,6 +169,16 @@ function isNotTheSitesOwner(status: number, json: unknown): boolean {
   return status === 403 && errorReasons(json).includes('forbidden');
 }
 
+/**
+ * Whether Google refused to give up an ownership because the site still carries the verification tag. Measured on a
+ * real site (2026-10-26), 400 `badRequest`: "You cannot unverify your ownership of this site until your verification
+ * token (meta tag, HTML file, …) has been removed." No retry gets through that: only a deploy without the tag does.
+ */
+function isTagStillThere(status: number, json: unknown): boolean {
+  const said = googleMessage(json);
+  return status === 400 && /\bunverify\b/i.test(said) && /\btoken\b/i.test(said);
+}
+
 /** Google's quota and rate refusals, which it may answer with 403 as well as 429. */
 const RATE_REASONS = ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded', 'RATE_LIMIT_EXCEEDED'];
 
@@ -283,6 +293,8 @@ async function deleteIfThere(url: string, token: string, apiName: string, projec
   const { status, json } = await requestJson(SERVICE, url, { method: 'DELETE', headers: { authorization: `Bearer ${token}`, accept: 'application/json' } }, io);
   if (status === 200 || status === 204) return true;
   if (absent.includes(status) && (status !== 403 || isNotTheSitesOwner(status, json))) return false;
+  // Only giving up the ownership is refused for the tag: read from any other call, it would pass a removal off as done.
+  if (apiName === SITE_VERIFICATION && isTagStillThere(status, json)) throw new WebmasterError('Google keeps the ownership while the site still carries its tag', 'tagged');
   return apiFailure(status, json, apiName, projectId);
 }
 
@@ -373,8 +385,10 @@ export async function googleSubmitSitemap(key: GoogleServiceAccountKey, siteUrl:
  * ★ Search Console answers 403, not 404, for a property that is not in the account (a site whose verification
  * failed before it was added), and Site Verification answers 403 for a site the account does not own: both are
  * "not there", unless the reply says the API is switched off.
- * ★ Google can keep a site verified while its tag is still on the live pages (it checks again): the tag goes with
- * the next deploy, since builds carry it only while the search engine is switched on.
+ * ★ Google will NOT give the ownership up while the live site still carries the tag (measured: 400 "You cannot
+ * unverify … until your verification token … has been removed"), and builds carry the tag for as long as the search
+ * engine is switched on. That throws `tagged` — after the Search Console and owner steps, which do go through — and
+ * the caller switches the search engine off and gives the ownership up after the next deploy.
  */
 export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl: string, owners: readonly string[], io: WebmasterIo, now = new Date()): Promise<string> {
   let ownersGone = 0;
@@ -397,9 +411,18 @@ export async function googleUnregisterSite(key: GoogleServiceAccountKey, siteUrl
   } catch (err) {
     failure = err;
   }
-  const owned = await deleteIfThere(siteResource(siteUrl), token, SITE_VERIFICATION, key.projectId, io, [403, 404]);
-  if (failure) throw failure;
   const people = `${ownersGone ? ` (${ownersGone} owner${ownersGone === 1 ? '' : 's'} removed)` : ''}${ownersKept}`;
+  let owned: boolean;
+  try {
+    owned = await deleteIfThere(siteResource(siteUrl), token, SITE_VERIFICATION, key.projectId, io, [403, 404]);
+  } catch (err) {
+    if (!(err instanceof WebmasterError && err.kind === 'tagged')) throw err;
+    // Search Console could not be asked: that is the answer (tried again whole), not the tag.
+    if (failure) throw failure;
+    const done = listed ? 'Removed from Search Console' : 'Not in Search Console';
+    throw new WebmasterError(`${done}${people}. Google keeps the platform's ownership while the site still carries its tag: it is given up once a deploy has taken the tag off`, 'tagged');
+  }
+  if (failure) throw failure;
   if (listed && owned) return `Removed from Search Console, and the ownership given up${people}`;
   if (listed) return `Removed from Search Console${people}`;
   return owned ? `Ownership given up (the site was not in Search Console)${people}` : `Nothing to remove at Google${ownersKept}`;

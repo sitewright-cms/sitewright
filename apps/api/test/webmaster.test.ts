@@ -526,6 +526,41 @@ describe('removing a site', () => {
     expect(await googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], notOwned.io)).toBe('Nothing to remove at Google');
   });
 
+  it('★ Google: an ownership the live site still carries the tag for is `tagged` — after Search Console and the owners went', async () => {
+    // Google's answer, measured on a real site (2026-10-26).
+    const message = 'You cannot unverify your ownership of this site until your verification token (meta tag, HTML file, Google Analytics tracking code, Google Tag Manager container code, or DNS record) has been removed.';
+    const tagged = { status: 400, body: { error: { code: 400, message, errors: [{ message, domain: 'global', reason: 'badRequest' }] } } };
+    const resource = { id: ENC, site: { type: 'SITE', identifier: SITE }, owners: [EMAIL, 'ana@agency.example'] };
+    const live = fake((call) => {
+      if (call.url === GOOGLE_TOKEN_URL) return token;
+      if (call.method === 'GET') return { status: 200, body: resource };
+      if (call.method === 'PUT') return { status: 200, body: { ...resource, owners: JSON.parse(call.body!).owners } };
+      return call.url.includes('/webmasters/') ? { status: 204, body: '' } : tagged;
+    });
+    await expectRefusal(
+      googleUnregisterSite(parseGoogleKey(keyFile()), SITE, ['ana@agency.example'], live.io),
+      'tagged',
+      /^Removed from Search Console \(1 owner removed\)\. Google keeps the platform's ownership while the site still carries its tag: it is given up once a deploy has taken the tag off$/,
+    );
+    expect(live.calls.slice(1).map((c) => c.method).filter((m) => m !== 'POST')).toEqual(['GET', 'PUT', 'DELETE', 'DELETE']);
+
+    // Already out of Search Console (an earlier try): said as such.
+    const again = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 404, body: {} } : tagged));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], again.io), 'tagged', /^Not in Search Console\. Google keeps/);
+
+    // Search Console not reachable: that is the answer (the removal is tried again whole), not the tag.
+    const down = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 503, body: {} } : tagged));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], down.io), 'unavailable', /HTTP 503/);
+
+    // The same words from Search Console's DELETE are not the tag: a removal is never passed off as done.
+    const scWords = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? tagged : { status: 204, body: '' }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], scWords.io), 'unavailable', /Search Console API answered HTTP 400/);
+
+    // Another 400 is not the tag.
+    const other = fake((call) => (call.url === GOOGLE_TOKEN_URL ? token : call.url.includes('/webmasters/') ? { status: 204, body: '' } : { status: 400, body: { error: { code: 400, message: 'Invalid value' } } }));
+    await expectRefusal(googleUnregisterSite(parseGoogleKey(keyFile()), SITE, [], other.io), 'unavailable', /answered HTTP 400/);
+  });
+
   it('Bing: RemoveSite, with "not found" as removed', async () => {
     const KEY = '0123456789abcdef0123456789ABCDEF';
     const ok = fake(() => ({ status: 200, body: { d: null } }));

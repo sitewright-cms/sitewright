@@ -11,6 +11,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking emails.** A booking, a request and a cancellation each email the customer and the business, sent at
+  once and retried like the shop's order mails.
+  - **The customer** gets their confirmation in the language of the page they booked on. It comes from the business
+    and links to the booking's own page on the business's site; replies go to the business.
+  - **Calendar files:** a confirmation carries the booking as a calendar file, and a cancellation takes it out
+    again. A request says it is waiting.
+  - **The business** gets every booking with the customer's details at its own address, with a calendar file. Each
+    resource with its own address (a person's or a room's calendar) also gets a calendar invitation from the business.
+    A cancellation takes the event out of every calendar again.
+  - **New settings:** the booking set-up's `notifyEmail` and a resource's `email`. Customers see `notifyEmail`:
+    their replies to a confirmation go there.
+  - **Limits:** a customer address gets at most 4 booking emails a day from one project, so the booking form cannot
+    be used to send someone a stream of mail. `name+tag@` counts as `name@`. The business always hears.
+  - **Links:** a link always points at the site's own address (its production URL, or its own subdomain). It is left
+    out rather than pointing at the platform.
+  - **Neutral calendar objects:** they name the business and its site, never the platform.
+  - **Sending:** mails go through the project's own SMTP when it has one, like the shop's.
+  - **Storage:** a sent mail is not kept; one that could not be delivered after the last retry is kept for a week,
+    then deleted with the customer's details in it.
+
 - **Booking on the published site: `{{sw-booking "<offering>"}}` and `{{sw-booking-status}}`.** The widget shows
   what an offering has free on the business's own clock, and names the time zone when it is not the visitor's.
   - **Pickers, by offering:** a week of days and times for appointments and set times; a start and a length for a
@@ -88,6 +108,10 @@ The running version of an instance is reported at `GET /version` (baked into the
   longer sends. Such a project's shop mails go through global SMTP instead.
 
 ### Fixed
+
+- **Shop emails read as emails.** Order notifications and receipts went out through the contact-form path, so
+  each one opened with `New submission for "order"` and a `body:` line, and the HTML version was never sent. They
+  now go out as written, as text and HTML.
 
 - **Shop: checkout and the thank-you page work on a hosted site again.** With the platform's public URL set, a
   hosted site calls the platform on another origin, and its page policy names that origin only where a page

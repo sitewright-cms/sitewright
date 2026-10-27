@@ -86,6 +86,17 @@ describe('★★ two independent deliveries', () => {
     expect(after?.receiptState).toBe('sent');
   });
 
+  it('★ sends the receipt as written, text and HTML, not as a form submission', async () => {
+    // It used to go through the form path: every receipt opened with `New submission for "order"` and a
+    // `body:` line, and the HTML version was never sent.
+    await paidOrder();
+    await runOrderMail(deps());
+    const receipt = outbox.find((o) => o.mail.recipient === 'ada@example.com')!.mail;
+    expect(receipt.rendered?.text.startsWith('Thank you for your order')).toBe(true);
+    expect(receipt.rendered?.html).toContain('<h2 style="font-size:18px">Thank you for your order</h2>');
+    expect(receipt.fields).toEqual({});
+  });
+
   it('★ a bouncing MERCHANT address does not block the customer receipt', async () => {
     // The whole reason the two have separate state. One is a missed order; the other is a customer
     // wondering whether their money went anywhere.

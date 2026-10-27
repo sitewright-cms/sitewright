@@ -201,6 +201,11 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.cancel_yes', label: 'Status page: yes, cancel (button)', default: 'Yes, cancel it' },
       { key: 'booking.cancel_no', label: 'Status page: keep it (button)', default: 'Keep it' },
       { key: 'booking.started', label: 'Status page: too late to cancel', default: 'This booking has started, so it can no longer be cancelled online.' },
+      { key: 'booking.mail_booked', label: 'Email subject: booked', default: 'Booking confirmed: {offering}' },
+      { key: 'booking.mail_requested', label: 'Email subject: request received', default: 'Booking request received: {offering}' },
+      { key: 'booking.mail_cancelled', label: 'Email subject: cancelled', default: 'Booking cancelled: {offering}' },
+      { key: 'booking.mail_when', label: 'Email: when (label)', default: 'When' },
+      { key: 'booking.mail_calendar', label: 'Email: the calendar file', default: 'Add it to your calendar with the attached file.' },
     ],
   },
   {

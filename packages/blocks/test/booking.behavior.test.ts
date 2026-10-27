@@ -145,6 +145,8 @@ describe('the widget: a week of times', () => {
     const sent = posts()[0]!;
     expect(sent.url).toBe('/b/p1/massage');
     expect(sent.body).toMatchObject({ name: 'Ada', email: 'ada@example.com', phone: '', note: 'First time', start: String(berlin(2, 11)), _hpt: '' });
+    // The page's language, for the customer's emails.
+    expect(sent.body!.lang).toBe('en-GB');
     expect(sent.body).not.toHaveProperty('end');
     expect(sent.body).not.toHaveProperty('quantity');
     expect(sent.body!._elapsed).toMatch(/^\d+$/);

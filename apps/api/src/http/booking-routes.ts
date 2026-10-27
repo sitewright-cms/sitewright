@@ -3,6 +3,7 @@ import { FormFieldSchema, MIN_SUBMIT_ELAPSED_MS, validateFormSubmission, type Bo
 import type { Availability, BookingRequest } from '../booking/availability.js';
 import { signBookingRef, verifyBookingRef } from '../booking/reference.js';
 import type { BookingService, ClaimFailure } from '../booking/service.js';
+import type { BookingEvent } from '../booking/notify.js';
 import { DAY_MS } from '../booking/zoned.js';
 import type { CaptchaVerifier } from '../mail/captcha.js';
 import { createPowChallenge, powScope, verifyPowSolution, type PowClaim } from './form-pow.js';
@@ -48,7 +49,12 @@ export interface BookingRoutesDeps {
   readonly claimPowChallenge: PowClaim;
   readonly rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   readonly now?: () => number;
+  /** Queues the mails of a booking, a request or a cancellation. Never throws; the booking stands either way. */
+  readonly notify?: (event: BookingEvent) => Promise<void>;
 }
+
+/** A page language as the widget reports it (`<html lang>`); the notifier keeps it only if the site has it. */
+const LANG_RE = /^[A-Za-z0-9-]{1,35}$/;
 
 /** What a booking asks of the visitor. The same validator as a form's, so the same rules apply. */
 const CUSTOMER_FIELDS = [
@@ -245,13 +251,18 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
         return reply.code(STATUS[result.reason]).send({ error: result.reason, detail: result.detail });
       }
       const c = result.claim;
-      return reply.send({
-        ok: true,
-        reference: signBookingRef(projectId, c.id, deps.getSecret()),
-        state: c.state,
-        start: c.startAt.getTime(),
-        end: c.endAt.getTime(),
+      const reference = signBookingRef(projectId, c.id, deps.getSecret());
+      // The customer's confirmation (or acknowledgement) and the business's notice, queued, not awaited.
+      void deps.notify?.({
+        kind: c.state === 'pending' ? 'requested' : 'booked',
+        projectId,
+        claim: c,
+        offering: found.offering,
+        config: found.config,
+        reference,
+        ...(f.lang && LANG_RE.test(f.lang) ? { locale: f.lang } : {}),
       });
+      return reply.send({ ok: true, reference, state: c.state, start: c.startAt.getTime(), end: c.endAt.getTime() });
     },
   );
 
@@ -281,7 +292,14 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
     const claimId = verifyBookingRef(projectId, req.params.reference, deps.getSecret());
     if (!claimId || !(await deps.isPublicProject(projectId))) return notFound(reply);
     const result = await bookings.cancel(projectId, claimId);
-    if (result.ok) return reply.send({ ok: true });
+    if (result.ok) {
+      // Both sides hear of it; a booking already in calendars is taken out of them again.
+      const found = await bookings.offering(projectId, result.claim.offeringId).catch(() => null);
+      if (found) void deps.notify?.({ kind: 'cancelled', projectId, claim: result.claim, offering: found.offering, config: found.config });
+      // The offering was removed from the set-up since: there is no name or address left to write with.
+      else req.log.warn({ projectId, offeringId: result.claim.offeringId }, 'booking cancelled without mails: its offering no longer exists');
+      return reply.send({ ok: true });
+    }
     if (result.reason === 'unknown-claim') return notFound(reply);
     if (result.reason === 'busy') reply.header('retry-after', '60');
     return reply.code(result.reason === 'started' ? 409 : 503).send({ error: result.reason, detail: result.detail });

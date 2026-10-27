@@ -264,7 +264,7 @@ import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus, type FetchLike } from '../payments/executor.js';
 import { makeProviderFetch, providerFetch } from '../payments/provider-fetch.js';
 import { makeOrderChannelResolver, runOrderMail, type OrderChannelSettings } from '../payments/notify-runner.js';
-import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
+import { BookingConfigSchema, fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -276,6 +276,8 @@ import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { BookingClaimsRepository } from '../booking/claims.js';
+import { BookingService } from '../booking/service.js';
+import { registerBookingRoutes } from './booking-routes.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
@@ -443,6 +445,7 @@ import { RankTracker } from '../rank/tracker.js';
 import { statsRouteOf } from '../analytics/token.js';
 import {
   API_KEY_CAPABILITIES,
+  BOOKING_ENTITY_ID,
   MEMBER_TOKEN_CAPABILITIES,
   type ApiKeyCapability,
   type ContentKind,
@@ -2140,6 +2143,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
   const bookingClaimsRepo = new BookingClaimsRepository(db);
+  // ★ THE one booking service: its per-project queue is what keeps two visitors off the same time, so every
+  // route and tool must share this instance rather than build another.
+  const bookingService = new BookingService({
+    claims: bookingClaimsRepo,
+    readConfig: async (projectId) => {
+      const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+      const raw = await contentRepo.get(ctx, 'booking', BOOKING_ENTITY_ID).catch((err: unknown) => {
+        if (err instanceof NotFoundError) return null;
+        throw err;
+      });
+      if (raw === null) return null;
+      const parsed = BookingConfigSchema.safeParse(raw);
+      // A stored set-up that no longer parses books nothing, and says so: otherwise it reads as "no such offering".
+      if (!parsed.success) app.log.warn({ projectId, issues: parsed.error.issues.length }, 'booking set-up does not parse; taking no bookings');
+      return parsed.success ? parsed.data : null;
+    },
+  });
   const releasesRepo = new ReleaseRepository(db);
   // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
   // only these exact hosts may be saved as a project's SMTP. Default: any host
@@ -2280,6 +2300,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ) {
         return url;
       }
+      // The public booking routes, for the same reason: a page on a site host books against its own origin.
+      // Only the exact shapes each VERB has a route for, so a real site page under `/b/…` (a blog at
+      // `/b/2024/post`) is still served by the site: a GET of a two-segment path never matches.
+      const path = url.split('?')[0] ?? url;
+      const bookingPath =
+        req.method === 'GET'
+          ? /^\/b\/[^/]+\/(?:_booking\/[^/]+|[^/]+\/(?:availability|challenge))$/
+          : req.method === 'POST' || req.method === 'OPTIONS'
+            ? /^\/b\/[^/]+\/(?:_booking\/[^/]+\/cancel|[^/_][^/]*)$/
+            : null;
+      if (bookingPath?.test(path)) return url;
       // The statistics collector, for the same reason: a locally hosted page built without a public URL
       // beacons to the root-relative `/a/<projectId>`, which on a site host is this origin.
       if ((req.method === 'POST' || req.method === 'OPTIONS') && /^\/a\/[^/]+$/.test(url.split('?')[0] ?? url)) {
@@ -11044,6 +11075,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         })
         .catch(() => {});
     },
+  });
+
+  // Public booking: what a published site's booking widget calls (see booking-routes.ts).
+  registerBookingRoutes(app, {
+    bookings: bookingService,
+    isPublicProject: async (projectId) => {
+      if (projectId.length > 64 || projectId === GLOBAL_SCOPE_ID) return false;
+      const project = await projects.get(projectId).catch((err: unknown) => {
+        if (err instanceof NotFoundError) return null;
+        throw err;
+      });
+      return project !== null && !project.deletedAt;
+    },
+    captcha: captchaVerifier,
+    getProjectCaptcha: async (projectId: string) => {
+      const stored = await loadProjectCaptchaById(db, projectId);
+      if (!stored) return null;
+      const secret = stored.secret && opts.encryptionKey ? decryptSecret(stored.secret, opts.encryptionKey) : null;
+      return { provider: stored.provider, secret, ...(stored.minScore !== undefined ? { minScore: stored.minScore } : {}) };
+    },
+    getSecret: () => currentCookieSecret,
+    claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
+    rl,
   });
 
   for (const note of statsBootNotes) app.log.warn(note.err ? { errMsg: note.err instanceof Error ? note.err.message : String(note.err) } : {}, note.message);

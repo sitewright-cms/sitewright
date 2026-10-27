@@ -87,7 +87,7 @@ describe('the booking set-up', () => {
     expect(del.statusCode).toBe(403);
     expect(del.body).toContain('empty');
     expect((await client.put(url(), { resources: [], offerings: [] })).statusCode).toBe(200);
-    expect((await client.get(url())).json().item).toEqual({ resources: [], offerings: [] });
+    expect((await client.get(url())).json().item).toEqual({ resources: [], offerings: [], pow: false, captcha: false });
   });
 
   it('is a full replace: a partial merge is refused', async () => {

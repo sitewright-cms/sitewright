@@ -82,7 +82,7 @@ describe('resources and offerings', () => {
 
   it('each mode carries what it needs, with sensible defaults', () => {
     const d = BookingOfferingSchema.parse({ id: 'c', name: 'Consultation', mode: 'duration', durationMin: 45, resourceIds: ['anna'] });
-    expect(d).toMatchObject({ confirmation: 'instant', minNoticeMin: 0, maxAdvanceDays: 90, maxQuantity: 1, bufferBeforeMin: 0, bufferAfterMin: 0 });
+    expect(d).toMatchObject({ confirmation: 'instant', minNoticeMin: 0, maxAdvanceDays: 90, maxQuantity: 1, bufferBeforeMin: 0, bufferAfterMin: 0, chooseResource: false });
     const days = BookingOfferingSchema.parse({ id: 's', name: 'Stay', mode: 'days', resourceIds: ['flat'] });
     expect(days).toMatchObject({ unit: 'night', minUnits: 1, maxUnits: 30, checkIn: '15:00', checkOut: '11:00' });
     const range = BookingOfferingSchema.parse({ id: 'r', name: 'Room', mode: 'range', minMin: 60, maxMin: 240, resourceIds: ['room'] });
@@ -139,7 +139,7 @@ describe('the whole configuration', () => {
 
   it('is valid when every offering names resources that exist', () => {
     expect(BookingConfigSchema.parse({ resources: [anna], offerings: [consult] }).offerings).toHaveLength(1);
-    expect(BookingConfigSchema.parse({})).toEqual({ resources: [], offerings: [] });
+    expect(BookingConfigSchema.parse({})).toEqual({ resources: [], offerings: [], pow: false, captcha: false });
   });
 
   it('refuses duplicate ids and offerings pointing at missing resources, naming the field', () => {
@@ -150,5 +150,10 @@ describe('the whole configuration', () => {
     expect(missing.success).toBe(false);
     expect(missing.error?.issues[0]?.path).toEqual(['offerings', 0, 'resourceIds', 1]);
     bad(BookingConfigSchema, { resources: [anna], offerings: [consult, consult] });
+    // One offering, one clock: its resources share a time zone.
+    const ny = { id: 'ben', name: 'Ben', timeZone: 'America/New_York' };
+    const mixed = BookingConfigSchema.safeParse({ resources: [anna, ny], offerings: [{ ...consult, resourceIds: ['anna', 'ben'] }] });
+    expect(mixed.success).toBe(false);
+    expect(mixed.error?.issues[0]?.path).toEqual(['offerings', 0, 'resourceIds']);
   });
 });

@@ -11,6 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Public booking API, for the coming booking widget.** A published site (on any host) asks what an offering has
+  free (`GET /b/<project>/<offering>/availability`), books (`POST /b/<project>/<offering>`), and the visitor shows or
+  cancels their booking with the signed reference it returns (`/b/<project>/_booking/<reference>`), until it starts.
+  An offering on request becomes a request the owner has up to three days to accept, never past the booking's own
+  start. A booking is checked and written as one step per project, so two visitors can never both get the last
+  place. Because bot traps are evidence a script can forge, a project takes at most 60 new bookings an hour and one
+  email address holds at most 10, so a scripted stream cannot fill a business's calendar; proof of work stops it
+  outright. The request runs the forms' bot traps
+  (honeypot, time trap, interaction), validates the visitor's name, email, phone and note, and, where the booking
+  set-up switches them on, proof of work and the project's captcha. A public answer never shows other customers'
+  details, shows seats only for set times (and never more than one booking may take), and names the resources only
+  where the visitor picks one (`chooseResource`). `?preview=1` checks a booking without taking the time.
+
 - **Booking set-up, as project content (API and agents; no editor screen yet).** A project can hold one booking
   set-up: the resources that get booked (people, rooms, apartments, items: time zone, capacity, opening hours,
   blocked times) and the offerings visitors book, in four modes: appointments of a fixed length, set times with

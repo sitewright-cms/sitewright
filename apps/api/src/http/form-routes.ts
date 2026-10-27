@@ -106,7 +106,7 @@ async function loadForms(db: Database, projectId: string): Promise<Form[]> {
   });
 }
 
-interface ParsedSubmission {
+export interface ParsedSubmission {
   fields: Record<string, string>;
   honeypotFilled: boolean;
   elapsed: number | undefined;
@@ -118,10 +118,10 @@ interface ParsedSubmission {
 }
 
 /** Why a body was rejected — plain text an author can act on. Never carries a submitted VALUE. */
-interface ParseFailure {
+export interface ParseFailure {
   reason: string;
 }
-const rejected = (r: ParsedSubmission | ParseFailure): r is ParseFailure => 'reason' in r;
+export const rejected = (r: ParsedSubmission | ParseFailure): r is ParseFailure => 'reason' in r;
 
 /**
  * Validates the public submission body: a flat map of text values only.
@@ -132,7 +132,7 @@ const rejected = (r: ParsedSubmission | ParseFailure): r is ParseFailure => 'rea
  * says nothing about which limit, or that there is a limit at all. Naming the cap is not a disclosure —
  * these are fixed constants, identical on every instance, documented in the form guide.
  */
-function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
+export function parseSubmission(raw: unknown): ParsedSubmission | ParseFailure {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { reason: 'the body must be a flat object of text values' };
   }

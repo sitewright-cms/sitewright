@@ -1,4 +1,4 @@
-import { and, count, eq, gt, inArray, isNotNull, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, count, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { bookingClaims } from '../db/schema.js';
 import { newId } from '../id.js';
@@ -110,6 +110,15 @@ export class BookingClaimsRepository {
           gt(bookingClaims.expiresAt, new Date(now)),
         ),
       );
+    return row?.n ?? 0;
+  }
+
+  /** Claims in force that a customer's email address made, in one project. */
+  async countLiveForEmail(projectId: string, email: string, now: number): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(bookingClaims)
+      .where(and(eq(bookingClaims.projectId, projectId), live(now), sql`lower(json_extract(${bookingClaims.customer}, '$.email')) = ${email.toLowerCase()}`));
     return row?.n ?? 0;
   }
 

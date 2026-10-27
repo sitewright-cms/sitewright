@@ -129,6 +129,9 @@ importers:
       html-minifier-terser:
         specifier: ^7
         version: 7.2.0
+      ical.js:
+        specifier: 2.2.1
+        version: 2.2.1
       isbot:
         specifier: 5.2.2
         version: 5.2.2
@@ -3039,6 +3042,9 @@ packages:
   http-link-header@1.1.4:
     resolution: {integrity: sha512-xT3GPW6/ZbGuw4UvwHqErSCEjNUlwbQJuZn9/q5U4WEKfp2kENVCAlousG1zLxHeaQ/ffOHUNpWamvkbBW0eNw==}
     engines: {node: '>=6.0.0'}
+
+  ical.js@2.2.1:
+    resolution: {integrity: sha512-yK/UlPbEs316igb/tjRgbFA8ZV75rCsBJp/hWOatpyaPNlgw0dGDmU+FoicOcwX4xXkeXOkYiOmCqNPFpNPkQg==}
 
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
@@ -6819,6 +6825,8 @@ snapshots:
       toidentifier: 1.0.1
 
   http-link-header@1.1.4: {}
+
+  ical.js@2.2.1: {}
 
   iconv-lite@0.7.3:
     dependencies:

@@ -41,6 +41,7 @@ describe('project reap', () => {
   const REAPED_TABLES = [
     'agent_grants',
     'api_keys',
+    'booking_calendars',
     'booking_claims',
     'booking_mails',
     'content',

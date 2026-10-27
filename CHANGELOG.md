@@ -11,6 +11,26 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking reads the business's own calendars.** Each resource can be connected to the iCalendar feed of a calendar it
+  keeps elsewhere, and a time taken there is neither offered nor bookable. That covers Google's secret address, an
+  Outlook published calendar, an iCloud calendar (`webcal://` works), and the exports of rental platforms such as
+  Airbnb and Booking.com.
+  - **What blocks time:** recurring events (moved, removed, added and cancelled occurrences included, in whatever
+    time zone the calendar writes them), all-day events, and the calendar's own time zones. Events marked free do
+    not block.
+  - **Freshness:** a feed is read again every few minutes, in the background, so a visitor never waits for it. It is
+    read again right before a booking if its last reading is over a minute old.
+  - **When a feed cannot be read:** its last good reading is shown for a day, and relied on for a booking for six
+    hours. After that, or if it was never read, its resource shows as busy, so a missed appointment never becomes a
+    double booking. The calendar shows why.
+  - **Limits:** a feed of up to 5 MB and 20,000 events. Each feed is read on a thread of its own and stopped after 8
+    seconds, so a large or malformed calendar never slows the site. A calendar too large, too busy or too slow to
+    read in full counts as unreadable, never as free.
+  - **The feed address is a credential:** it is stored encrypted and never shown again, only its host. It is not
+    part of exports.
+  - **API:** `/projects/:id/booking/calendars`, writers only, like the project's SMTP and captcha.
+  - **Dependency:** the iCalendar library `ical.js` (MPL-2.0, no dependencies of its own).
+
 - **Bookings tab.** A project that takes bookings (its booking set-up offers something) gets a Bookings tab next to
   Orders. It disappears again when booking is switched off.
   - **Views:** upcoming bookings and requests, grouped by day on the booking's own clock; the requests alone, with

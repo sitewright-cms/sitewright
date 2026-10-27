@@ -316,6 +316,13 @@
       "when": 1793131462674,
       "tag": "0044_booking_mails",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1793135854734,
+      "tag": "0045_booking_calendars",
+      "breakpoints": true
     }
   ]
 }

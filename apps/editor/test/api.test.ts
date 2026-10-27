@@ -1061,6 +1061,16 @@ describe('api client', () => {
     ]);
   });
 
+  it('finds a CalDAV account’s calendars, and connects one with its credentials', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { calendars: [{ url: 'https://dav.example/cal/', name: 'Work' }] }));
+    expect((await api.discoverBookingCalDav('p', { url: 'https://dav.example', username: 'a', password: 'b' })).calendars[0]!.name).toBe('Work');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/booking/calendars/discover');
+    expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+    fetchMock.mockResolvedValue(jsonResponse(201, { calendar: { id: 'c1' }, reading: { ok: true } }));
+    await api.connectBookingCalendar('p', { kind: 'caldav', resourceId: 'anna', name: 'Work', url: 'https://dav.example/cal/', username: 'a', password: 'b' });
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toMatchObject({ kind: 'caldav', username: 'a', password: 'b' });
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

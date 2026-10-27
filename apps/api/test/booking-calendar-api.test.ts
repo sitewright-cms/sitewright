@@ -132,3 +132,82 @@ describe('★ the busy times', () => {
     expect((await client.del(`/projects/${pid}/booking/calendars/${calendar.id}`)).statusCode).toBe(404);
   });
 });
+
+describe('★ a CalDAV calendar', () => {
+  const CAL = 'https://cloud.example/remote.php/dav/calendars/anna/personal/';
+  const BASIC = `Basic ${Buffer.from('anna:app-pass-1234').toString('base64')}`;
+  let dav: string[];
+
+  beforeEach(async () => {
+    await h.close();
+    dav = [];
+    h = await makeHarness({
+      bookingDavFetch: async (url, init) => {
+        dav.push(`${init.method} ${url}`);
+        if (init.headers.authorization !== BASIC) return { ok: true, status: 401, headers: {}, text: '' };
+        if (url === 'https://cloud.example/.well-known/caldav' && init.method === 'PROPFIND') {
+          return {
+            ok: true,
+            status: 207,
+            headers: {},
+            text: `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/</d:href><d:propstat><d:prop><c:calendar-home-set><d:href>/remote.php/dav/calendars/anna/</d:href></c:calendar-home-set></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,
+          };
+        }
+        if (url === 'https://cloud.example/remote.php/dav/calendars/anna/' && init.method === 'PROPFIND') {
+          return {
+            ok: true,
+            status: 207,
+            headers: {},
+            text: `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/remote.php/dav/calendars/anna/personal/</d:href><d:propstat><d:prop><d:resourcetype><c:calendar/></d:resourcetype><d:displayname>Personal</d:displayname></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,
+          };
+        }
+        if (url === CAL && init.method === 'REPORT') {
+          return {
+            ok: true,
+            status: 207,
+            headers: {},
+            text: `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/x.ics</d:href><d:propstat><d:prop><c:calendar-data>${busyFeed(3, 2)}</c:calendar-data></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,
+          };
+        }
+        return { ok: true, status: 404, headers: {}, text: '' };
+      },
+    });
+    client = await h.signup({ email: 'owner@studio.example', admin: true });
+    pid = await client.createProject('Studio', 'studio');
+    expect((await client.put(`/projects/${pid}/content/booking/booking`, CONFIG)).statusCode).toBe(200);
+  });
+
+  it('finds the account’s calendars for writers, and says when the password is wrong', async () => {
+    const found = await client.post(`/projects/${pid}/booking/calendars/discover`, { url: 'https://cloud.example', username: 'anna', password: 'app-pass-1234' });
+    expect(found.statusCode, found.body).toBe(200);
+    expect(found.json()).toEqual({ calendars: [{ url: CAL, name: 'Personal' }] });
+    const wrong = await client.post(`/projects/${pid}/booking/calendars/discover`, { url: 'https://cloud.example', username: 'anna', password: 'nope' });
+    expect(wrong.statusCode).toBe(400);
+    expect(wrong.json().error).toMatch(/username or password/);
+    const stranger = await h.signup({ email: 'stranger@example.test' });
+    expect((await stranger.post(`/projects/${pid}/booking/calendars/discover`, { url: 'https://cloud.example', username: 'anna', password: 'app-pass-1234' })).statusCode).toBe(403);
+  });
+
+  it('★ is connected with its password encrypted and never given back, and its busy times count', async () => {
+    const before = await listing('anna-hour');
+    const res = await connect({ kind: 'caldav', resourceId: 'anna', name: 'Nextcloud', url: CAL, username: 'anna', password: 'app-pass-1234' });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json()).toMatchObject({ calendar: { kind: 'caldav', host: 'cloud.example', lastEvents: 1 }, reading: { ok: true } });
+    const list = await client.get(`/projects/${pid}/booking/calendars`);
+    for (const body of [res.body, list.body]) {
+      expect(body).not.toContain('app-pass-1234');
+      expect(body).not.toContain('"username"');
+    }
+    const [stored] = await h.db.select().from(bookingCalendars);
+    expect(JSON.stringify(stored)).not.toContain('app-pass-1234');
+    expect(JSON.stringify(stored)).not.toContain('anna@');
+    const after = await listing('anna-hour');
+    expect(before.length - after.length).toBeGreaterThanOrEqual(2);
+    expect(dav).toContain(`REPORT ${CAL}`);
+  });
+
+  it('refuses a CalDAV connection without its credentials, or on a plain-http address', async () => {
+    expect((await connect({ kind: 'caldav', resourceId: 'anna', name: 'x', url: CAL })).statusCode).toBe(400);
+    expect((await connect({ kind: 'caldav', resourceId: 'anna', name: 'x', url: 'http://cloud.example/cal/', username: 'a', password: 'b' })).statusCode).toBe(400);
+  });
+});

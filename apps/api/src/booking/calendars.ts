@@ -118,6 +118,8 @@ export interface CalendarReaderDeps {
   fetchFeed: FetchFeed;
   /** The feed's address from its stored envelope. */
   decrypt: (url: CalendarRow['url']) => string;
+  /** A CalDAV calendar's events overlapping [from, to), as one iCalendar text. Absent: CalDAV calendars read as unreadable. */
+  readCalDav?: (source: { url: string; username: string; password: string }, from: number, to: number) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
   /** Works out a feed's busy times. Default: in a worker thread, stopped at a deadline (see `ics-isolated.ts`). */
   read?: (text: string, opts: Omit<IcsReadOptions, 'now'>) => Promise<IcsParseResult>;
   now?: () => number;
@@ -250,7 +252,8 @@ export class CalendarReader implements ExternalBusy {
     const covers = { start: now - CALENDAR_LIMITS.pastMs, end: now + CALENDAR_LIMITS.aheadMs };
     let outcome: IcsParseResult;
     try {
-      const fetched = await this.deps.fetchFeed(this.deps.decrypt(row.url));
+      const secret = this.deps.decrypt(row.url);
+      const fetched = row.kind === 'caldav' ? await this.readCalDav(secret, covers) : await this.deps.fetchFeed(secret);
       outcome = fetched.ok ? await this.read(fetched.text, { from: covers.start, to: covers.end, timeZone, ownUidSuffix: `@${projectId}` }) : fetched;
     } catch {
       outcome = { ok: false, error: 'the calendar could not be read' };
@@ -266,6 +269,18 @@ export class CalendarReader implements ExternalBusy {
       .catch((err: unknown) => this.deps.log?.warn({ err, calendarId: row.id }, 'could not record a calendar reading'));
     if (!outcome.ok) this.deps.log?.warn({ projectId, calendarId: row.id, error: outcome.error }, 'booking calendar could not be read');
     return reading;
+  }
+
+  /** A CalDAV calendar's events for the stretch a reading covers. Its secret is `{url, username, password}`. */
+  private async readCalDav(secret: string, covers: Interval): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+    if (!this.deps.readCalDav) return { ok: false, error: 'CalDAV calendars are not available on this server' };
+    let source: { url: string; username: string; password: string };
+    try {
+      source = JSON.parse(secret) as typeof source;
+    } catch {
+      return { ok: false, error: 'the calendar could not be read' };
+    }
+    return this.deps.readCalDav(source, covers.start, covers.end);
   }
 
   private store(key: string, reading: Reading): void {

@@ -231,6 +231,7 @@
   "POST /projects/:projectId/api-keys",
   "POST /projects/:projectId/booking/calendars",
   "POST /projects/:projectId/booking/calendars/:id/test",
+  "POST /projects/:projectId/booking/calendars/discover",
   "POST /projects/:projectId/booking/feed",
   "POST /projects/:projectId/bookings/:id/accept",
   "POST /projects/:projectId/bookings/:id/cancel",

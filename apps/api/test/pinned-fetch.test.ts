@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pinnedFetch, pinnedFetchDetailed } from '../src/import/pinned-fetch.js';
+import { pinnedFetch, pinnedFetchDetailed, redirectAllowed } from '../src/import/pinned-fetch.js';
 
 // The guard decisions (resolve → reject private / non-https / bad URL) are unit-testable via an injected
 // resolver; the happy path is a real TLS connection (covered by the deploy-time end-to-end import check).
@@ -111,3 +111,34 @@ describe('pinnedFetchDetailed — failure reasons', () => {
     expect(r).toEqual({ status: 200, contentType: 'text/html', bytes: new Uint8Array() });
   });
 })
+
+describe('★ redirects for WebDAV and for credentials', () => {
+  it('lets reads follow a redirect, keeping their method, and never a write', () => {
+    for (const method of ['GET', 'HEAD', 'PROPFIND', 'report']) expect(redirectAllowed('https://a.example/x', 'https://a.example/y', { method })).toBe(true);
+    for (const method of ['PUT', 'DELETE', 'POST']) expect(redirectAllowed('https://a.example/x', 'https://a.example/y', { method })).toBe(false);
+  });
+
+  it('never carries credentials to another origin', () => {
+    const auth = { headers: { Authorization: 'Basic eDp5' }, method: 'PROPFIND' };
+    expect(redirectAllowed('https://dav.example/.well-known/caldav', 'https://dav.example/remote.php/dav/', auth)).toBe(true);
+    expect(redirectAllowed('https://dav.example/.well-known/caldav', 'https://evil.example/collect', auth)).toBe(false);
+    expect(redirectAllowed('https://dav.example/x', 'http://dav.example/x', auth)).toBe(false);
+    expect(redirectAllowed('https://dav.example/x', 'not a url', auth)).toBe(false);
+    // Without credentials, another origin is only another public address (re-guarded on the next hop).
+    expect(redirectAllowed('https://a.example/x', 'https://b.example/y', { method: 'GET' })).toBe(true);
+  });
+
+  it('stops a credentialed request at a redirect to another origin', async () => {
+    const seen: string[] = [];
+    const r = await pinnedFetchDetailed('https://dav.example/a', {
+      method: 'PROPFIND',
+      headers: { authorization: 'Basic eDp5' },
+      _fetchOnce: async (u) => {
+        seen.push(u);
+        return { redirect: 'https://evil.example/b' };
+      },
+    });
+    expect(r).toEqual({ ok: false, reason: 'redirects' });
+    expect(seen).toEqual(['https://dav.example/a']);
+  });
+});

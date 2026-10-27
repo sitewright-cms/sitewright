@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { BookingConfig } from '@sitewright/schema';
 import type { BookingCalendar } from '../src/api';
 
-const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar } = vi.hoisted(() => ({
+const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav } = vi.hoisted(() => ({
+  discoverBookingCalDav: vi.fn(),
   getBooking: vi.fn(),
   putBooking: vi.fn(),
   listBookingCalendars: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../src/api', () => {
       connectBookingCalendar: (p: string, b: unknown) => connectBookingCalendar(p, b),
       testBookingCalendar: (p: string, id: string) => testBookingCalendar(p, id),
       removeBookingCalendar: (p: string, id: string) => removeBookingCalendar(p, id),
+      discoverBookingCalDav: (p: string, b: unknown) => discoverBookingCalDav(p, b),
       // The Settings tab's calendar address (its own tests are in booking-feed-section).
       getBookingFeed: async () => ({ feed: null }),
     },
@@ -67,7 +69,7 @@ const SAVED: BookingConfig = {
 const CAL: BookingCalendar = { id: 'c1', resourceId: 'anna', kind: 'ics', name: 'Anna’s Google', host: 'calendar.google.com', lastOkAt: Date.now() - 5 * 60_000, lastError: null, lastEvents: 12, createdAt: 0 };
 
 beforeEach(() => {
-  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar]) m.mockReset();
+  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav]) m.mockReset();
   getBooking.mockResolvedValue({ item: SAVED, version: 'v1' });
   listBookingCalendars.mockResolvedValue({ calendars: [CAL] });
   putBooking.mockImplementation(async (_p: string, config: BookingConfig) => ({ item: config, version: 'v2' }));
@@ -267,6 +269,40 @@ describe('outside calendars', () => {
     expect(screen.getByLabelText('Calendar address')).toHaveValue('');
     // Calendars are not part of the set-up's Save.
     expect(save()).toBeDisabled();
+  });
+
+  it('★ connects a CalDAV account’s calendar, and lets go of the password once connected', async () => {
+    discoverBookingCalDav.mockResolvedValue({ calendars: [{ url: 'https://cloud.example/dav/personal/', name: 'Personal' }, { url: 'https://cloud.example/dav/work/', name: 'Work' }] });
+    connectBookingCalendar.mockResolvedValue({ calendar: { ...CAL, id: 'c3', kind: 'caldav', name: 'Work', host: 'cloud.example', lastEvents: 4 }, reading: { ok: true } });
+    render(<BookingSetupModal projectId="p" onClose={() => undefined} />);
+    await screen.findByText('Haircut');
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'CalDAV account' }));
+    fireEvent.change(screen.getByLabelText('Server address'), { target: { value: 'https://cloud.example' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'anna' } });
+    fireEvent.change(screen.getByLabelText('App password'), { target: { value: 'app-pass-1234' } });
+    fireEvent.click(screen.getByRole('button', { name: /Find calendars/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Work' }));
+    expect(screen.getByLabelText('Calendar name')).toHaveValue('Work');
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(await screen.findByText('Connected. 4 events in it.')).toBeInTheDocument();
+    expect(discoverBookingCalDav).toHaveBeenCalledWith('p', { url: 'https://cloud.example', username: 'anna', password: 'app-pass-1234' });
+    expect(connectBookingCalendar).toHaveBeenCalledWith('p', { kind: 'caldav', resourceId: 'anna', name: 'Work', url: 'https://cloud.example/dav/work/', username: 'anna', password: 'app-pass-1234' });
+    expect(screen.getByLabelText('App password')).toHaveValue('');
+    expect(screen.getByText(/cloud\.example \(CalDAV\)/)).toBeInTheDocument();
+  });
+
+  it('says when a CalDAV account’s calendars could not be found', async () => {
+    discoverBookingCalDav.mockRejectedValue(new ApiError(400, 'the server did not accept the username or password'));
+    render(<BookingSetupModal projectId="p" onClose={() => undefined} />);
+    await screen.findByText('Haircut');
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'CalDAV account' }));
+    fireEvent.change(screen.getByLabelText('Server address'), { target: { value: 'https://cloud.example' } });
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'anna' } });
+    fireEvent.change(screen.getByLabelText('App password'), { target: { value: 'nope' } });
+    fireEvent.click(screen.getByRole('button', { name: /Find calendars/ }));
+    expect(await screen.findByText('the server did not accept the username or password')).toBeInTheDocument();
   });
 
   it('removes a calendar once the author confirms it', async () => {

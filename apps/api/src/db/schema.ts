@@ -1420,6 +1420,49 @@ export const webmasterRemovals = sqliteTable(
   (t) => [uniqueIndex('webmaster_removals_site').on(t.service, t.siteUrl, t.account), index('webmaster_removals_next').on(t.nextAt)],
 );
 
+/**
+ * BOOKING CLAIMS: what the platform itself holds about bookings, kept small on purpose. The bookings
+ * live in the owners' own calendars; a row here is one of:
+ *   `hold`     a time claimed for minutes while a booking is written to a calendar or paid for;
+ *   `pending`  a request waiting for the owner to accept it, its time held meanwhile;
+ *   `booked`   a booking on a resource with no calendar Sitewright can write to (the small ledger).
+ * Every row ends: holds and requests at `expires_at`, ledger bookings a few days after they finish
+ * (`busy_end`), and the customer's details go with the row. A per-project cap refuses new claims beyond
+ * a limit, so the table cannot grow without bound.
+ */
+export const bookingClaims = sqliteTable(
+  'booking_claims',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    resourceId: text('resource_id').notNull(),
+    offeringId: text('offering_id').notNull(),
+    state: text('state', { enum: ['hold', 'pending', 'booked'] }).notNull(),
+    /** The booking as the customer sees it. */
+    startAt: integer('start_at', { mode: 'timestamp_ms' }).notNull(),
+    endAt: integer('end_at', { mode: 'timestamp_ms' }).notNull(),
+    /** What it occupies: the booking and its buffers. */
+    busyStart: integer('busy_start', { mode: 'timestamp_ms' }).notNull(),
+    busyEnd: integer('busy_end', { mode: 'timestamp_ms' }).notNull(),
+    units: integer('units').notNull(),
+    /** A `slots` booking: shares seats only with its own slot, and takes the resource for anything else. */
+    exclusive: integer('exclusive', { mode: 'boolean' }).notNull().default(false),
+    /** When a hold or a request lapses. Null for a ledger booking. */
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+    /** The customer's own details (name, email, phone, note). Deleted with the row. */
+    customer: text('customer', { mode: 'json' }).$type<Record<string, string>>().notNull().default({}),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('booking_claims_resource').on(t.projectId, t.resourceId, t.busyStart),
+    index('booking_claims_expires').on(t.expiresAt),
+    index('booking_claims_end').on(t.busyEnd),
+  ],
+);
+
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */

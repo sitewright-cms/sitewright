@@ -42,6 +42,7 @@ describe('project reap', () => {
     'agent_grants',
     'api_keys',
     'booking_calendars',
+  'booking_feeds',
     'booking_claims',
     'booking_mails',
     'content',

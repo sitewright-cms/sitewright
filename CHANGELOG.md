@@ -11,6 +11,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Bookings in the business's own calendar.** The booking set-up's Settings tab makes a calendar address that
+  Google Calendar, Outlook or Apple Calendar subscribes to. Every booking and open request then shows there and
+  stays up to date, with no invitation to accept.
+  - **Contents:** bookings are confirmed events and requests are tentative ones, with the customer's details. A
+    rental by the day is written as whole days. Each event carries the same id as the booking's invitation.
+  - **Scope:** all bookings, or one resource's (for example one employee's own calendar).
+  - **The address is a secret:** it lists customers' details. It is shown to owners and members only, never
+    cached, and can be replaced by a new one (the old one stops at once) or switched off. The editor also shows
+    when a calendar last fetched it.
+  - **White-label:** the address is on the base the published site already calls for bookings, and the calendar
+    is named after the business.
+  - **API:** `GET/POST/DELETE /projects/:id/booking/feed`, and the feed itself at `GET /b/:project/feed/:token.ics`.
+
 - **Booking set-up screen.** A Booking tile in the Website settings (Modules) opens the whole set-up. Until now it
   was reachable only through agents and the API.
   - **Offerings:** what visitors book, in one of four kinds: appointments, set times (tours, classes), from–to

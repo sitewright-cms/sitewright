@@ -1499,6 +1499,25 @@ export const bookingCalendars = sqliteTable(
 );
 
 /**
+ * BOOKING FEED: the business's own bookings as an iCalendar feed its calendar app subscribes to. The address
+ * carries a secret token (the feed lists customers' names and contacts), so it is a credential: looked up by the
+ * token's SHA-256, and kept encrypted so the editor can show the address again. One per project; a new one
+ * replaces it (the old address stops working), and removing it switches the feed off.
+ */
+export const bookingFeeds = sqliteTable('booking_feeds', {
+  projectId: text('project_id')
+    .primaryKey()
+    .references(() => projects.id),
+  /** SHA-256 (hex) of the token in the address: how a request finds its project. */
+  tokenHash: text('token_hash').notNull().unique(),
+  /** The token itself, encrypted (AES-256-GCM envelope), to show the address again. */
+  token: text('token', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>().notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  /** When a calendar app last fetched it: tells the business the subscription works. */
+  lastFetchedAt: integer('last_fetched_at', { mode: 'timestamp_ms' }),
+});
+
+/**
  * BOOKING MAILS on their way: the confirmations, requests and cancellations a booking sends the customer and
  * the business, each rendered when the booking happened (a cancelled booking has no row left to render from).
  * A row is DELETED once its mail is sent; one that keeps failing backs off (the form deliveries' schedule) and

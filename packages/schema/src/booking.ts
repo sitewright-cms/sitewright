@@ -165,6 +165,11 @@ const offeringBase = {
   maxAdvanceDays: z.number().int().min(1).max(BOOKING_LIMITS.maxAdvanceDays).default(90),
   /** How many seats or units one booking may take (a family on a tour, three bikes). */
   maxQuantity: z.number().int().min(1).max(BOOKING_LIMITS.capacity).default(1),
+  /**
+   * The visitor picks which resource ("with Anna"). Off: they get whichever is free, and the resources'
+   * names are never shown to them.
+   */
+  chooseResource: z.boolean().default(false),
 };
 
 export const BookingOfferingSchema = z.discriminatedUnion('mode', [
@@ -235,6 +240,10 @@ export const BookingConfigSchema = z
   .strictObject({
     resources: z.array(BookingResourceSchema).max(BOOKING_LIMITS.resources).default([]),
     offerings: z.array(BookingOfferingSchema).max(BOOKING_LIMITS.offerings).default([]),
+    /** Proof of work on every booking request: self-hosted, no third party, needs the site on HTTPS. */
+    pow: z.boolean().default(false),
+    /** The project's captcha (Website settings) on every booking request. */
+    captcha: z.boolean().default(false),
   })
   .superRefine((cfg, ctx) => {
     const resources = new Set<string>();
@@ -249,6 +258,9 @@ export const BookingConfigSchema = z
       o.resourceIds.forEach((id, j) => {
         if (!resources.has(id)) ctx.addIssue({ code: 'custom', message: `no resource "${id}"`, path: ['offerings', i, 'resourceIds', j] });
       });
+      // One offering, one clock: a visitor's calendar shows its days and times in a single time zone.
+      const zones = new Set(o.resourceIds.map((id) => cfg.resources.find((r) => r.id === id)?.timeZone).filter((z) => z !== undefined));
+      if (zones.size > 1) ctx.addIssue({ code: 'custom', message: `the resources of "${o.id}" are in different time zones`, path: ['offerings', i, 'resourceIds'] });
     });
   });
 export type BookingConfig = z.infer<typeof BookingConfigSchema>;

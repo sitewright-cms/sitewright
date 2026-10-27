@@ -995,7 +995,7 @@ describe('api client', () => {
   });
 
   it('reads and replaces the booking set-up singleton, guarding the write with the version it was built from', async () => {
-    const config = { resources: [], offerings: [] };
+    const config = { resources: [], offerings: [], pow: false, captcha: false };
     fetchMock.mockResolvedValue(jsonResponse(200, { item: config, version: 'v1' }));
     const got = await api.getBooking('p');
     expect(got.item).toEqual(config);

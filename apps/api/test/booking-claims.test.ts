@@ -259,6 +259,54 @@ describe('BookingService', () => {
   });
 });
 
+describe('BookingService: what a public stream of requests can take', () => {
+  const config: BookingConfig = BookingConfigSchema.parse({
+    resources: [{ id: 'anna', name: 'Anna', timeZone: 'Europe/Berlin', hours: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], from: '00:00', to: '24:00' }] }],
+    offerings: [{ id: 'consult', name: 'Consultation', mode: 'duration', durationMin: 60, maxAdvanceDays: 60, resourceIds: ['anna'] }],
+  });
+  const make = (now: number) => new BookingService({ claims, readConfig: async () => config, now: () => now });
+  const hourAt = (n: number) => at('2026-07-01 00:00') + n * H;
+
+  it('★ a request never outlives the booking’s own start', async () => {
+    const soon = await make(NOW).claim(projectId, 'consult', { start: NOW + 2 * H }, { state: 'pending', holdMs: 3 * DAY, customer: {} });
+    expect(soon.ok && soon.claim.expiresAt?.getTime()).toBe(NOW + 2 * H);
+    const later = await make(NOW).claim(projectId, 'consult', { start: NOW + 10 * DAY }, { state: 'pending', holdMs: 3 * DAY, customer: {} });
+    expect(later.ok && later.claim.expiresAt?.getTime()).toBe(NOW + 3 * DAY);
+  });
+
+  it('★ one email address holds only so many bookings', async () => {
+    const s = make(NOW);
+    for (let i = 0; i < BOOKING_SERVICE_LIMITS.liveClaimsPerEmail; i += 1) {
+      expect(await s.claim(projectId, 'consult', { start: hourAt(i) }, { state: 'booked', customer: { email: 'Bot@Example.test' } })).toMatchObject({ ok: true });
+    }
+    // Case does not make it a different address.
+    expect(await s.claim(projectId, 'consult', { start: hourAt(20) }, { state: 'booked', customer: { email: 'bot@example.test' } })).toMatchObject({ ok: false, reason: 'full' });
+    expect(await s.claim(projectId, 'consult', { start: hourAt(21) }, { state: 'booked', customer: { email: 'ada@example.test' } })).toMatchObject({ ok: true });
+  });
+
+  it('★ a project takes only so many new bookings an hour, and the budget comes back', async () => {
+    const s = make(NOW);
+    for (let i = 0; i < BOOKING_SERVICE_LIMITS.claimsPerProjectHour; i += 1) {
+      expect(await s.claim(projectId, 'consult', { start: hourAt(i) }, { state: 'booked', customer: { email: `p${i}@example.test` } })).toMatchObject({ ok: true });
+    }
+    expect(await s.claim(projectId, 'consult', { start: hourAt(70) }, { state: 'booked', customer: {} })).toMatchObject({ ok: false, reason: 'busy' });
+    // A failed request does not spend the budget: this one is taken, and is told so.
+    expect(await s.claim(projectId, 'consult', { start: hourAt(0) }, { state: 'booked', customer: {} })).toMatchObject({ ok: false, reason: 'taken' });
+    // An hour on, there is budget again (the same service: the budget is in memory).
+    const later = new BookingService({ claims, readConfig: async () => config, now: () => NOW + H + M });
+    expect(await later.claim(projectId, 'consult', { start: hourAt(71) }, { state: 'booked', customer: {} })).toMatchObject({ ok: true });
+  });
+
+  it('cancelling hands back what was cancelled, and a started booking stays', async () => {
+    const r = await make(NOW).claim(projectId, 'consult', { start: NOW + 2 * H }, { state: 'booked', customer: { email: 'ada@example.test' } });
+    const id = r.ok ? r.claim.id : '';
+    expect(await make(NOW + 3 * H).cancel(projectId, id)).toMatchObject({ ok: false, reason: 'started' });
+    const done = await make(NOW).cancel(projectId, id);
+    expect(done.ok && done.claim.customer).toEqual({ email: 'ada@example.test' });
+    expect(await make(NOW).cancel(projectId, id)).toMatchObject({ ok: false, reason: 'unknown-claim' });
+  });
+});
+
 describe('the sweep, in batches', () => {
   it('deletes a backlog a batch at a time, and the next pass takes what is left', async () => {
     const n = BOOKING_CLAIM_LIMITS.sweepBatch * 2 + 37;

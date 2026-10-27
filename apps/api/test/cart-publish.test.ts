@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
@@ -216,5 +216,59 @@ describe('mini shop cart → publish', () => {
     expect(index.body).not.toContain(`/f/${projectId}/order`);
     expect(index.body).toContain('order');
     expect(index.body).toContain('cart.js');
+  });
+});
+
+// ★ A hosted site lives on its own origin, so with an absolute API address every call the cart and the
+// thank-you panel make is cross-origin, and the page's policy must name the API host. It used to only for a
+// page with a FORM (or with statistics on): a shop page with a checkout and nothing else published no
+// widening at all, so the hosted site served `connect-src 'self'` and the browser blocked every checkout.
+describe('mini shop cart → the published page policy lets it reach the API', () => {
+  it('names the API host on a cart page and a thank-you page, and nowhere else', async () => {
+    const publishRoot = await mkdtemp(join(tmpdir(), 'sw-cart-csp-'));
+    const mediaRoot = await mkdtemp(join(tmpdir(), 'sw-cart-csp-media-'));
+    const harness = await makeHarness({ publishRoot, mediaRoot, publicUrl: 'https://platform.example.com' });
+    try {
+      const client = await harness.signup();
+      const projectId = await client.createProject('Shop', 'csp-shop');
+      const proj = client.project(projectId);
+      const shop = {
+        enabled: true,
+        currency: { code: 'EUR' },
+        channels: [
+          { kind: 'checkout', key: 'pay', gatewayId: 'stripe', email: 'orders@example.com' },
+          { kind: 'form', key: 'order_form', email: 'orders@example.com', captcha: true },
+        ],
+      };
+      // The cart names the project's captcha on its mount only when one is configured.
+      const cap = await client.put(`/projects/${projectId}/captcha`, { provider: 'hcaptcha', siteKey: '10000000-ffff-ffff-ffff-000000000001', secret: 'vendor-secret' });
+      expect(cap.statusCode).toBe(200);
+      // No statistics: the collector would widen the same host and hide the gap.
+      expect((await proj.putContent('settings', 'settings', { identity: { name: 'Acme' }, website: { shop }, settings: {} })).statusCode).toBe(200);
+      const page = (id: string, path: string, source: string) => ({ id, path, title: id, root: { id: `r-${id}`, type: 'Section' }, source });
+      expect((await proj.putContent('page', 'home', page('home', '', '<section>{{sw-add-to-cart sku="w1" name="Widget" price="9.99"}}{{sw-cart}}</section>'))).statusCode).toBe(200);
+      expect((await proj.putContent('page', 'thanks', page('thanks', 'thanks', '<section>{{sw-order-status}}</section>'))).statusCode).toBe(200);
+      expect((await proj.putContent('page', 'about', page('about', 'about', '<section><h1>About</h1></section>'))).statusCode).toBe(200);
+      expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+      const csp = async (path: string): Promise<string> => {
+        const html = await readFile(join(publishRoot, 'csp-shop', path, 'index.html'), 'utf8');
+        return (/<meta name="sw-csp" content="([^"]*)"/.exec(html)?.[1] ?? '').replace(/&#39;/g, "'");
+      };
+      const connect = (policy: string): string => /connect-src [^;]*/.exec(policy)?.[0] ?? '';
+      const home = await csp('');
+      expect(connect(home)).toContain('https://platform.example.com');
+      // The order form asks for a captcha, which the cart names on its mount: its provider may load too.
+      expect(home).toMatch(/script-src [^;]*https:\/\/hcaptcha\.com/);
+      const thanks = await csp('thanks');
+      expect(connect(thanks)).toContain('https://platform.example.com');
+      // The thank-you panel shows no captcha, so it does not get the captcha's hosts.
+      expect(thanks).not.toContain('hcaptcha');
+      expect(await csp('about')).not.toContain('platform.example.com');
+    } finally {
+      await harness.close();
+      await rm(publishRoot, { recursive: true, force: true });
+      await rm(mediaRoot, { recursive: true, force: true });
+    }
   });
 });

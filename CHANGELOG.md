@@ -71,6 +71,13 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **Shop: checkout and the thank-you page work on a hosted site again.** With the platform's public URL set, a
+  hosted site calls the platform on another origin, and its page policy names that origin only where a page
+  needs it. A page with a contact form did; a page with the cart or the thank-you panel did not. So the browser
+  blocked every checkout and every payment status check before it was sent, with nothing in any log, unless
+  statistics were on (the statistics collector names the same origin). The cart and the thank-you panel now
+  count, and so does a captcha the cart's order form asks for.
+
 - **Search engines: switching Google off no longer fails while the live site still carries the tag.** Google will
   not give up an ownership while the site still serves its verification tag. It answers 400 ("You cannot unverify
   … until your verification token … has been removed"), measured on a real site. Every build carries the tag while

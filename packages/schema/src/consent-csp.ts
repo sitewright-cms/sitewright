@@ -221,6 +221,19 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
   return { frame: [...frame], script: [...script], connect: [...connect], media: [...media] };
 }
 
+/**
+ * The widgets whose runtime calls the platform's API from a published page:
+ * - a platform-routed form (`data-sw-routed`) posts its submission;
+ * - the cart (`data-sw-cart`) posts an order form or starts a checkout;
+ * - the thank-you panel (`data-sw-order-status`) reads the payment's status.
+ *
+ * ★ The cart and the thank-you panel were missing, so on a hosted site with an absolute API address the
+ * browser blocked every checkout and every status read before it left — unless the page happened to carry
+ * a form too, or statistics were on (the collector widens the same host). Nothing reached a log.
+ *
+ * A new widget that calls the API from a published page (booking, say) belongs on this list.
+ */
+const PLATFORM_API_MARKER_RE = /\sdata-sw-(?:routed|cart|order-status)[\s=>]/i;
 
 /**
  * CSP origins the PLATFORM ITSELF injects into a published page — the sibling of
@@ -251,12 +264,12 @@ export function platformInjectedCspOrigins(
   const style = new Set<string>();
   if (typeof html !== 'string' || html.length === 0) return { script: [], frame: [], connect: [], style: [] };
 
-  // The form's submission endpoint, when the publisher made it ABSOLUTE. A root-relative endpoint is
-  // same-origin and already covered by 'self'; only the cross-origin form needs widening.
-  // Keyed on the PLATFORM-ROUTED marker, not on the endpoint attribute: the endpoint must not stay a
-  // plain, harvestable URL in the markup, and the policy must not have to change when it moves.
+  // The platform's API, when the publisher made its address ABSOLUTE. A root-relative one is same-origin
+  // and already covered by 'self'; only the cross-origin call needs widening.
+  // Keyed on the markers of the widgets that call it, not on an endpoint attribute: the endpoint must not
+  // stay a plain, harvestable URL in the markup, and the policy must not have to change when it moves.
   const base = (formEndpointBase ?? '').trim();
-  if (base && /\sdata-sw-routed[\s=>]/i.test(html)) {
+  if (base && PLATFORM_API_MARKER_RE.test(html)) {
     let host: string | null = null;
     try {
       const u = new URL(base);
@@ -274,8 +287,9 @@ export function platformInjectedCspOrigins(
   // Keyed on the explicit `data-sw-captcha="<provider>"` marker rather than on a widget class, because
   // reCAPTCHA v3 has NO widget to detect: it is a script that runs on submit. A class-based check would
   // have silently omitted the origins for exactly the provider whose failure is hardest to see.
+  // The cart names it `data-captcha-provider` on its mount, for the checkout form it builds at runtime.
   for (const provider of CAPTCHA_PROVIDERS) {
-    if (!new RegExp(`data-sw-captcha\\s*=\\s*["']${provider}["']`, 'i').test(html)) continue;
+    if (!new RegExp(`data-(?:sw-captcha|captcha-provider)\\s*=\\s*["']${provider}["']`, 'i').test(html)) continue;
     for (const h of CAPTCHA_HOSTS[provider]) {
       script.add(h);
       frame.add(h);

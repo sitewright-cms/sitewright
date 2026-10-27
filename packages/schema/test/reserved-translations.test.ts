@@ -53,7 +53,8 @@ describe('reserved translations registry', () => {
   it('every reserved key is scoped to a known group prefix', () => {
     // `order` is the THANK-YOU page's scope — deliberately separate from `cart`, because those
     // strings are read at a different moment by someone who has already paid.
-    const SCOPES = new Set(['system', 'cart', 'theme', 'consent', 'order']);
+    // `booking` holds the booking widget's and a booking's own page's strings.
+    const SCOPES = new Set(['system', 'cart', 'theme', 'consent', 'order', 'booking']);
     for (const group of RESERVED_TRANSLATION_GROUPS) {
       for (const { key } of group.keys) {
         const [scope, ...rest] = key.split('.');

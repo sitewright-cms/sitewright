@@ -183,6 +183,25 @@ export function WebsiteSection({
     };
   }, [projectId]);
 
+  // Whether the booking set-up offers anything: its strings then show in Translations & Labels. Read when
+  // that sheet opens, so an offering added meanwhile is there. No set-up, or an unreadable one, offers nothing.
+  const [bookingEnabled, setBookingEnabled] = useState(false);
+  useEffect(() => {
+    if (sheet !== 'translations') return;
+    let live = true;
+    void Promise.resolve()
+      .then(() => api.getBooking(projectId))
+      .then((r) => {
+        if (live) setBookingEnabled((r.item.offerings ?? []).length > 0);
+      })
+      .catch(() => {
+        if (live) setBookingEnabled(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [projectId, sheet]);
+
   // What the shop's Payments part reports, and whether any orders exist. `undefined` = not known (the
   // shop is off, or this member may not read payments — the endpoint is owner/admin only).
   /** Every payment provider the project holds keys for; undefined until read (or when unreadable). */
@@ -637,6 +656,7 @@ export function WebsiteSection({
               shopEnabled={form.shopEnabled}
               themesEnabled={form.enableThemes}
               consentEnabled={form.consent?.enabled === true}
+              bookingEnabled={bookingEnabled}
               // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
               // the wording here instead of hand-typing the keys — only while the shop is on.
               extraGhostGroups={form.shopEnabled ? [{ id: 'shop_labels', label: 'Shop · Channels & fields', keys: shopLabelKeys(form.shopChannels) }] : []}

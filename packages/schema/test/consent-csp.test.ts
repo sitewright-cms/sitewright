@@ -459,6 +459,14 @@ describe('platformInjectedCspOrigins — what the PUBLISHER puts on the page', (
     expect(platformInjectedCspOrigins('<div class="x" data-sw-order-status></div>', 'https://sitewright.example').connect).toEqual(['sitewright.example']);
   });
 
+  it('allows the API for the booking widget and a booking’s own page', () => {
+    for (const html of ['<div data-sw-booking="massage" role="group"></div>', '<div data-sw-booking-status data-sw-labels="{}"></div>']) {
+      expect(platformInjectedCspOrigins(html, 'https://sitewright.example').connect, html).toEqual(['sitewright.example']);
+    }
+    // The editor-only note for a missing offering calls nothing.
+    expect(platformInjectedCspOrigins('<p data-sw-booking-missing>No offering</p>', 'https://sitewright.example').connect).toEqual([]);
+  });
+
   it('allows the captcha a cart checkout asks for, which the cart names on its mount', () => {
     const cart = '<div data-sw-cart data-captcha-provider="hcaptcha" data-captcha-sitekey="k"></div>';
     const o = platformInjectedCspOrigins(cart, 'https://sitewright.example');

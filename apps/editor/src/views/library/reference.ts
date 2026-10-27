@@ -505,6 +505,32 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'Arriving on the page is NEVER treated as proof of payment — the status is read from the platform, because the return from a provider is a navigation a buyer can forge. Point a checkout channel’s “return path” at this page; copy the global “thank-you” template to start.',
       },
       {
+        id: 'h-booking',
+        syntax: '{{sw-booking "offering-id" [class="…"]}}',
+        name: 'sw-booking',
+        keywords: 'booking appointment reservation calendar schedule slot room rental book',
+        description:
+          'BOOKING: the booking widget for one offering of the project’s booking set-up. Visitors see what is free on the business’s own clock (the time zone is named when it is not theirs), pick a time — a week of days and times, a start and a length, or check-in and check-out on a month calendar, depending on the offering — give their details and book, or send a request when the offering is confirmed by hand. An offering that does not exist renders nothing on the site and a note here.',
+        example: '<h2>Book a massage</h2>\n{{sw-booking "massage"}}',
+        note: 'The proof of work and the captcha follow the booking set-up. In this preview every booking is a dry run: it is checked and nothing is booked. Style it with the data-sw-part names (days, day, times, time, details, summary, done, message).',
+      },
+      {
+        id: 'h-booking-status',
+        syntax: '{{sw-booking-status}} or {{#sw-booking-status}}…{{/sw-booking-status}}',
+        name: 'sw-booking-status',
+        keywords: 'booking status cancel manage reservation appointment confirmation',
+        description:
+          'A booking’s OWN PAGE on your site: what was booked, whether it is confirmed or waiting for confirmation, and a button to cancel it until it starts. The booking emails link here with the booking’s reference, so set the booking set-up’s status page to this page’s path. Parts: data-sw-part="status-loading|status-booked|status-pending|status-cancelled|status-unknown|details|cancel|cancel-confirm|cancel-yes|cancel-no|message"; inside details, data-sw-field="offering|when".',
+        example:
+          '{{#sw-booking-status}}\n' +
+          '  <p data-sw-part="status-loading">One moment…</p>\n' +
+          '  <p data-sw-part="status-booked" hidden>See you soon.</p>\n' +
+          '  <p data-sw-part="details" hidden><strong data-sw-field="offering"></strong> <span data-sw-field="when"></span></p>\n' +
+          '  <button type="button" data-sw-part="cancel" hidden>Cancel</button>\n' +
+          '{{/sw-booking-status}}',
+        note: 'Everything you write renders as is; the script shows the part that applies and hides the rest, so give the state parts `hidden` and leave the loading one visible.',
+      },
+      {
         id: 'h-consent-settings',
         syntax: '{{sw-consent-settings [label="…"] [class="…"]}}',
         name: 'sw-consent-settings',

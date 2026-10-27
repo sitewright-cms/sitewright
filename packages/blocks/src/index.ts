@@ -12,6 +12,8 @@ export * from './cart.js';
 export * from './cart-catalog.js';
 export * from './cart-validate.js';
 export * from './order-status.js';
+export * from './booking.js';
+export * from './booking-runtime.js';
 export * from './consent.js';
 export * from './stats.js';
 export * from './preloader.js';

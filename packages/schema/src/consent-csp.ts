@@ -225,15 +225,17 @@ export function authorContentCspOrigins(html: string | null | undefined): Pick<C
  * The widgets whose runtime calls the platform's API from a published page:
  * - a platform-routed form (`data-sw-routed`) posts its submission;
  * - the cart (`data-sw-cart`) posts an order form or starts a checkout;
- * - the thank-you panel (`data-sw-order-status`) reads the payment's status.
+ * - the thank-you panel (`data-sw-order-status`) reads the payment's status;
+ * - the booking widget (`data-sw-booking`) lists times and books, and a booking's own page
+ *   (`data-sw-booking-status`) reads the booking and cancels it.
  *
  * ★ The cart and the thank-you panel were missing, so on a hosted site with an absolute API address the
  * browser blocked every checkout and every status read before it left — unless the page happened to carry
  * a form too, or statistics were on (the collector widens the same host). Nothing reached a log.
  *
- * A new widget that calls the API from a published page (booking, say) belongs on this list.
+ * A new widget that calls the API from a published page belongs on this list.
  */
-const PLATFORM_API_MARKER_RE = /\sdata-sw-(?:routed|cart|order-status)[\s=>]/i;
+const PLATFORM_API_MARKER_RE = /\sdata-sw-(?:routed|cart|order-status|booking|booking-status)[\s=>]/i;
 
 /**
  * CSP origins the PLATFORM ITSELF injects into a published page — the sibling of

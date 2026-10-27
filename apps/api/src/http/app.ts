@@ -109,6 +109,7 @@ import {
   THEME_TOGGLE_CSS,
   THEME_TOGGLE_JS,
   resolveShopChannels,
+  bookingRenderContext,
   resolveFormEndpoints,
   validateTemplate,
   findUnknownHelpers,
@@ -264,7 +265,7 @@ import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus, type FetchLike } from '../payments/executor.js';
 import { makeProviderFetch, providerFetch } from '../payments/provider-fetch.js';
 import { makeOrderChannelResolver, runOrderMail, type OrderChannelSettings } from '../payments/notify-runner.js';
-import { BookingConfigSchema, fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
+import { BookingConfigSchema, type BookingConfig, fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
 import { makeDeliveryResolver } from '../mail/delivery-resolver.js';
@@ -6132,11 +6133,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // nothing, so testing a form never mails the merchant a lead that does not exist.
         (fid) => `/f/${project.id}/${fid}/preview`,
       );
-      // The captcha config only matters for a captcha-flagged form — skip the extra read (this is a
-      // per-preview hot path) for the overwhelmingly common case of none.
-      const previewCaptcha = Object.values(previewForms).some((f) => f.captcha)
-        ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
-        : undefined;
+      // The booking set-up, for {{sw-booking}} / {{sw-booking-status}}: one small row.
+      const previewBookingConfig = ((await contentRepo.list(ctx, 'booking')) as BookingConfig[])[0];
+      // The captcha config only matters for a captcha-flagged form or a booking set-up that asks for one —
+      // skip the extra read (this is a per-preview hot path) for the overwhelmingly common case of neither.
+      const previewCaptcha =
+        Object.values(previewForms).some((f) => f.captcha) || previewBookingConfig?.captcha
+          ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
+          : undefined;
+      const previewBooking = bookingRenderContext(previewBookingConfig, previewCaptcha);
       // Stored image maps for {{sw-imagemap}} / data-sw-imagemap — the same shape the publish path
       // builds in build.ts. WITHOUT this key the helper renders '' (its "this surface has no image
       // maps" contract), so an authored map came out as NOTHING in the preview with no error at all.
@@ -6296,6 +6301,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // surface has no image maps" from "that id is unknown", and only the latter should throw.
           ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
           ...(previewCaptcha ? { captcha: previewCaptcha } : {}),
+          ...(previewBooking ? { booking: previewBooking } : {}),
         });
         // Slots render through the SAME isolated worker; a broken slot is skipped here
         // (publish still hard-validates it) so it can never break the page preview. No
@@ -6333,6 +6339,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // A slot (footer, sidebar, global modal) may embed a map too — same parity as forms.
           ...(previewImageMaps ? { imageMaps: previewImageMaps } : {}),
           ...(previewCaptcha ? { captcha: previewCaptcha } : {}),
+          ...(previewBooking ? { booking: previewBooking } : {}),
         };
         // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
         // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
@@ -9081,6 +9088,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
     const forms = (await contentRepo.list(ctx, 'form')) as Form[];
     const imageMaps = (await contentRepo.list(ctx, 'imagemap')) as ImageMap[];
+    const booking = ((await contentRepo.list(ctx, 'booking')) as BookingConfig[])[0];
     const bundle: ProjectBundle = {
       // ExportBundle.project omits formatVersion (a format concern, not a DB field); re-add it.
       project: { formatVersion: exp.formatVersion, ...exp.project },
@@ -9091,6 +9099,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       translations,
       forms,
       imageMaps,
+      // The booking set-up renders {{sw-booking}}; absent when the project has none.
+      ...(booking ? { booking } : {}),
     };
     // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
     const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
@@ -12140,10 +12150,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
         (fid) => `/f/${project.id}/${fid}/preview`, // dry run — a render preview never mails a lead
       );
-      // Read only when a captcha-flagged form exists (mirrors the /preview gate).
-      const renderCaptcha = Object.values(renderForms).some((f) => f.captcha)
-        ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
-        : undefined;
+      const renderBookingConfig = ((await contentRepo.list(ctx, 'booking')) as BookingConfig[])[0];
+      // Read only when a captcha-flagged form or booking set-up exists (mirrors the /preview gate).
+      const renderCaptcha =
+        Object.values(renderForms).some((f) => f.captcha) || renderBookingConfig?.captcha
+          ? captchaRenderConfig(await loadProjectCaptchaById(db, project.id))
+          : undefined;
+      const renderBooking = bookingRenderContext(renderBookingConfig, renderCaptcha);
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
       if (JSON.stringify(data).length + JSON.stringify(item).length + JSON.stringify(partials).length + JSON.stringify(renderForms).length > 4 * 1024 * 1024) {
@@ -12161,6 +12174,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           partials,
           forms: renderForms,
           ...(renderCaptcha ? { captcha: renderCaptcha } : {}),
+          ...(renderBooking ? { booking: renderBooking } : {}),
         });
         if (!body.document) return reply.send({ html: rendered });
         // Styled-document preview: wrap the rendered body in the publish doc shell + inline

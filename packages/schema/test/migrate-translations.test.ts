@@ -44,7 +44,8 @@ describe('reserved translation key migration', () => {
   it('maps a legacy name onto every reserved key', () => {
     const reserved = new Set(Object.keys(RESERVED_TRANSLATION_DEFAULTS));
     const migratedTo = new Set(Object.values(LEGACY_TRANSLATION_KEYS));
-    const unmapped = [...reserved].filter((k) => !migratedTo.has(k) && !NO_LEGACY_NAME.has(k));
+    // Booking shipped scoped from the start, like the checkout strings: no flat name ever existed.
+    const unmapped = [...reserved].filter((k) => !migratedTo.has(k) && !NO_LEGACY_NAME.has(k) && !k.startsWith('booking.'));
     expect(unmapped, 'reserved keys with no migration row').toEqual([]);
   });
 

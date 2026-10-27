@@ -39,6 +39,8 @@ const ALL_MARKERS =
   // The thank-you page's status poll. Every registry runtime must appear here, or the parity guard
   // silently stops checking that one on both delivery paths.
   '<div data-sw-order-status></div>' +
+  // The booking widget and a booking's own page share one runtime.
+  '<div data-sw-booking="x"></div>' +
   '</section>';
 
 describe('effect-runtime registry — self-consistency', () => {

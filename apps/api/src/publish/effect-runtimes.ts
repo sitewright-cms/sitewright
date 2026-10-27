@@ -38,6 +38,9 @@ import {
   usesCart,
   usesOrderStatus,
   ORDER_STATUS_JS,
+  usesBooking,
+  BOOKING_CSS,
+  BOOKING_JS,
   CART_CSS,
   CART_JS,
   usesConsent,
@@ -106,6 +109,9 @@ export const BODY_EFFECT_RUNTIMES: readonly BodyEffectRuntime[] = [
   // The thank-you panel's status poll. Ships only on a page carrying the marker, like every other
   // runtime here — a site with one thank-you page does not pay for it on the other hundred.
   { key: 'order-status', uses: usesOrderStatus, js: ORDER_STATUS_JS, script: 'order-status.js', preview: 'run' },
+  // The booking widget and a booking's own page. Runs in the editor's preview, where every booking is a dry
+  // run (window.__swb adds ?preview=1) and cancelling is refused by the runtime.
+  { key: 'booking', uses: usesBooking, css: BOOKING_CSS, js: BOOKING_JS, script: 'booking.js', preview: 'run' },
   // consent stays style-only: its runtime hydrates HELD cross-origin iframes and drives a page-covering
   // consent GATE, which would be disruptive/incorrect in the editor canvas (single-page preview doesn't
   // grant consent — only the whole-site draft preview does, via build.ts grantAll). KNOWN LIMITATION: the

@@ -292,7 +292,11 @@ function formApiScript(api: { base: string; project: string; preview?: boolean }
     // is the same endpoint in a different MODE — it prices against the draft snapshot, forces test
     // credentials and touches no stock — not a separate dry-run route like the form one.
     `window.__swp=function(k){return o.b+"/"+"p"+"ay"+"/"+o.p+"/"+k+(o.v?"?preview=1":"")};` +
-    `window.__swt=function(t){return o.b+"/"+"p"+"ay"+"/"+o.p+"/txn/"+encodeURIComponent(t)}` +
+    `window.__swt=function(t){return o.b+"/"+"p"+"ay"+"/"+o.p+"/txn/"+encodeURIComponent(t)};` +
+    // BOOKING, from the same blob: `__swb(path)` for a read, `__swb(offering, 1)` for the booking itself,
+    // which the preview turns into a dry run (`?preview=1`: checked, nothing taken). `preview` tells the
+    // runtime not to cancel anything from the editor.
+    `window.__swb=function(s,w){return o.b+"/"+"b"+"/"+o.p+"/"+s+(w&&o.v?"?preview=1":"")};window.__swb.preview=!!o.v` +
     `}catch(e){}})()</script>`
   );
 }

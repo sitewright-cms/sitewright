@@ -441,6 +441,37 @@ describe('platformInjectedCspOrigins — what the PUBLISHER puts on the page', (
     // …and a page without the widget keeps the strict policy.
     expect(platformInjectedCspOrigins(routed, 'https://sitewright.example').frame).toEqual([]);
   });
+
+  it('allows the API for the cart and the thank-you panel too, which call it without a form', () => {
+    // The cart posts its order form and starts a checkout; the thank-you panel reads the payment status.
+    // Both were missing, so a hosted shop with no form on the page could not check out.
+    const cart = '<div data-sw-cart data-currency-symbol="€"></div>';
+    const status = '<div data-sw-order-status data-currency-symbol="€"><p>Thanks</p></div>';
+    expect(platformInjectedCspOrigins(cart, 'https://sitewright.example').connect).toEqual(['sitewright.example']);
+    expect(platformInjectedCspOrigins(status, 'https://sitewright.example').connect).toEqual(['sitewright.example']);
+    // The marker must be the attribute itself, not a longer one that starts the same way.
+    expect(platformInjectedCspOrigins('<div data-sw-cart-note="x"></div>', 'https://sitewright.example').connect).toEqual([]);
+    expect(platformInjectedCspOrigins('<p>data-sw-cart</p>', 'https://sitewright.example').connect).toEqual([]);
+    // The add-to-cart button sits on every product page; it writes to the browser and calls nothing.
+    expect(platformInjectedCspOrigins('<button data-sw-cart-add data-sku="w1">Add</button>', 'https://sitewright.example').connect).toEqual([]);
+    // Any whitespace before the attribute, and the attribute anywhere in the tag.
+    expect(platformInjectedCspOrigins('<div\n\tdata-sw-cart\n></div>', 'https://sitewright.example').connect).toEqual(['sitewright.example']);
+    expect(platformInjectedCspOrigins('<div class="x" data-sw-order-status></div>', 'https://sitewright.example').connect).toEqual(['sitewright.example']);
+  });
+
+  it('allows the captcha a cart checkout asks for, which the cart names on its mount', () => {
+    const cart = '<div data-sw-cart data-captcha-provider="hcaptcha" data-captcha-sitekey="k"></div>';
+    const o = platformInjectedCspOrigins(cart, 'https://sitewright.example');
+    for (const d of [o.script, o.frame, o.style]) expect(d).toEqual(['hcaptcha.com', '*.hcaptcha.com']);
+    expect(o.connect).toEqual(['sitewright.example', 'hcaptcha.com', '*.hcaptcha.com']);
+    // Only the provider named.
+    expect(platformInjectedCspOrigins(cart, 'https://sitewright.example').script).not.toContain('www.google.com');
+    // Single quotes name it as well; a provider the platform does not know names nothing.
+    expect(platformInjectedCspOrigins("<div data-sw-cart data-captcha-provider='recaptcha-v2'></div>", 'https://sitewright.example').script).toContain('www.google.com');
+    const unknown = platformInjectedCspOrigins('<div data-sw-cart data-captcha-provider="evil.example"></div>', 'https://sitewright.example');
+    expect(unknown.script).toEqual([]);
+    expect(unknown.connect).toEqual(['sitewright.example']);
+  });
 });
 
 describe('★ analytics presets beyond Google (Plausible, Umami, Matomo, Fathom, Simple Analytics)', () => {

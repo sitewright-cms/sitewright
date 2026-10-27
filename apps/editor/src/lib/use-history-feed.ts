@@ -53,7 +53,7 @@ interface FeedState {
 /** Bursts of change events (a bulk edit sends one per item) collapse into one re-read of the head. */
 const EVENT_SETTLE_MS = 500;
 /** The kinds the server keeps history for (its REVISIONED_KINDS); a change to anything else adds no row. */
-const HISTORY_KINDS: ReadonlySet<string> = new Set(['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings']);
+const HISTORY_KINDS: ReadonlySet<string> = new Set(['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings', 'booking']);
 
 const queryFor = (f: HistoryFilters, limit: number): ProjectRevisionQuery => ({
   ...(f.kind ? { kind: f.kind } : {}),

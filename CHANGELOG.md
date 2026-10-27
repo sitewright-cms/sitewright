@@ -11,6 +11,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking set-up, as project content (API and agents; no editor screen yet).** A project can hold one booking
+  set-up: the resources that get booked (people, rooms, apartments, items: time zone, capacity, opening hours,
+  blocked times) and the offerings visitors book, in four modes: appointments of a fixed length, set times with
+  seats, a start and end the visitor picks, and nights or days. It is the content kind `booking`, a single entity
+  with the id `booking`: read and written like the settings (`/projects/:id/content/booking/booking`, and the agents'
+  `get_content`/`put_content`), with a history, and exported and copied with the project. It is replaced whole, never
+  merged, and cannot be deleted: saving an empty one switches booking off. Unknown fields are refused,
+  so a typo is an error rather than a setting that does nothing. Visitors cannot book yet; the public booking pages
+  come next.
+
 - **Website settings → Site behaviour → Install as app: a switch for the browser's "Install" offer.** On, the
   default and the behaviour until now, a site whose icon is uploaded to the media library is offered as an app by
   Chrome, Edge, Samsung Internet and Firefox on Android. Off, its manifest asks to open in a normal browser tab

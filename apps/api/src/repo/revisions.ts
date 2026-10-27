@@ -20,6 +20,7 @@ export const REVISIONED_KINDS: ReadonlySet<ContentKind> = new Set<ContentKind>([
   'form',
   'imagemap',
   'settings',
+  'booking',
 ]);
 
 /**

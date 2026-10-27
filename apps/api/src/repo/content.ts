@@ -42,6 +42,8 @@ import {
   type Template,
   PaymentGatewayStoredSchema,
   PaymentBindingStoredSchema,
+  BookingConfigSchema,
+  type BookingConfig,
 } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATE_PREFIX,
@@ -57,7 +59,7 @@ import {
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
-import { content, projects, type ContentKind } from '../db/schema.js';
+import { BOOKING_ENTITY_ID, content, projects, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 import type { RevisionsRepository, RevisionOp } from './revisions.js';
@@ -189,6 +191,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // managed via dedicated routes; a DEDICATED_KIND and excluded from export/import bundles for the
   // same reason as deploy_target and project_smtp — never export secrets.
   ['project_payment', PaymentBindingStoredSchema],
+  // The project's booking set-up (resources and offerings). A singleton, id `booking`, with no `id` field of its
+  // own; no secrets (calendar credentials will live apart), so it is exported and revisioned like settings.
+  ['booking', BookingConfigSchema],
 ]);
 
 /** The content kinds, derived from the schema map (single source of truth). */
@@ -888,6 +893,10 @@ export class ContentRepository {
     if (kind === 'settings') {
       throw new ForbiddenError('the settings singleton cannot be deleted');
     }
+    // Live holds and requests name its offerings; an empty set-up is how booking is switched off.
+    if (kind === 'booking') {
+      throw new ForbiddenError('the booking set-up cannot be deleted; save an empty one (no resources, no offerings) to switch booking off');
+    }
     // A page takes what depends on it along (or refuses) — see removePage.
     if (kind === 'page') return this.removePage(ctx, entityId);
     const row = await this.row(this.db, ctx, kind, entityId, scope);
@@ -1275,7 +1284,7 @@ export class ContentRepository {
     // parallel (alongside the base bundle) rather than serially. NOTE: `form` rows are exported
     // whole, so `form.recipient`/`subject`/`mode` travel too — already readable by any member via
     // the content API (form is not a DEDICATED_KIND) and required to restore a working form.
-    const [base, snippets, translations, forms, imageMaps, media, mediaFolders] = await Promise.all([
+    const [base, snippets, translations, forms, imageMaps, media, mediaFolders, booking] = await Promise.all([
       this.exportBundle(ctx, project),
       this.list(ctx, 'snippet') as Promise<Snippet[]>,
       this.list(ctx, 'translation') as Promise<PageTranslation[]>,
@@ -1283,8 +1292,10 @@ export class ContentRepository {
       this.list(ctx, 'imagemap') as Promise<ImageMap[]>,
       this.list(ctx, 'media') as Promise<MediaAsset[]>,
       this.list(ctx, 'mediafolder') as Promise<MediaFolderRecord[]>,
+      // A project without a booking set-up exports no `booking` key at all.
+      (this.list(ctx, 'booking') as Promise<BookingConfig[]>).then((rows) => rows[0]),
     ]);
-    return { ...base, snippets, translations, forms, imageMaps, media, mediaFolders };
+    return { ...base, snippets, translations, forms, imageMaps, media, mediaFolders, ...(booking ? { booking } : {}) };
   }
 
   /**
@@ -1330,6 +1341,7 @@ export class ContentRepository {
         imageMaps: z.array(ImageMapSchema).max(EXPORT_BUNDLE_CAPS.imageMaps).default([]),
         media: z.array(MediaAssetSchema).max(EXPORT_BUNDLE_CAPS.media).default([]),
         mediaFolders: z.array(MediaFolderRecordSchema).max(EXPORT_BUNDLE_CAPS.mediaFolders).default([]),
+        booking: BookingConfigSchema.optional(),
       })
       .parse(raw);
 
@@ -1425,6 +1437,10 @@ export class ContentRepository {
       }
       for (const folder of input.mediaFolders) {
         await this.writeRow(exec, ctx, 'mediafolder', folder.id, folder);
+        imported += 1;
+      }
+      if (input.booking) {
+        await this.writeRow(exec, ctx, 'booking', BOOKING_ENTITY_ID, input.booking);
         imported += 1;
       }
     });
@@ -1668,6 +1684,11 @@ export class ContentRepository {
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */
   private entityKey(kind: ContentKind, entityId: string, data: unknown): string {
     if (kind === 'settings') return SETTINGS_ENTITY_ID;
+    // One booking set-up per project, always at the same id, so there is never a second one to disagree with.
+    if (kind === 'booking') {
+      if (entityId !== BOOKING_ENTITY_ID) throw new ConflictError(`the booking set-up is one entity, id "${BOOKING_ENTITY_ID}"`);
+      return BOOKING_ENTITY_ID;
+    }
     // project_smtp / project_captcha / project_payment are per-project singletons with no `id` field
     // (keyed by path). `payment_gateway` is NOT one of these: it carries its own id, which must match
     // the path exactly as every other keyed entity does.

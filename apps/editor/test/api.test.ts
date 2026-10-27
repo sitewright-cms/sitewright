@@ -994,6 +994,23 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![1].method ?? 'GET').toBe('GET');
   });
 
+  it('reads and replaces the booking set-up singleton, guarding the write with the version it was built from', async () => {
+    const config = { resources: [], offerings: [] };
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: config, version: 'v1' }));
+    const got = await api.getBooking('p');
+    expect(got.item).toEqual(config);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/booking/booking');
+    expect(fetchMock.mock.calls[0]![1].method ?? 'GET').toBe('GET');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: config, version: 'v2' }));
+    await api.putBooking('p', config, 'v1');
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p/content/booking/booking');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body as string)).toEqual(config);
+    expect((putInit.headers as Record<string, string>)['if-match']).toBe('v1');
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

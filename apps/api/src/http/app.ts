@@ -5165,7 +5165,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // edited them, wrote them back without the (path-implied) id, and got that on every one. Default it
         // from the path. An id that is PRESENT and wrong still conflicts in `entityKey`, so the mismatch
         // guard is untouched; the two path-keyed singletons have no `id` field at all and are skipped.
-        if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp' && kind !== 'project_captcha') {
+        // Singletons keyed by the path have no `id` of their own (the booking set-up is a STRICT schema, so an
+        // added `id` would be refused outright).
+        if (!wantMerge && kind !== 'settings' && kind !== 'project_smtp' && kind !== 'project_captcha' && kind !== 'booking') {
           const b = body as Record<string, unknown> | null;
           if (b && typeof b === 'object' && !Array.isArray(b) && b.id === undefined) {
             body = { ...b, id: req.params.entityId };

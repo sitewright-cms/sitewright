@@ -62,6 +62,7 @@ import type {
   AiConfigView,
   AiConfigInput,
   AiProviderKind,
+  BookingConfig,
 } from '@sitewright/schema';
 import type {
   AuthenticationResponseJSON,
@@ -1695,6 +1696,13 @@ export const api = {
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),
   deleteGlobalTemplate: (id: string) => request<void>('DELETE', `/admin/global/template/${encodeURIComponent(id)}`),
+
+  // --- the booking set-up singleton (resources + offerings); absent until first written ---
+  getBooking: (projectId: string) =>
+    request<{ item: BookingConfig; version?: string }>('GET', `/projects/${projectId}/content/booking/booking`),
+  /** A full replace. `baseVersion` is the version the form was built from, so a concurrent edit is refused, not lost. */
+  putBooking: (projectId: string, config: BookingConfig, baseVersion?: string | null) =>
+    request<{ item: BookingConfig; version?: string }>('PUT', `/projects/${projectId}/content/booking/booking`, config, { version: baseVersion }),
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (projectId: string) =>

@@ -10,6 +10,7 @@ import { PageTranslationSchema } from './translation.js';
 import { FormSchema } from './form.js';
 import { ImageMapSchema } from './image-map.js';
 import { MediaAssetSchema, MediaFolderRecordSchema } from './media.js';
+import { BookingConfigSchema } from './booking.js';
 import { IdSchema, SlugSchema } from './primitives.js';
 import { mergeLegacyIdentity } from './migrate-identity.js';
 import { mergeLegacyTranslations } from './migrate-translations.js';
@@ -99,6 +100,8 @@ export const ProjectExportBundleSchema = z.object({
   imageMaps: z.array(ImageMapSchema).max(EXPORT_BUNDLE_CAPS.imageMaps).default([]),
   media: z.array(MediaAssetSchema).max(EXPORT_BUNDLE_CAPS.media).default([]),
   mediaFolders: z.array(MediaFolderRecordSchema).max(EXPORT_BUNDLE_CAPS.mediaFolders).default([]),
+  /** The booking set-up, when the project has one. Optional, so every bundle made before it still parses. */
+  booking: BookingConfigSchema.optional(),
 });
 
 export type ProjectExportBundle = z.infer<typeof ProjectExportBundleSchema>;

@@ -78,6 +78,7 @@ const GENERIC_KIND = z.enum([
   'entry',
   'form',
   'imagemap',
+  'booking',
 ]);
 
 // --- put_content "teach on error" -------------------------------------------------------------
@@ -165,6 +166,10 @@ const KIND_SHAPES = new Map<string, string>([
     'settings',
     'the site settings object (identity, website, seo, shop, effects, translations, …). put_content REPLACES the whole object by default, so READ it first with get_content("settings","settings"), modify, and write the WHOLE thing back — OR pass merge:true to PATCH just the fields you send (e.g. { website: { footer: "…" } }) and leave every other slot untouched.',
   ],
+  [
+    'booking',
+    'the booking set-up, id "booking": { resources: [{ id, name, timeZone (IANA, e.g. "Europe/Berlin"), capacity?, hours?: [{ days: ["mon",…], from: "09:00", to: "17:00" }], blocks?: [{ kind: "dates", from, to } | { kind: "once", start: "YYYY-MM-DDTHH:MM", end } | { kind: "weekly", days, from, to }] }], offerings: [{ id, name, resourceIds: [...], mode: "duration" (durationMin, stepMin?, bufferBeforeMin?, bufferAfterMin?) | "slots" (slots: [{ days, at, durationMin, capacity? }]) | "range" (minMin, maxMin, stepMin dividing the day) | "days" (unit "night"|"day", minUnits, maxUnits, checkIn, checkOut), confirmation?: "instant"|"request", minNoticeMin?, maxAdvanceDays?, maxQuantity? }] }. Unknown keys are refused. A full REPLACE: read it first, change it, write the whole thing back.',
+  ],
 ]);
 
 /** A JSON object (not an array, not null) we can safely spread. */
@@ -173,9 +178,9 @@ function isPlainRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /** put_content kinds that are path-keyed SINGLETONS with no own `id` field — never inject an id into
- *  their body. Today only `settings`; a set (not a `!== 'settings'` literal) so any future singleton
+ *  their body: `settings` and `booking`. A set (not a `!== 'settings'` literal) so any future singleton
  *  kind added to GENERIC_KIND doesn't silently acquire an injected id. */
-const ID_LESS_PUT_KINDS = new Set<string>(['settings']);
+const ID_LESS_PUT_KINDS = new Set<string>(['settings', 'booking']);
 
 /**
  * Parse a JSON text an agent sent where an object/array belonged. Strict first; then once more with raw
@@ -1008,7 +1013,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_content',
     {
       description:
-        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id. A snippet/template this project does not have is read from the instance-wide built-in recipe library — e.g. get_content("snippet","nav-header"), "nav-footer", "form-custom", or get_content("template","landing") — and comes back marked `_global` (read-only, with how to override it). list_content does not list those recipes.',
+        'Get one content entity by kind + id. For an ENTRY also pass `dataset` (its owning dataset slug) — an entry id is only unique WITHIN its dataset, so two datasets can share an id. The booking set-up (resources and offerings) is get_content("booking","booking"); a project that has none answers not found, and put_content("booking","booking",{ resources, offerings }) creates it. A snippet/template this project does not have is read from the instance-wide built-in recipe library — e.g. get_content("snippet","nav-header"), "nav-footer", "form-custom", or get_content("template","landing") — and comes back marked `_global` (read-only, with how to override it). list_content does not list those recipes.',
       inputSchema: { kind: GENERIC_KIND, id: z.string(), dataset: z.string().optional() },
     },
     gate(null, async ({ kind, id, dataset }: { kind: string; id: string; dataset?: string }) => {

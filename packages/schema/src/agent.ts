@@ -2382,7 +2382,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: "MEASURE the original's real values (font-size, padding, colour, gradient, radius, shadow, transform)", where: 'inspect_source({ pageId, selectors }) — computed styles + rects off the LIVE original; side:"build" measures your clone the same way' },
   { need: 'read chrome/markup a site builds in JavaScript (the stored import has none)', where: 'inspect_source({ pageId, selectors, html:true }) — returns the SETTLED outerHTML' },
   { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },
-  { need: 'appointments, room or rental bookings: who or what is booked, when it is open, what visitors can book', where: 'get_content("booking","booking") / put_content({ kind:"booking", id:"booking", data:{ resources, offerings } })' },
+  { need: 'appointments, room or rental bookings: who or what is booked, when it is open, what visitors can book', where: 'get_content("booking","booking") / put_content({ kind:"booking", id:"booking", data:{ resources, offerings } }); on a page, {{sw-booking "<offering id>"}} is the booking widget and {{sw-booking-status}} the page a booking\'s emails link to (its path goes in the set-up\'s statusPath)' },
 ];
 
 /** How each writable content kind is written (tool + the one shape gotcha most likely to trip a write). */

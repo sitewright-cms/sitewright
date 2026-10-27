@@ -341,6 +341,9 @@ const ShopReturnPathSchema = z
   .refine((p) => !/[\u0000-\u001f\u007f]/.test(p), 'must not contain control characters')
   .refine((p) => !/^\/+\w+:/.test(p), 'must not contain a scheme');
 
+/** A path on the project's own site (`/thank-you/`). The same rules wherever a link sends a customer back. */
+export { ShopReturnPathSchema as SitePathSchema };
+
 /**
  * ★ PROCESSED PAYMENT — the real thing, as distinct from the `payment` channel above.
  *

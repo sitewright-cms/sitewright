@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SitePathSchema } from './website.js';
 
 /**
  * BOOKING — any booking of a date or a time: an appointment, a room by the hour, a tour or class at a set
@@ -15,7 +16,8 @@ import { z } from 'zod';
  *       `days`      whole nights or days (rentals), with check-in and check-out times.
  *
  * Every time here is WALL-CLOCK time in the resource's own time zone ("09:00" means nine in the morning
- * where the resource is, summer or winter). The API turns them into instants; a visitor sees them in theirs.
+ * where the resource is, summer or winter). The API turns them into instants; the booking widget shows them
+ * on the resource's clock too, and names the time zone when it is not the visitor's.
  */
 
 /** Bounds on one project's booking configuration. It is ordinary content, so it stays small. */
@@ -244,6 +246,13 @@ export const BookingConfigSchema = z
     pow: z.boolean().default(false),
     /** The project's captcha (Website settings) on every booking request. */
     captcha: z.boolean().default(false),
+    /**
+     * The page on the site where a customer sees their booking and can cancel it: the page carrying
+     * `{{sw-booking-status}}`. Booking emails link there, with the booking's reference in the fragment
+     * (`#t=…`), so every link a customer gets points at the business's own site.
+     */
+    // The reference is appended as `#t=…`, so the path carries no fragment of its own.
+    statusPath: SitePathSchema.refine((p) => !p.includes('#'), 'must not contain #').optional(),
   })
   .superRefine((cfg, ctx) => {
     const resources = new Set<string>();

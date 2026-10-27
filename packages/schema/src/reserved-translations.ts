@@ -47,7 +47,7 @@ export interface ReservedTranslationGroup {
    * only controls editor SURFACING, so a disabled feature never clutters the translation table.
    * OMIT for a SYSTEM group (always surfaced — built-in component UI strings that every site has).
    */
-  feature?: 'shop' | 'themes' | 'consent';
+  feature?: 'shop' | 'themes' | 'consent' | 'booking';
   keys: readonly ReservedTranslation[];
 }
 
@@ -140,6 +140,68 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
     label: 'Themes',
     feature: 'themes',
     keys: [{ key: 'theme.toggle', label: 'Dark-mode toggle (aria-label)', default: 'Toggle dark mode' }],
+  },
+  {
+    // BOOKING group (gated on the project's booking set-up having an offering): the {{sw-booking}} widget and
+    // the {{sw-booking-status}} panel. The helpers resolve each per page-locale and pass them to booking.js.
+    // `{zone}` is replaced by the runtime.
+    id: 'booking',
+    label: 'Booking',
+    feature: 'booking',
+    keys: [
+      { key: 'booking.loading', label: 'While times load', default: 'Loading available times…' },
+      { key: 'booking.unavailable', label: 'When booking cannot be offered', default: 'Online booking is not available right now.' },
+      { key: 'booking.earlier', label: 'Previous dates (button)', default: 'Earlier' },
+      { key: 'booking.later', label: 'Next dates (button)', default: 'Later' },
+      { key: 'booking.no_times', label: 'A day with nothing free', default: 'Nothing is free on this day.' },
+      { key: 'booking.none_here', label: 'A period with nothing free', default: 'Nothing is free in this period.' },
+      { key: 'booking.time_zone', label: 'Time zone note', default: 'Times are shown in {zone}.' },
+      { key: 'booking.resource', label: 'Who or what (picker label)', default: 'Preference' },
+      { key: 'booking.any', label: 'No preference (picker option)', default: 'No preference' },
+      { key: 'booking.start', label: 'Start time (picker label)', default: 'Start' },
+      { key: 'booking.length', label: 'How long (picker label)', default: 'Duration' },
+      { key: 'booking.check_in', label: 'Check-in', default: 'Check-in' },
+      { key: 'booking.check_out', label: 'Check-out', default: 'Check-out' },
+      { key: 'booking.pick_check_out', label: 'After choosing check-in', default: 'Now choose your check-out date.' },
+      { key: 'booking.nights', label: 'Number of nights', default: 'Nights' },
+      { key: 'booking.days', label: 'Number of days', default: 'Days' },
+      { key: 'booking.quantity', label: 'Number of places', default: 'Places' },
+      { key: 'booking.name', label: 'Name field', default: 'Name' },
+      { key: 'booking.email', label: 'Email field', default: 'Email' },
+      { key: 'booking.phone', label: 'Phone field', default: 'Phone' },
+      { key: 'booking.note', label: 'Note field', default: 'Note' },
+      { key: 'booking.optional', label: 'Optional field marker', default: 'optional' },
+      { key: 'booking.continue', label: 'Continue to your details (button)', default: 'Continue' },
+      { key: 'booking.back', label: 'Back (button)', default: 'Back' },
+      { key: 'booking.submit', label: 'Book (button)', default: 'Book' },
+      { key: 'booking.submit_request', label: 'Send a request (button)', default: 'Send request' },
+      { key: 'booking.sending', label: 'While sending', default: 'Sending…' },
+      { key: 'booking.booked', label: 'Booked', default: 'You are booked. A confirmation is on its way to your email.' },
+      { key: 'booking.requested', label: 'Request sent', default: 'Your request is sent. You will hear back by email.' },
+      { key: 'booking.preview', label: 'Editor preview only', default: 'Preview: this would be booked. Nothing was saved.' },
+      { key: 'booking.manage', label: 'Link to the booking page', default: 'View or cancel your booking' },
+      { key: 'booking.another', label: 'Book another (button)', default: 'Book another' },
+      { key: 'booking.taken', label: 'The time went meanwhile', default: 'That time was just taken. Please choose another.' },
+      { key: 'booking.check_details', label: 'Invalid details', default: 'Please check your details.' },
+      { key: 'booking.captcha', label: 'Captcha not done', default: 'Please complete the captcha.' },
+      { key: 'booking.busy', label: 'Too many bookings at once', default: 'Booking is busy right now. Please try again in a minute.' },
+      { key: 'booking.failed', label: 'Anything else went wrong', default: 'Sorry, that did not work. Please try again.' },
+      { key: 'booking.retry', label: 'Try again (button)', default: 'Try again' },
+      { key: 'booking.status_loading', label: 'Status page: looking up', default: 'Looking up your booking…' },
+      { key: 'booking.status_booked', label: 'Status page: confirmed', default: 'Your booking is confirmed.' },
+      { key: 'booking.status_pending', label: 'Status page: waiting for confirmation', default: 'Your request is waiting for confirmation.' },
+      { key: 'booking.status_cancelled', label: 'Status page: cancelled', default: 'Your booking is cancelled.' },
+      {
+        key: 'booking.status_unknown',
+        label: 'Status page: not found',
+        default: 'We could not find this booking. It may have been cancelled, or it took place a while ago.',
+      },
+      { key: 'booking.cancel', label: 'Status page: cancel (button)', default: 'Cancel booking' },
+      { key: 'booking.cancel_confirm', label: 'Status page: confirm cancelling', default: 'Cancel this booking?' },
+      { key: 'booking.cancel_yes', label: 'Status page: yes, cancel (button)', default: 'Yes, cancel it' },
+      { key: 'booking.cancel_no', label: 'Status page: keep it (button)', default: 'Keep it' },
+      { key: 'booking.started', label: 'Status page: too late to cancel', default: 'This booking has started, so it can no longer be cancelled online.' },
+    ],
   },
   {
     // CONSENT group (gated on `website.consent.enabled`): the cookie-consent banner + preferences copy.

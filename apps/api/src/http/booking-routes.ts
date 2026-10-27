@@ -91,6 +91,12 @@ function publicOffering(o: BookingOffering, config: BookingConfig): Record<strin
   return { ...base, ...resources };
 }
 
+/** The offering as a booking's own page shows it. */
+function bookingSummary(o: BookingOffering, config: BookingConfig): Record<string, unknown> {
+  const timeZone = config.resources.find((r) => r.id === o.resourceIds[0])?.timeZone;
+  return { id: o.id, name: o.name, mode: o.mode, timeZone, ...(o.mode === 'days' ? { unit: o.unit } : {}) };
+}
+
 /** The listing as a visitor may see it. */
 function publicAvailability(a: Availability, o: BookingOffering): Record<string, unknown> {
   const pick = o.chooseResource;
@@ -263,7 +269,8 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
       start: c.startAt.getTime(),
       end: c.endAt.getTime(),
       quantity: c.units,
-      offering: found ? { id: found.offering.id, name: found.offering.name } : null,
+      // What the status page needs to say when it is: the offering's clock, and whether it is booked by the night.
+      offering: found ? bookingSummary(found.offering, found.config) : null,
       cancellable: c.startAt.getTime() > now(),
     });
   });

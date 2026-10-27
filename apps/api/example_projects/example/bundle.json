@@ -70,6 +70,246 @@
         }
       },
       "translations": {
+        "booking.loading": {
+          "en": "Loading available times…",
+          "de": "Freie Termine werden geladen…",
+          "es": "Cargando horarios disponibles…"
+        },
+        "booking.unavailable": {
+          "en": "Online booking is not available right now.",
+          "de": "Online-Buchung ist gerade nicht verfügbar.",
+          "es": "La reserva en línea no está disponible en este momento."
+        },
+        "booking.earlier": {
+          "en": "Earlier",
+          "de": "Früher",
+          "es": "Antes"
+        },
+        "booking.later": {
+          "en": "Later",
+          "de": "Später",
+          "es": "Después"
+        },
+        "booking.no_times": {
+          "en": "Nothing is free on this day.",
+          "de": "An diesem Tag ist nichts frei.",
+          "es": "No hay nada libre este día."
+        },
+        "booking.none_here": {
+          "en": "Nothing is free in this period.",
+          "de": "In diesem Zeitraum ist nichts frei.",
+          "es": "No hay nada libre en este periodo."
+        },
+        "booking.time_zone": {
+          "en": "Times are shown in {zone}.",
+          "de": "Die Zeiten sind in {zone} angegeben.",
+          "es": "Los horarios se muestran en {zone}."
+        },
+        "booking.resource": {
+          "en": "Preference",
+          "de": "Präferenz",
+          "es": "Preferencia"
+        },
+        "booking.any": {
+          "en": "No preference",
+          "de": "Keine Präferenz",
+          "es": "Sin preferencia"
+        },
+        "booking.start": {
+          "en": "Start",
+          "de": "Beginn",
+          "es": "Inicio"
+        },
+        "booking.length": {
+          "en": "Duration",
+          "de": "Dauer",
+          "es": "Duración"
+        },
+        "booking.check_in": {
+          "en": "Check-in",
+          "de": "Anreise",
+          "es": "Llegada"
+        },
+        "booking.check_out": {
+          "en": "Check-out",
+          "de": "Abreise",
+          "es": "Salida"
+        },
+        "booking.pick_check_out": {
+          "en": "Now choose your check-out date.",
+          "de": "Wählen Sie jetzt Ihr Abreisedatum.",
+          "es": "Ahora elige tu fecha de salida."
+        },
+        "booking.nights": {
+          "en": "Nights",
+          "de": "Nächte",
+          "es": "Noches"
+        },
+        "booking.days": {
+          "en": "Days",
+          "de": "Tage",
+          "es": "Días"
+        },
+        "booking.quantity": {
+          "en": "Places",
+          "de": "Plätze",
+          "es": "Plazas"
+        },
+        "booking.name": {
+          "en": "Name",
+          "de": "Name",
+          "es": "Nombre"
+        },
+        "booking.email": {
+          "en": "Email",
+          "de": "E-Mail",
+          "es": "Correo electrónico"
+        },
+        "booking.phone": {
+          "en": "Phone",
+          "de": "Telefon",
+          "es": "Teléfono"
+        },
+        "booking.note": {
+          "en": "Note",
+          "de": "Nachricht",
+          "es": "Nota"
+        },
+        "booking.optional": {
+          "en": "optional",
+          "de": "optional",
+          "es": "opcional"
+        },
+        "booking.continue": {
+          "en": "Continue",
+          "de": "Weiter",
+          "es": "Continuar"
+        },
+        "booking.back": {
+          "en": "Back",
+          "de": "Zurück",
+          "es": "Atrás"
+        },
+        "booking.submit": {
+          "en": "Book",
+          "de": "Buchen",
+          "es": "Reservar"
+        },
+        "booking.submit_request": {
+          "en": "Send request",
+          "de": "Anfrage senden",
+          "es": "Enviar solicitud"
+        },
+        "booking.sending": {
+          "en": "Sending…",
+          "de": "Wird gesendet…",
+          "es": "Enviando…"
+        },
+        "booking.booked": {
+          "en": "You are booked. A confirmation is on its way to your email.",
+          "de": "Sie sind gebucht. Eine Bestätigung ist per E-Mail unterwegs.",
+          "es": "Tu reserva está hecha. Te enviamos una confirmación por correo."
+        },
+        "booking.requested": {
+          "en": "Your request is sent. You will hear back by email.",
+          "de": "Ihre Anfrage ist gesendet. Sie erhalten eine Antwort per E-Mail.",
+          "es": "Tu solicitud se ha enviado. Te responderemos por correo."
+        },
+        "booking.preview": {
+          "en": "Preview: this would be booked. Nothing was saved.",
+          "de": "Vorschau: Das würde gebucht. Nichts wurde gespeichert.",
+          "es": "Vista previa: esto se reservaría. No se ha guardado nada."
+        },
+        "booking.manage": {
+          "en": "View or cancel your booking",
+          "de": "Buchung ansehen oder stornieren",
+          "es": "Ver o cancelar tu reserva"
+        },
+        "booking.another": {
+          "en": "Book another",
+          "de": "Weitere Buchung",
+          "es": "Reservar otra"
+        },
+        "booking.taken": {
+          "en": "That time was just taken. Please choose another.",
+          "de": "Dieser Termin wurde gerade vergeben. Bitte wählen Sie einen anderen.",
+          "es": "Ese horario acaba de ocuparse. Elige otro."
+        },
+        "booking.check_details": {
+          "en": "Please check your details.",
+          "de": "Bitte prüfen Sie Ihre Angaben.",
+          "es": "Revisa tus datos."
+        },
+        "booking.captcha": {
+          "en": "Please complete the captcha.",
+          "de": "Bitte lösen Sie das Captcha.",
+          "es": "Completa el captcha."
+        },
+        "booking.busy": {
+          "en": "Booking is busy right now. Please try again in a minute.",
+          "de": "Gerade wird viel gebucht. Bitte versuchen Sie es in einer Minute erneut.",
+          "es": "Hay mucha demanda ahora mismo. Inténtalo de nuevo en un minuto."
+        },
+        "booking.failed": {
+          "en": "Sorry, that did not work. Please try again.",
+          "de": "Das hat leider nicht geklappt. Bitte versuchen Sie es erneut.",
+          "es": "Lo sentimos, no ha funcionado. Inténtalo de nuevo."
+        },
+        "booking.retry": {
+          "en": "Try again",
+          "de": "Erneut versuchen",
+          "es": "Reintentar"
+        },
+        "booking.status_loading": {
+          "en": "Looking up your booking…",
+          "de": "Ihre Buchung wird geladen…",
+          "es": "Buscando tu reserva…"
+        },
+        "booking.status_booked": {
+          "en": "Your booking is confirmed.",
+          "de": "Ihre Buchung ist bestätigt.",
+          "es": "Tu reserva está confirmada."
+        },
+        "booking.status_pending": {
+          "en": "Your request is waiting for confirmation.",
+          "de": "Ihre Anfrage wartet auf Bestätigung.",
+          "es": "Tu solicitud está pendiente de confirmación."
+        },
+        "booking.status_cancelled": {
+          "en": "Your booking is cancelled.",
+          "de": "Ihre Buchung ist storniert.",
+          "es": "Tu reserva está cancelada."
+        },
+        "booking.status_unknown": {
+          "en": "We could not find this booking. It may have been cancelled, or it took place a while ago.",
+          "de": "Diese Buchung wurde nicht gefunden. Vielleicht wurde sie storniert oder liegt schon länger zurück.",
+          "es": "No encontramos esta reserva. Puede que se haya cancelado o que ya haya pasado hace tiempo."
+        },
+        "booking.cancel": {
+          "en": "Cancel booking",
+          "de": "Buchung stornieren",
+          "es": "Cancelar reserva"
+        },
+        "booking.cancel_confirm": {
+          "en": "Cancel this booking?",
+          "de": "Diese Buchung stornieren?",
+          "es": "¿Cancelar esta reserva?"
+        },
+        "booking.cancel_yes": {
+          "en": "Yes, cancel it",
+          "de": "Ja, stornieren",
+          "es": "Sí, cancelarla"
+        },
+        "booking.cancel_no": {
+          "en": "Keep it",
+          "de": "Behalten",
+          "es": "Mantenerla"
+        },
+        "booking.started": {
+          "en": "This booking has started, so it can no longer be cancelled online.",
+          "de": "Diese Buchung hat bereits begonnen und kann nicht mehr online storniert werden.",
+          "es": "Esta reserva ya ha empezado, así que no se puede cancelar en línea."
+        },
         "about.ab_img_alt": {
           "en": "The Northwind studio",
           "de": "Das Northwind-Studio",

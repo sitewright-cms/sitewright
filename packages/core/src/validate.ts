@@ -1,5 +1,6 @@
 import {
   isLinkPage,
+  type BookingConfig,
   type Dataset,
   type Entry,
   type Form,
@@ -26,6 +27,8 @@ export interface ProjectBundle {
   forms?: readonly Form[];
   /** Interactive image maps (optional; consumed by `{{sw-imagemap}}` / the data-sw-imagemap pass). */
   imageMaps?: readonly ImageMap[];
+  /** The booking set-up (optional; consumed by `{{sw-booking}}` / `{{sw-booking-status}}`). */
+  booking?: BookingConfig;
 }
 
 export interface ValidationIssue {

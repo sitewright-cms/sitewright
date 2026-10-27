@@ -258,7 +258,7 @@ describe('the reference: status and cancelling', () => {
     const res = await status(reference);
     expect(res.statusCode).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.json()).toEqual({ state: 'booked', start, end: start + 3_600_000, quantity: 1, offering: { id: 'consult', name: 'Consultation' }, cancellable: true });
+    expect(res.json()).toEqual({ state: 'booked', start, end: start + 3_600_000, quantity: 1, offering: { id: 'consult', name: 'Consultation', mode: 'duration', timeZone: 'Europe/Berlin' }, cancellable: true });
     expect(res.body).not.toContain('ada@example.test');
   });
 

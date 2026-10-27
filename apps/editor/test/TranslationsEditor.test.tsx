@@ -9,11 +9,13 @@ function Harness({
   initial,
   locales,
   shopEnabled,
+  bookingEnabled,
   extraGhostGroups,
 }: {
   initial: TranslationRow[];
   locales: string[];
   shopEnabled?: boolean;
+  bookingEnabled?: boolean;
   extraGhostGroups?: Array<{ id: string; label: string; keys: Array<{ key: string; label: string; default: string }> }>;
 }) {
   const [rows, setRows] = useState<TranslationRow[]>(initial);
@@ -23,6 +25,7 @@ function Harness({
       localeCodes={locales}
       defaultLocale={locales[0]!}
       shopEnabled={shopEnabled}
+      bookingEnabled={bookingEnabled}
       extraGhostGroups={extraGhostGroups}
       onChange={setRows}
     />
@@ -42,6 +45,16 @@ describe('TranslationsEditor — reserved ghost rows', () => {
     const deCell = screen.getByLabelText('cart.add — de') as HTMLInputElement;
     expect(deCell.placeholder).toBe('Add to cart');
     expect(deCell.value).toBe('');
+  });
+
+  // The booking widget's strings, once the booking set-up offers something, on a single-language site too.
+  it('surfaces the booking group only while an offering exists', () => {
+    const { unmount } = render(<Harness initial={[]} locales={['en']} bookingEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: /^Booking/ }));
+    expect((screen.getByLabelText('booking.submit — en') as HTMLInputElement).placeholder).toBe('Book');
+    unmount();
+    render(<Harness initial={[]} locales={['en', 'de']} />);
+    expect(screen.queryByRole('button', { name: /^Booking/ })).toBeNull();
   });
 
   it('does NOT surface ghost rows when the shop is disabled', () => {

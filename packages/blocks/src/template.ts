@@ -222,6 +222,7 @@ import {
   type RenderImageMap,
 } from './image-map-embed.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
+import { registerBookingHelpers, type RenderBooking } from './booking.js';
 import { addComponentBlockMarkers } from './components.js';
 import { applyParallaxStaticState } from './parallax.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
@@ -336,6 +337,11 @@ export interface TemplateContext {
    * renders '', the pass is a no-op) — the same posture as `forms`.
    */
   imageMaps?: Record<string, RenderImageMap>;
+  /**
+   * The project's BOOKING set-up as the `{{sw-booking}}` / `{{sw-booking-status}}` helpers need it (see
+   * `bookingRenderContext`). ABSENT → no offering: both helpers render nothing.
+   */
+  booking?: RenderBooking;
   /** Instance hCaptcha site key (public) — rendered into platform-routed forms that opt in. */
   /** The PROJECT's captcha provider + site key; absent → captcha-flagged forms stay inert. */
   captcha?: CaptchaRenderConfig;
@@ -1613,6 +1619,9 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     return new Handlebars.SafeString(`<div ${attrs}>${inner}</div>`);
   });
 
+  // {{sw-booking "<offering>"}} and {{sw-booking-status}}: see booking.ts.
+  registerBookingHelpers(hb, (root, key) => reservedTr(root as { website?: { t?: Record<string, unknown> } }, key));
+
   // {{sw-cart}} → the cart MOUNT: a single <div data-sw-cart> carrying the currency + submission
   // channels (read from `website.shop`) as escaped data-* attributes. cart.js (shipped only when this
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
@@ -2225,7 +2234,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
   // `preview` rides along so a helper can emit the editor-only markers the directive passes add
   // (today: {{sw-imagemap}} naming its map so a click can open the Studio). Never true on publish.
-  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, pageUrls: ctx.pageUrls, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps, preview: ctx.preview };
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, pageUrls: ctx.pageUrls, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, imageAvif: ctx.imageAvif, markEntries: ctx.markEntries, forms: ctx.forms, imageMaps: ctx.imageMaps, booking: ctx.booking, preview: ctx.preview };
   let html: string;
   try {
     html = template(data, {

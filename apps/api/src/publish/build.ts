@@ -71,6 +71,7 @@ import {
   backToTopHtml,
   BACK_TO_TOP_CSS,
   resolveShopChannels,
+  bookingRenderContext,
   resolveFormEndpoints,
   type RenderImageMap,
   mediaForRender,
@@ -1048,6 +1049,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const formEndpoint = (formId: string): string =>
       `${formBase}/f/${bundle.project.id}/${formId}${previewMode ? '/preview' : ''}`;
     const resolvedForms = resolveFormEndpoints(forms, formEndpoint);
+    // The booking set-up as the booking helpers see it; the captcha is the project's, as for forms.
+    const bookingForRender = bookingRenderContext(bundle.booking, opts.captcha);
     // The statistics collector lives beside the form endpoint, so it widens the page's `connect-src` the same
     // way: only when the base is ABSOLUTE (a root-relative collector is 'self') and only to an https host.
     let statsConnectHost: string | null = null;
@@ -1351,6 +1354,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           forms: resolvedForms,
           imageMaps,
           captcha: opts.captcha,
+          // {{sw-booking}} / {{sw-booking-status}}: the offerings, the spam gates and the status page.
+          booking: bookingForRender,
           siteRoot,
         };
         let bodyHtml: string | undefined;

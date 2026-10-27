@@ -11,6 +11,24 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking on the published site: `{{sw-booking "<offering>"}}` and `{{sw-booking-status}}`.** The widget shows
+  what an offering has free on the business's own clock, and names the time zone when it is not the visitor's.
+  - **Pickers, by offering:** a week of days and times for appointments and set times; a start and a length for a
+    room by the hour; check-in and check-out on a month calendar for nights or days.
+  - **Booking:** the visitor gives their name, email, and optionally a phone number, a note and a number of places,
+    then books, or sends a request when the offering is confirmed by hand. Where the offering allows it, they also
+    pick the person or room.
+  - **Protection:** the form's bot traps, plus proof of work and the project's captcha where the booking set-up asks
+    for them.
+  - **The status page:** `{{sw-booking-status}}` is a page of the site that shows a booking and cancels it until it
+    starts. The booking set-up's new `statusPath` names it, so the widget links there after a booking, and the
+    coming booking emails will too. Every link stays on the business's own site.
+  - **No platform address in the markup:** both read the platform through the same encoded address as forms.
+  - **Translations:** every string is a `booking.*` translation, under Translations & Labels once an offering
+    exists. The example project carries them in German and Spanish.
+  - **Editor preview:** the widget runs there too, as a dry run: a booking is checked and nothing is taken, and
+    nothing is cancelled.
+
 - **Public booking API, for the coming booking widget.** A published site (on any host) asks what an offering has
   free (`GET /b/<project>/<offering>/availability`), books (`POST /b/<project>/<offering>`), and the visitor shows or
   cancels their booking with the signed reference it returns (`/b/<project>/_booking/<reference>`), until it starts.

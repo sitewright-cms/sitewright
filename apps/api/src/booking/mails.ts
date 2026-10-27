@@ -18,12 +18,21 @@ import { buildIcs, type IcsMethod, type IcsPerson } from './ics.js';
  * render from, and a retry must send what was true at the time.
  */
 
-export type BookingMailKind = 'booked' | 'requested' | 'cancelled';
+/**
+ * booked      a booking stands (made by the customer, or a request the business accepted);
+ * requested   a request waits for the business's answer;
+ * cancelled   a booking or request was called off (by the customer, or by the business);
+ * declined    the business turned a request down (the customer is told; the business did it);
+ * lapsed      a request ran out unanswered.
+ */
+export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed';
 
 export interface BookingMailFacts {
   kind: BookingMailKind;
   /** A cancellation of a booking calendars already hold (rather than of a request): they get a CANCEL. */
   wasBooked?: boolean;
+  /** Who did it, when it was the business (it accepted a request, or cancelled from its Bookings tab). */
+  by?: 'business';
   claimId: string;
   offering: { name: string; mode: BookingMode; unit?: 'night' | 'day' };
   timeZone: string;
@@ -156,13 +165,23 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
   if (!to) return null;
   const t = f.t;
   const subject = oneLine(t(`booking.mail_${f.kind}`).split('{offering}').join(f.offering.name));
-  const intro = t(f.kind === 'booked' ? 'booking.status_booked' : f.kind === 'requested' ? 'booking.status_pending' : 'booking.status_cancelled');
+  const intro = t(
+    f.kind === 'booked'
+      ? 'booking.status_booked'
+      : f.kind === 'requested'
+        ? 'booking.status_pending'
+        : f.kind === 'declined'
+          ? 'booking.mail_declined_text'
+          : f.kind === 'lapsed'
+            ? 'booking.mail_lapsed_text'
+            : 'booking.status_cancelled',
+  );
   const details = rows([
     [t('booking.mail_when'), when],
     ...(f.quantity > 1 ? ([[t('booking.quantity'), String(f.quantity)]] as Array<[string, string]>) : []),
   ]);
   // A cancelled booking has no page left to show; a live one links to its own page on the business's site.
-  const link = f.kind !== 'cancelled' && f.statusUrl ? f.statusUrl : undefined;
+  const link = (f.kind === 'booked' || f.kind === 'requested') && f.statusUrl ? f.statusUrl : undefined;
   const calendar = f.kind === 'booked' ? t('booking.mail_calendar') : '';
   const text = [intro, '', f.offering.name, details.text, ...(link ? ['', `${t('booking.manage')}: ${link}`] : []), ...(calendar ? ['', calendar] : []), '', f.business.name].join('\n');
   const html = wrap(
@@ -203,8 +222,18 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
     seen.add(e.toLowerCase());
     to.push(e);
   }
-  if (!to.length) return [];
-  const head = f.kind === 'booked' ? 'New booking' : f.kind === 'requested' ? 'New booking request' : 'Booking cancelled';
+  // The business turned the request down itself: it needs no mail about it.
+  if (!to.length || f.kind === 'declined') return [];
+  const accepted = f.kind === 'booked' && f.by === 'business';
+  const head = accepted
+    ? 'Booking confirmed'
+    : f.kind === 'booked'
+      ? 'New booking'
+      : f.kind === 'requested'
+        ? 'New booking request'
+        : f.kind === 'lapsed'
+          ? 'Booking request lapsed'
+          : 'Booking cancelled';
   const subject = oneLine(`${head}: ${f.offering.name}, ${when}`);
   const who = f.customer.name?.trim() || f.customer.email?.trim() || 'a customer';
   const details = rows([
@@ -217,12 +246,17 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
     ['Phone', f.customer.phone ?? ''],
     ['Note', f.customer.note ?? ''],
   ]);
-  const lead =
-    f.kind === 'booked'
+  const lead = accepted
+    ? `You accepted ${who}’s request: ${f.offering.name} is booked.`
+    : f.kind === 'booked'
       ? `${who} booked ${f.offering.name}.`
       : f.kind === 'requested'
         ? `${who} asks to book ${f.offering.name}. The time is held for you until you answer, for up to three days.`
-        : `${who} cancelled ${f.offering.name}.`;
+        : f.kind === 'lapsed'
+          ? `${who}’s request for ${f.offering.name} ran out unanswered, and its time is free again. ${who} has been told.`
+          : f.by === 'business'
+            ? `The booking of ${f.offering.name} for ${who} is cancelled, and ${who} has been told.`
+            : `${who} cancelled ${f.offering.name}.`;
   const text = `${lead}\n\n${details.text}\n`;
   const html = wrap(`<p style="font-size:16px;font-weight:600">${esc(lead)}</p>${details.html}`);
   // A request is in nobody's calendar until it is accepted.

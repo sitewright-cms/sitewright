@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { BookingConfigSchema } from '@sitewright/schema';
-import { BookingNotifier, CUSTOMER_MAILS_PER_DAY, CustomerMailBudget, mailboxOf, matchLocale, type NotifierSettings } from '../src/booking/notify.js';
+import { BookingNotifier, CUSTOMER_MAILS_PER_DAY, CustomerMailBudget, mailboxOf, matchLocale, notifyLapsed, type NotifierSettings } from '../src/booking/notify.js';
 import type { BookingMailRepository } from '../src/booking/outbox.js';
 import type { QueuedBookingMail } from '../src/booking/mails.js';
 
@@ -124,5 +124,32 @@ describe('the pieces', () => {
     // Another project's customer is another budget.
     expect(b.take('p2', 'ada@example.com', t0)).toBe(true);
     expect(b.take('p1', 'ada@example.com', t0 + 24 * 60 * 60 * 1000)).toBe(true);
+  });
+});
+
+describe('notifyLapsed', () => {
+  const lapsed = (projectId: string, offeringId = 'massage') => ({ ...CLAIM, id: `${projectId}-${offeringId}`, projectId, offeringId }) as never;
+
+  it('★ tells every lapsed request, whatever one of them does, reading each project’s set-up once', async () => {
+    const reads: string[] = [];
+    const told: string[] = [];
+    const warned: unknown[] = [];
+    const n = await notifyLapsed([lapsed('p1'), lapsed('p2'), lapsed('p1'), lapsed('p1', 'gone'), lapsed('p3')], {
+      readConfig: async (projectId) => {
+        reads.push(projectId);
+        if (projectId === 'p2') throw new Error('database is locked');
+        return CONFIG;
+      },
+      notify: async (e) => {
+        if (e.claim.id === 'p3-massage') throw new Error('unexpected');
+        told.push(e.claim.id);
+      },
+      log: { warn: (o) => warned.push(o) },
+    });
+    expect(told).toEqual(['p1-massage', 'p1-massage']);
+    expect(n).toBe(2);
+    expect(reads).toEqual(['p1', 'p2', 'p3']);
+    // p2's unreadable set-up, the removed offering, and p3's failure: each logged, none stopping the rest.
+    expect(warned).toHaveLength(3);
   });
 });

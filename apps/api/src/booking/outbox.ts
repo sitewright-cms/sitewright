@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, count, eq, lt, lte } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, lt, lte } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { bookingMails } from '../db/schema.js';
 import { DELIVERY_LEASE_MS, nextAttemptAt } from '../mail/delivery-policy.js';
@@ -100,6 +100,23 @@ export class BookingMailRepository {
       .update(bookingMails)
       .set(nextAt ? { attempts, nextAt, lastError: error } : { attempts, state: 'failed', lastError: error })
       .where(eq(bookingMails.id, id));
+  }
+
+  /**
+   * The project's booking mails that have not gone out: given up on, and still being retried after a failure,
+   * with the latest reason. Shown on the Bookings tab, where the business already looks: telling someone by mail
+   * that their mail does not work would not reach them.
+   */
+  async undelivered(projectId: string): Promise<{ failed: number; retrying: number; lastError?: string }> {
+    const rows = await this.db
+      .select({ state: bookingMails.state, attempts: bookingMails.attempts, lastError: bookingMails.lastError, createdAt: bookingMails.createdAt })
+      .from(bookingMails)
+      .where(and(eq(bookingMails.projectId, projectId), gt(bookingMails.attempts, 0)))
+      .orderBy(desc(bookingMails.createdAt))
+      .limit(BOOKING_MAIL_LIMITS.queuedPerProject);
+    const failed = rows.filter((r) => r.state === 'failed').length;
+    const latest = rows.find((r) => r.lastError)?.lastError ?? undefined;
+    return { failed, retrying: rows.length - failed, ...(latest ? { lastError: latest } : {}) };
   }
 
   /** Mails that failed for good, a week on. */

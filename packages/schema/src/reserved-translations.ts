@@ -206,6 +206,10 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.mail_cancelled', label: 'Email subject: cancelled', default: 'Booking cancelled: {offering}' },
       { key: 'booking.mail_when', label: 'Email: when (label)', default: 'When' },
       { key: 'booking.mail_calendar', label: 'Email: the calendar file', default: 'Add it to your calendar with the attached file.' },
+      { key: 'booking.mail_declined', label: 'Email subject: request declined', default: 'Booking request declined: {offering}' },
+      { key: 'booking.mail_declined_text', label: 'Email: request declined', default: 'We are sorry: we cannot take your request. Please choose another time.' },
+      { key: 'booking.mail_lapsed', label: 'Email subject: request not answered', default: 'Booking request not confirmed: {offering}' },
+      { key: 'booking.mail_lapsed_text', label: 'Email: request not answered', default: 'We are sorry: your request could not be confirmed in time, and the time is free again. Please choose another time.' },
     ],
   },
   {

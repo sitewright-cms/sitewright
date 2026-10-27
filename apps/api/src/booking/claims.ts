@@ -1,4 +1,4 @@
-import { and, count, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { bookingClaims } from '../db/schema.js';
 import { newId } from '../id.js';
@@ -178,23 +178,70 @@ export class BookingClaimsRepository {
   }
 
   /**
+   * The project's bookings and requests, for its Bookings tab, with the customers' details.
+   *   upcoming   bookings and requests still in force that have not ended, soonest first;
+   *   requests   only the requests still waiting for an answer, soonest first;
+   *   past       ledger bookings that have ended (kept until the sweep forgets them), latest first.
+   */
+  async list(projectId: string, view: 'upcoming' | 'requests' | 'past', now: number, limit: number): Promise<{ rows: ClaimRow[]; total: number }> {
+    const at = new Date(now);
+    const where =
+      view === 'past'
+        ? and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.state, 'booked'), lte(bookingClaims.endAt, at))
+        : and(
+            eq(bookingClaims.projectId, projectId),
+            live(now),
+            view === 'requests' ? eq(bookingClaims.state, 'pending') : inArray(bookingClaims.state, ['pending', 'booked']),
+            gt(bookingClaims.endAt, at),
+          );
+    const [rows, [counted]] = await Promise.all([
+      this.db
+        .select()
+        .from(bookingClaims)
+        .where(where)
+        .orderBy(view === 'past' ? desc(bookingClaims.startAt) : asc(bookingClaims.startAt))
+        .limit(Math.min(Math.max(limit, 1), 500)),
+      this.db.select({ n: count() }).from(bookingClaims).where(where),
+    ]);
+    return { rows, total: counted?.n ?? 0 };
+  }
+
+  /**
    * Forgets what has ended: lapsed holds and requests, and ledger bookings past their retention. Run by
    * the maintenance sweep; the customers' details go with the rows. In batches, so a backlog never holds
    * the write lock in one long statement; what a pass leaves, the next one takes.
+   *
+   * The REQUESTS that lapsed unanswered are handed back, so their customers can be told (a request that
+   * simply vanishes leaves someone waiting for an answer that will never come).
    */
-  async sweep(now: number, retentionMs: number = BOOKING_CLAIM_LIMITS.ledgerRetentionMs, maxBatches = 20): Promise<{ lapsed: number; ended: number }> {
+  async sweep(
+    now: number,
+    retentionMs: number = BOOKING_CLAIM_LIMITS.ledgerRetentionMs,
+    maxBatches = 20,
+  ): Promise<{ lapsed: number; ended: number; lapsedRequests: ClaimRow[] }> {
     const lapsedWhere = and(isNotNull(bookingClaims.expiresAt), lte(bookingClaims.expiresAt, new Date(now)));
     const endedWhere = and(isNull(bookingClaims.expiresAt), lt(bookingClaims.busyEnd, new Date(now - retentionMs)));
-    return { lapsed: await this.deleteInBatches(lapsedWhere, maxBatches), ended: await this.deleteInBatches(endedWhere, maxBatches) };
+    const lapsedRequests: ClaimRow[] = [];
+    const lapsed = await this.deleteInBatches(lapsedWhere, maxBatches, (rows) => lapsedRequests.push(...rows.filter((r) => r.state === 'pending')));
+    return { lapsed, ended: await this.deleteInBatches(endedWhere, maxBatches), lapsedRequests };
   }
 
-  private async deleteInBatches(where: ReturnType<typeof and>, maxBatches: number): Promise<number> {
+  /**
+   * ★ The delete RE-STATES the condition and reports only what it removed. Between the select and the delete the
+   * business may have answered a request: one it accepted no longer lapses (it must not be deleted), and one it
+   * declined is already gone (its customer must not also be told it lapsed).
+   */
+  private async deleteInBatches(where: ReturnType<typeof and>, maxBatches: number, seen?: (rows: ClaimRow[]) => void): Promise<number> {
     let total = 0;
     for (let i = 0; i < maxBatches; i += 1) {
       const ids = (await this.db.select({ id: bookingClaims.id }).from(bookingClaims).where(where).limit(BOOKING_CLAIM_LIMITS.sweepBatch)).map((r) => r.id);
       if (ids.length === 0) break;
-      await this.db.delete(bookingClaims).where(inArray(bookingClaims.id, ids));
-      total += ids.length;
+      const gone = await this.db
+        .delete(bookingClaims)
+        .where(and(inArray(bookingClaims.id, ids), where))
+        .returning();
+      if (seen) seen(gone);
+      total += gone.length;
       if (ids.length < BOOKING_CLAIM_LIMITS.sweepBatch) break;
     }
     return total;

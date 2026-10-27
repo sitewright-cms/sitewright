@@ -38,6 +38,7 @@ import { accentChip, glassCard, gradientSurface, gradientHover, primaryButton } 
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 import { usePaymentsActive } from './lib/payments-active';
+import { useBookingActive } from './lib/booking-active';
 import { clientSees, useStatisticsAccess } from './lib/statistics-enabled';
 import type { OpenSystemSettings, SystemSettingsTarget } from './lib/settings-links';
 import { Tooltip } from './views/ui/Tooltip';
@@ -296,6 +297,8 @@ function MainApp({
   // The Orders tab exists only while the open project's payments are actually active. Called up here,
   // with the other hooks, because the render below has early returns.
   const paymentsActive = usePaymentsActive(stage.name === 'project' ? stage.project.id : null);
+  // The Bookings tab exists only while the open project takes bookings: its booking set-up offers something.
+  const bookingActive = useBookingActive(stage.name === 'project' ? stage.project.id : null);
   // The Statistics tab: always for agency staff, with all three views (one whose feature is not set up or not enabled
   // shows how to do that); for a client only while one of its views is set up AND enabled — the built-in statistics
   // switched on, rank tracking set up with keywords, or a search engine account the site is verified with. A client
@@ -306,8 +309,9 @@ function MainApp({
   // A tab that disappears (payments or statistics switched off, or a different project) must not stay selected.
   useEffect(() => {
     if (tab === 'orders' && !paymentsActive) setTab('website-settings');
+    if (tab === 'bookings' && !bookingActive) setTab('website-settings');
     if (tab === 'statistics' && !statisticsVisible) setTab('website-settings');
-  }, [tab, paymentsActive, statisticsVisible]);
+  }, [tab, paymentsActive, bookingActive, statisticsVisible]);
 
   // Strip the OIDC callback artifacts from the URL once captured, so a refresh doesn't resubmit
   // them and the ticket doesn't linger in history.
@@ -431,7 +435,7 @@ function MainApp({
         isMobile ? 'mx-auto w-max flex-nowrap snap-x snap-mandatory' : 'flex-wrap justify-center'
       }`}
     >
-      {MANAGE_TABS.filter((t) => (t !== 'orders' || paymentsActive) && (t !== 'statistics' || statisticsVisible)).map((t) => (
+      {MANAGE_TABS.filter((t) => (t !== 'orders' || paymentsActive) && (t !== 'bookings' || bookingActive) && (t !== 'statistics' || statisticsVisible)).map((t) => (
         <button
           key={t}
           role="tab"
@@ -604,6 +608,7 @@ function MainApp({
           tab={tab}
           onSelectTab={setTab}
           ordersAvailable={paymentsActive}
+          bookingsAvailable={bookingActive}
           statisticsAvailable={statisticsVisible}
           // The one answer the tab's views go by too, so the strip and the views can never disagree.
           statisticsAccess={statisticsAccess}

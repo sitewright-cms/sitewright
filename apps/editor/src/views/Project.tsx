@@ -26,6 +26,7 @@ import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { HistoryView } from './HistoryView';
 import { StatisticsTab } from './stats/StatisticsTab';
 import { OrdersView } from './OrdersView';
+import { BookingsView } from './BookingsView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings, nextSiblingOrder } from './pages-order';
 import { dropTargetForEvent } from '../lib/drag-drop';
@@ -40,6 +41,8 @@ interface ProjectViewProps {
   onSelectTab?: (tab: Tab) => void;
   /** Whether the Orders tab is showing (the project's payments are active). */
   ordersAvailable?: boolean;
+  /** Whether the Bookings tab is showing (the project's booking set-up offers something). */
+  bookingsAvailable?: boolean;
   /** Whether the Statistics tab is showing (always for staff; for a client while it has something to show). */
   statisticsAvailable?: boolean;
   /** What the Statistics tab has (App's useStatisticsAccess): which views a client sees, and whether visits are on. */
@@ -58,8 +61,9 @@ interface ProjectViewProps {
 // lifted into the two leading tabs (Corporate Identity / Website Settings); the submissions Inbox is
 // folded into Forms. Administration (Clients / Team / Access / System Settings) lives in the header
 // gear menu (opened as modals), not a tab — and Clients/Team stay owner/agency-only there.
-// `orders` is CONDITIONAL: the header shows it only while the project's payments are actually active
-// (see lib/payments-active), so it sits last and its appearing never moves another tab.
+// `orders` and `bookings` are CONDITIONAL: the header shows Orders only while the project's payments are
+// actually active (see lib/payments-active), and Bookings only while it takes bookings (lib/booking-active), so
+// they sit last and their appearing never moves another tab.
 export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
@@ -68,10 +72,11 @@ export const MANAGE_TABS = [
   'statistics',
   'history',
   'orders',
+  'bookings',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
 /** The tabs laid out as wide boards rather than a reading column. */
-const BOARD_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings', 'statistics', 'orders']);
+const BOARD_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings', 'statistics', 'orders', 'bookings']);
 /** The two tabs ONE SettingsView serves (see the render below). It animates between them itself. */
 const SETTINGS_TABS: ReadonlySet<Tab> = new Set<Tab>(['corporate-identity', 'website-settings']);
 const sameSettingsView = (prev: Tab, next: Tab): boolean => SETTINGS_TABS.has(prev) && SETTINGS_TABS.has(next);
@@ -83,6 +88,7 @@ export const TAB_LABELS: Record<Tab, string> = {
   statistics: 'Statistics',
   history: 'History',
   orders: 'Orders',
+  bookings: 'Bookings',
 };
 /**
  * The same five tabs, named for a strip that scrolls. Two of the labels are two-word phrases whose
@@ -196,6 +202,7 @@ export function ProjectView({
   tab,
   onSelectTab,
   ordersAvailable = false,
+  bookingsAvailable = false,
   statisticsAvailable = true,
   statisticsAccess = NO_STATISTICS_ACCESS,
   onOpenSystemSettings,
@@ -1030,6 +1037,9 @@ export function ProjectView({
         // Guarded HERE too, not only in the tab list: the content must assert the same invariant the
         // strip does, so no future way of setting `tab` (a deep link, a new caller) can open it early.
         <OrdersView key={project.id} project={project} />
+      ) : tab === 'bookings' && bookingsAvailable ? (
+        // The same double guard as Orders.
+        <BookingsView key={project.id} project={project} />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />

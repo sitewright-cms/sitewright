@@ -1011,6 +1011,22 @@ describe('api client', () => {
     expect((putInit.headers as Record<string, string>)['if-match']).toBe('v1');
   });
 
+  it('lists the project’s bookings by view, and sends the business’s answers', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { bookings: [], total: 0, requests: 2, undelivered: { failed: 0, retrying: 0 } }));
+    expect((await api.listBookings('p')).requests).toBe(2);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/bookings?view=upcoming');
+    await api.listBookings('p', 'past');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/bookings?view=past');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true, booking: null }));
+    for (const answer of ['accept', 'decline', 'cancel'] as const) await api.answerBooking('p', 'c/1', answer);
+    expect(fetchMock.mock.calls.slice(2).map(([url, init]) => [url, init.method])).toEqual([
+      ['/projects/p/bookings/c%2F1/accept', 'POST'],
+      ['/projects/p/bookings/c%2F1/decline', 'POST'],
+      ['/projects/p/bookings/c%2F1/cancel', 'POST'],
+    ]);
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

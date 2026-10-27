@@ -90,6 +90,8 @@ export interface BookingEvent {
   reference?: string;
   /** The language of the page the customer booked on, as the widget reports it. */
   locale?: string;
+  /** The business did it: accepted a request, or cancelled from its Bookings tab. */
+  by?: 'business';
 }
 
 export class BookingNotifier {
@@ -117,6 +119,7 @@ export class BookingNotifier {
       const mails = bookingMails({
         kind: e.kind,
         wasBooked: e.claim.state === 'booked',
+        ...(e.by ? { by: e.by } : {}),
         claimId: e.claim.id,
         offering: { name: e.offering.name, mode: e.offering.mode, ...(e.offering.mode === 'days' ? { unit: e.offering.unit } : {}) },
         timeZone: resource?.timeZone ?? 'UTC',
@@ -158,4 +161,37 @@ export class BookingNotifier {
       return null;
     }
   }
+}
+
+/**
+ * Tells the customers (and the business) of requests that ran out unanswered: what the maintenance sweep hands
+ * back. ★ One request's failure never stops the rest, and a project's set-up is read once per pass, not per request.
+ * The rows are already gone, so a mail lost here is not retried: logged, not thrown.
+ */
+export async function notifyLapsed(
+  requests: readonly ClaimRow[],
+  deps: { readConfig: (projectId: string) => Promise<BookingConfig | null>; notify: (e: BookingEvent) => Promise<void>; log: { warn: (o: unknown, m: string) => void } },
+): Promise<number> {
+  const configs = new Map<string, Promise<BookingConfig | null>>();
+  let told = 0;
+  for (const claim of requests) {
+    try {
+      let config = configs.get(claim.projectId);
+      if (!config) {
+        config = deps.readConfig(claim.projectId);
+        configs.set(claim.projectId, config);
+      }
+      const set = await config;
+      const offering = set?.offerings.find((o) => o.id === claim.offeringId);
+      if (!set || !offering) {
+        deps.log.warn({ projectId: claim.projectId, offeringId: claim.offeringId }, 'lapsed request not mailed: its offering no longer exists');
+        continue;
+      }
+      await deps.notify({ kind: 'lapsed', projectId: claim.projectId, claim, offering, config: set });
+      told += 1;
+    } catch (err) {
+      deps.log.warn({ err, projectId: claim.projectId }, 'lapsed request not mailed');
+    }
+  }
+  return told;
 }

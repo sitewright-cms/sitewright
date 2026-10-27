@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { BookingConfigSchema, type BookingConfig } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
@@ -94,7 +95,7 @@ describe('BookingClaimsRepository', () => {
     await claims.insert(claim({ state: 'pending', expiresAt: NOW + 2 * H }), NOW);
     const ended = await claims.insert(claim({ busyEnd: NOW - BOOKING_CLAIM_LIMITS.ledgerRetentionMs - 1 }), NOW);
     const recent = await claims.insert(claim({ busyEnd: NOW - H }), NOW);
-    expect(await claims.sweep(NOW + H)).toEqual({ lapsed: 1, ended: 1 });
+    expect(await claims.sweep(NOW + H)).toMatchObject({ lapsed: 1, ended: 1, lapsedRequests: [] });
     const left = await db.select({ id: bookingClaims.id, state: bookingClaims.state }).from(bookingClaims);
     expect(left.map((r) => r.state).sort()).toEqual(['booked', 'pending']);
     expect(left.some((r) => r.id === ended.id)).toBe(false);
@@ -307,13 +308,96 @@ describe('BookingService: what a public stream of requests can take', () => {
   });
 });
 
+describe('the requests that lapse unanswered', () => {
+  it('are handed back by the sweep, with their customers, so they can be told; holds are not', async () => {
+    const request = await claims.insert(claim({ state: 'pending', expiresAt: NOW + H, customer: { name: 'Ada', email: 'ada@example.test' } }), NOW);
+    await claims.insert(claim({ state: 'hold', expiresAt: NOW + 15 * M }), NOW);
+    const swept = await claims.sweep(NOW + 2 * H);
+    expect(swept.lapsed).toBe(2);
+    expect(swept.lapsedRequests.map((r) => r.id)).toEqual([request.id]);
+    expect(swept.lapsedRequests[0]!.customer).toEqual({ name: 'Ada', email: 'ada@example.test' });
+    expect(await db.select().from(bookingClaims)).toHaveLength(0);
+  });
+});
+
+/**
+ * A database whose FIRST select runs `effect` after it has read, before the caller goes on: an answer from the
+ * business landing exactly between the sweep's select and its delete.
+ */
+function between(effect: () => Promise<unknown>): Database {
+  let done = false;
+  const wrap = (b: object): object =>
+    new Proxy(b, {
+      get(t, p, r) {
+        const v = Reflect.get(t, p, r) as unknown;
+        if (p === 'then' && typeof v === 'function') {
+          return (res: (x: unknown) => unknown, rej: (e: unknown) => unknown) =>
+            (v as (a: (x: unknown) => unknown) => Promise<unknown>).call(t, async (rows: unknown) => {
+              if (!done) {
+                done = true;
+                await effect();
+              }
+              return rows;
+            }).then(res, rej);
+        }
+        if (typeof v !== 'function') return v;
+        return (...a: unknown[]) => {
+          const out = (v as (...x: unknown[]) => unknown).apply(t, a);
+          return out && typeof out === 'object' ? wrap(out) : out;
+        };
+      },
+    });
+  return new Proxy(db, {
+    get(t, p, r) {
+      const v = Reflect.get(t, p, r) as unknown;
+      if (p !== 'select' || typeof v !== 'function') return v;
+      return (...a: unknown[]) => wrap((v as (...x: unknown[]) => object).apply(t, a));
+    },
+  });
+}
+
+describe('the sweep, while the business answers', () => {
+  it('★ does not delete a request accepted between its select and its delete', async () => {
+    const request = await claims.insert(claim({ state: 'pending', expiresAt: NOW - M }), NOW - H);
+    const racing = new BookingClaimsRepository(between(() => db.update(bookingClaims).set({ state: 'booked', expiresAt: null }).where(eq(bookingClaims.id, request.id))));
+    const swept = await racing.sweep(NOW);
+    expect(swept).toMatchObject({ lapsed: 0, lapsedRequests: [] });
+    expect((await claims.get(projectId, request.id))?.state).toBe('booked');
+  });
+
+  it('★ does not report a request declined between its select and its delete as lapsed', async () => {
+    const request = await claims.insert(claim({ state: 'pending', expiresAt: NOW - M }), NOW - H);
+    const racing = new BookingClaimsRepository(between(() => db.delete(bookingClaims).where(eq(bookingClaims.id, request.id))));
+    expect(await racing.sweep(NOW)).toMatchObject({ lapsed: 0, lapsedRequests: [] });
+  });
+});
+
+describe('the Bookings tab listing', () => {
+  it('lists what is in force and has not ended, the requests alone, or what has ended, each in its order', async () => {
+    const later = await claims.insert(claim({ start: NOW + 5 * H, end: NOW + 6 * H }), NOW);
+    const sooner = await claims.insert(claim({ state: 'pending', expiresAt: NOW + 3 * H, start: NOW + 2 * H, end: NOW + 3 * H }), NOW);
+    await claims.insert(claim({ state: 'pending', expiresAt: NOW - M, start: NOW + 2 * H, end: NOW + 3 * H }), NOW - H); // lapsed
+    await claims.insert(claim({ state: 'hold', expiresAt: NOW + 15 * M, start: NOW + 4 * H, end: NOW + 5 * H }), NOW); // a hold is not shown
+    const old = await claims.insert(claim({ start: NOW - 5 * H, end: NOW - 4 * H }), NOW - 6 * H);
+    const older = await claims.insert(claim({ start: NOW - 9 * H, end: NOW - 8 * H }), NOW - 10 * H);
+    const ids = (r: { rows: Array<{ id: string }> }) => r.rows.map((x) => x.id);
+    expect(ids(await claims.list(projectId, 'upcoming', NOW, 50))).toEqual([sooner.id, later.id]);
+    expect(ids(await claims.list(projectId, 'requests', NOW, 50))).toEqual([sooner.id]);
+    expect(ids(await claims.list(projectId, 'past', NOW, 50))).toEqual([old.id, older.id]);
+    // The total counts beyond the limit.
+    expect(await claims.list(projectId, 'upcoming', NOW, 1)).toMatchObject({ total: 2 });
+    // Another project's are not listed.
+    expect((await claims.list(randomUUID(), 'upcoming', NOW, 50)).rows).toEqual([]);
+  });
+});
+
 describe('the sweep, in batches', () => {
   it('deletes a backlog a batch at a time, and the next pass takes what is left', async () => {
     const n = BOOKING_CLAIM_LIMITS.sweepBatch * 2 + 37;
     const rows = Array.from({ length: n }, (_, i) => row(`l${i}`, 'anna', 'hold', NOW - M));
     for (let i = 0; i < rows.length; i += 500) await db.insert(bookingClaims).values(rows.slice(i, i + 500));
-    expect(await claims.sweep(NOW, undefined, 2)).toEqual({ lapsed: BOOKING_CLAIM_LIMITS.sweepBatch * 2, ended: 0 });
-    expect(await claims.sweep(NOW, undefined, 2)).toEqual({ lapsed: 37, ended: 0 });
+    expect(await claims.sweep(NOW, undefined, 2)).toMatchObject({ lapsed: BOOKING_CLAIM_LIMITS.sweepBatch * 2, ended: 0 });
+    expect(await claims.sweep(NOW, undefined, 2)).toMatchObject({ lapsed: 37, ended: 0 });
     expect(await db.select().from(bookingClaims)).toHaveLength(0);
   });
 });

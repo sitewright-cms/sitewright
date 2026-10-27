@@ -11,6 +11,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Bookings tab.** A project that takes bookings (its booking set-up offers something) gets a Bookings tab next to
+  Orders. It disappears again when booking is switched off.
+  - **Views:** upcoming bookings and requests, grouped by day on the booking's own clock; the requests alone, with
+    a count on the tab; and past bookings while they are kept.
+  - **Details:** a booking opens to show the customer's details (email and phone as links), the note, and when a
+    request must be answered by.
+  - **Answers:** the business accepts a request (it becomes a booking: the customer gets a confirmation, and the
+    calendars an invitation), declines one, or cancels a booking until it ends. Each asks once more first, because
+    each emails the customer.
+  - **Undelivered emails:** booking emails that could not be sent are flagged there, where the business looks.
+  - **Lapsed requests:** a request that runs out unanswered now tells the customer and the business, instead of
+    vanishing.
+  - **Access:** the same as orders: content read access to look, write access to answer.
+
 - **Booking emails.** A booking, a request and a cancellation each email the customer and the business, sent at
   once and retried like the shop's order mails.
   - **The customer** gets their confirmation in the language of the page they booked on. It comes from the business

@@ -36,6 +36,10 @@ export type ClaimResult = { readonly ok: true; readonly claim: ClaimRow } | { re
 export type ChangeResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'unknown-claim' | 'lapsed' | 'invalid' | 'busy' | 'started'; readonly detail: string };
+/** The business's answer to a request, or its cancellation: the claim as it now stands, for the mails about it. */
+export type AnswerResult =
+  | { readonly ok: true; readonly claim: ClaimRow }
+  | { readonly ok: false; readonly reason: 'unknown-claim' | 'lapsed' | 'invalid' | 'ended' | 'busy'; readonly detail: string };
 /** A cancellation hands back what was cancelled, so the mails about it can still be written. */
 export type CancelResult = { readonly ok: true; readonly claim: ClaimRow } | Extract<ChangeResult, { ok: false }>;
 
@@ -255,6 +259,56 @@ export class BookingService {
       await this.deps.claims.remove(projectId, claimId);
       return { ok: true, claim: row };
     });
+  }
+
+  /**
+   * The BUSINESS answers a request: accepted, it becomes a booking (if it has not lapsed); declined, its time
+   * goes back. Each hands back the claim as it now stands, for the mails about it.
+   */
+  async accept(projectId: string, claimId: string): Promise<AnswerResult> {
+    return this.queued(projectId, async (): Promise<AnswerResult> => {
+      const row = await this.answerable(projectId, claimId);
+      if (!row.ok) return row;
+      const now = this.now();
+      if (!(await this.deps.claims.advance(projectId, claimId, 'booked', null, now))) {
+        return { ok: false, reason: 'lapsed', detail: 'its time ran out and may have been booked by someone else' };
+      }
+      return { ok: true, claim: { ...row.claim, state: 'booked', expiresAt: null, updatedAt: new Date(now) } };
+    });
+  }
+
+  async decline(projectId: string, claimId: string): Promise<AnswerResult> {
+    return this.queued(projectId, async (): Promise<AnswerResult> => {
+      const row = await this.answerable(projectId, claimId);
+      if (!row.ok) return row;
+      await this.deps.claims.remove(projectId, claimId);
+      return row;
+    });
+  }
+
+  /**
+   * The BUSINESS cancels a booking or a request, until it ends (a booking under way can still be called off). Not a
+   * hold: that is a customer's checkout in progress, nothing the business booked or was asked for.
+   */
+  async cancelByBusiness(projectId: string, claimId: string): Promise<AnswerResult> {
+    return this.queued(projectId, async (): Promise<AnswerResult> => {
+      const row = await this.get(projectId, claimId);
+      if (!row) return { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' };
+      if (row.state === 'hold') return { ok: false, reason: 'invalid', detail: 'that is a checkout in progress, not a booking' };
+      if (row.endAt.getTime() <= this.now()) return { ok: false, reason: 'ended', detail: 'it has already ended' };
+      await this.deps.claims.remove(projectId, claimId);
+      return { ok: true, claim: row };
+    });
+  }
+
+  /** A request still waiting for an answer. Run inside the project's queue. */
+  private async answerable(projectId: string, claimId: string): Promise<AnswerResult> {
+    const row = await this.get(projectId, claimId);
+    if (!row) return { ok: false, reason: 'unknown-claim', detail: 'there is no such request, or it has lapsed' };
+    if (row.state !== 'pending') return { ok: false, reason: 'invalid', detail: 'only a request waits for an answer' };
+    // A request's time that has already begun cannot be accepted (nor declined: there is nothing left to free).
+    if (row.startAt.getTime() <= this.now()) return { ok: false, reason: 'ended', detail: 'its time has already begun' };
+    return { ok: true, claim: row };
   }
 
   /** A hold or request becomes a ledger booking, if it has not lapsed. */

@@ -37,7 +37,10 @@ async function readIconSource(
 
 /**
  * Generate the favicon/PWA set + manifest from `identity.icon` into `outDir`. Returns the
- * root-relative head paths, or undefined when no usable media icon exists.
+ * root-relative head paths, or undefined when no usable media icon exists. `installable` (the
+ * `website.installable` setting) picks the manifest's `display`: `standalone` lets browsers offer to
+ * install the site as an app; `browser` keeps the name and icons for a home-screen shortcut, but
+ * Chromium reports it `manifest-display-not-supported` and offers no install.
  */
 export async function emitFaviconSet(
   outDir: string,
@@ -45,6 +48,7 @@ export async function emitFaviconSet(
   identity: CorporateIdentity,
   media: readonly MediaAsset[],
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
+  installable = true,
 ): Promise<IconSet | undefined> {
   const icon = identity.icon;
   if (!icon) return undefined;
@@ -97,7 +101,7 @@ export async function emitFaviconSet(
     ],
     theme_color: identity.colors?.primary || '#ffffff',
     background_color: background,
-    display: 'standalone',
+    display: installable ? 'standalone' : 'browser',
     start_url: './',
   };
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under outDir

@@ -755,3 +755,25 @@ describe('preloaderBackdrop round-trip', () => {
     expect(toForm(full).preloaderBackdrop).toBe(false);
   });
 });
+
+describe('installable round-trip', () => {
+  it('is on by default and never written while on, so an untouched site stays byte-identical', () => {
+    expect(toForm(full).installable).toBe(true);
+    expect(toBundle(toForm(full), full).website).not.toHaveProperty('installable');
+  });
+
+  it('writes and reads back an explicit false', () => {
+    const saved = toBundle({ ...toForm(full), installable: false }, full);
+    expect(saved.website?.installable).toBe(false);
+    expect(toForm(saved).installable).toBe(false);
+    // Switching it back on removes the key rather than storing `true`.
+    expect(toBundle({ ...toForm(saved), installable: true }, saved).website).not.toHaveProperty('installable');
+  });
+
+  it('survives on a project with no other website setting (like the search switch beside it)', () => {
+    const off = toBundle({ ...toForm(empty()), installable: false }, empty());
+    expect(off.website).toEqual({ installable: false });
+    const exact = toBundle({ ...toForm(empty()), searchFoldDiacritics: false }, empty());
+    expect(exact.website).toEqual({ search: { foldDiacritics: false } });
+  });
+});

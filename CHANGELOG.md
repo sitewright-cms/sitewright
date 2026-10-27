@@ -9,6 +9,17 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+### Added
+
+- **Website settings → Site behaviour → Install as app: a switch for the browser's "Install" offer.** On, the
+  default and the behaviour until now, a site whose icon is uploaded to the media library is offered as an app by
+  Chrome, Edge, Samsung Internet and Firefox on Android. Off, its manifest asks to open in a normal browser tab
+  (`display: browser`), so they make no offer, while a home-screen shortcut still gets the site's name and icon.
+  Measured in Chromium, which answers `manifest-display-not-supported`; Firefox for Android's rule was read in its
+  source. Safari, and Firefox on Windows, let visitors add any site as an app whatever a site declares, as do the
+  browsers' own menus, so the switch only removes the offer. It applies from the next deploy. Agents set it as
+  `website.installable`.
+
 ### Changed
 
 - **Statistics → Search performance: the page addresses in Top pages are links.** A page opens its live address in

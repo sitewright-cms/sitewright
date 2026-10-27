@@ -313,6 +313,18 @@ export function searchStatus(f: SettingsForm): TileStatus {
   return f.searchFoldDiacritics ? dflt('Loose matching') : set('Exact accents');
 }
 
+/**
+ * The manifest that makes a site installable is generated at publish from the icon only when it is one
+ * of the project's OWN media files (`/media/<slug>/…`); a pasted URL or another library's file gets a
+ * plain favicon and no manifest. Without the slug, any media url is taken as the project's own.
+ */
+export function installStatus(f: SettingsForm, slug?: string): TileStatus {
+  if (!f.installable) return set('Off');
+  const own = f.icon.trim().startsWith(slug ? `/media/${slug}/` : '/media/');
+  // "On", not "Offered": the publish also needs the file to still exist and render, which no form can see.
+  return own ? dflt('On') : na('Needs an uploaded icon');
+}
+
 export function shopStatus(f: SettingsForm): TileStatus {
   if (!f.shopEnabled) return na('Off');
   const channels = f.shopChannels.length;

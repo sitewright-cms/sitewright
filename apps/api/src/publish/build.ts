@@ -1134,9 +1134,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Favicon / PWA icon set + Web App Manifest, derived ONCE from the single Corporate-Identity
     // `icon` (favicon.ico + 32px PNG + apple-touch-180 + manifest 192/512/maskable). Best-effort:
     // any failure (external icon, missing bytes, sharp error) leaves `iconSet` undefined and each
-    // page falls back to a single generic <link rel="icon"> below.
+    // page falls back to a single generic <link rel="icon"> below. `website.installable: false` keeps
+    // the set but declares the manifest `display: browser`, so browsers offer no "Install".
     const iconSet: IconSet | undefined = opts.readMedia
-      ? await emitFaviconSet(tmp, bundle.project.slug, identity, media, opts.readMedia)
+      ? await emitFaviconSet(tmp, bundle.project.slug, identity, media, opts.readMedia, website?.installable !== false)
       : undefined;
 
     // Render a project-wide skeleton slot (mainNav/sidebarLeft/sidebarRight/footer/bottom)

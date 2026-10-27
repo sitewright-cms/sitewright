@@ -57,7 +57,10 @@ export function bookingRenderContext(
   };
 }
 
-const BOOKING_KEYS: readonly string[] = (RESERVED_TRANSLATION_GROUPS.find((g) => g.id === 'booking')?.keys ?? []).map((k) => k.key);
+// The email strings (`booking.mail_*`) are the server's; no page needs them.
+const BOOKING_KEYS: readonly string[] = (RESERVED_TRANSLATION_GROUPS.find((g) => g.id === 'booking')?.keys ?? [])
+  .map((k) => k.key)
+  .filter((k) => !k.startsWith('booking.mail_'));
 /** Strings only the status page shows; the widget gets the rest, and both get the shared failure strings. */
 const STATUS_ONLY_RE = /^booking\.(?:status_|cancel|started$)/;
 const SHARED_KEYS = ['booking.busy', 'booking.failed', 'booking.preview'];

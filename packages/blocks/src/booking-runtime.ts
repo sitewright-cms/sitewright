@@ -457,6 +457,8 @@ export const BOOKING_JS = `(function(){
       else{p.start=String(choice.start);if(o.mode==='range'){p.end=String(choice.end);}}
       if(o.maxQuantity>1){p.quantity=String(Math.floor(+qty.value)||1);}
       if(resource){p.resource=resource;}
+      // The page's language, so the customer's emails come in it (the server keeps it only if the site has it).
+      if(LOC){p.lang=String(LOC);}
       return p;
     }
     // The captcha first, then the proof of work, then the booking. On a stale proof of work the same captcha

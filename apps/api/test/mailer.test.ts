@@ -41,6 +41,32 @@ describe('GlobalSmtpMailer', () => {
     expect(String(sent[0]!.text)).toContain('email:\n  a@b.co');
   });
 
+  it('sends a finished mail as written: its text, HTML, files and calendar invitation', async () => {
+    const { sent, factory } = recordingTransport();
+    const mailer = new GlobalSmtpMailer(settings(withSmtp, 'hunter2'), factory);
+    const ics = 'BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n';
+    await mailer.send({
+      recipient: 'ada@example.com',
+      subject: 'Booking confirmed',
+      formName: 'booking',
+      fields: { ignored: 'x' },
+      rendered: {
+        text: 'You are booked.',
+        html: '<p>You are booked.</p>',
+        attachments: [{ filename: 'booking.ics', content: ics, contentType: 'text/calendar; method=PUBLISH; charset=utf-8' }],
+        icalEvent: { method: 'REQUEST', filename: 'invite.ics', content: ics },
+      },
+    });
+    expect(sent[0]).toMatchObject({
+      text: 'You are booked.',
+      html: '<p>You are booked.</p>',
+      attachments: [{ filename: 'booking.ics', content: ics }],
+      icalEvent: { method: 'REQUEST', filename: 'invite.ics', content: ics },
+    });
+    // Not the form rendering: no "New submission" heading, no field lines.
+    expect(String(sent[0]!.text)).not.toContain('New submission');
+  });
+
   it('returns false (does not send) when global SMTP mode is disabled', async () => {
     const { sent, factory } = recordingTransport();
     const disabled: InstanceSettingsStored = { ...withSmtp, formModes: { ...withSmtp.formModes, globalSmtp: false } };

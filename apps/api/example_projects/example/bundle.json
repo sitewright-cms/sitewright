@@ -310,6 +310,31 @@
           "de": "Diese Buchung hat bereits begonnen und kann nicht mehr online storniert werden.",
           "es": "Esta reserva ya ha empezado, así que no se puede cancelar en línea."
         },
+        "booking.mail_booked": {
+          "en": "Booking confirmed: {offering}",
+          "de": "Buchung bestätigt: {offering}",
+          "es": "Reserva confirmada: {offering}"
+        },
+        "booking.mail_requested": {
+          "en": "Booking request received: {offering}",
+          "de": "Buchungsanfrage erhalten: {offering}",
+          "es": "Solicitud de reserva recibida: {offering}"
+        },
+        "booking.mail_cancelled": {
+          "en": "Booking cancelled: {offering}",
+          "de": "Buchung storniert: {offering}",
+          "es": "Reserva cancelada: {offering}"
+        },
+        "booking.mail_when": {
+          "en": "When",
+          "de": "Wann",
+          "es": "Cuándo"
+        },
+        "booking.mail_calendar": {
+          "en": "Add it to your calendar with the attached file.",
+          "de": "Mit der angehängten Datei tragen Sie den Termin in Ihren Kalender ein.",
+          "es": "Añádela a tu calendario con el archivo adjunto."
+        },
         "about.ab_img_alt": {
           "en": "The Northwind studio",
           "de": "Das Northwind-Studio",

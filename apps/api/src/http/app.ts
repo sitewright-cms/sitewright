@@ -277,6 +277,8 @@ import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { BookingClaimsRepository } from '../booking/claims.js';
+import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
+import { BookingNotifier, type NotifierSettings } from '../booking/notify.js';
 import { BookingService } from '../booking/service.js';
 import { registerBookingRoutes } from './booking-routes.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
@@ -11087,6 +11089,56 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   });
 
+  /**
+   * Where the platform hosts a project's site: `<slug>.<sitesDomain>` with subdomain routing, else `/sites/<slug>/`
+   * on the public URL. Null without a public URL. A site deployed elsewhere has its own `siteUrl`, which callers
+   * prefer when it is set.
+   */
+  async function hostedSiteUrl(projectId: string): Promise<string | null> {
+    const project = await projects.get(projectId).catch(() => null);
+    if (!project) return null;
+    const base = (opts.publicUrl ?? '').replace(/\/+$/, '');
+    if (!base) return null;
+    return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
+  }
+
+  // BOOKING MAILS: queued when a booking happens, sent at once by a single-flight pass, and retried by the
+  // maintenance pass (see booking/outbox.ts).
+  const bookingMailRepo = new BookingMailRepository(db);
+  let bookingMailPass: Promise<void> | null = null;
+  let bookingMailAgain = false;
+  const sendBookingMail = (): void => {
+    if (bookingMailPass) {
+      bookingMailAgain = true;
+      return;
+    }
+    bookingMailPass = runBookingMail({ mails: bookingMailRepo, sendForProject, log: { warn: (o, m) => app.log.warn(o, m) } })
+      .then(({ more }) => {
+        // A full batch went: there may be more waiting, so go again rather than leave it for the next tick.
+        if (more) bookingMailAgain = true;
+      })
+      .catch((err: unknown) => app.log.warn(err, 'booking mail pass failed'))
+      .finally(() => {
+        bookingMailPass = null;
+        if (bookingMailAgain) {
+          bookingMailAgain = false;
+          sendBookingMail();
+        }
+      });
+  };
+  const bookingNotifier = new BookingNotifier({
+    mails: bookingMailRepo,
+    readSettings: async (projectId) => {
+      const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+      return (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as NotifierSettings | null;
+    },
+    // ★ White-label: only an address that is the site's own. The `/sites/<slug>/` form is the platform's
+    // origin, so without subdomain routing (and without a production URL) a customer's mail carries no link.
+    hostedSiteUrl: async (projectId) => (sitesDomain ? hostedSiteUrl(projectId) : null),
+    kick: sendBookingMail,
+    log: { warn: (o, m) => app.log.warn(o, m) },
+  });
+
   // Public booking: what a published site's booking widget calls (see booking-routes.ts).
   registerBookingRoutes(app, {
     bookings: bookingService,
@@ -11108,6 +11160,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     getSecret: () => currentCookieSecret,
     claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
     rl,
+    notify: (event) => bookingNotifier.notify(event),
   });
 
   for (const note of statsBootNotes) app.log.warn(note.err ? { errMsg: note.err instanceof Error ? note.err.message : String(note.err) } : {}, note.message);
@@ -11243,16 +11296,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return { userId: 'system', projectId, role: 'owner' };
       },
       publicBaseUrl: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
-      siteBaseUrl: async (projectId: string) => {
-        const project = await projects.get(projectId).catch(() => null);
-        if (!project) return null;
-        const base = (opts.publicUrl ?? '').replace(/\/+$/, '');
-        if (!base) return null;
-        // A locally hosted site answers at `<slug>.<sitesDomain>` when subdomain routing is on, and
-        // at `/sites/<slug>/` otherwise. A site deployed elsewhere uses its configured siteUrl, which
-        // the caller prefers when present.
-        return sitesDomain ? `${new URL(base).protocol}//${project.slug}.${sitesDomain}/` : `${base}/sites/${project.slug}/`;
-      },
+      siteBaseUrl: hostedSiteUrl,
       paymentsEnabled: () => instanceSettingsRepo.getPaymentsEnabled(),
       io: { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) } },
       rl,
@@ -12400,6 +12444,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (lapsed || ended) app.log.info({ lapsed, ended }, 'swept ended booking claims');
       })
       .catch((err) => app.log.warn(err, 'booking claims sweep failed'));
+    // Booking mails: retry what is due, and forget what failed for good a week ago.
+    sendBookingMail();
+    void bookingMailRepo
+      .sweep(Date.now())
+      .then((n) => {
+        if (n) app.log.info({ swept: n }, 'swept undeliverable booking mails');
+      })
+      .catch((err) => app.log.warn(err, 'booking mail sweep failed'));
     if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
     // Statistics of projects that no longer exist (a reap whose own cleanup failed, a beacon that landed after it).
     void statsEngine

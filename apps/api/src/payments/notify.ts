@@ -187,9 +187,10 @@ export async function sendOrderMail(
     recipient,
     subject: rendered.subject,
     formName: 'order',
-    // The transport renders `fields` into a body; passing the composed text here keeps ONE body
-    // rather than letting the transport invent a second formatting of the same order.
-    fields: { body: rendered.text },
+    fields: {},
+    // ★ Sent AS RENDERED, text and HTML. It used to go in as a form field, so every receipt opened with
+    // `New submission for "order"` and a `body:` line, and the HTML version was never sent at all.
+    rendered: { text: rendered.text, html: rendered.html },
     ...(replyTo ? { replyTo } : {}),
   };
   return deps.sendForProject(projectId, mail);

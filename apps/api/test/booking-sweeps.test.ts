@@ -37,3 +37,18 @@ describe('the booking claims sweep', () => {
     expect(appSource).toMatch(/const bookingClaimsRepo = new BookingClaimsRepository\(db\)/);
   });
 });
+
+// ★ The booking mails: queued by the routes, and retried and forgotten by the maintenance pass. A mail that
+// failed once is only ever tried again from there, so an unwired pass is a confirmation that never arrives.
+describe('the booking mails', () => {
+  it('are retried, and forgotten when undeliverable, by the periodic maintenance pass', () => {
+    const body = arrowBody('runMaintenanceSweeps');
+    expect(body).toMatch(/sendBookingMail\(\)/);
+    expect(body).toMatch(/bookingMailRepo\s*\.sweep\(/);
+  });
+
+  it('are queued by the public booking routes', () => {
+    expect(appSource).toMatch(/notify: \(event\) => bookingNotifier\.notify\(event\)/);
+    expect(appSource).toMatch(/const bookingMailRepo = new BookingMailRepository\(db\)/);
+  });
+});

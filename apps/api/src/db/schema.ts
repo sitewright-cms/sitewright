@@ -1467,6 +1467,35 @@ export const bookingClaims = sqliteTable(
   ],
 );
 
+/**
+ * BOOKING MAILS on their way: the confirmations, requests and cancellations a booking sends the customer and
+ * the business, each rendered when the booking happened (a cancelled booking has no row left to render from).
+ * A row is DELETED once its mail is sent; one that keeps failing backs off (the form deliveries' schedule) and
+ * is kept as `failed` for a week, then swept, the customer's details with it. Bounded by the bookings that
+ * produce them (a project takes at most so many an hour) and by a per-project cap.
+ */
+export const bookingMails = sqliteTable(
+  'booking_mails',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    recipient: text('recipient').notNull(),
+    subject: text('subject').notNull(),
+    replyTo: text('reply_to'),
+    /** The mail as rendered: text, HTML, files and the calendar invitation. */
+    body: text('body', { mode: 'json' }).$type<{ text: string; html?: string; attachments?: Array<{ filename: string; content: string; contentType: string }>; icalEvent?: { method: 'REQUEST' | 'CANCEL' | 'PUBLISH'; filename: string; content: string } }>().notNull(),
+    state: text('state', { enum: ['pending', 'failed'] }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    /** When it is next due; pushed forward by a lease while an attempt runs. */
+    nextAt: integer('next_at', { mode: 'timestamp_ms' }).notNull(),
+    lastError: text('last_error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('booking_mails_due').on(t.state, t.nextAt), index('booking_mails_project').on(t.projectId)],
+);
+
 /** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
 export type PlatformRole = 'admin' | 'developer';
 /** A user's role within a single project. */

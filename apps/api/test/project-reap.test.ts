@@ -11,7 +11,7 @@ import { RankRepository } from '../src/rank/repo.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { SubmissionRepository } from '../src/repo/submissions.js';
-import { agentGrants, bookingClaims, rankCharges, shopCatalog, shopStock, shopTransactions, shopFiltered, webmasterRemovals } from '../src/db/schema.js';
+import { agentGrants, bookingClaims, bookingMails, rankCharges, shopCatalog, shopStock, shopTransactions, shopFiltered, webmasterRemovals } from '../src/db/schema.js';
 
 // REAP = the permanent delete behind the admin "deleted projects" purge. There is no ON DELETE CASCADE
 // in this schema, so `ProjectRepository.remove()` must clear every table holding an FK to `projects`
@@ -42,6 +42,7 @@ describe('project reap', () => {
     'agent_grants',
     'api_keys',
     'booking_claims',
+    'booking_mails',
     'content',
     'content_revisions',
     'form_filtered',
@@ -116,8 +117,14 @@ describe('project reap', () => {
       startAt: now, endAt: now, busyStart: now, busyEnd: now, units: 1, exclusive: false, expiresAt: null,
       customer: { name: 'Ada', email: 'ada@example.test' }, createdAt: now, updatedAt: now,
     });
+    // …and a booking mail still on its way, which carries them too.
+    await db.insert(bookingMails).values({
+      id: 'mail1', projectId: project.id, recipient: 'ada@example.test', subject: 'Booking confirmed', replyTo: null,
+      body: { text: 'You are booked, Ada.' }, state: 'pending', attempts: 0, nextAt: now, lastError: null, createdAt: now,
+    });
     await expect(projects.remove(project.id)).resolves.toBeUndefined();
     expect(await db.select().from(bookingClaims)).toHaveLength(0);
+    expect(await db.select().from(bookingMails)).toHaveLength(0);
   });
 
   it('reaps a project whose forms have FILTERED counts (the same trap, caught by the guard above)', async () => {

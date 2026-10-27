@@ -119,6 +119,15 @@ export const BookingBlockSchema = z.discriminatedUnion('kind', [
 ]);
 export type BookingBlock = z.infer<typeof BookingBlockSchema>;
 
+/** An address the platform mails on the business's behalf. Lands in a header, so nothing but the address. */
+const BookingEmailSchema = z
+  .string()
+  .trim()
+  .max(320)
+  .email()
+  // eslint-disable-next-line no-control-regex -- deliberately matching the C0 range
+  .refine((v) => !/[\u0000-\u001f\u007f]/.test(v), 'must not contain control characters');
+
 /**
  * What a booking occupies. With no opening hours a resource takes no `duration` or `range` bookings.
  * Openings that touch across midnight (until 24:00, then from 00:00) join: a booking can run on through it.
@@ -132,6 +141,11 @@ export const BookingResourceSchema = z
     capacity: z.number().int().min(1).max(BOOKING_LIMITS.capacity).default(1),
     hours: z.array(HoursRuleSchema).max(BOOKING_LIMITS.hoursRules).default([]),
     blocks: z.array(BookingBlockSchema).max(BOOKING_LIMITS.blocks).default([]),
+    /**
+     * Where this resource's bookings go as calendar invitations: a person's own address, or a room's calendar
+     * that accepts invitations (Outlook, Google, Apple). Never shown to a visitor.
+     */
+    email: BookingEmailSchema.optional(),
   })
   .refine((r) => r.blocks.filter((b) => b.kind === 'weekly').length <= BOOKING_LIMITS.weeklyBlocks, {
     message: `at most ${BOOKING_LIMITS.weeklyBlocks} weekly blocks`,
@@ -253,6 +267,13 @@ export const BookingConfigSchema = z
      */
     // The reference is appended as `#t=…`, so the path carries no fragment of its own.
     statusPath: SitePathSchema.refine((p) => !p.includes('#'), 'must not contain #').optional(),
+    /**
+     * The business's own address: told of every booking, request and cancellation, and the organiser of the
+     * calendar invitations its resources get. ★ Customers SEE it: their replies to a confirmation go here (it is
+     * the confirmation's Reply-To), so use an address customers may write to. Without it, only resources that
+     * have an address of their own hear of their bookings.
+     */
+    notifyEmail: BookingEmailSchema.optional(),
   })
   .superRefine((cfg, ctx) => {
     const resources = new Set<string>();

@@ -142,6 +142,16 @@ describe('the whole configuration', () => {
     expect(BookingConfigSchema.parse({})).toEqual({ resources: [], offerings: [], pow: false, captcha: false });
   });
 
+  it('takes the business’s address and a resource’s calendar address, and nothing that could leave a header', () => {
+    ok(BookingConfigSchema, { resources: [{ ...anna, email: 'anna@studio.example' }], offerings: [consult], notifyEmail: 'hello@studio.example' });
+    bad(BookingConfigSchema, { notifyEmail: 'not an address' });
+    bad(BookingConfigSchema, { notifyEmail: 'hello@studio.example\r\nBcc: x@evil.example' });
+    bad(BookingConfigSchema, { resources: [{ ...anna, email: 'anna@studio.example\nBcc: x@evil.example' }] });
+    // The reference is added as a fragment, so the status page's path has none of its own.
+    ok(BookingConfigSchema, { statusPath: '/my-booking/' });
+    bad(BookingConfigSchema, { statusPath: '/my-booking/#top' });
+  });
+
   it('refuses duplicate ids and offerings pointing at missing resources, naming the field', () => {
     const dup = BookingConfigSchema.safeParse({ resources: [anna, anna], offerings: [] });
     expect(dup.success).toBe(false);

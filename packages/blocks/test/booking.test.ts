@@ -46,8 +46,9 @@ describe('{{sw-booking}}', () => {
     expect(el.getAttribute('aria-label')).toBe('Massage <60 min>');
     expect(labels(el)['booking.submit']).toBe('Book');
     expect(labels(el)['booking.time_zone']).toBe('Times are shown in {zone}.');
-    // The status page's own strings stay off the widget.
+    // The status page's own strings stay off the widget, and the emails' stay on the server.
     expect(labels(el)).not.toHaveProperty('booking.cancel_yes');
+    expect(Object.keys(labels(el)).some((k) => k.startsWith('booking.mail_'))).toBe(false);
     expect(el.querySelector('[data-sw-part="loading"]')?.textContent).toBe('Loading available times…');
     expect(html).not.toContain('/b/');
     expect(el.hasAttribute('data-sw-pow')).toBe(false);

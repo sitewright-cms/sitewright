@@ -20,6 +20,30 @@ export interface SubmissionMail {
   labels?: Record<string, string>;
   /** Optional Reply-To (the submitter's email), pre-validated by the caller. */
   replyTo?: string;
+  /**
+   * A FINISHED mail, for the ones the platform writes itself (orders, bookings). When present it is sent as
+   * it is, and `formName`/`fields`/`labels` are not rendered: a receipt is not a form submission, and must not
+   * read like one.
+   */
+  rendered?: RenderedBody;
+}
+
+/** A mail's own body: plain text (always), HTML, files, and a calendar invitation. */
+export interface RenderedBody {
+  text: string;
+  html?: string;
+  attachments?: MailAttachment[];
+  /**
+   * An iTIP calendar object sent the way calendar clients recognise an invitation (a `text/calendar` part
+   * carrying the method, plus the file). REQUEST adds or updates the event, CANCEL removes it.
+   */
+  icalEvent?: { method: 'REQUEST' | 'CANCEL' | 'PUBLISH'; filename: string; content: string };
+}
+
+export interface MailAttachment {
+  filename: string;
+  content: string;
+  contentType: string;
 }
 
 /** Field name -> author-given label, for the email body. Fields without a label are simply absent. */
@@ -41,6 +65,9 @@ export interface MailTransport {
     to: string;
     subject: string;
     text: string;
+    html?: string;
+    attachments?: MailAttachment[];
+    icalEvent?: RenderedBody['icalEvent'];
     replyTo?: string;
   }): Promise<unknown>;
 }
@@ -302,11 +329,15 @@ async function sendViaSmtp(
   // Structured form so nodemailer encodes the display name (a fromName with special
   // chars like <>" cannot break the From header).
   const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
+  const body = mail.rendered;
   await transport.sendMail({
     from,
     to: mail.recipient,
     subject: mail.subject,
-    text: formatSubmissionText(mail.formName, mail.fields, mail.labels),
+    text: body ? body.text : formatSubmissionText(mail.formName, mail.fields, mail.labels),
+    ...(body?.html ? { html: body.html } : {}),
+    ...(body?.attachments?.length ? { attachments: body.attachments } : {}),
+    ...(body?.icalEvent ? { icalEvent: body.icalEvent } : {}),
     ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
   });
 }

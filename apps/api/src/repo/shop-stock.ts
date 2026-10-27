@@ -2,6 +2,7 @@ import { and, eq, sql, lte, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { shopStock } from '../db/schema.js';
 import type { StockReconcileOp } from '../publish/shop-catalog.js';
+import { KeyedQueue } from '../runtime/keyed-queue.js';
 
 /**
  * THE STOCK LEDGER.
@@ -43,31 +44,6 @@ export interface StockState {
 export function available(row: Pick<StockState, 'onStock' | 'sold' | 'reserved'>): number | null {
   if (row.onStock === null) return null;
   return Math.max(0, row.onStock - row.sold - row.reserved);
-}
-
-/** A per-key promise chain. Keeps read-modify-write pairs for one SKU from interleaving. */
-class KeyedQueue {
-  private readonly tails = new Map<string, Promise<unknown>>();
-
-  run<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const prior = this.tails.get(key) ?? Promise.resolve();
-    // `.then(fn, fn)` deliberately: a REJECTED predecessor must not cancel the next waiter, nor
-    // leave the chain permanently rejected.
-    const next = prior.then(fn, fn);
-    // The stored tail swallows rejections — the CALLER still receives `next` with its real outcome.
-    // Without the catch, the tail itself is an unhandled rejection.
-    const tail = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.tails.set(key, tail);
-    // Drop the entry once this is the last waiter, so the map does not grow one key per SKU for the
-    // lifetime of the process. Compared by identity: a later `run` has already replaced the tail.
-    void tail.then(() => {
-      if (this.tails.get(key) === tail) this.tails.delete(key);
-    });
-    return next;
-  }
 }
 
 export type ReserveFailure =

@@ -11,7 +11,7 @@ import { RankRepository } from '../src/rank/repo.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { SubmissionRepository } from '../src/repo/submissions.js';
-import { agentGrants, rankCharges, shopCatalog, shopStock, shopTransactions, shopFiltered, webmasterRemovals } from '../src/db/schema.js';
+import { agentGrants, bookingClaims, rankCharges, shopCatalog, shopStock, shopTransactions, shopFiltered, webmasterRemovals } from '../src/db/schema.js';
 
 // REAP = the permanent delete behind the admin "deleted projects" purge. There is no ON DELETE CASCADE
 // in this schema, so `ProjectRepository.remove()` must clear every table holding an FK to `projects`
@@ -41,6 +41,7 @@ describe('project reap', () => {
   const REAPED_TABLES = [
     'agent_grants',
     'api_keys',
+    'booking_claims',
     'content',
     'content_revisions',
     'form_filtered',
@@ -103,6 +104,20 @@ describe('project reap', () => {
     expect(await db.select().from(shopStock)).toHaveLength(0);
     expect(await db.select().from(shopTransactions)).toHaveLength(0);
     expect(await db.select().from(shopFiltered)).toHaveLength(0);
+  });
+
+  it('reaps a project holding booking claims, customers\u2019 details with them', async () => {
+    const db = await makeTestDb();
+    const projects = new ProjectRepository(db);
+    const project = await projects.create({ name: 'Rooms', slug: `rooms-${Date.now()}` });
+    const now = new Date();
+    await db.insert(bookingClaims).values({
+      id: 'claim1', projectId: project.id, resourceId: 'room', offeringId: 'hire', state: 'booked',
+      startAt: now, endAt: now, busyStart: now, busyEnd: now, units: 1, exclusive: false, expiresAt: null,
+      customer: { name: 'Ada', email: 'ada@example.test' }, createdAt: now, updatedAt: now,
+    });
+    await expect(projects.remove(project.id)).resolves.toBeUndefined();
+    expect(await db.select().from(bookingClaims)).toHaveLength(0);
   });
 
   it('reaps a project whose forms have FILTERED counts (the same trap, caught by the guard above)', async () => {

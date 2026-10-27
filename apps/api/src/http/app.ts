@@ -275,6 +275,7 @@ import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
+import { BookingClaimsRepository } from '../booking/claims.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
@@ -2138,6 +2139,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const oidcRedirectUri = (req: FastifyRequest, providerId: string): string =>
     `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
+  const bookingClaimsRepo = new BookingClaimsRepository(db);
   const releasesRepo = new ReleaseRepository(db);
   // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
   // only these exact hosts may be saved as a project's SMTP. Default: any host
@@ -12321,6 +12323,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Spent proof-of-work challenges past their signed TTL. Dropping them cannot reopen a replay:
     // an expired challenge fails verification before the spent-check is ever consulted.
     void submissionsRepo.sweepSpentPow().catch((err) => app.log.warn(err, 'proof-of-work sweep failed'));
+    // Booking claims end: lapsed holds and requests, and ledger bookings past retention, customers' details with them.
+    void bookingClaimsRepo
+      .sweep(Date.now())
+      .then(({ lapsed, ended }) => {
+        if (lapsed || ended) app.log.info({ lapsed, ended }, 'swept ended booking claims');
+      })
+      .catch((err) => app.log.warn(err, 'booking claims sweep failed'));
     if (mediaStorage) void reapDeletedMedia(db, mediaStorage).catch((err) => app.log.warn(err, 'media recycle-bin reap failed'));
     // Statistics of projects that no longer exist (a reap whose own cleanup failed, a beacon that landed after it).
     void statsEngine

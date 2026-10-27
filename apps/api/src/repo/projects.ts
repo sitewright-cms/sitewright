@@ -2,6 +2,7 @@ import { newId } from '../id.js';
 import { desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
+  bookingClaims,
   agentGrants,
   aiUsage,
   apiKeys,
@@ -217,6 +218,8 @@ export class ProjectRepository {
       // what did not get through is queued in `webmaster_removals`, which has no FK and is NOT cleared here: it is the
       // only record of a site still registered once this row is gone.
       await tx.delete(webmasterSites).where(eq(webmasterSites.projectId, id));
+      // Booking claims: holds, requests and the small ledger. The bookings in owners' calendars are theirs.
+      await tx.delete(bookingClaims).where(eq(bookingClaims.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });
   }

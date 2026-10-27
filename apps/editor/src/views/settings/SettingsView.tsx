@@ -112,6 +112,7 @@ export function SettingsView({
   section: fixedSection,
   onLocalesChanged,
   onOpenOrders,
+  onOpenBookings,
   isStaff = false,
 }: {
   project: Project;
@@ -122,6 +123,8 @@ export function SettingsView({
   onLocalesChanged?: () => void;
   /** Switches to the project's Orders tab — offered on the Shop tile while payments are active. */
   onOpenOrders?: () => void;
+  /** Switches to the project's Bookings tab — offered on the Booking tile while something is offered. */
+  onOpenBookings?: () => void;
 }) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // The last-loaded bundle — the baseline for fields the form doesn't surface
@@ -430,6 +433,7 @@ export function SettingsView({
                   onLocalesChanged={onLocalesChanged}
                   onReloadSettings={reloadSettings}
                   onOpenOrders={onOpenOrders}
+                  onOpenBookings={onOpenBookings}
                 />
               )}
             </motion.div>

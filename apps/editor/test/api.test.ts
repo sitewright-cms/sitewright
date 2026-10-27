@@ -1027,6 +1027,25 @@ describe('api client', () => {
     ]);
   });
 
+  it('lists, connects, reads again and removes a resource’s outside calendars', async () => {
+    const calendar = { id: 'c/1', resourceId: 'anna', kind: 'ics', name: 'Google', host: 'calendar.google.com', lastOkAt: 1, lastError: null, lastEvents: 3, createdAt: 1 };
+    fetchMock.mockResolvedValue(jsonResponse(200, { calendars: [calendar] }));
+    expect((await api.listBookingCalendars('p')).calendars).toEqual([calendar]);
+    fetchMock.mockResolvedValue(jsonResponse(201, { calendar, reading: { ok: true } }));
+    expect((await api.connectBookingCalendar('p', { resourceId: 'anna', name: 'Google', url: 'https://cal.example/a.ics' })).reading.ok).toBe(true);
+    fetchMock.mockResolvedValue(jsonResponse(200, { calendar, reading: { ok: false, error: 'the calendar answered 404' } }));
+    expect((await api.testBookingCalendar('p', 'c/1')).reading.error).toBe('the calendar answered 404');
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    await api.removeBookingCalendar('p', 'c/1');
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? 'GET'])).toEqual([
+      ['/projects/p/booking/calendars', 'GET'],
+      ['/projects/p/booking/calendars', 'POST'],
+      ['/projects/p/booking/calendars/c%2F1/test', 'POST'],
+      ['/projects/p/booking/calendars/c%2F1', 'DELETE'],
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toEqual({ resourceId: 'anna', name: 'Google', url: 'https://cal.example/a.ics' });
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

@@ -1377,6 +1377,27 @@ export interface PagespeedAuditResult {
  * Shaped from the API rather than imported from the server repo: the editor must not depend on the
  * server's internal row type, and the two differ (dates arrive as strings over JSON).
  */
+/**
+ * An outside calendar a booking resource's busy times are read from (an iCalendar feed). Its address is a secret
+ * and never comes back: only its host. Times are instants (ms).
+ */
+export interface BookingCalendar {
+  id: string;
+  resourceId: string;
+  kind: 'ics';
+  name: string;
+  host: string;
+  lastOkAt: number | null;
+  lastError: string | null;
+  lastEvents: number | null;
+  createdAt: number;
+}
+/** What came of reading a calendar just now. */
+export interface BookingCalendarReading {
+  calendar: BookingCalendar;
+  reading: { ok: boolean; error?: string };
+}
+
 /** One booking or request, as the Bookings tab lists it. Times are instants; `timeZone` is the resource's clock. */
 export interface BookingItem {
   id: string;
@@ -1734,6 +1755,15 @@ export const api = {
   /** A full replace. `baseVersion` is the version the form was built from, so a concurrent edit is refused, not lost. */
   putBooking: (projectId: string, config: BookingConfig, baseVersion?: string | null) =>
     request<{ item: BookingConfig; version?: string }>('PUT', `/projects/${projectId}/content/booking/booking`, config, { version: baseVersion }),
+  /** The resources' outside calendars. Writers only (a 403 for anyone else). */
+  listBookingCalendars: (projectId: string) => request<{ calendars: BookingCalendar[] }>('GET', `/projects/${projectId}/booking/calendars`),
+  /** Connects a calendar to a resource of the SAVED set-up, and reads it at once. */
+  connectBookingCalendar: (projectId: string, body: { resourceId: string; name: string; url: string }) =>
+    request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars`, body),
+  /** Reads a calendar again now, whatever is cached. */
+  testBookingCalendar: (projectId: string, id: string) =>
+    request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}/test`, {}),
+  removeBookingCalendar: (projectId: string, id: string) => request<{ ok: true }>('DELETE', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}`),
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (projectId: string) =>

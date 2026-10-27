@@ -22,6 +22,16 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Changed
 
+- **Shop order emails come from the project's own SMTP when it has one.** Paid-order notifications and receipts,
+  and the order forms behind a shop's "form" channel, used the instance's global SMTP whenever it was on, so a
+  customer's receipt came from the platform operator's address. Now every mail the platform sends on a project's
+  behalf goes through the project's SMTP whenever the instance allows per-project SMTP and the project has one.
+  Global SMTP is the fallback: when the project has none, when the instance does not allow per-project SMTP, or
+  when the project's SMTP cannot send at all (for example a password that no longer decrypts). A delivery the
+  project's server refused is retried through it, never re-sent from another address. The choice is made for each
+  mail, so adding or removing a project's SMTP, or an admin changing the instance's modes, applies to the next
+  mail and to retries already queued. Ordinary forms keep the mode their author chose.
+
 - **Statistics → Search performance: the page addresses in Top pages are links.** A page opens its live address in
   a new tab. It is still shown as its path when it is on the site, with the full address in the tooltip, and the
   whole row height is its tap target on a phone. The list is what Google or Bing reported, so only an `http(s)`
@@ -29,6 +39,12 @@ The running version of an instance is reported at `GET /version` (baked into the
   exactly as reported. Search rankings' page links now follow the same rule. An address on another host is always
   shown in full: with a site URL saved without its trailing slash, `https://example.com.evil.net/…` used to be
   shown as a path on the site.
+
+### Security
+
+- **A project's SMTP host is checked against the instance's SMTP allowlist when a mail is sent**, not only when
+  the setting is saved, so a host saved before the allowlist existed, or before it was dropped from the list, no
+  longer sends. Such a project's shop mails go through global SMTP instead.
 
 ### Fixed
 

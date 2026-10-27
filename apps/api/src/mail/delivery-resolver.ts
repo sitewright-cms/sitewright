@@ -3,7 +3,7 @@ import { FormSchema, isPlatformRoutedMode } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { DueDelivery } from '../repo/submissions.js';
-import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer, type SubmissionMail } from './mailer.js';
+import { describeDeliveryFailure, submissionLabels, PROJECT_MAIL_UNAVAILABLE, type SubmissionMailer, type ProjectMailer, type ProjectMailSender, type SubmissionMail } from './mailer.js';
 
 /**
  * Works out how to deliver one overdue submission, using the form AS IT IS NOW.
@@ -21,11 +21,15 @@ export function makeDeliveryResolver(deps: {
   db: Database;
   mailer: SubmissionMailer;
   projectMailer: ProjectMailer;
+  /** A MANAGED form (the shop's order forms) is the platform writing for the project: same sender as
+   *  every other such mail, decided now rather than by the mode stored when the form was provisioned. */
+  sendForProject: ProjectMailSender;
 }) {
   return async (row: DueDelivery): Promise<{
     mail: SubmissionMail;
     send: (mail: SubmissionMail) => Promise<boolean>;
     explain: (err: unknown) => string;
+    unavailable?: string;
   } | null> => {
     const [formRow] = await deps.db
       .select()
@@ -55,8 +59,13 @@ export function makeDeliveryResolver(deps: {
         ...(replyTo ? { replyTo } : {}),
       },
       send: (mail) =>
-        form.mode === 'globalSmtp' ? deps.mailer.send(mail) : deps.projectMailer.send(row.projectId, mail),
+        form.managed
+          ? deps.sendForProject(row.projectId, mail)
+          : form.mode === 'globalSmtp'
+            ? deps.mailer.send(mail)
+            : deps.projectMailer.send(row.projectId, mail),
       explain: describeDeliveryFailure,
+      ...(form.managed ? { unavailable: PROJECT_MAIL_UNAVAILABLE } : {}),
     };
   };
 }

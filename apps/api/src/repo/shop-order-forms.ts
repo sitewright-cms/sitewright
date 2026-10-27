@@ -43,6 +43,8 @@ function toFormField(f: { key: string; type: string; required?: boolean }): Form
 
 /**
  * The delivery mode for a provisioned order form: whichever platform-routed mode the instance allows.
+ * It marks the form as platform-routed; WHICH SMTP a managed form's mail goes through is decided at send
+ * time by `makeProjectMailSender` (the project's own SMTP when it has one), never by this stored value.
  *
  * `globalSmtp` is preferred (the operator's own SMTP, configured once); `userSmtp` is used when the
  * instance only permits per-project SMTP. A non-routed mode (contact.php, third-party) is never

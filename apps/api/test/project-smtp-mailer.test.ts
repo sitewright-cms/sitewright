@@ -34,6 +34,19 @@ beforeEach(async () => {
 });
 
 describe('ProjectSmtpMailer', () => {
+  it('★ refuses a host the instance allowlist no longer permits, at SEND time', async () => {
+    // Saved before the allowlist existed (or before its host was dropped from it): the save-time check
+    // never sees it again, so the send must.
+    await seedProjectSmtp({ host: 'smtp.proj.com', port: 587, secure: false, fromEmail: 'no-reply@proj.com' });
+    const { sent, factory } = recordingTransport();
+    const mailer = new ProjectSmtpMailer(db, { getStored: async () => userSmtpOn }, KEY, factory, (host) => host === 'mail.allowed.com');
+    expect(await mailer.send(projectId, mail)).toBe(false);
+    expect(sent).toHaveLength(0);
+    const allowed = new ProjectSmtpMailer(db, { getStored: async () => userSmtpOn }, KEY, factory, (host) => host === 'smtp.proj.com');
+    expect(await allowed.send(projectId, mail)).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+
   it('sends via the project SMTP, decrypting the stored password', async () => {
     await seedProjectSmtp({ host: 'smtp.proj.com', port: 587, secure: false, user: 'u', fromName: 'Proj', fromEmail: 'no-reply@proj.com', password: encryptSecret('proj-pw', KEY) });
     const { sent, factory } = recordingTransport();

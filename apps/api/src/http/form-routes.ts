@@ -19,7 +19,7 @@ import type { CaptchaProvider } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
-import { describeDeliveryFailure, submissionLabels, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
+import { describeDeliveryFailure, submissionLabels, PROJECT_MAIL_UNAVAILABLE, type SubmissionMailer, type ProjectMailer, type ProjectMailSender } from '../mail/mailer.js';
 import { nextAttemptAt } from '../mail/delivery-policy.js';
 import { createPowChallenge, powScope, verifyPowSolution } from './form-pow.js';
 import type { CaptchaVerifier } from '../mail/captcha.js';
@@ -48,6 +48,9 @@ export interface FormRoutesDeps {
   mailer: SubmissionMailer;
   /** Per-project SMTP mailer for `userSmtp` forms (Mode B). */
   projectMailer: ProjectMailer;
+  /** A MANAGED form (the shop's order forms) is the platform writing for the project, so it goes through
+   *  the same sender as every other such mail: the project's own SMTP when it has one. */
+  sendForProject: ProjectMailSender;
   captcha: CaptchaVerifier;
   /**
    * The PROJECT's captcha config with its secret already decrypted, or null when that project has
@@ -519,12 +522,13 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       let sent = false;
       let failure: string | null = null;
       try {
-        if (form.mode === 'globalSmtp') sent = await mailer.send(mail);
+        if (form.managed && routed) sent = await deps.sendForProject(projectId, mail);
+        else if (form.mode === 'globalSmtp') sent = await mailer.send(mail);
         else if (form.mode === 'userSmtp') sent = await projectMailer.send(projectId, mail);
         else app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored; this mode is not server-routed');
         if (!sent && routed) {
           app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored but not emailed (SMTP not configured/enabled)');
-          failure = 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.';
+          failure = form.managed ? PROJECT_MAIL_UNAVAILABLE : 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.';
         }
       } catch (err) {
         // Log only the message — a nodemailer error can carry the SMTP banner / resolved

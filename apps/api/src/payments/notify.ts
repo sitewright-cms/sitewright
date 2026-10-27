@@ -1,5 +1,5 @@
 import { fromMinorUnits, type TransactionLine } from '@sitewright/schema';
-import type { SubmissionMail, SubmissionMailer, ProjectMailer } from '../mail/mailer.js';
+import type { SubmissionMail, ProjectMailSender } from '../mail/mailer.js';
 import type { TransactionRow } from '../repo/shop-transactions.js';
 
 /**
@@ -165,8 +165,8 @@ export function renderCustomerMail(ctx: OrderMailContext): RenderedMail {
 export type OrderMailKind = 'admin' | 'customer';
 
 export interface OrderMailerDeps {
-  globalMailer: SubmissionMailer;
-  projectMailer: ProjectMailer;
+  /** The project's own SMTP when it has one, else global SMTP (`makeProjectMailSender`). */
+  sendForProject: ProjectMailSender;
 }
 
 /**
@@ -179,7 +179,6 @@ export interface OrderMailerDeps {
 export async function sendOrderMail(
   deps: OrderMailerDeps,
   projectId: string,
-  mode: 'globalSmtp' | 'userSmtp',
   recipient: string,
   rendered: RenderedMail,
   replyTo?: string,
@@ -193,5 +192,5 @@ export async function sendOrderMail(
     fields: { body: rendered.text },
     ...(replyTo ? { replyTo } : {}),
   };
-  return mode === 'userSmtp' ? deps.projectMailer.send(projectId, mail) : deps.globalMailer.send(mail);
+  return deps.sendForProject(projectId, mail);
 }

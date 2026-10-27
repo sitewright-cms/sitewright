@@ -1,5 +1,5 @@
 import { nextAttemptAt, DELIVERY_LEASE_MS } from '../mail/delivery-policy.js';
-import { describeDeliveryFailure } from '../mail/mailer.js';
+import { describeDeliveryFailure, PROJECT_MAIL_UNAVAILABLE } from '../mail/mailer.js';
 import type { ShopTransactionRepository, TransactionRow } from '../repo/shop-transactions.js';
 import { orderMailContext, renderAdminMail, renderCustomerMail, sendOrderMail, type OrderMailerDeps } from './notify.js';
 
@@ -13,9 +13,25 @@ import { orderMailContext, renderAdminMail, renderCustomerMail, sendOrderMail, t
 
 export interface NotifyRunnerDeps extends OrderMailerDeps {
   transactions: ShopTransactionRepository;
-  /** The shop's notification address and mail mode for a project, or null when it has none. */
-  resolveChannel: (projectId: string, channelKey: string) => Promise<{ email: string; subject?: string; mode: 'globalSmtp' | 'userSmtp'; shopName: string } | null>;
+  /** The shop's notification address for a project, or null when it has none. */
+  resolveChannel: (projectId: string, channelKey: string) => Promise<{ email: string; subject?: string; shopName: string } | null>;
   log?: { warn: (o: unknown, m: string) => void; info: (o: unknown, m: string) => void };
+}
+
+/** The checkout channel's settings, as {@link makeOrderChannelResolver} reads them. */
+export type OrderChannelSettings = {
+  identity?: { name?: string };
+  website?: { shop?: { channels?: Array<{ kind: string; key: string; email?: string; subject?: string }> } };
+} | null;
+
+/** The checkout channel's notification address and the shop's name, or null when it has no address. */
+export function makeOrderChannelResolver(readSettings: (projectId: string) => Promise<OrderChannelSettings>): NotifyRunnerDeps['resolveChannel'] {
+  return async (projectId, channelKey) => {
+    const settings = await readSettings(projectId);
+    const channel = settings?.website?.shop?.channels?.find((c) => c.kind === 'checkout' && c.key === channelKey);
+    if (!channel?.email) return null;
+    return { email: channel.email, ...(channel.subject ? { subject: channel.subject } : {}), shopName: settings?.identity?.name ?? 'Shop' };
+  };
 }
 
 /** How many of each kind one pass handles. Bounded so a backlog drains steadily rather than in a spike. */
@@ -71,8 +87,8 @@ async function deliverOne(
   let ok = false;
   let error: string | null = null;
   try {
-    ok = await sendOrderMail(deps, txn.projectId, channel.mode, recipient, rendered, replyTo ?? undefined);
-    if (!ok) error = 'Mail is not configured for this delivery mode, or the mode is disabled instance-wide.';
+    ok = await sendOrderMail(deps, txn.projectId, recipient, rendered, replyTo ?? undefined);
+    if (!ok) error = PROJECT_MAIL_UNAVAILABLE;
   } catch (err) {
     // ★ Only the sanitized description escapes. A nodemailer error carries the SMTP banner and the
     // resolved IP, and for a project's own SMTP that is the tenant's infrastructure.

@@ -281,6 +281,7 @@ import { BookingCalendarRepository, CalendarReader, type FetchFeed } from '../bo
 import { ICS_LIMITS } from '../booking/ics-read.js';
 import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
 import { registerBookingFeedRoutes } from './booking-feed-routes.js';
+import { discoverCalendars, readCalendar, type DavTransport } from '../booking/caldav.js';
 import { logRequest } from './log-redact.js';
 import { BookingFeedRepository } from '../booking/feed.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
@@ -1822,6 +1823,8 @@ export interface AppOptions {
   importUrlFetch?: typeof pinnedFetchDetailed;
   /** The outbound fetcher for booking calendar feeds. Defaults to the pinned, SSRF-guarded fetch. Tests only. */
   bookingFeedFetch?: FetchFeed;
+  /** The WebDAV transport for CalDAV calendars. Defaults to the pinned, SSRF-guarded fetch. Tests only. */
+  bookingDavFetch?: DavTransport;
   /**
    * The platform's public ORIGIN (e.g. `https://cms.agency.com`; origin-only, no path). Sourced from
    * `SW_PUBLIC_URL`. Uses: baked into exported `Form` blocks so the static site posts submissions back
@@ -2190,9 +2193,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (r.reason === 'redirects') return { ok: false, error: 'the address redirects too often' };
       return { ok: false, error: 'the calendar could not be reached' };
     });
+  // CalDAV: the same guarded client, with WebDAV's methods and every status answered (207, 401, 404…).
+  const davFetch: DavTransport =
+    opts.bookingDavFetch ??
+    (async (url, init) => {
+      const r = await pinnedFetchDetailed(url, { method: init.method, headers: init.headers, body: init.body, rawStatus: true, timeoutMs: 20_000, maxBytes: ICS_LIMITS.maxBytes });
+      if (r.ok) return { ok: true, status: r.status, headers: r.headers ?? {}, text: new TextDecoder('utf-8').decode(r.bytes) };
+      if (r.reason === 'oversize') return { ok: false, error: 'the calendar is larger than 5 MB' };
+      if (r.reason === 'blocked') return { ok: false, error: 'this address is not allowed: it must be https:// and on the public internet' };
+      if (r.reason === 'redirects') return { ok: false, error: 'the server redirected elsewhere (a password is never sent on to another server)' };
+      return { ok: false, error: 'the calendar server could not be reached' };
+    });
   const bookingCalendarReader = new CalendarReader({
     calendars: bookingCalendarRepo,
     fetchFeed: fetchBookingFeed,
+    readCalDav: (source, from, to) => readCalendar(davFetch, source.url, source, from, to),
     decrypt: (url) => {
       if (!opts.encryptionKey) throw new Error('no encryption key');
       return decryptSecret(url, opts.encryptionKey);
@@ -11022,6 +11037,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       reader: bookingCalendarReader,
       readConfig: readBookingConfig,
       encrypt: (plaintext) => encryptSecret(plaintext, calendarKey),
+      discoverCalDav: (serverUrl, auth) => discoverCalendars(davFetch, serverUrl, auth),
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       rl,

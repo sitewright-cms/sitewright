@@ -17,6 +17,8 @@ export interface PinnedResponse {
   status: number;
   contentType: string;
   bytes: Uint8Array;
+  /** The response's headers, lower-cased, one value each (`etag`, `dav`…). */
+  headers?: Record<string, string>;
 }
 
 /** A 3xx hop: the resolved absolute Location to re-fetch (re-pinned + re-guarded on the next hop). */
@@ -53,6 +55,15 @@ export interface PinnedOptions {
   /** Redirect hops to follow before giving up. Defaults to {@link MAX_REDIRECTS}. */
   maxRedirects?: number;
   headers?: Record<string, string>;
+  /**
+   * The request's method (default GET) and body. WebDAV (CalDAV) uses PROPFIND, REPORT, PUT and DELETE.
+   * ★ Only reads follow a redirect (GET, HEAD, PROPFIND, REPORT, keeping their method): a write never does.
+   * ★ A request carrying credentials (`authorization`) never follows a redirect to another origin.
+   */
+  method?: string;
+  body?: string;
+  /** Every final status is a response (with its headers), not only a 2xx: WebDAV answers 207, 404, 412… */
+  rawStatus?: boolean;
   signal?: AbortSignal;
   /** Injectable resolver (tests); defaults to the real DNS lookup. */
   resolve?: (host: string) => Promise<{ address: string; family: number }[]>;
@@ -128,10 +139,28 @@ export async function pinnedFetchDetailed(rawUrl: string, opts: PinnedOptions = 
     const r = await once(url, opts);
     if (r === null) return { ok: false, reason: 'network' }; // legacy `_fetchOnce` seam shape
     if ('ok' in r) return r; // a PinnedFailure from this hop — surfaced verbatim
-    if ('redirect' in r) { url = r.redirect; continue; } // re-pinned + re-guarded on the next iteration
+    if ('redirect' in r) {
+      if (!redirectAllowed(url, r.redirect, opts)) return { ok: false, reason: 'redirects' };
+      url = r.redirect;
+      continue; // re-pinned + re-guarded on the next iteration
+    }
     return { ok: true, ...r };
   }
   return { ok: false, reason: 'redirects' }; // too many redirects
+}
+
+const FOLLOWS = new Set(['GET', 'HEAD', 'PROPFIND', 'REPORT']);
+
+/** Whether a request may follow a redirect from `from` to `to` (see {@link PinnedOptions.method}). */
+export function redirectAllowed(from: string, to: string, opts: Pick<PinnedOptions, 'method' | 'headers'>): boolean {
+  if (!FOLLOWS.has((opts.method ?? 'GET').toUpperCase())) return false;
+  const credentialed = Object.keys(opts.headers ?? {}).some((h) => h.toLowerCase() === 'authorization');
+  if (!credentialed) return true;
+  try {
+    return new URL(from).origin === new URL(to).origin;
+  } catch {
+    return false;
+  }
 }
 
 /** One pinned hop: a 2xx PinnedResponse, a {@link Redirect} (3xx with a resolvable Location), or a
@@ -196,13 +225,19 @@ function connectPinned(
         hostname: ip, // a literal IP → no DNS at connect time (pinned)
         family,
         port,
-        method: 'GET',
+        method: (opts.method ?? 'GET').toUpperCase(),
         path: `${u.pathname}${u.search}`,
         servername: host, // SNI + cert identity check against the REAL hostname
         // `host` last so a caller's headers can never override it (the pinned-IP connection must keep
         // the real Host for vhost routing + cert identity). UA + Accept default first so callers can
         // still override them (e.g. an image fetch narrowing Accept to image/*).
-        headers: { 'user-agent': DEFAULT_UA, accept: DEFAULT_ACCEPT, ...(opts.headers ?? {}), host: u.host },
+        headers: {
+          'user-agent': DEFAULT_UA,
+          accept: DEFAULT_ACCEPT,
+          ...(opts.headers ?? {}),
+          ...(opts.body !== undefined ? { 'content-length': String(Buffer.byteLength(opts.body)) } : {}),
+          host: u.host,
+        },
         timeout: timeoutMs,
       },
       (res) => {
@@ -210,16 +245,18 @@ function connectPinned(
         // A 3xx with a Location → hand the RESOLVED target back up to be re-pinned on the next hop (a bare
         // trailing-slash redirect, /foo → /foo/, is the common multi-page case). 1xx/4xx/5xx aren't real
         // content (a 404 error page must not be imported as a real site page).
-        if (status >= 300 && status < 400) {
+        if (status >= 300 && status < 400 && !(opts.rawStatus && !FOLLOWS.has((opts.method ?? 'GET').toUpperCase()))) {
           const loc = res.headers.location;
           res.destroy();
           if (!loc) return finish({ ok: false, reason: 'status', status });
           try { return finish({ redirect: new URL(loc, u).href }); } catch { return finish({ ok: false, reason: 'status', status }); }
         }
-        if (status < 200 || status >= 300) {
+        if ((status < 200 || status >= 300) && !opts.rawStatus) {
           res.destroy();
           return finish({ ok: false, reason: 'status', status });
         }
+        const headers: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.headers)) if (v !== undefined) headers[k.toLowerCase()] = Array.isArray(v) ? v.join(', ') : v;
         const contentType = String(res.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
         if (Number(res.headers['content-length'] ?? '0') > maxBytes) {
           res.destroy();
@@ -236,7 +273,7 @@ function connectPinned(
           }
           chunks.push(c);
         });
-        res.on('end', () => finish({ status, contentType, bytes: new Uint8Array(Buffer.concat(chunks)) }));
+        res.on('end', () => finish({ status, contentType, bytes: new Uint8Array(Buffer.concat(chunks)), headers }));
         res.on('error', () => finish({ ok: false, reason: 'network' }));
       },
     );
@@ -256,7 +293,7 @@ function connectPinned(
         }, { once: true });
       }
     }
-    req.end();
+    req.end(opts.body);
   });
 }
 /* v8 ignore stop */

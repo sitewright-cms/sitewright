@@ -1481,10 +1481,11 @@ export const bookingCalendars = sqliteTable(
       .notNull()
       .references(() => projects.id),
     resourceId: text('resource_id').notNull(),
-    kind: text('kind', { enum: ['ics'] }).notNull(),
+    /** `ics`: an iCalendar feed's address. `caldav`: a calendar on a CalDAV server (address, username and password). */
+    kind: text('kind', { enum: ['ics', 'caldav'] }).notNull(),
     /** The business's own label for it ("Anna's Google calendar"). */
     name: text('name').notNull(),
-    /** The feed's address, encrypted (AES-256-GCM envelope). */
+    /** The feed's address, or for CalDAV `{url, username, password}` as JSON, encrypted (AES-256-GCM envelope). */
     url: text('url', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>().notNull(),
     /** The feed's host, which says which service it is without giving the address away. */
     host: text('host').notNull(),

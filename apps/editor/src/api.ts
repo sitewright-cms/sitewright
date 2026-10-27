@@ -1384,7 +1384,8 @@ export interface PagespeedAuditResult {
 export interface BookingCalendar {
   id: string;
   resourceId: string;
-  kind: 'ics';
+  /** `ics`: an iCalendar feed's address. `caldav`: a calendar on a CalDAV server. */
+  kind: 'ics' | 'caldav';
   name: string;
   host: string;
   lastOkAt: number | null;
@@ -1771,8 +1772,14 @@ export const api = {
   /** The resources' outside calendars. Writers only (a 403 for anyone else). */
   listBookingCalendars: (projectId: string) => request<{ calendars: BookingCalendar[] }>('GET', `/projects/${projectId}/booking/calendars`),
   /** Connects a calendar to a resource of the SAVED set-up, and reads it at once. */
-  connectBookingCalendar: (projectId: string, body: { resourceId: string; name: string; url: string }) =>
+  connectBookingCalendar: (
+    projectId: string,
+    body: { resourceId: string; name: string; url: string } | { kind: 'caldav'; resourceId: string; name: string; url: string; username: string; password: string },
+  ) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars`, body),
+  /** A CalDAV account's calendars, to pick one to connect. Nothing is stored. */
+  discoverBookingCalDav: (projectId: string, body: { url: string; username: string; password: string }) =>
+    request<{ calendars: Array<{ url: string; name: string }> }>('POST', `/projects/${projectId}/booking/calendars/discover`, body),
   /** Reads a calendar again now, whatever is cached. */
   testBookingCalendar: (projectId: string, id: string) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}/test`, {}),

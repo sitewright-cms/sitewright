@@ -11,6 +11,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking reads CalDAV calendars.** Besides an iCalendar address, a resource's calendar can be a CalDAV account's
+  calendar: Nextcloud, Fastmail, iCloud, Radicale, Baïkal and other CalDAV servers.
+  - **Connecting:** the server's address, a username and an app password find the account's calendars (the
+    well-known address, the principal, the calendar home), and one of them is connected. Calendars that hold only
+    tasks are left out.
+  - **Reading:** the server is asked for the events of the stretch read (recurring ones included), and they are read
+    like any feed: in the worker, failing closed. Any answer that may leave an event out counts as unreadable: one
+    cut short, an entry that failed or came without its data, a malformed event, a body that is not WebDAV.
+  - **The password is a credential:** the calendar's address, username and password are stored encrypted together
+    and never returned. They never go to another server: not on a redirect, and not to an address a server names
+    on another host (iCloud's own hosts excepted). Answers are bounded in size and nesting.
+  - **Network:** the platform's guarded HTTPS client now also speaks WebDAV (PROPFIND and REPORT follow a redirect
+    on the same server; PUT and DELETE never follow one).
+  - **API:** `POST /projects/:id/booking/calendars/discover`, and `kind: "caldav"` on connect.
+  - Checked against a real Radicale server.
+
 - **Bookings in the business's own calendar.** The booking set-up's Settings tab makes a calendar address that
   Google Calendar, Outlook or Apple Calendar subscribes to. Every booking and open request then shows there and
   stays up to date, with no invitation to accept.

@@ -5,6 +5,7 @@ import type { ApiKeyCapability } from '../db/schema.js';
 import type { ProjectContext } from '../repo/context.js';
 import { CALENDAR_LIMITS, feedUrl, type BookingCalendarRepository, type CalendarReader, type CalendarRow } from '../booking/calendars.js';
 import type { EncryptedSecret } from '../crypto/secret.js';
+import { davUrl, type DavAuth, type FoundCalendar } from '../booking/caldav.js';
 
 /**
  * A resource's OUTSIDE CALENDARS: the iCalendar feeds its busy times are read from.
@@ -13,6 +14,10 @@ import type { EncryptedSecret } from '../crypto/secret.js';
  *   POST   /projects/:projectId/booking/calendars             connect one (read at once, so the answer says if it works)
  *   POST   /projects/:projectId/booking/calendars/:id/test    read it again now
  *   DELETE /projects/:projectId/booking/calendars/:id
+ *   POST   /projects/:projectId/booking/calendars/discover    a CalDAV account's calendars (nothing is stored)
+ *
+ * Two kinds: an iCalendar feed's address (`ics`), or a calendar on a CalDAV server (`caldav`: its address, a
+ * username and an app password, all three encrypted together).
  *
  * ★ A feed's address READS the calendar (Google calls it the "secret address"), so it is a credential: entered
  * here, stored encrypted, never returned (only its host is), never exported, never in the booking set-up's
@@ -26,16 +31,35 @@ export interface BookingCalendarDeps {
   reader: CalendarReader;
   readConfig: (projectId: string) => Promise<BookingConfig | null>;
   encrypt: (plaintext: string) => EncryptedSecret;
+  /** A CalDAV account's calendars. Absent: CalDAV is not offered. */
+  discoverCalDav?: (serverUrl: string, auth: DavAuth) => Promise<{ ok: true; calendars: FoundCalendar[] } | { ok: false; error: string }>;
   resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
   isWriter: (ctx: ProjectContext) => boolean;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   now?: () => number;
 }
 
-const ConnectSchema = z.strictObject({
-  resourceId: z.string().min(1).max(48),
-  name: z.string().trim().min(1).max(120),
+const ConnectSchema = z.union([
+  z.strictObject({
+    kind: z.literal('ics').optional(),
+    resourceId: z.string().min(1).max(48),
+    name: z.string().trim().min(1).max(120),
+    url: z.string().trim().min(1).max(2048),
+  }),
+  z.strictObject({
+    kind: z.literal('caldav'),
+    resourceId: z.string().min(1).max(48),
+    name: z.string().trim().min(1).max(120),
+    url: z.string().trim().min(1).max(2048),
+    username: z.string().min(1).max(320),
+    password: z.string().min(1).max(1024),
+  }),
+]);
+
+const DiscoverSchema = z.strictObject({
   url: z.string().trim().min(1).max(2048),
+  username: z.string().min(1).max(320),
+  password: z.string().min(1).max(1024),
 });
 
 /** A calendar as the editor sees it: never its address. */
@@ -78,19 +102,37 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
     const { project, ok } = await writer(req, 'content:write');
     if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const input = ConnectSchema.safeParse(req.body);
-    if (!input.success) return reply.code(400).send({ error: 'resourceId, name and url are needed' });
+    if (!input.success) return reply.code(400).send({ error: 'resourceId, name and url are needed (and a username and password for CalDAV)' });
     const timeZone = zoneOf(await deps.readConfig(project.id), input.data.resourceId);
     if (!timeZone) return reply.code(400).send({ error: `there is no resource "${input.data.resourceId}" in the booking set-up` });
-    const url = feedUrl(input.data.url);
-    if (!url) return reply.code(400).send({ error: 'the address must be an https:// (or webcal://) address' });
+    const caldav = input.data.kind === 'caldav';
+    if (caldav && !deps.discoverCalDav) return reply.code(400).send({ error: 'CalDAV calendars are not available on this server' });
+    const url = caldav ? davUrl(input.data.url)?.href ?? null : feedUrl(input.data.url);
+    if (!url) return reply.code(400).send({ error: caldav ? 'the calendar address must start with https://' : 'the address must be an https:// (or webcal://) address' });
     if ((await deps.calendars.count(project.id)) >= CALENDAR_LIMITS.perProject) {
       return reply.code(409).send({ error: `a project connects at most ${CALENDAR_LIMITS.perProject} calendars` });
     }
+    // ★ A CalDAV calendar's address, username and password are one secret, encrypted together.
+    const secret = input.data.kind === 'caldav' ? JSON.stringify({ url, username: input.data.username, password: input.data.password }) : url;
     const row = await deps.calendars.insert(
-      { projectId: project.id, resourceId: input.data.resourceId, kind: 'ics', name: input.data.name, url: deps.encrypt(url), host: new URL(url).host },
+      { projectId: project.id, resourceId: input.data.resourceId, kind: caldav ? 'caldav' : 'ics', name: input.data.name, url: deps.encrypt(secret), host: new URL(url).host },
       now(),
     );
     return reply.code(201).send(await readNow(project.id, row, timeZone));
+  });
+
+  // A CalDAV account's calendars, to pick one. Nothing is stored; the password is only used for this.
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/booking/calendars/discover', { config: deps.rl(10), bodyLimit: 8 * 1024 }, async (req, reply) => {
+    const { ok } = await writer(req, 'content:write');
+    if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    if (!deps.discoverCalDav) return reply.code(400).send({ error: 'CalDAV calendars are not available on this server' });
+    const input = DiscoverSchema.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: 'the server address, a username and a password are needed' });
+    const found = await deps
+      .discoverCalDav(input.data.url, { username: input.data.username, password: input.data.password })
+      .catch(() => ({ ok: false as const, error: 'the calendar server answered something that could not be read' }));
+    reply.header('cache-control', 'no-store');
+    return found.ok ? reply.send({ calendars: found.calendars }) : reply.code(400).send({ error: found.error });
   });
 
   app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/booking/calendars/:id/test', { config: deps.rl(20) }, async (req, reply) => {

@@ -1031,6 +1031,7 @@ export function ProjectView({
           section={tab === 'corporate-identity' ? 'identity' : 'website'}
           onLocalesChanged={() => void onLocalesChangedInSettings()}
           onOpenOrders={ordersAvailable && onSelectTab ? () => onSelectTab('orders') : undefined}
+          onOpenBookings={bookingsAvailable && onSelectTab ? () => onSelectTab('bookings') : undefined}
           isStaff={isStaff}
         />
       ) : tab === 'orders' && ordersAvailable ? (

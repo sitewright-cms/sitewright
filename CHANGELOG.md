@@ -11,6 +11,22 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking set-up screen.** A Booking tile in the Website settings (Modules) opens the whole set-up. Until now it
+  was reachable only through agents and the API.
+  - **Offerings:** what visitors book, in one of four kinds: appointments, set times (tours, classes), from–to
+    (rooms by the hour), and nights or days (rentals). Each has its own confirmation (at once, or on request),
+    notice, horizon and quantity, and shows the snippet that puts it on a page.
+  - **Resources:** what a booking takes. Each has its time zone, capacity, opening hours, blocked times (whole days,
+    once, every week), the address its invitations go to, and its outside calendars. Calendars are connected, read
+    again and removed right there, and each shows whether it can be read and why not.
+  - **Settings:** the business's address, the customer's booking page, and spam protection (proof of work
+    recommended, or the project's captcha).
+  - **Saving:** the set-up is checked against the same rules as the API before it is saved, so a mistake is marked
+    at its field, with a count on its tab. It is saved with the version it was read at, so a change made meanwhile
+    by an agent or in another tab is not overwritten. Ids follow the names until first saved, then stay fixed.
+  - **Layout:** the Modules band now has Shop, Booking and Consent side by side, with Languages and Translations
+    below.
+
 - **Booking reads the business's own calendars.** Each resource can be connected to the iCalendar feed of a calendar it
   keeps elsewhere, and a time taken there is neither offered nor bookable. That covers Google's secret address, an
   Outlook published calendar, an iCloud calendar (`webcal://` works), and the exports of rental platforms such as

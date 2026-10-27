@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { siteUrlIssue, type JsonValue, type PaymentBindingPublic } from '@sitewright/schema';
+import { siteUrlIssue, type BookingConfig, type JsonValue, type PaymentBindingPublic } from '@sitewright/schema';
 import {
   Globe, Sparkles, PanelTop, Signpost, ShoppingCart, Languages, MoonStar, MoveHorizontal,
   ShieldAlert, ShieldCheck, Image as ImageIcon, Trash2, Search, BookOpenText,
-  BarChart3, MonitorDown,
+  BarChart3, MonitorDown, CalendarClock,
 } from 'lucide-react';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, Labelled } from './ui';
@@ -28,6 +28,8 @@ import { Band, BudgetRows, EmptyRows, PartRow, Row, RowBlock, SwitchRow, Tile } 
 import { SettingsSheet, type SheetSave } from './board/Sheet';
 import { useSheet } from './board/use-sheet';
 import { JsonDataStatus } from './website/JsonDataStatus';
+import { BookingSetupModal } from './booking/BookingSetupModal';
+import { bookingStatus, protectionLabel } from './booking/model';
 import { EffectsControls, EFFECTS_HELP } from './website/EffectsControls';
 import { SecuritySheet } from './website/SecuritySheet';
 import { SkeletonMap } from './website/SkeletonMap';
@@ -94,6 +96,8 @@ const HELP = {
   redirects: 'Emitted to .htaccess + _redirects on publish. Reorderable, because the first match wins.',
   search:
     'Scripts where marks carry meaning (Thai, Devanagari, Hebrew, Arabic) are never affected either way.',
+  booking:
+    'Appointments, rooms, tours, rentals: anything booked for a date or a time. Set up what visitors book and what a booking takes, connect the calendars kept elsewhere so a time taken there is not offered, then put an offering’s snippet on a page. Booking is on while something is offered; bookings and requests are answered in the Bookings tab.',
   shop: "A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). The shop's wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels.",
   analytics:
     'Built-in statistics count visits on the platform itself — human or bot, device, country, pages, sources and form submissions — with no cookies and no third party; the numbers are in the Statistics tab, and publishing adds the counter to every page. Analytics tools are what the site also reports to: Google Analytics, Tag Manager, Plausible, Umami, Matomo, Fathom, Simple Analytics or your own script. Tools that set no cookies can load without asking; the rest wait for consent in the cookie banner. Never paste a tracker into Head HTML: it would skip consent, and the site’s security policy blocks it on platform hosting.',
@@ -122,6 +126,7 @@ export function WebsiteSection({
   onLocalesChanged,
   onReloadSettings,
   onOpenOrders,
+  onOpenBookings,
   isStaff = false,
 }: {
   form: SettingsForm;
@@ -140,6 +145,8 @@ export function WebsiteSection({
   onReloadSettings?: () => Promise<void> | void;
   /** Switches to the project's Orders tab — passed exactly while that tab is showing (payments active). */
   onOpenOrders?: () => void;
+  /** Switches to the project's Bookings tab — passed exactly while that tab is showing (something is offered). */
+  onOpenBookings?: () => void;
   /** The viewer is agency staff (an admin or a developer). Only staff may switch the built-in statistics ON. */
   isStaff?: boolean;
 }) {
@@ -151,6 +158,7 @@ export function WebsiteSection({
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const [consentOpen, setConsentOpen] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [pruning, setPruning] = useState(false);
   const [pruneMsg, setPruneMsg] = useState('');
@@ -183,19 +191,21 @@ export function WebsiteSection({
     };
   }, [projectId]);
 
-  // Whether the booking set-up offers anything: its strings then show in Translations & Labels. Read when
-  // that sheet opens, so an offering added meanwhile is there. No set-up, or an unreadable one, offers nothing.
-  const [bookingEnabled, setBookingEnabled] = useState(false);
+  // The booking set-up, for the Booking tile; and whether it offers anything, when its strings show in
+  // Translations & Labels. Read on the way in and again when that sheet opens (an agent may have added an
+  // offering meanwhile). No set-up, or an unreadable one, offers nothing.
+  const [booking, setBooking] = useState<BookingConfig | null>(null);
+  const bookingEnabled = (booking?.offerings.length ?? 0) > 0;
   useEffect(() => {
-    if (sheet !== 'translations') return;
+    if (sheet !== null && sheet !== 'translations') return;
     let live = true;
     void Promise.resolve()
       .then(() => api.getBooking(projectId))
       .then((r) => {
-        if (live) setBookingEnabled((r.item.offerings ?? []).length > 0);
+        if (live) setBooking(r.item);
       })
       .catch(() => {
-        if (live) setBookingEnabled(false);
+        if (live) setBooking(null);
       });
     return () => {
       live = false;
@@ -512,7 +522,7 @@ export function WebsiteSection({
           title="Shop"
           icon={<ShoppingCart className="h-4 w-4" />}
           status={shopStatus(form)}
-          span="c3"
+          span="c4"
           md={3}
           help={HELP.shop}
           off={!form.shopEnabled}
@@ -550,10 +560,35 @@ export function WebsiteSection({
         </Tile>
 
         <Tile
+          title="Booking"
+          icon={<CalendarClock className="h-4 w-4" />}
+          status={bookingStatus(booking)}
+          span="c4"
+          md={3}
+          help={HELP.booking}
+          off={!bookingEnabled}
+        >
+          {booking && (booking.offerings.length > 0 || booking.resources.length > 0) ? (
+            <RowBlock n={5}>
+              <Row label="Offerings" value={booking.offerings.length ? booking.offerings.map((o) => o.name).join(', ') : 'none: booking is off'} />
+              <Row label="Resources" value={booking.resources.length ? booking.resources.map((r) => r.name).join(', ') : 'none'} />
+              <Row label="Spam protection" value={protectionLabel(booking)} />
+              <PartRow label="Booking set-up" ariaLabel="Edit the booking set-up" onClick={() => setBookingOpen(true)} />
+              {onOpenBookings ? <PartRow label="Bookings" value="in the Bookings tab" ariaLabel="Open the Bookings tab" onClick={onOpenBookings} /> : <Row label="Bookings" value="once something is offered" />}
+            </RowBlock>
+          ) : (
+            <RowBlock n={5}>
+              <EmptyRows n={4}>Appointments, rooms, tours and rentals, read against the calendars you already keep.</EmptyRows>
+              <PartRow label="Booking set-up" value="start" ariaLabel="Set up booking" onClick={() => setBookingOpen(true)} />
+            </RowBlock>
+          )}
+        </Tile>
+
+        <Tile
           title="Consent"
           icon={<ShieldCheck className="h-4 w-4" />}
           status={consentStatus(form)}
-          span="c3"
+          span="c4"
           md={3}
           help={HELP.consent}
           off={form.consent?.enabled !== true}
@@ -590,7 +625,7 @@ export function WebsiteSection({
           )}
         </Tile>
 
-        <Tile title="Languages" icon={<Languages className="h-4 w-4" />} status={languagesStatus(form)} span="c3" md={3} onOpen={() => setSheet('languages')}>
+        <Tile title="Languages" icon={<Languages className="h-4 w-4" />} status={languagesStatus(form)} span="c6" md={3} onOpen={() => setSheet('languages')}>
           <BudgetRows
             n={5}
             items={localeCodes}
@@ -599,7 +634,7 @@ export function WebsiteSection({
           />
         </Tile>
 
-        <Tile title="Translations" icon={<BookOpenText className="h-4 w-4" />} status={translationsStatus(form)} span="c3" md={3} onOpen={() => setSheet('translations')}>
+        <Tile title="Translations" icon={<BookOpenText className="h-4 w-4" />} status={translationsStatus(form)} span="c6" md={3} onOpen={() => setSheet('translations')}>
           {coverage.length > 0 ? (
             <BudgetRows
               n={5}
@@ -675,6 +710,7 @@ export function WebsiteSection({
           onClose={() => setDataOpen(false)}
         />
       )}
+      {bookingOpen && <BookingSetupModal projectId={projectId} onClose={() => setBookingOpen(false)} onSaved={setBooking} />}
       {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} gateways={gateways} onEditLabels={editLabels} />}
       {paymentsOpen && (
         <PaymentCredentialsModal

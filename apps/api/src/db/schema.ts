@@ -66,6 +66,8 @@ export const CONTENT_KIND_VALUES = [
   'payment_gateway',
   /** Level 2 — one project's credentials for a gateway. Values encrypted at rest, per mode. */
   'project_payment',
+  /** The project's booking set-up: resources and offerings. A singleton, id `booking`; no secrets, so exported. */
+  'booking',
 ] as const;
 
 export const projects = sqliteTable(
@@ -858,6 +860,8 @@ export const INSTANCE_SETTINGS_ID = 'instance';
 
 /** The fixed entity id of a project's SMTP-config singleton (content kind `project_smtp`). */
 export const PROJECT_SMTP_ENTITY_ID = 'smtp';
+/** The one `booking` content entity a project has. */
+export const BOOKING_ENTITY_ID = 'booking';
 
 /** The fixed entity id of a project's captcha-config singleton (content kind `project_captcha`). */
 export const PROJECT_CAPTCHA_ENTITY_ID = 'captcha';

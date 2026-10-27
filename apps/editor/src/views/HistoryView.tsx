@@ -30,7 +30,7 @@ const rowEntrance = (index: number) => ({
   animate: { opacity: 1, y: 0 },
   transition: { type: 'spring' as const, stiffness: 320, damping: 30, delay: Math.min(index % PAGE, 12) * 0.035 },
 });
-const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings'];
+const KIND_FILTERS = ['page', 'template', 'snippet', 'translation', 'dataset', 'entry', 'form', 'imagemap', 'settings', 'booking'];
 // `pr-8`, not a symmetric `px-2.5`: a native <select> paints its own chevron INSIDE its box, so equal
 // padding leaves the longest value ("All content", "Dataset Entry") touching the arrow.
 const selectCls =

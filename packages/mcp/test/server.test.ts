@@ -1833,6 +1833,14 @@ describe('createSitewrightMcpServer — tool wiring', () => {
 });
 
 describe('normalizePutData — forgiving put_content normalization', () => {
+  it('★ never injects an id into the path-keyed singletons, whose STRICT schema would refuse it', () => {
+    const booking = { resources: [], offerings: [] };
+    expect(normalizePutData('booking', 'booking', undefined, booking)).toEqual(booking);
+    expect(normalizePutData('settings', 'settings', undefined, { identity: {} })).not.toHaveProperty('id');
+    // An ordinary keyed kind still gets its id from the path.
+    expect(normalizePutData('form', 'contact', undefined, { name: 'Contact' })).toMatchObject({ id: 'contact' });
+  });
+
   it('defaults an OMITTED entry status to published (a draft entry is invisible on the published site)', () => {
     const out = normalizePutData('entry', 'row1', 'venues', { title: 'Barn' }) as Record<string, unknown>;
     expect(out.status).toBe('published');

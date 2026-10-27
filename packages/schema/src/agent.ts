@@ -2382,6 +2382,7 @@ export const CAPABILITY_MAP: readonly { need: string; where: string }[] = [
   { need: "MEASURE the original's real values (font-size, padding, colour, gradient, radius, shadow, transform)", where: 'inspect_source({ pageId, selectors }) — computed styles + rects off the LIVE original; side:"build" measures your clone the same way' },
   { need: 'read chrome/markup a site builds in JavaScript (the stored import has none)', where: 'inspect_source({ pageId, selectors, html:true }) — returns the SETTLED outerHTML' },
   { need: 'every {{sw-*}} helper, data-sw-* directive, binding, loop var', where: 'get_reference — drift-proof, derived from the engine' },
+  { need: 'appointments, room or rental bookings: who or what is booked, when it is open, what visitors can book', where: 'get_content("booking","booking") / put_content({ kind:"booking", id:"booking", data:{ resources, offerings } })' },
 ];
 
 /** How each writable content kind is written (tool + the one shape gotcha most likely to trip a write). */
@@ -2394,6 +2395,7 @@ export const WRITE_KINDS: readonly { kind: string; tool: string; shape: string }
   { kind: 'form', tool: 'put_content({ kind:"form", id, data })', shape: 'form definition (fields, endpoint) — get_guide("templates")' },
   { kind: 'template', tool: 'put_content({ kind:"template", id, data })', shape: 'a reusable page layout — get_guide("templates")' },
   { kind: 'snippet', tool: 'put_content({ kind:"snippet", id, data })', shape: 'a reusable {{> snippet}} partial source' },
+  { kind: 'booking', tool: 'put_content({ kind:"booking", id:"booking", data })', shape: '{ resources:[{ id, name, timeZone, capacity?, hours?, blocks? }], offerings:[{ id, name, resourceIds, mode:"duration"|"slots"|"range"|"days", … }] } — ONE set-up per project, a full replace (read it first); unknown keys are refused' },
   { kind: 'language', tool: 'add_language({ locale })', shape: 'registers the locale AND scaffolds an inherited page per page — then fill each variant\'s data/title; rows translate via entry `translations`. (The "translation" content kind is legacy — do not use it.)' },
 ];
 

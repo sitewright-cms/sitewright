@@ -50,4 +50,5 @@ export const KIND_LABEL: Record<string, string> = {
   form: 'Form',
   imagemap: 'Image map',
   settings: 'Settings',
+  booking: 'Booking',
 };

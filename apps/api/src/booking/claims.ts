@@ -207,6 +207,28 @@ export class BookingClaimsRepository {
   }
 
   /**
+   * The bookings and open requests overlapping [from, to), for the business's calendar feed: in order, at most
+   * `limit`. Holds are left out (a visitor still filling in the form has booked nothing yet).
+   */
+  async forFeed(projectId: string, from: number, to: number, now: number, limit: number, resourceId?: string): Promise<ClaimRow[]> {
+    return this.db
+      .select()
+      .from(bookingClaims)
+      .where(
+        and(
+          eq(bookingClaims.projectId, projectId),
+          inArray(bookingClaims.state, ['pending', 'booked']),
+          live(now),
+          gt(bookingClaims.endAt, new Date(from)),
+          lt(bookingClaims.startAt, new Date(to)),
+          resourceId === undefined ? undefined : eq(bookingClaims.resourceId, resourceId),
+        ),
+      )
+      .orderBy(asc(bookingClaims.startAt))
+      .limit(Math.max(1, limit));
+  }
+
+  /**
    * Forgets what has ended: lapsed holds and requests, and ledger bookings past their retention. Run by
    * the maintenance sweep; the customers' details go with the rows. In batches, so a backlog never holds
    * the write lock in one long statement; what a pass leaves, the next one takes.

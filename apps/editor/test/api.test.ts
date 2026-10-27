@@ -1046,6 +1046,21 @@ describe('api client', () => {
     expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toEqual({ resourceId: 'anna', name: 'Google', url: 'https://cal.example/a.ics' });
   });
 
+  it('reads, renews and switches off the bookings feed', async () => {
+    const feed = { url: 'https://site.example/b/p/feed/t.ics', webcalUrl: 'webcal://site.example/b/p/feed/t.ics', createdAt: 1, lastFetchedAt: null };
+    fetchMock.mockResolvedValue(jsonResponse(200, { feed: null }));
+    expect((await api.getBookingFeed('p')).feed).toBeNull();
+    fetchMock.mockResolvedValue(jsonResponse(201, { feed }));
+    expect((await api.renewBookingFeed('p')).feed).toEqual(feed);
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    await api.disableBookingFeed('p');
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init.method ?? 'GET'])).toEqual([
+      ['/projects/p/booking/feed', 'GET'],
+      ['/projects/p/booking/feed', 'POST'],
+      ['/projects/p/booking/feed', 'DELETE'],
+    ]);
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

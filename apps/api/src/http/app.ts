@@ -280,6 +280,9 @@ import { BookingClaimsRepository } from '../booking/claims.js';
 import { BookingCalendarRepository, CalendarReader, type FetchFeed } from '../booking/calendars.js';
 import { ICS_LIMITS } from '../booking/ics-read.js';
 import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
+import { registerBookingFeedRoutes } from './booking-feed-routes.js';
+import { logRequest } from './log-redact.js';
+import { BookingFeedRepository } from '../booking/feed.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
 import { BookingNotifier, notifyLapsed, type NotifierSettings } from '../booking/notify.js';
 import { registerBookingAdminRoutes } from './booking-admin-routes.js';
@@ -2360,6 +2363,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     logger: opts.logger
       ? {
           level: opts.logLevel ?? 'info',
+          // A path can be a credential (the bookings feed's token): the logged URL is masked (log-redact.ts).
+          serializers: { req: logRequest },
           redact: [
             // Bearer tokens (incl. the short-lived agent token used for in-process /mcp injects) — never
             // log them, even if a future plugin serializes request headers.
@@ -11019,6 +11024,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       encrypt: (plaintext) => encryptSecret(plaintext, calendarKey),
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      rl,
+    });
+    // The business's bookings as a feed its own calendar subscribes to: the address's token is encrypted the same way.
+    registerBookingFeedRoutes(app, {
+      feeds: new BookingFeedRepository(db),
+      claims: bookingClaimsRepo,
+      readConfig: readBookingConfig,
+      publicProject: async (projectId) => {
+        if (projectId === GLOBAL_SCOPE_ID) return null;
+        const project = await projects.get(projectId).catch((err: unknown) => {
+          if (err instanceof NotFoundError) return null;
+          throw err;
+        });
+        return project && !project.deletedAt ? { name: project.name } : null;
+      },
+      encrypt: (plaintext) => encryptSecret(plaintext, calendarKey),
+      decrypt: (envelope) => decryptSecret(envelope, calendarKey),
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      publicBase: () => opts.publicUrl ?? '',
       rl,
     });
     // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.

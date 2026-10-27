@@ -29,6 +29,8 @@ vi.mock('../src/api', () => {
       connectBookingCalendar: (p: string, b: unknown) => connectBookingCalendar(p, b),
       testBookingCalendar: (p: string, id: string) => testBookingCalendar(p, id),
       removeBookingCalendar: (p: string, id: string) => removeBookingCalendar(p, id),
+      // The Settings tab's calendar address (its own tests are in booking-feed-section).
+      getBookingFeed: async () => ({ feed: null }),
     },
   };
 });

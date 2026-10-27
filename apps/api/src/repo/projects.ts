@@ -3,6 +3,7 @@ import { desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   bookingCalendars,
+  bookingFeeds,
   bookingClaims,
   bookingMails,
   agentGrants,
@@ -223,6 +224,7 @@ export class ProjectRepository {
       // Booking claims: holds, requests and the small ledger. The bookings in owners' calendars are theirs.
       await tx.delete(bookingClaims).where(eq(bookingClaims.projectId, id));
       await tx.delete(bookingCalendars).where(eq(bookingCalendars.projectId, id));
+      await tx.delete(bookingFeeds).where(eq(bookingFeeds.projectId, id));
       await tx.delete(bookingMails).where(eq(bookingMails.projectId, id));
       await tx.delete(projects).where(eq(projects.id, id));
     });

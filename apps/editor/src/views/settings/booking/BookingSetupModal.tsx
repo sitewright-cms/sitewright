@@ -7,6 +7,7 @@ import { useUnsavedWork } from '../../../lib/unsaved-work';
 import { gradientSurface, ghostButton } from '../../../theme';
 import { Modal } from '../../ui/Modal';
 import { useDialogs } from '../../ui/Dialogs';
+import { FeedSection } from './FeedSection';
 import { GeneralPanel } from './GeneralPanel';
 import { OfferingsPanel } from './OfferingsPanel';
 import { ResourcesPanel, type CalendarAccess } from './ResourcesPanel';
@@ -257,7 +258,13 @@ export function BookingSetupModal({ projectId, onClose, onSaved }: { projectId: 
                   onRemoveBlocked={(text) => setNotice({ tone: 'error', text })}
                 />
               )}
-              {tab === 'general' && <GeneralPanel draft={draft} onChange={edit} issues={issues} />}
+              {tab === 'general' && (
+                <div className="flex flex-col gap-5">
+                  <GeneralPanel draft={draft} onChange={edit} issues={issues} />
+                  {/* The SAVED resources: a feed for one names it by an id the server knows. */}
+                  <FeedSection projectId={projectId} resources={saved.resources} />
+                </div>
+              )}
             </div>
           </>
         )}

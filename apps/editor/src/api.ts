@@ -1398,6 +1398,19 @@ export interface BookingCalendarReading {
   reading: { ok: boolean; error?: string };
 }
 
+/**
+ * The business's bookings as a calendar feed its own calendar subscribes to. The address is a secret (it lists
+ * customers' details): writers only.
+ */
+export interface BookingFeed {
+  url: string;
+  /** The same address for a calendar that subscribes on a click (Apple Calendar, desktop Outlook). */
+  webcalUrl: string;
+  createdAt: number;
+  /** When a calendar last fetched it, or null if none has yet. */
+  lastFetchedAt: number | null;
+}
+
 /** One booking or request, as the Bookings tab lists it. Times are instants; `timeZone` is the resource's clock. */
 export interface BookingItem {
   id: string;
@@ -1764,6 +1777,11 @@ export const api = {
   testBookingCalendar: (projectId: string, id: string) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}/test`, {}),
   removeBookingCalendar: (projectId: string, id: string) => request<{ ok: true }>('DELETE', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}`),
+  /** The bookings feed's address, or null while it is off. */
+  getBookingFeed: (projectId: string) => request<{ feed: BookingFeed | null }>('GET', `/projects/${projectId}/booking/feed`),
+  /** Switches the feed on, or gives it a new address: the previous one stops working. */
+  renewBookingFeed: (projectId: string) => request<{ feed: BookingFeed }>('POST', `/projects/${projectId}/booking/feed`, {}),
+  disableBookingFeed: (projectId: string) => request<{ ok: true }>('DELETE', `/projects/${projectId}/booking/feed`),
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (projectId: string) =>

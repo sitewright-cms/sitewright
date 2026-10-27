@@ -223,7 +223,7 @@ import { registerAiConfigRoutes, AiTestBodySchema } from './ai-config-routes.js'
 import { buildAgentProvider } from '../ai/build-provider.js';
 import { isActiveAgentToken } from '../ai/agent-token.js';
 import { testAiProvider } from '../ai/connectivity.js';
-import { decryptSecret } from '../crypto/secret.js';
+import { decryptSecret, encryptSecret } from '../crypto/secret.js';
 import { PublishStore, PDF_MEDIA_CSP, SVG_MEDIA_CSP } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS, PREVIEW_SCROLL_BRIDGE_JS } from './preview-site-runtime.js';
 import { draftPageForPath, draftPageNotice } from './preview-draft-page.js';
@@ -277,6 +277,9 @@ import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { BookingClaimsRepository } from '../booking/claims.js';
+import { BookingCalendarRepository, CalendarReader, type FetchFeed } from '../booking/calendars.js';
+import { ICS_LIMITS } from '../booking/ics-read.js';
+import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
 import { BookingNotifier, notifyLapsed, type NotifierSettings } from '../booking/notify.js';
 import { registerBookingAdminRoutes } from './booking-admin-routes.js';
@@ -1814,6 +1817,8 @@ export interface AppOptions {
    * TOCTOU window that a resolve-then-fetch guard leaves open).
    */
   importUrlFetch?: typeof pinnedFetchDetailed;
+  /** The outbound fetcher for booking calendar feeds. Defaults to the pinned, SSRF-guarded fetch. Tests only. */
+  bookingFeedFetch?: FetchFeed;
   /**
    * The platform's public ORIGIN (e.g. `https://cms.agency.com`; origin-only, no path). Sourced from
    * `SW_PUBLIC_URL`. Uses: baked into exported `Form` blocks so the static site posts submissions back
@@ -2162,7 +2167,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!parsed.success) app.log.warn({ projectId, issues: parsed.error.issues.length }, 'booking set-up does not parse; taking no bookings');
     return parsed.success ? parsed.data : null;
   };
-  const bookingService = new BookingService({ claims: bookingClaimsRepo, readConfig: readBookingConfig });
+  // The resources' outside calendars (iCalendar feeds), read through the SSRF-guarded fetch and cached.
+  const bookingCalendarRepo = new BookingCalendarRepository(db);
+  const fetchBookingFeed: FetchFeed =
+    opts.bookingFeedFetch ??
+    (async (url) => {
+      const r = await pinnedFetchDetailed(url, {
+        timeoutMs: 15_000,
+        maxBytes: ICS_LIMITS.maxBytes,
+        headers: { accept: 'text/calendar, text/plain;q=0.9, */*;q=0.1' },
+      });
+      if (r.ok) return { ok: true, text: new TextDecoder('utf-8').decode(r.bytes) };
+      // In words the business can act on, and never which internal address a name resolved to.
+      if (r.reason === 'status') {
+        return { ok: false, error: r.status === 401 || r.status === 403 || r.status === 404 ? `the calendar answered ${r.status}: check the address (a secret address that was reset stops working)` : `the calendar answered ${r.status}` };
+      }
+      if (r.reason === 'oversize') return { ok: false, error: 'the calendar is larger than 5 MB' };
+      if (r.reason === 'blocked') return { ok: false, error: 'this address is not allowed: it must be https:// and on the public internet' };
+      if (r.reason === 'redirects') return { ok: false, error: 'the address redirects too often' };
+      return { ok: false, error: 'the calendar could not be reached' };
+    });
+  const bookingCalendarReader = new CalendarReader({
+    calendars: bookingCalendarRepo,
+    fetchFeed: fetchBookingFeed,
+    decrypt: (url) => {
+      if (!opts.encryptionKey) throw new Error('no encryption key');
+      return decryptSecret(url, opts.encryptionKey);
+    },
+    log: { warn: (o, m) => app.log.warn(o, m) },
+  });
+  const bookingService = new BookingService({ claims: bookingClaimsRepo, readConfig: readBookingConfig, external: bookingCalendarReader });
   const releasesRepo = new ReleaseRepository(db);
   // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
   // only these exact hosts may be saved as a project's SMTP. Default: any host
@@ -10974,6 +11008,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       encryptionKey: opts.encryptionKey,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       captcha: captchaVerifier,
+      rl,
+    });
+    // The resources' outside calendars: their feed addresses are credentials, encrypted like the above.
+    const calendarKey = opts.encryptionKey;
+    registerBookingCalendarRoutes(app, {
+      calendars: bookingCalendarRepo,
+      reader: bookingCalendarReader,
+      readConfig: readBookingConfig,
+      encrypt: (plaintext) => encryptSecret(plaintext, calendarKey),
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       rl,
     });
     // Per-project "bring your own agent" AI config — encrypted key, like deploy targets.

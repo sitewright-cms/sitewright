@@ -1468,6 +1468,37 @@ export const bookingClaims = sqliteTable(
 );
 
 /**
+ * BOOKING CALENDARS: the outside calendars a resource's busy times are read from (an iCalendar feed: Google's
+ * secret address, an Outlook published calendar, an Apple calendar, a rental platform's export). The feed's
+ * address READS the calendar, so it is a credential: stored encrypted, never returned, never exported. The last
+ * reading's outcome is kept for the business to see. A per-project cap bounds the table.
+ */
+export const bookingCalendars = sqliteTable(
+  'booking_calendars',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    resourceId: text('resource_id').notNull(),
+    kind: text('kind', { enum: ['ics'] }).notNull(),
+    /** The business's own label for it ("Anna's Google calendar"). */
+    name: text('name').notNull(),
+    /** The feed's address, encrypted (AES-256-GCM envelope). */
+    url: text('url', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>().notNull(),
+    /** The feed's host, which says which service it is without giving the address away. */
+    host: text('host').notNull(),
+    lastOkAt: integer('last_ok_at', { mode: 'timestamp_ms' }),
+    lastError: text('last_error'),
+    /** Events in the feed at the last good reading. */
+    lastEvents: integer('last_events'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('booking_calendars_resource').on(t.projectId, t.resourceId)],
+);
+
+/**
  * BOOKING MAILS on their way: the confirmations, requests and cancellations a booking sends the customer and
  * the business, each rendered when the booking happened (a cancelled booking has no row left to render from).
  * A row is DELETED once its mail is sent; one that keeps failing backs off (the form deliveries' schedule) and

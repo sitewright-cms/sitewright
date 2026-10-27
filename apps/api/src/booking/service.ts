@@ -3,6 +3,8 @@ import { KeyedQueue } from '../runtime/keyed-queue.js';
 import { checkRequest, listAvailability, type Availability, type BookingRequest, type CheckFailure } from './availability.js';
 import { BOOKING_CLAIM_LIMITS, type BookingClaimsRepository, type ClaimRow, type ClaimState } from './claims.js';
 import { DAY_MS, MINUTE_MS } from './zoned.js';
+import type { ExternalBusy } from './calendars.js';
+import type { Busy } from './occupancy.js';
 
 /**
  * BOOKING: availability and claims for one project, over its configuration and the claims table.
@@ -21,7 +23,17 @@ export interface BookingServiceDeps {
   readonly claims: BookingClaimsRepository;
   /** The project's booking configuration, or null when it has none. */
   readonly readConfig: (projectId: string) => Promise<BookingConfig | null>;
+  /** The resources' outside calendars (iCalendar feeds), read for their busy times. None: only the claims count. */
+  readonly external?: ExternalBusy;
   readonly now?: () => number;
+}
+
+/** Two busy maps as one. */
+function mergeBusy(a: Map<string, Busy[]>, b: Map<string, Busy[]>): Map<string, Busy[]> {
+  if (b.size === 0) return a;
+  const out = new Map(a);
+  for (const [id, list] of b) out.set(id, [...(out.get(id) ?? []), ...list]);
+  return out;
 }
 
 export interface ClaimOptions {
@@ -150,7 +162,12 @@ export class BookingService {
     const start = Math.min(Math.max(from, now), now + READ_AHEAD_MS);
     const end = Math.min(to, now + READ_AHEAD_MS);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return listAvailability({ ...query, busy: new Map() });
-    const busy = await this.deps.claims.busy(projectId, found.offering.resourceIds, start - MARGIN_MS, end + reach(found.offering) + MARGIN_MS, now);
+    const from_ = start - MARGIN_MS;
+    const to_ = end + reach(found.offering) + MARGIN_MS;
+    const busy = mergeBusy(
+      await this.deps.claims.busy(projectId, found.offering.resourceIds, from_, to_, now),
+      await this.outsideBusy(projectId, found.offering, found.config, from_, to_, false),
+    );
     return listAvailability({ ...query, busy });
   }
 
@@ -166,13 +183,17 @@ export class BookingService {
     // hammering a taken time) cannot fill the queue that real visitors wait in.
     const pre = await this.check(projectId, offeringId, req);
     if (!pre.ok) return pre;
+    // The outside calendars, read afresh, BEFORE the queue: a slow feed must not hold up everyone else's booking.
+    const before = await this.offering(projectId, offeringId);
+    const reach_ = before ? requestWindow(before.offering, req, this.now()) : null;
+    const outside = before && reach_ ? await this.outsideBusy(projectId, before.offering, before.config, reach_.from, reach_.to, true) : new Map<string, Busy[]>();
     return this.queued(projectId, async (): Promise<ClaimResult> => {
       const found = await this.offering(projectId, offeringId);
       if (!found) return { ok: false, reason: 'unknown-offering', detail: 'there is no such offering' };
       const { offering, config } = found;
       const now = this.now();
       const window = requestWindow(offering, req, now);
-      const busy = window ? await this.deps.claims.busy(projectId, offering.resourceIds, window.from, window.to, now) : new Map();
+      const busy = window ? mergeBusy(await this.deps.claims.busy(projectId, offering.resourceIds, window.from, window.to, now), outside) : new Map();
       const check = checkRequest({ offering, resources: config.resources, busy, now }, req);
       if (!check.ok) return check;
       const full = await this.isFull(projectId, check.resourceId, opts.state, now);
@@ -237,9 +258,21 @@ export class BookingService {
     if (!found) return { ok: false, reason: 'unknown-offering', detail: 'there is no such offering' };
     const now = this.now();
     const window = requestWindow(found.offering, req, now);
-    const busy = window ? await this.deps.claims.busy(projectId, found.offering.resourceIds, window.from, window.to, now) : new Map();
+    const busy = window
+      ? mergeBusy(
+          await this.deps.claims.busy(projectId, found.offering.resourceIds, window.from, window.to, now),
+          await this.outsideBusy(projectId, found.offering, found.config, window.from, window.to, false),
+        )
+      : new Map();
     const check = checkRequest({ offering: found.offering, resources: found.config.resources, busy, now }, req);
     return check.ok ? { ok: true, claim: null } : check;
+  }
+
+  /** The offering's resources' outside calendars between `from` and `to`. `fresh`: a booking is being made. */
+  private async outsideBusy(projectId: string, offering: BookingOffering, config: BookingConfig, from: number, to: number, fresh: boolean): Promise<Map<string, Busy[]>> {
+    if (!this.deps.external) return new Map();
+    const resources = config.resources.filter((r) => offering.resourceIds.includes(r.id)).map((r) => ({ id: r.id, timeZone: r.timeZone }));
+    return this.deps.external.busy(projectId, resources, from, to, { fresh });
   }
 
   /** One claim, if it is still in force. A lapsed hold or request reads as gone. */

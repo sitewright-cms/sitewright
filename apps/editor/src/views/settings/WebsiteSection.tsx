@@ -4,7 +4,7 @@ import { siteUrlIssue, type JsonValue, type PaymentBindingPublic } from '@sitewr
 import {
   Globe, Sparkles, PanelTop, Signpost, ShoppingCart, Languages, MoonStar, MoveHorizontal,
   ShieldAlert, ShieldCheck, Image as ImageIcon, Trash2, Search, BookOpenText,
-  BarChart3,
+  BarChart3, MonitorDown,
 } from 'lucide-react';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, Labelled } from './ui';
@@ -40,6 +40,7 @@ import {
   contentWidthStatus,
   effectsStatus,
   imagesStatus,
+  installStatus,
   languagesStatus,
   localeCodesOf,
   redirectsExtra,
@@ -96,6 +97,8 @@ const HELP = {
   shop: "A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). The shop's wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels.",
   analytics:
     'Built-in statistics count visits on the platform itself — human or bot, device, country, pages, sources and form submissions — with no cookies and no third party; the numbers are in the Statistics tab, and publishing adds the counter to every page. Analytics tools are what the site also reports to: Google Analytics, Tag Manager, Plausible, Umami, Matomo, Fathom, Simple Analytics or your own script. Tools that set no cookies can load without asking; the rest wait for consent in the cookie banner. Never paste a tracker into Head HTML: it would skip consent, and the site’s security policy blocks it on platform hosting.',
+  install:
+    'The app is made from the icon in Corporate Identity, which must be uploaded to the media library. Turned off, the site asks to open in a normal browser tab, so Chrome, Edge, Samsung Internet and Firefox on Android stop offering to install it; a home-screen shortcut still gets its name and icon. Safari, and Firefox on Windows, let visitors add any site as an app themselves, as do the menus of the other browsers: no site can turn that off. Applies from the next deploy.',
   consent:
     'A cookie-consent banner that gates third-party scripts + embeds by category, and derives the site CSP. It appears automatically on every page when enabled. Add a “Cookie settings” re-open link anywhere with <a href="#sw-consent">.',
   translations:
@@ -462,6 +465,24 @@ export function WebsiteSection({
             />
             <PartRow label="Analytics tools" ariaLabel="Edit analytics tools" onClick={() => setAnalyticsOpen(true)} />
           </RowBlock>
+        </Tile>
+        <Tile title="Install as app" icon={<MonitorDown className="h-4 w-4" />} status={installStatus(form, project?.slug)} span="c3" md={6} help={HELP.install}>
+          <label className="flex items-start justify-between gap-3">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Offer to install the site</span>
+              <span className="mt-1 block text-sm text-slate-500 dark:text-slate-400">
+                On (default), Chrome, Edge and Android browsers offer visitors to install the site as an app. Off, they make no offer, and a home-screen shortcut still works.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label="Let browsers offer to install the site as an app"
+              className={`${toggleInput} mt-0.5 shrink-0`}
+              checked={form.installable}
+              onChange={(e) => patch({ installable: e.target.checked })}
+            />
+          </label>
         </Tile>
         {/* Agency staff: the site registered with the platform's Google and Bing accounts. */}
         {isStaff && <SearchEnginesTile projectId={projectId} />}

@@ -665,6 +665,8 @@ describe('buildSite', () => {
     expect(manifest.theme_color).toBe('#0a7');
     expect(manifest.icons.map((i: { sizes: string }) => i.sizes)).toEqual(['192x192', '512x512', '512x512']);
     expect(manifest.icons.some((i: { purpose: string }) => i.purpose === 'maskable')).toBe(true);
+    // Installable unless the site says otherwise.
+    expect(manifest.display).toBe('standalone');
     // Head links — depth 0 (page-relative to root).
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<link rel="icon" href="_assets/_icons/favicon.ico" sizes="any" />');
@@ -675,6 +677,43 @@ describe('buildSite', () => {
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
     expect(about).toContain('<link rel="apple-touch-icon" href="../_assets/_icons/apple-touch-icon.png" />');
     expect(about).toContain('<link rel="manifest" href="../site.webmanifest" />');
+  });
+
+  it('declares the manifest `display: browser` when website.installable is false, keeping the icons', async () => {
+    const iconPng = await renderTrustedSvgToPng(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#0a7"/></svg>',
+      512,
+      512,
+    );
+    const iconAsset = {
+      kind: 'image' as const, folder: 'Brand', id: 'ic', filename: 'icon.png', format: 'png', bytes: iconPng.length,
+      width: 512, height: 512, hasAlpha: false, animated: false, original: 'icon.png', url: '/media/acme/ic/icon.png',
+    };
+    await buildSite({
+      publishedAt: '2026-10-27T00:00:00.000Z',
+      outDir,
+      media: [iconAsset],
+      readMedia: async (id, file) => {
+        if (id === 'ic' && file === 'icon.png') return iconPng;
+        throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+      },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' }, icon: '/media/acme/ic/icon.png' },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { installable: false },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div>Home</div>' }],
+      }),
+    });
+    const manifest = JSON.parse(await readFile(join(outDir, 'site.webmanifest'), 'utf8'));
+    expect(manifest.display).toBe('browser');
+    expect(manifest.icons).toHaveLength(3);
+    // The head still links everything: a shortcut keeps the site's name and icon.
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<link rel="manifest" href="site.webmanifest" />');
+    expect(home).toContain('<link rel="apple-touch-icon" href="_assets/_icons/apple-touch-icon.png" />');
   });
 
   it('marks the current nav item active via {{sw-active}} — class + aria-current swap per page', async () => {

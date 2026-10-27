@@ -67,6 +67,26 @@ describe('emitFaviconSet — icon url parsing', () => {
     expect(manifest.icons.map((i: { purpose: string }) => i.purpose)).toContain('maskable');
   });
 
+  it('declares `display: standalone` by default and `browser` when the site is not installable', async () => {
+    // `browser` is what Chromium refuses to install (Page.getInstallabilityErrors answers
+    // `manifest-display-not-supported`), while the icons and name stay for a home-screen shortcut.
+    const identity = { ...IDENTITY, icon: `/media/${SLUG}/3313cQ-icon.png` };
+    const media = [asset('3313cQ', '3313cQ-icon.png')];
+    const display = async (installable?: boolean): Promise<{ display: string; icons: unknown[] }> => {
+      const out = await mkdtemp(join(dir, 'display-'));
+      const set = installable === undefined
+        ? await emitFaviconSet(out, SLUG, identity, media, readMedia)
+        : await emitFaviconSet(out, SLUG, identity, media, readMedia, installable);
+      expect(set).toBeDefined();
+      return JSON.parse(await readFile(join(out, set!.manifest), 'utf8'));
+    };
+    expect((await display()).display).toBe('standalone');
+    expect((await display(true)).display).toBe('standalone');
+    const off = await display(false);
+    expect(off.display).toBe('browser');
+    expect(off.icons).toHaveLength(3);
+  });
+
   it('still resolves the LEGACY `<id>/<file>` folder url', async () => {
     const out = await mkdtemp(join(dir, 'legacy-'));
     const set = await emitFaviconSet(

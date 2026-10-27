@@ -27,6 +27,7 @@ import {
   securityStatus,
   securityContacts,
   searchStatus,
+  installStatus,
   shopStatus,
   consentStatus,
   languagesStatus,
@@ -194,6 +195,18 @@ describe('Website Settings tiles', () => {
   it('search: loose matching is the default', () => {
     expect(searchStatus(fresh())).toEqual({ kind: 'default', label: 'Loose matching' });
     expect(searchStatus(withForm({ searchFoldDiacritics: false }))).toEqual({ kind: 'set', label: 'Exact accents' });
+  });
+
+  it('install: on by default, and needs one of the project\'s own media files as the icon', () => {
+    const own = '/media/acme/3313cQ-icon.png';
+    expect(installStatus(withForm({ icon: own }), 'acme')).toEqual({ kind: 'default', label: 'On' });
+    expect(installStatus(withForm({ icon: own }))).toEqual({ kind: 'default', label: 'On' });
+    // No manifest is generated without such an icon, so nothing is offered either way.
+    expect(installStatus(fresh(), 'acme')).toEqual({ kind: 'na', label: 'Needs an uploaded icon' });
+    expect(installStatus(withForm({ icon: 'https://cdn.example.com/icon.png' }), 'acme')).toEqual({ kind: 'na', label: 'Needs an uploaded icon' });
+    expect(installStatus(withForm({ icon: '/media/__global__/x-icon.png' }), 'acme')).toEqual({ kind: 'na', label: 'Needs an uploaded icon' });
+    expect(installStatus(withForm({ icon: own, installable: false }), 'acme')).toEqual({ kind: 'set', label: 'Off' });
+    expect(installStatus(withForm({ installable: false }), 'acme')).toEqual({ kind: 'set', label: 'Off' });
   });
 
   it('shop: off is n/a; a cart with nowhere to send an order needs attention; a checkout channel needs a currency', () => {

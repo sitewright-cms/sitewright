@@ -262,6 +262,8 @@ export interface SettingsForm {
   statisticsEnabled: boolean;
   /** website.search.foldDiacritics — default true when unset. */
   searchFoldDiacritics: boolean;
+  /** website.installable — browsers may offer to install the site as an app; default true when unset. */
+  installable: boolean;
   // localization
   defaultLocale: string;
   locales: KeyedStr[];
@@ -419,6 +421,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     consent: w?.consent,
     statisticsEnabled: w?.statistics?.enabled === true,
     searchFoldDiacritics: w?.search?.foldDiacritics !== false,
+    installable: w?.installable !== false, // ON by default; only an explicit `false` turns it off
     defaultTheme: w?.defaultTheme ?? 'auto',
     containerWidth: w?.containerWidth ?? '',
     imageDelivery: w?.imageDelivery ?? '',
@@ -823,6 +826,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     form.consent ||
     effects ||
     themes ||
+    !form.searchFoldDiacritics ||
+    !form.installable ||
     hasTranslations ||
     form.containerWidth.trim() ||
     form.imageDelivery ||
@@ -839,6 +844,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       // Only persisted when turned OFF: the default (fold) stays absent, so an untouched project
       // writes nothing new into website.*.
       ...(form.searchFoldDiacritics ? {} : { search: { foldDiacritics: false } }),
+      // The same: only an explicit `false` is written (the default lets browsers offer the install).
+      ...(form.installable ? {} : { installable: false as const }),
       ...(effects ? { effects } : {}),
       ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),

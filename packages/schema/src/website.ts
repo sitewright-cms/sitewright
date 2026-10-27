@@ -1609,6 +1609,17 @@ const WebsiteSettingsObject = z.object({
    */
   search: SearchSettingsSchema.optional(),
   /**
+   * INSTALL AS AN APP — whether browsers may offer to install the published site as an app (Chrome and
+   * Edge's "Install" button, Android's install prompt). Unset/true keeps the default: the Web App Manifest
+   * generated from the Corporate-Identity icon declares `display: standalone`. `false` declares
+   * `display: browser` instead, which Chromium (Chrome, Edge, Samsung Internet) and Firefox for Android
+   * do not treat as installable, while the manifest's name and icons still serve a home-screen shortcut.
+   * Safari and Firefox on Windows let a visitor add ANY site as an app whatever the manifest says, and so
+   * do the browsers' own menus: this only removes the browser's offer. Without an uploaded icon there is
+   * no manifest either way.
+   */
+  installable: z.boolean().optional(),
+  /**
    * EXTRA CSP ORIGINS the published site may load from / talk to, beyond the strict `'self'` floor.
    *
    * Only meaningful on a PLATFORM-HOSTED origin, which is the one place the policy is actually enforced

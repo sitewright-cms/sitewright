@@ -1069,6 +1069,11 @@ describe('api client', () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { calendar: { id: 'c1' }, reading: { ok: true } }));
     await api.connectBookingCalendar('p', { kind: 'caldav', resourceId: 'anna', name: 'Work', url: 'https://dav.example/cal/', username: 'a', password: 'b' });
     expect(JSON.parse(fetchMock.mock.calls[1]![1].body as string)).toMatchObject({ kind: 'caldav', username: 'a', password: 'b' });
+    fetchMock.mockResolvedValue(jsonResponse(200, { calendar: { id: 'c1', writes: true } }));
+    expect((await api.setBookingCalendarWrites('p', 'c/1', true)).calendar.writes).toBe(true);
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/booking/calendars/c%2F1');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('PATCH');
+    expect(JSON.parse(fetchMock.mock.calls[2]![1].body as string)).toEqual({ writes: true });
   });
 
   it('reads and writes instance admin settings', async () => {

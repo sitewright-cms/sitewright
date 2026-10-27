@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarCheck2, CalendarX2, Link2, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { api, ApiError, type BookingCalendar } from '../../../api';
-import { dangerButton, ghostButton, gradientSurface, smallGhostButton } from '../../../theme';
+import { dangerButton, ghostButton, gradientSurface, smallGhostButton, toggleInput } from '../../../theme';
 import { useDialogs } from '../../ui/Dialogs';
 import { PartHeading, TextField } from './fields';
 import { since } from './model';
@@ -107,6 +107,22 @@ export function CalendarsPanel({
       setBusy(null);
     }
   };
+  const toggleWrites = async (c: BookingCalendar, writes: boolean): Promise<void> => {
+    setBusy(c.id);
+    setMessage(null);
+    try {
+      const r = await api.setBookingCalendarWrites(projectId, c.id, writes);
+      put(r.calendar);
+      setMessage({
+        ok: true,
+        text: writes ? `The bookings now go into ${c.name}, the upcoming ones too.` : `New bookings no longer go into ${c.name}; what is in it stays.`,
+      });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setBusy(null);
+    }
+  };
   const remove = async (c: BookingCalendar): Promise<void> => {
     const sure = await confirm({
       title: 'Remove calendar',
@@ -165,7 +181,22 @@ export function CalendarsPanel({
                         'not read yet'
                       )}
                     </span>
+                    {c.writeError && <span className="block truncate text-xs text-rose-600 dark:text-rose-400">{c.writeError}</span>}
                   </span>
+                  {c.kind === 'caldav' && (
+                    <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        className={toggleInput}
+                        checked={c.writes === true}
+                        disabled={busy !== null}
+                        aria-label={`Put the bookings into ${c.name}`}
+                        onChange={(e) => void toggleWrites(c, e.target.checked)}
+                      />
+                      Bookings in it
+                    </label>
+                  )}
                   <button type="button" className={smallGhostButton} disabled={busy !== null} onClick={() => void test(c)} aria-label={`Read ${c.name} now`}>
                     {busy === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Read now
                   </button>

@@ -1391,6 +1391,10 @@ export interface BookingCalendar {
   lastOkAt: number | null;
   lastError: string | null;
   lastEvents: number | null;
+  /** CalDAV only: the bookings are also put into it. */
+  writes?: boolean;
+  /** Why the last booking could not be written into it. */
+  writeError?: string | null;
   createdAt: number;
 }
 /** What came of reading a calendar just now. */
@@ -1774,12 +1778,17 @@ export const api = {
   /** Connects a calendar to a resource of the SAVED set-up, and reads it at once. */
   connectBookingCalendar: (
     projectId: string,
-    body: { resourceId: string; name: string; url: string } | { kind: 'caldav'; resourceId: string; name: string; url: string; username: string; password: string },
+    body:
+      | { resourceId: string; name: string; url: string }
+      | { kind: 'caldav'; resourceId: string; name: string; url: string; username: string; password: string; writes?: boolean },
   ) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars`, body),
   /** A CalDAV account's calendars, to pick one to connect. Nothing is stored. */
   discoverBookingCalDav: (projectId: string, body: { url: string; username: string; password: string }) =>
     request<{ calendars: Array<{ url: string; name: string }> }>('POST', `/projects/${projectId}/booking/calendars/discover`, body),
+  /** A CalDAV calendar takes the bookings, or stops taking them (what is in it stays). */
+  setBookingCalendarWrites: (projectId: string, id: string, writes: boolean) =>
+    request<{ calendar: BookingCalendar }>('PATCH', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}`, { writes }),
   /** Reads a calendar again now, whatever is cached. */
   testBookingCalendar: (projectId: string, id: string) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}/test`, {}),

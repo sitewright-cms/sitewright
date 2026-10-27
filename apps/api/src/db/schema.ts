@@ -1493,10 +1493,42 @@ export const bookingCalendars = sqliteTable(
     lastError: text('last_error'),
     /** Events in the feed at the last good reading. */
     lastEvents: integer('last_events'),
+    /** CalDAV only: bookings are also put into this calendar (and taken out when cancelled). */
+    writes: integer('writes', { mode: 'boolean' }).notNull().default(false),
+    /** Why the last booking could not be written into it, for the business to see. Cleared by a good write. */
+    writeError: text('write_error'),
+    /** When a booking was last written into it: one that has been written into still has cancellations taken out. */
+    wroteAt: integer('wrote_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('booking_calendars_resource').on(t.projectId, t.resourceId)],
+);
+
+/**
+ * BOOKING CALENDAR WRITES: the bookings still to be brought in line in a CalDAV calendar that takes them. One row
+ * per calendar and booking, saying only "sync it": what to do (put it in, take it out) is decided when it is sent,
+ * from the booking as it then stands, so the order of events never matters and no customer detail waits here.
+ * `seq` tells a finished attempt from one overtaken meanwhile. One that keeps failing is kept as `failed` a while,
+ * so the business can see why. Bounded by the bookings.
+ */
+export const bookingCalendarWrites = sqliteTable(
+  'booking_calendar_writes',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    calendarId: text('calendar_id').notNull(),
+    claimId: text('claim_id').notNull(),
+    seq: integer('seq').notNull().default(1),
+    state: text('state', { enum: ['pending', 'failed'] }).notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAt: integer('next_at', { mode: 'timestamp_ms' }).notNull(),
+    lastError: text('last_error'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [uniqueIndex('booking_calendar_writes_target').on(t.calendarId, t.claimId), index('booking_calendar_writes_due').on(t.state, t.nextAt)],
 );
 
 /**

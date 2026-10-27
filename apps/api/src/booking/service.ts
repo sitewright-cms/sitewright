@@ -25,6 +25,11 @@ export interface BookingServiceDeps {
   readonly readConfig: (projectId: string) => Promise<BookingConfig | null>;
   /** The resources' outside calendars (iCalendar feeds), read for their busy times. None: only the claims count. */
   readonly external?: ExternalBusy;
+  /**
+   * Told after every change a claim goes through (taken, confirmed, extended, accepted, given back), once it is
+   * committed: the calendars that take the bookings are brought in line with it. Never fails the change.
+   */
+  readonly onChange?: (projectId: string, claim: { id: string; resourceId: string }) => void;
   readonly now?: () => number;
 }
 
@@ -221,6 +226,7 @@ export class BookingService {
         },
         now,
       );
+      this.changed(projectId, claim);
       return { ok: true, claim };
     });
   }
@@ -290,6 +296,7 @@ export class BookingService {
       if (!row || (row.expiresAt !== null && row.expiresAt.getTime() <= now)) return { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' };
       if (row.startAt.getTime() <= now) return { ok: false, reason: 'started', detail: 'it has already started' };
       await this.deps.claims.remove(projectId, claimId);
+      this.changed(projectId, row);
       return { ok: true, claim: row };
     });
   }
@@ -306,6 +313,7 @@ export class BookingService {
       if (!(await this.deps.claims.advance(projectId, claimId, 'booked', null, now))) {
         return { ok: false, reason: 'lapsed', detail: 'its time ran out and may have been booked by someone else' };
       }
+      this.changed(projectId, row.claim);
       return { ok: true, claim: { ...row.claim, state: 'booked', expiresAt: null, updatedAt: new Date(now) } };
     });
   }
@@ -315,6 +323,7 @@ export class BookingService {
       const row = await this.answerable(projectId, claimId);
       if (!row.ok) return row;
       await this.deps.claims.remove(projectId, claimId);
+      this.changed(projectId, row.claim);
       return row;
     });
   }
@@ -330,6 +339,7 @@ export class BookingService {
       if (row.state === 'hold') return { ok: false, reason: 'invalid', detail: 'that is a checkout in progress, not a booking' };
       if (row.endAt.getTime() <= this.now()) return { ok: false, reason: 'ended', detail: 'it has already ended' };
       await this.deps.claims.remove(projectId, claimId);
+      this.changed(projectId, row);
       return { ok: true, claim: row };
     });
   }
@@ -357,9 +367,12 @@ export class BookingService {
 
   /** Gives a claim's time back: a declined request, an abandoned hold, a cancelled ledger booking. */
   async release(projectId: string, claimId: string): Promise<ChangeResult> {
-    return this.queued(projectId, async (): Promise<ChangeResult> =>
-      (await this.deps.claims.remove(projectId, claimId)) ? { ok: true } : { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' },
-    );
+    return this.queued(projectId, async (): Promise<ChangeResult> => {
+      const row = await this.deps.claims.get(projectId, claimId);
+      if (!row || !(await this.deps.claims.remove(projectId, claimId))) return { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' };
+      this.changed(projectId, row);
+      return { ok: true };
+    });
   }
 
   private async change(projectId: string, claimId: string, state: ClaimState | undefined, holdMs: number | null): Promise<ChangeResult> {
@@ -370,7 +383,17 @@ export class BookingService {
       const now = this.now();
       const next = state ?? row.state;
       const moved = await this.deps.claims.advance(projectId, claimId, next, holdMs === null ? null : now + holdMs, now);
+      if (moved) this.changed(projectId, row);
       return moved ? { ok: true } : { ok: false, reason: 'lapsed', detail: 'its time ran out and may have been booked by someone else' };
     });
+  }
+
+  /** Tells `onChange` of a committed change. A listener's failure is its own: the change stands. */
+  private changed(projectId: string, claim: { id: string; resourceId: string }): void {
+    try {
+      this.deps.onChange?.(projectId, { id: claim.id, resourceId: claim.resourceId });
+    } catch {
+      // The listener queues work of its own and reports its own failures.
+    }
   }
 }

@@ -282,8 +282,9 @@ import { ICS_LIMITS } from '../booking/ics-read.js';
 import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
 import { registerBookingFeedRoutes } from './booking-feed-routes.js';
 import { discoverCalendars, readCalendar, type DavTransport } from '../booking/caldav.js';
+import { BookingCalendarWriteRepository, CALENDAR_WRITE_LIMITS, CalendarWriter, runCalendarWrites } from '../booking/calendar-writes.js';
 import { logRequest } from './log-redact.js';
-import { BookingFeedRepository } from '../booking/feed.js';
+import { BookingFeedRepository, FEED_LIMITS } from '../booking/feed.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
 import { BookingNotifier, notifyLapsed, type NotifierSettings } from '../booking/notify.js';
 import { registerBookingAdminRoutes } from './booking-admin-routes.js';
@@ -2214,7 +2215,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
     log: { warn: (o, m) => app.log.warn(o, m) },
   });
-  const bookingService = new BookingService({ claims: bookingClaimsRepo, readConfig: readBookingConfig, external: bookingCalendarReader });
+  // A claim's change, told to the calendars that take the bookings. Bound once the calendar writer exists (below).
+  let onClaimChange: (projectId: string, claim: { id: string; resourceId: string }) => void = () => undefined;
+  const bookingService = new BookingService({
+    claims: bookingClaimsRepo,
+    readConfig: readBookingConfig,
+    external: bookingCalendarReader,
+    onChange: (projectId, claim) => onClaimChange(projectId, claim),
+  });
   const releasesRepo = new ReleaseRepository(db);
   // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
   // only these exact hosts may be saved as a project's SMTP. Default: any host
@@ -11038,6 +11046,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       readConfig: readBookingConfig,
       encrypt: (plaintext) => encryptSecret(plaintext, calendarKey),
       discoverCalDav: (serverUrl, auth) => discoverCalendars(davFetch, serverUrl, auth),
+      backfill: async (calendar) => {
+        const now = Date.now();
+        const upcoming = await bookingClaimsRepo.forFeed(calendar.projectId, now, now + FEED_LIMITS.aheadMs, now, CALENDAR_WRITE_LIMITS.backfill, calendar.resourceId);
+        return calendarWriter.backfill(calendar, upcoming);
+      },
+      forgetWrites: (calendarId) => bookingCalendarWriteRepo.forget(calendarId),
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       rl,
@@ -11211,6 +11225,44 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           sendBookingMail();
         }
       });
+  };
+  // BOOKINGS INTO CALDAV CALENDARS that take them: queued per booking event, sent by a single-flight pass like the
+  // mails, retried by the maintenance pass (see booking/calendar-writes.ts).
+  const bookingCalendarWriteRepo = new BookingCalendarWriteRepository(db);
+  let calendarWritePass: Promise<void> | null = null;
+  let calendarWriteAgain = false;
+  const writeBookingCalendars = (): void => {
+    if (calendarWritePass) {
+      calendarWriteAgain = true;
+      return;
+    }
+    calendarWritePass = runCalendarWrites({
+      calendars: bookingCalendarRepo,
+      writes: bookingCalendarWriteRepo,
+      transport: davFetch,
+      claimOf: (projectId, claimId) => bookingClaimsRepo.get(projectId, claimId),
+      readConfig: readBookingConfig,
+      decrypt: (envelope) => {
+        if (!opts.encryptionKey) throw new Error('no encryption key');
+        return decryptSecret(envelope, opts.encryptionKey);
+      },
+      log: { warn: (o, m) => app.log.warn(o, m) },
+    })
+      .then(({ more }) => {
+        if (more) calendarWriteAgain = true;
+      })
+      .catch((err: unknown) => app.log.warn(err, 'booking calendar write pass failed'))
+      .finally(() => {
+        calendarWritePass = null;
+        if (calendarWriteAgain) {
+          calendarWriteAgain = false;
+          writeBookingCalendars();
+        }
+      });
+  };
+  const calendarWriter = new CalendarWriter({ calendars: bookingCalendarRepo, writes: bookingCalendarWriteRepo, kick: writeBookingCalendars });
+  onClaimChange = (projectId, claim) => {
+    void calendarWriter.sync(projectId, claim).catch((err: unknown) => app.log.warn({ err, projectId }, 'booking calendar sync not queued'));
   };
   const bookingNotifier = new BookingNotifier({
     mails: bookingMailRepo,
@@ -12540,12 +12592,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       .sweep(Date.now())
       .then(async ({ lapsed, ended, lapsedRequests }) => {
         if (lapsed || ended) app.log.info({ lapsed, ended }, 'swept ended booking claims');
-        // A request that ran out unanswered: its customer is told, and so is the business.
+        // A request that ran out unanswered: its customer is told, and so is the business; and it comes out of the
+        // calendars that took it.
+        for (const claim of lapsedRequests) onClaimChange(claim.projectId, claim);
         if (lapsedRequests.length) {
           await notifyLapsed(lapsedRequests, { readConfig: readBookingConfig, notify: (e) => bookingNotifier.notify(e), log: { warn: (o, m) => app.log.warn(o, m) } });
         }
       })
       .catch((err) => app.log.warn(err, 'booking claims sweep failed'));
+    // Bookings into CalDAV calendars: retry what is due, and forget what was given up on a week ago.
+    writeBookingCalendars();
+    void bookingCalendarWriteRepo.sweep(Date.now()).catch((err) => app.log.warn(err, 'booking calendar write sweep failed'));
     // Booking mails: retry what is due, and forget what failed for good a week ago.
     sendBookingMail();
     void bookingMailRepo

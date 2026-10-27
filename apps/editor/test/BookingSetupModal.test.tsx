@@ -3,8 +3,9 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { BookingConfig } from '@sitewright/schema';
 import type { BookingCalendar } from '../src/api';
 
-const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav } = vi.hoisted(() => ({
+const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites } = vi.hoisted(() => ({
   discoverBookingCalDav: vi.fn(),
+  setBookingCalendarWrites: vi.fn(),
   getBooking: vi.fn(),
   putBooking: vi.fn(),
   listBookingCalendars: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../src/api', () => {
       testBookingCalendar: (p: string, id: string) => testBookingCalendar(p, id),
       removeBookingCalendar: (p: string, id: string) => removeBookingCalendar(p, id),
       discoverBookingCalDav: (p: string, b: unknown) => discoverBookingCalDav(p, b),
+      setBookingCalendarWrites: (p: string, id: string, w: boolean) => setBookingCalendarWrites(p, id, w),
       // The Settings tab's calendar address (its own tests are in booking-feed-section).
       getBookingFeed: async () => ({ feed: null }),
     },
@@ -69,7 +71,7 @@ const SAVED: BookingConfig = {
 const CAL: BookingCalendar = { id: 'c1', resourceId: 'anna', kind: 'ics', name: 'Anna’s Google', host: 'calendar.google.com', lastOkAt: Date.now() - 5 * 60_000, lastError: null, lastEvents: 12, createdAt: 0 };
 
 beforeEach(() => {
-  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav]) m.mockReset();
+  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites]) m.mockReset();
   getBooking.mockResolvedValue({ item: SAVED, version: 'v1' });
   listBookingCalendars.mockResolvedValue({ calendars: [CAL] });
   putBooking.mockImplementation(async (_p: string, config: BookingConfig) => ({ item: config, version: 'v2' }));
@@ -287,9 +289,23 @@ describe('outside calendars', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
     expect(await screen.findByText('Connected. 4 events in it.')).toBeInTheDocument();
     expect(discoverBookingCalDav).toHaveBeenCalledWith('p', { url: 'https://cloud.example', username: 'anna', password: 'app-pass-1234' });
-    expect(connectBookingCalendar).toHaveBeenCalledWith('p', { kind: 'caldav', resourceId: 'anna', name: 'Work', url: 'https://cloud.example/dav/work/', username: 'anna', password: 'app-pass-1234' });
+    expect(connectBookingCalendar).toHaveBeenCalledWith('p', { kind: 'caldav', resourceId: 'anna', name: 'Work', url: 'https://cloud.example/dav/work/', username: 'anna', password: 'app-pass-1234', writes: true });
     expect(screen.getByLabelText('App password')).toHaveValue('');
     expect(screen.getByText(/cloud\.example \(CalDAV\)/)).toBeInTheDocument();
+  });
+
+  it('switches a CalDAV calendar’s bookings on and off, and shows why a booking could not be written', async () => {
+    listBookingCalendars.mockResolvedValue({ calendars: [{ ...CAL, kind: 'caldav', writes: false, writeError: 'a booking could not be written: the calendar server answered 503' }] });
+    setBookingCalendarWrites.mockResolvedValue({ calendar: { ...CAL, kind: 'caldav', writes: true, writeError: null } });
+    render(<BookingSetupModal projectId="p" onClose={() => undefined} />);
+    await screen.findByText('Haircut');
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/ }));
+    expect(screen.getByText('a booking could not be written: the calendar server answered 503')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('switch', { name: 'Put the bookings into Anna’s Google' }));
+    expect(await screen.findByText(/The bookings now go into Anna’s Google, the upcoming ones too\./)).toBeInTheDocument();
+    expect(setBookingCalendarWrites).toHaveBeenCalledWith('p', 'c1', true);
+    expect(screen.getByRole('switch', { name: 'Put the bookings into Anna’s Google' })).toBeChecked();
+    expect(screen.queryByText(/answered 503/)).toBeNull();
   });
 
   it('says when a CalDAV account’s calendars could not be found', async () => {

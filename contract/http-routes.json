@@ -175,6 +175,7 @@
   "OPTIONS /pay/:projectId/txn/:token",
   "PATCH /account/passkeys/:id",
   "PATCH /projects/:id",
+  "PATCH /projects/:projectId/booking/calendars/:id",
   "PATCH /projects/:projectId/media/:id",
   "PATCH /projects/:projectId/rankings/keywords/:keywordId",
   "PATCH /projects/:projectId/transactions/:id/fulfilment",

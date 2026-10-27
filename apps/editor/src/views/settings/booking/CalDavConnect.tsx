@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link2, Loader2, Search } from 'lucide-react';
 import { api, ApiError, type BookingCalendarReading } from '../../../api';
 import { ghostButton } from '../../../theme';
-import { TextField } from './fields';
+import { TextField, ToggleRow } from './fields';
 
 /**
  * Connecting a calendar on a CALDAV server (Nextcloud, Fastmail, iCloud, Radicale…): the server's address, a
@@ -30,6 +30,8 @@ export function CalDavConnect({
   const [found, setFound] = useState<Array<{ url: string; name: string }> | null>(null);
   const [chosen, setChosen] = useState('');
   const [name, setName] = useState('');
+  // On by default: putting the bookings into the calendar is most of why a business connects one this way.
+  const [writes, setWrites] = useState(true);
   const [busy, setBusy] = useState<'find' | 'connect' | null>(null);
 
   const run = async (kind: 'find' | 'connect', work: () => Promise<void>): Promise<void> => {
@@ -54,7 +56,15 @@ export function CalDavConnect({
     });
   const connect = () =>
     run('connect', async () => {
-      const r = await api.connectBookingCalendar(projectId, { kind: 'caldav', resourceId, name: name.trim() || 'Calendar', url: chosen, username, password });
+      const r = await api.connectBookingCalendar(projectId, {
+        kind: 'caldav',
+        resourceId,
+        name: name.trim() || 'Calendar',
+        url: chosen,
+        username,
+        password,
+        writes,
+      });
       setPassword('');
       setFound(null);
       onConnected(r);
@@ -98,6 +108,9 @@ export function CalDavConnect({
               </label>
             ))}
           </fieldset>
+          <ToggleRow label="Also put the bookings into this calendar" checked={writes} onChange={setWrites}>
+            Every booking and request goes into it (requests as tentative), and comes out again when cancelled or declined.
+          </ToggleRow>
           <div className="grid gap-2 sm:grid-cols-[minmax(0,16rem)_auto] sm:items-end">
             <TextField label="Calendar name" value={name} onChange={setName} />
             <button type="button" className={ghostButton} disabled={disabled || busy !== null || !chosen} onClick={() => void connect()}>

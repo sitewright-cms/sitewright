@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, isNull, lt, or } from 'drizzle-orm';
-import type { BookingConfig } from '@sitewright/schema';
+import type { BookingConfig, BookingOffering, BookingResource } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { bookingFeeds } from '../db/schema.js';
 import type { ClaimRow } from './claims.js';
@@ -111,40 +111,46 @@ export function renderBookingFeed(input: {
     `X-PUBLISHED-TTL:${FEED_LIMITS.refresh}`,
   ];
   for (const c of input.claims) {
-    const offering = offerings.get(c.offeringId);
-    const resource = resources.get(c.resourceId);
-    const start = c.startAt.getTime();
-    const end = c.endAt.getTime();
-    const pending = c.state === 'pending';
-    const customer = c.customer ?? {};
-    const who = customer.name?.trim() || customer.email?.trim() || 'a customer';
-    const description = [
-      resource ? `With: ${resource.name}` : '',
-      c.units > 1 ? `For: ${c.units}` : '',
-      customer.name ? `Name: ${customer.name}` : '',
-      customer.email ? `Email: ${customer.email}` : '',
-      customer.phone ? `Phone: ${customer.phone}` : '',
-      customer.note ? `Note: ${customer.note}` : '',
-      pending ? 'A request: accept or decline it in the Bookings tab.' : '',
-    ].filter(Boolean);
-    lines.push('BEGIN:VEVENT', `UID:${icsText(`${c.id}@${input.projectId}`)}`, `DTSTAMP:${icsUtc(c.updatedAt.getTime())}`);
-    if (offering?.mode === 'days' && offering.unit === 'day' && resource) {
-      // Whole days on the resource's clock, the end date exclusive (as the invitation writes them).
-      lines.push(`DTSTART;VALUE=DATE:${ymd(localDateOf(start, resource.timeZone))}`);
-      const lastDay = localDateOf(end - 1, resource.timeZone);
-      lines.push(`DTEND;VALUE=DATE:${ymd(addDays(lastDay, 1))}`);
-    } else {
-      lines.push(`DTSTART:${icsUtc(start)}`, `DTEND:${icsUtc(end)}`);
-    }
-    lines.push(
-      'SEQUENCE:0',
-      `STATUS:${pending ? 'TENTATIVE' : 'CONFIRMED'}`,
-      'TRANSP:OPAQUE',
-      `SUMMARY:${icsText(`${offering?.name ?? 'Booking'}: ${who}${pending ? ' (request)' : ''}`)}`,
-    );
-    if (description.length) lines.push(`DESCRIPTION:${icsText(description.join('\n'))}`);
-    lines.push('END:VEVENT');
+    lines.push(...bookingEventLines(c, { projectId: input.projectId, offering: offerings.get(c.offeringId), resource: resources.get(c.resourceId), stamp: c.updatedAt.getTime() }));
   }
   lines.push('END:VCALENDAR');
   return lines.map(icsFold).join('\r\n') + '\r\n';
+}
+
+/**
+ * One booking as a VEVENT, the same wherever it goes (the feed, a CalDAV calendar): confirmed or tentative, the
+ * customer's details in the description, whole days for a rental by the day. Unfolded lines.
+ */
+export function bookingEventLines(
+  c: Pick<ClaimRow, 'id' | 'state' | 'startAt' | 'endAt' | 'units' | 'customer'>,
+  ctx: { projectId: string; offering: BookingOffering | undefined; resource: BookingResource | undefined; stamp: number },
+): string[] {
+  const { offering, resource } = ctx;
+  const start = c.startAt.getTime();
+  const end = c.endAt.getTime();
+  const pending = c.state === 'pending';
+  const customer = c.customer ?? {};
+  const who = customer.name?.trim() || customer.email?.trim() || 'a customer';
+  const description = [
+    resource ? `With: ${resource.name}` : '',
+    c.units > 1 ? `For: ${c.units}` : '',
+    customer.name ? `Name: ${customer.name}` : '',
+    customer.email ? `Email: ${customer.email}` : '',
+    customer.phone ? `Phone: ${customer.phone}` : '',
+    customer.note ? `Note: ${customer.note}` : '',
+    pending ? 'A request: accept or decline it in the Bookings tab.' : '',
+  ].filter(Boolean);
+  const lines = ['BEGIN:VEVENT', `UID:${icsText(`${c.id}@${ctx.projectId}`)}`, `DTSTAMP:${icsUtc(ctx.stamp)}`];
+  if (offering?.mode === 'days' && offering.unit === 'day' && resource) {
+    // Whole days on the resource's clock, the end date exclusive (as the invitation writes them).
+    lines.push(`DTSTART;VALUE=DATE:${ymd(localDateOf(start, resource.timeZone))}`);
+    const lastDay = localDateOf(end - 1, resource.timeZone);
+    lines.push(`DTEND;VALUE=DATE:${ymd(addDays(lastDay, 1))}`);
+  } else {
+    lines.push(`DTSTART:${icsUtc(start)}`, `DTEND:${icsUtc(end)}`);
+  }
+  lines.push('SEQUENCE:0', `STATUS:${pending ? 'TENTATIVE' : 'CONFIRMED'}`, 'TRANSP:OPAQUE', `SUMMARY:${icsText(`${offering?.name ?? 'Booking'}: ${who}${pending ? ' (request)' : ''}`)}`);
+  if (description.length) lines.push(`DESCRIPTION:${icsText(description.join('\n'))}`);
+  lines.push('END:VEVENT');
+  return lines;
 }

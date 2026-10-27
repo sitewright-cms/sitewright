@@ -183,6 +183,11 @@ export async function sendSmtpTestMessage(
  * "The server at the mail server:0 does not offer STARTTLS", which is worse than saying less.
  */
 export function describeDeliveryFailure(err: unknown): string {
+  // A mail the platform sent for a project could have gone through either server: name the one that
+  // failed, so the operator knows whose settings to fix.
+  if (err instanceof MailDeliveryError) {
+    return `${err.via === 'project' ? 'Project SMTP' : 'Global SMTP'}: ${describeDeliveryFailure(err.cause)}`;
+  }
   const raw = err instanceof Error ? err.message : String(err);
   const code = (err as { code?: string } | null)?.code ?? '';
   if (code === 'ETLS' || /does not support required STARTTLS/i.test(raw)) {
@@ -338,6 +343,76 @@ export interface ProjectMailer {
   send(projectId: string, mail: SubmissionMail): Promise<boolean>;
 }
 
+/**
+ * Which mailer a mail the PLATFORM writes on a project's behalf should go through (shop orders,
+ * payments, bookings), as opposed to a form whose author picked a mode.
+ *
+ * The project's own SMTP comes first whenever the instance allows it and the project has one that can
+ * send: those mails reach the project's customers, so they come from the project's address and not the
+ * platform operator's. Global SMTP is the fallback. With neither mode enabled the answer is still
+ * `globalSmtp`; its mailer reports the disabled mode as undelivered, and the retry path takes it from there.
+ */
+export function platformMailMode(
+  allowed: Partial<Record<'globalSmtp' | 'userSmtp', boolean>>,
+  projectHasSmtp: boolean,
+): 'globalSmtp' | 'userSmtp' {
+  if (allowed.userSmtp && projectHasSmtp) return 'userSmtp';
+  return 'globalSmtp';
+}
+
+/** Sends a mail the platform writes on a project's behalf. False = not delivered, retry later. */
+export type ProjectMailSender = (projectId: string, mail: SubmissionMail) => Promise<boolean>;
+
+/** A delivery {@link makeProjectMailSender} attempted that failed, tagged with the server it went to. */
+export class MailDeliveryError extends Error {
+  constructor(
+    readonly via: 'project' | 'global',
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = 'MailDeliveryError';
+  }
+}
+
+/** The "nothing was sent" text for a mail {@link makeProjectMailSender} could not send at all. */
+export const PROJECT_MAIL_UNAVAILABLE =
+  'No mail server could send this: the project has no usable Project SMTP (missing, its host not allowed, or its password unreadable), and Global SMTP is not enabled.';
+
+/**
+ * THE sender for every mail the platform writes on a project's behalf. Decided at SEND time, never
+ * stored, so an admin toggling the instance's modes, or a project adding or removing its SMTP, takes
+ * effect on the very next mail and on every retry already queued.
+ *
+ * - The project's SMTP when {@link platformMailMode} picks it.
+ * - When that mailer answers false, the project SMTP cannot send at all (mode just disabled, password
+ *   no longer decryptable): global SMTP sends it instead, if the instance allows global SMTP.
+ * - When it THROWS, the server was reached and the delivery failed. That is retried as it is, rather
+ *   than quietly re-sent from a different address.
+ */
+export function makeProjectMailSender(deps: {
+  globalMailer: SubmissionMailer;
+  projectMailer: ProjectMailer;
+  formModes: () => Promise<Partial<Record<'globalSmtp' | 'userSmtp', boolean>>>;
+  /** The project has its own SMTP that may send: configured, and its host still allowed. */
+  projectSmtpUsable: (projectId: string) => Promise<boolean>;
+}): ProjectMailSender {
+  const attempt = async (via: 'project' | 'global', send: () => Promise<boolean>): Promise<boolean> => {
+    try {
+      return await send();
+    } catch (err) {
+      throw new MailDeliveryError(via, err);
+    }
+  };
+  return async (projectId, mail) => {
+    const allowed = await deps.formModes();
+    if (platformMailMode(allowed, await deps.projectSmtpUsable(projectId)) === 'userSmtp') {
+      if (await attempt('project', () => deps.projectMailer.send(projectId, mail))) return true;
+      if (!allowed.globalSmtp) return false;
+    }
+    return attempt('global', () => deps.globalMailer.send(mail));
+  };
+}
+
 /** Reads a project's stored SMTP config (server-side, no tenant context), or null. */
 export async function loadProjectSmtp(db: Database, projectId: string): Promise<SmtpStored | null> {
   const [row] = await db
@@ -352,7 +427,8 @@ export async function loadProjectSmtp(db: Database, projectId: string): Promise<
 /**
  * Mode B (`userSmtp`) mailer: sends via the PROJECT's own SMTP. Returns false when
  * the userSmtp mode is disabled instance-wide, the project has no SMTP configured,
- * or the password can't be decrypted — fail-soft, like the global mailer.
+ * its host is not on the instance's SMTP allowlist, or the password can't be
+ * decrypted — fail-soft, like the global mailer.
  */
 export class ProjectSmtpMailer implements ProjectMailer {
   constructor(
@@ -360,13 +436,16 @@ export class ProjectSmtpMailer implements ProjectMailer {
     private readonly settings: Pick<MailerSettings, 'getStored'>,
     private readonly encryptionKey: Buffer | undefined,
     private readonly transportFactory: TransportFactory = defaultTransportFactory,
+    /** The instance's SMTP host allowlist, checked at SEND time too: a config saved before the list
+     *  existed, or before its host was dropped from it, must not keep sending through that host. */
+    private readonly hostAllowed: (host: string) => boolean = () => true,
   ) {}
 
   async send(projectId: string, mail: SubmissionMail): Promise<boolean> {
     const stored = await this.settings.getStored();
     if (!stored.formModes.userSmtp) return false;
     const smtp = await loadProjectSmtp(this.db, projectId);
-    if (!smtp) return false;
+    if (!smtp || !this.hostAllowed(smtp.host)) return false;
     let password: string | null = null;
     if (smtp.password) {
       if (!this.encryptionKey) return false;

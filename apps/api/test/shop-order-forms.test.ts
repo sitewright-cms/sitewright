@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -8,6 +9,8 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
 import { orderFormFor, orderFormMode } from '../src/repo/shop-order-forms.js';
+import { content, formSubmissions, instanceSettings, INSTANCE_SETTINGS_ID } from '../src/db/schema.js';
+import { PROJECT_MAIL_UNAVAILABLE } from '../src/mail/mailer.js';
 
 /**
  * The mini-shop's `form` channel takes an ADDRESS, and the platform provisions the Form behind it.
@@ -157,5 +160,141 @@ describe('orderFormFor / orderFormMode (unit)', () => {
 
   it('returns null for a channel that is not a form at all', () => {
     expect(orderFormFor({ kind: 'whatsapp', key: 'wa', number: '+14155550123' }, 'globalSmtp')).toBeNull();
+  });
+});
+
+describe('★ shop order mail comes from the project\'s own SMTP when it has one', () => {
+  // Its own app: the project SMTP routes exist only with an encryption key, and the two mailers are
+  // recorders so the test sees which one each order went through.
+  let app2: FastifyInstance;
+  let db2: Awaited<ReturnType<typeof makeTestDb>>;
+  let via: string[];
+  let projectFails: number;
+  let globalUp: boolean;
+
+  beforeEach(async () => {
+    via = [];
+    projectFails = 0;
+    globalUp = true;
+    db2 = await makeTestDb();
+    // An instance offering both global SMTP and per-project SMTP.
+    const data = { formModes: { globalSmtp: true, userSmtp: true, contactPhp: false, contactPhpSmtp: false, thirdParty: false, whatsapp: false } };
+    await db2.insert(instanceSettings).values({ id: INSTANCE_SETTINGS_ID, data, updatedAt: new Date() });
+    app2 = await createApp({
+      db: db2,
+      encryptionKey: randomBytes(32),
+      // Only these hosts may be a project's SMTP.
+      smtpAllowedHosts: ['smtp.acme.test'],
+      mailer: { send: async () => (globalUp ? (via.push('global'), true) : false) },
+      projectMailer: {
+        send: async () => {
+          if (projectFails > 0) {
+            projectFails -= 1;
+            throw new Error('421 try again later');
+          }
+          via.push('project');
+          return true;
+        },
+      },
+    });
+    await app2.ready();
+  });
+  afterEach(async () => {
+    await app2.close();
+  });
+
+  async function shopProject() {
+    await registerAccount(db2, 'smtp-owner@t.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = token(await app2.inject({ method: 'POST', url: '/auth/login', payload: { email: 'smtp-owner@t.test', password: 'Pw-secret-1' } }));
+    const proj = await app2.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Shop', slug: 'smtp-shop' } });
+    const projectId = (proj.json() as { project: { id: string } }).project.id;
+    const saved = await app2.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/settings/settings?merge=1`,
+      cookies: { sw_session: t },
+      payload: { website: { shop: { enabled: true, channels: [{ kind: 'form', key: 'order', email: 'orders@acme.test' }] } } },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    return { t, projectId };
+  }
+  const order = async (projectId: string) => {
+    const res = await app2.inject({
+      method: 'POST',
+      url: `/f/${projectId}/${shopOrderFormId('order')}`,
+      payload: { note: '', cart_text: '1x Widget', cart_json: '[]', _hpt: '', _elapsed: '9000', _ix: '3.12.2' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+  const smtp = (projectId: string, t: string, method: 'PUT' | 'DELETE') =>
+    app2.inject({
+      method,
+      url: `/projects/${projectId}/smtp`,
+      cookies: { sw_session: t },
+      ...(method === 'PUT' ? { payload: { host: 'smtp.acme.test', port: 587, secure: false, fromEmail: 'shop@acme.test', fromName: 'Acme' } } : {}),
+    });
+
+  it('follows the project SMTP as it is added and removed, with no settings save in between', async () => {
+    const { t, projectId } = await shopProject();
+    await order(projectId);
+    expect((await smtp(projectId, t, 'PUT')).statusCode).toBe(200);
+    await order(projectId);
+    expect((await smtp(projectId, t, 'DELETE')).statusCode).toBe(204);
+    await order(projectId);
+    expect(via).toEqual(['global', 'project', 'global']);
+  });
+
+  it('an ordinary form keeps the mode its author chose', async () => {
+    const { t, projectId } = await shopProject();
+    expect((await smtp(projectId, t, 'PUT')).statusCode).toBe(200);
+    const form = await app2.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/form/contact`,
+      cookies: { sw_session: t },
+      payload: { id: 'contact', name: 'Contact', recipient: 'hi@acme.test', mode: 'globalSmtp', fields: [{ name: 'message', label: 'Message', type: 'textarea' }] },
+    });
+    expect(form.statusCode, form.body).toBe(200);
+    const res = await app2.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { message: 'Hello', _hpt: '', _elapsed: '9000', _ix: '3.12.2' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(via).toEqual(['global']);
+  });
+
+  it('★ a retry of a failed order mail goes back through the project SMTP, not another address', async () => {
+    const { t, projectId } = await shopProject();
+    expect((await smtp(projectId, t, 'PUT')).statusCode).toBe(200);
+    projectFails = 1;
+    await order(projectId);
+    expect(via).toEqual([]);
+    const result = await (app2 as unknown as { runDueFormDeliveries: (o: { now: () => number }) => Promise<{ sent: number }> })
+      .runDueFormDeliveries({ now: () => Date.now() + 60 * 60_000 });
+    expect(result.sent).toBe(1);
+    expect(via).toEqual(['project']);
+  });
+
+  it('★ a project SMTP whose host the allowlist no longer permits is not used: global SMTP sends instead', async () => {
+    const { projectId } = await shopProject();
+    // Saved before the allowlist was tightened — the save-time check would refuse it now.
+    const now = new Date();
+    await db2.insert(content).values({
+      id: 'smtp-row', projectId, kind: 'project_smtp', entityId: 'smtp', scope: '',
+      data: { host: 'smtp.elsewhere.test', port: 587, secure: false, fromEmail: 'shop@acme.test' }, createdAt: now, updatedAt: now,
+    });
+    await order(projectId);
+    expect(via).toEqual(['global']);
+  });
+
+  it('an order no server could send says so in the inbox, on the request and on every retry', async () => {
+    const { projectId } = await shopProject();
+    globalUp = false; // no project SMTP, and global SMTP answers "cannot send"
+    await order(projectId);
+    const reason = async () => (await db2.select({ e: formSubmissions.deliveryError }).from(formSubmissions))[0]?.e;
+    expect(await reason()).toBe(PROJECT_MAIL_UNAVAILABLE);
+    await (app2 as unknown as { runDueFormDeliveries: (o: { now: () => number }) => Promise<unknown> })
+      .runDueFormDeliveries({ now: () => Date.now() + 60 * 60_000 });
+    expect(await reason()).toBe(PROJECT_MAIL_UNAVAILABLE);
+    expect(via).toEqual([]);
   });
 });

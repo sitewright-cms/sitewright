@@ -224,6 +224,9 @@ export const FormSchema = z.preprocess(carryLegacyCaptchaFlag, z.object({
    * from the shop settings on save. It is listed READ-ONLY so an operator can see where orders go and
    * recognise them in the inbox, but cannot edit it into disagreement with the shop — one writer, so
    * there is nothing to drift.
+   *
+   * ★ Also a ROUTING switch, not only a label: a managed form's mail is sent through the project's own
+   * SMTP when it has one (`makeProjectMailSender` in the API), whatever `mode` says.
    */
   managed: z.literal('shop').optional(),
   /**

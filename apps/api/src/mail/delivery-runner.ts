@@ -30,6 +30,8 @@ export interface DeliveryRunnerDeps {
     mail: SubmissionMail;
     send: (mail: SubmissionMail) => Promise<boolean>;
     explain: (err: unknown) => string;
+    /** What to record when `send` answers false (nothing was sent). A default fits an ordinary form. */
+    unavailable?: string;
   } | null>;
   /** Injected so tests need no fake timers and the scheduler stays the only thing that knows "now". */
   now?: () => number;
@@ -116,7 +118,7 @@ export async function runDueDeliveries(deps: DeliveryRunnerDeps): Promise<Delive
           row,
           attempts,
           rowNow,
-          'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.',
+          resolved.unavailable ?? 'Mail is not configured for this form’s delivery mode, or the mode is disabled instance-wide.',
           result,
         );
       }

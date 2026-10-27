@@ -263,7 +263,7 @@ import { projectsHoldingKeys } from '../payments/gateway-usage.js';
 import { mergeCatalogStock, reconcileStock } from '../publish/shop-catalog.js';
 import { fetchProviderStatus, type FetchLike } from '../payments/executor.js';
 import { makeProviderFetch, providerFetch } from '../payments/provider-fetch.js';
-import { runOrderMail } from '../payments/notify-runner.js';
+import { makeOrderChannelResolver, runOrderMail, type OrderChannelSettings } from '../payments/notify-runner.js';
 import { fromMinorUnits, DEFAULT_MEMBER_TOKEN_DAILY_PROJECTS, MAX_MEMBER_TOKEN_DAILY_PROJECTS, type Shop as ShopSettings } from '@sitewright/schema';
 import type { ShopCatalog } from '@sitewright/blocks';
 import { runDueDeliveries } from '../mail/delivery-runner.js';
@@ -275,7 +275,7 @@ import { registerImportRoutes, streamImport } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
-import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
+import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
 import { migrateInstanceHcaptchaToProjects } from '../repo/captcha-migration.js';
@@ -2139,8 +2139,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
   const releasesRepo = new ReleaseRepository(db);
+  // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
+  // only these exact hosts may be saved as a project's SMTP. Default: any host
+  // (the owner/admin is trusted, single-tenant). Checked when SMTP config is saved, and again by the
+  // project mailer at send time, so a config saved before the list existed cannot keep sending.
+  function smtpHostAllowed(host: string): boolean {
+    const allow = opts.smtpAllowedHosts;
+    if (!allow || allow.length === 0) return true;
+    return allow.includes(host.trim().toLowerCase().replace(/\.$/, ''));
+  }
+  function assertSmtpHostAllowed(host: string): void {
+    if (!smtpHostAllowed(host)) throw new ForbiddenError('SMTP host is not in the allowed list');
+  }
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
-  const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
+  const projectMailer =
+    opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey, undefined, smtpHostAllowed);
+  /** Whether the project has its OWN SMTP that may send: configured, and its host still allowed. Mails
+   *  the platform sends for the project use it when true, global SMTP otherwise (`platformMailMode`). */
+  const projectSmtpUsable = async (projectId: string): Promise<boolean> => {
+    const smtp = await loadProjectSmtp(db, projectId);
+    return smtp !== null && smtpHostAllowed(smtp.host);
+  };
+  /** Every mail the platform writes on a project's behalf (shop orders, payments, bookings) goes through
+   *  this: the project's own SMTP when it has one, so the customer sees the business, not the platform. */
+  const sendForProject = makeProjectMailSender({
+    globalMailer: mailer,
+    projectMailer,
+    formModes: () => instanceSettingsRepo.getFormModes(),
+    projectSmtpUsable,
+  });
   const captchaVerifier = opts.captcha ?? new HttpCaptchaVerifier();
   const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
   // The SSRF-safe outbound for `media/import-url` (see that route). Injectable for tests only.
@@ -3126,17 +3153,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
   }
 
-  // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
-  // only these exact hosts may be saved as a project's SMTP. Default: any host
-  // (the owner/admin is trusted, single-tenant). Checked when SMTP config is saved.
-  function assertSmtpHostAllowed(host: string): void {
-    const allow = opts.smtpAllowedHosts;
-    if (!allow || allow.length === 0) return;
-    const normalized = host.trim().toLowerCase().replace(/\.$/, '');
-    if (!allow.includes(normalized)) {
-      throw new ForbiddenError('SMTP host is not in the allowed list');
-    }
-  }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
   // …and publishes, likewise per project. Declared out here (not inside the publish block) because the
@@ -10984,7 +11000,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
    * `createApp` is constructed by roughly two hundred test files and a background timer in each of
    * them is a flakiness generator. A test that wants to exercise retries calls this directly.
    */
-  const resolveMail = makeDeliveryResolver({ db, mailer, projectMailer });
+  const resolveMail = makeDeliveryResolver({ db, mailer, projectMailer, sendForProject });
   app.decorate('runDueFormDeliveries', async (opts: { now?: () => number; limit?: number } = {}) =>
     runDueDeliveries({
       submissions: submissionsRepo,
@@ -10999,6 +11015,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     submissions: submissionsRepo,
     mailer,
     projectMailer,
+    sendForProject,
     captcha: captchaVerifier,
     // Per PROJECT, decrypted here so the route never touches the encryption key. A config whose
     // secret will not decrypt THROWS, and the caller fails closed — the same posture the instance
@@ -12364,24 +12381,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await runOrderMail(
       {
         transactions: shopTransactionsRepo,
-        globalMailer: mailer,
-        projectMailer,
-        resolveChannel: async (projectId, channelKey) => {
+        sendForProject,
+        resolveChannel: makeOrderChannelResolver(async (projectId) => {
           const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
-          const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as
-            | { identity?: { name?: string }; website?: { shop?: { channels?: Array<{ kind: string; key: string; email?: string; subject?: string }> } } }
-            | null;
-          const channel = settings?.website?.shop?.channels?.find((c) => c.kind === 'checkout' && c.key === channelKey);
-          if (!channel?.email) return null;
-          const modes = await instanceSettingsRepo.getFormModes();
-          return {
-            email: channel.email,
-            ...(channel.subject ? { subject: channel.subject } : {}),
-            // Same preference the provisioned order Forms make: the operator's own SMTP first.
-            mode: modes.globalSmtp ? ('globalSmtp' as const) : ('userSmtp' as const),
-            shopName: settings?.identity?.name ?? 'Shop',
-          };
-        },
+          return (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as OrderChannelSettings;
+        }),
         log: { warn: (o, m) => app.log.warn(o, m), info: (o, m) => app.log.info(o, m) },
       },
       now,

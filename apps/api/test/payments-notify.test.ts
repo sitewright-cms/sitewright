@@ -5,8 +5,8 @@ import type { Database } from '../src/db/client.js';
 import { projects, shopTransactions } from '../src/db/schema.js';
 import { ShopTransactionRepository } from '../src/repo/shop-transactions.js';
 import { orderMailContext, renderAdminMail, renderCustomerMail } from '../src/payments/notify.js';
-import { runOrderMail } from '../src/payments/notify-runner.js';
-import type { SubmissionMail } from '../src/mail/mailer.js';
+import { makeOrderChannelResolver, runOrderMail } from '../src/payments/notify-runner.js';
+import { makeProjectMailSender, PROJECT_MAIL_UNAVAILABLE, type ProjectMailer, type SubmissionMail, type SubmissionMailer } from '../src/mail/mailer.js';
 
 const PROJECT = 'p_mail';
 let db: Database;
@@ -23,23 +23,32 @@ beforeEach(async () => {
   globalResult = true;
 });
 
-const deps = (over: Partial<Parameters<typeof runOrderMail>[0]> = {}) => ({
+/**
+ * The runner's deps, with the REAL sender over two recording mailers: an order mail reaches whichever
+ * mailer `makeProjectMailSender` picks. `projectUsable` says whether the project has its own SMTP.
+ */
+const deps = (
+  over: { globalMailer?: SubmissionMailer; projectMailer?: ProjectMailer; projectUsable?: boolean } & Partial<Pick<Parameters<typeof runOrderMail>[0], 'resolveChannel'>> = {},
+) => ({
   transactions: repo,
-  globalMailer: {
-    send: async (mail: SubmissionMail) => {
-      if (globalResult instanceof Error) throw globalResult;
-      outbox.push({ via: 'global' as const, mail });
-      return globalResult;
+  sendForProject: makeProjectMailSender({
+    globalMailer: over.globalMailer ?? {
+      send: async (mail: SubmissionMail) => {
+        if (globalResult instanceof Error) throw globalResult;
+        outbox.push({ via: 'global' as const, mail });
+        return globalResult;
+      },
     },
-  },
-  projectMailer: {
-    send: async (_p: string, mail: SubmissionMail) => {
-      outbox.push({ via: 'project' as const, mail });
-      return true;
+    projectMailer: over.projectMailer ?? {
+      send: async (_p: string, mail: SubmissionMail) => {
+        outbox.push({ via: 'project' as const, mail });
+        return true;
+      },
     },
-  },
-  resolveChannel: async () => ({ email: 'orders@shop.test', mode: 'globalSmtp' as const, shopName: 'Acme Shop' }),
-  ...over,
+    formModes: async () => ({ globalSmtp: true, userSmtp: true }),
+    projectSmtpUsable: async () => over.projectUsable ?? false,
+  }),
+  resolveChannel: over.resolveChannel ?? (async () => ({ email: 'orders@shop.test', shopName: 'Acme Shop' })),
 });
 
 /** A PAID order owing both mails. */
@@ -153,6 +162,30 @@ describe('failure handling', () => {
     expect(after?.notifyNextAt).not.toBeNull();
     // ★ The resolved IP and the SMTP banner must not reach a stored, operator-visible string.
     expect(after?.notifyError ?? '').not.toContain('10.1.2.3');
+    // …but it does say WHOSE server failed, so the operator knows which settings to fix.
+    expect(after?.notifyError).toBe('Global SMTP: The mail server refused the connection. Check the host and port.');
+  });
+
+  it('names the project’s own server when that is the one that failed', async () => {
+    const row = await paidOrder();
+    await runOrderMail(
+      deps({
+        projectUsable: true,
+        projectMailer: {
+          send: async () => {
+            throw Object.assign(new Error('Invalid login: 535'), { code: 'EAUTH' });
+          },
+        },
+      }) as never,
+    );
+    expect((await raw(row.id))?.notifyError).toBe('Project SMTP: The mail server rejected the username or password.');
+  });
+
+  it('says plainly when no server could send it at all', async () => {
+    globalResult = false;
+    const row = await paidOrder();
+    await runOrderMail(deps());
+    expect((await raw(row.id))?.notifyError).toBe(PROJECT_MAIL_UNAVAILABLE);
   });
 
   it('gives up after the final attempt rather than retrying for ever', async () => {
@@ -185,9 +218,10 @@ describe('failure handling', () => {
     expect(after?.notifyError).toContain('no longer exists');
   });
 
-  it('uses the project’s own SMTP when the instance only permits that mode', async () => {
+  it('★ both order mails go through the project’s own SMTP when it has one', async () => {
     await paidOrder();
-    await runOrderMail(deps({ resolveChannel: async () => ({ email: 'o@s.test', mode: 'userSmtp' as const, shopName: 'S' }) }) as never);
+    await runOrderMail(deps({ projectUsable: true }) as never);
+    expect(outbox).toHaveLength(2);
     expect(outbox.every((o) => o.via === 'project')).toBe(true);
   });
 });
@@ -338,5 +372,23 @@ describe('undeliveredSummary', () => {
     await paidOrder();
     await runOrderMail(deps());
     expect(await repo.undeliveredSummary(PROJECT)).toMatchObject({ notify: 0, receipt: 0 });
+  });
+});
+
+describe('makeOrderChannelResolver', () => {
+  const settings = {
+    identity: { name: 'Acme Shop' },
+    website: { shop: { channels: [{ kind: 'checkout', key: 'card', email: 'orders@acme.test', subject: 'New order' }, { kind: 'form', key: 'card2', email: 'x@acme.test' }] } },
+  };
+  const resolver = makeOrderChannelResolver(async () => settings);
+
+  it('finds the checkout channel by key: its address, subject and the shop name', async () => {
+    expect(await resolver('p', 'card')).toEqual({ email: 'orders@acme.test', subject: 'New order', shopName: 'Acme Shop' });
+  });
+
+  it('answers null for a channel that is not a checkout, an unknown key, or no settings', async () => {
+    expect(await resolver('p', 'card2')).toBeNull();
+    expect(await resolver('p', 'nope')).toBeNull();
+    expect(await makeOrderChannelResolver(async () => null)('p', 'card')).toBeNull();
   });
 });

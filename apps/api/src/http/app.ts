@@ -278,7 +278,9 @@ import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { BookingClaimsRepository } from '../booking/claims.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
-import { BookingNotifier, type NotifierSettings } from '../booking/notify.js';
+import { BookingNotifier, notifyLapsed, type NotifierSettings } from '../booking/notify.js';
+import { registerBookingAdminRoutes } from './booking-admin-routes.js';
+import { signBookingRef } from '../booking/reference.js';
 import { BookingService } from '../booking/service.js';
 import { registerBookingRoutes } from './booking-routes.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
@@ -2148,21 +2150,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const bookingClaimsRepo = new BookingClaimsRepository(db);
   // ★ THE one booking service: its per-project queue is what keeps two visitors off the same time, so every
   // route and tool must share this instance rather than build another.
-  const bookingService = new BookingService({
-    claims: bookingClaimsRepo,
-    readConfig: async (projectId) => {
-      const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
-      const raw = await contentRepo.get(ctx, 'booking', BOOKING_ENTITY_ID).catch((err: unknown) => {
-        if (err instanceof NotFoundError) return null;
-        throw err;
-      });
-      if (raw === null) return null;
-      const parsed = BookingConfigSchema.safeParse(raw);
-      // A stored set-up that no longer parses books nothing, and says so: otherwise it reads as "no such offering".
-      if (!parsed.success) app.log.warn({ projectId, issues: parsed.error.issues.length }, 'booking set-up does not parse; taking no bookings');
-      return parsed.success ? parsed.data : null;
-    },
-  });
+  const readBookingConfig = async (projectId: string): Promise<BookingConfig | null> => {
+    const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+    const raw = await contentRepo.get(ctx, 'booking', BOOKING_ENTITY_ID).catch((err: unknown) => {
+      if (err instanceof NotFoundError) return null;
+      throw err;
+    });
+    if (raw === null) return null;
+    const parsed = BookingConfigSchema.safeParse(raw);
+    // A stored set-up that no longer parses books nothing, and says so: otherwise it reads as "no such offering".
+    if (!parsed.success) app.log.warn({ projectId, issues: parsed.error.issues.length }, 'booking set-up does not parse; taking no bookings');
+    return parsed.success ? parsed.data : null;
+  };
+  const bookingService = new BookingService({ claims: bookingClaimsRepo, readConfig: readBookingConfig });
   const releasesRepo = new ReleaseRepository(db);
   // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
   // only these exact hosts may be saved as a project's SMTP. Default: any host
@@ -11163,6 +11163,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     notify: (event) => bookingNotifier.notify(event),
   });
 
+  // The Bookings tab: the project's bookings and requests, and the business's answers (see booking-admin-routes.ts).
+  registerBookingAdminRoutes(app, {
+    bookings: bookingService,
+    claims: bookingClaimsRepo,
+    mails: bookingMailRepo,
+    readConfig: readBookingConfig,
+    notify: (event) => bookingNotifier.notify(event),
+    reference: (projectId, claimId) => signBookingRef(projectId, claimId, currentCookieSecret),
+    resolveProject,
+    rl,
+  });
+
   for (const note of statsBootNotes) app.log.warn(note.err ? { errMsg: note.err instanceof Error ? note.err.message : String(note.err) } : {}, note.message);
   if (statsEngine.createdSecret) {
     app.log.info('statistics: created a new route-signing secret — pages published before it on other hosts count again once republished (set SW_ENCRYPTION_KEY to make it survive the statistics file)');
@@ -12440,8 +12452,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Booking claims end: lapsed holds and requests, and ledger bookings past retention, customers' details with them.
     void bookingClaimsRepo
       .sweep(Date.now())
-      .then(({ lapsed, ended }) => {
+      .then(async ({ lapsed, ended, lapsedRequests }) => {
         if (lapsed || ended) app.log.info({ lapsed, ended }, 'swept ended booking claims');
+        // A request that ran out unanswered: its customer is told, and so is the business.
+        if (lapsedRequests.length) {
+          await notifyLapsed(lapsedRequests, { readConfig: readBookingConfig, notify: (e) => bookingNotifier.notify(e), log: { warn: (o, m) => app.log.warn(o, m) } });
+        }
       })
       .catch((err) => app.log.warn(err, 'booking claims sweep failed'));
     // Booking mails: retry what is due, and forget what failed for good a week ago.

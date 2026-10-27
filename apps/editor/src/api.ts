@@ -1377,6 +1377,31 @@ export interface PagespeedAuditResult {
  * Shaped from the API rather than imported from the server repo: the editor must not depend on the
  * server's internal row type, and the two differ (dates arrive as strings over JSON).
  */
+/** One booking or request, as the Bookings tab lists it. Times are instants; `timeZone` is the resource's clock. */
+export interface BookingItem {
+  id: string;
+  state: 'booked' | 'pending' | 'hold';
+  offering: { id: string; name: string; mode: 'duration' | 'slots' | 'range' | 'days' | null; unit?: 'night' | 'day' };
+  resource: { id: string; name: string };
+  timeZone: string;
+  start: number;
+  end: number;
+  quantity: number;
+  customer: { name?: string; email?: string; phone?: string; note?: string };
+  /** A request's deadline: when it lapses unanswered. */
+  expiresAt: number | null;
+  createdAt: number;
+}
+
+export interface BookingList {
+  bookings: BookingItem[];
+  total: number;
+  /** Requests waiting for an answer, whatever view was asked for. */
+  requests: number;
+  /** Booking mails that have not gone out. */
+  undelivered: { failed: number; retrying: number; lastError?: string };
+}
+
 export interface ShopTransaction {
   id: string;
   channelKey: string;
@@ -1700,6 +1725,12 @@ export const api = {
   // --- the booking set-up singleton (resources + offerings); absent until first written ---
   getBooking: (projectId: string) =>
     request<{ item: BookingConfig; version?: string }>('GET', `/projects/${projectId}/content/booking/booking`),
+  /** The Bookings tab: upcoming bookings and requests, the requests alone, or the past ones still kept. */
+  listBookings: (projectId: string, view: 'upcoming' | 'requests' | 'past' = 'upcoming') =>
+    request<BookingList>('GET', `/projects/${projectId}/bookings?view=${view}`),
+  /** The business's answers. Each sends the customer's mail, and the calendars' where the booking is in them. */
+  answerBooking: (projectId: string, id: string, answer: 'accept' | 'decline' | 'cancel') =>
+    request<{ ok: true; booking: BookingItem | null }>('POST', `/projects/${projectId}/bookings/${encodeURIComponent(id)}/${answer}`),
   /** A full replace. `baseVersion` is the version the form was built from, so a concurrent edit is refused, not lost. */
   putBooking: (projectId: string, config: BookingConfig, baseVersion?: string | null) =>
     request<{ item: BookingConfig; version?: string }>('PUT', `/projects/${projectId}/content/booking/booking`, config, { version: baseVersion }),

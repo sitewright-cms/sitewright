@@ -335,6 +335,26 @@
           "de": "Mit der angehängten Datei tragen Sie den Termin in Ihren Kalender ein.",
           "es": "Añádela a tu calendario con el archivo adjunto."
         },
+        "booking.mail_declined": {
+          "en": "Booking request declined: {offering}",
+          "de": "Buchungsanfrage abgelehnt: {offering}",
+          "es": "Solicitud de reserva rechazada: {offering}"
+        },
+        "booking.mail_declined_text": {
+          "en": "We are sorry: we cannot take your request. Please choose another time.",
+          "de": "Es tut uns leid: Wir können Ihre Anfrage nicht annehmen. Bitte wählen Sie einen anderen Termin.",
+          "es": "Lo sentimos: no podemos aceptar tu solicitud. Elige otro horario."
+        },
+        "booking.mail_lapsed": {
+          "en": "Booking request not confirmed: {offering}",
+          "de": "Buchungsanfrage nicht bestätigt: {offering}",
+          "es": "Solicitud de reserva no confirmada: {offering}"
+        },
+        "booking.mail_lapsed_text": {
+          "en": "We are sorry: your request could not be confirmed in time, and the time is free again. Please choose another time.",
+          "de": "Es tut uns leid: Ihre Anfrage konnte nicht rechtzeitig bestätigt werden, der Termin ist wieder frei. Bitte wählen Sie einen anderen Termin.",
+          "es": "Lo sentimos: tu solicitud no pudo confirmarse a tiempo y el horario vuelve a estar libre. Elige otro horario."
+        },
         "about.ab_img_alt": {
           "en": "The Northwind studio",
           "de": "Das Northwind-Studio",

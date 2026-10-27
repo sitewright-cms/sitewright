@@ -160,6 +160,41 @@ describe('a cancellation', () => {
   });
 });
 
+describe('the business’s answers', () => {
+  it('confirms an accepted request to the customer as a booking, and says so to the business', () => {
+    const [customer, own, anna] = mails({ by: 'business' });
+    expect(customer!.subject).toBe('Booking confirmed: Massage');
+    expect(customer!.rendered.text).toContain('https://studio.example/my-booking/#t=ref-1');
+    expect(own!.subject.startsWith('Booking confirmed: Massage')).toBe(true);
+    expect(own!.rendered.text).toContain('You accepted Ada Lovelace’s request: Massage is booked.');
+    expect(anna!.rendered.icalEvent?.method).toBe('REQUEST');
+  });
+
+  it('tells only the customer of a declined request, with no link and nothing for a calendar', () => {
+    const out = mails({ kind: 'declined', by: 'business' });
+    expect(out.map((m) => m.recipient)).toEqual(['ada@example.com']);
+    expect(out[0]!.subject).toBe('Booking request declined: Massage');
+    expect(out[0]!.rendered.text).toContain('we cannot take your request');
+    expect(out[0]!.rendered.text).not.toContain('#t=');
+    expect(out[0]!.rendered.attachments).toBeUndefined();
+  });
+
+  it('says who cancelled', () => {
+    expect(mails({ kind: 'cancelled', wasBooked: true, by: 'business' })[1]!.rendered.text).toContain('The booking of Massage for Ada Lovelace is cancelled, and Ada Lovelace has been told.');
+    expect(mails({ kind: 'cancelled', wasBooked: true })[1]!.rendered.text).toContain('Ada Lovelace cancelled Massage.');
+  });
+
+  it('tells the customer and the business of a request that ran out unanswered', () => {
+    const [customer, own] = mails({ kind: 'lapsed' });
+    expect(customer!.subject).toBe('Booking request not confirmed: Massage');
+    expect(customer!.rendered.text).toContain('could not be confirmed in time');
+    expect(customer!.rendered.text).not.toContain('#t=');
+    expect(own!.subject.startsWith('Booking request lapsed: Massage')).toBe(true);
+    expect(own!.rendered.text).toContain('ran out unanswered');
+    expect([customer, own].every((m) => !m!.rendered.attachments && !m!.rendered.icalEvent)).toBe(true);
+  });
+});
+
 describe('bookingWhen', () => {
   it('reads stays and whole days as people do', () => {
     const nights = { offering: { name: 'Flat', mode: 'days' as const, unit: 'night' as const }, timeZone: 'Europe/Berlin', locale: 'en-GB' };

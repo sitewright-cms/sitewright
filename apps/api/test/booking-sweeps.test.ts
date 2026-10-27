@@ -47,6 +47,15 @@ describe('the booking mails', () => {
     expect(body).toMatch(/bookingMailRepo\s*\.sweep\(/);
   });
 
+  it('tell the customers of the requests that ran out unanswered, from the maintenance pass', () => {
+    // The sweep hands the lapsed requests to notifyLapsed (booking/notify.ts), which mails them.
+    expect(arrowBody('runMaintenanceSweeps')).toMatch(/notifyLapsed\(lapsedRequests,/);
+  });
+
+  it('are queued by the Bookings tab’s answers too', () => {
+    expect(appSource).toMatch(/registerBookingAdminRoutes\(app, \{[\s\S]*?notify: \(event\) => bookingNotifier\.notify\(event\)/);
+  });
+
   it('are queued by the public booking routes', () => {
     expect(appSource).toMatch(/notify: \(event\) => bookingNotifier\.notify\(event\)/);
     expect(appSource).toMatch(/const bookingMailRepo = new BookingMailRepository\(db\)/);

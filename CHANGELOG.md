@@ -11,6 +11,29 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking reads and writes Google calendars.** A resource's calendar can be a Google calendar, through the
+  platform's own Google account (the one System Settings → Search engines already holds). No one signs in, and
+  nothing per business is stored but the calendar's id.
+  - **Connecting:** the business shares its calendar with the platform's account ("Make changes to events"), adds
+    its project's proof code to the calendar's description, and gives the Calendar ID. ★ The code is needed because
+    every project shares that one account: being shared with it says nothing about whose calendar it is, and only a
+    calendar's owner can set its description. It can be removed once connected.
+  - **Reading:** Google expands recurring events itself; events marked free, cancelled ones and our own bookings
+    are skipped; all-day events are on the calendar's own clock. A calendar that cannot be read in full (too many
+    events, an event that cannot be placed, not shared any more) is unreadable, so its resource is busy.
+  - **Writing:** the same as for CalDAV (on when connecting, by default), with an event id made from the booking,
+    so a booking is updated in place and found again to be taken out. Shared read-only, or no longer shared, stops
+    at once and says so on the calendar's row.
+  - **Hardening (security review):** our own bookings are skipped only when the platform's account made them (an
+    invitation from outside can carry any UID); a customer's note is written as text, never as markup Google would
+    show as a link; connecting answers "not shared" and "not proven" alike, so it cannot be used to find calendars
+    shared with the platform; and calls to Google are limited across the instance, so one project cannot use up the
+    shared account's quota.
+  - **Requirement:** the Google Calendar API enabled in the platform's Google Cloud project; the error says so
+    when it is not.
+  - **API:** `GET /projects/:id/booking/google` (the address to share with, and the proof code), and
+    `kind: "google"` on connect.
+
 - **Bookings go into CalDAV calendars.** A CalDAV calendar connected to a resource can take its bookings: switched
   on when connecting (on by default), or later on the calendar's row.
   - **What goes in:** a booking as a confirmed event and a request as a tentative one. A request accepted becomes

@@ -283,6 +283,8 @@ import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
 import { registerBookingFeedRoutes } from './booking-feed-routes.js';
 import { discoverCalendars, readCalendar, type DavTransport } from '../booking/caldav.js';
 import { BookingCalendarWriteRepository, CALENDAR_WRITE_LIMITS, CalendarWriter, runCalendarWrites } from '../booking/calendar-writes.js';
+import { checkGoogleCalendar, googleProofCode, readGoogleCalendar } from '../booking/google-calendar.js';
+import type { GoogleServiceAccountKey } from '../webmaster/google.js';
 import { logRequest } from './log-redact.js';
 import { BookingFeedRepository, FEED_LIMITS } from '../booking/feed.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
@@ -2209,6 +2211,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     calendars: bookingCalendarRepo,
     fetchFeed: fetchBookingFeed,
     readCalDav: (source, from, to) => readCalendar(davFetch, source.url, source, from, to),
+    // Google: through the platform's service account (declared with the search engines, below).
+    readGoogle: async (calendarId, o) => {
+      const key = await platformGoogleKey();
+      return key ? readGoogleCalendar(key, webmasterIo, calendarId, o) : { ok: false, error: 'the platform has no Google account: ask its administrator' };
+    },
     decrypt: (url) => {
       if (!opts.encryptionKey) throw new Error('no encryption key');
       return decryptSecret(url, opts.encryptionKey);
@@ -9198,6 +9205,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     timeoutMs: 20_000,
     tokens: webmasterTokens,
   };
+  /** The platform's Google service account (System Settings), for booking's Google calendars too. Null: none. */
+  const platformGoogleKey = async (): Promise<GoogleServiceAccountKey | null> => {
+    const secret = await webmasterRepo.getSecret('google').catch(() => null);
+    if (!secret?.clientEmail || !secret.privateKey) return null;
+    return { clientEmail: secret.clientEmail, privateKey: secret.privateKey, privateKeyId: secret.privateKeyId ?? '', projectId: secret.projectId ?? '' };
+  };
   const siteRegistrar = new SiteRegistrar({
     db,
     accounts: webmasterRepo,
@@ -11052,6 +11065,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return calendarWriter.backfill(calendar, upcoming);
       },
       forgetWrites: (calendarId) => bookingCalendarWriteRepo.forget(calendarId),
+      google: {
+        serviceAccount: async () => (await platformGoogleKey())?.clientEmail ?? null,
+        check: async (calendarId) => {
+          const key = await platformGoogleKey();
+          return key ? checkGoogleCalendar(key, webmasterIo, calendarId) : { ok: false, error: 'the platform has no Google account: ask its administrator' };
+        },
+        proofCode: (projectId) => googleProofCode(projectId, calendarKey),
+      },
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       rl,
@@ -11242,6 +11263,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       transport: davFetch,
       claimOf: (projectId, claimId) => bookingClaimsRepo.get(projectId, claimId),
       readConfig: readBookingConfig,
+      google: { key: platformGoogleKey, io: webmasterIo },
       decrypt: (envelope) => {
         if (!opts.encryptionKey) throw new Error('no encryption key');
         return decryptSecret(envelope, opts.encryptionKey);

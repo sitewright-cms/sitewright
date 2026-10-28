@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { BookingConfig } from '@sitewright/schema';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -6,6 +6,8 @@ import type { ProjectContext } from '../repo/context.js';
 import { CALENDAR_LIMITS, feedUrl, type BookingCalendarRepository, type CalendarReader, type CalendarRow } from '../booking/calendars.js';
 import type { EncryptedSecret } from '../crypto/secret.js';
 import { davUrl, type DavAuth, type FoundCalendar } from '../booking/caldav.js';
+import { GOOGLE_CALENDAR_ID_RE } from '../booking/google-calendar.js';
+import { isRecord } from '../webmaster/request.js';
 
 /**
  * A resource's OUTSIDE CALENDARS: the iCalendar feeds its busy times are read from.
@@ -15,7 +17,8 @@ import { davUrl, type DavAuth, type FoundCalendar } from '../booking/caldav.js';
  *   POST   /projects/:projectId/booking/calendars/:id/test    read it again now
  *   DELETE /projects/:projectId/booking/calendars/:id
  *   POST   /projects/:projectId/booking/calendars/discover    a CalDAV account's calendars (nothing is stored)
- *   PATCH  /projects/:projectId/booking/calendars/:id         `{writes}`: a CalDAV calendar takes the bookings, or not
+ *   PATCH  /projects/:projectId/booking/calendars/:id         `{writes}`: a CalDAV or Google calendar takes the bookings, or not
+ *   GET    /projects/:projectId/booking/google                 the address a Google calendar is shared with (the platform's account)
  *
  * Two kinds: an iCalendar feed's address (`ics`), or a calendar on a CalDAV server (`caldav`: its address, a
  * username and an app password, all three encrypted together).
@@ -36,6 +39,13 @@ export interface BookingCalendarDeps {
   backfill?: (calendar: CalendarRow) => Promise<number>;
   /** Drops what was still to be written into a calendar that is removed. */
   forgetWrites?: (calendarId: string) => Promise<void>;
+  /** Google calendars, through the platform's service account. Absent: Google is not offered. */
+  google?: {
+    serviceAccount: () => Promise<string | null>;
+    check: (calendarId: string) => Promise<{ ok: true; name: string; description: string } | { ok: false; error: string }>;
+    /** The project's proof code (it goes into the calendar's description). */
+    proofCode: (projectId: string) => string;
+  };
   /** A CalDAV account's calendars. Absent: CalDAV is not offered. */
   discoverCalDav?: (serverUrl: string, auth: DavAuth) => Promise<{ ok: true; calendars: FoundCalendar[] } | { ok: false; error: string }>;
   resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
@@ -62,6 +72,14 @@ const ConnectSchema = z.union([
     writes: z.boolean().optional(),
   }),
 ]);
+
+const GoogleConnectSchema = z.strictObject({
+  kind: z.literal('google'),
+  resourceId: z.string().min(1).max(48),
+  name: z.string().trim().min(1).max(120),
+  calendarId: z.string().trim().regex(GOOGLE_CALENDAR_ID_RE),
+  writes: z.boolean().optional(),
+});
 
 const WritesSchema = z.strictObject({ writes: z.boolean() });
 
@@ -112,6 +130,7 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/booking/calendars', { config: deps.rl(20), bodyLimit: 8 * 1024 }, async (req, reply) => {
     const { project, ok } = await writer(req, 'content:write');
     if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    if (isRecord(req.body) && req.body.kind === 'google') return connectGoogle(req, reply, project.id);
     const input = ConnectSchema.safeParse(req.body);
     if (!input.success) return reply.code(400).send({ error: 'resourceId, name and url are needed (and a username and password for CalDAV)' });
     const timeZone = zoneOf(await deps.readConfig(project.id), input.data.resourceId);
@@ -140,6 +159,49 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
     if (row.writes) void deps.backfill?.(row).catch((err: unknown) => req.log.warn({ err, calendarId: row.id }, 'could not put the upcoming bookings into a calendar'));
     return reply.code(201).send(await readNow(project.id, row, timeZone));
   });
+
+  // The address a business shares its Google calendar with: the platform's one service account.
+  app.get<{ Params: { projectId: string } }>('/projects/:projectId/booking/google', { config: deps.rl(30) }, async (req, reply) => {
+    const { project, ok } = await writer(req, 'content:read');
+    if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const serviceAccount = deps.google ? await deps.google.serviceAccount() : null;
+    return reply.send({ serviceAccount, proofCode: serviceAccount && deps.google ? deps.google.proofCode(project.id) : null });
+  });
+
+  /** A Google calendar: shared with the platform's account first, so connecting proves it is (or says what is missing). */
+  const connectGoogle = async (req: ProjectReq, reply: FastifyReply, projectId: string) => {
+    const input = GoogleConnectSchema.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: 'resourceId, name and the calendar’s id (Settings → Integrate calendar → Calendar ID) are needed' });
+    if (!deps.google) return reply.code(400).send({ error: 'Google calendars are not available on this server' });
+    const timeZone = zoneOf(await deps.readConfig(projectId), input.data.resourceId);
+    if (!timeZone) return reply.code(400).send({ error: `there is no resource "${input.data.resourceId}" in the booking set-up` });
+    if ((await deps.calendars.count(projectId)) >= CALENDAR_LIMITS.perProject) {
+      return reply.code(409).send({ error: `a project connects at most ${CALENDAR_LIMITS.perProject} calendars` });
+    }
+    // ★ Shared with the platform's account is not enough: every project shares that account. The calendar's own
+    // description must carry THIS project's code, which only the calendar's owner can put there. Not shared, and
+    // shared without the code, get the same answer: connecting must not tell which calendars the account can see.
+    const code = deps.google.proofCode(projectId);
+    const account = (await deps.google.serviceAccount()) ?? 'the platform’s Google account';
+    const unproven = `the calendar is not shared with ${account}, or its description does not carry ${code} yet (its settings → Description; it can be removed once connected)`;
+    const checked = await deps.google.check(input.data.calendarId);
+    if (!checked.ok) return reply.code(400).send({ error: /not shared with/.test(checked.error) ? unproven : checked.error });
+    if (!checked.description.includes(code)) return reply.code(400).send({ error: unproven });
+    const row = await deps.calendars.insert(
+      {
+        projectId,
+        resourceId: input.data.resourceId,
+        kind: 'google',
+        name: input.data.name,
+        url: deps.encrypt(input.data.calendarId),
+        host: 'calendar.google.com',
+        writes: input.data.writes === true && !!deps.backfill,
+      },
+      now(),
+    );
+    if (row.writes) void deps.backfill?.(row).catch((err: unknown) => req.log.warn({ err, calendarId: row.id }, 'could not put the upcoming bookings into a calendar'));
+    return reply.code(201).send(await readNow(projectId, row, timeZone));
+  };
 
   // A CalDAV account's calendars, to pick one. Nothing is stored; the password is only used for this.
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/booking/calendars/discover', { config: deps.rl(10), bodyLimit: 8 * 1024 }, async (req, reply) => {
@@ -171,7 +233,7 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
     if (!input.success) return reply.code(400).send({ error: '{"writes": true|false} is expected' });
     const row = await deps.calendars.get(project.id, req.params.id);
     if (!row) return reply.code(404).send({ error: 'there is no such calendar' });
-    if (row.kind !== 'caldav' || (input.data.writes && !deps.backfill)) return reply.code(400).send({ error: 'only a CalDAV calendar takes the bookings' });
+    if ((row.kind !== 'caldav' && row.kind !== 'google') || (input.data.writes && !deps.backfill)) return reply.code(400).send({ error: 'only a CalDAV or Google calendar takes the bookings' });
     await deps.calendars.setWrites(project.id, row.id, input.data.writes);
     const fresh = (await deps.calendars.get(project.id, row.id)) ?? row;
     // Switched on: the upcoming bookings go in now. Switched off: what is there stays (it is the business's calendar).

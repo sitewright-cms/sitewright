@@ -6,10 +6,11 @@ import { useDialogs } from '../../ui/Dialogs';
 import { PartHeading, TextField } from './fields';
 import { since } from './model';
 import { CalDavConnect } from './CalDavConnect';
+import { GoogleConnect } from './GoogleConnect';
 import type { CalendarAccess } from './ResourcesPanel';
 
 const HELP =
-  'Busy times read from a calendar kept elsewhere, so a time taken there is not offered here. Google: Settings → the calendar → “Secret address in iCal format”. Outlook: Settings → Calendar → Shared calendars → Publish → the ICS link. Apple iCloud: share the calendar as a public calendar and copy its webcal:// link. Rental platforms: their calendar export link. A CalDAV account (Nextcloud, Fastmail, iCloud, Radicale…): its server address, username and an app password find its calendars. Addresses and passwords are kept encrypted and never shown again. A calendar that cannot be read for a day makes this busy, not free.';
+  'Busy times read from a calendar kept elsewhere, so a time taken there is not offered here. Google: Settings → the calendar → “Secret address in iCal format”. Outlook: Settings → Calendar → Shared calendars → Publish → the ICS link. Apple iCloud: share the calendar as a public calendar and copy its webcal:// link. Rental platforms: their calendar export link. A CalDAV account (Nextcloud, Fastmail, iCloud, Radicale…): its server address, username and an app password find its calendars. A Google calendar: shared with the platform’s Google account, and its Calendar ID. Addresses and passwords are kept encrypted and never shown again. A calendar that cannot be read for a day makes this busy, not free.';
 
 /**
  * A resource's OUTSIDE CALENDARS. Connecting, re-reading and removing act at once (not with the set-up's Save):
@@ -41,7 +42,7 @@ export function CalendarsPanel({
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   /** How the next calendar is connected: by its iCalendar address, or through a CalDAV account. */
-  const [how, setHow] = useState<'ics' | 'caldav'>('ics');
+  const [how, setHow] = useState<'ics' | 'caldav' | 'google'>('ics');
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const onBusyRef = useRef(onBusy);
@@ -171,7 +172,7 @@ export function CalendarsPanel({
                     <span className="block truncate text-sm font-medium text-slate-700 dark:text-slate-200">{c.name}</span>
                     <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
                       {c.host}
-                      {c.kind === 'caldav' ? ' (CalDAV)' : ''}
+                      {c.kind === 'caldav' ? ' (CalDAV)' : c.kind === 'google' ? ' (Google)' : ''}
                       {' · '}
                       {c.lastError ? (
                         <span className="text-rose-600 dark:text-rose-400">{c.lastError}</span>
@@ -183,7 +184,7 @@ export function CalendarsPanel({
                     </span>
                     {c.writeError && <span className="block truncate text-xs text-rose-600 dark:text-rose-400">{c.writeError}</span>}
                   </span>
-                  {c.kind === 'caldav' && (
+                  {(c.kind === 'caldav' || c.kind === 'google') && (
                     <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                       <input
                         type="checkbox"
@@ -216,6 +217,7 @@ export function CalendarsPanel({
               [
                 ['ics', 'Calendar address'],
                 ['caldav', 'CalDAV account'],
+                ['google', 'Google Calendar'],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -230,7 +232,23 @@ export function CalendarsPanel({
               </button>
             ))}
           </div>
-          {how === 'caldav' ? (
+          {how === 'google' ? (
+            <GoogleConnect
+              projectId={projectId}
+              resourceId={resourceId}
+              disabled={busy !== null && busy !== 'google'}
+              onBusy={(b) => setBusy(b ? 'google' : null)}
+              onConnected={(r) => {
+                put(r.calendar);
+                setMessage(
+                  r.reading.ok
+                    ? { ok: true, text: `Connected. ${eventsText(r.calendar.lastEvents)}` }
+                    : { ok: false, text: `Connected, but it could not be read: ${r.reading.error}.` },
+                );
+              }}
+              onError={(text) => setMessage({ ok: false, text })}
+            />
+          ) : how === 'caldav' ? (
             <CalDavConnect
               projectId={projectId}
               resourceId={resourceId}

@@ -129,6 +129,29 @@ export function bookingEventLines(
   const start = c.startAt.getTime();
   const end = c.endAt.getTime();
   const pending = c.state === 'pending';
+  const { summary, description } = bookingText(c, offering, resource);
+  const lines = ['BEGIN:VEVENT', `UID:${icsText(`${c.id}@${ctx.projectId}`)}`, `DTSTAMP:${icsUtc(ctx.stamp)}`];
+  if (offering?.mode === 'days' && offering.unit === 'day' && resource) {
+    // Whole days on the resource's clock, the end date exclusive (as the invitation writes them).
+    lines.push(`DTSTART;VALUE=DATE:${ymd(localDateOf(start, resource.timeZone))}`);
+    const lastDay = localDateOf(end - 1, resource.timeZone);
+    lines.push(`DTEND;VALUE=DATE:${ymd(addDays(lastDay, 1))}`);
+  } else {
+    lines.push(`DTSTART:${icsUtc(start)}`, `DTEND:${icsUtc(end)}`);
+  }
+  lines.push('SEQUENCE:0', `STATUS:${pending ? 'TENTATIVE' : 'CONFIRMED'}`, 'TRANSP:OPAQUE', `SUMMARY:${icsText(summary)}`);
+  if (description) lines.push(`DESCRIPTION:${icsText(description)}`);
+  lines.push('END:VEVENT');
+  return lines;
+}
+
+/** A booking's title and details, the same in every calendar it goes to: who booked what, and how to reach them. */
+export function bookingText(
+  c: Pick<ClaimRow, 'state' | 'units' | 'customer'>,
+  offering: BookingOffering | undefined,
+  resource: BookingResource | undefined,
+): { summary: string; description: string } {
+  const pending = c.state === 'pending';
   const customer = c.customer ?? {};
   const who = customer.name?.trim() || customer.email?.trim() || 'a customer';
   const description = [
@@ -140,17 +163,10 @@ export function bookingEventLines(
     customer.note ? `Note: ${customer.note}` : '',
     pending ? 'A request: accept or decline it in the Bookings tab.' : '',
   ].filter(Boolean);
-  const lines = ['BEGIN:VEVENT', `UID:${icsText(`${c.id}@${ctx.projectId}`)}`, `DTSTAMP:${icsUtc(ctx.stamp)}`];
-  if (offering?.mode === 'days' && offering.unit === 'day' && resource) {
-    // Whole days on the resource's clock, the end date exclusive (as the invitation writes them).
-    lines.push(`DTSTART;VALUE=DATE:${ymd(localDateOf(start, resource.timeZone))}`);
-    const lastDay = localDateOf(end - 1, resource.timeZone);
-    lines.push(`DTEND;VALUE=DATE:${ymd(addDays(lastDay, 1))}`);
-  } else {
-    lines.push(`DTSTART:${icsUtc(start)}`, `DTEND:${icsUtc(end)}`);
-  }
-  lines.push('SEQUENCE:0', `STATUS:${pending ? 'TENTATIVE' : 'CONFIRMED'}`, 'TRANSP:OPAQUE', `SUMMARY:${icsText(`${offering?.name ?? 'Booking'}: ${who}${pending ? ' (request)' : ''}`)}`);
-  if (description.length) lines.push(`DESCRIPTION:${icsText(description.join('\n'))}`);
-  lines.push('END:VEVENT');
-  return lines;
+  return { summary: `${offering?.name ?? 'Booking'}: ${who}${pending ? ' (request)' : ''}`, description: description.join('\n') };
+}
+
+/** Whether a booking is written as whole days (a rental by the day), on its resource's clock. */
+export function wholeDays(offering: BookingOffering | undefined, resource: BookingResource | undefined): resource is BookingResource {
+  return offering?.mode === 'days' && offering.unit === 'day' && !!resource;
 }

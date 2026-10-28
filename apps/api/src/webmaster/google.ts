@@ -79,13 +79,11 @@ export function parseGoogleKey(text: string): GoogleServiceAccountKey {
 
 const b64url = (data: Buffer | string): string => Buffer.from(data).toString('base64url');
 
-/** The signed assertion a token is asked for with (exported for its test). */
-export function signedAssertion(key: GoogleServiceAccountKey, now: Date): string {
+/** The signed assertion a token is asked for with (exported for its test). `scopes`: what the token may do. */
+export function signedAssertion(key: GoogleServiceAccountKey, now: Date, scopes: readonly string[] = GOOGLE_SCOPES): string {
   const iat = Math.floor(now.getTime() / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: key.privateKeyId }));
-  const claims = b64url(
-    JSON.stringify({ iss: key.clientEmail, scope: GOOGLE_SCOPES.join(' '), aud: GOOGLE_TOKEN_URL, iat, exp: iat + TOKEN_LIFETIME_S }),
-  );
+  const claims = b64url(JSON.stringify({ iss: key.clientEmail, scope: scopes.join(' '), aud: GOOGLE_TOKEN_URL, iat, exp: iat + TOKEN_LIFETIME_S }));
   const signature = sign('RSA-SHA256', Buffer.from(`${header}.${claims}`), createPrivateKey(key.privateKey));
   return `${header}.${claims}.${b64url(signature)}`;
 }
@@ -95,14 +93,21 @@ const TOKEN_EARLY_MS = 5 * 60_000;
 
 /**
  * An access token for the key: the one `io.tokens` keeps for it while it is good, else a new one. `fresh` always
- * trades the key (Test saved credentials proves the key, not a token from before).
+ * trades the key (Test saved credentials proves the key, not a token from before). `scopes`: what it may do (the
+ * search engines' by default; booking asks for the calendar's), kept apart per set of scopes.
  */
-export async function googleAccessToken(key: GoogleServiceAccountKey, io: WebmasterIo, now = new Date(), { fresh = false } = {}): Promise<string> {
-  if (!io.tokens || fresh) return (await tradeKey(key, io, now)).token;
+export async function googleAccessToken(
+  key: GoogleServiceAccountKey,
+  io: WebmasterIo,
+  now = new Date(),
+  { fresh = false, scopes = GOOGLE_SCOPES }: { fresh?: boolean; scopes?: readonly string[] } = {},
+): Promise<string> {
+  if (!io.tokens || fresh) return (await tradeKey(key, io, now, scopes)).token;
   // The key id too: a new key for the same service account is a new account here. A shared trade is not cut short by
   // the step that happened to start it: others wait for it too (a step past its deadline still stops at its next call).
   const shared: WebmasterIo = { fetch: io.fetch, ...(io.timeoutMs !== undefined ? { timeoutMs: io.timeoutMs } : {}) };
-  return io.tokens.get(`google\n${key.clientEmail}\n${key.privateKeyId}`, now.getTime(), () => tradeKey(key, shared, now));
+  const scopeKey = scopes === GOOGLE_SCOPES ? '' : `\n${[...scopes].sort().join(' ')}`;
+  return io.tokens.get(`google\n${key.clientEmail}\n${key.privateKeyId}${scopeKey}`, now.getTime(), () => tradeKey(key, shared, now, scopes));
 }
 
 /**
@@ -121,8 +126,8 @@ async function sendRetryingRefused(
 }
 
 /** Trades the key for an access token, and how long it may be used. */
-async function tradeKey(key: GoogleServiceAccountKey, io: WebmasterIo, now: Date): Promise<{ token: string; ttlMs: number }> {
-  const body = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedAssertion(key, now) });
+async function tradeKey(key: GoogleServiceAccountKey, io: WebmasterIo, now: Date, scopes: readonly string[] = GOOGLE_SCOPES): Promise<{ token: string; ttlMs: number }> {
+  const body = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: signedAssertion(key, now, scopes) });
   const { status, json } = await requestJson(
     SERVICE,
     GOOGLE_TOKEN_URL,

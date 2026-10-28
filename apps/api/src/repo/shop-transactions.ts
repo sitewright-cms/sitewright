@@ -368,6 +368,22 @@ export class ShopTransactionRepository {
     return rows.map(toRow);
   }
 
+  /**
+   * Where a booking's payments stand, for its pay route: whether one went through (and is not refunded), and how many
+   * checkouts were opened since `since` that are still open (created or pending).
+   */
+  async bookingPayState(projectId: string, claimId: string, since: Date): Promise<{ paid: boolean; open: number }> {
+    // Counted in the database: a booking's attempts are bounded, but never loaded to be counted.
+    const [r] = await this.db
+      .select({
+        paid: sql<number>`coalesce(sum(case when ${shopTransactions.status} in ('paid', 'partially_refunded') then 1 else 0 end), 0)`,
+        open: sql<number>`coalesce(sum(case when ${shopTransactions.status} in ('created', 'pending') and ${shopTransactions.createdAt} >= ${since.getTime()} then 1 else 0 end), 0)`,
+      })
+      .from(shopTransactions)
+      .where(and(eq(shopTransactions.projectId, projectId), eq(shopTransactions.bookingClaimId, claimId)));
+    return { paid: Number(r?.paid ?? 0) > 0, open: Number(r?.open ?? 0) };
+  }
+
   /** The payment that paid for a booking (paid, or partly or wholly refunded since), if any. */
   async paymentForBooking(projectId: string, claimId: string): Promise<TransactionRow | undefined> {
     const [r] = await this.db

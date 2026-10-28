@@ -228,6 +228,49 @@ describe('a paid booking’s money', () => {
   });
 });
 
+describe('a paid request', () => {
+  it('tells the customer it is paid once accepted, and the business that the customer is asked to pay', () => {
+    const [customer, owner] = mails({ kind: 'requested', priced: true });
+    expect(customer!.rendered.text).toContain('Once your request is accepted, you pay to confirm it.');
+    expect(owner!.rendered.text).toContain('It is paid once you accept it: Ada Lovelace is asked to pay, and it is booked when they do.');
+    const [free] = mails({ kind: 'requested' });
+    expect(free!.rendered.text).not.toContain('pay');
+  });
+
+  it('★ asks the customer to pay by its deadline, on the booking’s own page, with nothing for a calendar yet', () => {
+    const payBy = Date.UTC(2026, 9, 27, 20, 0);
+    const [customer, owner, resource] = mails({ kind: 'accepted', by: 'business', payBy });
+    expect(customer!.subject).toBe('Request accepted, please pay: Massage');
+    expect(customer!.rendered.text).toContain('Your request is accepted. Please pay to confirm your booking');
+    expect(customer!.rendered.text).toContain('Pay by: Tue, 27 Oct 2026, 21:00 (Central European Time)');
+    expect(customer!.rendered.text).toContain('Pay now: https://studio.example/my-booking/#t=ref-1');
+    expect(customer!.rendered.html).toContain('<a href="https://studio.example/my-booking/#t=ref-1">Pay now</a>');
+    expect(owner!.subject).toMatch(/^Request accepted, awaiting payment: Massage/);
+    expect(owner!.rendered.text).toContain('It is booked once Ada Lovelace pays, by Tue, 27 Oct 2026, 21:00');
+    for (const m of [customer, owner, resource]) {
+      expect(m!.rendered.attachments).toBeUndefined();
+      expect(m!.rendered.icalEvent).toBeUndefined();
+    }
+  });
+
+  it('tells the business of a second payment for a booking that stands, and where its refund stands', () => {
+    const owners = mails({ kind: 'refunded', duplicate: true, refund: 'manual' }).filter((m) => m.role === 'business');
+    expect(owners[0]!.rendered.text).toContain('Ada Lovelace paid twice for Massage, which is booked. The second payment’s refund could not be confirmed');
+    expect(mails({ kind: 'refunded', duplicate: true, refund: 'refunded' }).find((m) => m.role === 'business')!.rendered.text).toContain(
+      'paid twice for Massage, which is booked. The second payment has been refunded.',
+    );
+  });
+
+  it('tells both sides when it was not paid in time', () => {
+    const [customer, owner] = mails({ kind: 'unpaid' });
+    expect(customer!.subject).toBe('Booking not paid: Massage');
+    expect(customer!.rendered.text).toContain('your booking was not paid in time, and the time is free again');
+    expect(customer!.rendered.text).not.toContain('https://studio.example/my-booking/');
+    expect(owner!.subject).toMatch(/^Booking not paid: Massage/);
+    expect(owner!.rendered.text).toContain('Ada Lovelace did not pay for Massage in time');
+  });
+});
+
 describe('bookingWhen', () => {
   it('reads stays and whole days as people do', () => {
     const nights = { offering: { name: 'Flat', mode: 'days' as const, unit: 'night' as const }, timeZone: 'Europe/Berlin', locale: 'en-GB' };

@@ -799,6 +799,62 @@ describe('a booking’s own page', () => {
     expect(added.nextElementSibling).toBe(part(root, 'cancel-yes'));
   });
 
+  describe('an accepted paid request', () => {
+    let assigned: string[];
+    let real: Location;
+    beforeEach(() => {
+      assigned = [];
+      real = window.location;
+    });
+    afterEach(() => {
+      (window as unknown as { location: unknown }).location = real;
+    });
+    // Once the page has read its reference: jsdom refuses a real navigation, so where it would go is captured.
+    const captureNavigation = () => {
+      const now = window.location;
+      delete (window as unknown as Record<string, unknown>).location;
+      (window as unknown as { location: unknown }).location = { ...now, assign: (u: string) => void assigned.push(u) };
+    };
+    const HELD = { ...BOOKED, state: 'hold', payable: true, payBy: berlin(2, 20) };
+
+    it('★ shows its deadline and takes the customer to pay, only to https', async () => {
+      route = (c) => (c.method === 'POST' ? { status: 200, body: { ok: true, pay: 'https://pay.example.test/s/9' } } : { status: 200, body: HELD });
+      const root = statusPage('/my-booking/#t=ref-1');
+      await until(() => expect(shown(part(root, 'pay'))).toBe(true));
+      expect(shown(part(root, 'status-payment'))).toBe(true);
+      expect(part(root, 'pay').textContent).toBe('Pay now');
+      expect(part(root, 'pay-by').textContent).toBe('Pay by: Mon, 2 Mar 2026, 20:00');
+      captureNavigation();
+      part(root, 'pay').click();
+      await until(() => expect(assigned).toEqual(['https://pay.example.test/s/9']));
+      expect(posts()[0]!.url).toBe('/b/p1/_booking/ref-1/pay');
+      expect(posts()[0]!.body).toEqual({ lang: 'en-GB' });
+    });
+
+    it('goes nowhere but https, and offers no payment for a booking that is not waiting for one', async () => {
+      route = (c) => (c.method === 'POST' ? { status: 200, body: { ok: true, pay: 'http://pay.example.test/s/9' } } : { status: 200, body: HELD });
+      const root = statusPage('/my-booking/#t=ref-1');
+      await until(() => expect(shown(part(root, 'pay'))).toBe(true));
+      captureNavigation();
+      part(root, 'pay').click();
+      await until(() => expect(part(root, 'message').textContent).toBe('Sorry, that did not work. Please try again.'));
+      expect(assigned).toEqual([]);
+      route = () => ({ status: 200, body: BOOKED });
+      const booked = statusPage('/my-booking/#t=ref-2');
+      await until(() => expect(shown(part(booked, 'status-booked'))).toBe(true));
+      expect(shown(part(booked, 'pay'))).toBe(false);
+    });
+
+    it('never starts a payment from the editor preview', async () => {
+      preview = true;
+      route = () => ({ status: 200, body: HELD });
+      const root = statusPage('/my-booking/#t=ref-1');
+      await until(() => expect(shown(part(root, 'pay'))).toBe(true));
+      part(root, 'pay').click();
+      expect(posts()).toHaveLength(0);
+    });
+  });
+
   it('tells the visitor when it is too late to cancel', async () => {
     route = (c) => (c.method === 'POST' ? { status: 409, body: { error: 'started' } } : { status: 200, body: BOOKED });
     const root = statusPage('/my-booking/?t=ref-1');

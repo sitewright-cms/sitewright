@@ -194,6 +194,8 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.status_booked', label: 'Status page: confirmed', default: 'Your booking is confirmed.' },
       { key: 'booking.status_pending', label: 'Status page: waiting for confirmation', default: 'Your request is waiting for confirmation.' },
       { key: 'booking.status_payment', label: 'Status page: waiting for the payment', default: 'Your booking is waiting for its payment. It is confirmed as soon as the payment arrives.' },
+      { key: 'booking.pay_now', label: 'Pay now (button, an accepted paid request)', default: 'Pay now' },
+      { key: 'booking.pay_by', label: 'Pay by (an accepted paid request’s deadline)', default: 'Pay by' },
       { key: 'booking.status_cancelled', label: 'Status page: cancelled', default: 'Your booking is cancelled.' },
       {
         key: 'booking.status_unknown',
@@ -227,6 +229,19 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
         default: 'We are sorry: your payment came in after the time could no longer be held for you, so it is not booked. Your payment will be refunded. Please choose another time.',
       },
       { key: 'booking.mail_refund_note', label: 'Email: a paid booking cancelled', default: 'Your payment will be refunded.' },
+      { key: 'booking.mail_pay_after_accept', label: 'Email: a paid request sent', default: 'Once your request is accepted, you pay to confirm it.' },
+      { key: 'booking.mail_accepted', label: 'Email subject: a paid request accepted', default: 'Request accepted, please pay: {offering}' },
+      {
+        key: 'booking.mail_accepted_text',
+        label: 'Email: a paid request accepted',
+        default: 'Your request is accepted. Please pay to confirm your booking: the time is held for you until the deadline below.',
+      },
+      { key: 'booking.mail_unpaid', label: 'Email subject: not paid in time', default: 'Booking not paid: {offering}' },
+      {
+        key: 'booking.mail_unpaid_text',
+        label: 'Email: not paid in time',
+        default: 'We are sorry: your booking was not paid in time, and the time is free again. Please choose another time.',
+      },
       {
         key: 'booking.mail_no_refund_note',
         label: 'Email: a paid booking cancelled too late for a refund',

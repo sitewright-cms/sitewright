@@ -28,6 +28,10 @@ import { DAY_MS } from './zoned.js';
 export const BOOKING_PAY_LIMITS = {
   /** How long a booking's time is held while its customer pays. */
   holdMs: 20 * 60_000,
+  /** How many checkouts an accepted paid request may have open at once, within `attemptWindowMs` (each is a session at
+   *  the provider; failed and abandoned ones stop counting once they close or age out). */
+  attemptsPerBooking: 5,
+  attemptWindowMs: 30 * 60_000,
 } as const;
 
 /** The channel a booking's transaction is filed under (it is not one of the shop's). */
@@ -110,9 +114,11 @@ export class BookingPayments implements BookingSettlement {
     urls: { return: string; cancel: string },
     /** The language of the page booked on, for the booking's mails. */
     locale?: string,
+    /** An accepted request paid from its page keeps its time when a payment cannot start: it may be tried again. */
+    opts: { keepHold?: boolean } = {},
   ): Promise<{ ok: true; redirectUrl: string } | { ok: false; error: string }> {
     const fail = async (error: string): Promise<{ ok: false; error: string }> => {
-      await this.deps.bookings.releaseHold(projectId, claim.id).catch(() => undefined);
+      if (!opts.keepHold) await this.deps.bookings.releaseHold(projectId, claim.id).catch(() => undefined);
       return { ok: false, error };
     };
     const amount = priceOf(offering, claim.units, claim.startAt.getTime(), claim.endAt.getTime());
@@ -182,15 +188,29 @@ export class BookingPayments implements BookingSettlement {
   async paid(txn: TransactionRow): Promise<void> {
     const projectId = txn.projectId;
     const claimId = txn.bookingClaimId!;
-    const confirmed = await this.deps.bookings.confirm(projectId, claimId);
+    const confirmed = await this.deps.bookings.confirm(projectId, claimId, txn.id);
     if (confirmed.ok) {
       await this.tell(txn, 'booked');
       await this.deps.transactions.markBookingSettled(txn.id);
       return;
     }
-    // Confirmed already, its settlement interrupted before it was marked (a crash, a lost reply): finish it. The
-    // confirmation may go a second time; a customer never hearing at all is worse.
-    if ((await this.deps.bookings.get(projectId, claimId))?.state === 'booked') {
+    const booked = await this.deps.bookings.get(projectId, claimId);
+    if (booked?.state === 'booked') {
+      // ★ Booked by ANOTHER payment (an accepted request paid twice, from two checkouts): this one is a duplicate, and
+      // goes back. The booking names the payment that won, in the statement that booked it: whatever order the two
+      // settlements run in, exactly one is kept. Nothing is mailed: the booking stands, and the customer sees the refund.
+      if (booked.paidTxnId && booked.paidTxnId !== txn.id) {
+        this.deps.log?.warn({ projectId, txnId: txn.id }, 'a booking was paid twice; refunding the second payment');
+        const word = await this.refundAll(txn);
+        if (word === 'in-flight') return;
+        // A refund the provider would not make is the business's to make: it hears (the customer, whose booking
+        // stands, sees the refund in time).
+        if (word === 'manual') await this.tell(txn, 'refunded', 'manual', { duplicate: true });
+        await this.deps.transactions.markBookingSettled(txn.id);
+        return;
+      }
+      // Confirmed already, its settlement interrupted before it was marked (a crash, a lost reply): finish it. The
+      // confirmation may go a second time; a customer never hearing at all is worse.
       await this.tell(txn, 'booked');
       await this.deps.transactions.markBookingSettled(txn.id);
       return;
@@ -266,7 +286,7 @@ export class BookingPayments implements BookingSettlement {
   }
 
   /** The booking's mail for a settled payment: from the claim while it exists, else from what the payment kept. */
-  private async tell(txn: TransactionRow, kind: 'booked' | 'refunded', refund?: 'refunded' | 'manual'): Promise<void> {
+  private async tell(txn: TransactionRow, kind: 'booked' | 'refunded', refund?: 'refunded' | 'manual', opts: { duplicate?: boolean } = {}): Promise<void> {
     const projectId = txn.projectId;
     const snap = txn.bookingSnapshot;
     const live = await this.deps.bookings.get(projectId, txn.bookingClaimId!);
@@ -288,6 +308,8 @@ export class BookingPayments implements BookingSettlement {
       ...(kind === 'booked' ? { reference: this.deps.reference(projectId, claim.id) } : {}),
       ...(refund ? { refund } : {}),
       ...(snap?.locale ? { locale: snap.locale } : {}),
+      // A second payment for a booking that stands: only the business is told, and of that.
+      ...(opts.duplicate ? { duplicate: true, only: 'business' as const } : {}),
     });
   }
 

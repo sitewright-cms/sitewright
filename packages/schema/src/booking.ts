@@ -204,7 +204,15 @@ const offeringBase = {
    * after (the business cancelling always refunds in full). Unset: {@link DEFAULT_REFUND_UNTIL_MIN}.
    */
   refundUntilMin: z.number().int().min(0).max(MINUTES_IN_DAY * 365).optional(),
+  /**
+   * A paid offering ON REQUEST: once the business accepts, the customer has this many minutes to pay (never past its
+   * start); unpaid by then, its time is free again. Unset: {@link DEFAULT_PAY_WINDOW_MIN}.
+   */
+  payWindowMin: z.number().int().min(60).max(MINUTES_IN_DAY * 14).optional(),
 };
+
+/** How long a customer has to pay for an accepted request, unless set: two days. */
+export const DEFAULT_PAY_WINDOW_MIN = 2 * MINUTES_IN_DAY;
 
 /** How long before its start a customer's cancellation of a paid booking is still refunded, unless set: a day. */
 export const DEFAULT_REFUND_UNTIL_MIN = MINUTES_IN_DAY;
@@ -328,8 +336,13 @@ export const BookingConfigSchema = z
         if (!resources.has(id)) ctx.addIssue({ code: 'custom', message: `no resource "${id}"`, path: ['offerings', i, 'resourceIds', j] });
       });
       if (o.price && !cfg.payment) ctx.addIssue({ code: 'custom', message: 'choose how bookings are paid (Settings → Payment) before giving an offering a price', path: ['offerings', i, 'price'] });
-      if (o.price && o.confirmation === 'request') {
-        ctx.addIssue({ code: 'custom', message: 'paying for an offering on request is not available yet: book it at once, or leave out the price', path: ['offerings', i, 'price'] });
+      // A paid request is paid on the customer's booking page once it is accepted: there must be one.
+      if (o.price && o.confirmation === 'request' && !cfg.statusPath) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'a paid offering on request is paid on the customer’s booking page once you accept it: set that page (Settings)',
+          path: ['offerings', i, 'price'],
+        });
       }
       if (o.price?.per === 'night' && o.mode !== 'days') ctx.addIssue({ code: 'custom', message: 'a price per night or day is for nights or days', path: ['offerings', i, 'price', 'per'] });
       // One offering, one clock: a visitor's calendar shows its days and times in a single time zone.

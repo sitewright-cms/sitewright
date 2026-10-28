@@ -94,6 +94,12 @@ export interface BookingEvent {
   by?: 'business';
   /** A paid booking's money: refunded, for the business to refund by hand, or kept (cancelled too late for a refund). */
   refund?: 'refunded' | 'manual' | 'none';
+  /** An accepted paid request: when the customer must have paid by. */
+  payBy?: number;
+  /** A second payment for a booking that stands (refunded, or for the business to refund). */
+  duplicate?: boolean;
+  /** Only one side is written to. */
+  only?: 'business';
 }
 
 export class BookingNotifier {
@@ -123,6 +129,9 @@ export class BookingNotifier {
         wasBooked: e.claim.state === 'booked',
         ...(e.by ? { by: e.by } : {}),
         ...(e.refund ? { refund: e.refund } : {}),
+        ...(e.payBy !== undefined ? { payBy: e.payBy } : {}),
+        ...(e.duplicate ? { duplicate: true } : {}),
+        ...(e.offering.price ? { priced: true } : {}),
         claimId: e.claim.id,
         offering: { name: e.offering.name, mode: e.offering.mode, ...(e.offering.mode === 'days' ? { unit: e.offering.unit } : {}) },
         timeZone: resource?.timeZone ?? 'UTC',
@@ -142,6 +151,7 @@ export class BookingNotifier {
       });
       // The customer's copy goes only while their mailbox has budget left; the business always hears.
       const kept = mails.filter((m) => {
+        if (e.only && m.role !== e.only) return false;
         if (m.role !== 'customer' || this.budget.take(e.projectId, m.recipient, now)) return true;
         this.deps.log.warn({ projectId: e.projectId, kind: e.kind }, 'customer booking mail withheld: that address has had its share today');
         return false;
@@ -167,8 +177,8 @@ export class BookingNotifier {
 }
 
 /**
- * Tells the customers (and the business) of requests that ran out unanswered: what the maintenance sweep hands
- * back. ★ One request's failure never stops the rest, and a project's set-up is read once per pass, not per request.
+ * Tells the customers (and the business) of requests that ran out unanswered, and of accepted paid requests left
+ * unpaid past their deadline: what the maintenance sweep hands back. ★ One request's failure never stops the rest, and a project's set-up is read once per pass, not per request.
  * The rows are already gone, so a mail lost here is not retried: logged, not thrown.
  */
 export async function notifyLapsed(
@@ -186,11 +196,14 @@ export async function notifyLapsed(
       }
       const set = await config;
       const offering = set?.offerings.find((o) => o.id === claim.offeringId);
+      // A lapsed hold is told only when it was an accepted PAID request left unpaid; a checkout abandoned is not.
+      const unpaid = claim.state === 'hold';
+      if (unpaid && !(offering?.price && offering.confirmation === 'request')) continue;
       if (!set || !offering) {
         deps.log.warn({ projectId: claim.projectId, offeringId: claim.offeringId }, 'lapsed request not mailed: its offering no longer exists');
         continue;
       }
-      await deps.notify({ kind: 'lapsed', projectId: claim.projectId, claim, offering, config: set });
+      await deps.notify({ kind: unpaid ? 'unpaid' : 'lapsed', projectId: claim.projectId, claim, offering, config: set });
       told += 1;
     } catch (err) {
       deps.log.warn({ err, projectId: claim.projectId }, 'lapsed request not mailed');

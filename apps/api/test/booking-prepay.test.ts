@@ -51,6 +51,8 @@ const CONFIG = {
     { id: 'tour', name: 'Tour', mode: 'slots', maxQuantity: 4, resourceIds: ['guide'], slots: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], at: '10:00', durationMin: 60 }], price: { amountMinor: 1500, per: 'unit' } },
     { id: 'stay', name: 'Stay', mode: 'days', resourceIds: ['flat'], price: { amountMinor: 9000, per: 'night' } },
     { id: 'free', name: 'Free chat', mode: 'duration', durationMin: 30, resourceIds: ['anna'] },
+    // Paid once the business accepts it, within two hours.
+    { id: 'consult', name: 'Consultation', mode: 'duration', durationMin: 60, resourceIds: ['anna'], confirmation: 'request', price: { amountMinor: 8000 }, payWindowMin: 120 },
   ],
   payment: { gatewayId: 'mock', currency: 'EUR' },
   statusPath: '/my-booking/',
@@ -353,11 +355,185 @@ describe('★ paying for a booking', () => {
   });
 });
 
+describe('★ a paid request: paid once the business accepts it', () => {
+  const request = async () => {
+    const res = await book('consult', {}, 0);
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json() as { reference: string; state: string };
+  };
+  const statusOf = async (reference: string) => (await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json();
+  const pay = (reference: string) => h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/pay`, payload: {} });
+  const accept = async () => {
+    const c = (await claim())!;
+    const res = await owner.post(`/projects/${pid}/bookings/${c.id}/accept`, {});
+    expect(res.statusCode, res.body).toBe(200);
+    return c;
+  };
+
+  it('is sent as a request, with no payment yet, and the customer reads that it is paid once accepted', async () => {
+    const r = await request();
+    expect(r.state).toBe('pending');
+    expect(r).not.toHaveProperty('pay');
+    expect(calls).toEqual([]);
+    expect(await txns()).toEqual([]);
+    const mails = await h.db.select().from(bookingMails);
+    expect(mails.find((m) => m.recipient === 'ada@example.test')!.body.text).toContain('Once your request is accepted, you pay to confirm it.');
+    expect(mails.find((m) => m.recipient === 'hello@studio.example')!.body.text).toContain('It is paid once you accept it');
+    // Nothing to pay before it is accepted.
+    expect((await pay(r.reference)).statusCode).toBe(409);
+  });
+
+  it('★ accepted: the time is held for the payment window, and the customer is asked to pay on their booking page', async () => {
+    const r = await request();
+    await h.db.delete(bookingMails);
+    const before = Date.now();
+    const c = await accept();
+    const held = (await claim())!;
+    expect(held.state).toBe('hold');
+    // Two hours to pay, never past its start (this one starts sooner).
+    expect(held.expiresAt!.getTime()).toBeGreaterThanOrEqual(Math.min(before + 120 * 60_000, c.startAt.getTime()));
+    expect(held.expiresAt!.getTime()).toBeLessThanOrEqual(Math.min(Date.now() + 120 * 60_000, c.startAt.getTime()));
+    const mails = await h.db.select().from(bookingMails);
+    const customer = mails.find((m) => m.recipient === 'ada@example.test')!;
+    expect(customer.subject).toBe('Request accepted, please pay: Consultation');
+    expect(customer.body.text).toContain('Pay by: ');
+    expect(customer.body.text).toContain('Pay now: https://studio.example/my-booking/#t=');
+    // Not in anyone's calendar until it is paid.
+    expect(mails.every((m) => !m.body.icalEvent && !m.body.attachments)).toBe(true);
+    expect(mails.find((m) => m.recipient === 'hello@studio.example')!.subject).toMatch(/^Request accepted, awaiting payment: Consultation/);
+    expect(await statusOf(r.reference)).toMatchObject({ state: 'hold', payable: true, payBy: held.expiresAt!.getTime() });
+    const listed = (await owner.get(`/projects/${pid}/bookings`)).json().bookings[0];
+    expect(listed).toMatchObject({ state: 'hold', priced: true, awaitingPayment: true });
+  });
+
+  it('★ paid from its page: a checkout for its price, back to the business’s page, then booked by the webhook', async () => {
+    const r = await request();
+    await accept();
+    const res = await pay(r.reference);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toEqual({ ok: true, pay: 'https://mock-pay.invalid/s/1' });
+    const sent = JSON.parse(calls[0]!.body!) as { amount: number; ret: string };
+    expect(sent.amount).toBe(8000);
+    expect(sent.ret).toBe(`https://studio.example/my-booking/#t=${encodeURIComponent(r.reference)}`);
+    await h.db.delete(bookingMails);
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 8000, currency: 'EUR' });
+    expect((await claim())!.state).toBe('booked');
+    const mails = await h.db.select().from(bookingMails);
+    expect(mails.find((m) => m.recipient === 'ada@example.test')!.subject).toBe('Booking confirmed: Consultation');
+    expect(await statusOf(r.reference)).toMatchObject({ state: 'booked' });
+    expect((await statusOf(r.reference)).payable).toBeUndefined();
+  });
+
+  it('★ a booking paid twice, from two checkouts, keeps the first payment and refunds the second', async () => {
+    const r = await request();
+    await accept();
+    await pay(r.reference);
+    await pay(r.reference);
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 8000, currency: 'EUR' });
+    await h.db.delete(bookingMails);
+    await webhook({ event_id: 'ev_2', session_id: 'sess_2', type: 'session.paid', amount: 8000, currency: 'EUR' });
+    expect((await claim())!.state).toBe('booked');
+    const all = await txns();
+    expect(all.map((t) => t.status).sort()).toEqual(['paid', 'refunded']);
+    expect(calls.filter((x) => x.url.endsWith('/payments/sess_2/refunds'))).toHaveLength(1);
+    // The booking stands: nobody is told it is not booked.
+    expect(await h.db.select().from(bookingMails)).toEqual([]);
+  });
+
+  it('keeps the time held when a payment cannot start', async () => {
+    const r = await request();
+    await accept();
+    await h.db.delete(content).where(eq(content.id, 'bind_1'));
+    expect((await pay(r.reference)).statusCode).toBe(503);
+    expect((await claim())!.state).toBe('hold');
+  });
+
+  it('★ bounds the checkouts open at once, even when they are started all together; closed ones stop counting', async () => {
+    const r = await request();
+    await accept();
+    const results = await Promise.all(Array.from({ length: BOOKING_PAY_LIMITS.attemptsPerBooking + 1 }, () => pay(r.reference)));
+    expect(results.filter((x) => x.statusCode === 200)).toHaveLength(BOOKING_PAY_LIMITS.attemptsPerBooking);
+    expect(results.filter((x) => x.statusCode === 429)).toHaveLength(1);
+    expect(calls.filter((x) => x.url.endsWith('/sessions'))).toHaveLength(BOOKING_PAY_LIMITS.attemptsPerBooking);
+    // Abandoned checkouts that failed or expired no longer count: the customer may try again.
+    await h.db.update(shopTransactions).set({ status: 'expired' });
+    expect((await pay(r.reference)).statusCode).toBe(200);
+  });
+
+  it('★ starts no second payment while one is going through', async () => {
+    const r = await request();
+    await accept();
+    await pay(r.reference);
+    // Paid at the provider, its webhook not settled yet.
+    await h.db.update(shopTransactions).set({ status: 'paid' });
+    const again = await pay(r.reference);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error).toBe('already-paid');
+  });
+
+  it('keeps the time a little longer for a checkout begun close to the deadline', async () => {
+    const r = await request();
+    const c = await accept();
+    const soon = Date.now() + 5 * 60_000;
+    // Its start is days away; only the deadline is close.
+    const start = Date.now() + 3 * 86_400_000;
+    await h.db
+      .update(bookingClaims)
+      .set({ expiresAt: new Date(soon), startAt: new Date(start), endAt: new Date(start + 3_600_000), busyStart: new Date(start), busyEnd: new Date(start + 3_600_000) });
+    expect((await pay(r.reference)).statusCode).toBe(200);
+    const held = (await h.db.select().from(bookingClaims).where(eq(bookingClaims.id, c.id)))[0]!;
+    expect(held.expiresAt!.getTime()).toBeGreaterThanOrEqual(Date.now() + BOOKING_PAY_LIMITS.holdMs - 5_000);
+  });
+
+  it('★ never keeps the time past one checkout beyond the business’s deadline, however often a checkout is started', async () => {
+    const r = await request();
+    const c = await accept();
+    // The deadline passed ten minutes ago; an earlier checkout kept the time five more minutes from now.
+    const deadline = Date.now() - 10 * 60_000;
+    const start = Date.now() + 3 * 86_400_000;
+    await h.db.update(bookingClaims).set({
+      payBy: new Date(deadline),
+      expiresAt: new Date(Date.now() + 5 * 60_000),
+      startAt: new Date(start),
+      endAt: new Date(start + 3_600_000),
+      busyStart: new Date(start),
+      busyEnd: new Date(start + 3_600_000),
+    });
+    const cap = deadline + BOOKING_PAY_LIMITS.holdMs;
+    for (let i = 0; i < 3; i++) expect((await pay(r.reference)).statusCode).toBe(200);
+    const held = (await h.db.select().from(bookingClaims).where(eq(bookingClaims.id, c.id)))[0]!;
+    expect(held.expiresAt!.getTime()).toBeLessThanOrEqual(cap + 1_000);
+    expect(await statusOf(r.reference)).toMatchObject({ payBy: deadline });
+  });
+
+  it('lets the business withdraw an accepted request still waiting for its payment', async () => {
+    await request();
+    const c = await accept();
+    await h.db.delete(bookingMails);
+    const res = await owner.post(`/projects/${pid}/bookings/${c.id}/cancel`, {});
+    expect(res.statusCode, res.body).toBe(200);
+    expect(await claim()).toBeUndefined();
+    const customer = (await h.db.select().from(bookingMails)).find((m) => m.recipient === 'ada@example.test')!;
+    expect(customer.subject).toMatch(/cancelled/i);
+  });
+
+  it('★ a checkout in progress for an offering booked at once is still not the business’s to cancel', async () => {
+    await book('cut');
+    const c = (await claim())!;
+    const res = await owner.post(`/projects/${pid}/bookings/${c.id}/cancel`, {});
+    expect(res.statusCode).toBe(409);
+    expect((await claim())!.state).toBe('hold');
+  });
+});
+
 describe('the set-up', () => {
-  it('needs a payment provider for a priced offering, and refuses a price on an offering on request (for now)', () => {
+  it('needs a payment provider for a priced offering, and the customer’s booking page for a paid one on request', () => {
     expect(BookingConfigSchema.safeParse({ ...CONFIG, payment: undefined }).success).toBe(false);
     const onRequest = { ...CONFIG, offerings: [{ ...CONFIG.offerings[0]!, confirmation: 'request' }], resources: CONFIG.resources };
-    expect(BookingConfigSchema.safeParse(onRequest).success).toBe(false);
+    expect(BookingConfigSchema.safeParse(onRequest).success).toBe(true);
+    const noPage = BookingConfigSchema.safeParse({ ...onRequest, statusPath: undefined });
+    expect(noPage.success).toBe(false);
+    expect(JSON.stringify(noPage.error)).toContain('paid on the customer’s booking page');
     expect(BOOKING_PAY_LIMITS.holdMs).toBe(20 * 60_000);
   });
 });

@@ -109,6 +109,21 @@ const ASK: Record<Answer, { question: string; button: string; done: string }> = 
   },
 };
 
+/** A PAID request: accepting it asks the customer to pay; withdrawing one accepted gives its time back. */
+const ASK_PAID: Partial<Record<Answer, { question: string; button: string; done: string }>> = {
+  accept: {
+    question: 'Accept this request? The customer is asked by email to pay, and it is booked when they do. Unpaid by the deadline, its time is free again.',
+    button: 'Yes, accept',
+    done: 'Accepted: the customer has been asked to pay.',
+  },
+  cancel: {
+    question: 'Withdraw this accepted request? Its time becomes free again, and the customer is told by email.',
+    button: 'Yes, withdraw it',
+    done: 'Withdrawn: the customer has been told.',
+  },
+};
+const askFor = (b: BookingItem, what: Answer) => (b.priced && (what === 'accept' || b.awaitingPayment) ? ASK_PAID[what] : undefined) ?? ASK[what];
+
 /** Where a cancelled paid booking's money stands, after the answer's own words. */
 const REFUND_NOTE = {
   refunded: ' The payment has been refunded.',
@@ -183,7 +198,7 @@ export function BookingsPanel({ projectId }: { projectId: string }) {
     try {
       const r = await api.answerBooking(projectId, b.id, what);
       // A refund the provider would not make is the business's to make: said as a warning, not as done.
-      setNote({ tone: r.refund === 'manual' ? 'error' : 'ok', text: ASK[what].done + (r.refund ? REFUND_NOTE[r.refund] : '') });
+      setNote({ tone: r.refund === 'manual' ? 'error' : 'ok', text: askFor(b, what).done + (r.refund ? REFUND_NOTE[r.refund] : '') });
       setAsking(null);
       // Close the row answered, not whichever the author opened meanwhile.
       setOpen((o) => (o === b.id ? null : o));
@@ -362,6 +377,12 @@ export function BookingsPanel({ projectId }: { projectId: string }) {
                             <dd>{moment(b.expiresAt)}, or the request lapses and its time is free again</dd>
                           </>
                         )}
+                        {b.awaitingPayment && b.expiresAt && (
+                          <>
+                            <dt className="text-slate-500 dark:text-slate-400">Pay by</dt>
+                            <dd>{moment(b.expiresAt)}, or its time is free again</dd>
+                          </>
+                        )}
                       </dl>
 
                       {!ended && !asking && (
@@ -381,11 +402,16 @@ export function BookingsPanel({ projectId }: { projectId: string }) {
                               Cancel booking
                             </button>
                           )}
+                          {b.awaitingPayment && (
+                            <button type="button" className={dangerButton} onClick={() => setAsking('cancel')}>
+                              Withdraw
+                            </button>
+                          )}
                         </div>
                       )}
                       {asking && (
                         <div className="mt-3 rounded-lg border border-slate-200/70 bg-white/70 p-3 dark:border-slate-700/70 dark:bg-white/5">
-                          <p>{ASK[asking].question}</p>
+                          <p>{askFor(b, asking).question}</p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -394,7 +420,7 @@ export function BookingsPanel({ projectId }: { projectId: string }) {
                               onClick={() => void answer(b, asking)}
                             >
                               {answering && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
-                              {ASK[asking].button}
+                              {askFor(b, asking).button}
                             </button>
                             <button type="button" className={ghostButton} disabled={answering} onClick={() => setAsking(null)}>
                               Back

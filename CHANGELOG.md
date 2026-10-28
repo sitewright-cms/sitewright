@@ -11,6 +11,20 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Paid bookings on request: the customer pays once the business accepts.** An offering on request can now have a
+  price. The request goes out as before (the customer reads that it is paid once accepted); accepting it holds its
+  time for the customer to pay within the offering's window ("Time to pay … hours after you accept", 48 hours unless
+  set, never past its start) and emails them a "Pay now" link to their booking page, which shows the deadline and
+  the button. The payment books it, with the usual confirmation; unpaid by the deadline, its time is free again and
+  both sides are told. The business can withdraw an accepted request still waiting for its payment, and the
+  Bookings tab now lists bookings being paid for ("Awaiting payment", with the deadline). A paid offering on request
+  needs the customer's booking page (Settings), since that is where it is paid.
+  - Each pay attempt is a checkout of its own, one at a time per booking, at most five open at once, and none while a
+    payment is already going through; one that cannot start keeps the time held for another try; a checkout begun
+    close to the deadline keeps the time a little longer, so a payment made in time is not refunded for arriving a
+    moment late.
+  - **Hardening (security review):** a booking names the payment that booked it, in the same statement that books it,
+    so of two payments for one booking exactly one is kept and the other refunded, whatever order they settle in.
 - **Customers can cancel a paid booking, with a refund until a deadline.** A customer who cancels a paid booking on
   their booking page gets their payment back in full until the offering's deadline before it starts (set per
   offering under its price, "Refunded if cancelled … hours or more before"; 24 hours unless set), and nothing after.

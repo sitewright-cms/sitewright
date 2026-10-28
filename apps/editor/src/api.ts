@@ -1428,9 +1428,13 @@ export interface BookingItem {
   end: number;
   quantity: number;
   customer: { name?: string; email?: string; phone?: string; note?: string };
-  /** A request's deadline: when it lapses unanswered. */
+  /** A request's deadline: when it lapses unanswered (an accepted paid request's: when it lapses unpaid). */
   expiresAt: number | null;
   createdAt: number;
+  /** Paid for: a request accepted is paid by the customer before it is booked. */
+  priced?: boolean;
+  /** An accepted paid request waiting for the customer's payment. */
+  awaitingPayment?: boolean;
 }
 
 export interface BookingList {

@@ -226,6 +226,18 @@ describe('an offering’s price', () => {
     expect(out.value.offerings[0]!.refundUntilMin).toBeUndefined();
   });
 
+  it('takes how long a customer has to pay an accepted request, in hours, only for a paid offering on request', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Offering out={out} start={{ ...tour(), confirmation: 'request' }} payment={EUR} />);
+    expect(screen.queryByLabelText('Time to pay')).toBeNull();
+    set('Price (EUR)', '25');
+    expect(screen.getByLabelText('Time to pay')).toHaveAttribute('placeholder', '48');
+    set('Time to pay', '6');
+    expect(out.value.offerings[0]!.payWindowMin).toBe(360);
+    set('Confirmation', 'instant');
+    expect(screen.queryByLabelText('Time to pay')).toBeNull();
+  });
+
   it('★ refuses what is not a price, and so is never saved as one', () => {
     const out = { value: EMPTY_CONFIG };
     render(<Offering out={out} start={tour()} payment={EUR} />);

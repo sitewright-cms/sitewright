@@ -44,7 +44,14 @@ const txn = (over: Partial<TransactionRow> = {}): TransactionRow =>
   }) as TransactionRow;
 
 function setup(
-  opts: { confirm?: Array<{ ok: true } | { ok: false; reason: string }>; claimState?: 'hold' | 'booked' | null; refundable?: boolean; current?: TransactionRow } = {},
+  opts: {
+    confirm?: Array<{ ok: true } | { ok: false; reason: string }>;
+    claimState?: 'hold' | 'booked' | null;
+    refundable?: boolean;
+    current?: TransactionRow;
+    /** The payment the booking names as the one that booked it. */
+    paidBy?: string;
+  } = {},
 ) {
   const current = opts.current;
   const told: BookingEvent[] = [];
@@ -52,7 +59,18 @@ function setup(
   const claimed: number[] = [];
   const confirms = [...(opts.confirm ?? [{ ok: true as const }])];
   const live = opts.claimState
-    ? { id: 'c1', offeringId: 'cut', resourceId: 'anna', startAt: new Date(START), endAt: new Date(START + 3_600_000), units: 1, customer: { name: 'Ada' }, state: opts.claimState }
+    ? {
+        id: 'c1',
+        offeringId: 'cut',
+        resourceId: 'anna',
+        startAt: new Date(START),
+        endAt: new Date(START + 3_600_000),
+        units: 1,
+        customer: { name: 'Ada' },
+        state: opts.claimState,
+        paidTxnId: opts.paidBy ?? null,
+        payBy: null,
+      }
     : undefined;
   const deps = {
     bookings: {
@@ -146,6 +164,23 @@ describe('★ settling a booking’s payment', () => {
     await payments.unpaid(txn({ status: 'failed' }));
     expect(deps.bookings.releaseHold).toHaveBeenCalledWith('p1', 'c1');
     expect(deps.bookings.release).not.toHaveBeenCalled();
+  });
+
+  it('★ refunds a second payment for a booking another payment already booked, and mails nothing', async () => {
+    const { payments, deps, told, settled, claimed } = setup({ confirm: [{ ok: false, reason: 'invalid' }], claimState: 'booked', paidBy: 'the-first' });
+    deps.transactions.byId.mockResolvedValueOnce(txn() as never).mockResolvedValueOnce(txn({ status: 'refunded', refundedMinor: 4500 }) as never);
+    await payments.paid(txn());
+    expect(claimed).toEqual([4500]);
+    expect(told).toEqual([]);
+    expect(settled).toEqual(['t1']);
+  });
+
+  it('★ tells only the business when a second payment cannot be refunded from here', async () => {
+    const { payments, told, settled } = setup({ confirm: [{ ok: false, reason: 'invalid' }], claimState: 'booked', paidBy: 'the-first', refundable: false });
+    await payments.paid(txn());
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({ kind: 'refunded', refund: 'manual', duplicate: true, only: 'business' });
+    expect(settled).toEqual(['t1']);
   });
 
   it('the sweep settles each one it finds, and one failure does not stop the rest', async () => {

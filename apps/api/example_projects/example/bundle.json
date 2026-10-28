@@ -295,6 +295,16 @@
           "de": "Ihre Buchung wartet auf die Zahlung. Sie ist bestätigt, sobald die Zahlung eingegangen ist.",
           "es": "Tu reserva está pendiente del pago. Se confirmará en cuanto llegue el pago."
         },
+        "booking.pay_now": {
+          "en": "Pay now",
+          "de": "Jetzt bezahlen",
+          "es": "Pagar ahora"
+        },
+        "booking.pay_by": {
+          "en": "Pay by",
+          "de": "Bezahlen bis",
+          "es": "Pagar antes de"
+        },
         "booking.status_cancelled": {
           "en": "Your booking is cancelled.",
           "de": "Ihre Buchung ist storniert.",
@@ -399,6 +409,31 @@
           "en": "Your payment will be refunded.",
           "de": "Ihre Zahlung wird erstattet.",
           "es": "Te devolveremos el pago."
+        },
+        "booking.mail_pay_after_accept": {
+          "en": "Once your request is accepted, you pay to confirm it.",
+          "de": "Sobald Ihre Anfrage angenommen ist, bezahlen Sie, um sie zu bestätigen.",
+          "es": "Cuando se acepte tu solicitud, pagarás para confirmarla."
+        },
+        "booking.mail_accepted": {
+          "en": "Request accepted, please pay: {offering}",
+          "de": "Anfrage angenommen, bitte bezahlen: {offering}",
+          "es": "Solicitud aceptada, por favor paga: {offering}"
+        },
+        "booking.mail_accepted_text": {
+          "en": "Your request is accepted. Please pay to confirm your booking: the time is held for you until the deadline below.",
+          "de": "Ihre Anfrage ist angenommen. Bitte bezahlen Sie, um Ihre Buchung zu bestätigen: Der Termin ist bis zur unten genannten Frist für Sie reserviert.",
+          "es": "Tu solicitud ha sido aceptada. Paga para confirmar tu reserva: el horario está reservado para ti hasta la fecha límite indicada abajo."
+        },
+        "booking.mail_unpaid": {
+          "en": "Booking not paid: {offering}",
+          "de": "Buchung nicht bezahlt: {offering}",
+          "es": "Reserva no pagada: {offering}"
+        },
+        "booking.mail_unpaid_text": {
+          "en": "We are sorry: your booking was not paid in time, and the time is free again. Please choose another time.",
+          "de": "Es tut uns leid: Ihre Buchung wurde nicht rechtzeitig bezahlt, der Termin ist wieder frei. Bitte wählen Sie einen anderen Termin.",
+          "es": "Lo sentimos: tu reserva no se pagó a tiempo y el horario vuelve a estar libre. Elige otro horario."
         },
         "booking.mail_no_refund_note": {
           "en": "It was cancelled too close to its start for a refund, so your payment is not refunded.",

@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { BookingConfig } from '@sitewright/schema';
+import { DEFAULT_PAY_WINDOW_MIN, type BookingConfig } from '@sitewright/schema';
 import type { ApiKeyCapability } from '../db/schema.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { BookingClaimsRepository, ClaimRow } from '../booking/claims.js';
@@ -69,8 +69,13 @@ function view(c: ClaimRow, config: BookingConfig | null): Record<string, unknown
     end: c.endAt.getTime(),
     quantity: c.units,
     customer: c.customer,
-    // A request's deadline: when it lapses unanswered.
+    // A request's deadline: when it lapses unanswered (an accepted paid request's: when it lapses unpaid).
     expiresAt: c.expiresAt ? c.expiresAt.getTime() : null,
+    // Paid for: a request accepted is paid by the customer before it is booked.
+    ...(offering?.price ? { priced: true } : {}),
+    // An accepted paid request waiting for its payment (the business may still withdraw it); any other hold is a
+    // customer's checkout in progress.
+    ...(c.state === 'hold' && offering?.price && offering.confirmation === 'request' ? { awaitingPayment: true } : {}),
     createdAt: c.createdAt.getTime(),
   };
 }
@@ -120,9 +125,15 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
         }
         return { refund, result: await deps.bookings.cancelByBusiness(project.id, id) };
       };
+      // A PAID request accepted is held for the customer to pay, within its offering's window; any other is booked.
+      const accept = async (): Promise<AnswerResult> => {
+        const claim = await deps.claims.get(project.id, id);
+        const offered = claim ? (await deps.readConfig(project.id))?.offerings.find((o) => o.id === claim.offeringId) : undefined;
+        return deps.bookings.accept(project.id, id, offered?.price ? { payWithinMs: (offered.payWindowMin ?? DEFAULT_PAY_WINDOW_MIN) * 60_000 } : {});
+      };
       const { refund, result } =
         path === 'accept'
-          ? { refund: undefined, result: await deps.bookings.accept(project.id, id) }
+          ? { refund: undefined, result: await accept() }
           : path === 'decline'
             ? { refund: undefined, result: await deps.bookings.decline(project.id, id) }
             : await lock.run(project.id, id, cancel);
@@ -134,15 +145,18 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
       const config = await deps.readConfig(project.id);
       const offering = config?.offerings.find((o) => o.id === result.claim.offeringId);
       if (config && offering) {
+        // Accepted and paid for later: the customer is asked to pay, by its deadline, on the booking's own page.
+        const toPay = path === 'accept' && result.claim.state === 'hold' && result.claim.expiresAt !== null;
         void deps.notify({
-          kind: path === 'accept' ? 'booked' : path === 'decline' ? 'declined' : 'cancelled',
+          kind: toPay ? 'accepted' : path === 'accept' ? 'booked' : path === 'decline' ? 'declined' : 'cancelled',
           projectId: project.id,
           claim: result.claim,
           offering,
           config,
           by: 'business',
           ...(refund ? { refund } : {}),
-          // The confirmation links to the booking's own page, as a booking made at once does.
+          ...(toPay ? { payBy: result.claim.expiresAt!.getTime() } : {}),
+          // The confirmation (or the request to pay) links to the booking's own page, as a booking made at once does.
           ...(path === 'accept' ? { reference: deps.reference(project.id, result.claim.id) } : {}),
         });
       } else {

@@ -9,6 +9,8 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ## [Unreleased]
 
+## [0.75.0] — 2026-10-28
+
 ### Added
 
 - **The data folder's size in System Settings.** Storage & backups now also shows the uploaded media, the site builds
@@ -292,21 +294,6 @@ The running version of an instance is reported at `GET /version` (baked into the
   shown in full: with a site URL saved without its trailing slash, `https://example.com.evil.net/…` used to be
   shown as a path on the site.
 
-### Security
-
-- **A token can no longer cancel a paid booking.** Cancelling a paid booking refunds the customer, and on this
-  platform no token moves a merchant's money (as with the shop's orders): the Bookings tab's cancel answers a token
-  (an agent, an API key) with 403 for a paid booking, and a token's cancellation never reaches the refund step at
-  all (a payment landing after the check finds the booking gone and is refunded by the platform, as any late one is).
-  A person cancels it in the Bookings tab. A free booking, or one already refunded, a token may still cancel.
-- **A booking paid twice is judged by the payment that counts.** Looking up a booking's payment now prefers one still
-  holding money over a refunded duplicate, so cancelling (by the customer or the business) refunds the real payment
-  rather than reading the booking as already refunded.
-
-- **A project's SMTP host is checked against the instance's SMTP allowlist when a mail is sent**, not only when
-  the setting is saved, so a host saved before the allowlist existed, or before it was dropped from the list, no
-  longer sends. Such a project's shop mails go through global SMTP instead.
-
 ### Fixed
 
 - **A checkout channel with a captcha or proof of work refused every buyer.** The shop settings offered both and
@@ -343,6 +330,21 @@ The running version of an instance is reported at `GET /version` (baked into the
   serves the old pages at that point (a git host still building, or a cache), the hourly sweep tries again. A new
   Production URL whose old address still carries the tag no longer blocks verifying the new one: the old ownership
   is queued and given up once the old pages are gone. A refusal for any other reason is unchanged.
+
+### Security
+
+- **A token can no longer cancel a paid booking.** Cancelling a paid booking refunds the customer, and on this
+  platform no token moves a merchant's money (as with the shop's orders): the Bookings tab's cancel answers a token
+  (an agent, an API key) with 403 for a paid booking, and a token's cancellation never reaches the refund step at
+  all (a payment landing after the check finds the booking gone and is refunded by the platform, as any late one is).
+  A person cancels it in the Bookings tab. A free booking, or one already refunded, a token may still cancel.
+- **A booking paid twice is judged by the payment that counts.** Looking up a booking's payment now prefers one still
+  holding money over a refunded duplicate, so cancelling (by the customer or the business) refunds the real payment
+  rather than reading the booking as already refunded.
+
+- **A project's SMTP host is checked against the instance's SMTP allowlist when a mail is sent**, not only when
+  the setting is saved, so a host saved before the allowlist existed, or before it was dropped from the list, no
+  longer sends. Such a project's shop mails go through global SMTP instead.
 
 ## [0.74.0] — 2026-10-24
 
@@ -6276,7 +6278,8 @@ First tagged release + the production-readiness work.
   retired).
 - **Slow-loris mitigation** — a request-receive timeout on the HTTP server.
 
-[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.74.0...HEAD
+[Unreleased]: https://github.com/sitewright-cms/sitewright/compare/v0.75.0...HEAD
+[0.75.0]: https://github.com/sitewright-cms/sitewright/compare/v0.74.0...v0.75.0
 [0.74.0]: https://github.com/sitewright-cms/sitewright/compare/v0.73.0...v0.74.0
 [0.73.0]: https://github.com/sitewright-cms/sitewright/compare/v0.72.0...v0.73.0
 [0.72.0]: https://github.com/sitewright-cms/sitewright/compare/v0.71.0...v0.72.0

@@ -30,7 +30,7 @@ import {
   type StockKeyedProvider,
   type StockKeysPublic,
 } from '@sitewright/schema';
-import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult } from '../api';
+import { api, type InstanceSettingsInput, type InstanceSettingsPublic, type AiTestResult, type DataFolderUsage } from '../api';
 import { modelPlaceholder } from './AiConfig';
 import { glassCard, glassInput, primaryButton, ghostButton, toggleInput } from '../theme';
 import { DeletedProjectsCard } from './DeletedProjectsCard';
@@ -245,6 +245,24 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
   const [purgeKeep, setPurgeKeep] = useState(1);
   const [purging, setPurging] = useState(false);
   const [purgeMsg, setPurgeMsg] = useState<string | null>(null);
+  // The data folder's size comes separately: the server walks every file, which takes seconds on a large instance,
+  // and the figures above should not wait for it. A reload keeps the last figures until the new ones arrive.
+  const [folder, setFolder] = useState<{ state: 'counting' } | { state: 'done'; usage: DataFolderUsage | null } | { state: 'failed' }>({ state: 'counting' });
+  const folderSeq = useRef(0);
+  const loadFolder = useCallback(async () => {
+    const mine = ++folderSeq.current;
+    try {
+      const { usage } = await api.getDataFolderUsage();
+      if (mine === folderSeq.current) setFolder({ state: 'done', usage });
+    } catch {
+      if (mine === folderSeq.current) setFolder((f) => (f.state === 'done' ? f : { state: 'failed' }));
+    }
+  }, []);
+  const folderFigure = (pick: (u: DataFolderUsage) => number): string => {
+    if (folder.state === 'counting') return 'Counting…';
+    if (folder.state === 'failed' || !folder.usage) return '—';
+    return `${folder.usage.partial ? 'at least ' : ''}${formatBytes(pick(folder.usage))}`;
+  };
   useEffect(() => {
     void (async () => {
       try {
@@ -253,8 +271,10 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
         /* non-fatal — the panel just shows nothing */
       }
     })();
-  }, []);
+    void loadFolder();
+  }, [loadFolder]);
   async function reloadStorage() {
+    void loadFolder();
     try {
       setStorage(await api.getStorage());
     } catch {
@@ -1735,7 +1755,7 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
       <fieldset className={`${glassCard} p-4`}>
         <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
           Storage &amp; backups
-          <SectionHelp tip="Before applying a pending schema migration on startup, the app writes a WAL-safe snapshot of the DATABASE only (media isn't touched by migrations) so a bad migration can be rolled back. Restore: stop the app, copy a .bak over sitewright.db, remove the -wal/-shm sidecars, restart." />
+          <SectionHelp tip="Before applying a pending schema migration on startup, the app writes a WAL-safe snapshot of the DATABASE only (media isn't touched by migrations) so a bad migration can be rolled back. Restore: stop the app, copy a .bak over sitewright.db, remove the -wal/-shm sidecars, restart. The data folder total adds up every file the instance keeps: the databases, the snapshots, uploaded media, and the site builds and previews it makes again when needed." />
         </legend>
         <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
           <dt className="text-slate-500 dark:text-slate-400">Database size</dt>
@@ -1746,6 +1766,12 @@ export function InstanceSettings({ initialTab = 'general', focusSection }: { ini
           <dd className="text-right font-medium">
             {storage ? `${storage.backups.count} · ${formatBytes(storage.backups.bytes)}` : '—'}
           </dd>
+          <dt className="text-slate-500 dark:text-slate-400">Media files</dt>
+          <dd className="text-right font-medium">{folderFigure((u) => u.mediaBytes)}</dd>
+          <dt className="text-slate-500 dark:text-slate-400">Site builds &amp; previews</dt>
+          <dd className="text-right font-medium">{folderFigure((u) => u.buildsBytes)}</dd>
+          <dt className="mt-1 border-t border-slate-200/70 pt-1 font-medium text-slate-700 dark:border-white/10 dark:text-slate-200">Data folder total</dt>
+          <dd className="-ml-4 mt-1 border-t border-slate-200/70 pl-4 pt-1 text-right font-bold dark:border-white/10">{folderFigure((u) => u.totalBytes)}</dd>
         </dl>
         <label className="block text-sm">
           <span className="font-medium">Snapshots to keep automatically</span>

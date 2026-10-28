@@ -10,6 +10,8 @@ const testInstanceSmtp = vi.fn();
 const sendInstanceSmtpTest = vi.fn();
 const undeliveredInstanceSubmissions = vi.fn();
 const testStockKey = vi.fn();
+const getStorage = vi.fn();
+const getDataFolderUsage = vi.fn();
 // Rank tracking has its own tests (Rankings.test.tsx); here only its save is wired into this one.
 const rankSave = vi.hoisted(() => vi.fn());
 const rankValidate = vi.hoisted(() => vi.fn());
@@ -54,6 +56,9 @@ vi.mock('../src/api', () => ({
     undeliveredInstanceSubmissions: () => undeliveredInstanceSubmissions(),
     sendInstanceSmtpTest: (to?: string) => sendInstanceSmtpTest(to),
     testStockKey: (body: { provider: string; key?: string }) => testStockKey(body),
+    getStorage: () => getStorage(),
+    getDataFolderUsage: () => getDataFolderUsage(),
+    purgeBackups: async () => ({ removed: 0, count: 1, bytes: 1024 }),
   },
 }));
 
@@ -68,6 +73,10 @@ beforeEach(() => {
   putInstanceSettings.mockReset();
   undeliveredInstanceSubmissions.mockReset();
   testStockKey.mockReset();
+  getStorage.mockReset();
+  getStorage.mockResolvedValue({ dbBytes: 2 * 1024 * 1024, statsBytes: 512 * 1024, backups: { count: 1, bytes: 1024 * 1024 } });
+  getDataFolderUsage.mockReset();
+  getDataFolderUsage.mockResolvedValue({ usage: null });
   undeliveredInstanceSubmissions.mockResolvedValue({ count: 0, lastError: null }); // nothing owed by default
   putInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
   rankSave.mockReset();
@@ -795,5 +804,54 @@ describe('instance-wide undelivered warning', () => {
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalled());
     const body = putInstanceSettings.mock.calls.at(-1)![0] as InstanceSettingsInput;
     expect(body.embedding).toEqual({ enabled: true, origins: ['https://b.test'], allowSelf: true });
+  });
+});
+
+describe('InstanceSettings \u2014 storage', () => {
+  const GB = 1024 ** 3;
+  const figure = (label: string): string => screen.getByText(label).nextElementSibling?.textContent ?? '';
+
+  it('shows the database figures at once, and the data folder\u2019s when its count arrives', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    let answer: (v: unknown) => void = () => {};
+    getDataFolderUsage.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    render(<InstanceSettings />);
+    await waitFor(() => expect(figure('Database size')).toBe('2.0 MB'));
+    expect(figure('Data folder total')).toBe('Counting\u2026');
+    expect(figure('Media files')).toBe('Counting\u2026');
+    answer({ usage: { totalBytes: 3 * GB, mediaBytes: 2 * GB, buildsBytes: 0.5 * GB, partial: false } });
+    await waitFor(() => expect(figure('Data folder total')).toBe('3.0 GB'));
+    expect(figure('Media files')).toBe('2.0 GB');
+    expect(figure('Site builds & previews')).toBe('512.0 MB');
+  });
+
+  it('says \u201cat least\u201d when the count stopped at its limit', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    getDataFolderUsage.mockResolvedValue({ usage: { totalBytes: 5 * GB, mediaBytes: 4 * GB, buildsBytes: 0, partial: true } });
+    render(<InstanceSettings />);
+    await waitFor(() => expect(figure('Data folder total')).toBe('at least 5.0 GB'));
+    expect(figure('Media files')).toBe('at least 4.0 GB');
+  });
+
+  it('shows a dash when the count fails, or the instance has no data folder', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    getDataFolderUsage.mockRejectedValue(new Error('429'));
+    const { unmount } = render(<InstanceSettings />);
+    await waitFor(() => expect(figure('Data folder total')).toBe('\u2014'));
+    unmount();
+    getDataFolderUsage.mockResolvedValue({ usage: null });
+    render(<InstanceSettings />);
+    await waitFor(() => expect(figure('Data folder total')).toBe('\u2014'));
+  });
+
+  it('counts again after a purge', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    getDataFolderUsage.mockResolvedValue({ usage: { totalBytes: 3 * GB, mediaBytes: 2 * GB, buildsBytes: 0, partial: false } });
+    render(<InstanceSettings />);
+    await waitFor(() => expect(figure('Data folder total')).toBe('3.0 GB'));
+    getDataFolderUsage.mockResolvedValue({ usage: { totalBytes: 2 * GB, mediaBytes: 2 * GB, buildsBytes: 0, partial: false } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Ops' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Purge snapshots' }));
+    await waitFor(() => expect(figure('Data folder total')).toBe('2.0 GB'));
   });
 });

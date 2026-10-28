@@ -12,6 +12,7 @@ import { readTexture } from '../textures.js';
 import { mintAssetId as mintUniqueAssetId } from '../media/mint-id.js';
 import { and, eq, sql } from 'drizzle-orm';
 import { dbFilePath, dbSizeBytes, backupsSummary, purgeBackups, backupsDir } from '../db/backup.js';
+import { DATA_FOLDER_REUSE_MS, dataFolderUsage, type DataFolderUsage } from '../db/data-usage.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -4005,6 +4006,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ dbBytes, statsBytes, backups });
   });
 
+  // The data folder's size by area, for the same panel. Its own route: walking a large instance's files takes
+  // seconds, and the figures above should not wait for it. A walk is shared while it runs and for half a minute
+  // after it began, because reading every file competes with serving them. A purge starts a new generation, so
+  // figures counted before it are never handed out after it.
+  let dataFolderWalk: { gen: number; startedAt: number; walk: Promise<DataFolderUsage> } | null = null;
+  let dataFolderGen = 0;
+  app.get('/admin/storage/data-folder', { config: rl(10) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    if (!opts.dataDir) return reply.send({ usage: null });
+    const now = Date.now();
+    if (!dataFolderWalk || dataFolderWalk.gen !== dataFolderGen || now - dataFolderWalk.startedAt > DATA_FOLDER_REUSE_MS) {
+      const walk = dataFolderUsage(opts.dataDir);
+      dataFolderWalk = { gen: dataFolderGen, startedAt: now, walk };
+      // A failed walk is not handed to the next caller.
+      walk.catch(() => {
+        if (dataFolderWalk?.walk === walk) dataFolderWalk = null;
+      });
+    }
+    return reply.send({ usage: await dataFolderWalk.walk });
+  });
+
   // Reap pre-migration snapshots on demand, keeping the newest `keepLast` (default 1). Admin-only; the DB
   // itself is NEVER touched — only the *.pre-migration.bak files under <dataDir>/backups.
   const PurgeBackupsBody = z.object({ keepLast: z.number().int().min(1).max(100).default(1) });
@@ -4013,6 +4035,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const { keepLast } = PurgeBackupsBody.parse(req.body ?? {});
     if (!opts.dataDir) return reply.send({ removed: 0, count: 0, bytes: 0 });
     const result = await purgeBackups(backupsDir(opts.dataDir), keepLast, (m) => app.log.info({ userId }, m));
+    dataFolderGen += 1;
     app.log.info({ userId, removed: result.removed, keepLast }, 'backups purged');
     return reply.send(result);
   });

@@ -585,6 +585,15 @@ export interface AgentAttachment {
   name?: string;
 }
 
+/** The data folder's size in bytes (System Settings → Storage & backups). Mirrors apps/api/src/db/data-usage.ts. */
+export interface DataFolderUsage {
+  totalBytes: number;
+  mediaBytes: number;
+  buildsBytes: number;
+  /** The walk stopped at its limit: each figure is at least what it says. */
+  partial: boolean;
+}
+
 // ---- Database integrity (System Settings → Ops → "Check database integrity"). Mirrors
 // apps/api/src/repo/integrity.ts; see it for what each code means and why repairs are opt-in.
 
@@ -2403,6 +2412,12 @@ export const api = {
   /** Live storage usage: the DB size (incl. WAL sidecars) + pre-migration snapshot count/size. */
   getStorage: () =>
     request<{ dbBytes: number; statsBytes?: number; backups: { count: number; bytes: number } }>('GET', '/admin/storage'),
+  /**
+   * The data folder's size: all of it, the uploaded media, and the builds and previews made again when needed. A walk
+   * of every file, so it can take seconds; `partial` when it stopped at its limit. `usage` is null with no data folder.
+   */
+  getDataFolderUsage: () =>
+    request<{ usage: DataFolderUsage | null }>('GET', '/admin/storage/data-folder'),
   /** Reap pre-migration DB snapshots, keeping the newest `keepLast` (≥1). Never touches the DB itself. */
   purgeBackups: (keepLast: number) =>
     request<{ removed: number; count: number; bytes: number }>('POST', '/admin/backups/purge', { keepLast }),

@@ -309,6 +309,19 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Fixed
 
+- **A checkout channel with a captcha or proof of work refused every buyer.** The shop settings offered both and
+  the server required them, but neither reached the page, so the cart sent neither. A checkout that asks now draws
+  the project's captcha in the drawer (once the drawer first opens, one per cart; for reCAPTCHA v3, no widget) and
+  solves the proof of work before it posts. An authored drawer gets the captcha in its own `captcha` part, else
+  just before the checkout button. The prompt is translatable (`cart.captcha`). A cart that shows a captcha
+  opens its drawer as a plain (non-modal) dialog over a scrim of its own. The vendors put their picture puzzle
+  at the end of the page, and a modal drawer made it unreachable (measured in Chromium). Esc and a click on the
+  scrim still close it, Tab stays in it, and it is marked `aria-modal`. The default cart moves to the end of the
+  page first, so a transformed or low-stacked header can't confine the drawer. An authored drawer stays in place,
+  and opens as a modal where its layout would confine it.
+- **The cart's order form loads its own captcha.** Its captcha appeared only on a page that also had a captcha
+  contact form loading the vendor's script, and never worked with reCAPTCHA v3. It now draws the widget itself, as
+  the booking widget does, and the two share one implementation.
 - **Shop emails read as emails.** Order notifications and receipts went out through the contact-form path, so
   each one opened with `New submission for "order"` and a `body:` line, and the HTML version was never sent. They
   now go out as written, as text and HTML.

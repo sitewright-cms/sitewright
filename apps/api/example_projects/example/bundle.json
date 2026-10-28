@@ -1892,6 +1892,11 @@
           "de": "Die Kasse ist derzeit nicht verfügbar. Bitte versuchen Sie es erneut.",
           "es": "El pago no está disponible ahora. Inténtalo de nuevo."
         },
+        "cart.captcha": {
+          "en": "Please complete the captcha.",
+          "de": "Bitte lösen Sie das Captcha.",
+          "es": "Completa el captcha."
+        },
         "cart.market": {
           "en": "Shop in",
           "de": "Einkaufen in",

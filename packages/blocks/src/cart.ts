@@ -1,4 +1,5 @@
 import { shopOrderFormId } from '@sitewright/schema';
+import { SPAM_GUARD_JS } from './spam-guard-runtime.js';
 // MINI SHOP — a first-party, dependency-free shopping-cart runtime for PUBLISHED
 // static sites.
 //
@@ -106,6 +107,11 @@ export const CART_PARTS = Object.freeze({
   review: 'review',
   /** A market checkout's ship-to country question (inserted before a checkout button unless authored). */
   shipTo: 'ship-to',
+  /**
+   * Where the project's captcha is drawn for a checkout that asks for one (inserted before the first such
+   * checkout button unless authored). One per cart: an answer is spent on whichever checkout comes next.
+   */
+  captcha: 'captcha',
   /** The default drawer's market switcher (markets only). */
   market: 'market',
 } as const);
@@ -216,6 +222,11 @@ export const CART_CSS = [
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
   '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
+  // A cart with a visible captcha opens its drawer WITHOUT the modal top layer (see Guards in the runtime): above
+  // the page and a scrim of its own, below the captcha vendors' puzzle (theirs sit at z-index 2e9 and up).
+  '[data-sw-cart] dialog[data-sw-loose]{z-index:1000000}',
+  '[data-sw-cart] [data-sw-part="scrim"]{position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}',
+  '[data-sw-cart] [data-sw-part="scrim"][hidden]{display:none}',
   '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--sw-color-base-300,#e5e7eb)}',
   // The drawer title is a DIV, not a heading: the cart ships on every page of a shop, so an <h2> here
   // would inject a heading into every document outline that the author never wrote. It carries the look
@@ -299,6 +310,7 @@ export const CART_CSS = [
   // input styling above; hidden until the channel button toggles it open.
   '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid var(--sw-color-base-300,#e5e7eb);border-radius:.375rem;background:var(--sw-color-base-200,#f9fafb)}',
   '[data-sw-cart] [data-sw-part="channel-form"][hidden]{display:none}',
+  '[data-sw-cart] [data-sw-part="captcha"]{margin:.5rem 0}',
   '[data-sw-cart] [data-sw-part="channel-submit"]{margin-top:.25rem}',
   '[data-sw-cart] [data-sw-part="channel-status"]{margin:.4rem 0 0;font-size:.8125rem;color:#b00020}',
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
@@ -356,6 +368,89 @@ export const CART_JS = `(function(){
   function ixSnapshot(){var n=0;for(var k in CART_IX_F){if(Object.prototype.hasOwnProperty.call(CART_IX_F,k))n++;}return CART_IX_P+'.'+CART_IX_K+'.'+n;}
   function mk(tag,cls,txt){var n=document.createElement(tag);if(cls){n.className=cls;}if(txt!=null){n.textContent=txt;}return n;}
   function part(tag,name,txt){var n=mk(tag,null,txt);n.setAttribute('data-sw-part',name);return n;}
+  // ---- proof of work and captcha: shared with the booking widget (spam-guard-runtime.ts) ----
+${SPAM_GUARD_JS}
+  // The captchas one cart draws. Each is drawn only once the drawer first opens: the vendor's script is a third
+  // party's, and a visitor who never opens the cart should not load it. A project with no captcha set up gets
+  // none; the server then refuses the order as unavailable, which is what the buyer is told.
+  function Guards(cfg){
+    var widgets=[],woken=false,checkout=null,scrim=null;
+    function captcha(own,before){
+      if(!cfg.captcha){return null;}
+      var box=own||part('div','captcha');
+      var w=swCaptcha(cfg.captcha.provider,cfg.captcha.siteKey,box);
+      if(!own&&w.visible&&before&&before.parentNode){before.parentNode.insertBefore(box,before);}
+      widgets.push(w);
+      if(woken){w.mount();}
+      return w;
+    }
+    return {
+      captcha:captcha,
+      // ONE widget for every checkout that asks: an answer is spent on whichever checkout comes next, so a second
+      // widget would only be a second puzzle. Drawn into the author's own captcha part when there is one, else
+      // just before the first checkout button that needs it.
+      checkout:function(own,before){if(!checkout){checkout=captcha(own,before);}return checkout;},
+      wake:function(){if(woken){return;}woken=true;for(var i=0;i<widgets.length;i++){widgets[i].mount();}},
+      // ★ Opens the drawer WITHOUT the modal top layer when this cart draws a visible captcha, and says whether it
+      // did. hCaptcha and reCAPTCHA put their picture puzzle at the end of the page, outside the drawer, and a modal
+      // dialog makes everything outside it inert and paints over it: a buyer given a puzzle could neither see nor
+      // answer it. So the drawer is shown plainly, over a scrim of its own; the scrim and Esc close it, Tab stays
+      // in it, and it says it is modal, as a modal's backdrop, Esc and focus would.
+      // ★ Out of the top layer, the drawer is laid out against its ancestors: a transform, a filter or containment
+      // on one (a sliding sticky header) would confine it and trap its z-index. The default cart (everything in it
+      // is fixed) is therefore moved to the end of the page first, before any captcha is drawn into it; "movable"
+      // is that mount. An authored drawer lives in the author's own layout and is not moved: where an ancestor would
+      // confine it, it opens as a modal, as before.
+      openLoose:function(d,close,movable){
+        var visible=false;
+        for(var i=0;i<widgets.length;i++){if(widgets[i].visible){visible=true;}}
+        if(!visible||typeof d.show!=='function'){return false;}
+        if(movable&&movable.parentNode!==document.body){document.body.appendChild(movable);}
+        if(!unconfined(d)){return false;}
+        if(!scrim){
+          scrim=part('div','scrim');scrim.hidden=true;
+          if(d.parentNode){d.parentNode.insertBefore(scrim,d);}
+          scrim.addEventListener('click',close);
+          document.addEventListener('keydown',function(e){
+            if(!d.open||!d.hasAttribute('data-sw-loose')){return;}
+            // Another dialog's Esc is that dialog's.
+            var t=e.target&&e.target.closest?e.target.closest('dialog'):null;
+            if((e.key==='Escape'||e.key==='Esc')&&(!t||t===d)){close();return;}
+            if(e.key==='Tab'){keepFocus(d,e);}
+          });
+          d.addEventListener('close',function(){scrim.hidden=true;d.removeAttribute('data-sw-loose');d.removeAttribute('aria-modal');});
+        }
+        d.setAttribute('data-sw-loose','');d.setAttribute('aria-modal','true');scrim.hidden=false;
+        if(!d.open){d.show();}
+        return true;
+      }
+    };
+  }
+  // Whether a fixed element inside el is laid out against the viewport and stacks with the page: no ancestor
+  // confines it (a transform, perspective, filter, containment) or traps its z-index (a stacking context).
+  function unconfined(el){
+    function on(v){return !!v&&v!=='none'&&v!=='normal'&&v!=='auto';}
+    for(var a=el.parentElement;a&&a!==document.body&&a!==document.documentElement;a=a.parentElement){
+      var cs=window.getComputedStyle(a);
+      if(on(cs.transform)||on(cs.translate)||on(cs.rotate)||on(cs.scale)||on(cs.perspective)||on(cs.filter)||on(cs.backdropFilter)||on(cs.webkitBackdropFilter)){return false;}
+      if(/paint|layout|strict|content/.test(cs.contain||'')||/transform|translate|rotate|scale|perspective|filter/.test(cs.willChange||'')||on(cs.containerType)){return false;}
+      if(on(cs.zIndex)||parseFloat(cs.opacity)<1||cs.isolation==='isolate'||on(cs.mixBlendMode)){return false;}
+    }
+    return true;
+  }
+  // Tab and Shift+Tab go round the drawer's own controls rather than out into the page behind the scrim.
+  function keepFocus(d,e){
+    var all=q('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),iframe,[tabindex]:not([tabindex="-1"])',d)
+      .filter(function(x){return !x.hidden&&x.getClientRects().length>0;});
+    if(!all.length){e.preventDefault();return;}
+    var first=all[0],last=all[all.length-1],at=document.activeElement;
+    if(!d.contains(at)){e.preventDefault();first.focus();}
+    else if(e.shiftKey&&at===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&at===last){e.preventDefault();first.focus();}
+  }
+  // The proof-of-work challenge beside a channel's pay address: the same path plus /challenge, keeping the
+  // preview's query, so the work is scoped to this channel exactly as the server scopes it.
+  function payChallenge(k){var u=window.__swp(k),i=u.indexOf('?');return i<0?u+'/challenge':u.slice(0,i)+'/challenge'+u.slice(i);}
   // A self-contained "waves" ripple on a control (pointerdown → an expanding circle from the click
   // point). The cart wires this itself because the platform ripple runtime only binds elements present
   // at load. A "light" ripple tints it white for dark/colored buttons. Reduced motion → no ripple.
@@ -435,6 +530,7 @@ export const CART_JS = `(function(){
       outOfStockLabel:mount.getAttribute('data-oos-label')||'Sorry, that is out of stock.',
       goneLabel:mount.getAttribute('data-gone-label')||'An item in your cart is no longer available.',
       checkoutFailedLabel:mount.getAttribute('data-checkout-failed-label')||'Checkout is unavailable right now. Please try again.',
+      captchaLabel:mount.getAttribute('data-captcha-label')||'Please complete the captcha.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       yesLabel:mount.getAttribute('data-yes-label')||'Yes', // the value a ticked checkbox order field contributes
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
@@ -709,11 +805,13 @@ export const CART_JS = `(function(){
   // ★ The cart is NOT cleared on redirect. The buyer is leaving for the provider's page and may well
   // come back without paying; clearing here would lose their basket for an abandoned payment. The
   // thank-you page clears it, on a confirmed paid status.
-  function postCheckout(ch,items,cfg,values,onDone,prior,shipTo){
+  function postCheckout(ch,items,cfg,values,onDone,prior,shipTo,guard){
     if(!window.__swp){onDone({error:'unavailable'});return;}
     var lines=[];
     for(var i=0;i<items.length;i++){lines.push({sku:items[i].sku,qty:items[i].qty});}
     var payload={items:lines,fields:values||{},_hpt:'',_elapsed:String(Date.now()-CART_STARTED),_ix:ixSnapshot()};
+    // The captcha answer (under the provider's own field name) and the proof of work, when the channel asks.
+    for(var g in guard){if(Object.prototype.hasOwnProperty.call(guard,g)){payload[g]=guard[g];}}
     // ★ Hands back the token of this buyer's own previous unpaid attempt so the server can cancel it
     // and return its units before reserving again. Without it, Checkout -> Back -> Checkout holds a
     // fresh reservation on every click.
@@ -774,7 +872,7 @@ export const CART_JS = `(function(){
   }
 
   // The whole checkout interaction, shared by the default drawer and an authored one.
-  function startCheckout(ch,btn,mount,items,cfg,key){
+  function startCheckout(ch,btn,mount,items,cfg,key,guards){
     if(!items.length){return;}
     var host=btn.parentNode;if(!host){return;}
     var prior=host.querySelector('[data-sw-part="review"]');
@@ -809,7 +907,27 @@ export const CART_JS = `(function(){
     var prior='';
     try{prior=localStorage.getItem(key+':pending')||'';}catch(e){}
 
-    postCheckout(ch,items,cfg,values,function(r){
+    // ★ The captcha first, then the proof of work, then the order: a checkout that asks for either is refused
+    // without it, and this cart once sent neither, so every buyer was refused. The server's check spends the
+    // captcha answer whatever the outcome, so the widget is reset after every answer, ready for the next try.
+    var cap=ch.captcha&&guards?guards.checkout():null;
+    if(guards){guards.wake();}
+    // Drawn again if its script came too late the first time (a no-op once it is on the page).
+    if(cap){cap.mount();}
+    var guard={};
+    (cap?cap.token():Promise.resolve('')).then(function(tk){
+      if(tk){guard[cap.field]=tk;}
+    },function(){throw new Error('captcha');}).then(function(){
+      return ch.pow&&window.__swp?swPowSolve(payChallenge(ch.key)):'';
+    }).then(function(sol){
+      if(sol){guard._pow=sol;}
+      postCheckout(ch,items,cfg,values,function(r){if(cap){cap.reset();}answered(r);},prior,shipTo,guard);
+    }).catch(function(err){
+      btn.disabled=false;
+      status.textContent=err&&err.message==='captcha'?cfg.captchaLabel:(cfg.checkoutFailedLabel||'Checkout is unavailable right now. Please try again.');
+    });
+
+    function answered(r){
       btn.disabled=false;
       if(!r.ok){
         // ★ Named, actionable refusals. "Something went wrong" is what a buyer gets today from most
@@ -835,7 +953,7 @@ export const CART_JS = `(function(){
       });
       btn.hidden=true;
       host.insertBefore(panel,status.nextSibling);
-    },prior,shipTo);
+    }
   }
 
   // ---- authored-markup binding ----
@@ -855,6 +973,7 @@ export const CART_JS = `(function(){
     var items=load(key);
     var sent=false;
     applyMarket(mount,cfg);
+    var guards=Guards(cfg);
 
     var drawer=part$(mount,'drawer');
     var list=part$(mount,'items');
@@ -881,9 +1000,14 @@ export const CART_JS = `(function(){
     function lockScroll(){if(scrollLocked){return;}scrollLocked=true;prevOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';}
     function unlockScroll(){if(!scrollLocked){return;}scrollLocked=false;document.documentElement.style.overflow=prevOverflow;}
     function openDrawer(){
-      if(drawer.showModal){try{drawer.showModal();}catch(e){drawer.setAttribute('open','');}}
-      else{drawer.setAttribute('open','');}
+      var loose=false;
+      try{loose=guards.openLoose(drawer,closeDrawer);}catch(e){loose=false;}
+      if(!loose){
+        if(drawer.showModal){try{drawer.showModal();}catch(e){drawer.setAttribute('open','');}}
+        else{drawer.setAttribute('open','');}
+      }
       lockScroll();
+      guards.wake();
     }
     function closeDrawer(){if(drawer.close){drawer.close();}else{drawer.removeAttribute('open');unlockScroll();}}
     drawer.addEventListener('close',unlockScroll);
@@ -919,7 +1043,9 @@ export const CART_JS = `(function(){
           // A market's checkout asks where it ships. An author who placed their own
           // [data-sw-ship-to] select keeps it; otherwise the platform's goes in before the button.
           if(cfg.market&&!mount.querySelector('[data-sw-ship-to]')&&btn.parentNode){btn.parentNode.insertBefore(shipToControl(cfg),btn);}
-          btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key);});
+          // Likewise the captcha: into the author's own captcha part, else just before the button.
+          if(ch.captcha){guards.checkout(part$(mount,'captcha'),btn);}
+          btn.addEventListener('click',function(){startCheckout(ch,btn,mount,items,cfg,key,guards);});
           return;
         }
         // ★ The author's own order-field controls, in the deep-link message shape. The default
@@ -995,6 +1121,8 @@ export const CART_JS = `(function(){
     var adders=q('[data-sw-cart-add]');
     for(var ai=0;ai<adders.length;ai++){(function(b){b.addEventListener('click',function(){add(b);});})(adders[ai]);}
 
+    // An authored drawer may be shown from the start (an open dialog, a cart page): its captcha is drawn now.
+    if(drawer.open||drawer.hasAttribute('open')){guards.wake();}
     render();
   }
 
@@ -1015,6 +1143,7 @@ export const CART_JS = `(function(){
     var key=cartKey(mount,cfg);
     var items=load(key);
     applyMarket(mount,cfg);
+    var guards=Guards(cfg);
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     // …and for the /f INTERACTION gate, which drops a submission carrying no trusted input at all. The
     // cart builds its own payload rather than reusing the form runtime's, so it has to collect its own
@@ -1084,8 +1213,9 @@ export const CART_JS = `(function(){
           if(kf){foot.appendChild(kf.form);}
           // One ship-to question, however many providers the market offers.
           if(cfg.market&&!foot.querySelector('[data-sw-ship-to]')){foot.appendChild(shipToControl(cfg));}
-          b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key);});
+          b.addEventListener('click',function(){startCheckout(ch,b,mount,items,cfg,key,guards);});
           foot.appendChild(b);
+          if(ch.captcha){guards.checkout(null,b);}
         }else{
           b.addEventListener('click',function(){runChannel(ch,items,cfg);});
           foot.appendChild(b);
@@ -1239,31 +1369,13 @@ export const CART_JS = `(function(){
           inputs.push({name:name,el:inp});
         })(defs[fi]);
       }
-      // CAPTCHA, when the channel asks for it — the same providers and the same markup a contact form
-      // uses, so the vendor script the page already loads picks this widget up too. The token is read
-      // at submit and posted under the provider's own field name, which is what the endpoint verifies.
-      var capProvider=String((cfg.captcha&&cfg.captcha.provider)||'');
-      var capKey=String((cfg.captcha&&cfg.captcha.siteKey)||'');
-      var capBox=null;
-      if(ch&&ch.captcha&&capProvider&&capKey){
-        capBox=part('div','order-captcha');
-        capBox.className=(capProvider==='hcaptcha'?'h-captcha':'g-recaptcha');
-        capBox.setAttribute('data-sitekey',capKey);
-        if(capProvider==='recaptcha-v3'){capBox.setAttribute('data-size','invisible');}
-        form.appendChild(capBox);
-      }
       var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','order-status');
       form.appendChild(submit);form.appendChild(status);
-      // The solved captcha token, or '' when this channel wants none. An unfilled widget is reported
-      // here rather than costing a round trip to be refused by the server.
-      // (No backticks in this runtime: the whole thing is a template literal.)
-      function captchaToken(){
-        if(!capBox){return '';}
-        if(capProvider==='hcaptcha'){return (window.hcaptcha&&window.hcaptcha.getResponse)?window.hcaptcha.getResponse():'';}
-        if(capProvider==='recaptcha-v2'){return (window.grecaptcha&&window.grecaptcha.getResponse)?window.grecaptcha.getResponse():'';}
-        return '';
-      }
+      // CAPTCHA, when the channel asks for it: the project's, drawn by the shared guard, which loads the vendor's
+      // script itself. (This form used to borrow a contact form's widget markup and so worked only on a page that
+      // also had a captcha contact form loading the script, and never with reCAPTCHA v3.)
+      var cap=ch&&ch.captcha?guards.captcha(null,submit):null;
       form.addEventListener('submit',function(e){
         e.preventDefault();
         if(!items.length){return;}
@@ -1271,19 +1383,27 @@ export const CART_JS = `(function(){
         var ixN=0;for(var ixk in ixF){if(Object.prototype.hasOwnProperty.call(ixF,ixk))ixN++;}
         var payload={_hpt:'',_elapsed:String(Date.now()-started),_ix:ixP+'.'+ixK+'.'+ixN,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
         for(var pi=0;pi<inputs.length;pi++){payload[inputs[pi].name]=inputs[pi].el.value;}
-        if(capBox){
-          var tok=captchaToken();
-          if(!tok&&capProvider!=='recaptcha-v3'){status.textContent='Please complete the captcha.';return;}
-          if(tok){payload[capProvider==='hcaptcha'?'h-captcha-response':'g-recaptcha-response']=tok;}
-        }
         submit.disabled=true;status.textContent='Sending\u2026';
-        // Assembled at submit time from the encoded blob — the URL is never in the markup.
-        fetch(window.__swf(ch.formId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
+        if(cap){cap.mount();}
+        // An unanswered captcha is said here rather than costing a round trip to be refused by the server.
+        (cap?cap.token():Promise.resolve('')).then(function(tk){
+          if(tk){payload[cap.field]=tk;}
+        },function(){throw new Error('captcha');}).then(function(){
+          // Assembled at submit time from the encoded blob — the URL is never in the markup.
+          return fetch(window.__swf(ch.formId),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)});
+        }).then(function(res){
           if(!res.ok){throw new Error('bad status');}
+          // The answer is spent: a later order gets a fresh puzzle.
+          if(cap){cap.reset();}
           // Flip to the sent state BEFORE render() so the confirmation panel (not the now-empty cart)
           // is what shows; submit stays disabled (the form is hidden until a new item is added).
           sent=true;items.length=0;form.reset();status.textContent='';persist();
-        }).catch(function(){status.textContent='Sorry, something went wrong. Please try again.';submit.disabled=false;});
+        }).catch(function(err){
+          var unanswered=err&&err.message==='captcha';
+          if(cap&&!unanswered){cap.reset();}
+          status.textContent=unanswered?cfg.captchaLabel:'Sorry, something went wrong. Please try again.';
+          submit.disabled=false;
+        });
       });
       return form;
     }
@@ -1363,9 +1483,10 @@ export const CART_JS = `(function(){
     // A function DECLARATION so it is hoisted above add()'s first-item call site.
     function openDrawer(){
       if(dialog.open){return;} // already showing (rapid repeat add) — showModal() would throw
-      try{if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}}
+      try{if(!guards.openLoose(dialog,closeDrawer,mount)){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}}}
       catch(e){dialog.setAttribute('open','');}
       lockScroll();
+      guards.wake();
     }
     toggle.addEventListener('click',openDrawer);
     close.addEventListener('click',closeDrawer);
@@ -1425,7 +1546,8 @@ export function resolveShopChannels(
     return { ...c, formId, endpoint: formEndpoint(formId) };
   });
   // Only when a channel actually asks for one — an unused key on every shop would be noise in the
-  // markup of every page that has a cart.
-  const wantsCaptcha = channels.some((c) => c && typeof c === 'object' && c.kind === 'form' && c.captcha === true);
+  // markup of every page that has a cart. A checkout counts as much as an order form: without the key on the
+  // mount, a checkout that asks for a captcha could never send one, and every buyer was refused.
+  const wantsCaptcha = channels.some((c) => c && typeof c === 'object' && (c.kind === 'form' || c.kind === 'checkout') && c.captcha === true);
   return { ...s, channels, ...(wantsCaptcha && captcha ? { captcha } : {}) };
 }

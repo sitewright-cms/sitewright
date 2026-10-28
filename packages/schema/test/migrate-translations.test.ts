@@ -27,6 +27,8 @@ const NO_LEGACY_NAME = new Set([
   'cart.out_of_stock',
   'cart.gone',
   'cart.checkout_failed',
+  // The captcha prompt: the order form's was a fixed English string, never a catalog key.
+  'cart.captcha',
   // MARKETS shipped scoped too: the switcher, the ship-to prompt, the not-sold-here message.
   'cart.market',
   'cart.ship_to',

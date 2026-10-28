@@ -341,6 +341,12 @@ describe('resolveShopChannels', () => {
     const with_ = resolveShopChannels({ channels: [{ kind: 'form', key: 'o', email: 'a@b.test', captcha: true }] }, ep, captcha) as Record<string, unknown>;
     expect(with_.captcha).toEqual(captcha);
   });
+  it('★ carries it for a CHECKOUT that asks, too: without it every buyer of that shop was refused', () => {
+    const captcha = { provider: 'hcaptcha', siteKey: 'site-key' };
+    const checkout = { kind: 'checkout', key: 'pay', gatewayId: 'mock', email: 'a@b.test' };
+    expect((resolveShopChannels({ channels: [checkout] }, ep, captcha) as Record<string, unknown>).captcha).toBeUndefined();
+    expect((resolveShopChannels({ channels: [{ ...checkout, captcha: true }] }, ep, captcha) as Record<string, unknown>).captcha).toEqual(captcha);
+  });
   it('is a no-op for an absent shop or one without channels', () => {
     expect(resolveShopChannels(undefined, ep)).toBeUndefined();
     expect(resolveShopChannels({ currency: { decimals: 2 } }, ep)).toEqual({ currency: { decimals: 2 } });
@@ -367,7 +373,8 @@ describe('the drawer reveals itself on the FIRST item only', () => {
   it('is safe to call when the drawer is already open (rapid repeat adds)', () => {
     // showModal() THROWS on an already-open <dialog>; that would take the whole add handler down.
     expect(CART_JS).toContain('if(dialog.open){return;}');
-    expect(CART_JS).toMatch(/try\{if\(typeof dialog\.showModal==='function'\)/);
+    // (Inside the same try, after the loose opening a cart with a captcha takes instead.)
+    expect(CART_JS).toMatch(/try\{if\(!guards\.openLoose\(dialog,closeDrawer,mount\)\)\{if\(typeof dialog\.showModal==='function'\)/);
   });
 
   it('still opens where showModal is unavailable (the sandboxed preview frame)', () => {

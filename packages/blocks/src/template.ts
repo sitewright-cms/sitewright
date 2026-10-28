@@ -1702,6 +1702,7 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
     if (shopCaptcha && str(shopCaptcha.provider) && str(shopCaptcha.siteKey)) {
       attrs += ` data-captcha-provider="${escapeAttr(str(shopCaptcha.provider))}"`;
       attrs += ` data-captcha-sitekey="${escapeAttr(str(shopCaptcha.siteKey))}"`;
+      attrs += ` data-captcha-label="${escapeAttr(rt('cart.captcha'))}"`;
     }
     const company = (root.company ?? {}) as Record<string, unknown>;
     const brand = str(company.name);
@@ -1777,7 +1778,11 @@ function sizeMediaUrls(value: unknown, size: string, depth = 0): unknown {
         // or a permanently-"unconfigured" one (authored), with every server-side layer built and
         // working behind it. The runtime needs the key (the endpoint), the label, and the buyer
         // fields; nothing about the gateway or its credentials belongs in a page attribute.
-        if (c.kind === 'checkout') return { kind: 'checkout', key, label, fields: projFields(c.fields) };
+        // `captcha` and `pow` are flags (the provider and site key ride on the mount): a checkout that asks for either
+        // and cannot say so to the runtime refuses every buyer, because the runtime then sends neither.
+        if (c.kind === 'checkout') {
+          return { kind: 'checkout', key, label, fields: projFields(c.fields), ...(c.captcha ? { captcha: true } : {}), ...(c.pow ? { pow: true } : {}) };
+        }
         // The form channel carries its form ID, never the resolved URL: cart.js assembles the address
         // from the encoded blob (window.__swf), so the endpoint stays out of this attribute — it used to
         // ship the full `/f/…` URL in `data-channels` for any scraper to read. `endpoint` is still what

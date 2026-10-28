@@ -1,3 +1,5 @@
+import { SPAM_GUARD_JS } from './spam-guard-runtime.js';
+
 /**
  * booking.js — fills `{{sw-booking}}` (the booking widget) and `{{sw-booking-status}}` (a booking's own page).
  *
@@ -13,7 +15,8 @@
  * ★ No address in the markup: every URL comes from `window.__swb` (render.ts), and in the editor's preview
  * it adds `?preview=1`, so trying the widget there books nothing.
  *
- * (No backticks or dollar-brace in this file's runtime: it is one template literal.)
+ * (No backticks or dollar-brace in this file's runtime, but for the one splice of the shared spam guard: it is one
+ * template literal.)
  */
 export const BOOKING_JS = `(function(){
   var LOC=document.documentElement.getAttribute('lang')||undefined;
@@ -98,76 +101,8 @@ export const BOOKING_JS = `(function(){
     return function(){var n=0;for(var x in f){if(Object.prototype.hasOwnProperty.call(f,x)){n++;}}return {_hpt:'',_elapsed:String(Date.now()-t0),_ix:p+'.'+k+'.'+n};};
   }
 
-  // ---- proof of work: find n with sha256(salt + n) = challenge. REJECTS when it cannot, never posts without ----
-  function solve(url){
-    if(!window.crypto||!window.crypto.subtle||!window.TextEncoder){return Promise.reject(new Error('pow'));}
-    return call(url).then(function(r){
-      var c=r.body;
-      if(r.status!==200||!c||typeof c.salt!=='string'||typeof c.maxnumber!=='number'){throw new Error('pow');}
-      var enc=new TextEncoder(),n=0;
-      function step(){
-        if(n>c.maxnumber){throw new Error('pow');}
-        return window.crypto.subtle.digest('SHA-256',enc.encode(c.salt+String(n))).then(function(buf){
-          var b=new Uint8Array(buf),hex='';
-          for(var i=0;i<b.length;i++){hex+=(b[i]<16?'0':'')+b[i].toString(16);}
-          if(hex===c.challenge){return btoa(JSON.stringify({algorithm:c.algorithm,challenge:c.challenge,salt:c.salt,number:n,signature:c.signature}));}
-          n++;
-          return step();
-        });
-      }
-      return step();
-    });
-  }
-
-  // ---- captcha: the vendor script once per page; the widget rendered EXPLICITLY into its own box ----
-  // The box carries none of the vendors' class names, so their auto-render (which a contact form on the same
-  // page relies on) never touches it, and the widget id is always ours: the answer is read and the widget
-  // reset by that id, never "the first widget on the page".
-  function loadScript(src,mark){
-    var sel=window.CSS&&window.CSS.escape?window.CSS.escape(mark):mark.replace(/[^A-Za-z0-9_-]/g,'');
-    if(document.querySelector('script[data-sw-captcha-src="'+sel+'"]')){return;}
-    var s=document.createElement('script');
-    s.src=src;s.async=true;s.defer=true;s.setAttribute('data-sw-captcha-src',mark);
-    document.head.appendChild(s);
-  }
-  function Captcha(provider,key,box){
-    var id=null,waiting=false;
-    function vendor(){return provider==='hcaptcha'?window.hcaptcha:window.grecaptcha;}
-    // Runs cb once the vendor can render: now, on reCAPTCHA's own ready(), or when its script has arrived.
-    function whenReady(cb){
-      var v=vendor();
-      if(v&&v.render){cb();return;}
-      if(v&&v.ready){v.ready(cb);return;}
-      if(provider==='hcaptcha'){loadScript('https://js.hcaptcha.com/1/api.js','hcaptcha');}
-      else{loadScript('https://www.google.com/recaptcha/api.js','recaptcha');}
-      var tries=0,timer=setInterval(function(){
-        var w=vendor();
-        if(w&&w.render){clearInterval(timer);cb();}
-        else if(++tries>200){clearInterval(timer);}
-      },100);
-    }
-    return {
-      mount:function(){
-        if(provider==='recaptcha-v3'){if(!window.grecaptcha){loadScript('https://www.google.com/recaptcha/api.js?render='+encodeURIComponent(key),'recaptcha-v3-'+key);}return;}
-        if(id!==null||waiting){return;}
-        waiting=true;
-        whenReady(function(){try{id=vendor().render(box,{sitekey:key});}catch(e){}waiting=false;});
-      },
-      token:function(){
-        var v=vendor();
-        if(provider==='recaptcha-v3'){
-          if(!v||!v.execute){return Promise.reject(new Error('captcha'));}
-          return new Promise(function(res,rej){v.ready(function(){v.execute(key,{action:'submit'}).then(function(tk){if(tk){res(tk);}else{rej(new Error('captcha'));}},function(){rej(new Error('captcha'));});});});
-        }
-        var tk='';
-        try{tk=id!==null&&v&&v.getResponse?v.getResponse(id):'';}catch(e){tk='';}
-        return tk?Promise.resolve(tk):Promise.reject(new Error('captcha'));
-      },
-      reset:function(){var v=vendor();if(id!==null&&v&&v.reset){try{v.reset(id);}catch(e){}}},
-      field:provider==='hcaptcha'?'h-captcha-response':'g-recaptcha-response'
-    };
-  }
-
+  // ---- proof of work and captcha: shared with the cart (spam-guard-runtime.ts) ----
+${SPAM_GUARD_JS}
   // ---- the widget ------------------------------------------------------------------------------
   // Answers that arrive after a newer request was made are dropped, so a quick change of resource or week
   // can never draw the older listing over the newer one.
@@ -434,7 +369,7 @@ export const BOOKING_JS = `(function(){
     var hp=mk('div','hp'),hpIn=document.createElement('input');
     hpIn.type='text';hpIn.name='_hpt';hpIn.tabIndex=-1;hpIn.setAttribute('autocomplete','off');hp.setAttribute('aria-hidden','true');hp.appendChild(hpIn);form.appendChild(hp);
     var capP=preview?'':mount.getAttribute('data-sw-captcha')||'',capBox=mk('div','captcha'),cap=null;
-    if(capP){cap=Captcha(capP,mount.getAttribute('data-captcha-sitekey')||'',capBox);if(capP!=='recaptcha-v3'){form.appendChild(capBox);}}
+    if(capP){cap=swCaptcha(capP,mount.getAttribute('data-captcha-sitekey')||'',capBox);if(capP!=='recaptcha-v3'){form.appendChild(capBox);}}
     var actions=mk('div','actions'),back=mk('button','back',t('back')),submit=mk('button','submit');
     back.type='button';back.className='btn';submit.type='submit';submit.className='btn btn-primary';
     actions.appendChild(back);actions.appendChild(submit);
@@ -480,7 +415,7 @@ export const BOOKING_JS = `(function(){
       return (cap?cap.token():Promise.resolve('')).then(function(tk){
         if(tk){p[cap.field]=tk;}
       },function(){throw new Error('captcha');}).then(function(){
-        return mount.hasAttribute('data-sw-pow')?solve(api(oid+'/challenge')):'';
+        return mount.hasAttribute('data-sw-pow')?swPowSolve(api(oid+'/challenge')):'';
       }).then(function(sol){
         if(sol){p._pow=sol;}
         return post(api(oid,1),p);

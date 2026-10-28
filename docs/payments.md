@@ -263,6 +263,22 @@ nothing.
 out — nothing is injected to compensate. Lines are filled with `textContent` only, which is what lets
 a line be fully author-controlled without becoming a markup sink.
 
+Two things a checkout cannot go without are the exception. A market's ship-to question (`ship-to`), and
+the project's captcha for a checkout channel that asks for one (`captcha`), go into your own part when
+you placed one, else just before the checkout button. The captcha is drawn when the drawer first opens,
+one per cart, and a checkout that asks for proof of work solves it before it posts.
+
+A cart that shows a captcha opens its drawer with `show()`, not `showModal()`. hCaptcha and reCAPTCHA put
+their picture puzzle at the end of the page, and a modal dialog makes everything outside it inert: the
+buyer could not answer the puzzle. The drawer gets `data-sw-loose`, `aria-modal` and a `scrim` part in its
+place. Esc and the scrim close it, and Tab stays inside it. The platform styles both, and an authored drawer
+with `platformCartStyles: false` must too.
+
+Outside the top layer, an ancestor with a transform, a filter or containment confines a fixed drawer (a
+sliding sticky header does). The default cart, all of whose parts are fixed, therefore moves to the end of
+the page on its first open, before the captcha is drawn. An authored drawer is never moved: where an
+ancestor would confine it, it opens as a modal, as before.
+
 Fork the global **`cart-drawer`** snippet and the **`thank-you`** template to start from the defaults.
 The publish warns (never fails) about a fork that has lost a required part or names a channel the shop
 no longer configures.

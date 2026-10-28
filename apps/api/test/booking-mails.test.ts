@@ -271,6 +271,17 @@ describe('a paid request', () => {
   });
 });
 
+describe('a reminder', () => {
+  it('reminds the customer only, with the link to their booking and nothing for a calendar', () => {
+    const sent = mails({ kind: 'reminder' });
+    expect(sent.map((m) => m.role)).toEqual(['customer']);
+    expect(sent[0]!.subject).toBe('Reminder: Massage');
+    expect(sent[0]!.rendered.text).toContain('This is a reminder of your booking.');
+    expect(sent[0]!.rendered.text).toContain('View or cancel your booking: https://studio.example/my-booking/#t=ref-1');
+    expect(sent[0]!.rendered.attachments).toBeUndefined();
+  });
+});
+
 describe('bookingWhen', () => {
   it('reads stays and whole days as people do', () => {
     const nights = { offering: { name: 'Flat', mode: 'days' as const, unit: 'night' as const }, timeZone: 'Europe/Berlin', locale: 'en-GB' };

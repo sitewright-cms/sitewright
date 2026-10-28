@@ -312,6 +312,11 @@ export const BookingConfigSchema = z
      */
     notifyEmail: BookingEmailSchema.optional(),
     /**
+     * Customers are reminded of their booking by email this many minutes before it starts. Unset: no reminders. A
+     * booking made closer to its start than this gets none (its confirmation has just gone out).
+     */
+    remindBeforeMin: z.number().int().min(60).max(MINUTES_IN_DAY * 7).optional(),
+    /**
      * How paid offerings are paid: one of the project's payment providers (Website settings → Shop → Payments)
      * and the currency charged. Needed once any offering has a price.
      */

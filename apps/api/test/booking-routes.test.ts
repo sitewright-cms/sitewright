@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 import { signBookingRef, verifyBookingRef } from '../src/booking/reference.js';
+import { bookingClaims } from '../src/db/schema.js';
 
 /**
  * The public booking routes, end to end through the app. The set-up is open around the clock, so the
@@ -134,6 +135,16 @@ describe('booking', () => {
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect((await book('consult', { start: String(start) })).json()).toMatchObject({ error: 'taken' });
     expect((await book('consult', { start: String(start) })).statusCode).toBe(409);
+  });
+
+  it('keeps the language of the page it was booked on, for its later mails (a reminder); nothing that is not one', async () => {
+    const start = await firstStart('consult');
+    expect((await book('consult', { start: String(start), lang: 'de-DE' })).statusCode).toBe(200);
+    const [row] = await h.db.select().from(bookingClaims);
+    expect(row!.locale).toBe('de-DE');
+    await h.db.delete(bookingClaims);
+    expect((await book('consult', { start: String(start), lang: '<script>' })).statusCode).toBe(200);
+    expect((await h.db.select().from(bookingClaims))[0]!.locale).toBeNull();
   });
 
   it('an offering on request makes a pending request, held for the owner', async () => {

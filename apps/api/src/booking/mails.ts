@@ -26,9 +26,10 @@ import { buildIcs, type IcsMethod, type IcsPerson } from './ics.js';
  * lapsed      a request ran out unanswered;
  * refunded    a payment came in after its time could no longer be held: not booked, the money goes back;
  * accepted    the business accepted a PAID request: the customer pays, by a deadline, to have it booked;
- * unpaid      an accepted paid request was not paid by its deadline, and its time is free again.
+ * unpaid      an accepted paid request was not paid by its deadline, and its time is free again;
+ * reminder    the customer is reminded of their booking before it starts (only they are written to).
  */
-export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed' | 'refunded' | 'accepted' | 'unpaid';
+export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed' | 'refunded' | 'accepted' | 'unpaid' | 'reminder';
 
 export interface BookingMailFacts {
   kind: BookingMailKind;
@@ -202,7 +203,9 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
                 ? 'booking.mail_accepted_text'
                 : f.kind === 'unpaid'
                   ? 'booking.mail_unpaid_text'
-                  : 'booking.status_cancelled',
+                  : f.kind === 'reminder'
+                    ? 'booking.mail_reminder_text'
+                    : 'booking.status_cancelled',
   );
   // A paid request: the customer pays once it is accepted, and reads so now.
   const payNote = f.kind === 'requested' && f.priced ? t('booking.mail_pay_after_accept') : '';
@@ -215,7 +218,7 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
   ]);
   // A cancelled booking has no page left to show; a live one links to its own page on the business's site (an
   // accepted paid request's page is where it is paid, and the link says so).
-  const link = (f.kind === 'booked' || f.kind === 'requested' || f.kind === 'accepted') && f.statusUrl ? f.statusUrl : undefined;
+  const link = (f.kind === 'booked' || f.kind === 'requested' || f.kind === 'accepted' || f.kind === 'reminder') && f.statusUrl ? f.statusUrl : undefined;
   const linkText = f.kind === 'accepted' ? t('booking.pay_now') : t('booking.manage');
   const calendar = f.kind === 'booked' ? t('booking.mail_calendar') : '';
   const text = [
@@ -270,8 +273,8 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
     seen.add(e.toLowerCase());
     to.push(e);
   }
-  // The business turned the request down itself: it needs no mail about it.
-  if (!to.length || f.kind === 'declined') return [];
+  // The business turned the request down itself: it needs no mail about it; nor about a customer's reminder.
+  if (!to.length || f.kind === 'declined' || f.kind === 'reminder') return [];
   const accepted = f.kind === 'booked' && f.by === 'business';
   const head = accepted
     ? 'Booking confirmed'

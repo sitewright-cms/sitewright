@@ -152,7 +152,9 @@ export class BookingNotifier {
       // The customer's copy goes only while their mailbox has budget left; the business always hears.
       const kept = mails.filter((m) => {
         if (e.only && m.role !== e.only) return false;
-        if (m.role !== 'customer' || this.budget.take(e.projectId, m.recipient, now)) return true;
+        // A reminder is the platform's own, one per booking (an address holds at most a few live bookings per project),
+        // never a visitor's to trigger: it is not spent from the mailbox's daily share.
+        if (m.role !== 'customer' || e.kind === 'reminder' || this.budget.take(e.projectId, m.recipient, now)) return true;
         this.deps.log.warn({ projectId: e.projectId, kind: e.kind }, 'customer booking mail withheld: that address has had its share today');
         return false;
       });

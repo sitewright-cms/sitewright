@@ -237,6 +237,8 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
         default: 'Your request is accepted. Please pay to confirm your booking: the time is held for you until the deadline below.',
       },
       { key: 'booking.mail_unpaid', label: 'Email subject: not paid in time', default: 'Booking not paid: {offering}' },
+      { key: 'booking.mail_reminder', label: 'Email subject: a reminder before the booking', default: 'Reminder: {offering}' },
+      { key: 'booking.mail_reminder_text', label: 'Email: a reminder before the booking', default: 'This is a reminder of your booking.' },
       {
         key: 'booking.mail_unpaid_text',
         label: 'Email: not paid in time',

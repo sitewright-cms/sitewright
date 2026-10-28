@@ -291,6 +291,7 @@ import { logRequest } from './log-redact.js';
 import { BookingFeedRepository, FEED_LIMITS } from '../booking/feed.js';
 import { BookingMailRepository, runBookingMail } from '../booking/outbox.js';
 import { BookingNotifier, notifyLapsed, type NotifierSettings } from '../booking/notify.js';
+import { runReminders } from '../booking/reminders.js';
 import { registerBookingAdminRoutes } from './booking-admin-routes.js';
 import { signBookingRef } from '../booking/reference.js';
 import { BookingService } from '../booking/service.js';
@@ -1780,6 +1781,11 @@ export interface AppOptions {
    * the timer (a "check now" still runs). The pass is a couple of queries when nothing is due.
    */
   rankTickMs?: number;
+  /**
+   * How often (ms) the booking reminder pass looks for customers to remind before their bookings. Default 5 minutes;
+   * 0 disables the timer. A pass is one indexed query when nothing is due.
+   */
+  bookingReminderMs?: number;
   /** @internal test seam — the transport rank providers are called through. */
   rankFetch?: import('../payments/executor.js').FetchLike;
   /** @internal test seam — the transport Google and Bing (search engine accounts) are called through. */
@@ -12833,6 +12839,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
   app.addHook('onClose', async () => rankTracker.close());
+
+  // BOOKING REMINDERS: a customer's email before their booking (booking/reminders.ts), on a short tick of its own (the
+  // maintenance pass is hourly; a reminder an hour late is no reminder). Single-flight.
+  const bookingReminderMs = opts.bookingReminderMs ?? 5 * 60 * 1000;
+  if (bookingReminderMs > 0) {
+    let reminding = false;
+    const remind = (): void => {
+      if (reminding) return;
+      reminding = true;
+      void runReminders(
+        {
+          claims: bookingClaimsRepo,
+          readConfig: readBookingConfig,
+          notify: (e) => bookingNotifier.notify(e),
+          reference: (projectId, claimId) => signBookingRef(projectId, claimId, currentCookieSecret),
+          log: { warn: (o, m) => app.log.warn(o, m) },
+        },
+        Date.now(),
+      )
+        .catch((err: unknown) => app.log.warn(err, 'booking reminder pass failed'))
+        .finally(() => {
+          reminding = false;
+        });
+    };
+    const reminderTimer = setInterval(remind, bookingReminderMs);
+    reminderTimer.unref();
+    app.addHook('onClose', async () => clearInterval(reminderTimer));
+  }
 
   if (sweepMs > 0) {
     // Well inside the shortest interval any caller sets, so the two never overlap on the first pass.

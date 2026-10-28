@@ -44,6 +44,8 @@ export interface NewClaim {
   /** When a hold or a request lapses. Null for a ledger booking. */
   readonly expiresAt: number | null;
   readonly customer: Readonly<Record<string, string>>;
+  /** The language of the page it was booked on. */
+  readonly locale?: string;
 }
 
 export type ClaimRow = typeof bookingClaims.$inferSelect;
@@ -146,6 +148,8 @@ export class BookingClaimsRepository {
       customer: { ...claim.customer },
       paidTxnId: null,
       payBy: null,
+      locale: claim.locale ?? null,
+      remindedAt: null,
       createdAt: at,
       updatedAt: at,
     };
@@ -197,6 +201,38 @@ export class BookingClaimsRepository {
     const rows = await this.db
       .delete(bookingClaims)
       .where(and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.id, id), ...(onlyIf ? [eq(bookingClaims.state, onlyIf)] : [])))
+      .returning({ id: bookingClaims.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Bookings not reminded yet that start within `horizonMs`, soonest first: what the reminder pass looks at (it
+   * decides, per project, which are due). Across projects; bounded per pass.
+   */
+  async dueForReminder(now: number, horizonMs: number, limit: number, after?: { startAt: Date; id: string }): Promise<ClaimRow[]> {
+    return this.db
+      .select()
+      .from(bookingClaims)
+      .where(
+        and(
+          isNull(bookingClaims.remindedAt),
+          eq(bookingClaims.state, 'booked'),
+          gt(bookingClaims.startAt, new Date(now)),
+          lte(bookingClaims.startAt, new Date(now + horizonMs)),
+          // A page past the last one read (start, then id): a pass reads on past bookings not due yet.
+          after ? or(gt(bookingClaims.startAt, after.startAt), and(eq(bookingClaims.startAt, after.startAt), gt(bookingClaims.id, after.id))) : undefined,
+        ),
+      )
+      .orderBy(asc(bookingClaims.startAt), asc(bookingClaims.id))
+      .limit(Math.max(1, limit));
+  }
+
+  /** Marks a booking reminded (or decided against). ★ Once: of two passes, only one sends its reminder. */
+  async markReminded(projectId: string, id: string, at: number): Promise<boolean> {
+    const rows = await this.db
+      .update(bookingClaims)
+      .set({ remindedAt: new Date(at) })
+      .where(and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.id, id), isNull(bookingClaims.remindedAt)))
       .returning({ id: bookingClaims.id });
     return rows.length > 0;
   }

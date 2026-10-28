@@ -1486,6 +1486,10 @@ export const bookingClaims = sqliteTable(
      * little past it (a checkout begun close to it), but never by more than one checkout's time.
      */
     payBy: integer('pay_by', { mode: 'timestamp_ms' }),
+    /** The language of the page it was booked on, for the mails that come later (a reminder). */
+    locale: text('locale'),
+    /** When its reminder went out (or was decided against: reminders off, or booked inside the reminder window). */
+    remindedAt: integer('reminded_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },
@@ -1493,6 +1497,8 @@ export const bookingClaims = sqliteTable(
     index('booking_claims_resource').on(t.projectId, t.resourceId, t.busyStart),
     index('booking_claims_expires').on(t.expiresAt),
     index('booking_claims_end').on(t.busyEnd),
+    // The reminder pass: bookings not reminded yet, soonest first.
+    index('booking_claims_remind').on(t.remindedAt, t.startAt),
   ],
 );
 

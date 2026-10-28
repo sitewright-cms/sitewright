@@ -435,6 +435,16 @@
           "de": "Es tut uns leid: Ihre Buchung wurde nicht rechtzeitig bezahlt, der Termin ist wieder frei. Bitte wählen Sie einen anderen Termin.",
           "es": "Lo sentimos: tu reserva no se pagó a tiempo y el horario vuelve a estar libre. Elige otro horario."
         },
+        "booking.mail_reminder": {
+          "en": "Reminder: {offering}",
+          "de": "Erinnerung: {offering}",
+          "es": "Recordatorio: {offering}"
+        },
+        "booking.mail_reminder_text": {
+          "en": "This is a reminder of your booking.",
+          "de": "Dies ist eine Erinnerung an Ihre Buchung.",
+          "es": "Este es un recordatorio de tu reserva."
+        },
         "booking.mail_no_refund_note": {
           "en": "It was cancelled too close to its start for a refund, so your payment is not refunded.",
           "de": "Die Stornierung erfolgte zu kurz vor dem Termin für eine Erstattung, daher wird Ihre Zahlung nicht erstattet.",

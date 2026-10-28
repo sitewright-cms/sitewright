@@ -290,6 +290,7 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
         state,
         holdMs: priced ? BOOKING_PAY_LIMITS.holdMs : REQUEST_HOLD_MS,
         customer: stored,
+        ...(f.lang && LANG_RE.test(f.lang) ? { locale: f.lang } : {}),
       });
       if (!result.ok) {
         // `busy` passes; `full` is a cap that stays until the owner acts, so it promises no retry.

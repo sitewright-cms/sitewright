@@ -75,6 +75,7 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
   const app = await createApp({
     db,
     maintenanceSweepMs: 0,
+    bookingReminderMs: 0,
     encryptionKey: Buffer.alloc(32, 7),
     ...options,
   } as AppOptions);

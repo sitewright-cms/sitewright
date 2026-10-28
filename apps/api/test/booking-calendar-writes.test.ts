@@ -50,6 +50,8 @@ const claim = (id: string, over: Partial<ClaimRow> = {}): ClaimRow => ({
   expiresAt: null,
   customer: { name: 'Ada' },
   paidTxnId: null,
+  locale: null,
+  remindedAt: null,
   payBy: null,
   createdAt: new Date(NOW),
   updatedAt: new Date(NOW),

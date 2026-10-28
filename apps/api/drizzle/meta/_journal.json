@@ -351,6 +351,13 @@
       "when": 1793156057741,
       "tag": "0049_booking_paid_txn",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1793158052164,
+      "tag": "0050_booking_reminders",
+      "breakpoints": true
     }
   ]
 }

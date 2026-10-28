@@ -46,6 +46,8 @@ export interface ClaimOptions {
   /** How long a hold or a request keeps its time. Ignored for a ledger booking. */
   readonly holdMs?: number;
   readonly customer: Readonly<Record<string, string>>;
+  /** The language of the page it is booked on, for its later mails. */
+  readonly locale?: string;
 }
 
 export type ClaimFailure = CheckFailure | 'unknown-offering' | 'full' | 'busy';
@@ -223,6 +225,7 @@ export class BookingService {
           // be waiting for the owner after the time has passed.
           expiresAt: opts.state === 'booked' ? null : Math.max(now + BOOKING_SERVICE_LIMITS.minHoldMs, Math.min(now + holdMs, check.start)),
           customer: opts.customer,
+          ...(opts.locale ? { locale: opts.locale } : {}),
         },
         now,
       );

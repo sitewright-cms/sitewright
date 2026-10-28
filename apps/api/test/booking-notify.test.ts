@@ -65,6 +65,13 @@ describe('BookingNotifier', () => {
     expect(queued[0]![0]!.rendered.text).toContain('paid twice for Massage');
   });
 
+  it('never withholds a reminder for the mailbox’s daily share: one per booking, never a visitor’s to trigger', async () => {
+    const { book, queued } = notifier(SETTINGS);
+    for (let i = 0; i < CUSTOMER_MAILS_PER_DAY + 2; i++) await book();
+    await book({ kind: 'reminder' });
+    expect(queued[queued.length - 1]!.map((m) => m.role)).toEqual(['customer']);
+  });
+
   it('writes in the page’s language when the site has it, however the page spells it', async () => {
     for (const lang of ['de', 'DE', 'de-DE', 'de-at']) {
       const { book, queued } = notifier(SETTINGS);

@@ -199,6 +199,8 @@ describe('renderBookingFeed', () => {
     expiresAt: null,
     customer: { email: 'grace@example.test' },
     paidTxnId: null,
+    locale: null,
+    remindedAt: null,
     payBy: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),

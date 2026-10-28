@@ -1,5 +1,5 @@
 import type { BookingConfig } from '@sitewright/schema';
-import { PartHeading, TextField, ToggleRow } from './fields';
+import { NumField, PartHeading, TextField, ToggleRow } from './fields';
 import { PaymentSettings, type BookingGateways } from './PaymentFields';
 
 /** The set-up's own settings: who hears of bookings, the customer's booking page, payment, and spam protection. */
@@ -51,6 +51,24 @@ export function GeneralPanel({
             }
             error={issues.get('statusPath')}
             hint="A page of this site with {{sw-booking-status}} on it. Empty: booking emails carry no link to manage the booking."
+          />
+        </div>
+      </div>
+
+      <div>
+        <PartHeading tip="An email to the customer before their booking starts, with the link to their booking page. A booking made closer to its start than this gets none: its confirmation has just gone out. Bookings in the coming week made while reminders were off get none either.">
+          Reminders
+        </PartHeading>
+        <div className="max-w-xs">
+          <NumField
+            label="Remind customers"
+            value={draft.remindBeforeMin === undefined ? undefined : draft.remindBeforeMin / 60}
+            min={1}
+            max={168}
+            suffix="hours before"
+            placeholder="none"
+            onChange={(hours) => onChange({ ...draft, remindBeforeMin: hours === undefined ? undefined : hours * 60 })}
+            error={issues.get('remindBeforeMin')}
           />
         </div>
       </div>

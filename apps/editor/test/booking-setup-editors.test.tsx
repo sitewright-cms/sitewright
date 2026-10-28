@@ -323,6 +323,24 @@ describe('the set-up’s payment', () => {
 });
 
 describe('the set-up’s own settings', () => {
+  it('sets how long before its start a customer is reminded, in hours; empty for none', () => {
+    let config: BookingConfig = { ...EMPTY_CONFIG };
+    function Harness() {
+      const [c, setC] = useState<BookingConfig>(config);
+      config = c;
+      return <GeneralPanel draft={c} onChange={setC} issues={issuesByPath(c)} />;
+    }
+    render(<Harness />);
+    expect(screen.getByLabelText('Remind customers')).toHaveAttribute('placeholder', 'none');
+    set('Remind customers', '24');
+    expect(config.remindBeforeMin).toBe(1440);
+    expect(issuesByPath(config).size).toBe(0);
+    set('Remind customers', '200');
+    expect(issuesByPath(config).get('remindBeforeMin')).toBeTruthy();
+    set('Remind customers', '');
+    expect(config.remindBeforeMin).toBeUndefined();
+  });
+
   it('writes the business’s address, the booking page, and the protection', () => {
     let config: BookingConfig = { ...EMPTY_CONFIG };
     function Harness() {

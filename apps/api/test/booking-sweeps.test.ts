@@ -52,6 +52,12 @@ describe('the booking mails', () => {
     expect(arrowBody('runMaintenanceSweeps')).toMatch(/notifyLapsed\(\[\.\.\.lapsedRequests, \.\.\.lapsedHolds\]/);
   });
 
+  it('remind customers before their bookings, on a short timer of their own (not the hourly pass)', () => {
+    expect(appSource).toMatch(/runReminders\(\s*\{\s*claims: bookingClaimsRepo,/);
+    expect(appSource).toMatch(/setInterval\(remind, bookingReminderMs\)/);
+    expect(appSource).toMatch(/bookingReminderMs \?\? 5 \* 60 \* 1000/);
+  });
+
   it('are queued by the Bookings tab’s answers too', () => {
     expect(appSource).toMatch(/registerBookingAdminRoutes\(app, \{[\s\S]*?notify: \(event\) => bookingNotifier\.notify\(event\)/);
   });

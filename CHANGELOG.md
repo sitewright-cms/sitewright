@@ -11,6 +11,14 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking reminders.** The booking set-up can remind customers by email before their booking starts (Settings →
+  Reminders, "Remind customers … hours before"; off unless set). The reminder is in the language the booking was made
+  in and links to the customer's booking page; a booking made closer to its start than that gets none (its
+  confirmation has just gone out, as for a request accepted close to its start). Each booking is reminded once: one
+  timestamp per booking is all that is kept, set before the mail goes, so two passes never send two; bookings already
+  passed over while reminders were off are not reminded when they are switched on. The pass runs every five minutes,
+  reads all projects in pages (one project's many bookings never hide another's due reminder), and a reminder is not
+  counted against the customer's daily share of booking mails.
 - **Paid bookings on request: the customer pays once the business accepts.** An offering on request can now have a
   price. The request goes out as before (the customer reads that it is paid once accepted); accepting it holds its
   time for the customer to pay within the offering's window ("Time to pay … hours after you accept", 48 hours unless

@@ -157,6 +157,20 @@ describe('BookingService', () => {
     expect(await claims.countUnconfirmed(projectId, NOW)).toBe(1);
   });
 
+  it('★ gives back a hold whose checkout closed unpaid, but never a booking a late payment confirmed meanwhile', async () => {
+    const s = service();
+    const held = await s.claim(projectId, 'consult', { start: at('2026-07-01 09:00') }, { state: 'hold', customer: {} });
+    const other = await s.claim(projectId, 'consult', { start: at('2026-07-01 11:00') }, { state: 'hold', customer: {} });
+    if (!held.ok || !other.ok) throw new Error('claims refused');
+    // The payment came after all: the hold is a booking now, and the closed checkout's release finds no hold.
+    expect(await s.confirm(projectId, held.claim.id)).toMatchObject({ ok: true });
+    expect(await s.releaseHold(projectId, held.claim.id)).toMatchObject({ ok: false, reason: 'unknown-claim' });
+    expect((await s.get(projectId, held.claim.id))?.state).toBe('booked');
+    // A hold still unpaid is given back.
+    expect(await s.releaseHold(projectId, other.claim.id)).toMatchObject({ ok: true });
+    expect(await s.get(projectId, other.claim.id)).toBeFalsy();
+  });
+
   it('a lapsed hold frees its time again', async () => {
     await service().claim(projectId, 'consult', { start: at('2026-07-01 10:00') }, { state: 'hold', holdMs: 10 * M, customer: {} });
     expect(await service(NOW + 5 * M).claim(projectId, 'consult', { start: at('2026-07-01 10:00') }, { state: 'hold', customer: {} })).toMatchObject({ ok: false, reason: 'taken' });

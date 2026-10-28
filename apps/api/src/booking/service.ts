@@ -375,6 +375,19 @@ export class BookingService {
     });
   }
 
+  /**
+   * Gives back a HOLD whose checkout will never be paid. ★ Only while it is still a hold: a payment that came after
+   * all may have confirmed it meanwhile, and a booking is never deleted by its checkout's failure.
+   */
+  async releaseHold(projectId: string, claimId: string): Promise<ChangeResult> {
+    return this.queued(projectId, async (): Promise<ChangeResult> => {
+      const row = await this.deps.claims.get(projectId, claimId);
+      if (!row || !(await this.deps.claims.remove(projectId, claimId, 'hold'))) return { ok: false, reason: 'unknown-claim', detail: 'there is no such hold' };
+      this.changed(projectId, row);
+      return { ok: true };
+    });
+  }
+
   private async change(projectId: string, claimId: string, state: ClaimState | undefined, holdMs: number | null): Promise<ChangeResult> {
     return this.queued(projectId, async (): Promise<ChangeResult> => {
       const row = await this.deps.claims.get(projectId, claimId);

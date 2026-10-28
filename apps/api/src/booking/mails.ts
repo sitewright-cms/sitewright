@@ -23,9 +23,10 @@ import { buildIcs, type IcsMethod, type IcsPerson } from './ics.js';
  * requested   a request waits for the business's answer;
  * cancelled   a booking or request was called off (by the customer, or by the business);
  * declined    the business turned a request down (the customer is told; the business did it);
- * lapsed      a request ran out unanswered.
+ * lapsed      a request ran out unanswered;
+ * refunded    a payment came in after its time could no longer be held: not booked, the money goes back.
  */
-export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed';
+export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed' | 'refunded';
 
 export interface BookingMailFacts {
   kind: BookingMailKind;
@@ -33,6 +34,11 @@ export interface BookingMailFacts {
   wasBooked?: boolean;
   /** Who did it, when it was the business (it accepted a request, or cancelled from its Bookings tab). */
   by?: 'business';
+  /**
+   * A paid booking's money going back (refunded; or `manual`: the provider would not, and the business must, from
+   * its dashboard). The customer reads that it will be refunded either way; the business reads which.
+   */
+  refund?: 'refunded' | 'manual';
   claimId: string;
   offering: { name: string; mode: BookingMode; unit?: 'night' | 'day' };
   timeZone: string;
@@ -174,8 +180,12 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
           ? 'booking.mail_declined_text'
           : f.kind === 'lapsed'
             ? 'booking.mail_lapsed_text'
-            : 'booking.status_cancelled',
+            : f.kind === 'refunded'
+              ? 'booking.mail_refunded_text'
+              : 'booking.status_cancelled',
   );
+  // A paid booking cancelled: its money goes back, and the customer reads so.
+  const refundNote = f.kind === 'cancelled' && f.refund ? t('booking.mail_refund_note') : '';
   const details = rows([
     [t('booking.mail_when'), when],
     ...(f.quantity > 1 ? ([[t('booking.quantity'), String(f.quantity)]] as Array<[string, string]>) : []),
@@ -183,9 +193,20 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
   // A cancelled booking has no page left to show; a live one links to its own page on the business's site.
   const link = (f.kind === 'booked' || f.kind === 'requested') && f.statusUrl ? f.statusUrl : undefined;
   const calendar = f.kind === 'booked' ? t('booking.mail_calendar') : '';
-  const text = [intro, '', f.offering.name, details.text, ...(link ? ['', `${t('booking.manage')}: ${link}`] : []), ...(calendar ? ['', calendar] : []), '', f.business.name].join('\n');
+  const text = [
+    intro,
+    ...(refundNote ? [refundNote] : []),
+    '',
+    f.offering.name,
+    details.text,
+    ...(link ? ['', `${t('booking.manage')}: ${link}`] : []),
+    ...(calendar ? ['', calendar] : []),
+    '',
+    f.business.name,
+  ].join('\n');
   const html = wrap(
     `<p style="font-size:16px;font-weight:600">${esc(intro)}</p>` +
+      (refundNote ? `<p>${esc(refundNote)}</p>` : '') +
       `<p style="margin:12px 0 4px;font-weight:600">${esc(f.offering.name)}</p>${details.html}` +
       (link ? `<p style="margin-top:16px"><a href="${esc(link)}">${esc(t('booking.manage'))}</a></p>` : '') +
       (calendar ? `<p style="color:#555">${esc(calendar)}</p>` : '') +
@@ -233,7 +254,11 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
         ? 'New booking request'
         : f.kind === 'lapsed'
           ? 'Booking request lapsed'
-          : 'Booking cancelled';
+          : f.kind === 'refunded'
+            ? f.refund === 'manual'
+              ? 'Refund needed'
+              : 'Payment refunded'
+            : 'Booking cancelled';
   const subject = oneLine(`${head}: ${f.offering.name}, ${when}`);
   const who = f.customer.name?.trim() || f.customer.email?.trim() || 'a customer';
   const details = rows([
@@ -254,11 +279,24 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
         ? `${who} asks to book ${f.offering.name}. The time is held for you until you answer, for up to three days.`
         : f.kind === 'lapsed'
           ? `${who}’s request for ${f.offering.name} ran out unanswered, and its time is free again. ${who} has been told.`
-          : f.by === 'business'
+          : f.kind === 'refunded'
+            ? `${who} paid for ${f.offering.name} after its time could no longer be held, so it is not booked.`
+            : f.by === 'business'
             ? `The booking of ${f.offering.name} for ${who} is cancelled, and ${who} has been told.`
             : `${who} cancelled ${f.offering.name}.`;
-  const text = `${lead}\n\n${details.text}\n`;
-  const html = wrap(`<p style="font-size:16px;font-weight:600">${esc(lead)}</p>${details.html}`);
+  // ★ Where the money stands, said plainly: a refund the provider would not make is the business's to make.
+  const money =
+    f.kind === 'refunded'
+      ? f.refund === 'manual'
+        ? ` Its refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been. ${who} has been told it will be refunded.`
+        : ` The payment has been refunded, and ${who} has been told.`
+      : f.kind === 'cancelled' && f.refund
+        ? f.refund === 'manual'
+          ? ' Its refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been.'
+          : ' The payment has been refunded.'
+        : '';
+  const text = `${lead}${money}\n\n${details.text}\n`;
+  const html = wrap(`<p style="font-size:16px;font-weight:600">${esc(lead + money)}</p>${details.html}`);
   // A request is in nobody's calendar until it is accepted.
   const inCalendar = f.kind === 'booked' || (f.kind === 'cancelled' && f.wasBooked);
   const summary = `${f.offering.name} – ${who}`;

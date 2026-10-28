@@ -151,6 +151,23 @@ describe('answers', () => {
     await waitFor(() => expect(answerBooking).toHaveBeenCalledWith('p', 'b1', 'cancel'));
   });
 
+  it('says where a cancelled paid booking’s money stands, and warns when the business must refund it', async () => {
+    listBookings.mockResolvedValue(list([item(FUTURE)]));
+    answerBooking.mockResolvedValueOnce({ ok: true, booking: null, refund: 'refunded' }).mockResolvedValueOnce({ ok: true, booking: null, refund: 'manual' });
+    render(<BookingsPanel projectId="p" />);
+    const cancel = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Massage/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel booking' }));
+      expect(screen.getByText(/A paid booking is refunded in full/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Yes, cancel it' }));
+    };
+    await cancel();
+    expect(await screen.findByRole('status')).toHaveTextContent('Cancelled: the customer has been told. The payment has been refunded.');
+    await cancel();
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('check your payment provider’s dashboard, and refund it there if it has not been'));
+    expect(screen.getByRole('status').className).toContain('text-rose-700');
+  });
+
   it('says why an answer did not work', async () => {
     const request = { ...REQUEST, start: Date.UTC(2099, 9, 28, 13), end: Date.UTC(2099, 9, 28, 14) };
     listBookings.mockResolvedValue(list([request]));

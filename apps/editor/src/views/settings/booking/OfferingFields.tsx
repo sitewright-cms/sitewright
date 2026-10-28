@@ -3,6 +3,7 @@ import { BOOKING_LIMITS, type BookingConfig, type BookingOffering, type BookingS
 import { dangerButton, smallGhostButton, toggleInput } from '../../../theme';
 import { DaysPicker, NumField, PartHeading, RowErrors, SelectField, TextField, ToggleRow } from './fields';
 import { MODE_HINTS, MODE_LABELS, idFollowingName, withMode } from './model';
+import { PriceFields } from './PaymentFields';
 
 /** Steps that divide the day, so the grid of start and end times is the same every day. */
 const RANGE_STEPS = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 720, 1440];
@@ -111,6 +112,11 @@ export function OfferingFields({
       </div>
 
       <ModeFields offering={o} index={i} issues={issues} onChange={onChange} />
+
+      <div>
+        <PartHeading>Price</PartHeading>
+        <PriceFields offering={o} index={i} config={config} issues={issues} onChange={onChange} />
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <NumField

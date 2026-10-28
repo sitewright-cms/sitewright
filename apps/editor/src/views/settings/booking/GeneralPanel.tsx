@@ -1,15 +1,19 @@
 import type { BookingConfig } from '@sitewright/schema';
 import { PartHeading, TextField, ToggleRow } from './fields';
+import { PaymentSettings, type BookingGateways } from './PaymentFields';
 
-/** The set-up's own settings: who hears of bookings, the customer's booking page, and spam protection. */
+/** The set-up's own settings: who hears of bookings, the customer's booking page, payment, and spam protection. */
 export function GeneralPanel({
   draft,
   onChange,
   issues,
+  gateways,
 }: {
   draft: BookingConfig;
   onChange: (next: BookingConfig) => void;
   issues: ReadonlyMap<string, string>;
+  /** The project's payment providers (loading: undefined). */
+  gateways?: BookingGateways;
 }) {
   return (
     <div className="flex flex-col gap-5">
@@ -49,6 +53,13 @@ export function GeneralPanel({
             hint="A page of this site with {{sw-booking-status}} on it. Empty: booking emails carry no link to manage the booking."
           />
         </div>
+      </div>
+
+      <div>
+        <PartHeading tip="How offerings with a price are paid: through one of the project's payment providers, in one currency. The customer pays on the provider's page when they book; the time is held for them meanwhile, and booked when the payment arrives.">
+          Payment
+        </PartHeading>
+        <PaymentSettings draft={draft} onChange={onChange} issues={issues} gateways={gateways} />
       </div>
 
       <div>

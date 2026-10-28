@@ -1,6 +1,15 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { FormFieldSchema, MIN_SUBMIT_ELAPSED_MS, validateFormSubmission, type BookingConfig, type BookingOffering, type CaptchaProvider } from '@sitewright/schema';
+import {
+  FormFieldSchema,
+  MIN_SUBMIT_ELAPSED_MS,
+  minorUnitExponent,
+  validateFormSubmission,
+  type BookingConfig,
+  type BookingOffering,
+  type CaptchaProvider,
+} from '@sitewright/schema';
 import type { Availability, BookingRequest } from '../booking/availability.js';
+import { BOOKING_PAY_LIMITS, type BookingPayments } from '../booking/payments.js';
 import { signBookingRef, verifyBookingRef } from '../booking/reference.js';
 import type { BookingService, ClaimFailure } from '../booking/service.js';
 import type { BookingEvent } from '../booking/notify.js';
@@ -51,6 +60,15 @@ export interface BookingRoutesDeps {
   readonly now?: () => number;
   /** Queues the mails of a booking, a request or a cancellation. Never throws; the booking stands either way. */
   readonly notify?: (event: BookingEvent) => Promise<void>;
+  /** Opens a priced booking's payment (booking/payments.ts). Absent: priced offerings cannot be booked. */
+  readonly payments?: Pick<BookingPayments, 'start'>;
+  /**
+   * Where the payment provider sends the customer back to: the business's own booking page (with the booking's
+   * reference), and where a cancelled payment goes. White-label: never the platform's address. Null: no site to go to.
+   */
+  readonly returnUrls?: (projectId: string, reference: string, statusPath: string | undefined) => Promise<{ return: string; cancel: string } | null>;
+  /** Whether a booking was paid for: then only the business cancels it (and refunds it). */
+  readonly isPaid?: (projectId: string, claimId: string) => Promise<boolean>;
 }
 
 /** A page language as the widget reports it (`<html lang>`); the notifier keeps it only if the site has it. */
@@ -87,6 +105,11 @@ function publicOffering(o: BookingOffering, config: BookingConfig): Record<strin
     minNoticeMin: o.minNoticeMin,
     maxAdvanceDays: o.maxAdvanceDays,
     timeZone,
+    // A paid offering: what it costs, in the currency's own decimals, so the widget shows the total before the
+    // visitor goes to pay. The server prices the booking itself; this is only what is shown.
+    ...(o.price && config.payment
+      ? { price: { amountMinor: o.price.amountMinor, per: o.price.per, currency: config.payment.currency, digits: minorUnitExponent(config.payment.currency) } }
+      : {}),
   };
   const resources = o.chooseResource
     ? { resources: o.resourceIds.map((id) => ({ id, name: config.resources.find((r) => r.id === id)?.name ?? id })) }
@@ -100,7 +123,13 @@ function publicOffering(o: BookingOffering, config: BookingConfig): Record<strin
 /** The offering as a booking's own page shows it. */
 function bookingSummary(o: BookingOffering, config: BookingConfig): Record<string, unknown> {
   const timeZone = config.resources.find((r) => r.id === o.resourceIds[0])?.timeZone;
-  return { id: o.id, name: o.name, mode: o.mode, timeZone, ...(o.mode === 'days' ? { unit: o.unit } : {}) };
+  return {
+    id: o.id,
+    name: o.name,
+    mode: o.mode,
+    timeZone,
+    ...(o.mode === 'days' ? { unit: o.unit } : {}),
+  };
 }
 
 /** The listing as a visitor may see it. */
@@ -243,8 +272,16 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
         if (!check.ok) return reply.code(STATUS[check.reason]).send({ error: check.reason, detail: check.detail });
         return reply.send({ ok: true, preview: true });
       }
-      const state = found.offering.confirmation === 'request' ? 'pending' : 'booked';
-      const result = await bookings.claim(projectId, offeringId, request, { state, holdMs: REQUEST_HOLD_MS, customer: stored });
+      // ★ A priced offering is paid before it is booked: its time is HELD while the customer pays, and the payment's
+      // webhook confirms it (no confirmation mail before then).
+      const priced = !!found.offering.price;
+      if (priced && (!deps.payments || !deps.returnUrls)) return reply.code(503).send({ error: 'payment-unavailable', detail: 'payment is not available here' });
+      const state = priced ? 'hold' : found.offering.confirmation === 'request' ? 'pending' : 'booked';
+      const result = await bookings.claim(projectId, offeringId, request, {
+        state,
+        holdMs: priced ? BOOKING_PAY_LIMITS.holdMs : REQUEST_HOLD_MS,
+        customer: stored,
+      });
       if (!result.ok) {
         // `busy` passes; `full` is a cap that stays until the owner acts, so it promises no retry.
         if (result.reason === 'busy') reply.header('retry-after', '60');
@@ -252,6 +289,18 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
       }
       const c = result.claim;
       const reference = signBookingRef(projectId, c.id, deps.getSecret());
+      if (priced) {
+        const urls = await deps.returnUrls!(projectId, reference, found.config.statusPath);
+        const started = urls
+          ? await deps.payments!.start(projectId, c, found.offering, found.config, stored, urls, f.lang && LANG_RE.test(f.lang) ? f.lang : undefined)
+          : { ok: false as const, error: 'the site has no address to come back to after paying' };
+        if (!started.ok) {
+          // The time goes back at once (a second release of a hold already given back is harmless).
+          await bookings.releaseHold(projectId, c.id).catch(() => undefined);
+          return reply.code(503).send({ error: 'payment-unavailable', detail: started.error });
+        }
+        return reply.send({ ok: true, reference, state: c.state, start: c.startAt.getTime(), end: c.endAt.getTime(), pay: started.redirectUrl });
+      }
       // The customer's confirmation (or acknowledgement) and the business's notice, queued, not awaited.
       void deps.notify?.({
         kind: c.state === 'pending' ? 'requested' : 'booked',
@@ -282,7 +331,8 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
       quantity: c.units,
       // What the status page needs to say when it is: the offering's clock, and whether it is booked by the night.
       offering: found ? bookingSummary(found.offering, found.config) : null,
-      cancellable: c.startAt.getTime() > now(),
+      // A paid booking is cancelled by the business, which refunds it (the customer's own refunds come later).
+      cancellable: c.startAt.getTime() > now() && !(await deps.isPaid?.(projectId, claimId)),
     });
   });
 
@@ -291,6 +341,7 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
     const { projectId } = req.params;
     const claimId = verifyBookingRef(projectId, req.params.reference, deps.getSecret());
     if (!claimId || !(await deps.isPublicProject(projectId))) return notFound(reply);
+    if (await deps.isPaid?.(projectId, claimId)) return reply.code(409).send({ error: 'paid', detail: 'a paid booking is cancelled by the business' });
     const result = await bookings.cancel(projectId, claimId);
     if (result.ok) {
       // Both sides hear of it; a booking already in calendars is taken out of them again.

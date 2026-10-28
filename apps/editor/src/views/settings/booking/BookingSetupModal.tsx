@@ -9,6 +9,7 @@ import { Modal } from '../../ui/Modal';
 import { useDialogs } from '../../ui/Dialogs';
 import { FeedSection } from './FeedSection';
 import { GeneralPanel } from './GeneralPanel';
+import { toBookingGateway, type BookingGateways } from './PaymentFields';
 import { OfferingsPanel } from './OfferingsPanel';
 import { ResourcesPanel, type CalendarAccess } from './ResourcesPanel';
 import { EMPTY_CONFIG, issuesByPath, stableJson } from './model';
@@ -76,6 +77,23 @@ export function BookingSetupModal({ projectId, onClose, onSaved }: { projectId: 
       setTab(item.resources.length === 0 ? 'resources' : 'offerings');
       setLoading(false);
     })();
+    return () => {
+      live = false;
+    };
+  }, [projectId, reloads]);
+
+  // The payment providers, for paid offerings. Their own read: a refusal only leaves payment unchoosable.
+  const [gateways, setGateways] = useState<BookingGateways>(undefined);
+  useEffect(() => {
+    let live = true;
+    api
+      .projectPaymentGateways(projectId)
+      .then((r) => {
+        if (live) setGateways(r.gateways.map(toBookingGateway));
+      })
+      .catch(() => {
+        if (live) setGateways('failed');
+      });
     return () => {
       live = false;
     };
@@ -260,7 +278,7 @@ export function BookingSetupModal({ projectId, onClose, onSaved }: { projectId: 
               )}
               {tab === 'general' && (
                 <div className="flex flex-col gap-5">
-                  <GeneralPanel draft={draft} onChange={edit} issues={issues} />
+                  <GeneralPanel draft={draft} onChange={edit} issues={issues} gateways={gateways} />
                   {/* The SAVED resources: a feed for one names it by an id the server knows. */}
                   <FeedSection projectId={projectId} resources={saved.resources} />
                 </div>

@@ -175,6 +175,9 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.back', label: 'Back (button)', default: 'Back' },
       { key: 'booking.submit', label: 'Book (button)', default: 'Book' },
       { key: 'booking.submit_request', label: 'Send a request (button)', default: 'Send request' },
+      { key: 'booking.submit_pay', label: 'Book and pay (button, a paid offering)', default: 'Book and pay' },
+      { key: 'booking.total', label: 'The total of a paid booking', default: 'Total' },
+      { key: 'booking.to_payment', label: 'On the way to the payment page', default: 'Taking you to the payment…' },
       { key: 'booking.sending', label: 'While sending', default: 'Sending…' },
       { key: 'booking.booked', label: 'Booked', default: 'You are booked. A confirmation is on its way to your email.' },
       { key: 'booking.requested', label: 'Request sent', default: 'Your request is sent. You will hear back by email.' },
@@ -190,6 +193,7 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.status_loading', label: 'Status page: looking up', default: 'Looking up your booking…' },
       { key: 'booking.status_booked', label: 'Status page: confirmed', default: 'Your booking is confirmed.' },
       { key: 'booking.status_pending', label: 'Status page: waiting for confirmation', default: 'Your request is waiting for confirmation.' },
+      { key: 'booking.status_payment', label: 'Status page: waiting for the payment', default: 'Your booking is waiting for its payment. It is confirmed as soon as the payment arrives.' },
       { key: 'booking.status_cancelled', label: 'Status page: cancelled', default: 'Your booking is cancelled.' },
       {
         key: 'booking.status_unknown',
@@ -210,6 +214,13 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'booking.mail_declined_text', label: 'Email: request declined', default: 'We are sorry: we cannot take your request. Please choose another time.' },
       { key: 'booking.mail_lapsed', label: 'Email subject: request not answered', default: 'Booking request not confirmed: {offering}' },
       { key: 'booking.mail_lapsed_text', label: 'Email: request not answered', default: 'We are sorry: your request could not be confirmed in time, and the time is free again. Please choose another time.' },
+      { key: 'booking.mail_refunded', label: 'Email subject: paid too late, not booked', default: 'Not booked: {offering}' },
+      {
+        key: 'booking.mail_refunded_text',
+        label: 'Email: paid too late, not booked',
+        default: 'We are sorry: your payment came in after the time could no longer be held for you, so it is not booked. Your payment will be refunded. Please choose another time.',
+      },
+      { key: 'booking.mail_refund_note', label: 'Email: a paid booking cancelled', default: 'Your payment will be refunded.' },
     ],
   },
   {

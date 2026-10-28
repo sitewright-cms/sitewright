@@ -72,8 +72,9 @@ describe('payments maintenance is reachable from the app', () => {
     const fn = bodyOf('reconcileDuePayments');
     expect(fn).toContain('fetchProviderStatus');
     expect(fn).toContain("advance(txn.id, 'paid'");
-    // And it must commit the stock that the missing webhook would have committed.
-    expect(fn).toContain('shopStockRepo.commit');
+    // And it must settle the payment as the missing webhook would have (stock committed, or the booking confirmed:
+    // payments/settle.ts, behaviour-tested in payment-settle.test.ts).
+    expect(fn).toContain('paymentSettlement.paid(txn)');
     // ★ A recovered payment is LOUD: an operator needs to know a webhook is not arriving, because
     // the next one will not arrive either.
     expect(fn).toContain('app.log.warn');
@@ -91,10 +92,17 @@ describe('payments maintenance is reachable from the app', () => {
     expect(fn).toContain("status.kind === 'recheck'");
   });
 
-  it('★ every sweep skips a PREVIEW transaction, which never held stock', () => {
+  it('★ every sweep settles through the ONE settlement, which skips a PREVIEW transaction (it never held stock)', () => {
     const fn = `${bodyOf('runPaymentSweeps')}${bodyOf('reconcileDuePayments')}`;
-    expect(fn).toContain('!t.preview');
-    expect(fn).toContain('!txn.preview');
+    expect(fn).toContain('paymentSettlement.unpaid(txn)');
+    expect(fn).toContain('paymentSettlement.paid(txn)');
+    // Neither touches stock itself any more: a booking's prepayment must never commit or release it.
+    expect(fn).not.toContain('shopStockRepo.commit');
+    expect(fn).not.toContain('shopStockRepo.release');
+  });
+
+  it('★ finishes booking payments whose settlement a crash or a busy moment lost', () => {
+    expect(bodyOf('runPaymentSweeps')).toContain('bookingPayments.recover(now)');
   });
 
   it('does nothing at all when the instance has no encryption key', () => {

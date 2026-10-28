@@ -26,6 +26,7 @@ import type { ShopTransactionRepository, TransactionRow } from '../repo/shop-tra
 import type { ShopStockRepository } from '../repo/shop-stock.js';
 import type { GatewayRepository } from '../payments/gateways.js';
 import { amountMatches, describeAmounts, describeLines, priceOrder } from '../payments/pricing.js';
+import { makeSettlement, owesOrderMail, type Settlement } from '../payments/settle.js';
 import {
   createCheckoutSession,
   fetchProviderStatus,
@@ -74,6 +75,8 @@ const JSON_MIME = 'application/json';
 export interface PaymentRoutesDeps {
   transactions: ShopTransactionRepository;
   stock: ShopStockRepository;
+  /** What a transaction's outcome does (stock for an order, the booking for a prepayment). Default: stock only. */
+  settle?: Settlement;
   gateways: GatewayRepository;
   captcha: CaptchaVerifier;
   getProjectCaptcha: (projectId: string) => Promise<{ provider: CaptchaProvider; secret: string | null; minScore?: number } | null>;
@@ -231,6 +234,7 @@ function absolute(base: string, path: string | undefined, fallback: string): str
 
 export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesDeps): void {
   const { transactions, stock, gateways, captcha, getProjectCaptcha, getPowSecret, getShop, getCatalog, systemContext, io, rl } = deps;
+  const settle = deps.settle ?? makeSettlement({ stock });
 
   // ---- proof-of-work challenge, and its PREVIEW twin -------------------------------------------
   //
@@ -584,17 +588,18 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
           }
           const payerEmail = payerEmailFrom(raw);
           const advanced = await transactions.advance(txn.id, 'paid', {
-            owesNotification: true,
+            // A booking's prepayment has the booking's own mails, not the shop's order mails.
+            owesNotification: owesOrderMail(txn),
             // ★ Prefer the PROVIDER's payer email: it is verified by the payment itself. Fall back to
             // the buyer's submitted field.
             ...(payerEmail ?? txn.customerEmail ? { customerEmail: payerEmail ?? txn.customerEmail! } : {}),
             ...(verdict.ref ? { providerPaymentRef: verdict.ref } : {}),
+            // ★ A booking's money taken after its checkout was closed (failed, expired) is recorded all the same, so
+            // its settlement refunds it: its time was given back. A shop order's stock went back too, but it stays closed.
+            ...(txn.bookingClaimId ? { reopenClosed: true } : {}),
           });
-          // ★ A preview rehearsal reserved nothing, so committing would increment `sold` against
-          // stock it never held — permanently understating what a real buyer can order.
-          if (advanced.outcome === 'advanced' && !txn.preview) {
-            await stock.commit(projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
-          }
+          // Stock committed for an order (never for a preview rehearsal), the booking confirmed for a prepayment.
+          if (advanced.outcome === 'advanced') await settle.paid(txn);
           return reply.send({ ok: true });
         }
 
@@ -617,9 +622,9 @@ export function registerPaymentRoutes(app: FastifyInstance, deps: PaymentRoutesD
         }
 
         const advanced = await transactions.advance(txn.id, kind);
-        if (advanced.outcome === 'advanced' && !txn.preview && (kind === 'failed' || kind === 'expired' || kind === 'cancelled')) {
-          // Give the hold back — this order will never be paid.
-          await stock.release(projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+        if (advanced.outcome === 'advanced' && (kind === 'failed' || kind === 'expired' || kind === 'cancelled')) {
+          // Give the hold back — this order (or booking) will never be paid.
+          await settle.unpaid(txn);
         }
         return reply.send({ ok: true });
       },

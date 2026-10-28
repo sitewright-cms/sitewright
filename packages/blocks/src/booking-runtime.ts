@@ -437,7 +437,17 @@ export const BOOKING_JS = `(function(){
     if(capP){cap=Captcha(capP,mount.getAttribute('data-captcha-sitekey')||'',capBox);if(capP!=='recaptcha-v3'){form.appendChild(capBox);}}
     var actions=mk('div','actions'),back=mk('button','back',t('back')),submit=mk('button','submit');
     back.type='button';back.className='btn';submit.type='submit';submit.className='btn btn-primary';
-    actions.appendChild(back);actions.appendChild(submit);form.appendChild(actions);
+    actions.appendChild(back);actions.appendChild(submit);
+    // A paid offering: the total before the visitor goes to pay (the server's price; the provider charges it).
+    var total=mk('p','total','');show(total,false);form.appendChild(total);form.appendChild(actions);
+    // Minor units by the platform's own decimals for the currency (the provider charges by them), not the browser's.
+    function money(pr,n){var v=pr.amountMinor*n/Math.pow(10,pr.digits);try{return new Intl.NumberFormat(document.documentElement.lang||undefined,{style:'currency',currency:pr.currency,minimumFractionDigits:pr.digits,maximumFractionDigits:pr.digits}).format(v);}catch(e){return v.toFixed(pr.digits)+' '+pr.currency;}}
+    function showTotal(){
+      var pr=o.price;if(!pr||!choice){show(total,false);return;}
+      var n=pr.per==='unit'?Math.max(1,Math.floor(+qty.value)||1):pr.per==='night'?Math.max(1,choice.units||1):1;
+      total.textContent=t('total')+': '+money(pr,n);show(total,true);
+    }
+    qty.addEventListener('input',showTotal);
     back.addEventListener('click',function(){show(form,false);show(picker,true);say('');refocus={};restoreFocus();});
 
     function choose(c){
@@ -445,7 +455,8 @@ export const BOOKING_JS = `(function(){
       summary.textContent=c.text||when(c.start,c.end,tz,o.mode);
       var maxQ=Math.max(1,Math.min(o.maxQuantity,c.places||o.maxQuantity));
       show(qtyWrap,o.maxQuantity>1);qty.max=String(maxQ);if(+qty.value>maxQ){qty.value=String(maxQ);}
-      submit.textContent=o.confirmation==='request'?t('submit_request'):t('submit');
+      submit.textContent=o.price?t('submit_pay'):o.confirmation==='request'?t('submit_request'):t('submit');
+      showTotal();
       show(picker,false);show(form,true);
       if(cap){cap.mount();}
       fields.name.focus();
@@ -497,6 +508,14 @@ export const BOOKING_JS = `(function(){
       say(t('failed'));
     }
     function success(b){
+      // A paid booking: on to the provider's page to pay, the time held meanwhile. A TOP-LEVEL navigation (a popup
+      // after an await is blocked), and only to https: the server checked, but this is the last place to refuse.
+      if(b.pay){
+        if(!/^https:\\/\\//i.test(String(b.pay))){say(t('failed'));return;}
+        show(form,false);show(picker,false);done.textContent='';
+        var go=mk('p','done-message',t('to_payment'));go.tabIndex=-1;done.appendChild(go);show(done,true);go.focus();
+        window.location.assign(String(b.pay));return;
+      }
       show(form,false);show(picker,false);done.textContent='';
       var head=mk('p','done-message',b.preview?t('preview'):b.state==='pending'?t('requested'):t('booked'));
       head.tabIndex=-1;done.appendChild(head);
@@ -546,7 +565,7 @@ export const BOOKING_JS = `(function(){
     function say(text){if(message){message.textContent=text||'';}}
     function state(s){
       show(p('status-loading'),false);
-      ['booked','pending','cancelled','unknown'].forEach(function(x){show(p('status-'+x),x===s);});
+      ['booked','pending','payment','cancelled','unknown'].forEach(function(x){show(p('status-'+x),x===s);});
     }
     // The reference rides in the fragment (#t=), which no server or analytics beacon sees; ?t= is read too.
     var token='';
@@ -557,8 +576,8 @@ export const BOOKING_JS = `(function(){
       if(r.status===404){state('unknown');return;}
       if(r.status!==200){show(p('status-loading'),false);say(r.status===429||r.status===503?t('busy'):t('failed'));return;}
       var b=r.body,of=b.offering||{};
-      // Only a booked booking reads as booked: a request, or a time held while it is paid, is still waiting.
-      state(b.state==='booked'?'booked':'pending');
+      // Only a booked booking reads as booked: a time held while it is paid waits for its payment, a request for its answer.
+      state(b.state==='booked'?'booked':b.state==='hold'&&p('status-payment')?'payment':'pending');
       var d=p('details');
       if(d){
         var name=d.querySelector('[data-sw-field="offering"]'),wh=d.querySelector('[data-sw-field="when"]');

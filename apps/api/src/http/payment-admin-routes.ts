@@ -573,21 +573,23 @@ export function registerPaymentAdminRoutes(app: FastifyInstance, deps: PaymentAd
     const row = await transactions.settleRefund(project.id, req.params.id);
     // ★ Only when the operator said so — a refund is a money event and says nothing about whether
     // the goods came back sellable. See `uncommit`.
-    if (body.restock && !txn.preview) {
+    // A booking's payment held no stock (its lines name the booking): nothing to put back.
+    const restock = body.restock === true && !txn.preview && !txn.bookingClaimId;
+    if (restock) {
       await stock.uncommit(project.id, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty }))).catch(() => undefined);
     }
     return reply.send({
       transaction: row ?? claim.row,
       refundedMinor: amountMinor,
       refunded: fromMinorUnits(amountMinor, txn.currency),
-      restocked: body.restock === true,
+      restocked: restock,
     });
   });
 
 }
 
 /** Scope for a refund: credentials, the REFUND amount, and the payment's reference. */
-function refundScope(
+export function refundScope(
   cred: Readonly<Record<string, string>>,
   txn: { amounts: { totalMinor: number }; currency: string; id: string; publicToken: string; providerRef: string | null; providerPaymentRef?: string | null },
   amountMinor: number,

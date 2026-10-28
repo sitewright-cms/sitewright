@@ -95,14 +95,25 @@ const STATE_TONE: Record<string, string> = {
   booked: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
   pending: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
 };
-const STATE_LABEL: Record<string, string> = { booked: 'Booked', pending: 'Request', hold: 'Held' };
+// A hold is a customer paying for the booking on the provider's page.
+const STATE_LABEL: Record<string, string> = { booked: 'Booked', pending: 'Request', hold: 'Awaiting payment' };
 
 /** What each answer says before it goes, and after. */
 const ASK: Record<Answer, { question: string; button: string; done: string }> = {
   accept: { question: 'Accept this request? It becomes a booking, and the customer gets a confirmation by email.', button: 'Yes, accept', done: 'Accepted: the customer has been sent a confirmation.' },
   decline: { question: 'Decline this request? Its time becomes free again, and the customer is told by email.', button: 'Yes, decline', done: 'Declined: the customer has been told.' },
-  cancel: { question: 'Cancel this booking? Its time becomes free again, and the customer is told by email.', button: 'Yes, cancel it', done: 'Cancelled: the customer has been told.' },
+  cancel: {
+    question: 'Cancel this booking? Its time becomes free again, and the customer is told by email. A paid booking is refunded in full.',
+    button: 'Yes, cancel it',
+    done: 'Cancelled: the customer has been told.',
+  },
 };
+
+/** Where a cancelled paid booking's money stands, after the answer's own words. */
+const REFUND_NOTE = {
+  refunded: ' The payment has been refunded.',
+  manual: ' Its refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been.',
+} as const;
 
 export function BookingsView({ project }: { project: Project }) {
   return (
@@ -170,8 +181,9 @@ export function BookingsPanel({ projectId }: { projectId: string }) {
     setAnswering(true);
     setNote(null);
     try {
-      await api.answerBooking(projectId, b.id, what);
-      setNote({ tone: 'ok', text: ASK[what].done });
+      const r = await api.answerBooking(projectId, b.id, what);
+      // A refund the provider would not make is the business's to make: said as a warning, not as done.
+      setNote({ tone: r.refund === 'manual' ? 'error' : 'ok', text: ASK[what].done + (r.refund ? REFUND_NOTE[r.refund] : '') });
       setAsking(null);
       // Close the row answered, not whichever the author opened meanwhile.
       setOpen((o) => (o === b.id ? null : o));

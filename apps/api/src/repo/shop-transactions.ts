@@ -1,5 +1,6 @@
 import { and, eq, lte, or, sql, inArray, desc, isNotNull, isNull } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
+import { z } from 'zod';
 import {
   canTransitionPayment,
   FULFILMENT_TRANSITIONS,
@@ -55,7 +56,36 @@ export interface CreateTransactionInput {
   /** The shop market the order was placed in (a shop with markets), and the country it ships to. */
   market?: string;
   shipCountry?: string;
+  /** A booking's prepayment: the claim it pays for (it settles the booking, never stock). */
+  bookingClaimId?: string;
+  /** …and the booking as it is now, for its mails once the claim is gone. */
+  bookingSnapshot?: BookingSnapshot;
 }
+
+/** A booking's facts, kept on its payment: what its mails say when the claim itself no longer exists. */
+const BookingSnapshotSchema = z.object({
+  offeringId: z.string().min(1).max(64),
+  resourceId: z.string().min(1).max(64),
+  start: z.number().int(),
+  end: z.number().int(),
+  units: z.number().int().min(1),
+  locale: z.string().max(35).optional(),
+});
+export type BookingSnapshot = z.infer<typeof BookingSnapshotSchema>;
+
+/** The stored snapshot, or null for a shop order (or one that cannot be read: it is never trusted blind). */
+function readSnapshot(raw: unknown): BookingSnapshot | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed = BookingSnapshotSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A paid booking whose payment has not settled for this long is one the sweep finishes (the webhook had its turn). */
+export const BOOKING_SETTLE_GRACE_MS = 2 * 60_000;
 
 /** One order mail's delivery state (the `notify_state` / `receipt_state` columns). */
 export type MailState = 'pending' | 'sent' | 'failed' | 'na' | 'abandoned';
@@ -100,7 +130,14 @@ export interface TransactionRow {
   notifyError: string | null;
   receiptError: string | null;
   createdAt: Date;
+  /** When it last moved (a status, a refund claimed): how recent an unfinished refund is. */
+  updatedAt: Date;
   paidAt: Date | null;
+  /** A booking's prepayment: the claim it pays for. Null for a shop order. */
+  bookingClaimId: string | null;
+  bookingSnapshot: BookingSnapshot | null;
+  /** When a booking's payment was settled (confirmed, or refunded); null until then, and for a shop order. */
+  bookingSettledAt: Date | null;
 }
 
 /** Shapes a DB row into the domain object. */
@@ -139,7 +176,11 @@ function toRow(r: any): TransactionRow {
     notifyError: r.notifyError ?? null,
     receiptError: r.receiptError ?? null,
     createdAt: r.createdAt,
+    updatedAt: r.updatedAt ?? r.createdAt,
     paidAt: r.paidAt ?? null,
+    bookingClaimId: r.bookingClaimId ?? null,
+    bookingSnapshot: readSnapshot(r.bookingSnapshot),
+    bookingSettledAt: r.bookingSettledAt ?? null,
   };
 }
 
@@ -181,6 +222,8 @@ export class ShopTransactionRepository {
       notifyState: 'na',
       receiptState: 'na',
       ...(input.customerEmail ? { customerEmail: input.customerEmail } : {}),
+      ...(input.bookingClaimId ? { bookingClaimId: input.bookingClaimId } : {}),
+      ...(input.bookingSnapshot ? { bookingSnapshot: JSON.stringify(input.bookingSnapshot) } : {}),
       createdAt: now,
       updatedAt: now,
       expiresAt: new Date(now.getTime() + TRANSACTION_TTL_MS),
@@ -235,10 +278,23 @@ export class ShopTransactionRepository {
   async advance(
     id: string,
     to: TransactionStatus,
-    opts: { paidAt?: Date; providerPaymentRef?: string; refundedMinor?: number; owesNotification?: boolean; customerEmail?: string } = {},
+    opts: {
+      paidAt?: Date;
+      providerPaymentRef?: string;
+      refundedMinor?: number;
+      owesNotification?: boolean;
+      customerEmail?: string;
+      /**
+       * A BOOKING's payment reported paid after it was closed unpaid (failed, expired, cancelled): the money was taken
+       * all the same, so it is recorded, and its settlement refunds it (the booking's time was given back). Never
+       * for a shop order, whose stock went back with it.
+       */
+      reopenClosed?: boolean;
+    } = {},
   ): Promise<AdvanceResult> {
     // Derived from the canonical list rather than re-typed: a status added to TRANSACTION_STATUSES
     // without updating a hand-written copy here would silently never be a legal `from` state.
+    const reopen: TransactionStatus[] = to === 'paid' && opts.reopenClosed ? ['failed', 'expired', 'cancelled'] : [];
     const legalFrom = TRANSACTION_STATUSES.filter((from) => canTransitionPayment(from, to));
     if (legalFrom.length === 0) {
       const existing = await this.anyById(id);
@@ -262,7 +318,15 @@ export class ShopTransactionRepository {
           ? { notifyState: 'pending' as const, notifyNextAt: now, receiptState: (opts.customerEmail ? 'pending' : 'na') as 'pending' | 'na', receiptNextAt: opts.customerEmail ? now : null }
           : {}),
       })
-      .where(and(eq(shopTransactions.id, id), inArray(shopTransactions.status, [...legalFrom])));
+      .where(
+        and(
+          eq(shopTransactions.id, id),
+          reopen.length
+            ? // ★ A closed payment reopens only for a BOOKING, whatever the caller passed.
+              or(inArray(shopTransactions.status, [...legalFrom]), and(inArray(shopTransactions.status, reopen), isNotNull(shopTransactions.bookingClaimId)))
+            : inArray(shopTransactions.status, [...legalFrom]),
+        ),
+      );
     const row = await this.anyById(id);
     if (!row) return { outcome: 'not-found' };
     return (res.rowsAffected ?? 0) > 0 ? { outcome: 'advanced', row } : { outcome: 'stale', row };
@@ -271,6 +335,53 @@ export class ShopTransactionRepository {
   /** Project-agnostic read — the webhook path has no tenant context until it has found the row. */
   private async anyById(id: string): Promise<TransactionRow | undefined> {
     const [r] = await this.db.select().from(shopTransactions).where(eq(shopTransactions.id, id));
+    return r ? toRow(r) : undefined;
+  }
+
+  /** A booking's payment is settled: confirmed and mailed, or refunded. Once; a second mark changes nothing. */
+  async markBookingSettled(id: string, at = new Date()): Promise<void> {
+    await this.db
+      .update(shopTransactions)
+      .set({ bookingSettledAt: at })
+      .where(and(eq(shopTransactions.id, id), isNotNull(shopTransactions.bookingClaimId), isNull(shopTransactions.bookingSettledAt)));
+  }
+
+  /**
+   * Paid booking transactions whose settlement never finished (a crash, a busy moment), oldest first, untouched for
+   * the grace period so the webhook's own settlement is never raced. Bounded per pass.
+   */
+  async unsettledBookingPayments(now: Date, limit = 25): Promise<TransactionRow[]> {
+    const rows = await this.db
+      .select()
+      .from(shopTransactions)
+      .where(
+        and(
+          isNull(shopTransactions.bookingSettledAt),
+          isNotNull(shopTransactions.bookingClaimId),
+          // Partly refunded from the Orders inbox meanwhile is still a payment to settle.
+          inArray(shopTransactions.status, ['paid', 'partially_refunded']),
+          lte(shopTransactions.updatedAt, new Date(now.getTime() - BOOKING_SETTLE_GRACE_MS)),
+        ),
+      )
+      .orderBy(shopTransactions.updatedAt)
+      .limit(limit);
+    return rows.map(toRow);
+  }
+
+  /** The payment that paid for a booking (paid, or partly refunded since), if any. */
+  async paidForBooking(projectId: string, claimId: string): Promise<TransactionRow | undefined> {
+    const [r] = await this.db
+      .select()
+      .from(shopTransactions)
+      .where(
+        and(
+          eq(shopTransactions.projectId, projectId),
+          eq(shopTransactions.bookingClaimId, claimId),
+          inArray(shopTransactions.status, ['paid', 'partially_refunded']),
+        ),
+      )
+      .orderBy(desc(shopTransactions.createdAt))
+      .limit(1);
     return r ? toRow(r) : undefined;
   }
 

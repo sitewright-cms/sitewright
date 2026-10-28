@@ -6,6 +6,7 @@ import { BlocksEditor } from '../src/views/settings/booking/BlocksEditor';
 import { HoursEditor } from '../src/views/settings/booking/HoursEditor';
 import { OfferingFields } from '../src/views/settings/booking/OfferingFields';
 import { GeneralPanel } from '../src/views/settings/booking/GeneralPanel';
+import { toBookingGateway, type BookingGateway, type BookingGateways } from '../src/views/settings/booking/PaymentFields';
 import { EMPTY_CONFIG, issuesByPath, newOffering, newResource, withMode } from '../src/views/settings/booking/model';
 
 /**
@@ -33,8 +34,8 @@ const twoResources = (): BookingConfig => {
   return { ...withAnna, resources: [anna, { ...newResource(withAnna, 'Room 2'), timeZone: 'Europe/Berlin' }] };
 };
 
-function Offering({ out, start }: { out: { value: BookingConfig }; start: BookingOffering }) {
-  const [config, setConfig] = useState<BookingConfig>(() => ({ ...twoResources(), offerings: [start] }));
+function Offering({ out, start, payment }: { out: { value: BookingConfig }; start: BookingOffering; payment?: BookingConfig['payment'] }) {
+  const [config, setConfig] = useState<BookingConfig>(() => ({ ...twoResources(), offerings: [start], ...(payment ? { payment } : {}) }));
   out.value = config;
   const o = config.offerings[0]!;
   return (
@@ -178,6 +179,119 @@ describe('an offering’s fields', () => {
     set('By the', 'day');
     expect(screen.queryByLabelText('Check-in from')).toBeNull();
     expect(issuesByPath(out.value).size).toBe(0);
+  });
+});
+
+describe('an offering’s price', () => {
+  const EUR = { gatewayId: 'stripe', currency: 'EUR' };
+  const tour = () => withMode(newOffering(twoResources(), 'Tour', 'duration'), 'slots');
+
+  it('is free until the set-up says how bookings are paid', () => {
+    render(<Offering out={{ value: EMPTY_CONFIG }} start={tour()} />);
+    expect(screen.getByText(/Free\. To take payment when it is booked/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Price/)).toBeNull();
+  });
+
+  it('takes a price as the author writes it, per booking or per seat, and empty for free', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Offering out={out} start={tour()} payment={EUR} />);
+    set('Price (EUR)', '25,5');
+    expect(out.value.offerings[0]!.price).toEqual({ amountMinor: 2550, per: 'booking' });
+    // What is typed stays as typed on the way to a whole price.
+    set('Price (EUR)', '25.');
+    expect(screen.getByLabelText('Price (EUR)')).toHaveValue('25.');
+    set('Price (EUR)', '25.50');
+    set('Charged', 'unit');
+    expect(screen.getByRole('option', { name: 'Per seat' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Per night|Per day/ })).toBeNull();
+    expect(out.value.offerings[0]!.price).toEqual({ amountMinor: 2550, per: 'unit' });
+    expect(issuesByPath(out.value).size).toBe(0);
+    set('Price (EUR)', '');
+    expect(out.value.offerings[0]!.price).toBeUndefined();
+    expect(screen.queryByLabelText('Charged')).toBeNull();
+  });
+
+  it('★ refuses what is not a price, and so is never saved as one', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Offering out={out} start={tour()} payment={EUR} />);
+    for (const [typed, says] of [
+      ['abc', 'a price like 25 or 25.50'],
+      ['25.505', 'at most 2 decimals in EUR'],
+      ['0', 'leave it empty for free'],
+      ['2000000', 'at most 1000000.00'],
+    ] as const) {
+      set('Price (EUR)', typed);
+      expect(screen.getByText(says)).toBeInTheDocument();
+      expect(issuesByPath(out.value).size).toBeGreaterThan(0);
+    }
+  });
+
+  it('per night for a stay, which a change of kind does not carry over', () => {
+    const out = { value: EMPTY_CONFIG };
+    const stay = withMode(newOffering(twoResources(), 'Flat', 'duration'), 'days');
+    render(<Offering out={out} start={stay} payment={EUR} />);
+    set('Price (EUR)', '90');
+    set('Charged', 'night');
+    expect(out.value.offerings[0]!.price).toEqual({ amountMinor: 9000, per: 'night' });
+    expect(issuesByPath(out.value).size).toBe(0);
+    set('Kind', 'duration');
+    expect(out.value.offerings[0]!.price).toEqual({ amountMinor: 9000, per: 'booking' });
+  });
+});
+
+describe('the set-up’s payment', () => {
+  const GATEWAYS: BookingGateway[] = [
+    { id: 'stripe', name: 'Stripe Checkout', ready: true },
+    { id: 'mollie', name: 'Mollie', currencies: ['EUR', 'CHF'], ready: true },
+    { id: 'paypal', name: 'PayPal', ready: false },
+  ];
+  function Harness({ out, gateways, start = EMPTY_CONFIG }: { out: { value: BookingConfig }; gateways: BookingGateways; start?: BookingConfig }) {
+    const [c, setC] = useState<BookingConfig>(start);
+    out.value = c;
+    return <GeneralPanel draft={c} onChange={setC} issues={issuesByPath(c)} gateways={gateways} />;
+  }
+
+  it('offers the providers that are ready, and the currency they take', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Harness out={out} gateways={GATEWAYS} />);
+    const select = screen.getByLabelText('Paid through');
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['None: every offering is free', 'Stripe Checkout', 'Mollie']);
+    set('Paid through', 'stripe');
+    expect(out.value.payment).toEqual({ gatewayId: 'stripe', currency: '' });
+    expect(screen.getByText('a three-letter currency code, e.g. EUR')).toBeInTheDocument();
+    set('Currency', 'chf');
+    expect(out.value.payment).toEqual({ gatewayId: 'stripe', currency: 'CHF' });
+    // A provider with a list of its own: its currencies, keeping the one chosen where it takes it.
+    set('Paid through', 'mollie');
+    expect(out.value.payment).toEqual({ gatewayId: 'mollie', currency: 'CHF' });
+    expect(within(screen.getByLabelText('Currency')).getAllByRole('option').map((o) => o.textContent)).toEqual(['EUR', 'CHF']);
+    set('Paid through', '');
+    expect(out.value.payment).toBeUndefined();
+  });
+
+  it('keeps showing a provider that is no longer ready, and says what to do', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Harness out={out} gateways={GATEWAYS} start={{ ...EMPTY_CONFIG, payment: { gatewayId: 'paypal', currency: 'EUR' } }} />);
+    expect(screen.getByLabelText('Paid through')).toHaveValue('paypal');
+    expect(screen.getByRole('option', { name: 'PayPal (not ready)' })).toBeInTheDocument();
+    expect(screen.getByText(/Its keys are incomplete/)).toBeInTheDocument();
+  });
+
+  it('says where the keys go when no provider is ready, and when the list could not be read', () => {
+    const { unmount } = render(<Harness out={{ value: EMPTY_CONFIG }} gateways={[]} />);
+    expect(screen.getByText(/Website settings → Shop → Payments/)).toBeInTheDocument();
+    unmount();
+    render(<Harness out={{ value: EMPTY_CONFIG }} gateways="failed" />);
+    expect(screen.getByText('The payment providers could not be loaded.')).toBeInTheDocument();
+  });
+
+  it('reads which providers are ready from what the platform reports', () => {
+    const keys = (complete: boolean) => ({ mode: 'live' as const, test: { complete: false, missing: ['k'] }, live: { complete, missing: complete ? [] : ['k'] } });
+    const base = { id: 'g', name: 'G', credentialFields: [], refunds: true };
+    expect(toBookingGateway({ ...base, keys: keys(true) }).ready).toBe(true);
+    expect(toBookingGateway({ ...base, keys: keys(false) }).ready).toBe(false);
+    expect(toBookingGateway({ ...base, keys: null }).ready).toBe(false);
+    expect(toBookingGateway({ ...base, currencies: ['EUR'] })).toEqual({ id: 'g', name: 'G', currencies: ['EUR'], ready: false });
   });
 });
 

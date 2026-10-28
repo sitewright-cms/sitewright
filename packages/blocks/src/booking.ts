@@ -142,6 +142,8 @@ export const BOOKING_STATUS_PARTS = Object.freeze({
   loading: 'status-loading',
   booked: 'status-booked',
   pending: 'status-pending',
+  /** A booking held while its payment is made. */
+  payment: 'status-payment',
   cancelled: 'status-cancelled',
   unknown: 'status-unknown',
   /** Shown with the booking; holds `data-sw-field="offering"` and `data-sw-field="when"`. */
@@ -164,6 +166,7 @@ function defaultStatusMarkup(t: (key: string) => string): string {
     `<noscript><p>${escapeHtml(t('booking.failed'))}</p></noscript>` +
     p('status-booked', 'booking.status_booked') +
     p('status-pending', 'booking.status_pending') +
+    p('status-payment', 'booking.status_payment') +
     p('status-cancelled', 'booking.status_cancelled') +
     p('status-unknown', 'booking.status_unknown') +
     `<p data-sw-part="details" hidden><strong data-sw-field="offering"></strong><br><span data-sw-field="when"></span></p>` +

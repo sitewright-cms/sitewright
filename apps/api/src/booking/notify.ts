@@ -92,6 +92,8 @@ export interface BookingEvent {
   locale?: string;
   /** The business did it: accepted a request, or cancelled from its Bookings tab. */
   by?: 'business';
+  /** A paid booking's money going back: refunded, or for the business to refund by hand. */
+  refund?: 'refunded' | 'manual';
 }
 
 export class BookingNotifier {
@@ -120,6 +122,7 @@ export class BookingNotifier {
         kind: e.kind,
         wasBooked: e.claim.state === 'booked',
         ...(e.by ? { by: e.by } : {}),
+        ...(e.refund ? { refund: e.refund } : {}),
         claimId: e.claim.id,
         offering: { name: e.offering.name, mode: e.offering.mode, ...(e.offering.mode === 'days' ? { unit: e.offering.unit } : {}) },
         timeZone: resource?.timeZone ?? 'UTC',

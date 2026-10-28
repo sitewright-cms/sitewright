@@ -1149,9 +1149,28 @@ export const shopTransactions = sqliteTable(
     paidAt: integer('paid_at', { mode: 'timestamp_ms' }),
     /** When an unpaid session stops being reconcilable and may be swept to `expired`. */
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+    /**
+     * A BOOKING's prepayment rather than a shop order: the claim it pays for. ★ It settles the booking, never stock,
+     * and owes no shop order mail (the booking has its own).
+     */
+    bookingClaimId: text('booking_claim_id'),
+    /**
+     * The booking as it was when its payment began (JSON: offering, resource, start, end, units, locale): what its
+     * mails need once the claim itself is gone (a hold given back, a payment that came too late).
+     */
+    bookingSnapshot: text('booking_snapshot'),
+    /**
+     * When the booking's payment was SETTLED: the booking confirmed and mailed, or the money refunded. A paid booking
+     * transaction without it is the settlement a crash or a busy moment lost, which the maintenance sweep finishes.
+     */
+    bookingSettledAt: integer('booking_settled_at', { mode: 'timestamp_ms' }),
   },
   (t) => [
     uniqueIndex('shop_txn_public_token_idx').on(t.publicToken),
+    index('shop_txn_booking_claim_idx').on(t.bookingClaimId),
+    // The sweep's search for settlements a crash lost: booking transactions not settled yet (a shop order's
+    // claim id is null, so it sorts apart from them).
+    index('shop_txn_booking_unsettled_idx').on(t.bookingSettledAt, t.bookingClaimId),
     // The webhook's lookup. Per GATEWAY, not global: two providers may legitimately mint the same id.
     uniqueIndex('shop_txn_provider_ref_idx').on(t.gatewayId, t.providerRef),
     index('shop_txn_project_created_idx').on(t.projectId, t.createdAt),

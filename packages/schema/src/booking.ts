@@ -168,6 +168,17 @@ export type BookingSlot = z.infer<typeof BookingSlotSchema>;
 
 const MINUTES_IN_DAY = 1440;
 
+/**
+ * What a booking of an offering costs, paid before it is confirmed (PREPAYMENT), in minor units of the set-up's
+ * payment currency (cents). `per`: the whole booking, each unit booked (seats, items), or each night or day of a
+ * `days` offering.
+ */
+export const BookingPriceSchema = z.strictObject({
+  amountMinor: z.number().int().min(1).max(100_000_000),
+  per: z.enum(['booking', 'unit', 'night']).default('booking'),
+});
+export type BookingPrice = z.infer<typeof BookingPriceSchema>;
+
 const offeringBase = {
   id: BookingIdSchema,
   name: z.string().trim().min(1).max(120),
@@ -186,6 +197,8 @@ const offeringBase = {
    * names are never shown to them.
    */
   chooseResource: z.boolean().default(false),
+  /** Paid before it is confirmed. None: free (or paid on the day, which the platform does not handle). */
+  price: BookingPriceSchema.optional(),
 };
 
 export const BookingOfferingSchema = z.discriminatedUnion('mode', [
@@ -274,6 +287,16 @@ export const BookingConfigSchema = z
      * have an address of their own hear of their bookings.
      */
     notifyEmail: BookingEmailSchema.optional(),
+    /**
+     * How paid offerings are paid: one of the project's payment providers (Website settings → Shop → Payments)
+     * and the currency charged. Needed once any offering has a price.
+     */
+    payment: z
+      .strictObject({
+        gatewayId: z.string().min(1).max(64),
+        currency: z.string().regex(/^[A-Z]{3}$/, 'a three-letter currency code, e.g. EUR'),
+      })
+      .optional(),
   })
   .superRefine((cfg, ctx) => {
     const resources = new Set<string>();
@@ -288,6 +311,11 @@ export const BookingConfigSchema = z
       o.resourceIds.forEach((id, j) => {
         if (!resources.has(id)) ctx.addIssue({ code: 'custom', message: `no resource "${id}"`, path: ['offerings', i, 'resourceIds', j] });
       });
+      if (o.price && !cfg.payment) ctx.addIssue({ code: 'custom', message: 'choose how bookings are paid (Settings → Payment) before giving an offering a price', path: ['offerings', i, 'price'] });
+      if (o.price && o.confirmation === 'request') {
+        ctx.addIssue({ code: 'custom', message: 'paying for an offering on request is not available yet: book it at once, or leave out the price', path: ['offerings', i, 'price'] });
+      }
+      if (o.price?.per === 'night' && o.mode !== 'days') ctx.addIssue({ code: 'custom', message: 'a price per night or day is for nights or days', path: ['offerings', i, 'price', 'per'] });
       // One offering, one clock: a visitor's calendar shows its days and times in a single time zone.
       const zones = new Set(o.resourceIds.map((id) => cfg.resources.find((r) => r.id === id)?.timeZone).filter((z) => z !== undefined));
       if (zones.size > 1) ctx.addIssue({ code: 'custom', message: `the resources of "${o.id}" are in different time zones`, path: ['offerings', i, 'resourceIds'] });

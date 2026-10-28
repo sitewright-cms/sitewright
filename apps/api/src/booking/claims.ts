@@ -169,10 +169,11 @@ export class BookingClaimsRepository {
     return rows.length > 0;
   }
 
-  async remove(projectId: string, id: string): Promise<boolean> {
+  /** Removes a claim; with `onlyIf`, only while it is still in that state (a hold that is not a booking by now). */
+  async remove(projectId: string, id: string, onlyIf?: ClaimState): Promise<boolean> {
     const rows = await this.db
       .delete(bookingClaims)
-      .where(and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.id, id)))
+      .where(and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.id, id), ...(onlyIf ? [eq(bookingClaims.state, onlyIf)] : [])))
       .returning({ id: bookingClaims.id });
     return rows.length > 0;
   }

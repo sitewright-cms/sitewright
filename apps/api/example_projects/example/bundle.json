@@ -200,6 +200,21 @@
           "de": "Anfrage senden",
           "es": "Enviar solicitud"
         },
+        "booking.submit_pay": {
+          "en": "Book and pay",
+          "de": "Buchen und bezahlen",
+          "es": "Reservar y pagar"
+        },
+        "booking.total": {
+          "en": "Total",
+          "de": "Gesamt",
+          "es": "Total"
+        },
+        "booking.to_payment": {
+          "en": "Taking you to the payment…",
+          "de": "Weiter zur Bezahlung…",
+          "es": "Te llevamos al pago…"
+        },
         "booking.sending": {
           "en": "Sending…",
           "de": "Wird gesendet…",
@@ -274,6 +289,11 @@
           "en": "Your request is waiting for confirmation.",
           "de": "Ihre Anfrage wartet auf Bestätigung.",
           "es": "Tu solicitud está pendiente de confirmación."
+        },
+        "booking.status_payment": {
+          "en": "Your booking is waiting for its payment. It is confirmed as soon as the payment arrives.",
+          "de": "Ihre Buchung wartet auf die Zahlung. Sie ist bestätigt, sobald die Zahlung eingegangen ist.",
+          "es": "Tu reserva está pendiente del pago. Se confirmará en cuanto llegue el pago."
         },
         "booking.status_cancelled": {
           "en": "Your booking is cancelled.",
@@ -354,6 +374,21 @@
           "en": "We are sorry: your request could not be confirmed in time, and the time is free again. Please choose another time.",
           "de": "Es tut uns leid: Ihre Anfrage konnte nicht rechtzeitig bestätigt werden, der Termin ist wieder frei. Bitte wählen Sie einen anderen Termin.",
           "es": "Lo sentimos: tu solicitud no pudo confirmarse a tiempo y el horario vuelve a estar libre. Elige otro horario."
+        },
+        "booking.mail_refunded": {
+          "en": "Not booked: {offering}",
+          "de": "Nicht gebucht: {offering}",
+          "es": "No reservado: {offering}"
+        },
+        "booking.mail_refunded_text": {
+          "en": "We are sorry: your payment came in after the time could no longer be held for you, so it is not booked. Your payment will be refunded. Please choose another time.",
+          "de": "Es tut uns leid: Ihre Zahlung ist eingegangen, nachdem der Termin nicht länger für Sie reserviert werden konnte, daher ist er nicht gebucht. Ihre Zahlung wird erstattet. Bitte wählen Sie einen anderen Termin.",
+          "es": "Lo sentimos: tu pago llegó cuando ya no se podía reservar el horario para ti, así que no se ha hecho la reserva. Te devolveremos el pago. Elige otro horario."
+        },
+        "booking.mail_refund_note": {
+          "en": "Your payment will be refunded.",
+          "de": "Ihre Zahlung wird erstattet.",
+          "es": "Te devolveremos el pago."
         },
         "about.ab_img_alt": {
           "en": "The Northwind studio",

@@ -11,6 +11,35 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Paid bookings: an offering can be paid when it is booked.** An offering gets a price (per booking, per seat or
+  unit, or per night or day of a stay) and the booking set-up a payment provider and currency (Settings → Payment):
+  one of the project's providers whose keys are complete, the same as the shop's (Website settings → Shop →
+  Payments).
+  - **Booking:** the widget shows the total and "Book and pay"; the time is held for the customer for 20 minutes
+    and they pay on the provider's page, coming back to the business's own booking page. The provider's report of
+    the payment confirms the booking, and only then do its emails go out. A failed, abandoned or expired payment
+    gives the time back. The status page says a held booking is waiting for its payment.
+  - **Money rules (the shop's):** the price is the server's, never the browser's; only the provider's webhook
+    settles a payment; a payment that arrives after its hold ran out never books over anyone: it is refunded,
+    claimed before the provider is asked so a retry cannot refund twice. A booking's payment owes none of the
+    shop's order emails, and touches no stock.
+  - Every place a payment ends (the webhook, its failure, the expiry sweep, the reconciler) now goes through one
+    settlement step, which a shop order and a booking each answer in their own way.
+  - **Cancelling:** a paid booking the business cancels in the Bookings tab is refunded in full, and the tab and the
+    customer's email say so (or that the business must refund it from the provider's dashboard, when the provider
+    would not). For now the customer cannot cancel a paid booking themselves; their refunds come next.
+  - **Hardening (security review):** money that arrives after the checkout was closed as failed or expired is
+    recorded and refunded rather than lost; a payment is settled exactly once and marked so, and one a crash or a
+    busy moment interrupted is finished by the maintenance sweep (confirmed, or refunded); a moment of load never
+    refunds a booking that still holds; a refund the provider will not make is mailed to the business as one to make
+    by hand, and the customer is told it will be refunded. A payment that comes too late sends both sides a "not
+    booked" email, written from the booking's facts the payment kept (its hold is gone by then). Refunding a
+    booking's payment from the Orders inbox never touches stock.
+  - The confirmation of a paid booking is in the customer's language and links to their booking page, as a free
+    booking's is.
+  - For now a price is for offerings booked at once; paying after a request is accepted comes next.
+  - New labels in Translations & Labels: "Book and pay", "Total", "Taking you to the payment…", and the status
+    page's "waiting for its payment".
 - **Booking reads and writes Google calendars.** A resource's calendar can be a Google calendar, through the
   platform's own Google account (the one System Settings → Search engines already holds). No one signs in, and
   nothing per business is stored but the calendar's id.

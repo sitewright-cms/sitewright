@@ -30,6 +30,11 @@ export interface BookingAdminDeps {
   notify: (event: BookingEvent) => Promise<void>;
   /** A booking's signed reference, for the link in its confirmation. */
   reference: (projectId: string, claimId: string) => string;
+  /**
+   * A paid booking the business cancelled: its money back in full. Undefined when nothing was paid; `manual` when the
+   * provider would not refund it, so the business must, from its dashboard.
+   */
+  refundCancelled?: (projectId: string, claimId: string) => Promise<'refunded' | 'manual' | undefined>;
   resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   now?: () => number;
@@ -96,13 +101,30 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
       const { project } = await deps.resolveProject(req as unknown as ProjectReq, 'content:write');
       const id = req.params.id;
       if (id.length > 64) return reply.code(404).send({ error: 'there is no such booking' });
+      // ★ A paid booking's money goes back FIRST: a crash between the two then leaves a booking standing (the business
+      // sees it and cancels again, with nothing left to refund), never a cancelled booking nobody refunds. Only for
+      // one the cancellation will take: a booking (not a checkout in progress) that has not ended.
+      let refund: 'refunded' | 'manual' | undefined;
+      if (path === 'cancel') {
+        const claim = await deps.claims.get(project.id, id);
+        if (claim && claim.state !== 'hold' && claim.endAt.getTime() > now()) {
+          refund = await deps.refundCancelled?.(project.id, id).catch((err: unknown) => {
+            req.log.error({ err, projectId: project.id }, 'a cancelled booking could not be refunded');
+            return 'manual' as const;
+          });
+        }
+      }
       const result =
         path === 'accept'
           ? await deps.bookings.accept(project.id, id)
           : path === 'decline'
             ? await deps.bookings.decline(project.id, id)
             : await deps.bookings.cancelByBusiness(project.id, id);
-      if (!result.ok) return refuse(reply, result);
+      if (!result.ok) {
+        // Refunded, yet not cancelled (a busy moment): the business is told both, and cancels again.
+        if (refund) req.log.warn({ projectId: project.id, reason: result.reason, refund }, 'a booking was refunded but its cancellation was refused');
+        return refund ? refuseRefunded(reply, result, refund) : refuse(reply, result);
+      }
       const config = await deps.readConfig(project.id);
       const offering = config?.offerings.find((o) => o.id === result.claim.offeringId);
       if (config && offering) {
@@ -113,13 +135,14 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
           offering,
           config,
           by: 'business',
+          ...(refund ? { refund } : {}),
           // The confirmation links to the booking's own page, as a booking made at once does.
           ...(path === 'accept' ? { reference: deps.reference(project.id, result.claim.id) } : {}),
         });
       } else {
         req.log.warn({ projectId: project.id, offeringId: result.claim.offeringId }, 'booking answered without mails: its offering no longer exists');
       }
-      return reply.send({ ok: true, booking: path === 'accept' ? view(result.claim, config) : null });
+      return reply.send({ ok: true, booking: path === 'accept' ? view(result.claim, config) : null, ...(refund ? { refund } : {}) });
     });
   };
   answer('accept');
@@ -130,4 +153,11 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
 function refuse(reply: FastifyReply, result: Exclude<AnswerResult, { ok: true }>): FastifyReply {
   if (result.reason === 'busy') reply.header('retry-after', '5');
   return reply.code(STATUS[result.reason]).send({ error: result.detail, reason: result.reason });
+}
+
+/** A refusal after the booking's money already went back: said, so the business does not refund it again by hand. */
+function refuseRefunded(reply: FastifyReply, result: Exclude<AnswerResult, { ok: true }>, refund: 'refunded' | 'manual'): FastifyReply {
+  if (result.reason === 'busy') reply.header('retry-after', '5');
+  const money = refund === 'refunded' ? 'its payment has been refunded' : 'its refund could not be confirmed: check your payment provider’s dashboard';
+  return reply.code(STATUS[result.reason]).send({ error: `${result.detail}; ${money}`, reason: result.reason, refund });
 }

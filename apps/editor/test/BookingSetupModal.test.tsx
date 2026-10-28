@@ -35,6 +35,8 @@ vi.mock('../src/api', () => {
       discoverBookingCalDav: (p: string, b: unknown) => discoverBookingCalDav(p, b),
       setBookingCalendarWrites: (p: string, id: string, w: boolean) => setBookingCalendarWrites(p, id, w),
       getBookingGoogle: (p: string) => getBookingGoogle(p),
+      // The Settings tab's payment providers (their own tests are in booking-setup-editors).
+      projectPaymentGateways: async () => ({ gateways: [] }),
       // The Settings tab's calendar address (its own tests are in booking-feed-section).
       getBookingFeed: async () => ({ feed: null }),
     },

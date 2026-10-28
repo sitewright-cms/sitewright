@@ -45,6 +45,7 @@ import type {
   SmtpInput,
   SmtpPublic,
   PaymentGatewayPublic,
+  PaymentKeysStatus,
   PaymentGatewayStored,
   PaymentBindingPublic,
   TransactionStatus,
@@ -1767,9 +1768,12 @@ export const api = {
   /** The Bookings tab: upcoming bookings and requests, the requests alone, or the past ones still kept. */
   listBookings: (projectId: string, view: 'upcoming' | 'requests' | 'past' = 'upcoming') =>
     request<BookingList>('GET', `/projects/${projectId}/bookings?view=${view}`),
-  /** The business's answers. Each sends the customer's mail, and the calendars' where the booking is in them. */
+  /**
+   * The business's answers. Each sends the customer's mail, and the calendars' where the booking is in them. A paid
+   * booking cancelled is refunded: `refund` says whether it was, or is the business's to do (`manual`).
+   */
   answerBooking: (projectId: string, id: string, answer: 'accept' | 'decline' | 'cancel') =>
-    request<{ ok: true; booking: BookingItem | null }>('POST', `/projects/${projectId}/bookings/${encodeURIComponent(id)}/${answer}`),
+    request<{ ok: true; booking: BookingItem | null; refund?: 'refunded' | 'manual' }>('POST', `/projects/${projectId}/bookings/${encodeURIComponent(id)}/${answer}`),
   /** A full replace. `baseVersion` is the version the form was built from, so a concurrent edit is refused, not lost. */
   putBooking: (projectId: string, config: BookingConfig, baseVersion?: string | null) =>
     request<{ item: BookingConfig; version?: string }>('PUT', `/projects/${projectId}/content/booking/booking`, config, { version: baseVersion }),
@@ -2461,7 +2465,7 @@ export const api = {
 
   /** Gateways this project may bind to — enabled AND proven. Public metadata only. */
   projectPaymentGateways: (projectId: string) =>
-    request<{ gateways: PaymentGatewayPublic[] }>('GET', `/projects/${projectId}/payment-gateways`),
+    request<{ gateways: Array<PaymentGatewayPublic & { keys?: PaymentKeysStatus | null }> }>('GET', `/projects/${projectId}/payment-gateways`),
 
   /** INSTANCE ADMINS ONLY (403 for anyone else): every gateway definition in full. */
   listGatewayDefinitions: () =>

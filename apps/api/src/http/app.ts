@@ -283,6 +283,8 @@ import { registerBookingCalendarRoutes } from './booking-calendar-routes.js';
 import { registerBookingFeedRoutes } from './booking-feed-routes.js';
 import { discoverCalendars, readCalendar, type DavTransport } from '../booking/caldav.js';
 import { BookingCalendarWriteRepository, CALENDAR_WRITE_LIMITS, CalendarWriter, runCalendarWrites } from '../booking/calendar-writes.js';
+import { BookingPayments } from '../booking/payments.js';
+import { makeSettlement, owesOrderMail } from '../payments/settle.js';
 import { checkGoogleCalendar, googleProofCode, readGoogleCalendar } from '../booking/google-calendar.js';
 import type { GoogleServiceAccountKey } from '../webmaster/google.js';
 import { logRequest } from './log-redact.js';
@@ -11321,6 +11323,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     claimPowChallenge: (challenge, expiresAt) => submissionsRepo.claimPowChallenge(challenge, expiresAt),
     rl,
     notify: (event) => bookingNotifier.notify(event),
+    // Late-bound: the payment machinery is set up further down (it needs the gateways).
+    payments: {
+      start: (...args: Parameters<BookingPayments['start']>) =>
+        bookingPayments ? bookingPayments.start(...args) : Promise.resolve({ ok: false as const, error: 'payment is not available here' }),
+    },
+    // The business's own booking page, as the booking mails link it: its site's production URL, else where the platform
+    // hosts it. ★ White-label: the provider never sends a customer to the platform.
+    returnUrls: async (projectId, reference, statusPath) => {
+      const ctx: ProjectContext = { userId: 'system', projectId, role: 'owner' };
+      const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID).catch(() => null)) as { website?: { siteUrl?: string } } | null;
+      const raw = settings?.website?.siteUrl?.trim() || (await hostedSiteUrl(projectId)) || '';
+      let base: string;
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+        base = `${u.origin}${u.pathname}`.replace(/\/+$/, '');
+      } catch {
+        return null;
+      }
+      const page = `${base}${statusPath ?? '/'}#t=${encodeURIComponent(reference)}`;
+      return { return: page, cancel: page };
+    },
+    // A paid booking is the business's to cancel (it refunds it) until customers' refunds are in place.
+    isPaid: async (projectId, claimId) => (await shopTransactionsRepo.paidForBooking(projectId, claimId)) !== undefined,
   });
 
   // The Bookings tab: the project's bookings and requests, and the business's answers (see booking-admin-routes.ts).
@@ -11331,6 +11357,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     readConfig: readBookingConfig,
     notify: (event) => bookingNotifier.notify(event),
     reference: (projectId, claimId) => signBookingRef(projectId, claimId, currentCookieSecret),
+    // Late-bound, as above: a paid booking the business cancels is refunded in full.
+    refundCancelled: (projectId, claimId) => (bookingPayments ? bookingPayments.refundCancelled(projectId, claimId) : Promise.resolve(undefined)),
     resolveProject,
     rl,
   });
@@ -11420,6 +11448,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const shopTransactionsRepo = new ShopTransactionRepository(db);
   const shopStockRepo = new ShopStockRepository(db);
   const gatewayRepo = opts.encryptionKey ? new GatewayRepository(contentRepo, opts.encryptionKey) : undefined;
+  const paymentIo = { fetch: paymentFetch, now: () => Date.now(), log: { warn: (o: unknown, m: string) => app.log.warn(o, m), error: (o: unknown, m: string) => app.log.error(o, m) } };
+  // A booking's PREPAYMENT: through the project's payment provider, confirmed by its webhook (booking/payments.ts).
+  const bookingPayments = gatewayRepo
+    ? new BookingPayments({
+        bookings: bookingService,
+        transactions: shopTransactionsRepo,
+        gateways: gatewayRepo,
+        readConfig: readBookingConfig,
+        notify: (e) => bookingNotifier.notify(e),
+        reference: (projectId, claimId) => signBookingRef(projectId, claimId, currentCookieSecret),
+        io: paymentIo,
+        apiBase: () => (opts.publicUrl ?? '').replace(/\/+$/, ''),
+        log: { warn: (o, m) => app.log.warn(o, m), error: (o, m) => app.log.error(o, m) },
+      })
+    : undefined;
+  // ★ What a payment's outcome does, in ONE place for all four paths that end one: stock for an order, the booking
+  // for a prepayment (payments/settle.ts).
+  const paymentSettlement = makeSettlement({ stock: shopStockRepo, ...(bookingPayments ? { booking: bookingPayments } : {}) });
   /** A project's shop settings, for the public payment routes and the admin ones alike. */
   const getProjectShop = async (projectId: string): Promise<ShopSettings | null> => {
     // ★ The same reserved-scope refusal `systemContext` makes. These deps build their own
@@ -11438,6 +11484,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerPaymentRoutes(app, {
       transactions: shopTransactionsRepo,
       stock: shopStockRepo,
+      settle: paymentSettlement,
       gateways: gatewayRepo,
       captcha: captchaVerifier,
       getProjectCaptcha: async (projectId: string) => {
@@ -12673,20 +12720,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!gatewayRepo) return; // no encryption key ⇒ no payment surface ⇒ nothing to sweep
     const now = new Date();
     const expired = await shopTransactionsRepo.expireStale(now);
-    // A preview rehearsal held nothing, so there is nothing to give back for one.
-    for (const txn of expired.filter((t) => !t.preview)) {
-      await shopStockRepo
-        .release(
-          txn.projectId,
-          txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })),
-        )
-        .catch((err: unknown) => app.log.warn({ err, txnId: txn.id }, 'could not release stock for an expired checkout'));
+    // Stock given back for an order (a preview rehearsal held none), the hold released for a booking.
+    for (const txn of expired) {
+      await paymentSettlement.unpaid(txn).catch((err: unknown) => app.log.warn({ err, txnId: txn.id }, 'could not settle an expired checkout'));
     }
     await shopStockRepo.sweepExpiredReservations(now);
     // Keep spent event ids for a week: long enough to cover any provider's retry schedule, short
     // enough that the table stays small.
     await shopTransactionsRepo.reapEvents(new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000));
     await reconcileDuePayments(now);
+    // Booking payments a crash or a busy moment left unsettled: confirmed now, or refunded.
+    if (bookingPayments) await bookingPayments.recover(now).catch((err: unknown) => app.log.warn({ err }, 'booking payments could not be recovered this pass'));
     // ★ The two order mails. Last in the chain on purpose: reconciliation can turn an unresolved
     // order into a paid one, and a payment recovered this pass should be notified in the same pass
     // rather than waiting for the next.
@@ -12733,11 +12777,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (status.kind === 'recheck') continue;
         if (status.kind === 'paid') {
           const advanced = await shopTransactionsRepo.advance(txn.id, 'paid', {
-            owesNotification: true,
+            owesNotification: owesOrderMail(txn),
             ...(txn.customerEmail ? { customerEmail: txn.customerEmail } : {}),
           });
-          if (advanced.outcome === 'advanced' && !txn.preview) {
-            await shopStockRepo.commit(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
+          if (advanced.outcome === 'advanced') {
+            await paymentSettlement.paid(txn);
             app.log.warn({ projectId: txn.projectId, txnId: txn.id }, 'a paid order was recovered by reconciliation — its webhook never arrived');
           }
           continue;
@@ -12751,9 +12795,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           status.kind,
           status.kind === 'refunded' ? { refundedMinor: txn.amounts.totalMinor } : {},
         );
-        if (advanced.outcome === 'advanced' && !txn.preview) {
-          await shopStockRepo.release(txn.projectId, txn.lines.map((l) => ({ sku: l.sku, qty: l.qty })));
-        }
+        if (advanced.outcome === 'advanced') await paymentSettlement.unpaid(txn);
       } catch (err) {
         app.log.warn({ txnId: txn.id, errMsg: err instanceof Error ? err.message : String(err) }, 'could not reconcile a payment');
       }

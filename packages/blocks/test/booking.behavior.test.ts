@@ -350,6 +350,64 @@ describe('the widget: a week of times', () => {
     expect(posts()[0]!.body!.quantity).toBe('2');
   });
 
+  describe('a paid offering', () => {
+    const PAID = { ...DURATION, mode: 'slots', maxQuantity: 4, price: { amountMinor: 2550, per: 'unit', currency: 'EUR', digits: 2 } };
+    let assigned: string[];
+    let real: Location;
+    beforeEach(() => {
+      assigned = [];
+      real = window.location;
+      // jsdom refuses a real navigation: capture where the widget sends the visitor instead.
+      delete (window as unknown as Record<string, unknown>).location;
+      (window as unknown as { location: unknown }).location = { ...real, assign: (u: string) => void assigned.push(u) };
+    });
+    afterEach(() => {
+      (window as unknown as { location: unknown }).location = real;
+    });
+    const paidRoute = (pay: string) => (c: Call) =>
+      c.method === 'POST'
+        ? { status: 200, body: { ok: true, reference: 'r', state: 'hold', start: berlin(2, 10), end: berlin(2, 11), pay } }
+        : { status: 200, body: { offering: PAID, kind: 'times', times: [{ ...times[0], places: 4 }], truncated: false } };
+
+    it('shows the total for the places taken, and hands the visitor to the provider to pay', async () => {
+      route = paidRoute('https://pay.example.test/s/1');
+      const root = widget();
+      await until(() => expect(parts(root, 'time')).toHaveLength(1));
+      parts(root, 'time')[0]!.click();
+      expect(part(root, 'submit').textContent).toBe('Book and pay');
+      expect(shown(part(root, 'total'))).toBe(true);
+      expect(part(root, 'total').textContent).toBe('Total: €25.50');
+      fill(root, { name: 'Ada', email: 'ada@example.com', quantity: '3' });
+      expect(part(root, 'total').textContent).toBe('Total: €76.50');
+      submit(root);
+      await until(() => expect(assigned).toEqual(['https://pay.example.test/s/1']));
+      // What the browser sends names no amount: the server prices the booking.
+      expect(Object.keys(posts()[0]!.body!).some((k) => /price|amount|total/i.test(k))).toBe(false);
+      expect(part(root, 'done-message').textContent).toBe('Taking you to the payment…');
+      expect(root.querySelector('[data-sw-part="manage"]')).toBeNull();
+    });
+
+    it('★ goes nowhere but https', async () => {
+      route = paidRoute('javascript:alert(1)');
+      const root = widget();
+      await until(() => expect(parts(root, 'time')).toHaveLength(1));
+      parts(root, 'time')[0]!.click();
+      fill(root, { name: 'Ada', email: 'ada@example.com' });
+      submit(root);
+      await until(() => expect(part(root, 'message').textContent).toBe('Sorry, that did not work. Please try again.'));
+      expect(assigned).toEqual([]);
+      expect(shown(part(root, 'done'))).toBe(false);
+    });
+
+    it('a free offering shows no total', async () => {
+      route = (c) => (c.method === 'POST' ? null : { status: 200, body: { offering: DURATION, kind: 'times', times, truncated: false } });
+      const root = widget();
+      await until(() => expect(parts(root, 'time')).toHaveLength(2));
+      parts(root, 'time')[0]!.click();
+      expect(shown(part(root, 'total'))).toBe(false);
+    });
+  });
+
   it('refuses up front when the set-up asks for a captcha the project does not have', async () => {
     const root = widget({ missing: true });
     await settle();
@@ -680,11 +738,13 @@ describe('a booking’s own page', () => {
     expect(shown(part(root, 'cancel'))).toBe(false);
   });
 
-  it('never reads a time that is only held as booked', async () => {
+  it('never reads a time that is only held as booked: it waits for its payment', async () => {
     route = () => ({ status: 200, body: { ...BOOKED, state: 'hold' } });
     const root = statusPage('/my-booking/#t=ref-1');
-    await until(() => expect(shown(part(root, 'status-pending'))).toBe(true));
+    await until(() => expect(shown(part(root, 'status-payment'))).toBe(true));
+    expect(part(root, 'status-payment').textContent).toBe('Your booking is waiting for its payment. It is confirmed as soon as the payment arrives.');
     expect(shown(part(root, 'status-booked'))).toBe(false);
+    expect(shown(part(root, 'status-pending'))).toBe(false);
   });
 
   it('says it could not find a booking without a reference, or one the platform does not know', async () => {

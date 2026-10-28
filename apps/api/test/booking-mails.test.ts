@@ -195,6 +195,36 @@ describe('the business’s answers', () => {
   });
 });
 
+describe('a paid booking’s money', () => {
+  it('★ tells the customer a late payment is not booked and will be refunded, with no link and nothing for a calendar', () => {
+    const [customer, ...owners] = mails({ kind: 'refunded', refund: 'refunded' });
+    expect(customer!.subject).toBe('Not booked: Massage');
+    expect(customer!.rendered.text).toContain('your payment came in after the time could no longer be held for you, so it is not booked. Your payment will be refunded.');
+    expect(customer!.rendered.text).not.toContain('https://studio.example/my-booking/');
+    expect(customer!.rendered.attachments).toBeUndefined();
+    expect(owners[0]!.subject).toMatch(/^Payment refunded: Massage, /);
+    expect(owners[0]!.rendered.text).toContain('Ada Lovelace paid for Massage after its time could no longer be held, so it is not booked. The payment has been refunded');
+    expect(owners.every((m) => !m.rendered.icalEvent && !m.rendered.attachments)).toBe(true);
+  });
+
+  it('★ asks the business to refund by hand what the provider would not, and tells the customer it will be refunded all the same', () => {
+    const [customer, owner] = mails({ kind: 'refunded', refund: 'manual' });
+    expect(customer!.rendered.text).toContain('Your payment will be refunded.');
+    expect(owner!.subject).toMatch(/^Refund needed: Massage, /);
+    expect(owner!.rendered.text).toContain('check your payment provider’s dashboard, and refund it there if it has not been');
+  });
+
+  it('says a cancelled paid booking is refunded, and says nothing of money for an unpaid one', () => {
+    const [customer, owner] = mails({ kind: 'cancelled', wasBooked: true, by: 'business', refund: 'refunded' });
+    expect(customer!.rendered.text).toContain('Your booking is cancelled.\nYour payment will be refunded.');
+    expect(customer!.rendered.html).toContain('<p>Your payment will be refunded.</p>');
+    expect(owner!.rendered.text).toContain('The payment has been refunded.');
+    const [unpaid, unpaidOwner] = mails({ kind: 'cancelled', wasBooked: true, by: 'business' });
+    expect(unpaid!.rendered.text).not.toContain('refunded');
+    expect(unpaidOwner!.rendered.text).not.toContain('payment');
+  });
+});
+
 describe('bookingWhen', () => {
   it('reads stays and whole days as people do', () => {
     const nights = { offering: { name: 'Flat', mode: 'days' as const, unit: 'night' as const }, timeZone: 'Europe/Berlin', locale: 'en-GB' };

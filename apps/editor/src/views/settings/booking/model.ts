@@ -113,7 +113,9 @@ export function newOffering(config: BookingConfig, name: string, mode: BookingMo
 export function withMode(offering: BookingOffering, mode: BookingMode): BookingOffering {
   if (offering.mode === mode) return offering;
   const base = Object.fromEntries(BASE_KEYS.map((k) => [k, offering[k]]));
-  return { ...base, mode, ...modeFields(mode) } as BookingOffering;
+  // The price goes along; one per night or day only while it is booked by the night or day.
+  const price = offering.price && (mode === 'days' || offering.price.per !== 'night' ? offering.price : { ...offering.price, per: 'booking' as const });
+  return { ...base, mode, ...modeFields(mode), ...(price ? { price } : {}) } as BookingOffering;
 }
 
 /** A resource removed, and with it from every offering that named it. */

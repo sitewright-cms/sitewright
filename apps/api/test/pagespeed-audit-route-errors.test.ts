@@ -207,7 +207,7 @@ describe('pagespeed-audit route — failure answers', () => {
       await untilRunning(pending, () => seen.length === i + 1);
       ac.abort();
       expect(await pending).toMatchObject({ name: 'AbortError' });
-      await vi.waitFor(() => expect(seen[i]!.aborted).toBe(true));
+      await vi.waitFor(() => expect(seen[i]!.aborted).toBe(true), { timeout: 10_000 });
     }
     seams.audit = async (url, opts) => fakeResult(url, opts.formFactor);
     const t0 = Date.now();
@@ -261,7 +261,7 @@ describe('pagespeed-audit route — failure answers', () => {
     await untilRunning(pending, () => seen.length === 1);
     ac.abort();
     expect(await pending).toMatchObject({ name: 'AbortError' });
-    await vi.waitFor(() => expect(seen[0]!.aborted, 'the audit behind the tool call was aborted').toBe(true));
+    await vi.waitFor(() => expect(seen[0]!.aborted, 'the audit behind the tool call was aborted').toBe(true), { timeout: 10_000 });
     // The hang-up closed the per-request server; the handler's own `finally` must not close it again.
     await new Promise((r) => setTimeout(r, 200));
     expect(closes).toHaveBeenCalledTimes(1);
@@ -390,7 +390,9 @@ describe('pagespeed-audit route — memory, deadlines, and the both-devices answ
     };
     const [a, b] = [await freshSession(), await freshSession()];
     const first = audit(a);
-    await vi.waitFor(() => expect(calls).toBe(1));
+    // Reaching the audit takes a request through the whole route: well past vitest's 1 s default when the machine is
+    // busy (a full verify), which failed this test while it was right. Every wait in this file has room to spare.
+    await vi.waitFor(() => expect(calls).toBe(1), { timeout: 20_000 });
     const second = audit(b);
     await new Promise((r) => setTimeout(r, 300));
     expect(calls, 'the second audit must not start while the first runs').toBe(1);
@@ -436,7 +438,7 @@ describe('pagespeed-audit route — callers that leave, and a full queue', () =>
     const releasedBefore = seams.released;
     second.hangUp();
     expect(await second.pending).toMatchObject({ name: 'AbortError' });
-    await vi.waitFor(() => expect(_lighthouseGateForTest().waiting).toBe(0));
+    await vi.waitFor(() => expect(_lighthouseGateForTest().waiting).toBe(0), { timeout: 10_000 });
     expect(seen, 'the queued audit never ran').toHaveLength(1);
     expect(seams.released, 'nor closed anyone\'s browser on its way out').toBe(releasedBefore);
     first.hangUp();

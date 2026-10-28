@@ -211,6 +211,21 @@ describe('an offering’s price', () => {
     expect(screen.queryByLabelText('Charged')).toBeNull();
   });
 
+  it('takes how long before the start a customer’s cancellation is still refunded, in hours; empty for a day', () => {
+    const out = { value: EMPTY_CONFIG };
+    render(<Offering out={out} start={tour()} payment={EUR} />);
+    expect(screen.queryByLabelText('Refunded if cancelled')).toBeNull();
+    set('Price (EUR)', '25');
+    expect(screen.getByLabelText('Refunded if cancelled')).toHaveAttribute('placeholder', '24');
+    set('Refunded if cancelled', '48');
+    expect(out.value.offerings[0]!.refundUntilMin).toBe(2880);
+    expect(issuesByPath(out.value).size).toBe(0);
+    set('Refunded if cancelled', '0');
+    expect(out.value.offerings[0]!.refundUntilMin).toBe(0);
+    set('Refunded if cancelled', '');
+    expect(out.value.offerings[0]!.refundUntilMin).toBeUndefined();
+  });
+
   it('★ refuses what is not a price, and so is never saved as one', () => {
     const out = { value: EMPTY_CONFIG };
     render(<Offering out={out} start={tour()} payment={EUR} />);

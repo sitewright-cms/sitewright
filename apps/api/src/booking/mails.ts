@@ -36,9 +36,10 @@ export interface BookingMailFacts {
   by?: 'business';
   /**
    * A paid booking's money going back (refunded; or `manual`: the provider would not, and the business must, from
-   * its dashboard). The customer reads that it will be refunded either way; the business reads which.
+   * its dashboard). The customer reads that it will be refunded either way; the business reads which. `none`: the
+   * customer cancelled too close to the start for a refund, and the payment is kept.
    */
-  refund?: 'refunded' | 'manual';
+  refund?: 'refunded' | 'manual' | 'none';
   claimId: string;
   offering: { name: string; mode: BookingMode; unit?: 'night' | 'day' };
   timeZone: string;
@@ -184,8 +185,8 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
               ? 'booking.mail_refunded_text'
               : 'booking.status_cancelled',
   );
-  // A paid booking cancelled: its money goes back, and the customer reads so.
-  const refundNote = f.kind === 'cancelled' && f.refund ? t('booking.mail_refund_note') : '';
+  // A paid booking cancelled: whether its money goes back, and the customer reads which.
+  const refundNote = f.kind === 'cancelled' && f.refund ? t(f.refund === 'none' ? 'booking.mail_no_refund_note' : 'booking.mail_refund_note') : '';
   const details = rows([
     [t('booking.mail_when'), when],
     ...(f.quantity > 1 ? ([[t('booking.quantity'), String(f.quantity)]] as Array<[string, string]>) : []),
@@ -293,7 +294,9 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
       : f.kind === 'cancelled' && f.refund
         ? f.refund === 'manual'
           ? ' Its refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been.'
-          : ' The payment has been refunded.'
+          : f.refund === 'none'
+            ? ' It was cancelled too close to its start for a refund: the payment is kept.'
+            : ' The payment has been refunded.'
         : '';
   const text = `${lead}${money}\n\n${details.text}\n`;
   const html = wrap(`<p style="font-size:16px;font-weight:600">${esc(lead + money)}</p>${details.html}`);

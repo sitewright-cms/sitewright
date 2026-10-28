@@ -46,7 +46,8 @@ const CONFIG = {
     { id: 'flat', name: 'Flat', timeZone: 'Europe/Berlin' },
   ],
   offerings: [
-    { id: 'cut', name: 'Haircut', mode: 'duration', durationMin: 60, resourceIds: ['anna'], price: { amountMinor: 4500 } },
+    // Refunded if the customer cancels at least an hour before it starts.
+    { id: 'cut', name: 'Haircut', mode: 'duration', durationMin: 60, resourceIds: ['anna'], price: { amountMinor: 4500 }, refundUntilMin: 60 },
     { id: 'tour', name: 'Tour', mode: 'slots', maxQuantity: 4, resourceIds: ['guide'], slots: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], at: '10:00', durationMin: 60 }], price: { amountMinor: 1500, per: 'unit' } },
     { id: 'stay', name: 'Stay', mode: 'days', resourceIds: ['flat'], price: { amountMinor: 9000, per: 'night' } },
     { id: 'free', name: 'Free chat', mode: 'duration', durationMin: 30, resourceIds: ['anna'] },
@@ -220,17 +221,94 @@ describe('★ paying for a booking', () => {
     expect((await txns())[0]).toMatchObject({ status: 'paid', refundedMinor: 0 });
   });
 
-  it('lets only the business cancel a paid booking, until customers’ refunds are in place', async () => {
+  it('★ refunds a customer’s cancellation in full until the offering’s deadline, and says so before and after', async () => {
     const reference = (await book('cut')).json().reference as string;
     const status = async () => (await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json();
-    // While it is being paid for, the customer may still walk away.
-    expect((await status()).cancellable).toBe(true);
+    // While it is being paid for, the customer may still walk away: nothing was paid, so nothing is said of money.
+    expect(await status()).toMatchObject({ cancellable: true });
+    expect((await status()).refund).toBeUndefined();
     await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
-    expect(await status()).toMatchObject({ state: 'booked', cancellable: false });
+    expect(await status()).toMatchObject({ state: 'booked', cancellable: true, refund: 'full' });
+    await h.db.delete(bookingMails);
+    const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, refund: 'refunded' });
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(1);
+    expect((await txns())[0]).toMatchObject({ status: 'refunded', refundedMinor: 4500 });
+    expect(await claim()).toBeUndefined();
+    const mails = await h.db.select().from(bookingMails);
+    expect(mails.find((m) => m.recipient === 'ada@example.test')!.body.text).toContain('Your payment will be refunded.');
+    expect(mails.find((m) => m.recipient === 'hello@studio.example')!.body.text).toContain('The payment has been refunded.');
+  });
+
+  it('★ keeps the payment of a booking the customer cancels after its deadline, and tells both sides', async () => {
+    const reference = (await book('cut')).json().reference as string;
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
+    // It starts in half an hour: inside the hour before it, where cancelling refunds nothing.
+    const soon = Date.now() + 30 * 60_000;
+    await h.db.update(bookingClaims).set({ startAt: new Date(soon), endAt: new Date(soon + 3_600_000), busyEnd: new Date(soon + 3_600_000) });
+    const status = (await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json();
+    expect(status).toMatchObject({ cancellable: true, refund: 'none' });
+    await h.db.delete(bookingMails);
+    const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
+    expect(res.json()).toMatchObject({ ok: true, refund: 'none' });
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(0);
+    expect((await txns())[0]).toMatchObject({ status: 'paid', refundedMinor: 0 });
+    const mails = await h.db.select().from(bookingMails);
+    expect(mails.find((m) => m.recipient === 'ada@example.test')!.body.text).toContain('so your payment is not refunded');
+    expect(mails.find((m) => m.recipient === 'hello@studio.example')!.body.text).toContain('the payment is kept');
+  });
+
+  it('★ one cancellation at a time: a double click refunds once and mails once', async () => {
+    const reference = (await book('cut')).json().reference as string;
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
+    await h.db.delete(bookingMails);
+    const cancel = () => h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
+    const [a, b] = await Promise.all([cancel(), cancel()]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 404]);
+    expect((a.statusCode === 200 ? a : b).json()).toMatchObject({ refund: 'refunded' });
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(1);
+    const toCustomer = (await h.db.select().from(bookingMails)).filter((m) => m.recipient === 'ada@example.test');
+    expect(toCustomer).toHaveLength(1);
+    expect(toCustomer[0]!.body.text).toContain('Your payment will be refunded.');
+  });
+
+  it('refuses to cancel a paid booking online in its last minute, and says so on its page', async () => {
+    const reference = (await book('cut')).json().reference as string;
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
+    const soon = Date.now() + 30_000;
+    await h.db.update(bookingClaims).set({ startAt: new Date(soon), endAt: new Date(soon + 3_600_000), busyEnd: new Date(soon + 3_600_000) });
+    expect((await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json().cancellable).toBe(false);
     const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toBe('paid');
+    expect(res.json().error).toBe('started');
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(0);
     expect((await claim())?.state).toBe('booked');
+  });
+
+  it('a cancellation retried after its refund went out still tells both sides it was refunded', async () => {
+    const reference = (await book('cut')).json().reference as string;
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
+    // The first attempt refunded it, then was refused (a busy moment): the payment reads refunded, the booking stands.
+    await h.db.update(shopTransactions).set({ status: 'refunded', refundedMinor: 4500 });
+    // Its page says so, even past the deadline (it starts within the hour now).
+    const soon = Date.now() + 30 * 60_000;
+    await h.db.update(bookingClaims).set({ startAt: new Date(soon), endAt: new Date(soon + 3_600_000), busyEnd: new Date(soon + 3_600_000) });
+    expect((await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json().refund).toBe('full');
+    await h.db.delete(bookingMails);
+    const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
+    expect(res.json()).toMatchObject({ ok: true, refund: 'refunded' });
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(0);
+    const customer = (await h.db.select().from(bookingMails)).find((m) => m.recipient === 'ada@example.test')!;
+    expect(customer.body.text).toContain('Your payment will be refunded.');
+  });
+
+  it('a free booking’s cancellation says nothing of money', async () => {
+    const reference = (await book('free')).json().reference as string;
+    const status = (await h.app.inject({ method: 'GET', url: `/b/${pid}/_booking/${reference}` })).json();
+    expect(status.refund).toBeUndefined();
+    const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/_booking/${reference}/cancel` });
+    expect(res.json()).toEqual({ ok: true });
   });
 
   it('confirms in the customer’s language, with the link to the booking’s own page', async () => {

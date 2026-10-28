@@ -202,6 +202,12 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       },
       { key: 'booking.cancel', label: 'Status page: cancel (button)', default: 'Cancel booking' },
       { key: 'booking.cancel_confirm', label: 'Status page: confirm cancelling', default: 'Cancel this booking?' },
+      { key: 'booking.cancel_refund', label: 'Status page: cancelling a paid booking, refunded', default: 'Your payment will be refunded in full.' },
+      {
+        key: 'booking.cancel_no_refund',
+        label: 'Status page: cancelling a paid booking, too late for a refund',
+        default: 'It is too close to its start for a refund: your payment will not be refunded.',
+      },
       { key: 'booking.cancel_yes', label: 'Status page: yes, cancel (button)', default: 'Yes, cancel it' },
       { key: 'booking.cancel_no', label: 'Status page: keep it (button)', default: 'Keep it' },
       { key: 'booking.started', label: 'Status page: too late to cancel', default: 'This booking has started, so it can no longer be cancelled online.' },
@@ -221,6 +227,11 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
         default: 'We are sorry: your payment came in after the time could no longer be held for you, so it is not booked. Your payment will be refunded. Please choose another time.',
       },
       { key: 'booking.mail_refund_note', label: 'Email: a paid booking cancelled', default: 'Your payment will be refunded.' },
+      {
+        key: 'booking.mail_no_refund_note',
+        label: 'Email: a paid booking cancelled too late for a refund',
+        default: 'It was cancelled too close to its start for a refund, so your payment is not refunded.',
+      },
     ],
   },
   {

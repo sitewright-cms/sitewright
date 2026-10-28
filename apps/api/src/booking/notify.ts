@@ -92,8 +92,8 @@ export interface BookingEvent {
   locale?: string;
   /** The business did it: accepted a request, or cancelled from its Bookings tab. */
   by?: 'business';
-  /** A paid booking's money going back: refunded, or for the business to refund by hand. */
-  refund?: 'refunded' | 'manual';
+  /** A paid booking's money: refunded, for the business to refund by hand, or kept (cancelled too late for a refund). */
+  refund?: 'refunded' | 'manual' | 'none';
 }
 
 export class BookingNotifier {

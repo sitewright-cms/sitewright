@@ -757,6 +757,48 @@ describe('a booking’s own page', () => {
     await until(() => expect(shown(part(gone, 'status-unknown'))).toBe(true));
   });
 
+  it('★ says what cancelling a paid booking does with the money, before the customer says yes', async () => {
+    route = () => ({ status: 200, body: { ...BOOKED, refund: 'none' } });
+    const root = statusPage('/my-booking/#t=ref-1');
+    await until(() => expect(shown(part(root, 'cancel'))).toBe(true));
+    // It is part of the confirmation, which shows when the customer asks to cancel.
+    expect(shown(part(root, 'cancel-confirm'))).toBe(false);
+    part(root, 'cancel').click();
+    expect(shown(part(root, 'cancel-confirm'))).toBe(true);
+    expect(shown(part(root, 'cancel-refund'))).toBe(true);
+    expect(part(root, 'cancel-refund').textContent).toBe('It is too close to its start for a refund: your payment will not be refunded.');
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('says a paid booking cancelled in time is refunded, and nothing of money for a free one', async () => {
+    route = () => ({ status: 200, body: { ...BOOKED, refund: 'full' } });
+    const paid = statusPage('/my-booking/#t=ref-1');
+    await until(() => expect(shown(part(paid, 'cancel'))).toBe(true));
+    expect(part(paid, 'cancel-refund').textContent).toBe('Your payment will be refunded in full.');
+    route = () => ({ status: 200, body: BOOKED });
+    const free = statusPage('/my-booking/#t=ref-2');
+    await until(() => expect(shown(part(free, 'cancel'))).toBe(true));
+    expect(part(free, 'cancel-refund').textContent).toBe('');
+  });
+
+  it('★ adds the warning to an authored confirmation that has no place for it', async () => {
+    route = () => ({ status: 200, body: { ...BOOKED, refund: 'none' } });
+    window.history.replaceState({}, '', '/my-booking/#t=ref-1');
+    const booking = bookingRenderContext(CONFIG);
+    document.body.innerHTML = renderTemplate(
+      '{{#sw-booking-status}}<p data-sw-part="status-booked" hidden>Booked</p><button data-sw-part="cancel" hidden>Cancel</button>' +
+        '<div data-sw-part="cancel-confirm" hidden><p>Sure?</p><button data-sw-part="cancel-yes">Yes</button></div><p data-sw-part="message"></p>{{/sw-booking-status}}',
+      { booking },
+    );
+    (0, eval)(BOOKING_JS);
+    const root = document.querySelector('[data-sw-booking-status]') as HTMLElement;
+    await until(() => expect(shown(part(root, 'cancel'))).toBe(true));
+    const added = part(root, 'cancel-refund');
+    expect(added.textContent).toBe('It is too close to its start for a refund: your payment will not be refunded.');
+    // Before the yes, inside the confirmation.
+    expect(added.nextElementSibling).toBe(part(root, 'cancel-yes'));
+  });
+
   it('tells the visitor when it is too late to cancel', async () => {
     route = (c) => (c.method === 'POST' ? { status: 409, body: { error: 'started' } } : { status: 200, body: BOOKED });
     const root = statusPage('/my-booking/?t=ref-1');

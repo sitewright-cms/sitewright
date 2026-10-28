@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  DEFAULT_REFUND_UNTIL_MIN,
   fromMinorUnits,
   toMinorUnits,
   type BookingConfig,
@@ -8,7 +9,7 @@ import {
   type PaymentGatewayPublic,
   type PaymentKeysStatus,
 } from '@sitewright/schema';
-import { SelectField, TextField } from './fields';
+import { NumField, SelectField, TextField } from './fields';
 
 /**
  * PREPAYMENT in the set-up: which of the project's payment providers takes a paid booking's money, in which
@@ -193,6 +194,18 @@ export function PriceFields({
           options={perOptions}
           error={err('price.per')}
           tip="Per seat or unit: times the number booked at once. Per night or day: times the length of the stay."
+        />
+      )}
+      {o.price && (
+        <NumField
+          label="Refunded if cancelled"
+          value={o.refundUntilMin === undefined ? undefined : o.refundUntilMin / 60}
+          min={0}
+          suffix="hours or more before"
+          placeholder={String(DEFAULT_REFUND_UNTIL_MIN / 60)}
+          onChange={(hours) => onChange({ ...o, refundUntilMin: hours === undefined ? undefined : hours * 60 })}
+          error={err('refundUntilMin')}
+          tip="A customer who cancels at least this long before it starts gets their payment back in full; later, nothing (they are told before they confirm). You cancelling it always refunds in full. Empty: 24 hours."
         />
       )}
     </div>

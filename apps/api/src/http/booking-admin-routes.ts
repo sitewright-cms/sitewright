@@ -6,6 +6,7 @@ import type { BookingClaimsRepository, ClaimRow } from '../booking/claims.js';
 import type { BookingEvent } from '../booking/notify.js';
 import type { BookingMailRepository } from '../booking/outbox.js';
 import type { AnswerResult, BookingService } from '../booking/service.js';
+import { BookingCancelLock } from '../booking/cancel-lock.js';
 
 /**
  * THE BOOKINGS TAB's routes: the project's bookings and requests with their customers' details, and the
@@ -35,6 +36,8 @@ export interface BookingAdminDeps {
    * provider would not refund it, so the business must, from its dashboard.
    */
   refundCancelled?: (projectId: string, claimId: string) => Promise<'refunded' | 'manual' | undefined>;
+  /** One cancellation of a booking at a time; shared with the customer's own (booking-routes.ts). */
+  cancelLock?: BookingCancelLock;
   resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   now?: () => number;
@@ -74,6 +77,7 @@ function view(c: ClaimRow, config: BookingConfig | null): Record<string, unknown
 
 export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAdminDeps): void {
   const now = deps.now ?? Date.now;
+  const lock = deps.cancelLock ?? new BookingCancelLock();
 
   app.get<{ Params: { projectId: string }; Querystring: { view?: string } }>('/projects/:projectId/bookings', { config: deps.rl(120) }, async (req, reply) => {
     const { project } = await deps.resolveProject(req, 'content:read');
@@ -102,10 +106,11 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
       const id = req.params.id;
       if (id.length > 64) return reply.code(404).send({ error: 'there is no such booking' });
       // ★ A paid booking's money goes back FIRST: a crash between the two then leaves a booking standing (the business
-      // sees it and cancels again, with nothing left to refund), never a cancelled booking nobody refunds. Only for
-      // one the cancellation will take: a booking (not a checkout in progress) that has not ended.
-      let refund: 'refunded' | 'manual' | undefined;
-      if (path === 'cancel') {
+      // sees it and cancels again, its refund already made), never a cancelled booking nobody refunds. Only for one
+      // the cancellation will take: a booking (not a checkout in progress) that has not ended. One cancellation of a
+      // booking at a time, the customer's included (the lock is shared).
+      const cancel = async (): Promise<{ refund: 'refunded' | 'manual' | undefined; result: AnswerResult }> => {
+        let refund: 'refunded' | 'manual' | undefined;
         const claim = await deps.claims.get(project.id, id);
         if (claim && claim.state !== 'hold' && claim.endAt.getTime() > now()) {
           refund = await deps.refundCancelled?.(project.id, id).catch((err: unknown) => {
@@ -113,13 +118,14 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
             return 'manual' as const;
           });
         }
-      }
-      const result =
+        return { refund, result: await deps.bookings.cancelByBusiness(project.id, id) };
+      };
+      const { refund, result } =
         path === 'accept'
-          ? await deps.bookings.accept(project.id, id)
+          ? { refund: undefined, result: await deps.bookings.accept(project.id, id) }
           : path === 'decline'
-            ? await deps.bookings.decline(project.id, id)
-            : await deps.bookings.cancelByBusiness(project.id, id);
+            ? { refund: undefined, result: await deps.bookings.decline(project.id, id) }
+            : await lock.run(project.id, id, cancel);
       if (!result.ok) {
         // Refunded, yet not cancelled (a busy moment): the business is told both, and cancels again.
         if (refund) req.log.warn({ projectId: project.id, reason: result.reason, refund }, 'a booking was refunded but its cancellation was refused');

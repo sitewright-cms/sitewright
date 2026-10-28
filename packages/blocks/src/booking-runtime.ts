@@ -587,6 +587,14 @@ export const BOOKING_JS = `(function(){
       }
       var cancel=p('cancel'),confirm=p('cancel-confirm'),yes=p('cancel-yes'),no=p('cancel-no');
       if(!cancel||!b.cancellable){return;}
+      // A paid booking: what cancelling now does with the money, said BEFORE the yes. An authored confirmation
+      // without its place for it gets one: a customer must never lose a payment unwarned.
+      if(b.refund){
+        var said=t(b.refund==='full'?'cancel_refund':'cancel_no_refund'),money=p('cancel-refund');
+        if(!money&&confirm){money=mk('p','cancel-refund');confirm.insertBefore(money,yes&&yes.parentNode===confirm?yes:null);}
+        // No confirmation step at all: said beside the button, before it is pressed.
+        if(money){money.textContent=said;show(money,true);}else{say(said);}
+      }
       show(cancel,true);
       cancel.addEventListener('click',function(){if(confirm&&yes){show(cancel,false);show(confirm,true);yes.focus();}else{go();}});
       if(no){no.addEventListener('click',function(){show(confirm,false);show(cancel,true);cancel.focus();});}

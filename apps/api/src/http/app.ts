@@ -295,6 +295,7 @@ import { registerBookingAdminRoutes } from './booking-admin-routes.js';
 import { signBookingRef } from '../booking/reference.js';
 import { BookingService } from '../booking/service.js';
 import { registerBookingRoutes } from './booking-routes.js';
+import { BookingCancelLock } from '../booking/cancel-lock.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, loadProjectSmtp, makeProjectMailSender, verifySmtpConnection, sendSmtpTestMessage, type SubmissionMailer, type ProjectMailer, type TransportConfig } from '../mail/mailer.js';
 import { HttpCaptchaVerifier, type CaptchaVerifier } from '../mail/captcha.js';
 import { registerProjectCaptchaRoutes, loadProjectCaptchaById } from './project-captcha-routes.js';
@@ -11301,6 +11302,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     log: { warn: (o, m) => app.log.warn(o, m) },
   });
 
+  // One cancellation of a booking at a time, whoever cancels it: its money is decided before it is cancelled.
+  const bookingCancelLock = new BookingCancelLock();
   // Public booking: what a published site's booking widget calls (see booking-routes.ts).
   registerBookingRoutes(app, {
     bookings: bookingService,
@@ -11345,8 +11348,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const page = `${base}${statusPath ?? '/'}#t=${encodeURIComponent(reference)}`;
       return { return: page, cancel: page };
     },
-    // A paid booking is the business's to cancel (it refunds it) until customers' refunds are in place.
-    isPaid: async (projectId, claimId) => (await shopTransactionsRepo.paidForBooking(projectId, claimId)) !== undefined,
+    // A paid booking the customer cancels is refunded in full until its offering's deadline (late-bound, as above).
+    payment: async (projectId, claimId) => {
+      const txn = await shopTransactionsRepo.paymentForBooking(projectId, claimId);
+      return txn ? (txn.status === 'refunded' ? 'refunded' : 'paid') : undefined;
+    },
+    cancelMoney: (projectId, claimId, inFull) => (bookingPayments ? bookingPayments.cancelMoney(projectId, claimId, inFull) : Promise.resolve(undefined)),
+    cancelLock: bookingCancelLock,
   });
 
   // The Bookings tab: the project's bookings and requests, and the business's answers (see booking-admin-routes.ts).
@@ -11359,6 +11367,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     reference: (projectId, claimId) => signBookingRef(projectId, claimId, currentCookieSecret),
     // Late-bound, as above: a paid booking the business cancels is refunded in full.
     refundCancelled: (projectId, claimId) => (bookingPayments ? bookingPayments.refundCancelled(projectId, claimId) : Promise.resolve(undefined)),
+    cancelLock: bookingCancelLock,
     resolveProject,
     rl,
   });

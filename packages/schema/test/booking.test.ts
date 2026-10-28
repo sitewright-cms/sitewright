@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  DEFAULT_REFUND_UNTIL_MIN,
+  refundsInFull,
   BookingBlockSchema,
   BookingConfigSchema,
   BookingIdSchema,
@@ -165,5 +167,21 @@ describe('the whole configuration', () => {
     const mixed = BookingConfigSchema.safeParse({ resources: [anna, ny], offerings: [{ ...consult, resourceIds: ['anna', 'ben'] }] });
     expect(mixed.success).toBe(false);
     expect(mixed.error?.issues[0]?.path).toEqual(['offerings', 0, 'resourceIds']);
+  });
+});
+
+describe('a customer’s refund when cancelling a paid booking', () => {
+  const H = 3_600_000;
+  it('is in full until the offering’s deadline before the start, and nothing after; a day unless set', () => {
+    const start = Date.UTC(2026, 10, 2, 9);
+    expect(refundsInFull({}, start, start - 24 * H)).toBe(true);
+    expect(refundsInFull({}, start, start - 24 * H + 1)).toBe(false);
+    expect(refundsInFull({ refundUntilMin: 60 }, start, start - H)).toBe(true);
+    expect(refundsInFull({ refundUntilMin: 60 }, start, start - H + 1)).toBe(false);
+    // Zero: refunded right up to the start.
+    expect(refundsInFull({ refundUntilMin: 0 }, start, start)).toBe(true);
+    // An offering no longer in the set-up keeps the default.
+    expect(refundsInFull(undefined, start, start - 25 * H)).toBe(true);
+    expect(DEFAULT_REFUND_UNTIL_MIN).toBe(1440);
   });
 });

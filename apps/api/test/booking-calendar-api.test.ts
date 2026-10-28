@@ -211,3 +211,85 @@ describe('★ a CalDAV calendar', () => {
     expect((await connect({ kind: 'caldav', resourceId: 'anna', name: 'x', url: 'http://cloud.example/cal/', username: 'a', password: 'b' })).statusCode).toBe(400);
   });
 });
+
+describe('★ bookings put into a CalDAV calendar', () => {
+  const CAL = 'https://cloud.example/dav/anna/personal/';
+  const WRITE_CONFIG = {
+    resources: [{ id: 'anna', name: 'Anna', timeZone: 'Europe/Berlin', hours: ALL_DAY }],
+    offerings: [
+      { id: 'anna-hour', name: 'With Anna', mode: 'duration', durationMin: 60, resourceIds: ['anna'] },
+      { id: 'anna-ask', name: 'Ask Anna', mode: 'duration', durationMin: 60, resourceIds: ['anna'], confirmation: 'request' },
+    ],
+  };
+  let dav: Array<{ method: string; url: string; body?: string }>;
+
+  beforeEach(async () => {
+    await h.close();
+    dav = [];
+    h = await makeHarness({
+      bookingDavFetch: async (url, init) => {
+        if (init.method === 'PUT' || init.method === 'DELETE') {
+          dav.push({ method: init.method, url, body: init.body });
+          return { ok: true, status: init.method === 'PUT' ? 201 : 204, headers: {}, text: '' };
+        }
+        // Reading the calendar back: empty.
+        return { ok: true, status: 207, headers: {}, text: '<d:multistatus xmlns:d="DAV:"></d:multistatus>' };
+      },
+    });
+    client = await h.signup({ email: 'owner@studio.example', admin: true });
+    pid = await client.createProject('Studio', 'studio');
+    expect((await client.put(`/projects/${pid}/content/booking/booking`, WRITE_CONFIG)).statusCode).toBe(200);
+  });
+
+  const book = async (offering: string) => {
+    const from = Date.now();
+    const times = (await h.app.inject({ method: 'GET', url: `/b/${pid}/${offering}/availability?from=${from}&to=${from + 2 * 86_400_000}` })).json().times;
+    const res = await h.app.inject({ method: 'POST', url: `/b/${pid}/${offering}`, payload: { ...HUMAN, start: String(times[2].start) } });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+  const until = async (n: number) => {
+    for (let i = 0; i < 200 && dav.length < n; i += 1) await new Promise((r) => setTimeout(r, 10));
+    expect(dav.length).toBe(n);
+  };
+  const ids = async () => ((await client.get(`/projects/${pid}/bookings`)).json().bookings as Array<{ id: string; state: string }>).map((b) => b.id);
+
+  it('★ puts a booking in as it is made, a request tentatively, and takes them out when cancelled or declined', async () => {
+    const res = await connect({ kind: 'caldav', resourceId: 'anna', name: 'Nextcloud', url: CAL, username: 'anna', password: 'pw', writes: true });
+    expect(res.json().calendar).toMatchObject({ writes: true, writeError: null });
+    await book('anna-hour');
+    await until(1);
+    const [booked] = await ids();
+    expect(dav[0]).toMatchObject({ method: 'PUT', url: `${CAL}${booked}.ics` });
+    expect(dav[0]!.body).toContain('STATUS:CONFIRMED');
+    expect(dav[0]!.body).toContain('SUMMARY:With Anna: Ada');
+    expect(dav[0]!.body).toContain(`UID:${booked}@${pid}`);
+
+    await book('anna-ask');
+    await until(2);
+    expect(dav[1]!.body).toContain('STATUS:TENTATIVE');
+    const asked = (await ids()).find((id) => id !== booked)!;
+    expect((await client.post(`/projects/${pid}/bookings/${asked}/decline`, {})).statusCode).toBe(200);
+    expect((await client.post(`/projects/${pid}/bookings/${booked}/cancel`, {})).statusCode).toBe(200);
+    await until(4);
+    expect(dav.slice(2).map((d) => `${d.method} ${d.url}`).sort()).toEqual([`DELETE ${CAL}${asked}.ics`, `DELETE ${CAL}${booked}.ics`].sort());
+  });
+
+  it('puts the upcoming bookings in when a calendar starts taking them, and only a CalDAV calendar can', async () => {
+    const { calendar } = (await connect({ kind: 'caldav', resourceId: 'anna', name: 'Nextcloud', url: CAL, username: 'anna', password: 'pw' })).json();
+    expect(calendar.writes).toBe(false);
+    await book('anna-hour');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(dav).toEqual([]);
+    const on = await client.patch(`/projects/${pid}/booking/calendars/${calendar.id}`, { writes: true });
+    expect(on.statusCode, on.body).toBe(200);
+    expect(on.json().calendar.writes).toBe(true);
+    await until(1);
+    expect(dav[0]!.method).toBe('PUT');
+
+    const ics = (await connect({ resourceId: 'anna', name: 'Feed', url: 'https://cal.example/a.ics' })).json().calendar;
+    expect((await client.patch(`/projects/${pid}/booking/calendars/${ics.id}`, { writes: true })).statusCode).toBe(400);
+    expect((await client.patch(`/projects/${pid}/booking/calendars/${calendar.id}`, { writes: 'yes' })).statusCode).toBe(400);
+    const stranger = await h.signup({ email: 'stranger@example.test' });
+    expect((await stranger.patch(`/projects/${pid}/booking/calendars/${calendar.id}`, { writes: false })).statusCode).toBe(403);
+  });
+});

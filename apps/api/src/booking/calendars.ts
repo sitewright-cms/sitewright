@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { bookingCalendars } from '../db/schema.js';
 import { newId } from '../id.js';
@@ -62,11 +62,47 @@ export class BookingCalendarRepository {
     return row?.n ?? 0;
   }
 
-  async insert(c: Pick<CalendarRow, 'projectId' | 'resourceId' | 'kind' | 'name' | 'url' | 'host'>, now: number): Promise<CalendarRow> {
+  async insert(c: Pick<CalendarRow, 'projectId' | 'resourceId' | 'kind' | 'name' | 'url' | 'host'> & { writes?: boolean }, now: number): Promise<CalendarRow> {
     const at = new Date(now);
-    const row: CalendarRow = { id: newId(16), ...c, lastOkAt: null, lastError: null, lastEvents: null, createdAt: at, updatedAt: at };
+    const row: CalendarRow = { id: newId(16), ...c, writes: c.writes ?? false, writeError: null, wroteAt: null, lastOkAt: null, lastError: null, lastEvents: null, createdAt: at, updatedAt: at };
     await this.db.insert(bookingCalendars).values(row);
     return row;
+  }
+
+  /** Switches putting bookings into a CalDAV calendar on or off. Not the address: the reading stays cached. */
+  async setWrites(projectId: string, id: string, writes: boolean): Promise<boolean> {
+    const res = await this.db
+      .update(bookingCalendars)
+      .set({ writes, writeError: null })
+      .where(and(eq(bookingCalendars.projectId, projectId), eq(bookingCalendars.id, id), eq(bookingCalendars.kind, 'caldav')))
+      .returning({ id: bookingCalendars.id });
+    return res.length > 0;
+  }
+
+  /** The outcome of putting a booking in (or taking one out): null clears an earlier error; `wrote` marks a put. */
+  async recordWrite(id: string, error: string | null, wrote?: number): Promise<void> {
+    await this.db
+      .update(bookingCalendars)
+      .set(wrote !== undefined ? { writeError: error, wroteAt: new Date(wrote) } : { writeError: error })
+      .where(eq(bookingCalendars.id, id));
+  }
+
+  /**
+   * The CalDAV calendars of a resource a booking's change is synced to: those taking the bookings, and those that
+   * took them before (switched off since), so a booking cancelled meanwhile is still taken out of them.
+   */
+  async syncTargetsFor(projectId: string, resourceId: string): Promise<CalendarRow[]> {
+    return this.db
+      .select()
+      .from(bookingCalendars)
+      .where(
+        and(
+          eq(bookingCalendars.projectId, projectId),
+          eq(bookingCalendars.resourceId, resourceId),
+          eq(bookingCalendars.kind, 'caldav'),
+          or(eq(bookingCalendars.writes, true), isNotNull(bookingCalendars.wroteAt)),
+        ),
+      );
   }
 
   async remove(projectId: string, id: string): Promise<boolean> {

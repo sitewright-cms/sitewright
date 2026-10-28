@@ -330,6 +330,13 @@
       "when": 1793140289649,
       "tag": "0046_booking_feeds",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1793144848724,
+      "tag": "0047_booking_calendar_writes",
+      "breakpoints": true
     }
   ]
 }

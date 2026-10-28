@@ -11,6 +11,23 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Bookings go into CalDAV calendars.** A CalDAV calendar connected to a resource can take its bookings: switched
+  on when connecting (on by default), or later on the calendar's row.
+  - **What goes in:** a booking as a confirmed event and a request as a tentative one. A request accepted becomes
+    confirmed. A cancellation, a declined request or one that lapsed is taken out again.
+  - **Backfill:** a calendar that starts taking the bookings gets the upcoming ones at once.
+  - **Same booking, same event:** the event carries the booking's UID, as in its invitation and the feed. Reading
+    the calendar back skips it, so a booking never blocks its own time twice.
+  - **Reliable:** a booking's change queues "sync it", and what to do is decided when it is sent, from the booking as
+    it then stands. So the order of changes never matters, and a booking cancelled meanwhile is never put back. It
+    is retried with a back-off over about 15 hours. What retrying cannot fix (a refused sign-in, a calendar no
+    longer at its address) stops at once, and the calendar's row says why. Switching it on again retries it.
+  - **Switched off:** new bookings stop going in, but one put in earlier is still taken out when cancelled.
+  - **Privacy:** no customer detail waits in the queue: the event is written from the booking when it is sent.
+  - **API:** `writes` on a CalDAV connect, and `PATCH /projects/:id/booking/calendars/:id` with `{writes}`.
+  - Checked against a real Radicale server: a request in as tentative, accepted to confirmed, cancelled and gone,
+    and read back (skipped as our own).
+
 - **Booking reads CalDAV calendars.** Besides an iCalendar address, a resource's calendar can be a CalDAV account's
   calendar: Nextcloud, Fastmail, iCloud, Radicale, Baïkal and other CalDAV servers.
   - **Connecting:** the server's address, a username and an app password find the account's calendars (the

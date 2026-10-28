@@ -15,6 +15,7 @@ import { davUrl, type DavAuth, type FoundCalendar } from '../booking/caldav.js';
  *   POST   /projects/:projectId/booking/calendars/:id/test    read it again now
  *   DELETE /projects/:projectId/booking/calendars/:id
  *   POST   /projects/:projectId/booking/calendars/discover    a CalDAV account's calendars (nothing is stored)
+ *   PATCH  /projects/:projectId/booking/calendars/:id         `{writes}`: a CalDAV calendar takes the bookings, or not
  *
  * Two kinds: an iCalendar feed's address (`ics`), or a calendar on a CalDAV server (`caldav`: its address, a
  * username and an app password, all three encrypted together).
@@ -31,6 +32,10 @@ export interface BookingCalendarDeps {
   reader: CalendarReader;
   readConfig: (projectId: string) => Promise<BookingConfig | null>;
   encrypt: (plaintext: string) => EncryptedSecret;
+  /** Puts a calendar's resource's upcoming bookings into it (it starts taking them). Absent: no writing. */
+  backfill?: (calendar: CalendarRow) => Promise<number>;
+  /** Drops what was still to be written into a calendar that is removed. */
+  forgetWrites?: (calendarId: string) => Promise<void>;
   /** A CalDAV account's calendars. Absent: CalDAV is not offered. */
   discoverCalDav?: (serverUrl: string, auth: DavAuth) => Promise<{ ok: true; calendars: FoundCalendar[] } | { ok: false; error: string }>;
   resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
@@ -53,8 +58,12 @@ const ConnectSchema = z.union([
     url: z.string().trim().min(1).max(2048),
     username: z.string().min(1).max(320),
     password: z.string().min(1).max(1024),
+    /** Also put the bookings into it (and take them out when cancelled). */
+    writes: z.boolean().optional(),
   }),
 ]);
+
+const WritesSchema = z.strictObject({ writes: z.boolean() });
 
 const DiscoverSchema = z.strictObject({
   url: z.string().trim().min(1).max(2048),
@@ -73,6 +82,8 @@ function view(c: CalendarRow): Record<string, unknown> {
     lastOkAt: c.lastOkAt ? c.lastOkAt.getTime() : null,
     lastError: c.lastError,
     lastEvents: c.lastEvents,
+    writes: c.writes,
+    writeError: c.writeError,
     createdAt: c.createdAt.getTime(),
   };
 }
@@ -115,9 +126,18 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
     // ★ A CalDAV calendar's address, username and password are one secret, encrypted together.
     const secret = input.data.kind === 'caldav' ? JSON.stringify({ url, username: input.data.username, password: input.data.password }) : url;
     const row = await deps.calendars.insert(
-      { projectId: project.id, resourceId: input.data.resourceId, kind: caldav ? 'caldav' : 'ics', name: input.data.name, url: deps.encrypt(secret), host: new URL(url).host },
+      {
+        projectId: project.id,
+        resourceId: input.data.resourceId,
+        kind: caldav ? 'caldav' : 'ics',
+        name: input.data.name,
+        url: deps.encrypt(secret),
+        host: new URL(url).host,
+        writes: input.data.kind === 'caldav' && input.data.writes === true && !!deps.backfill,
+      },
       now(),
     );
+    if (row.writes) void deps.backfill?.(row).catch((err: unknown) => req.log.warn({ err, calendarId: row.id }, 'could not put the upcoming bookings into a calendar'));
     return reply.code(201).send(await readNow(project.id, row, timeZone));
   });
 
@@ -144,12 +164,28 @@ export function registerBookingCalendarRoutes(app: FastifyInstance, deps: Bookin
     return reply.send(await readNow(project.id, row, timeZone));
   });
 
+  app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/booking/calendars/:id', { config: deps.rl(30), bodyLimit: 1024 }, async (req, reply) => {
+    const { project, ok } = await writer(req as unknown as ProjectReq, 'content:write');
+    if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
+    const input = WritesSchema.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: '{"writes": true|false} is expected' });
+    const row = await deps.calendars.get(project.id, req.params.id);
+    if (!row) return reply.code(404).send({ error: 'there is no such calendar' });
+    if (row.kind !== 'caldav' || (input.data.writes && !deps.backfill)) return reply.code(400).send({ error: 'only a CalDAV calendar takes the bookings' });
+    await deps.calendars.setWrites(project.id, row.id, input.data.writes);
+    const fresh = (await deps.calendars.get(project.id, row.id)) ?? row;
+    // Switched on: the upcoming bookings go in now. Switched off: what is there stays (it is the business's calendar).
+    if (input.data.writes && !row.writes) void deps.backfill?.(fresh).catch((err: unknown) => req.log.warn({ err, calendarId: row.id }, 'could not put the upcoming bookings into a calendar'));
+    return reply.send({ calendar: view(fresh) });
+  });
+
   app.delete<{ Params: { projectId: string; id: string } }>('/projects/:projectId/booking/calendars/:id', { config: deps.rl(30) }, async (req, reply) => {
     const { project, ok } = await writer(req as unknown as ProjectReq, 'content:write');
     if (!ok) return reply.code(403).send({ error: 'insufficient role for this operation' });
     const row = await deps.calendars.get(project.id, req.params.id);
     if (!row || !(await deps.calendars.remove(project.id, row.id))) return reply.code(404).send({ error: 'there is no such calendar' });
     deps.reader.forget(row);
+    await deps.forgetWrites?.(row.id);
     return reply.send({ ok: true });
   });
 }

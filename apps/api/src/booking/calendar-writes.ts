@@ -8,6 +8,9 @@ import type { BookingCalendarRepository, CalendarRow } from './calendars.js';
 import type { ClaimRow } from './claims.js';
 import { bookingEventLines } from './feed.js';
 import { ICS_PRODID, icsFold } from './ics.js';
+import { deleteGoogleEvent, eventIdFor, googleEventFor, putGoogleEvent } from './google-calendar.js';
+import type { GoogleServiceAccountKey } from '../webmaster/google.js';
+import type { WebmasterIo } from '../webmaster/request.js';
 
 /**
  * BOOKINGS KEPT IN A CALDAV CALENDAR: a booking or a request is in it (confirmed, or tentative); once cancelled,
@@ -175,8 +178,10 @@ export interface CalendarWriteRunnerDeps {
   claimOf: (projectId: string, claimId: string) => Promise<ClaimRow | undefined>;
   readConfig: (projectId: string) => Promise<BookingConfig | null>;
   transport: DavTransport;
-  /** A calendar's stored secret, decrypted: `{url, username, password}` as JSON. */
+  /** A calendar's stored secret, decrypted: `{url, username, password}` as JSON (CalDAV), the calendar id (Google). */
   decrypt: (envelope: CalendarRow['url']) => string;
+  /** The platform's Google service account, for Google calendars. Absent: they cannot be written. */
+  google?: { key: () => Promise<GoogleServiceAccountKey | null>; io: WebmasterIo };
   now?: () => number;
   log?: { warn: (o: unknown, m: string) => void };
 }
@@ -208,7 +213,7 @@ export async function runCalendarWrites(deps: CalendarWriteRunnerDeps): Promise<
 
 async function attempt(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, clock: () => number): Promise<boolean> {
   const calendar = await deps.calendars.get(row.projectId, row.calendarId);
-  if (!calendar || calendar.kind !== 'caldav') {
+  if (!calendar || (calendar.kind !== 'caldav' && calendar.kind !== 'google')) {
     await deps.writes.done(row.id, row.seq);
     return true;
   }
@@ -220,24 +225,33 @@ async function attempt(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, clo
     await deps.writes.done(row.id, row.seq);
     return true;
   }
-  let source: { url: string; username: string; password: string };
-  try {
-    source = JSON.parse(deps.decrypt(calendar.url)) as typeof source;
-  } catch {
-    return fail(deps, row, calendar.id, 'the calendar’s sign-in could not be read: connect it again', clock, true);
-  }
-  const authorization = `Basic ${Buffer.from(`${source.username}:${source.password}`, 'utf8').toString('base64')}`;
-  const url = objectUrl(source.url, row.claimId);
-  const res = put
-    ? await deps.transport(url, { method: 'PUT', headers: { authorization, 'content-type': 'text/calendar; charset=utf-8' }, body: calendarObject(row.projectId, claim!, await deps.readConfig(row.projectId), now) })
-    : await deps.transport(url, { method: 'DELETE', headers: { authorization } });
-  if (!res.ok) return fail(deps, row, calendar.id, res.error, clock, false);
-  // Taking out what is not there any more is done.
-  if ((res.status >= 200 && res.status < 300) || (!put && (res.status === 404 || res.status === 410))) {
+  const sent = calendar.kind === 'google' ? await sendGoogle(deps, row, calendar, put ? claim! : null) : await sendCalDav(deps, row, calendar, put ? claim! : null, now);
+  if (sent.ok) {
     await deps.writes.done(row.id, row.seq);
     if (put || calendar.writeError) await deps.calendars.recordWrite(calendar.id, null, put ? now : undefined);
     return true;
   }
+  return fail(deps, row, calendar.id, sent.error, clock, sent.final);
+}
+
+type Sent = { ok: true } | { ok: false; error: string; final: boolean };
+
+/** Puts the booking into a CalDAV calendar (`claim`), or takes it out (null). */
+async function sendCalDav(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, calendar: CalendarRow, claim: ClaimRow | null, now: number): Promise<Sent> {
+  let source: { url: string; username: string; password: string };
+  try {
+    source = JSON.parse(deps.decrypt(calendar.url)) as typeof source;
+  } catch {
+    return { ok: false, error: 'the calendar’s sign-in could not be read: connect it again', final: true };
+  }
+  const authorization = `Basic ${Buffer.from(`${source.username}:${source.password}`, 'utf8').toString('base64')}`;
+  const url = objectUrl(source.url, row.claimId);
+  const res = claim
+    ? await deps.transport(url, { method: 'PUT', headers: { authorization, 'content-type': 'text/calendar; charset=utf-8' }, body: calendarObject(row.projectId, claim, await deps.readConfig(row.projectId), now) })
+    : await deps.transport(url, { method: 'DELETE', headers: { authorization } });
+  if (!res.ok) return { ok: false, error: res.error, final: false };
+  // Taking out what is not there any more is done.
+  if ((res.status >= 200 && res.status < 300) || (!claim && (res.status === 404 || res.status === 410))) return { ok: true };
   // What trying again cannot fix: the business has to act (sign in again, connect the calendar again).
   const final: Record<number, string> = {
     401: 'the calendar server no longer accepts the username or password',
@@ -245,9 +259,19 @@ async function attempt(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, clo
     404: 'the calendar is no longer at its address: connect it again',
     409: 'the calendar is no longer at its address: connect it again',
   };
-  if (final[res.status]) return fail(deps, row, calendar.id, final[res.status]!, clock, true);
-  if (res.status >= 300 && res.status < 400) return fail(deps, row, calendar.id, 'the calendar server sent the booking elsewhere: connect the calendar again', clock, true);
-  return fail(deps, row, calendar.id, `the calendar server answered ${res.status}`, clock, false);
+  if (final[res.status]) return { ok: false, error: final[res.status]!, final: true };
+  if (res.status >= 300 && res.status < 400) return { ok: false, error: 'the calendar server sent the booking elsewhere: connect the calendar again', final: true };
+  return { ok: false, error: `the calendar server answered ${res.status}`, final: false };
+}
+
+/** Puts the booking into a Google calendar (`claim`), or takes it out (null), as the platform's service account. */
+async function sendGoogle(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, calendar: CalendarRow, claim: ClaimRow | null): Promise<Sent> {
+  const key = deps.google ? await deps.google.key() : null;
+  if (!deps.google || !key) return { ok: false, error: 'the platform has no Google account any more: ask its administrator', final: true };
+  const calendarId = deps.decrypt(calendar.url);
+  return claim
+    ? putGoogleEvent(key, deps.google.io, calendarId, googleEventFor(row.projectId, claim, await deps.readConfig(row.projectId)))
+    : deleteGoogleEvent(key, deps.google.io, calendarId, eventIdFor(row.projectId, row.claimId));
 }
 
 async function fail(deps: CalendarWriteRunnerDeps, row: CalendarWriteRow, calendarId: string, error: string, clock: () => number, final: boolean): Promise<false> {

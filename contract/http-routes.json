@@ -101,6 +101,7 @@
   "GET /projects/:projectId/api-keys",
   "GET /projects/:projectId/booking/calendars",
   "GET /projects/:projectId/booking/feed",
+  "GET /projects/:projectId/booking/google",
   "GET /projects/:projectId/bookings",
   "GET /projects/:projectId/captcha",
   "GET /projects/:projectId/clone-audit/:pageId",

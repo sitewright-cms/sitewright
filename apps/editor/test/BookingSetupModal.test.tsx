@@ -3,9 +3,10 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import type { BookingConfig } from '@sitewright/schema';
 import type { BookingCalendar } from '../src/api';
 
-const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites } = vi.hoisted(() => ({
+const { getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites, getBookingGoogle } = vi.hoisted(() => ({
   discoverBookingCalDav: vi.fn(),
   setBookingCalendarWrites: vi.fn(),
+  getBookingGoogle: vi.fn(),
   getBooking: vi.fn(),
   putBooking: vi.fn(),
   listBookingCalendars: vi.fn(),
@@ -33,6 +34,7 @@ vi.mock('../src/api', () => {
       removeBookingCalendar: (p: string, id: string) => removeBookingCalendar(p, id),
       discoverBookingCalDav: (p: string, b: unknown) => discoverBookingCalDav(p, b),
       setBookingCalendarWrites: (p: string, id: string, w: boolean) => setBookingCalendarWrites(p, id, w),
+      getBookingGoogle: (p: string) => getBookingGoogle(p),
       // The Settings tab's calendar address (its own tests are in booking-feed-section).
       getBookingFeed: async () => ({ feed: null }),
     },
@@ -71,7 +73,7 @@ const SAVED: BookingConfig = {
 const CAL: BookingCalendar = { id: 'c1', resourceId: 'anna', kind: 'ics', name: 'Anna’s Google', host: 'calendar.google.com', lastOkAt: Date.now() - 5 * 60_000, lastError: null, lastEvents: 12, createdAt: 0 };
 
 beforeEach(() => {
-  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites]) m.mockReset();
+  for (const m of [getBooking, putBooking, listBookingCalendars, connectBookingCalendar, testBookingCalendar, removeBookingCalendar, discoverBookingCalDav, setBookingCalendarWrites, getBookingGoogle]) m.mockReset();
   getBooking.mockResolvedValue({ item: SAVED, version: 'v1' });
   listBookingCalendars.mockResolvedValue({ calendars: [CAL] });
   putBooking.mockImplementation(async (_p: string, config: BookingConfig) => ({ item: config, version: 'v2' }));
@@ -306,6 +308,34 @@ describe('outside calendars', () => {
     expect(setBookingCalendarWrites).toHaveBeenCalledWith('p', 'c1', true);
     expect(screen.getByRole('switch', { name: 'Put the bookings into Anna’s Google' })).toBeChecked();
     expect(screen.queryByText(/answered 503/)).toBeNull();
+  });
+
+  it('★ connects a Google calendar shared with the platform’s account', async () => {
+    getBookingGoogle.mockResolvedValue({ serviceAccount: 'booking@platform.iam.gserviceaccount.com', proofCode: 'booking-0123456789ab' });
+    connectBookingCalendar.mockResolvedValue({ calendar: { ...CAL, id: 'g1', kind: 'google', name: 'Studio', host: 'calendar.google.com', lastEvents: 7, writes: true }, reading: { ok: true } });
+    render(<BookingSetupModal projectId="p" onClose={() => undefined} />);
+    await screen.findByText('Haircut');
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Google Calendar' }));
+    expect(await screen.findByText('booking@platform.iam.gserviceaccount.com')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy the address to share with' }));
+    expect(screen.getByText('booking-0123456789ab')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy the code for the calendar’s description' }));
+    fireEvent.change(screen.getByLabelText('Calendar ID'), { target: { value: 'studio@group.calendar.google.com' } });
+    fireEvent.change(screen.getByLabelText('Calendar name'), { target: { value: 'Studio' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(await screen.findByText('Connected. 7 events in it.')).toBeInTheDocument();
+    expect(connectBookingCalendar).toHaveBeenCalledWith('p', { kind: 'google', resourceId: 'anna', name: 'Studio', calendarId: 'studio@group.calendar.google.com', writes: true });
+    expect(screen.getByText(/calendar\.google\.com \(Google\)/)).toBeInTheDocument();
+  });
+
+  it('says Google calendars need the platform’s Google account when it has none', async () => {
+    getBookingGoogle.mockResolvedValue({ serviceAccount: null, proofCode: null });
+    render(<BookingSetupModal projectId="p" onClose={() => undefined} />);
+    await screen.findByText('Haircut');
+    fireEvent.click(screen.getByRole('tab', { name: /Resources/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Google Calendar' }));
+    expect(await screen.findByText(/need the platform’s Google account/)).toBeInTheDocument();
   });
 
   it('says when a CalDAV account’s calendars could not be found', async () => {

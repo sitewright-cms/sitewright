@@ -1384,8 +1384,8 @@ export interface PagespeedAuditResult {
 export interface BookingCalendar {
   id: string;
   resourceId: string;
-  /** `ics`: an iCalendar feed's address. `caldav`: a calendar on a CalDAV server. */
-  kind: 'ics' | 'caldav';
+  /** `ics`: an iCalendar feed's address. `caldav`: a calendar on a CalDAV server. `google`: a shared Google calendar. */
+  kind: 'ics' | 'caldav' | 'google';
   name: string;
   host: string;
   lastOkAt: number | null;
@@ -1780,12 +1780,18 @@ export const api = {
     projectId: string,
     body:
       | { resourceId: string; name: string; url: string }
-      | { kind: 'caldav'; resourceId: string; name: string; url: string; username: string; password: string; writes?: boolean },
+      | { kind: 'caldav'; resourceId: string; name: string; url: string; username: string; password: string; writes?: boolean }
+      | { kind: 'google'; resourceId: string; name: string; calendarId: string; writes?: boolean },
   ) =>
     request<BookingCalendarReading>('POST', `/projects/${projectId}/booking/calendars`, body),
   /** A CalDAV account's calendars, to pick one to connect. Nothing is stored. */
   discoverBookingCalDav: (projectId: string, body: { url: string; username: string; password: string }) =>
     request<{ calendars: Array<{ url: string; name: string }> }>('POST', `/projects/${projectId}/booking/calendars/discover`, body),
+  /**
+   * The address a Google calendar is shared with (the platform's service account), or null without one; and the
+   * project's proof code, which goes into the calendar's description to prove the calendar is the project's own.
+   */
+  getBookingGoogle: (projectId: string) => request<{ serviceAccount: string | null; proofCode: string | null }>('GET', `/projects/${projectId}/booking/google`),
   /** A CalDAV calendar takes the bookings, or stops taking them (what is in it stays). */
   setBookingCalendarWrites: (projectId: string, id: string, writes: boolean) =>
     request<{ calendar: BookingCalendar }>('PATCH', `/projects/${projectId}/booking/calendars/${encodeURIComponent(id)}`, { writes }),

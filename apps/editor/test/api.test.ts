@@ -1076,6 +1076,12 @@ describe('api client', () => {
     expect(JSON.parse(fetchMock.mock.calls[2]![1].body as string)).toEqual({ writes: true });
   });
 
+  it('reads the address a Google calendar is shared with', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { serviceAccount: 'booking@x.iam.gserviceaccount.com' }));
+    expect((await api.getBookingGoogle('p')).serviceAccount).toBe('booking@x.iam.gserviceaccount.com');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/booking/google');
+  });
+
   it('reads and writes instance admin settings', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),

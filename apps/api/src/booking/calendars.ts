@@ -74,7 +74,7 @@ export class BookingCalendarRepository {
     const res = await this.db
       .update(bookingCalendars)
       .set({ writes, writeError: null })
-      .where(and(eq(bookingCalendars.projectId, projectId), eq(bookingCalendars.id, id), eq(bookingCalendars.kind, 'caldav')))
+      .where(and(eq(bookingCalendars.projectId, projectId), eq(bookingCalendars.id, id), inArray(bookingCalendars.kind, ['caldav', 'google'])))
       .returning({ id: bookingCalendars.id });
     return res.length > 0;
   }
@@ -99,7 +99,7 @@ export class BookingCalendarRepository {
         and(
           eq(bookingCalendars.projectId, projectId),
           eq(bookingCalendars.resourceId, resourceId),
-          eq(bookingCalendars.kind, 'caldav'),
+          inArray(bookingCalendars.kind, ['caldav', 'google']),
           or(eq(bookingCalendars.writes, true), isNotNull(bookingCalendars.wroteAt)),
         ),
       );
@@ -156,6 +156,8 @@ export interface CalendarReaderDeps {
   decrypt: (url: CalendarRow['url']) => string;
   /** A CalDAV calendar's events overlapping [from, to), as one iCalendar text. Absent: CalDAV calendars read as unreadable. */
   readCalDav?: (source: { url: string; username: string; password: string }, from: number, to: number) => Promise<{ ok: true; text: string } | { ok: false; error: string }>;
+  /** A Google calendar's busy times (through the platform's service account). Absent: Google calendars are unreadable. */
+  readGoogle?: (calendarId: string, opts: { from: number; to: number; timeZone: string; ownUidSuffix: string }) => Promise<IcsParseResult>;
   /** Works out a feed's busy times. Default: in a worker thread, stopped at a deadline (see `ics-isolated.ts`). */
   read?: (text: string, opts: Omit<IcsReadOptions, 'now'>) => Promise<IcsParseResult>;
   now?: () => number;
@@ -289,8 +291,15 @@ export class CalendarReader implements ExternalBusy {
     let outcome: IcsParseResult;
     try {
       const secret = this.deps.decrypt(row.url);
-      const fetched = row.kind === 'caldav' ? await this.readCalDav(secret, covers) : await this.deps.fetchFeed(secret);
-      outcome = fetched.ok ? await this.read(fetched.text, { from: covers.start, to: covers.end, timeZone, ownUidSuffix: `@${projectId}` }) : fetched;
+      if (row.kind === 'google') {
+        // Google expands and answers the busy times itself: nothing to parse here.
+        outcome = this.deps.readGoogle
+          ? await this.deps.readGoogle(secret, { from: covers.start, to: covers.end, timeZone, ownUidSuffix: `@${projectId}` })
+          : { ok: false, error: 'Google calendars are not available on this server' };
+      } else {
+        const fetched = row.kind === 'caldav' ? await this.readCalDav(secret, covers) : await this.deps.fetchFeed(secret);
+        outcome = fetched.ok ? await this.read(fetched.text, { from: covers.start, to: covers.end, timeZone, ownUidSuffix: `@${projectId}` }) : fetched;
+      }
     } catch {
       outcome = { ok: false, error: 'the calendar could not be read' };
     }

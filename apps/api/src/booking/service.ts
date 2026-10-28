@@ -305,16 +305,28 @@ export class BookingService {
    * The BUSINESS answers a request: accepted, it becomes a booking (if it has not lapsed); declined, its time
    * goes back. Each hands back the claim as it now stands, for the mails about it.
    */
-  async accept(projectId: string, claimId: string): Promise<AnswerResult> {
+  async accept(projectId: string, claimId: string, opts: { payWithinMs?: number } = {}): Promise<AnswerResult> {
     return this.queued(projectId, async (): Promise<AnswerResult> => {
       const row = await this.answerable(projectId, claimId);
       if (!row.ok) return row;
       const now = this.now();
-      if (!(await this.deps.claims.advance(projectId, claimId, 'booked', null, now))) {
+      // A PAID request accepted: its time is held for the customer to pay (never past its start), and booked when
+      // they do. Unpaid by then, it lapses like any hold.
+      const payBy = opts.payWithinMs !== undefined ? Math.min(now + opts.payWithinMs, row.claim.startAt.getTime()) : null;
+      if (!(await this.deps.claims.advance(projectId, claimId, payBy === null ? 'booked' : 'hold', payBy, now, payBy === null ? {} : { payBy }))) {
         return { ok: false, reason: 'lapsed', detail: 'its time ran out and may have been booked by someone else' };
       }
       this.changed(projectId, row.claim);
-      return { ok: true, claim: { ...row.claim, state: 'booked', expiresAt: null, updatedAt: new Date(now) } };
+      return {
+        ok: true,
+        claim: {
+          ...row.claim,
+          state: payBy === null ? 'booked' : 'hold',
+          expiresAt: payBy === null ? null : new Date(payBy),
+          payBy: payBy === null ? null : new Date(payBy),
+          updatedAt: new Date(now),
+        },
+      };
     });
   }
 
@@ -329,14 +341,17 @@ export class BookingService {
   }
 
   /**
-   * The BUSINESS cancels a booking or a request, until it ends (a booking under way can still be called off). Not a
-   * hold: that is a customer's checkout in progress, nothing the business booked or was asked for.
+   * The BUSINESS cancels a booking or a request, until it ends (a booking under way can still be called off), or a
+   * request it accepted that waits for the customer's payment. Not any other hold: that is a customer's checkout in
+   * progress, nothing the business booked or was asked for.
    */
   async cancelByBusiness(projectId: string, claimId: string): Promise<AnswerResult> {
     return this.queued(projectId, async (): Promise<AnswerResult> => {
       const row = await this.get(projectId, claimId);
       if (!row) return { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' };
-      if (row.state === 'hold') return { ok: false, reason: 'invalid', detail: 'that is a checkout in progress, not a booking' };
+      if (row.state === 'hold' && (await this.offering(projectId, row.offeringId))?.offering.confirmation !== 'request') {
+        return { ok: false, reason: 'invalid', detail: 'that is a checkout in progress, not a booking' };
+      }
       if (row.endAt.getTime() <= this.now()) return { ok: false, reason: 'ended', detail: 'it has already ended' };
       await this.deps.claims.remove(projectId, claimId);
       this.changed(projectId, row);
@@ -354,9 +369,12 @@ export class BookingService {
     return { ok: true, claim: row };
   }
 
-  /** A hold or request becomes a ledger booking, if it has not lapsed. */
-  async confirm(projectId: string, claimId: string): Promise<ChangeResult> {
-    return this.change(projectId, claimId, 'booked', null);
+  /**
+   * A hold or request becomes a ledger booking, if it has not lapsed. A paid one records the payment that booked it
+   * (`paidTxnId`), in the same statement.
+   */
+  async confirm(projectId: string, claimId: string, paidTxnId?: string): Promise<ChangeResult> {
+    return this.change(projectId, claimId, 'booked', null, paidTxnId);
   }
 
   /** A hold or request keeps its time for `holdMs` more from now, if it has not lapsed. */
@@ -388,14 +406,14 @@ export class BookingService {
     });
   }
 
-  private async change(projectId: string, claimId: string, state: ClaimState | undefined, holdMs: number | null): Promise<ChangeResult> {
+  private async change(projectId: string, claimId: string, state: ClaimState | undefined, holdMs: number | null, paidTxnId?: string): Promise<ChangeResult> {
     return this.queued(projectId, async (): Promise<ChangeResult> => {
       const row = await this.deps.claims.get(projectId, claimId);
       if (!row) return { ok: false, reason: 'unknown-claim', detail: 'there is no such booking' };
       if (row.state === 'booked') return { ok: false, reason: 'invalid', detail: 'that booking is already confirmed' };
       const now = this.now();
       const next = state ?? row.state;
-      const moved = await this.deps.claims.advance(projectId, claimId, next, holdMs === null ? null : now + holdMs, now);
+      const moved = await this.deps.claims.advance(projectId, claimId, next, holdMs === null ? null : now + holdMs, now, paidTxnId ? { paidTxnId } : {});
       if (moved) this.changed(projectId, row);
       return moved ? { ok: true } : { ok: false, reason: 'lapsed', detail: 'its time ran out and may have been booked by someone else' };
     });

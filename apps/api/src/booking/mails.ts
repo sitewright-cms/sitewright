@@ -24,9 +24,11 @@ import { buildIcs, type IcsMethod, type IcsPerson } from './ics.js';
  * cancelled   a booking or request was called off (by the customer, or by the business);
  * declined    the business turned a request down (the customer is told; the business did it);
  * lapsed      a request ran out unanswered;
- * refunded    a payment came in after its time could no longer be held: not booked, the money goes back.
+ * refunded    a payment came in after its time could no longer be held: not booked, the money goes back;
+ * accepted    the business accepted a PAID request: the customer pays, by a deadline, to have it booked;
+ * unpaid      an accepted paid request was not paid by its deadline, and its time is free again.
  */
-export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed' | 'refunded';
+export type BookingMailKind = 'booked' | 'requested' | 'cancelled' | 'declined' | 'lapsed' | 'refunded' | 'accepted' | 'unpaid';
 
 export interface BookingMailFacts {
   kind: BookingMailKind;
@@ -40,6 +42,12 @@ export interface BookingMailFacts {
    * customer cancelled too close to the start for a refund, and the payment is kept.
    */
   refund?: 'refunded' | 'manual' | 'none';
+  /** An accepted paid request: when the customer must have paid by. */
+  payBy?: number;
+  /** The offering is paid for (a request is paid once it is accepted). */
+  priced?: boolean;
+  /** A `refunded` payment was a second one, for a booking that stands. */
+  duplicate?: boolean;
   claimId: string;
   offering: { name: string; mode: BookingMode; unit?: 'night' | 'day' };
   timeZone: string;
@@ -121,6 +129,13 @@ export function bookingWhen(f: Pick<BookingMailFacts, 'start' | 'end' | 'timeZon
   return `${day(f.start)}, ${time.format(f.start)} – ${sameDay ? '' : `${day(f.end)}, `}${time.format(f.end)} (${zone})`;
 }
 
+/** One moment as a person reads it, on the business's clock: "Fri, 30 Oct 2026, 18:00 (Central European Time)". */
+function moment(f: Pick<BookingMailFacts, 'timeZone' | 'locale'>, at: number): string {
+  const date = formatter(f.locale, f.timeZone, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const time = formatter(f.locale, f.timeZone, { hour: 'numeric', minute: '2-digit' });
+  return `${date.format(at)}, ${time.format(at)} (${zoneName(f.locale, f.timeZone, at)})`;
+}
+
 /** The local date of an instant on the business's clock, YYYY-MM-DD. */
 function localDate(ms: number, timeZone: string): string {
   const p = Object.fromEntries(formatter('en-CA', timeZone, { year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(ms).map((x) => [x.type, x.value]));
@@ -183,24 +198,34 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
             ? 'booking.mail_lapsed_text'
             : f.kind === 'refunded'
               ? 'booking.mail_refunded_text'
-              : 'booking.status_cancelled',
+              : f.kind === 'accepted'
+                ? 'booking.mail_accepted_text'
+                : f.kind === 'unpaid'
+                  ? 'booking.mail_unpaid_text'
+                  : 'booking.status_cancelled',
   );
+  // A paid request: the customer pays once it is accepted, and reads so now.
+  const payNote = f.kind === 'requested' && f.priced ? t('booking.mail_pay_after_accept') : '';
   // A paid booking cancelled: whether its money goes back, and the customer reads which.
   const refundNote = f.kind === 'cancelled' && f.refund ? t(f.refund === 'none' ? 'booking.mail_no_refund_note' : 'booking.mail_refund_note') : '';
   const details = rows([
     [t('booking.mail_when'), when],
     ...(f.quantity > 1 ? ([[t('booking.quantity'), String(f.quantity)]] as Array<[string, string]>) : []),
+    ...(f.kind === 'accepted' && f.payBy !== undefined ? ([[t('booking.pay_by'), moment(f, f.payBy)]] as Array<[string, string]>) : []),
   ]);
-  // A cancelled booking has no page left to show; a live one links to its own page on the business's site.
-  const link = (f.kind === 'booked' || f.kind === 'requested') && f.statusUrl ? f.statusUrl : undefined;
+  // A cancelled booking has no page left to show; a live one links to its own page on the business's site (an
+  // accepted paid request's page is where it is paid, and the link says so).
+  const link = (f.kind === 'booked' || f.kind === 'requested' || f.kind === 'accepted') && f.statusUrl ? f.statusUrl : undefined;
+  const linkText = f.kind === 'accepted' ? t('booking.pay_now') : t('booking.manage');
   const calendar = f.kind === 'booked' ? t('booking.mail_calendar') : '';
   const text = [
     intro,
     ...(refundNote ? [refundNote] : []),
+    ...(payNote ? [payNote] : []),
     '',
     f.offering.name,
     details.text,
-    ...(link ? ['', `${t('booking.manage')}: ${link}`] : []),
+    ...(link ? ['', `${linkText}: ${link}`] : []),
     ...(calendar ? ['', calendar] : []),
     '',
     f.business.name,
@@ -208,8 +233,9 @@ function customerMail(f: BookingMailFacts, when: string): QueuedBookingMail | nu
   const html = wrap(
     `<p style="font-size:16px;font-weight:600">${esc(intro)}</p>` +
       (refundNote ? `<p>${esc(refundNote)}</p>` : '') +
+      (payNote ? `<p>${esc(payNote)}</p>` : '') +
       `<p style="margin:12px 0 4px;font-weight:600">${esc(f.offering.name)}</p>${details.html}` +
-      (link ? `<p style="margin-top:16px"><a href="${esc(link)}">${esc(t('booking.manage'))}</a></p>` : '') +
+      (link ? `<p style="margin-top:16px"><a href="${esc(link)}">${esc(linkText)}</a></p>` : '') +
       (calendar ? `<p style="color:#555">${esc(calendar)}</p>` : '') +
       `<p style="margin-top:16px;color:#555">${esc(f.business.name)}</p>`,
   );
@@ -259,7 +285,11 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
             ? f.refund === 'manual'
               ? 'Refund needed'
               : 'Payment refunded'
-            : 'Booking cancelled';
+            : f.kind === 'accepted'
+              ? 'Request accepted, awaiting payment'
+              : f.kind === 'unpaid'
+                ? 'Booking not paid'
+                : 'Booking cancelled';
   const subject = oneLine(`${head}: ${f.offering.name}, ${when}`);
   const who = f.customer.name?.trim() || f.customer.email?.trim() || 'a customer';
   const details = rows([
@@ -277,17 +307,27 @@ function businessMails(f: BookingMailFacts, when: string): QueuedBookingMail[] {
     : f.kind === 'booked'
       ? `${who} booked ${f.offering.name}.`
       : f.kind === 'requested'
-        ? `${who} asks to book ${f.offering.name}. The time is held for you until you answer, for up to three days.`
+        ? `${who} asks to book ${f.offering.name}. The time is held for you until you answer, for up to three days.${f.priced ? ` It is paid once you accept it: ${who} is asked to pay, and it is booked when they do.` : ''}`
         : f.kind === 'lapsed'
           ? `${who}’s request for ${f.offering.name} ran out unanswered, and its time is free again. ${who} has been told.`
-          : f.kind === 'refunded'
-            ? `${who} paid for ${f.offering.name} after its time could no longer be held, so it is not booked.`
-            : f.by === 'business'
+          : f.kind === 'refunded' && f.duplicate
+            ? `${who} paid twice for ${f.offering.name}, which is booked.`
+            : f.kind === 'refunded'
+              ? `${who} paid for ${f.offering.name} after its time could no longer be held, so it is not booked.`
+              : f.kind === 'accepted'
+                ? `You accepted ${who}’s request for ${f.offering.name}. It is booked once ${who} pays, by ${f.payBy !== undefined ? moment({ ...f, locale: f.ownerLocale }, f.payBy) : 'the deadline'}; if not, its time is free again.`
+                : f.kind === 'unpaid'
+                  ? `${who} did not pay for ${f.offering.name} in time, and its time is free again. ${who} has been told.`
+                  : f.by === 'business'
             ? `The booking of ${f.offering.name} for ${who} is cancelled, and ${who} has been told.`
             : `${who} cancelled ${f.offering.name}.`;
   // ★ Where the money stands, said plainly: a refund the provider would not make is the business's to make.
   const money =
-    f.kind === 'refunded'
+    f.kind === 'refunded' && f.duplicate
+      ? f.refund === 'manual'
+        ? ' The second payment’s refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been.'
+        : ' The second payment has been refunded.'
+      : f.kind === 'refunded'
       ? f.refund === 'manual'
         ? ` Its refund could not be confirmed from here: check your payment provider’s dashboard, and refund it there if it has not been. ${who} has been told it will be refunded.`
         : ` The payment has been refunded, and ${who} has been told.`

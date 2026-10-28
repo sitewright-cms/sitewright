@@ -455,7 +455,8 @@ export const BOOKING_JS = `(function(){
       summary.textContent=c.text||when(c.start,c.end,tz,o.mode);
       var maxQ=Math.max(1,Math.min(o.maxQuantity,c.places||o.maxQuantity));
       show(qtyWrap,o.maxQuantity>1);qty.max=String(maxQ);if(+qty.value>maxQ){qty.value=String(maxQ);}
-      submit.textContent=o.price?t('submit_pay'):o.confirmation==='request'?t('submit_request'):t('submit');
+      // A paid request is sent as a request (it is paid once accepted); its total shows all the same.
+      submit.textContent=o.confirmation==='request'?t('submit_request'):o.price?t('submit_pay'):t('submit');
       showTotal();
       show(picker,false);show(form,true);
       if(cap){cap.mount();}
@@ -584,6 +585,25 @@ export const BOOKING_JS = `(function(){
         if(name){name.textContent=of.name||'';}
         if(wh&&b.start){wh.textContent=when(b.start,b.end,of.timeZone||'UTC',of.mode,of.unit);}
         show(d,true);
+      }
+      // An accepted paid request: its deadline, and on to the provider to pay (the time stays held until then).
+      var pay=p('pay');
+      if(b.payable&&pay){
+        var by=p('pay-by');
+        if(by&&b.payBy){var ptz=of.timeZone||'UTC';by.textContent=t('pay_by')+': '+dateLabel(ymdOf(b.payBy,ptz))+', '+timeLabel(b.payBy,ptz);show(by,true);}
+        show(pay,true);
+        pay.addEventListener('click',function(){
+          if(isPreview()){say(t('preview'));return;}
+          pay.disabled=true;say('');
+          post(url+'/pay',LOC?{lang:String(LOC)}:{}).then(function(r){
+            var to=r.body&&r.body.pay;
+            // Only to https: the server checked, but this is the last place to refuse.
+            if(r.status===200&&to&&/^https:\\/\\//i.test(String(to))){say(t('to_payment'));window.location.assign(String(to));return;}
+            pay.disabled=false;
+            if(r.status===404){show(pay,false);state('unknown');return;}
+            say(r.status===503||r.status===429?t('busy'):t('failed'));
+          },function(){pay.disabled=false;say(t('failed'));});
+        });
       }
       var cancel=p('cancel'),confirm=p('cancel-confirm'),yes=p('cancel-yes'),no=p('cancel-no');
       if(!cancel||!b.cancellable){return;}

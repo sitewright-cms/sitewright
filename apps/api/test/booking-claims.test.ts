@@ -171,6 +171,15 @@ describe('BookingService', () => {
     expect(await s.get(projectId, other.claim.id)).toBeFalsy();
   });
 
+  it('★ names the payment that booked it, in the statement that books it: a second confirmation names none', async () => {
+    const s = service();
+    const held = await s.claim(projectId, 'consult', { start: at('2026-07-01 09:00') }, { state: 'hold', customer: {} });
+    if (!held.ok) throw new Error('claim refused');
+    expect(await s.confirm(projectId, held.claim.id, 'txn-a')).toMatchObject({ ok: true });
+    expect(await s.confirm(projectId, held.claim.id, 'txn-b')).toMatchObject({ ok: false });
+    expect((await s.get(projectId, held.claim.id))?.paidTxnId).toBe('txn-a');
+  });
+
   it('a lapsed hold frees its time again', async () => {
     await service().claim(projectId, 'consult', { start: at('2026-07-01 10:00') }, { state: 'hold', holdMs: 10 * M, customer: {} });
     expect(await service(NOW + 5 * M).claim(projectId, 'consult', { start: at('2026-07-01 10:00') }, { state: 'hold', customer: {} })).toMatchObject({ ok: false, reason: 'taken' });
@@ -329,6 +338,8 @@ describe('the requests that lapse unanswered', () => {
     const swept = await claims.sweep(NOW + 2 * H);
     expect(swept.lapsed).toBe(2);
     expect(swept.lapsedRequests.map((r) => r.id)).toEqual([request.id]);
+    // The holds come back apart: an accepted paid request left unpaid is told (notifyLapsed decides which).
+    expect(swept.lapsedHolds).toHaveLength(1);
     expect(swept.lapsedRequests[0]!.customer).toEqual({ name: 'Ada', email: 'ada@example.test' });
     expect(await db.select().from(bookingClaims)).toHaveLength(0);
   });
@@ -391,15 +402,17 @@ describe('the Bookings tab listing', () => {
     const later = await claims.insert(claim({ start: NOW + 5 * H, end: NOW + 6 * H }), NOW);
     const sooner = await claims.insert(claim({ state: 'pending', expiresAt: NOW + 3 * H, start: NOW + 2 * H, end: NOW + 3 * H }), NOW);
     await claims.insert(claim({ state: 'pending', expiresAt: NOW - M, start: NOW + 2 * H, end: NOW + 3 * H }), NOW - H); // lapsed
-    await claims.insert(claim({ state: 'hold', expiresAt: NOW + 15 * M, start: NOW + 4 * H, end: NOW + 5 * H }), NOW); // a hold is not shown
+    // A live hold is shown (its time is being paid for); a lapsed one is not.
+    const held = await claims.insert(claim({ state: 'hold', expiresAt: NOW + 15 * M, start: NOW + 4 * H, end: NOW + 5 * H }), NOW);
+    await claims.insert(claim({ state: 'hold', expiresAt: NOW - M, start: NOW + 4 * H, end: NOW + 5 * H }), NOW - H);
     const old = await claims.insert(claim({ start: NOW - 5 * H, end: NOW - 4 * H }), NOW - 6 * H);
     const older = await claims.insert(claim({ start: NOW - 9 * H, end: NOW - 8 * H }), NOW - 10 * H);
     const ids = (r: { rows: Array<{ id: string }> }) => r.rows.map((x) => x.id);
-    expect(ids(await claims.list(projectId, 'upcoming', NOW, 50))).toEqual([sooner.id, later.id]);
+    expect(ids(await claims.list(projectId, 'upcoming', NOW, 50))).toEqual([sooner.id, held.id, later.id]);
     expect(ids(await claims.list(projectId, 'requests', NOW, 50))).toEqual([sooner.id]);
     expect(ids(await claims.list(projectId, 'past', NOW, 50))).toEqual([old.id, older.id]);
     // The total counts beyond the limit.
-    expect(await claims.list(projectId, 'upcoming', NOW, 1)).toMatchObject({ total: 2 });
+    expect(await claims.list(projectId, 'upcoming', NOW, 1)).toMatchObject({ total: 3 });
     // Another project's are not listed.
     expect((await claims.list(randomUUID(), 'upcoming', NOW, 50)).rows).toEqual([]);
   });

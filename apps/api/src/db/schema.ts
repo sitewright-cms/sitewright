@@ -1476,6 +1476,16 @@ export const bookingClaims = sqliteTable(
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
     /** The customer's own details (name, email, phone, note). Deleted with the row. */
     customer: text('customer', { mode: 'json' }).$type<Record<string, string>>().notNull().default({}),
+    /**
+     * The payment that CONFIRMED it (a paid booking): set in the same statement that books it, so of two payments for
+     * one booking exactly one wins, and the other is refunded whatever order their settlements run in.
+     */
+    paidTxnId: text('paid_txn_id'),
+    /**
+     * An accepted paid request's deadline to pay, as the business set it when accepting. The hold itself may run a
+     * little past it (a checkout begun close to it), but never by more than one checkout's time.
+     */
+    payBy: integer('pay_by', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
   },

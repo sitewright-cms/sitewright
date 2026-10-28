@@ -58,6 +58,13 @@ describe('BookingNotifier', () => {
     expect(kicks()).toBe(1);
   });
 
+  it('writes to one side only when asked (a second payment for a booking that stands is the business’s concern)', async () => {
+    const { book, queued } = notifier(SETTINGS);
+    await book({ kind: 'refunded', refund: 'manual', duplicate: true, only: 'business' });
+    expect(queued[0]!.map((m) => m.role)).toEqual(['business', 'business']);
+    expect(queued[0]![0]!.rendered.text).toContain('paid twice for Massage');
+  });
+
   it('writes in the page’s language when the site has it, however the page spells it', async () => {
     for (const lang of ['de', 'DE', 'de-DE', 'de-at']) {
       const { book, queued } = notifier(SETTINGS);
@@ -151,5 +158,28 @@ describe('notifyLapsed', () => {
     expect(reads).toEqual(['p1', 'p2', 'p3']);
     // p2's unreadable set-up, the removed offering, and p3's failure: each logged, none stopping the rest.
     expect(warned).toHaveLength(3);
+  });
+
+  it('★ tells an accepted paid request left unpaid as such, and says nothing of an abandoned checkout', async () => {
+    const paid = BookingConfigSchema.parse({
+      ...CONFIG,
+      offerings: [
+        { id: 'consult', name: 'Consultation', resourceIds: ['anna'], mode: 'duration', durationMin: 60, confirmation: 'request', price: { amountMinor: 8000 } },
+        { id: 'massage', name: 'Massage', resourceIds: ['anna'], mode: 'duration', durationMin: 60, price: { amountMinor: 4500 } },
+      ],
+      payment: { gatewayId: 'mock', currency: 'EUR' },
+    });
+    const held = (offeringId: string) => ({ ...CLAIM, id: offeringId, projectId: 'p1', offeringId, state: 'hold' }) as never;
+    const told: Array<[string, string]> = [];
+    const n = await notifyLapsed([held('consult'), held('massage'), lapsed('p1', 'consult')], {
+      readConfig: async () => paid,
+      notify: async (e) => void told.push([e.claim.id, e.kind]),
+      log: { warn: () => undefined },
+    });
+    expect(told).toEqual([
+      ['consult', 'unpaid'],
+      ['p1-consult', 'lapsed'],
+    ]);
+    expect(n).toBe(2);
   });
 });

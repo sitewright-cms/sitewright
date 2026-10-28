@@ -11355,6 +11355,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
     cancelMoney: (projectId, claimId, inFull) => (bookingPayments ? bookingPayments.cancelMoney(projectId, claimId, inFull) : Promise.resolve(undefined)),
     cancelLock: bookingCancelLock,
+    payState: (projectId, claimId, since) => shopTransactionsRepo.bookingPayState(projectId, claimId, since),
   });
 
   // The Bookings tab: the project's bookings and requests, and the business's answers (see booking-admin-routes.ts).
@@ -12668,13 +12669,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Booking claims end: lapsed holds and requests, and ledger bookings past retention, customers' details with them.
     void bookingClaimsRepo
       .sweep(Date.now())
-      .then(async ({ lapsed, ended, lapsedRequests }) => {
+      .then(async ({ lapsed, ended, lapsedRequests, lapsedHolds }) => {
         if (lapsed || ended) app.log.info({ lapsed, ended }, 'swept ended booking claims');
         // A request that ran out unanswered: its customer is told, and so is the business; and it comes out of the
         // calendars that took it.
         for (const claim of lapsedRequests) onClaimChange(claim.projectId, claim);
-        if (lapsedRequests.length) {
-          await notifyLapsed(lapsedRequests, { readConfig: readBookingConfig, notify: (e) => bookingNotifier.notify(e), log: { warn: (o, m) => app.log.warn(o, m) } });
+        // …and an accepted paid request its customer did not pay in time (notifyLapsed tells only those of the holds).
+        if (lapsedRequests.length || lapsedHolds.length) {
+          await notifyLapsed([...lapsedRequests, ...lapsedHolds], {
+            readConfig: readBookingConfig,
+            notify: (e) => bookingNotifier.notify(e),
+            log: { warn: (o, m) => app.log.warn(o, m) },
+          });
         }
       })
       .catch((err) => app.log.warn(err, 'booking claims sweep failed'));

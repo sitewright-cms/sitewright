@@ -168,6 +168,25 @@ describe('answers', () => {
     expect(screen.getByRole('status').className).toContain('text-rose-700');
   });
 
+  it('★ accepting a paid request asks the customer to pay; one accepted and unpaid shows its deadline and can be withdrawn', async () => {
+    const paidRequest = { ...REQUEST, priced: true, start: Date.UTC(2099, 9, 28, 13), end: Date.UTC(2099, 9, 28, 14) };
+    const unpaid = { ...item(FUTURE), id: 'h1', state: 'hold' as const, priced: true, awaitingPayment: true, expiresAt: Date.UTC(2099, 9, 27, 18) };
+    listBookings.mockResolvedValue(list([paidRequest, unpaid]));
+    answerBooking.mockResolvedValue({ ok: true, booking: null });
+    render(<BookingsPanel projectId="p" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Consultation/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+    expect(screen.getByText(/The customer is asked by email to pay, and it is booked when they do/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, accept' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Accepted: the customer has been asked to pay.');
+    fireEvent.click(screen.getByRole('button', { name: /Massage/ }));
+    expect(screen.getByText(/or its time is free again/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, withdraw it' }));
+    await waitFor(() => expect(answerBooking).toHaveBeenCalledWith('p', 'h1', 'cancel'));
+    expect(await screen.findByText('Withdrawn: the customer has been told.')).toBeInTheDocument();
+  });
+
   it('says why an answer did not work', async () => {
     const request = { ...REQUEST, start: Date.UTC(2099, 9, 28, 13), end: Date.UTC(2099, 9, 28, 14) };
     listBookings.mockResolvedValue(list([request]));

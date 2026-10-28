@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  DEFAULT_PAY_WINDOW_MIN,
   DEFAULT_REFUND_UNTIL_MIN,
   fromMinorUnits,
   toMinorUnits,
@@ -184,7 +185,7 @@ export function PriceFields({
         autoComplete="off"
         onChange={type}
         error={problem ?? err('price') ?? err('price.amountMinor')}
-        tip="Paid when it is booked, on the payment provider's page. The time is held for the customer while they pay, and booked when the payment arrives. Empty: free."
+        tip="Paid when it is booked, on the payment provider's page. The time is held for the customer while they pay, and booked when the payment arrives. On request: paid once you accept it. Empty: free."
       />
       {o.price && (
         <SelectField
@@ -206,6 +207,18 @@ export function PriceFields({
           onChange={(hours) => onChange({ ...o, refundUntilMin: hours === undefined ? undefined : hours * 60 })}
           error={err('refundUntilMin')}
           tip="A customer who cancels at least this long before it starts gets their payment back in full; later, nothing (they are told before they confirm). You cancelling it always refunds in full. Empty: 24 hours."
+        />
+      )}
+      {o.price && o.confirmation === 'request' && (
+        <NumField
+          label="Time to pay"
+          value={o.payWindowMin === undefined ? undefined : o.payWindowMin / 60}
+          min={1}
+          suffix="hours after you accept"
+          placeholder={String(DEFAULT_PAY_WINDOW_MIN / 60)}
+          onChange={(hours) => onChange({ ...o, payWindowMin: hours === undefined ? undefined : hours * 60 })}
+          error={err('payWindowMin')}
+          tip="A request on a paid offering is paid once you accept it: the customer is emailed a link to pay on their booking page, and has this long (never past its start). Unpaid by then, its time is free again. Empty: 48 hours."
         />
       )}
     </div>

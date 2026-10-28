@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { bookingClaims } from '../db/schema.js';
 import { newId } from '../id.js';
@@ -144,6 +144,8 @@ export class BookingClaimsRepository {
       exclusive: claim.exclusive,
       expiresAt: claim.expiresAt === null ? null : new Date(claim.expiresAt),
       customer: { ...claim.customer },
+      paidTxnId: null,
+      payBy: null,
       createdAt: at,
       updatedAt: at,
     };
@@ -160,11 +162,32 @@ export class BookingClaimsRepository {
    * Moves a claim on (a hold or request becomes a ledger booking, a request's hold is extended). Only a
    * claim that has not lapsed moves: a request accepted a minute after its hold ran out has lost its time.
    */
-  async advance(projectId: string, id: string, state: ClaimState, expiresAt: number | null, now: number): Promise<boolean> {
+  async advance(
+    projectId: string,
+    id: string,
+    state: ClaimState,
+    expiresAt: number | null,
+    now: number,
+    extra: { paidTxnId?: string; payBy?: number } = {},
+  ): Promise<boolean> {
     const rows = await this.db
       .update(bookingClaims)
-      .set({ state, expiresAt: expiresAt === null ? null : new Date(expiresAt), updatedAt: new Date(now) })
-      .where(and(eq(bookingClaims.projectId, projectId), eq(bookingClaims.id, id), live(now)))
+      .set({
+        state,
+        expiresAt: expiresAt === null ? null : new Date(expiresAt),
+        updatedAt: new Date(now),
+        ...(extra.paidTxnId ? { paidTxnId: extra.paidTxnId } : {}),
+        ...(extra.payBy !== undefined ? { payBy: new Date(extra.payBy) } : {}),
+      })
+      .where(
+        and(
+          eq(bookingClaims.projectId, projectId),
+          eq(bookingClaims.id, id),
+          live(now),
+          // ★ A payment books only a claim not booked yet: of two, exactly one is named, in this one statement.
+          ...(extra.paidTxnId ? [ne(bookingClaims.state, 'booked')] : []),
+        ),
+      )
       .returning({ id: bookingClaims.id });
     return rows.length > 0;
   }
@@ -180,7 +203,8 @@ export class BookingClaimsRepository {
 
   /**
    * The project's bookings and requests, for its Bookings tab, with the customers' details.
-   *   upcoming   bookings and requests still in force that have not ended, soonest first;
+   *   upcoming   bookings, requests and live holds (a time being paid for: an accepted paid request, a checkout in
+   *              progress) that have not ended, soonest first;
    *   requests   only the requests still waiting for an answer, soonest first;
    *   past       ledger bookings that have ended (kept until the sweep forgets them), latest first.
    */
@@ -192,7 +216,7 @@ export class BookingClaimsRepository {
         : and(
             eq(bookingClaims.projectId, projectId),
             live(now),
-            view === 'requests' ? eq(bookingClaims.state, 'pending') : inArray(bookingClaims.state, ['pending', 'booked']),
+            view === 'requests' ? eq(bookingClaims.state, 'pending') : inArray(bookingClaims.state, ['pending', 'booked', 'hold']),
             gt(bookingClaims.endAt, at),
           );
     const [rows, [counted]] = await Promise.all([
@@ -235,18 +259,23 @@ export class BookingClaimsRepository {
    * the write lock in one long statement; what a pass leaves, the next one takes.
    *
    * The REQUESTS that lapsed unanswered are handed back, so their customers can be told (a request that
-   * simply vanishes leaves someone waiting for an answer that will never come).
+   * simply vanishes leaves someone waiting for an answer that will never come); so are the lapsed HOLDS, of which
+   * an accepted paid request left unpaid is told too (a checkout abandoned is not: its customer walked away).
    */
   async sweep(
     now: number,
     retentionMs: number = BOOKING_CLAIM_LIMITS.ledgerRetentionMs,
     maxBatches = 20,
-  ): Promise<{ lapsed: number; ended: number; lapsedRequests: ClaimRow[] }> {
+  ): Promise<{ lapsed: number; ended: number; lapsedRequests: ClaimRow[]; lapsedHolds: ClaimRow[] }> {
     const lapsedWhere = and(isNotNull(bookingClaims.expiresAt), lte(bookingClaims.expiresAt, new Date(now)));
     const endedWhere = and(isNull(bookingClaims.expiresAt), lt(bookingClaims.busyEnd, new Date(now - retentionMs)));
     const lapsedRequests: ClaimRow[] = [];
-    const lapsed = await this.deleteInBatches(lapsedWhere, maxBatches, (rows) => lapsedRequests.push(...rows.filter((r) => r.state === 'pending')));
-    return { lapsed, ended: await this.deleteInBatches(endedWhere, maxBatches), lapsedRequests };
+    const lapsedHolds: ClaimRow[] = [];
+    const lapsed = await this.deleteInBatches(lapsedWhere, maxBatches, (rows) => {
+      lapsedRequests.push(...rows.filter((r) => r.state === 'pending'));
+      lapsedHolds.push(...rows.filter((r) => r.state === 'hold'));
+    });
+    return { lapsed, ended: await this.deleteInBatches(endedWhere, maxBatches), lapsedRequests, lapsedHolds };
   }
 
   /**

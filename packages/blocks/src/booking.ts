@@ -62,8 +62,8 @@ const BOOKING_KEYS: readonly string[] = (RESERVED_TRANSLATION_GROUPS.find((g) =>
   .map((k) => k.key)
   .filter((k) => !k.startsWith('booking.mail_'));
 /** Strings only the status page shows; the widget gets the rest, and both get the shared failure strings. */
-const STATUS_ONLY_RE = /^booking\.(?:status_|cancel|started$)/;
-const SHARED_KEYS = ['booking.busy', 'booking.failed', 'booking.preview'];
+const STATUS_ONLY_RE = /^booking\.(?:status_|cancel|started$|pay_now$|pay_by$)/;
+const SHARED_KEYS = ['booking.busy', 'booking.failed', 'booking.preview', 'booking.to_payment'];
 const WIDGET_KEYS = BOOKING_KEYS.filter((k) => !STATUS_ONLY_RE.test(k));
 const STATUS_KEYS = BOOKING_KEYS.filter((k) => STATUS_ONLY_RE.test(k) || SHARED_KEYS.includes(k));
 
@@ -156,6 +156,9 @@ export const BOOKING_STATUS_PARTS = Object.freeze({
   cancelRefund: 'cancel-refund',
   cancelYes: 'cancel-yes',
   cancelNo: 'cancel-no',
+  /** An accepted paid request: its deadline (`pay-by`) and the button that takes the customer to pay (`pay`). */
+  payBy: 'pay-by',
+  pay: 'pay',
   /** Where a refusal or a failure is written. */
   message: 'message',
 } as const);
@@ -172,6 +175,8 @@ function defaultStatusMarkup(t: (key: string) => string): string {
     p('status-cancelled', 'booking.status_cancelled') +
     p('status-unknown', 'booking.status_unknown') +
     `<p data-sw-part="details" hidden><strong data-sw-field="offering"></strong><br><span data-sw-field="when"></span></p>` +
+    `<p data-sw-part="pay-by" hidden></p>` +
+    `<p><button type="button" class="btn btn-primary" data-sw-part="pay" hidden>${escapeHtml(t('booking.pay_now'))}</button></p>` +
     `<p><button type="button" class="btn" data-sw-part="cancel" hidden>${escapeHtml(t('booking.cancel'))}</button></p>` +
     `<div data-sw-part="cancel-confirm" hidden><p>${escapeHtml(t('booking.cancel_confirm'))}</p><p data-sw-part="cancel-refund" hidden></p>` +
     `<button type="button" class="btn btn-primary" data-sw-part="cancel-yes">${escapeHtml(t('booking.cancel_yes'))}</button> ` +

@@ -75,6 +75,8 @@ export interface BookingRoutesDeps {
   readonly cancelMoney?: (projectId: string, claimId: string, inFull: boolean) => Promise<'refunded' | 'manual' | 'none' | undefined>;
   /** One cancellation of a booking at a time; shared with the Bookings tab's. */
   readonly cancelLock?: BookingCancelLock;
+  /** Where a booking's payments stand: one gone through, and how many checkouts opened since `since` are still open. */
+  readonly payState?: (projectId: string, claimId: string, since: Date) => Promise<{ paid: boolean; open: number }>;
 }
 
 /** A page language as the widget reports it (`<html lang>`); the notifier keeps it only if the site has it. */
@@ -194,7 +196,7 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
   const notFound = (reply: FastifyReply) => reply.code(404).send({ error: 'not-found' });
   const unavailable = (reply: FastifyReply) => reply.code(400).send({ error: 'booking-unavailable' });
 
-  for (const path of ['/b/:projectId/:offeringId', '/b/:projectId/_booking/:reference/cancel']) {
+  for (const path of ['/b/:projectId/:offeringId', '/b/:projectId/_booking/:reference/cancel', '/b/:projectId/_booking/:reference/pay']) {
     app.options(path, { config: rl(20) }, async (_req, reply) => {
       setCors(reply);
       return reply.code(204).send();
@@ -279,9 +281,9 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
         if (!check.ok) return reply.code(STATUS[check.reason]).send({ error: check.reason, detail: check.detail });
         return reply.send({ ok: true, preview: true });
       }
-      // ★ A priced offering is paid before it is booked: its time is HELD while the customer pays, and the payment's
-      // webhook confirms it (no confirmation mail before then).
-      const priced = !!found.offering.price;
+      // ★ A priced offering booked AT ONCE is paid before it is booked: its time is HELD while the customer pays, and the
+      // payment's webhook confirms it (no confirmation mail before then). A priced REQUEST is paid once it is accepted.
+      const priced = !!found.offering.price && found.offering.confirmation === 'instant';
       if (priced && (!deps.payments || !deps.returnUrls)) return reply.code(503).send({ error: 'payment-unavailable', detail: 'payment is not available here' });
       const state = priced ? 'hold' : found.offering.confirmation === 'request' ? 'pending' : 'booked';
       const result = await bookings.claim(projectId, offeringId, request, {
@@ -342,11 +344,58 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
       // What the status page needs to say when it is: the offering's clock, and whether it is booked by the night.
       offering: found ? bookingSummary(found.offering, found.config) : null,
       cancellable: paid ? start - now() > PAID_CANCEL_MARGIN_MS : start > now(),
+      // An accepted PAID request: the customer pays here, by its deadline.
+      ...(payable(c, found?.offering) ? { payable: true, payBy: (c.payBy ?? c.expiresAt)!.getTime() } : {}),
       // A paid booking: what cancelling it now does with the money, said before the customer confirms.
       // (Its money already back, from a cancellation tried before: refunded in full, whatever the deadline says now.)
       ...(paid ? { refund: payment === 'refunded' || refundsInFull(found?.offering, start, now()) ? 'full' : 'none' } : {}),
     });
   });
+
+  // An ACCEPTED PAID REQUEST is paid from its own page: a checkout for its price, on the business's provider. Its time
+  // stays held whatever happens here (the customer may try again until its deadline). ★ One attempt at a time per
+  // booking (the lock it shares with cancelling), none while a payment is already going through, and at most a few
+  // checkouts open at once; a second payment that goes through all the same is refunded.
+  app.post<{ Params: { projectId: string; reference: string }; Body: unknown }>(
+    '/b/:projectId/_booking/:reference/pay',
+    { config: rl(10) },
+    async (req, reply) => {
+      setCors(reply);
+      const { projectId } = req.params;
+      const claimId = verifyBookingRef(projectId, req.params.reference, deps.getSecret());
+      if (!claimId || !(await deps.isPublicProject(projectId))) return notFound(reply);
+      return lock.run(projectId, claimId, async () => {
+        const c = await bookings.get(projectId, claimId);
+        if (!c) return notFound(reply);
+        const found = await bookings.offering(projectId, c.offeringId);
+        if (!found || !payable(c, found.offering)) return reply.code(409).send({ error: 'not-payable', detail: 'there is nothing to pay for this booking' });
+        if (!deps.payments || !deps.returnUrls || !deps.payState) return reply.code(503).send({ error: 'payment-unavailable', detail: 'payment is not available here' });
+        const state = await deps.payState(projectId, claimId, new Date(now() - BOOKING_PAY_LIMITS.attemptWindowMs));
+        if (state.paid) return reply.code(409).send({ error: 'already-paid', detail: 'its payment is going through' });
+        if (state.open >= BOOKING_PAY_LIMITS.attemptsPerBooking) {
+          return reply.code(429).send({ error: 'too-many', detail: 'too many payments were started for this booking just now' });
+        }
+        const reference = req.params.reference;
+        const urls = await deps.returnUrls(projectId, reference, found.config.statusPath);
+        if (!urls) return reply.code(503).send({ error: 'payment-unavailable', detail: 'the site has no address to come back to after paying' });
+        const lang = typeof (req.body as { lang?: unknown } | null)?.lang === 'string' ? (req.body as { lang: string }).lang : undefined;
+        const started = await deps.payments.start(projectId, c, found.offering, found.config, { ...c.customer }, urls, lang && LANG_RE.test(lang) ? lang : undefined, {
+          keepHold: true,
+        });
+        if (!started.ok) return reply.code(503).send({ error: 'payment-unavailable', detail: started.error });
+        // A checkout begun close to the deadline keeps the time a little longer, so a payment made in time is not
+        // refunded for arriving a moment late. ★ Capped at one checkout's time past the business's deadline (and
+        // never past its start): starting checkouts again and again cannot hold the time any longer.
+        const deadline = (c.payBy ?? c.expiresAt)!.getTime();
+        const until = Math.min(now() + BOOKING_PAY_LIMITS.holdMs, deadline + BOOKING_PAY_LIMITS.holdMs, c.startAt.getTime());
+        if (c.expiresAt !== null && until > c.expiresAt.getTime()) {
+          const extended = await bookings.extend(projectId, claimId, until - now());
+          if (!extended.ok) req.log.warn({ projectId, reason: extended.reason }, 'an accepted request’s hold could not be kept for its checkout');
+        }
+        return reply.send({ ok: true, pay: started.redirectUrl });
+      });
+    },
+  );
 
   app.post<{ Params: { projectId: string; reference: string } }>('/b/:projectId/_booking/:reference/cancel', { config: rl(10) }, async (req, reply) => {
     setCors(reply);
@@ -388,6 +437,11 @@ export function registerBookingRoutes(app: FastifyInstance, deps: BookingRoutesD
       return reply.code(result.reason === 'started' ? 409 : 503).send({ error: result.reason, detail: result.detail, ...(refund ? { refund } : {}) });
     });
   });
+}
+
+/** An accepted PAID request, waiting for its customer to pay (a hold of a priced offering on request, still live). */
+function payable(c: { state: string; expiresAt: Date | null }, o: BookingOffering | undefined): boolean {
+  return c.state === 'hold' && c.expiresAt !== null && !!o?.price && o.confirmation === 'request';
 }
 
 /** The project's captcha, verified. Fails CLOSED: no usable configuration means no booking. */

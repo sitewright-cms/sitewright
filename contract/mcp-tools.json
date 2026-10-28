@@ -10,6 +10,19 @@
     "required": []
   },
   {
+    "name": "answer_booking",
+    "required": [
+      "answer",
+      "id"
+    ]
+  },
+  {
+    "name": "booking_availability",
+    "required": [
+      "offering"
+    ]
+  },
+  {
     "name": "clone_audit",
     "required": [
       "pageId"
@@ -190,6 +203,10 @@
       "pageId",
       "selectors"
     ]
+  },
+  {
+    "name": "list_bookings",
+    "required": []
   },
   {
     "name": "list_content",

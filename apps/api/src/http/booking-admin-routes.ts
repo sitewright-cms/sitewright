@@ -38,7 +38,10 @@ export interface BookingAdminDeps {
   refundCancelled?: (projectId: string, claimId: string) => Promise<'refunded' | 'manual' | undefined>;
   /** One cancellation of a booking at a time; shared with the customer's own (booking-routes.ts). */
   cancelLock?: BookingCancelLock;
-  resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string } }>;
+  /** The project and the caller; `apiKey` is set for a token (an agent), null for a person's session. */
+  resolveProject: (req: ProjectReq, access: ApiKeyCapability | 'session-only') => Promise<{ ctx: ProjectContext; project: { id: string }; apiKey?: unknown }>;
+  /** Whether a booking was paid for (and not refunded since): then only a PERSON cancels it, since that refunds it. */
+  payment: (projectId: string, claimId: string) => Promise<'paid' | 'refunded' | undefined>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   now?: () => number;
 }
@@ -107,17 +110,21 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
 
   const answer = (path: 'accept' | 'decline' | 'cancel'): void => {
     app.post<{ Params: { projectId: string; id: string } }>(`/projects/:projectId/bookings/:id/${path}`, { config: deps.rl(60) }, async (req, reply) => {
-      const { project } = await deps.resolveProject(req as unknown as ProjectReq, 'content:write');
+      const { project, apiKey } = await deps.resolveProject(req as unknown as ProjectReq, 'content:write');
       const id = req.params.id;
       if (id.length > 64) return reply.code(404).send({ error: 'there is no such booking' });
       // ★ A paid booking's money goes back FIRST: a crash between the two then leaves a booking standing (the business
       // sees it and cancels again, its refund already made), never a cancelled booking nobody refunds. Only for one
       // the cancellation will take: a booking (not a checkout in progress) that has not ended. One cancellation of a
       // booking at a time, the customer's included (the lock is shared).
-      const cancel = async (): Promise<{ refund: 'refunded' | 'manual' | undefined; result: AnswerResult }> => {
+      const cancel = async (): Promise<{ refund: 'refunded' | 'manual' | undefined; result: AnswerResult } | 'person-only'> => {
+        // ★ A token (an agent) never cancels a PAID booking: cancelling it refunds the customer, and no token moves a
+        // merchant's money (as with the shop's orders). And a token's cancellation never reaches the refund at all: a
+        // payment that lands after this check finds the booking gone and is refunded by the platform, as any late one is.
+        if (apiKey && (await deps.payment(project.id, id)) === 'paid') return 'person-only';
         let refund: 'refunded' | 'manual' | undefined;
         const claim = await deps.claims.get(project.id, id);
-        if (claim && claim.state !== 'hold' && claim.endAt.getTime() > now()) {
+        if (!apiKey && claim && claim.state !== 'hold' && claim.endAt.getTime() > now()) {
           refund = await deps.refundCancelled?.(project.id, id).catch((err: unknown) => {
             req.log.error({ err, projectId: project.id }, 'a cancelled booking could not be refunded');
             return 'manual' as const;
@@ -131,12 +138,19 @@ export function registerBookingAdminRoutes(app: FastifyInstance, deps: BookingAd
         const offered = claim ? (await deps.readConfig(project.id))?.offerings.find((o) => o.id === claim.offeringId) : undefined;
         return deps.bookings.accept(project.id, id, offered?.price ? { payWithinMs: (offered.payWindowMin ?? DEFAULT_PAY_WINDOW_MIN) * 60_000 } : {});
       };
-      const { refund, result } =
+      const answered =
         path === 'accept'
           ? { refund: undefined, result: await accept() }
           : path === 'decline'
             ? { refund: undefined, result: await deps.bookings.decline(project.id, id) }
             : await lock.run(project.id, id, cancel);
+      if (answered === 'person-only') {
+        return reply.code(403).send({
+          error: 'a paid booking is cancelled by a person in the Bookings tab: cancelling it refunds the customer, and no token moves money',
+          reason: 'paid',
+        });
+      }
+      const { refund, result } = answered;
       if (!result.ok) {
         // Refunded, yet not cancelled (a busy moment): the business is told both, and cancels again.
         if (refund) req.log.warn({ projectId: project.id, reason: result.reason, refund }, 'a booking was refunded but its cancellation was refused');

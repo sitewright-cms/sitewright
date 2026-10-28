@@ -11,6 +11,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **Booking tools for agents.** `list_bookings` (the Bookings tab: upcoming, requests or past, with each booking's
+  state, times on its clock and the customer's details, marked as personal data and untrusted text),
+  `answer_booking` (accept or decline a request, cancel a booking or an accepted request waiting for its payment;
+  each emails the customer, so the agent confirms with the user first) and `booking_availability` (an offering's
+  free times, as the site's widget sees them). Ids are path-safe, so none can climb out of its URL.
 - **Booking reminders.** The booking set-up can remind customers by email before their booking starts (Settings →
   Reminders, "Remind customers … hours before"; off unless set). The reminder is in the language the booking was made
   in and links to the customer's booking page; a booking made closer to its start than that gets none (its
@@ -283,6 +288,15 @@ The running version of an instance is reported at `GET /version` (baked into the
   shown as a path on the site.
 
 ### Security
+
+- **A token can no longer cancel a paid booking.** Cancelling a paid booking refunds the customer, and on this
+  platform no token moves a merchant's money (as with the shop's orders): the Bookings tab's cancel answers a token
+  (an agent, an API key) with 403 for a paid booking, and a token's cancellation never reaches the refund step at
+  all (a payment landing after the check finds the booking gone and is refunded by the platform, as any late one is).
+  A person cancels it in the Bookings tab. A free booking, or one already refunded, a token may still cancel.
+- **A booking paid twice is judged by the payment that counts.** Looking up a booking's payment now prefers one still
+  holding money over a refunded duplicate, so cancelling (by the customer or the business) refunds the real payment
+  rather than reading the booking as already refunded.
 
 - **A project's SMTP host is checked against the instance's SMTP allowlist when a mail is sent**, not only when
   the setting is saved, so a host saved before the allowlist existed, or before it was dropped from the list, no

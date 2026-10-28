@@ -817,6 +817,11 @@ export class SitewrightClient {
   }
 
   private projectPath(suffix: string): string {
+    return `/projects/${encodeURIComponent(this.currentProjectId())}${suffix}`;
+  }
+
+  /** The project this call is for. */
+  private currentProjectId(): string {
     const scope = this.requireScope();
     // A project key IS its project — nothing a caller passes can point it elsewhere. Only a member
     // token takes the project from the call.
@@ -827,7 +832,7 @@ export class SitewrightClient {
         'this connection uses a member token, which reaches several projects — pass `project` (an id from list_projects) to say which one',
       );
     }
-    return `/projects/${encodeURIComponent(projectId)}${suffix}`;
+    return projectId;
   }
 
   /**
@@ -1226,6 +1231,24 @@ export class SitewrightClient {
 
   async resendOrderMail(orderId: string, kind: 'notify' | 'receipt'): Promise<unknown> {
     return this.request('POST', this.projectPath(`/transactions/${encodeURIComponent(orderId)}/resend`), { kind });
+  }
+
+  // ---- bookings (the editor's Bookings tab) ----
+
+  /** The project's bookings: upcoming (bookings, requests, times being paid for), the requests alone, or past ones. */
+  async listBookings(view: 'upcoming' | 'requests' | 'past' = 'upcoming'): Promise<unknown> {
+    return this.request('GET', this.projectPath(`/bookings?view=${view}`));
+  }
+
+  /** The business's answer to a booking: accept or decline a request, or cancel a booking. */
+  async answerBooking(id: string, answer: 'accept' | 'decline' | 'cancel'): Promise<unknown> {
+    return this.request('POST', this.projectPath(`/bookings/${encodeURIComponent(id)}/${answer}`), {});
+  }
+
+  /** What an offering has free in a window, as the site's booking widget sees it (`from`/`to` in epoch ms). */
+  async bookingAvailability(offeringId: string, from: number, to: number): Promise<unknown> {
+    const projectId = encodeURIComponent(this.currentProjectId());
+    return this.request('GET', `/b/${projectId}/${encodeURIComponent(offeringId)}/availability?from=${from}&to=${to}`);
   }
 
   // ---- payment providers ----

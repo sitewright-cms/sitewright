@@ -211,6 +211,27 @@ describe('★ paying for a booking', () => {
     expect(r2.json().refund).toBeUndefined();
   });
 
+  it('★ never lets a TOKEN cancel a paid booking (that refunds it, and no token moves money); a free one it may', async () => {
+    const key = await owner.post(`/projects/${pid}/api-keys`, { name: 'agent', role: 'owner', expiresInDays: 30, capabilities: ['content:read', 'content:write'] });
+    expect(key.statusCode, key.body).toBe(201);
+    const asAgent = (url: string) => h.app.inject({ method: 'POST', url, headers: { authorization: `Bearer ${key.json().token}` }, payload: {} });
+    await book('cut');
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
+    const paid = (await claim())!;
+    const refused = await asAgent(`/projects/${pid}/bookings/${paid.id}/cancel`);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json()).toMatchObject({ reason: 'paid' });
+    expect(refused.json().error).toContain('cancelled by a person in the Bookings tab');
+    expect(calls.filter((x) => x.url.endsWith('/refunds'))).toHaveLength(0);
+    expect((await claim())?.state).toBe('booked');
+    // A person may: their session refunds it.
+    expect((await owner.post(`/projects/${pid}/bookings/${paid.id}/cancel`, {})).json()).toMatchObject({ ok: true, refund: 'refunded' });
+    // A free booking moves no money: the agent may cancel it.
+    await book('free');
+    const free = (await h.db.select().from(bookingClaims)).find((x) => x.offeringId === 'free')!;
+    expect((await asAgent(`/projects/${pid}/bookings/${free.id}/cancel`)).statusCode).toBe(200);
+  });
+
   it('★ refunds before it cancels: a cancellation refused afterwards says the money already went back', async () => {
     await book('cut');
     await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 4500, currency: 'EUR' });
@@ -438,6 +459,29 @@ describe('★ a paid request: paid once the business accepts it', () => {
     expect(calls.filter((x) => x.url.endsWith('/payments/sess_2/refunds'))).toHaveLength(1);
     // The booking stands: nobody is told it is not booked.
     expect(await h.db.select().from(bookingMails)).toEqual([]);
+  });
+
+  it('★ a booking paid twice is refunded through the payment that counts, not read as refunded by its duplicate', async () => {
+    const r = await request();
+    const c = await accept();
+    await pay(r.reference);
+    await pay(r.reference);
+    await webhook({ event_id: 'ev_1', session_id: 'sess_1', type: 'session.paid', amount: 8000, currency: 'EUR' });
+    // The second, newer payment is the duplicate: refunded.
+    await webhook({ event_id: 'ev_2', session_id: 'sess_2', type: 'session.paid', amount: 8000, currency: 'EUR' });
+    const res = await owner.post(`/projects/${pid}/bookings/${c.id}/cancel`, {});
+    expect(res.json()).toMatchObject({ ok: true, refund: 'refunded' });
+    expect(calls.filter((x) => x.url.endsWith('/payments/sess_1/refunds'))).toHaveLength(1);
+    expect((await txns()).map((t) => t.status)).toEqual(['refunded', 'refunded']);
+  });
+
+  it('lets a token withdraw an accepted request no payment has reached yet (it moves no money)', async () => {
+    const key = await owner.post(`/projects/${pid}/api-keys`, { name: 'agent', role: 'owner', expiresInDays: 30, capabilities: ['content:read', 'content:write'] });
+    await request();
+    const c = await accept();
+    const res = await h.app.inject({ method: 'POST', url: `/projects/${pid}/bookings/${c.id}/cancel`, headers: { authorization: `Bearer ${key.json().token}` }, payload: {} });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(await claim()).toBeUndefined();
   });
 
   it('keeps the time held when a payment cannot start', async () => {

@@ -43,6 +43,7 @@
   "GET /admin/rank-tracking",
   "GET /admin/settings",
   "GET /admin/storage",
+  "GET /admin/storage/data-folder",
   "GET /admin/submissions/undelivered",
   "GET /admin/users",
   "GET /admin/webmaster-accounts",

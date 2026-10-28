@@ -425,9 +425,37 @@ describe('admin settings API', () => {
         expect(purge.statusCode).toBe(200);
         expect(purge.json()).toMatchObject({ removed: 2, count: 1 });
 
+        // The data folder: everything in it, with the uploads and the builds split out.
+        await mkdir(join(dir, 'media', 'p1'), { recursive: true });
+        await writeFile(join(dir, 'media', 'p1', 'a.webp'), 'x'.repeat(30));
+        await mkdir(join(dir, 'preview', 'p1'), { recursive: true });
+        await writeFile(join(dir, 'preview', 'p1', 'index.html'), 'x'.repeat(5));
+        const folder = await app.inject({ method: 'GET', url: '/admin/storage/data-folder', cookies });
+        expect(folder.statusCode).toBe(200);
+        const { usage } = folder.json() as { usage: { totalBytes: number; mediaBytes: number; buildsBytes: number; partial: boolean } };
+        expect(usage).toMatchObject({ mediaBytes: 30, buildsBytes: 5, partial: false });
+        // The database, its statistics and the snapshot kept are in the total too.
+        const now = (await app.inject({ method: 'GET', url: '/admin/storage', cookies })).json() as typeof j0;
+        expect(usage.totalBytes).toBeGreaterThanOrEqual(30 + 5 + now.backups.bytes + now.statsBytes);
+
+        // A count just made is handed out again rather than read twice...
+        await writeFile(join(dir, 'media', 'p1', 'b.webp'), 'x'.repeat(1000));
+        await writeFile(join(dir, 'backups', 'sitewright-20260401T000000Z-bbb.pre-migration.bak'), 'xyz');
+        const again = (await app.inject({ method: 'GET', url: '/admin/storage/data-folder', cookies })).json() as { usage: typeof usage };
+        expect(again.usage).toEqual(usage);
+        // ...but never after a purge: the next one counts afresh, so a removed snapshot is not still in the total.
+        await app.inject({ method: 'POST', url: '/admin/backups/purge', cookies, payload: { keepLast: 1 } });
+        const fresh = (await app.inject({ method: 'GET', url: '/admin/storage/data-folder', cookies })).json() as { usage: typeof usage };
+        expect(fresh.usage.mediaBytes).toBe(1030);
+
         // Anonymous is refused.
         const anon = await app.inject({ method: 'GET', url: '/admin/storage' });
         expect([401, 403]).toContain(anon.statusCode);
+        const anonFolder = await app.inject({ method: 'GET', url: '/admin/storage/data-folder' });
+        expect([401, 403]).toContain(anonFolder.statusCode);
+        const user = await register(app, 'not-admin@acme.test');
+        const userFolder = await app.inject({ method: 'GET', url: '/admin/storage/data-folder', cookies: { sw_session: user.t } });
+        expect(userFolder.statusCode).toBe(403);
       } finally {
         await app.close();
         handle.client.close();

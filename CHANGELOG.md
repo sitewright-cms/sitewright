@@ -11,6 +11,11 @@ The running version of an instance is reported at `GET /version` (baked into the
 
 ### Added
 
+- **The data folder's size in System Settings.** Storage & backups now also shows the uploaded media, the site builds
+  and previews (made again when needed) and the data folder's total. It counts every file under the folder, follows
+  a sub-folder linked to another disk, and stops after 10 seconds on a very large instance, showing "at least" what it
+  counted. The database figures appear at once; the folder's arrive when the count is done. A count is reused for
+  half a minute, except after a snapshot purge, which always counts afresh.
 - **Booking tools for agents.** `list_bookings` (the Bookings tab: upcoming, requests or past, with each booking's
   state, times on its clock and the customer's details, marked as personal data and untrusted text),
   `answer_booking` (accept or decline a request, cancel a booking or an accepted request waiting for its payment;
